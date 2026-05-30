@@ -456,7 +456,7 @@ const SlideRenderer = forwardRef<HTMLDivElement, {
               onBlur={e => onUpdateText(slideIndex, 'hook_copy', e.currentTarget.innerText || '')}
               style={{ fontSize: '40px', fontWeight: 700, lineHeight: 1.3, marginBottom: '16px', outline: 'none' }}
             >
-              {slide.hook_copy || '지금 예약하기'}
+              {slide.hook_copy || '지금 상담하기'}
             </p>
             <p
               contentEditable

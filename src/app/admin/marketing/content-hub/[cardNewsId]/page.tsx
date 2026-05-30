@@ -476,7 +476,7 @@ export default function ContentHubPage() {
                         className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm bg-white"
                       >
                         <option value="LEARN_MORE">자세히 알아보기</option>
-                        <option value="BOOK_TRAVEL">여행 예약하기</option>
+                        <option value="BOOK_TRAVEL">여행 상담하기</option>
                         <option value="SHOP_NOW">지금 보기</option>
                       </select>
                     </div>

@@ -73,7 +73,7 @@ export default function LedgerReconcilePage() {
       <div className="p-6 space-y-3 max-w-3xl">
         <div className="h-5 bg-admin-surface-2 rounded animate-pulse w-36" />
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-3">
+          <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 flex items-center gap-3">
             <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
             <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
           </div>

@@ -26,6 +26,7 @@ import {
 } from '@/lib/payment-matcher';
 import { parseClobeMessage, ClobeTransaction } from '@/lib/clobe-parser';
 import { normalizeName } from '@/lib/customer-name';
+import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
 
 export const MAX_PARSE_ATTEMPTS = 5;
 
@@ -62,7 +63,7 @@ export async function ingestSlackRawEvent(input: IngestInput): Promise<IngestRes
     event_id: eventId ?? null,
     channel_id: channelId ?? null,
     message_ts: messageTs ?? null,
-    raw_payload: rawPayload,
+    raw_payload: sanitizeWebhookPayload(rawPayload),
     extracted_text: extractedText,
     source,
     parse_status: hasKeyword ? 'pending' : 'ignored',

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -477,7 +478,7 @@ export default function MileagePage() {
                           {txInfo.label}
                         </span>
                         <span className="text-xs text-gray-400">
-                          {new Date(tx.created_at).toLocaleDateString('ko-KR')}
+                          {fmtDateISO(tx.created_at)}
                         </span>
                       </div>
                       <span className={`font-bold text-sm ${
@@ -491,7 +492,7 @@ export default function MileagePage() {
                     )}
                     {tx.expires_at && (
                       <p className="text-xs text-gray-400 mt-0.5">
-                        소멸 예정일: {new Date(tx.expires_at).toLocaleDateString('ko-KR')}
+                        소멸 예정일: {fmtDateISO(tx.expires_at)}
                       </p>
                     )}
                   </div>

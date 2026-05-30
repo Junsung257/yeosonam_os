@@ -138,13 +138,13 @@ export default function AffiliateAnalyticsPage() {
       <div className="space-y-4 p-1">
         <div className="grid grid-cols-3 gap-4">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-2">
               <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24" />
               <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-32" />
             </div>
           ))}
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 h-40 animate-pulse" />
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 h-40 animate-pulse" />
       </div>
     );
   }

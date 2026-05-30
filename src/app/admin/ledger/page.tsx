@@ -133,7 +133,7 @@ function CapitalRing({ current, goal }: { current: number; goal: number }) {
 function ChartTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 text-xs space-y-1">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-4 py-3 text-xs space-y-1">
       <p className="font-semibold text-admin-text-2 mb-1">{fmtMonth(label)}</p>
       {payload.map((p: any) => (
         <p key={p.dataKey} style={{ color: p.color }}>
@@ -410,7 +410,7 @@ export default function LedgerPage() {
         </div>
 
         {/* 총 입금 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <div className="flex items-center gap-2 mb-1">
             <ArrowDownCircle className="w-4 h-4 text-emerald-500" />
             <p className="text-xs text-admin-muted font-medium">총 입금액</p>
@@ -423,7 +423,7 @@ export default function LedgerPage() {
         </div>
 
         {/* MoM 성장 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <div className="flex items-center gap-2 mb-1">
             {momPct > 0
               ? <TrendingUp className="w-4 h-4 text-emerald-500" />
@@ -445,7 +445,7 @@ export default function LedgerPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
         {/* Recharts AreaChart */}
-        <div className="lg:col-span-2 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="lg:col-span-2 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <h2 className="text-admin-lg font-semibold text-admin-text-2 mb-4">12개월 현금흐름 추이</h2>
           {chartData.length === 0 ? (
             <div className="flex items-center justify-center h-40 text-admin-muted text-admin-base">
@@ -478,7 +478,7 @@ export default function LedgerPage() {
         </div>
 
         {/* 자본금 카드 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex flex-col">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-admin-lg font-semibold text-admin-text-2">자본금 관리</h2>
             <button
@@ -553,7 +553,7 @@ export default function LedgerPage() {
       </div>
 
       {/* ── 거래 내역 탭 ─────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
 
         {/* 탭 헤더 */}
         <div className="flex items-center border-b border-admin-border-mid px-4 pt-3 gap-1">

@@ -1,5 +1,6 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { getMarketingAssetGroups, type MarketingNextAction } from '@/lib/marketing/asset-groups';
+import { markMarketingRecommendationApplied } from '@/lib/marketing/recommendation-ledger';
 
 type ActionKind =
   | 'deadline-no-active-ads'
@@ -118,6 +119,13 @@ export async function applyMarketingAction(actionId: string, dryRun = true): Pro
       .in('status', ['queued', 'generating', 'draft', 'pending'])
       .limit(1);
     if (existing?.[0]) {
+      if (!dryRun) {
+        await markMarketingRecommendationApplied({
+          actionId: action.id,
+          targetTable: 'blog_topic_queue',
+          targetId: existing[0].id,
+        });
+      }
       return buildExistingPlan(action, kind, 'blog_topic_queue', existing[0].id, dryRun);
     }
 
@@ -160,6 +168,11 @@ export async function applyMarketingAction(actionId: string, dryRun = true): Pro
       .select('id')
       .single();
     if (error) throw error;
+    await markMarketingRecommendationApplied({
+      actionId: action.id,
+      targetTable: 'blog_topic_queue',
+      targetId: data?.id ?? null,
+    });
     return { ...plan, dry_run: false, result: { table: 'blog_topic_queue', id: data?.id ?? null } };
   }
 
@@ -172,6 +185,13 @@ export async function applyMarketingAction(actionId: string, dryRun = true): Pro
       .in('status', ['PENDING', 'DRAFT', 'pending', 'draft'])
       .limit(1);
     if (existing?.[0]) {
+      if (!dryRun) {
+        await markMarketingRecommendationApplied({
+          actionId: action.id,
+          targetTable: 'card_news',
+          targetId: existing[0].id,
+        });
+      }
       return buildExistingPlan(action, kind, 'card_news', existing[0].id, dryRun);
     }
 
@@ -210,6 +230,11 @@ export async function applyMarketingAction(actionId: string, dryRun = true): Pro
       .select('id')
       .single();
     if (error) throw error;
+    await markMarketingRecommendationApplied({
+      actionId: action.id,
+      targetTable: 'card_news',
+      targetId: data?.id ?? null,
+    });
     return { ...plan, dry_run: false, result: { table: 'card_news', id: data?.id ?? null } };
   }
 
@@ -222,6 +247,13 @@ export async function applyMarketingAction(actionId: string, dryRun = true): Pro
       .in('status', ['DRAFT', 'draft', 'approved', 'ACTIVE', 'active'])
       .limit(1);
     if (existing?.[0]) {
+      if (!dryRun) {
+        await markMarketingRecommendationApplied({
+          actionId: action.id,
+          targetTable: 'ad_campaigns',
+          targetId: existing[0].id,
+        });
+      }
       return buildExistingPlan(action, kind, 'ad_campaigns', existing[0].id, dryRun);
     }
 
@@ -257,6 +289,11 @@ export async function applyMarketingAction(actionId: string, dryRun = true): Pro
       .select('id')
       .single();
     if (error) throw error;
+    await markMarketingRecommendationApplied({
+      actionId: action.id,
+      targetTable: 'ad_campaigns',
+      targetId: data?.id ?? null,
+    });
     return { ...plan, dry_run: false, result: { table: 'ad_campaigns', id: data?.id ?? null } };
   }
 

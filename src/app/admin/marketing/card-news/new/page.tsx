@@ -224,7 +224,7 @@ export default function CardNewsNewWizardPage() {
 
         {/* Step 1: 입력 */}
         {step === 1 && (
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-5">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-5">
             {/* 모드 */}
             <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1">
               <button
@@ -396,7 +396,7 @@ export default function CardNewsNewWizardPage() {
 
         {/* Step 2: Brief 검토 + 편집 */}
         {step === 2 && brief && (
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-5">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-5">
             {/* 메타 */}
             <div>
               <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">H1 (블로그 제목)</label>
@@ -524,7 +524,7 @@ export default function CardNewsNewWizardPage() {
 
         {/* Step 3: 생성 중 */}
         {step === 3 && (
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-12 text-center">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-12 text-center">
             <div className="inline-block w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
             <p className="text-admin-text-2 font-medium">카드뉴스 생성 중...</p>
             <p className="text-xs text-admin-muted mt-1">AI가 각 슬라이드 카피 + Pexels 이미지를 준비하고 있습니다.</p>

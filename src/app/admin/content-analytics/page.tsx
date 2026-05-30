@@ -192,7 +192,7 @@ export default function ContentAnalyticsPage() {
             { label: '매출', value: fmtKRW(kpi.total_revenue), color: 'text-indigo-600' },
             { label: '순이익', value: fmtKRW(kpi.total_profit), color: kpi.total_profit > 0 ? 'text-green-600' : 'text-red-500' },
           ].map((card, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3">
               <p className="text-[10px] text-admin-muted-2 uppercase">{card.label}</p>
               <p className={`text-[18px] font-bold ${card.color} mt-0.5`}>{card.value}</p>
             </div>
@@ -202,7 +202,7 @@ export default function ContentAnalyticsPage() {
 
       {/* 앵글×목적지 매트릭스 */}
       {matrixDests.length > 0 && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <h2 className="text-admin-sm font-semibold text-admin-text-2 mb-3">앵글 × 목적지 전환 매트릭스</h2>
           <div className="overflow-x-auto">
             <table className="text-[11px] w-full">
@@ -259,7 +259,7 @@ export default function ContentAnalyticsPage() {
 
       {/* 테이블 */}
       {loading ? (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden divide-y divide-slate-50">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-3">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
@@ -275,7 +275,7 @@ export default function ContentAnalyticsPage() {
           <p className="text-admin-sm font-medium text-admin-muted">발행된 블로그 글이 없습니다</p>
         </div>
       ) : (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           <table className="w-full text-admin-xs">
             <thead>
               <tr className="bg-admin-bg text-admin-muted text-left">

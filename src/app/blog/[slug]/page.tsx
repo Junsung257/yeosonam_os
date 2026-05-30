@@ -28,6 +28,7 @@ import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * A/B 테스트용 headline variant 생성 (Power word + 연도 조정)
@@ -207,24 +208,14 @@ async function getPost(slug: string): Promise<BlogPost | null> {
     .limit(1);
 
   // 사일런트 fail 차단: PostgREST가 400 등 비-200을 돌려보내면 data는 null이지만
-  // 사고 원인을 묻으면 안 된다. 운영 화면(admin_alerts)에 적재해 다음 사고 추적성 확보.
+  // 렌더 중 DB write는 금지하고 Sentry/console 로그로만 추적한다.
   if (error) {
-    console.error('[blog/getPost] supabase error:', { dbSlug, error });
-    try {
-      await supabaseAdmin.from('admin_alerts').insert({
-        kind: 'blog_get_post_fail',
-        severity: 'error',
-        message: `blog detail query failed: ${error.message ?? String(error)}`,
-        payload: {
-          slug: dbSlug,
-          rawParam: slug,
-          code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
-          hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
-        },
-      });
-    } catch {
-      /* alerts insert 실패도 페이지를 막지 않는다 */
-    }
+    logError('[blog/getPost] supabase error', error, {
+      slug: dbSlug,
+      rawParam: slug,
+      code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
+      hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
+    });
     return null;
   }
   if (!data || data.length === 0) return null;
@@ -478,18 +469,11 @@ export default async function BlogDetailPage({
   try {
     return await renderBlogDetail({ rawSlug, slug, utmCampaign, utmTerm, utmSource });
   } catch (err) {
-    console.error('[blog/detail] 렌더링 예외:', slug, err instanceof Error ? err.message : String(err));
-    try {
-      await supabaseAdmin.from('admin_alerts').insert({
-        category: 'general',
-        severity: 'error',
-        title: 'blog detail render fail',
-        message: `slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-        ref_type: 'content_creative',
-        ref_id: slug,
-        meta: { digest: err && typeof err === 'object' && 'digest' in err ? (err as { digest: string }).digest : null, stack: err instanceof Error ? err.stack?.slice(0, 1000) : null },
-      });
-    } catch { /* noop */ }
+    logError('[blog/detail] render failed', err, {
+      slug,
+      rawSlug,
+      digest: err && typeof err === 'object' && 'digest' in err ? (err as { digest: string }).digest : null,
+    });
     notFound();
   }
 }

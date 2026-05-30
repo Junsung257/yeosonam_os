@@ -210,10 +210,10 @@ export default function GroupLandingClient() {
         >
           {/* 신청자 성함 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-contact-name" className="block text-sm font-semibold mb-2">
               신청자 성함 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="group-contact-name"
               type="text"
               value={form.contact_name}
               onChange={(e) => update('contact_name', e.target.value)}
@@ -225,10 +225,10 @@ export default function GroupLandingClient() {
 
           {/* 연락처 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-contact-phone" className="block text-sm font-semibold mb-2">
               연락처 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="group-contact-phone"
               type="tel"
               value={form.contact_phone}
               onChange={(e) => update('contact_phone', e.target.value)}
@@ -240,10 +240,10 @@ export default function GroupLandingClient() {
 
           {/* 단체명 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-name" className="block text-sm font-semibold mb-2">
               단체명 (회사·모임명) <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="group-name"
               type="text"
               value={form.group_name}
               onChange={(e) => update('group_name', e.target.value)}
@@ -255,7 +255,7 @@ export default function GroupLandingClient() {
 
           {/* 단체 성격 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-purpose" className="block text-sm font-semibold mb-2">
               단체 성격 <span className="text-red-500">*</span>
             </label>
             <select
@@ -275,10 +275,10 @@ export default function GroupLandingClient() {
 
           {/* 희망 여행지 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-destination" className="block text-sm font-semibold mb-2">
               희망 여행지 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="group-destination"
               type="text"
               value={form.destination}
               onChange={(e) => update('destination', e.target.value)}
@@ -290,10 +290,10 @@ export default function GroupLandingClient() {
 
           {/* 희망 출발일 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-departure-date" className="block text-sm font-semibold mb-2">
               희망 출발일 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="group-departure-date"
               type="date"
               value={form.departure_date}
               onChange={(e) => update('departure_date', e.target.value)}
@@ -304,10 +304,10 @@ export default function GroupLandingClient() {
 
           {/* 예상 인원 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-pax-label" className="block text-sm font-semibold mb-2">
               예상 인원 <span className="text-red-500">*</span>
             </label>
-            <select
+            <select id="group-budget-label"
               value={form.pax_label}
               onChange={(e) => update('pax_label', e.target.value)}
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -324,7 +324,7 @@ export default function GroupLandingClient() {
 
           {/* 1인 예산 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">
+            <label htmlFor="group-budget-label" className="block text-sm font-semibold mb-2">
               1인 예산 <span className="text-red-500">*</span>
             </label>
             <select
@@ -349,7 +349,7 @@ export default function GroupLandingClient() {
 
           {/* 호텔 등급 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">호텔 등급</label>
+            <span className="block text-sm font-semibold mb-2">호텔 등급</span>
             <div className="grid grid-cols-4 gap-2">
               {HOTEL_OPTIONS.map((h) => (
                 <button
@@ -370,7 +370,7 @@ export default function GroupLandingClient() {
 
           {/* 쇼핑 포함 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">쇼핑 포함</label>
+            <span className="block text-sm font-semibold mb-2">쇼핑 포함</span>
             <div className="grid grid-cols-2 gap-2">
               {SHOPPING_OPTIONS.map((s) => (
                 <button
@@ -391,8 +391,8 @@ export default function GroupLandingClient() {
 
           {/* 요청사항 */}
           <div>
-            <label className="block text-sm font-semibold mb-2">요청사항</label>
-            <textarea
+            <label htmlFor="group-notes" className="block text-sm font-semibold mb-2">요청사항</label>
+            <textarea id="group-notes"
               value={form.notes}
               onChange={(e) => update('notes', e.target.value)}
               placeholder="특별히 요청하실 사항이 있으시면 자유롭게 입력해주세요"

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { RefreshCw } from 'lucide-react';
+import { maskEmail } from '@/lib/pii-mask';
 
 interface Inquiry {
   id: string;
@@ -24,6 +25,8 @@ interface AgentTask {
   task_context: Record<string, unknown>;
   created_at: string;
   assigned_to: string | null;
+  task_kind?: 'agent_task' | 'pending_action';
+  pending_action_id?: string;
 }
 
 const ESCALATION_TYPES = 'escalation,critic_blocked,escalation_cta';
@@ -87,11 +90,20 @@ export default function EscalationsPage() {
   async function takeover(taskId: string) {
     setTakingOver(taskId);
     try {
-      await fetch('/api/admin/hitl/takeover', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ taskId }),
-      });
+      const task = tasks.find((t) => t.id === taskId);
+      if (task?.task_kind === 'pending_action' && task.pending_action_id) {
+        await fetch('/api/jarvis/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingActionId: task.pending_action_id, approved: false }),
+        });
+      } else {
+        await fetch('/api/admin/hitl/takeover', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ taskId }),
+        });
+      }
       await load();
     } finally {
       setTakingOver(null);
@@ -167,7 +179,7 @@ export default function EscalationsPage() {
       {isLoading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-start gap-3">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 flex items-start gap-3">
               <div className="w-2 h-2 rounded-full bg-admin-surface-2 animate-pulse mt-1.5 shrink-0" />
               <div className="flex-1 space-y-2">
                 <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-48" />
@@ -182,7 +194,7 @@ export default function EscalationsPage() {
           {tab === 'tasks' && (
             <div className="space-y-2">
               {tasks.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                <div className="text-center py-20 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs">
                   <p className="text-admin-muted text-admin-base font-medium">처리 대기 중인 에스컬레이션이 없습니다</p>
                   <p className="text-admin-muted-2 text-admin-sm mt-1">JARVIS가 모든 요청을 정상 처리 중입니다</p>
                 </div>
@@ -193,7 +205,7 @@ export default function EscalationsPage() {
                 return (
                   <div
                     key={task.id}
-                    className={`bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 ${RISK_COLOR[task.risk_level]} p-4`}
+                    className={`bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs border-l-4 ${RISK_COLOR[task.risk_level]} p-4`}
                   >
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1 min-w-0">
@@ -202,7 +214,7 @@ export default function EscalationsPage() {
                             {RISK_EMOJI[task.risk_level]} {task.risk_level.toUpperCase()}
                           </span>
                           <span className="text-[11px] bg-admin-surface-2 text-admin-muted px-2 py-0.5 rounded-full">
-                            {task.performative}
+                            {task.task_kind === 'pending_action' ? '도구 승인 대기' : task.performative}
                           </span>
                           <span className={`text-[11px] font-medium ${mins > 30 ? 'text-red-500' : 'text-admin-muted-2'}`}>
                             {mins < 60 ? `${mins}분 전` : `${Math.floor(mins / 60)}시간 전`}
@@ -224,7 +236,7 @@ export default function EscalationsPage() {
                         disabled={takingOver === task.id}
                         className="shrink-0 whitespace-nowrap"
                       >
-                        {takingOver === task.id ? '처리 중…' : '직접 대응'}
+                        {takingOver === task.id ? '처리 중…' : task.task_kind === 'pending_action' ? 'AI 중단 후 직접 대응' : '직접 대응'}
                       </Button>
                     </div>
                   </div>
@@ -236,13 +248,13 @@ export default function EscalationsPage() {
           {tab === 'inquiries' && (
             <div className="space-y-2">
               {inquiries.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+                <div className="text-center py-20 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs">
                   <p className="text-admin-muted text-admin-base font-medium">처리 대기 중인 문의가 없습니다</p>
                 </div>
               ) : inquiries.map((inq) => (
                 <div
                   key={inq.id}
-                  className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] border-l-4 border-l-amber-400 p-4"
+                  className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs border-l-4 border-l-amber-400 p-4"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
@@ -257,7 +269,7 @@ export default function EscalationsPage() {
                       </p>
                       {inq.customer_name && (
                         <p className="text-admin-sm text-admin-muted mt-2">
-                          고객: {inq.customer_name}{inq.customer_email ? ` (${inq.customer_email})` : ''}
+                          고객: {inq.customer_name}{inq.customer_email ? ` (${maskEmail(inq.customer_email, 'cs_agent')})` : ''}
                         </p>
                       )}
                     </div>

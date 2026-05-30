@@ -17,6 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import { getSecret } from '@/lib/secret-registry';
 
 interface RateLimitOptions {
   /** 허용 요청 수 (윈도우 내) */
@@ -45,7 +46,7 @@ let redisClient: Redis | null = null;
 function getRedis(): Redis | null {
   if (redisClient) return redisClient;
   const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const token = getSecret('UPSTASH_REDIS_REST_TOKEN');
   if (!url || !token) return null;
   redisClient = new Redis({ url, token });
   return redisClient;

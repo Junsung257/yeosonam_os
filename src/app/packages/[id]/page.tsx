@@ -1,7 +1,8 @@
 import type React from 'react';
 import { notFound } from 'next/navigation';
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import DetailClient from './DetailClient';
+import UnmatchedActivitiesBeacon from '@/components/customer/UnmatchedActivitiesBeacon';
 import ReviewsSection from '@/components/reviews/ReviewsSection';
 import RecentViews from '@/components/customer/RecentViews';
 import type { Metadata } from 'next';
@@ -38,7 +39,7 @@ export const dynamicParams = true;
  * - 50개 선정 기준: status in (active, approved) + updated_at desc — 최근 운영 상품 우선.
  */
 export async function generateStaticParams(): Promise<Array<{ id: string }>> {
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY && !process.env.SUPABASE_ANON_KEY) return [];
+  if (!isSupabaseConfigured) return [];
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
@@ -165,7 +166,7 @@ export default async function PackageDetailPage({
 
   // C6 박제 (2026-05-15): JP=793 + TW=160 + 인접 region 매칭이 1200 한계에 근접 → 2000 으로 확장.
   //   light SELECT (id 제외 9컬럼) 이라 payload 부담 작음. Step B 의 relevantAttractions 가 진짜 페이로드.
-  const matchResult = await matchQuery.limit(2000);
+  const matchResult = await matchQuery.limit(600);
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
@@ -295,10 +296,10 @@ export default async function PackageDetailPage({
   }
 
   // 미매칭 관광지 수집 (서버사이드 1회만) — 경량 목록으로 매칭 시도
+  const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country?: string }[] = [];
   if (pkg?.itinerary_data && lightAttractions.length) {
     const skipPattern = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
     const daysData = normalizeDays<{ day: number; schedule?: { activity: string; type?: string }[] }>(pkg.itinerary_data);
-    const unmatchedItems: { activity: string; package_id: string; package_title: string; day_number: number; country?: string }[] = [];
     for (const day of daysData) {
       (day.schedule || []).forEach((item) => {
         if (skipPattern.test(item.activity)) return;
@@ -307,30 +308,6 @@ export default async function PackageDetailPage({
         const attr = matchAttractions(item.activity, lightAttractions, pkg.destination)[0] || null;
         if (!attr) unmatchedItems.push({ activity: item.activity, package_id: id, package_title: pkg.title, day_number: day.day, country: pkg.destination });
       });
-    }
-    if (unmatchedItems.length > 0) {
-      // ERR-unmatched-queue-middleware-401@2026-04-21:
-      //   기존: fetch('https://yeosonam.com/api/unmatched') 로 self-call → middleware PUBLIC_PATHS 미등록
-      //         → 401 리다이렉트 → .catch(() => {}) 로 침묵 실패 → 2026-04-10 ~ 04-21 사이 등록된
-      //         16개 상품 전부 unmatched 자동 큐잉 누락.
-      //   해결: supabaseAdmin 으로 직접 upsert (middleware 독립).
-      const sbAdmin = supabaseAdmin;
-      const upsertPayload = unmatchedItems.map(it => ({
-        activity: it.activity,
-        package_id: it.package_id,
-        package_title: it.package_title,
-        day_number: it.day_number,
-        country: it.country || null,
-        region: null,
-        occurrence_count: 1,
-        status: 'pending',
-      }));
-      sbAdmin
-        .from('unmatched_activities')
-        .upsert(upsertPayload, { onConflict: 'activity' })
-        .then(({ error }: { error: { message: string } | null }) => {
-          if (error) console.error('[unmatched upsert 실패]', error.message);
-        });
     }
   }
 
@@ -392,7 +369,8 @@ export default async function PackageDetailPage({
       .from('package_scores')
       .select('departure_date, rank_in_group, group_size, effective_price, list_price, shopping_count, hotel_avg_grade, meal_count, free_option_count, is_direct_flight, breakdown')
       .eq('package_id', id)
-      .order('departure_date', { ascending: true });
+      .order('departure_date', { ascending: true })
+      .limit(36);
     if (sc) scoreRows = sc as ScoreRow[];
   }
 
@@ -410,12 +388,14 @@ export default async function PackageDetailPage({
     const groupKeys = scoreRows
       .filter(r => r.group_size >= 2 && r.departure_date)
       .map(r => `${pkg?.destination ?? ''}|${r.departure_date}`);
-    if (groupKeys.length > 0) {
+    const uniqueGroupKeys = Array.from(new Set(groupKeys)).slice(0, 20);
+    if (uniqueGroupKeys.length > 0) {
       const { data } = await sb
         .from('package_scores')
         .select(`departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)`)
-        .in('group_key', groupKeys)
-        .neq('package_id', id);
+        .in('group_key', uniqueGroupKeys)
+        .neq('package_id', id)
+        .limit(80);
       for (const r of data ?? []) {
         const row = r as unknown as { departure_date: string; travel_packages: { title: string } | { title: string }[] } & Rival;
         const t = Array.isArray(row.travel_packages) ? row.travel_packages[0]?.title : row.travel_packages?.title;
@@ -560,9 +540,28 @@ export default async function PackageDetailPage({
     },
     ...(normalizedPkg.product_highlights?.length ? { award: normalizedPkg.product_highlights.slice(0, 3).map((h: string) => ({ '@type': 'Award', name: h })) } : {}),
   } : null;
+  const clientPackage = normalizedPkg
+    ? (() => {
+        const {
+          raw_text: _rawText,
+          internal_notes: _internalNotes,
+          land_operator_id: _landOperatorId,
+          audit_status: _auditStatus,
+          parser_version: _parserVersion,
+          ...publicPackage
+        } = normalizedPkg as typeof normalizedPkg & Record<string, unknown>;
+        void _rawText;
+        void _internalNotes;
+        void _landOperatorId;
+        void _auditStatus;
+        void _parserVersion;
+        return publicPackage as React.ComponentProps<typeof DetailClient>['initialPackage'];
+      })()
+    : null;
 
   return (
     <>
+      <UnmatchedActivitiesBeacon items={unmatchedItems} />
       {pkgJsonLd && (
         <script
           type="application/ld+json"
@@ -571,7 +570,7 @@ export default async function PackageDetailPage({
         />
       )}
       <DetailClient
-        initialPackage={normalizedPkg}
+        initialPackage={clientPackage}
         initialAttractions={attractionsForClient}
         packageId={id}
         relatedBlogPosts={relatedBlogPosts}

@@ -210,12 +210,13 @@ export default function InfluencerDashboard() {
 
           <div className="space-y-4">
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">파트너 코드</label>
+              <span className="text-xs font-semibold text-gray-500 uppercase">파트너 코드</span>
               <div className="mt-1 px-3 py-2.5 bg-gray-50 rounded-lg text-sm font-mono font-bold text-blue-600">{code}</div>
             </div>
             <div>
-              <label className="text-xs font-semibold text-gray-500 uppercase">PIN (4자리)</label>
+              <label htmlFor="influencer-pin" className="text-xs font-semibold text-gray-500 uppercase">PIN (4자리)</label>
               <input
+                id="influencer-pin"
                 type="password"
                 maxLength={4}
                 value={pin}
@@ -223,7 +224,6 @@ export default function InfluencerDashboard() {
                 onKeyDown={e => e.key === 'Enter' && pin.length === 4 && handlePinLogin(pin)}
                 className="mt-1 w-full px-3 py-2.5 border border-gray-300 rounded-lg text-center text-2xl tracking-[0.5em] font-bold focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none"
                 placeholder="••••"
-                autoFocus
               />
             </div>
             {pinError && <p className="text-red-500 text-sm text-center">{pinError}</p>}

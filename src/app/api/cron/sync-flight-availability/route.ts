@@ -16,6 +16,7 @@
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
+import { getSecret } from '@/lib/secret-registry';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -25,8 +26,8 @@ async function run() {
   if (!isSupabaseConfigured) return { ok: true, mock: true };
 
   // 미등록 secret 키 — secret-registry 외부이므로 process.env 직접 사용
-  const amadeusKey = process.env.AMADEUS_CLIENT_ID;
-  const amadeusSecret = process.env.AMADEUS_CLIENT_SECRET;
+  const amadeusKey = getSecret('AMADEUS_CLIENT_ID');
+  const amadeusSecret = getSecret('AMADEUS_CLIENT_SECRET');
   if (!amadeusKey || !amadeusSecret) {
     return {
       ok: true,

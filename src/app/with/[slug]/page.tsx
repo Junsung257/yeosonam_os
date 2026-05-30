@@ -2,9 +2,9 @@ import Image from 'next/image';
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { cookies } from 'next/headers';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import AffiliateTouchpointBeacon from '@/components/affiliate/AffiliateTouchpointBeacon';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { isSafeImageSrc } from '@/lib/image-url';
@@ -130,22 +130,9 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   const youtubeEmbedUrl = extractYoutubeEmbedUrl(row.landing_video_url || row.landing_intro);
   const campaignEndsAt = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
 
-  try {
-    const sid = (await cookies()).get('ys_session_id')?.value || `ssr-${Date.now()}`;
-    await supabaseAdmin.from('affiliate_touchpoints').insert({
-      session_id: sid,
-      referral_code: row.referral_code,
-      package_id: null,
-      sub_id: 'co_brand_landing',
-      is_bot: false,
-      is_duplicate: false,
-    } as never);
-  } catch {
-    /* 랜딩 조회수 기록 실패는 페이지 노출에 영향 없음 */
-  }
-
   return (
     <div className="min-h-screen bg-gray-50">
+      <AffiliateTouchpointBeacon referralCode={row.referral_code} subId="co_brand_landing" />
       <GlobalNav />
       <main>
         <section className="border-b border-gray-200 bg-white">

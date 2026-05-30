@@ -57,8 +57,9 @@ export default function ResetPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">새 비밀번호</label>
+              <label htmlFor="new-password" className="block text-xs font-medium text-slate-700 mb-1">새 비밀번호</label>
               <input
+                id="new-password"
                 type="password"
                 required
                 minLength={8}
@@ -69,8 +70,9 @@ export default function ResetPasswordPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">비밀번호 확인</label>
+              <label htmlFor="confirm-password" className="block text-xs font-medium text-slate-700 mb-1">비밀번호 확인</label>
               <input
+                id="confirm-password"
                 type="password"
                 required
                 value={confirm}

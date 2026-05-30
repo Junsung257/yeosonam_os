@@ -93,7 +93,7 @@ export default function TermsTemplatesPage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-2">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-2">
               <div className="h-4 bg-admin-surface-2 rounded animate-pulse w-48" />
               <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-full" />
             </div>
@@ -107,7 +107,7 @@ export default function TermsTemplatesPage() {
             <Link
               key={t.id}
               href={`/admin/terms-templates/${t.id}`}
-              className="block bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 hover:border-slate-400 transition"
+              className="block bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 hover:border-slate-400 transition"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">

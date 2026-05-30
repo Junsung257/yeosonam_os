@@ -11,6 +11,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getStayDetail } from '@/lib/travel-providers/mrt';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const QuerySchema = z.object({
   /** MRT 숙소 gid는 숫자. 추정/폴백 숙소 ID는 상세 조회 불가 */
   gid: z.string().regex(/^\d+$/),

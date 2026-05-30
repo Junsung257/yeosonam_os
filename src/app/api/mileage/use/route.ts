@@ -8,7 +8,7 @@
  * 보안: 세션 인증, 잔액 검증, 최대 사용 한도 검증
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { useMileage } from '@/lib/mileage-service';
+import { useMileage as applyMileage } from '@/lib/mileage-service';
 import { calcMaxUsable } from '@/lib/mileage-service';
 import { getBalance } from '@/lib/mileage-service';
 
@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     }
 
     // ── 마일리지 사용 처리 ──────────────────────────────────
-    const result = await useMileage({
+    const result = await applyMileage({
       userId: user.id,
       bookingId,
       useAmount,

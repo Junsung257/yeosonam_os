@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fmtDateTime } from '@/lib/admin-utils';
+import { maskEmail, maskPhone } from '@/lib/pii-mask';
 
 interface SagaEvent {
   event:     string;
@@ -120,7 +121,7 @@ export default function TransactionDetailPage() {
     return (
       <div className="p-6 space-y-4 max-w-3xl">
         <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-40" />
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-24 shrink-0" />
@@ -172,8 +173,8 @@ export default function TransactionDetailPage() {
         <div className="bg-white rounded-admin-md border p-4 space-y-2">
           <h3 className="text-sm font-semibold text-admin-text-2 border-b pb-2">고객 정보</h3>
           <p className="text-sm"><span className="text-admin-muted">이름:</span> <span className="font-medium">{txn.customer_name ?? '-'}</span></p>
-          <p className="text-sm"><span className="text-admin-muted">연락처:</span> {txn.customer_phone ?? '-'}</p>
-          <p className="text-sm"><span className="text-admin-muted">이메일:</span> {txn.customer_email ?? '-'}</p>
+          <p className="text-sm"><span className="text-admin-muted">연락처:</span> {maskPhone(txn.customer_phone ?? null, 'cs_agent') ?? '-'}</p>
+          <p className="text-sm"><span className="text-admin-muted">이메일:</span> {maskEmail(txn.customer_email ?? null, 'cs_agent') ?? '-'}</p>
           <p className="text-sm text-admin-muted-2 font-mono text-xs">{txn.id}</p>
         </div>
         <div className="bg-white rounded-admin-md border p-4 space-y-2">

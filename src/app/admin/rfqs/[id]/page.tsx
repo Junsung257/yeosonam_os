@@ -222,7 +222,7 @@ export default function AdminRfqDetailPage() {
     return (
       <div className="p-6 space-y-4 max-w-3xl">
         <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-28 shrink-0" />

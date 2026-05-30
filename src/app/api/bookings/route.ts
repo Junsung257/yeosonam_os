@@ -597,6 +597,27 @@ export async function PATCH(request: NextRequest) {
       return successResponse({ booking: data });
     }
 
+    if (body.seat_check_confirmed === true) {
+      const { data, error } = await supabaseAdmin
+        .from('bookings')
+        .update({
+          deposit_notice_blocked: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) return ApiErrors.internalError(error.message);
+
+      const { resolveDepositNoticeGateTasks, resolveSeatCheckRequiredTasks } = await import('@/lib/booking-workflow-tasks');
+      await Promise.all([
+        resolveDepositNoticeGateTasks(id),
+        resolveSeatCheckRequiredTasks(id),
+      ]);
+
+      return successResponse({ booking: data, seat_check_confirmed: true });
+    }
+
     // 일행 추가 (booking_passengers에 연결)
     if (body.addPassengerId) {
       const { error } = await supabaseAdmin

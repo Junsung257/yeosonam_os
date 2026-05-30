@@ -8,6 +8,7 @@ import {
 import { findOrCreateCustomerByPhone } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { maskPhoneForLog, redactNameForLog } from '@/lib/pii-mask';
 
 const MOCK_RFQS: GroupRfq[] = [
   {
@@ -269,5 +270,9 @@ async function tryNotifyCustomer(
 
   // 3. TODO: Solapi 카카오 알림톡 (템플릿 등록 후 활성화)
   //    템플릿: "견적접수완료" — 변수: #{고객명}, #{목적지}, #{인원}, #{공유링크}
-  console.log(`[고객 알림] 견적 접수: ${name} (${phone}) → ${destination}`);
+  console.log('[고객 알림] 견적 접수', {
+    customer: redactNameForLog(name),
+    phone: maskPhoneForLog(phone),
+    destination,
+  });
 }

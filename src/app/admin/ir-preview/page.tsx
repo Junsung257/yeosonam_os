@@ -12,6 +12,7 @@
 import { supabaseAdmin } from '@/lib/supabase';
 import IrPreviewClient from './IrPreviewClient';
 import { PageHeader } from '@/components/admin/patterns';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,7 +27,16 @@ async function loadDrafts() {
     console.error('[ir-preview] loadDrafts error', error);
     return [];
   }
-  return data || [];
+  return (data || []).map((row: any) => {
+    const ir = row.ir && typeof row.ir === 'object'
+      ? { ...row.ir, rawText: safeRawTextExcerpt(row.ir.rawText, 2000) ?? '' }
+      : row.ir;
+    return {
+      ...row,
+      raw_text: safeRawTextExcerpt(row.raw_text, 2000) ?? '',
+      ir,
+    };
+  });
 }
 
 export default async function IrPreviewPage() {

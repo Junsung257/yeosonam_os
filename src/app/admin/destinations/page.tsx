@@ -296,7 +296,7 @@ export default function AdminDestinationsPage() {
               const ps = photoSearch[row.destination];
 
               return (
-                <div key={row.destination} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+                <div key={row.destination} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
                   {/* 요약 행 */}
                   <div
                     className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-admin-bg transition"

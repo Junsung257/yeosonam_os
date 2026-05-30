@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { executeAction } from '@/lib/agent-action-executor'
+import { isAdminRequest } from '@/lib/admin-guard'
 
 export async function POST(req: NextRequest) {
   try {
+    if (!(await isAdminRequest(req))) {
+      return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 })
+    }
+
     const { pendingActionId, approved } = await req.json()
 
     if (!pendingActionId) {

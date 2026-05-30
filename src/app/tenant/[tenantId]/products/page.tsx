@@ -187,8 +187,8 @@ export default function TenantProductsPage() {
             </h3>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">상품명 *</label>
-                <input
+                <label htmlFor="tenant-product-title" className="block text-sm font-medium text-gray-700 mb-1">상품명 *</label>
+                <input id="tenant-product-title"
                   type="text" required value={form.title}
                   onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -197,8 +197,8 @@ export default function TenantProductsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">목적지</label>
-                  <input
+                  <label htmlFor="tenant-product-destination" className="block text-sm font-medium text-gray-700 mb-1">목적지</label>
+                  <input id="tenant-product-destination"
                     type="text" value={form.destination}
                     onChange={e => setForm(f => ({ ...f, destination: e.target.value }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -206,7 +206,7 @@ export default function TenantProductsPage() {
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">카테고리</label>
+                  <label htmlFor="tenant-product-category" className="block text-sm font-medium text-gray-700 mb-1">카테고리</label>
                   <select
                     value={form.category}
                     onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
@@ -218,16 +218,16 @@ export default function TenantProductsPage() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">원가 (KRW) *</label>
-                  <input
+                  <label htmlFor="tenant-product-cost-price" className="block text-sm font-medium text-gray-700 mb-1">원가 (KRW) *</label>
+                  <input id="tenant-product-cost-price"
                     type="number" required min="0" value={form.cost_price}
                     onChange={e => setForm(f => ({ ...f, cost_price: Number(e.target.value) }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">판매가 (KRW) *</label>
-                  <input
+                  <label htmlFor="tenant-product-price" className="block text-sm font-medium text-gray-700 mb-1">판매가 (KRW) *</label>
+                  <input id="tenant-product-price"
                     type="number" required min="0" value={form.price}
                     onChange={e => setForm(f => ({ ...f, price: Number(e.target.value) }))}
                     className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -247,15 +247,15 @@ export default function TenantProductsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">최소 출발 인원</label>
-                <input
+                <label htmlFor="tenant-product-min-participants" className="block text-sm font-medium text-gray-700 mb-1">최소 출발 인원</label>
+                <input id="tenant-product-min-participants"
                   type="number" min="1" value={form.min_participants}
                   onChange={e => setForm(f => ({ ...f, min_participants: Number(e.target.value) }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">메모</label>
+                <label htmlFor="tenant-product-notes" className="block text-sm font-medium text-gray-700 mb-1">메모</label>
                 <textarea
                   value={form.notes} rows={2}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}

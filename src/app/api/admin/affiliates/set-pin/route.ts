@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   }
@@ -30,3 +31,5 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ success: true });
 }
+
+export const POST = withAdminGuard(postHandler);

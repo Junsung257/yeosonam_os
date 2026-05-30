@@ -173,7 +173,7 @@ export default function ReviewsAdminPage() {
       )}
 
       {/* 테이블 */}
-      <div className="bg-white border border-admin-border rounded-admin-md shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs overflow-hidden">
         {loading ? (
           <table className="w-full text-admin-xs">
             <thead>

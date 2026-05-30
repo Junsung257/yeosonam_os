@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { fmtDateISO } from '@/lib/admin-utils';
+import { maskPhone } from '@/lib/pii-mask';
 
 interface Application {
   id: string;
@@ -295,7 +296,7 @@ export default function ApplicationsPage() {
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-600 font-medium">📢 자유신청</span>
                       )}
                     </div>
-                    <p className="text-xs text-admin-muted mt-0.5">{app.phone} · 신청일 {fmtDateISO(app.applied_at)}</p>
+                    <p className="text-xs text-admin-muted mt-0.5">{maskPhone(app.phone, 'marketer')} · 신청일 {fmtDateISO(app.applied_at)}</p>
                   </div>
                   {app.status === 'PENDING' && (
                     <div className="flex gap-2">

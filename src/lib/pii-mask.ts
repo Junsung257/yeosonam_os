@@ -85,3 +85,24 @@ export function maskEmail(email: string | null, role: string): string | null {
   const visibleLocal = local.length >= 2 ? local.slice(0, 2) : local.slice(0, 1);
   return `${visibleLocal}***@${domain}`;
 }
+
+/** Logs should never need the full phone number, regardless of admin role. */
+export function maskPhoneForLog(phone: string | null | undefined): string {
+  const digits = String(phone ?? '').replace(/\D/g, '');
+  if (digits.length <= 4) return '****';
+  return `${'*'.repeat(Math.max(0, digits.length - 4))}${digits.slice(-4)}`;
+}
+
+/** Logs should keep only enough email shape to debug deliverability paths. */
+export function maskEmailForLog(email: string | null | undefined): string {
+  const value = String(email ?? '').trim();
+  const atIdx = value.indexOf('@');
+  if (atIdx <= 0) return '***@***';
+  const local = value.slice(0, atIdx);
+  const domain = value.slice(atIdx + 1);
+  return `${local.slice(0, 1)}***@${domain || '***'}`;
+}
+
+export function redactNameForLog(name: string | null | undefined): string {
+  return String(name ?? '').trim() ? '[redacted]' : '-';
+}

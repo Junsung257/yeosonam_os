@@ -11,7 +11,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import AdminLayout from '@/components/AdminLayout';
 
 interface MonthlyData {
   month: string;
@@ -70,7 +69,7 @@ export default function MileageAnalyticsPage() {
     : 1;
 
   return (
-    <AdminLayout>
+    <>
       <div className="p-6 space-y-8">
         <h1 className="text-xl font-bold text-gray-800 mb-6">마일리지 분석</h1>
         {loading && (
@@ -219,7 +218,7 @@ export default function MileageAnalyticsPage() {
           </>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

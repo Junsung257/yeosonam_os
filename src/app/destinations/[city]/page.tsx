@@ -8,7 +8,7 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import DestinationPackagesSection from '@/components/customer/DestinationPackagesSection';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
-import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion } from '@/lib/regions';
+import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment } from '@/lib/regions';
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300;
@@ -242,21 +242,22 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 export async function generateMetadata({ params }: { params: Promise<{ city: string }> }): Promise<Metadata> {
   const { city } = await params;
   const decoded = decodeURIComponent(city);
+  const encodedCity = encodeDestinationPathSegment(decoded);
   return {
     title: `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`,
     description: `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`,
     alternates: {
-      canonical: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+      canonical: `${BASE_URL}/destinations/${encodedCity}`,
       types: {
         'application/rss+xml': [
-          { url: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}/rss.xml`, title: `${decoded} 여행 매거진 RSS` },
+          { url: `${BASE_URL}/destinations/${encodedCity}/rss.xml`, title: `${decoded} 여행 매거진 RSS` },
         ],
       },
     },
     openGraph: {
       title: `${decoded} 여행 완벽 가이드 | 여소남`,
       description: `${decoded} 여행의 모든 것. 운영팀 검증 관광지와 엄선 패키지까지.`,
-      url: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+      url: `${BASE_URL}/destinations/${encodedCity}`,
       type: 'website',
     },
   };
@@ -274,6 +275,7 @@ async function renderPillarBody(md: string): Promise<string> {
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
   const decoded = decodeURIComponent(city);
+  const encodedCity = encodeDestinationPathSegment(decoded);
   let data: PillarData | null = null;
   try {
     data = await getPillarData(decoded);
@@ -334,7 +336,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 '@type': 'TouristDestination',
                 name: decoded,
                 description: data.pillarPost?.seo_description || `${decoded} 여행 완벽 가이드`,
-                url: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+                url: `${BASE_URL}/destinations/${encodedCity}`,
                 ...(heroImage ? { image: heroImage } : {}),
                 ...(data.avgRating
                   ? {
@@ -362,7 +364,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                     '@type': 'ListItem',
                     position: region ? 4 : 3,
                     name: decoded,
-                    item: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+                    item: `${BASE_URL}/destinations/${encodedCity}`,
                   },
                 ],
               },

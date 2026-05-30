@@ -101,9 +101,7 @@ export async function POST(req: NextRequest) {
     const runAgent = agentMap[agentType]
     const result = await runAgent({ message, session, user: null, ctx })
     if (taskId) {
-      await transitionAgentTask(taskId, 'running', 'done', {
-        completed_at: new Date().toISOString(),
-      })
+      await transitionAgentTask(taskId, 'running', 'done')
     }
 
     // 4. 메시지 히스토리 업데이트

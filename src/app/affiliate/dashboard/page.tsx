@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { fmtDateISO, fmtMonthDay } from '@/lib/admin-utils';
 
 /* ── 타입 정의 ── */
 interface AffiliateInfo {
@@ -250,7 +251,7 @@ function OverviewTab({ stats, profile, info }: { stats: DashboardStats | null; p
                       {cn.title_slides?.[0]?.title || '제목 없음'}
                     </p>
                     <p className="text-[10px] text-gray-400 mt-0.5">
-                      {new Date(cn.created_at).toLocaleDateString()} · 조회 {cn.views ?? 0}
+                      {fmtDateISO(cn.created_at)} · 조회 {cn.views ?? 0}
                     </p>
                   </div>
                   <span className="text-xs text-gray-400">{cn.clicks ?? 0}클릭</span>
@@ -288,7 +289,7 @@ function OverviewTab({ stats, profile, info }: { stats: DashboardStats | null; p
                       />
                     </div>
                     <span className="text-[9px] text-gray-400">
-                      {new Date(day.date).toLocaleDateString('ko-KR', { weekday: 'short' })}
+                      {fmtMonthDay(day.date)}
                     </span>
                   </div>
                 );
@@ -324,7 +325,7 @@ function OverviewTab({ stats, profile, info }: { stats: DashboardStats | null; p
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium text-gray-900">{ins.title}</p>
                     <p className="text-[11px] text-gray-500 mt-1 line-clamp-2">{ins.content}</p>
-                    <p className="text-[9px] text-gray-400 mt-1">{new Date(ins.created_at).toLocaleDateString()}</p>
+                    <p className="text-[9px] text-gray-400 mt-1">{fmtDateISO(ins.created_at)}</p>
                   </div>
                 </div>
               </div>
@@ -390,7 +391,7 @@ function SettlementsTab({ settlements, totalCommission, bookingCount }: { settle
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] ${st.class}`}>{st.text}</span>
                       </td>
                       <td className="px-5 py-3 text-center text-gray-400">
-                        {s.settled_at ? new Date(s.settled_at).toLocaleDateString() : '-'}
+                        {s.settled_at ? fmtDateISO(s.settled_at) : '-'}
                       </td>
                     </tr>
                   );
@@ -441,7 +442,7 @@ function InsightsTab({ insights }: { insights: Insight[] }) {
                         {ti.label}
                       </span>
                       <span className="text-[9px] text-gray-400">
-                        {new Date(ins.created_at).toLocaleDateString()}
+                        {fmtDateISO(ins.created_at)}
                       </span>
                     </div>
                     <p className="text-sm font-semibold text-gray-900 mb-1">{ins.title}</p>
@@ -511,7 +512,7 @@ function ProfileTab({ profile, referralCode }: { profile: AffiliateProfile | und
           <div>
             <p className="text-gray-400 mb-1">마지막 전환</p>
             <p className="font-medium text-gray-900">
-              {profile.last_conversion_at ? new Date(profile.last_conversion_at).toLocaleDateString() : '없음'}
+              {profile.last_conversion_at ? fmtDateISO(profile.last_conversion_at) : '없음'}
             </p>
           </div>
         </div>

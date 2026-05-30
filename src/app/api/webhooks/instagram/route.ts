@@ -22,6 +22,7 @@ import {
   verifyWebhookSignature,
   type WebhookPayload,
 } from '@/lib/meta-webhook';
+import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
 
 export const runtime = 'nodejs';
 
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
           platform: 'instagram',
           event_type: change.field,
           external_id: mediaId,
-          raw_payload: value,
+          raw_payload: sanitizeWebhookPayload(value),
         });
       }
       // DM / messaging 같은 messaging 배열 지원
@@ -77,7 +78,7 @@ export async function POST(request: NextRequest) {
           platform: 'instagram',
           event_type: 'messaging',
           external_id: null,
-          raw_payload: m,
+          raw_payload: sanitizeWebhookPayload(m as Record<string, unknown>),
         });
       }
     }

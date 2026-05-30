@@ -57,7 +57,7 @@ export default function ContentGapsPage() {
       {/* KPI */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3">
             <p className="text-[10px] text-admin-muted-2">전체 상품</p>
             <p className="text-[20px] font-bold text-admin-text-2">{stats.total}</p>
           </div>
@@ -95,7 +95,7 @@ export default function ContentGapsPage() {
 
       {/* 테이블 */}
       {loading ? (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden divide-y divide-slate-50">
           {Array.from({ length: 5 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-3 py-3">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
@@ -105,7 +105,7 @@ export default function ContentGapsPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           <table className="w-full text-admin-xs">
             <thead>
               <tr className="bg-admin-bg text-admin-muted text-left">

@@ -286,7 +286,7 @@ export default function QAPage() {
                   <div className="mt-3 space-y-2">
                     {mmsg.packages.map((pkg) => (
                       <Link key={pkg.id} href={`/packages/${pkg.id}`}>
-                        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 hover:border-admin-border-strong transition cursor-pointer">
+                        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 hover:border-admin-border-strong transition cursor-pointer">
                           <p className="font-medium text-admin-text-2 text-admin-sm">{pkg.title}</p>
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-admin-muted">
                             {pkg.destination && <span>{pkg.destination}</span>}
@@ -328,7 +328,7 @@ export default function QAPage() {
 
           {isLoading && (
             <div className="flex justify-start">
-              <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] rounded-tl-sm px-4 py-3">
+              <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs rounded-tl-sm px-4 py-3">
                 <div className="flex gap-1">
                   <div
                     className="w-2 h-2 bg-slate-400 rounded-full animate-bounce"

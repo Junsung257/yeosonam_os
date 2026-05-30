@@ -218,6 +218,10 @@
       "schedule": "15 16-21 * * *"
     },
     {
+      "path": "/api/cron/marketing-asset-snapshot",
+      "schedule": "50 2 * * *"
+    },
+    {
       "path": "/api/cron/concierge-cart-retarget",
       "schedule": "30 1 * * *"
     },
@@ -376,28 +380,28 @@
   ],
   "functions": {
     "src/app/api/cron/**/*.ts": { "maxDuration": 180 },
-    "src/app/api/cron/agent-executor/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/auto-publish-loop/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/blog-publisher/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/blog-learn/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/blog-scheduler/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/card-news-refine/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/card-news-seasonal/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/daily-marketing/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/design-archetype-update/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/embed-products/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/ig-trend-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/threads-trend-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/sync-engagement/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/trend-topic-miner/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/topical-rebuild/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/mrt-hotel-ranking/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/post-travel-reels/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/cron/rag-incremental/route.ts": { "maxDuration": 300, "memory": 1024 },
+    "src/app/api/cron/agent-executor/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/auto-publish-loop/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/blog-publisher/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/blog-learn/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/blog-scheduler/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/blog-regenerate-zero-click/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/card-news-refine/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/card-news-seasonal/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/daily-marketing/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/design-archetype-update/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/embed-products/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/ig-trend-miner/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/threads-trend-miner/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/sync-engagement/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/trend-topic-miner/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/topical-rebuild/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/mrt-hotel-ranking/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/post-travel-reels/route.ts": { "maxDuration": 300 },
+    "src/app/api/cron/rag-incremental/route.ts": { "maxDuration": 300 },
     "src/app/api/cron/affiliate-settlement-draft/route.ts": { "maxDuration": 300 },
     "src/app/api/free-travel/plan/route.ts": { "maxDuration": 120 },
-    "src/app/api/register-via-ir/route.ts": { "maxDuration": 300, "memory": 1024 },
-    "src/app/api/content/generate-all/route.ts": { "maxDuration": 300, "memory": 1024 }
+    "src/app/api/register-via-ir/route.ts": { "maxDuration": 300 },
+    "src/app/api/content/generate-all/route.ts": { "maxDuration": 300 }
   }
 }

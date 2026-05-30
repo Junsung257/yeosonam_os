@@ -22,10 +22,22 @@ export async function GET(request: NextRequest) {
     const page = Math.max(1, parseInt(searchParams.get('page') || '1'))
     const limit = Math.min(50, Math.max(1, parseInt(searchParams.get('limit') || '20')))
     const offset = (page - 1) * limit
+    const countMode = searchParams.get('count') === 'none' ? null : 'exact'
+    const compact = searchParams.get('fields') === 'compact'
+    const selectColumns = compact
+      ? 'id, agent_type, action_type, summary, priority, status, created_at'
+      : '*'
+
+    if (compact && status === 'pending' && !agentType && page === 1 && countMode === null) {
+      const { data, error } = await supabaseAdmin.rpc('get_pending_agent_actions_compact', { p_limit: limit })
+      if (!error && data) {
+        return NextResponse.json(data, { headers: cacheHeader(60) })
+      }
+    }
 
     let query = supabaseAdmin
       .from('agent_actions')
-      .select('*', { count: 'exact' })
+      .select(selectColumns, countMode ? { count: countMode } : undefined)
 
     // status 필터 (쉼표 구분 가능)
     if (status !== 'all') {

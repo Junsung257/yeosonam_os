@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 export default function AffiliateCardNewsListPage() {
   const router = useRouter();
@@ -82,8 +83,8 @@ export default function AffiliateCardNewsListPage() {
                       {cn.title_slides?.[0]?.title || '제목 없음'}
                     </h3>
                     <p className="text-[10px] text-gray-400 mt-1">
-                      {new Date(cn.created_at).toLocaleDateString('ko-KR')}
-                      {cn.scheduled_at && ` · 예약: ${new Date(cn.scheduled_at).toLocaleDateString('ko-KR')}`}
+                      {fmtDateISO(cn.created_at)}
+                      {cn.scheduled_at && ` · 예약: ${fmtDateISO(cn.scheduled_at)}`}
                     </p>
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-400 ml-3">

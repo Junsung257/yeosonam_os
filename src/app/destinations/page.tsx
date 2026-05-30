@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getDestinationUrl } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
@@ -86,7 +87,7 @@ export default async function DestinationsIndexPage() {
                 '@type': 'ListItem',
                 position: i + 1,
                 name: s.destination,
-                url: `${BASE_URL}/destinations/${encodeURIComponent(s.destination)}`,
+                url: `${BASE_URL}${getDestinationUrl(s.destination)}`,
               })),
             },
           }),
@@ -128,7 +129,7 @@ export default async function DestinationsIndexPage() {
                   return (
                     <Link
                       key={d.destination}
-                      href={`/destinations/${encodeURIComponent(d.destination)}`}
+                      href={getDestinationUrl(d.destination)}
                       className="group relative h-72 md:h-80 rounded-xl overflow-hidden border border-slate-200 bg-slate-200 transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_8px_32px_rgba(49,130,246,0.18)]"
                     >
                       {img ? (

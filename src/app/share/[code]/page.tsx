@@ -108,7 +108,7 @@ export default function SharePage() {
     }
   }
 
-  // DYNAMIC: 이 구성으로 예약하기
+  // DYNAMIC: 이 구성으로 상담 담기
   async function handleAddAllToCart() {
     if (!shared?.items?.length) return;
     setAddingToCart(true);
@@ -124,7 +124,7 @@ export default function SharePage() {
     }
   }
 
-  // FIXED: 날짜 선택 후 예약하기
+  // FIXED: 날짜 선택 후 상담 담기
   async function handleFixedBook() {
     if (!shared?.product_id || !selectedDate) return;
     const block = blocks.find(b => b.date === selectedDate);
@@ -283,7 +283,7 @@ export default function SharePage() {
               disabled={addingToCart}
               className="w-full bg-brand text-white py-3 rounded-xl font-semibold hover:bg-[#1B64DA] transition disabled:opacity-50"
             >
-              {addingToCart ? '장바구니에 추가 중...' : '이 구성으로 예약하기 →'}
+              {addingToCart ? '상담 바구니에 추가 중...' : '이 구성으로 상담 담기 →'}
             </button>
           </>
         )}
@@ -303,15 +303,15 @@ export default function SharePage() {
               </div>
             )}
 
-            {/* 예약 가능 날짜 */}
+            {/* 문의 가능 날짜 */}
             <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
               <div className="px-5 py-3 bg-gray-50 border-b">
-                <h2 className="font-semibold text-gray-900 text-sm">예약 가능 날짜 선택</h2>
+                <h2 className="font-semibold text-gray-900 text-sm">문의 가능 날짜 선택</h2>
                 <p className="text-xs text-gray-400 mt-0.5">날짜를 선택하면 해당일 가격이 표시됩니다</p>
               </div>
               <div className="p-4">
                 {blocks.length === 0 ? (
-                  <p className="text-sm text-gray-400 text-center py-6">현재 예약 가능한 날짜가 없습니다.</p>
+                  <p className="text-sm text-gray-400 text-center py-6">현재 문의 가능한 날짜가 없습니다.</p>
                 ) : (
                   <div className="flex flex-wrap gap-2">
                     {blocks.map(b => (
@@ -355,7 +355,7 @@ export default function SharePage() {
               disabled={!selectedDate || addingToCart}
               className="w-full bg-purple-600 text-white py-3 rounded-xl font-semibold hover:bg-purple-700 transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {addingToCart ? '장바구니에 추가 중...' : selectedDate ? `${selectedDate} 예약하기 →` : '날짜를 선택해 주세요'}
+              {addingToCart ? '상담 바구니에 추가 중...' : selectedDate ? `${selectedDate} 상담 담기 →` : '날짜를 선택해 주세요'}
             </button>
           </>
         )}

@@ -86,6 +86,11 @@ interface SearchResponse {
   filterForClient: string;
 }
 
+const EMPTY_PACKAGES: Package[] = [];
+const EMPTY_IMAGE_BY_PKG_ID: Record<string, string | null> = {};
+const EMPTY_RECOMMENDED_IDS: string[] = [];
+const EMPTY_RECOMMENDED_REASON_MAP: Record<string, string[]> = {};
+
 export default function PackagesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -111,10 +116,10 @@ export default function PackagesClient() {
     { revalidateOnFocus: false, dedupingInterval: 60_000 },
   );
 
-  const initialPackages = data?.packages ?? [];
-  const imageByPkgIdProp = data?.imageByPkgId ?? {};
-  const recommendedIds = data?.recommendedIds ?? [];
-  const recommendedReasonMap = data?.recommendedReasonMap ?? {};
+  const initialPackages = data?.packages ?? EMPTY_PACKAGES;
+  const imageByPkgIdProp = data?.imageByPkgId ?? EMPTY_IMAGE_BY_PKG_ID;
+  const recommendedIds = data?.recommendedIds ?? EMPTY_RECOMMENDED_IDS;
+  const recommendedReasonMap = data?.recommendedReasonMap ?? EMPTY_RECOMMENDED_REASON_MAP;
   const hub = data?.hub ?? hubFromParam;
   const filter = data?.filterForClient ?? filterForClientInitial;
   const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
@@ -230,6 +235,10 @@ export default function PackagesClient() {
   return (
     <div className="min-h-screen bg-white">
       <GlobalNav />
+      <h1 className="sr-only">여소남 패키지 여행 상품</h1>
+      <a href={consultTelHref || '/group-inquiry'} className="sr-only">
+        여행 상품 문의
+      </a>
 
       <div className="md:border-b md:border-[#F2F4F6]">
         <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 pb-[5px] md:pb-0">
@@ -499,8 +508,8 @@ function SimpleCompareModal({
       <div className="relative w-full max-h-[85vh] md:max-w-lg bg-white rounded-t-[24px] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
           <h2 className="text-[16px] font-bold text-text-primary">상품 비교</h2>
-          <button type="button" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg>
+          <button type="button" aria-label="Close comparison" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg>
           </button>
         </div>
         <div className="overflow-y-auto px-4 py-4 space-y-3">

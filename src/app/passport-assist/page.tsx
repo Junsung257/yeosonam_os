@@ -156,7 +156,8 @@ export default function PassportAssistPage() {
         {/* 업로드 영역 */}
         <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
           <h2 className="text-[14px] font-semibold text-slate-700">1단계: 여권 사진 업로드</h2>
-          <div
+          <button
+            type="button"
             className="border-2 border-dashed border-slate-300 rounded-lg p-6 text-center cursor-pointer hover:border-indigo-400 hover:bg-indigo-50 transition"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -174,7 +175,7 @@ export default function PassportAssistPage() {
                 <p className="text-[11px] text-slate-400">JPEG · PNG · WEBP · HEIC (최대 10MB)</p>
               </div>
             )}
-          </div>
+          </button>
           <input
             ref={fileInputRef}
             type="file"

@@ -4,6 +4,8 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
+import { getDestinationUrl } from '@/lib/regions';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -308,7 +310,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
 
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[11px] text-text-secondary">
-            <time>{new Date(post.published_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })}</time>
+            <time>{fmtDateISO(post.published_at)}</time>
             <span className="text-[#D1D5DB]">·</span>
             <span>📖 {readMin}분 읽기</span>
             {post.view_count && post.view_count >= 100 && (
@@ -509,7 +511,7 @@ export default async function BlogData({ searchParams }: Props) {
                 {destinations.slice(0, 8).map(d => (
                   <Link
                     key={d.destination}
-                    href={`/destinations/${encodeURIComponent(d.destination)}`}
+                    href={getDestinationUrl(d.destination)}
                     className="flex items-center justify-between py-5 group"
                   >
                     <span className="text-[15px] font-semibold text-text-primary group-hover:text-brand transition-colors">

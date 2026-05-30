@@ -76,22 +76,22 @@ export default function AnalyticsPage() {
         <>
           {/* 요약 카드 */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <p className="text-[11px] text-admin-muted mb-1">총 고객 수</p>
               <p className="text-[22px] font-bold text-admin-text-2">{total.toLocaleString()}명</p>
             </div>
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <p className="text-[11px] text-admin-muted mb-1">채널 수</p>
               <p className="text-[22px] font-bold text-admin-text-2">{cohorts.length}개</p>
             </div>
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <p className="text-[11px] text-admin-muted mb-1">최고 LTV 채널</p>
               <p className="text-admin-lg font-bold text-admin-text-2">
                 {CHANNEL_LABEL[cohorts[0]?.channel] ?? cohorts[0]?.channel}
               </p>
               <p className="text-admin-sm text-admin-muted">평균 {fmt만(cohorts[0]?.avgLtv ?? 0)}원</p>
             </div>
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <p className="text-[11px] text-admin-muted mb-1">총 누적 매출</p>
               <p className="text-admin-lg font-bold text-admin-text-2">
                 {fmt만(cohorts.reduce((s, c) => s + c.totalRevenue, 0))}원
@@ -100,7 +100,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* 막대 차트 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
             <h2 className="text-admin-base font-semibold text-admin-text-2">채널별 총 매출</h2>
             {cohorts.map((c) => {
               const pct = Math.max(4, (c.totalRevenue / maxRevenue) * 100);
@@ -125,7 +125,7 @@ export default function AnalyticsPage() {
           </div>
 
           {/* 상세 테이블 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
             <table className="w-full text-admin-sm">
               <thead className="bg-admin-bg border-b border-admin-border-mid">
                 <tr>

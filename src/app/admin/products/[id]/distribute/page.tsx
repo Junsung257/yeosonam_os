@@ -179,7 +179,7 @@ export default function DistributePage() {
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
         ))}
@@ -270,7 +270,7 @@ export default function DistributePage() {
       )}
 
       {/* 전체 생성 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 mb-6">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 mb-6">
         <div className="flex items-center justify-between">
           <div>
             <div className="font-bold text-admin-text">🚀 전체 생성 (IG 캡션 + Threads 포스트)</div>
@@ -304,7 +304,7 @@ export default function DistributePage() {
         ))}
 
         {/* 카드뉴스 스튜디오 링크 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 flex items-center justify-between col-span-full">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 flex items-center justify-between col-span-full">
           <div>
             <div className="font-bold text-admin-text">카드뉴스 (별도 스튜디오)</div>
             <div className="text-sm text-admin-muted mt-1">Satori Atom 기반 family 4종 × 포맷 4종 렌더</div>
@@ -501,7 +501,7 @@ function PlatformCard({
   const renderFn = renderers[platform] ?? (() => <div className="text-sm text-admin-muted-2">지원 예정</div>);
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <div className={`w-8 h-8 rounded bg-gradient-to-br ${meta.color} text-white flex items-center justify-center text-xs font-bold`}>

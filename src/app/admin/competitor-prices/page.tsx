@@ -133,7 +133,7 @@ export default function CompetitorPricesPage() {
       </div>
 
       {/* 가격 입력 폼 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
         <h2 className="font-semibold text-admin-text-2 mb-4">새 가격 입력</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div>
@@ -234,7 +234,7 @@ export default function CompetitorPricesPage() {
 
       {/* 비교 테이블 */}
       {loading ? (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden divide-y divide-slate-50">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden divide-y divide-slate-50">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="flex items-center gap-3 px-4 py-3">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-32" />
@@ -255,7 +255,7 @@ export default function CompetitorPricesPage() {
             const yeosonamMin = yeosonamMap[destName];
 
             return (
-              <div key={groupKey} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+              <div key={groupKey} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
                 <div className="px-5 py-3 bg-admin-bg border-b border-admin-border-mid flex items-center justify-between">
                   <h3 className="font-semibold text-admin-text-2">{groupKey}</h3>
                   {yeosonamMin != null && (

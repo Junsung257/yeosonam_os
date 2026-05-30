@@ -135,6 +135,7 @@ export default function SearchBar({
     </div>
   ) : (
     <label className="flex-1 flex items-center gap-2 px-3 md:px-5 py-2 md:py-2.5 md:border-r md:border-admin-border">
+      <span className="sr-only">Search destination</span>
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="text-text-secondary shrink-0">
         <circle cx="11" cy="11" r="8" />
         <path d="m21 21-4.3-4.3" />

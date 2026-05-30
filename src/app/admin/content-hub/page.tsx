@@ -336,7 +336,7 @@ export default function ContentHubPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* 좌측: 상품 + 앵글 */}
           <div className="space-y-4">
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">상품 선택</label>
               <select value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
@@ -355,7 +355,7 @@ export default function ContentHubPage() {
               )}
             </div>
 
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">앵글 선택 (다중)</label>
               <div className="grid grid-cols-2 gap-2">
                 {(Object.entries(ANGLE_PRESETS) as [AngleType, typeof ANGLE_PRESETS[AngleType]][]).map(([key, preset]) => (
@@ -376,7 +376,7 @@ export default function ContentHubPage() {
 
           {/* 우측: 채널 + 옵션 */}
           <div className="space-y-4">
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">채널 선택</label>
               <div className="space-y-2">
                 {(Object.entries(CHANNEL_PRESETS) as [Channel, typeof CHANNEL_PRESETS[Channel]][]).map(([key, preset]) => (
@@ -396,7 +396,7 @@ export default function ContentHubPage() {
             </div>
 
             {/* 디자인 템플릿 선택 */}
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
               <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-2">디자인 템플릿</label>
               <div className="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
                 {TEMPLATE_PRESETS.map(t => (
@@ -420,7 +420,7 @@ export default function ContentHubPage() {
               </div>
             </div>
 
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
               <div>
                 <label className="block text-[11px] font-semibold text-admin-muted uppercase mb-1">이미지 비율</label>
                 <div className="flex gap-2">
@@ -576,7 +576,7 @@ export default function ContentHubPage() {
               </div>
 
               {/* 우측: 편집 패널 */}
-              <div className="w-72 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-4 flex-shrink-0 overflow-y-auto max-h-[calc(100vh-200px)]">
+              <div className="w-72 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-4 flex-shrink-0 overflow-y-auto max-h-[calc(100vh-200px)]">
                 {activeElement && activeElement.type === 'text' ? (
                   <>
                     <p className="text-[11px] font-semibold text-admin-muted uppercase">텍스트 편집</p>
@@ -700,7 +700,7 @@ export default function ContentHubPage() {
           {/* 블로그 편집 */}
           {activeSet.channel === 'naver_blog' && (
             <div className="space-y-4">
-              <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+              <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                 <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">네이버 블로그 포스팅</p>
                 <textarea
                   value={activeSet.blogHtml || ''}
@@ -764,7 +764,7 @@ export default function ContentHubPage() {
 
           {/* 검색광고 편집 */}
           {activeSet.channel === 'google_search' && activeSet.adCopy && (
-            <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+            <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
               <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">구글 검색광고 카피</p>
               {activeSet.adCopy.headlines.map((h, i) => (
                 <div key={i}>
@@ -801,7 +801,7 @@ export default function ContentHubPage() {
       {/* ═══════════════ Step 3: 발행 ═══════════════ */}
       {step === 3 && (
         <div className="space-y-4">
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
             <p className="text-admin-base font-semibold text-admin-text-2 mb-4">생성된 콘텐츠 ({creativeSets.length}개)</p>
             <div className="space-y-3">
               {creativeSets.map((set, i) => (

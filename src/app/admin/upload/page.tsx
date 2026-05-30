@@ -562,7 +562,7 @@ export default function UploadPage() {
           )}
 
           {/* AI 추출 항목 안내 */}
-          <div className="p-4 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <div className="p-4 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs">
             <p className="text-[11px] font-semibold text-admin-text-2 mb-2">AI 자동 추출 항목</p>
             <div className="grid grid-cols-2 gap-1 text-[11px] text-admin-muted">
               <span>- 상품명/카테고리/타입</span>
@@ -581,7 +581,7 @@ export default function UploadPage() {
         </div>
 
         {/* 처리 목록 — 최신순 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           <div className="px-4 py-3 border-b border-admin-border-mid flex items-center justify-between">
             <h2 className="font-semibold text-admin-text-2 text-admin-base">처리 목록</h2>
             {queue.length > 0 && (

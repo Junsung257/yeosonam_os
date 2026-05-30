@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { BOOKING_STATUS_COLOR, BOOKING_STATUS_LABEL } from '@/lib/status-colors';
+import { maskPhone } from '@/lib/pii-mask';
+import SensitiveRawText from '@/components/admin/SensitiveRawText';
 
 interface Customer {
   id: string;
@@ -192,7 +194,7 @@ export default function CustomerDetailPage() {
     <div className="min-h-screen bg-admin-bg py-8">
       <div className="max-w-3xl mx-auto px-4 space-y-4">
         <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48 mb-6" />
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex items-center gap-4">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-24 shrink-0" />
@@ -200,7 +202,7 @@ export default function CustomerDetailPage() {
             </div>
           ))}
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-full" />
           ))}
@@ -231,7 +233,7 @@ export default function CustomerDetailPage() {
               </div>
               <div>
                 <h1 className="text-xl font-bold text-admin-text">{customer.name}</h1>
-                <p className="text-admin-muted text-sm">{customer.phone || '전화번호 없음'}</p>
+                <p className="text-admin-muted text-sm">{maskPhone(customer.phone ?? null, 'cs_agent') || '전화번호 없음'}</p>
                 <div className="flex gap-1 mt-1 flex-wrap">
                   {(customer.tags || []).map(t => (
                     <span key={t} className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full font-medium">{t}</span>
@@ -283,9 +285,7 @@ export default function CustomerDetailPage() {
           </div>
 
           {customer.memo && (
-            <div className="mt-4 p-3 bg-admin-bg rounded-lg text-sm text-admin-muted border border-admin-border">
-              {customer.memo}
-            </div>
+            <SensitiveRawText value={customer.memo} title="고객 메모" className="mt-4" />
           )}
         </div>
 

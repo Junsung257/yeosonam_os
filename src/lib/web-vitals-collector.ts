@@ -1,4 +1,5 @@
 import { supabaseAdmin as supabase } from '@/lib/supabase';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 export interface WebVitalPayload {
   /** 'LCP' | 'CLS' | 'INP' | 'FCP' | 'TTFB' */
@@ -82,7 +83,7 @@ export async function alertIfPoorVital(payload: WebVitalPayload): Promise<void> 
         `· 메트릭: ${payload.name} = ${payload.name === 'CLS' ? payload.value.toFixed(3) : Math.round(payload.value)}ms`,
         `· 경로: ${payload.path}`,
         `· 등급: ${rating}`,
-        `· 시간: ${new Date().toLocaleString('ko-KR')}`,
+        `· 시간: ${fmtDateTime(new Date().toISOString())}`,
       ].join('\n'),
     }),
   });

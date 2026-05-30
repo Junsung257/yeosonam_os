@@ -21,6 +21,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { createClient } from '@supabase/supabase-js';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 // ── Supabase 클라이언트 (서버 전용) ───────────────────────
 
@@ -33,18 +34,11 @@ function getAdminClient() {
 
 // ── 인증 ─────────────────────────────────────────────────
 
-function verifyCronOrAdmin(req: NextRequest): boolean {
+async function verifyCronOrAdmin(req: NextRequest): Promise<boolean> {
   const auth = req.headers.get('authorization');
   const cronSecret = getSecret('CRON_SECRET');
-
-  // Cron Job 인증
   if (cronSecret && auth === `Bearer ${cronSecret}`) return true;
-
-  // 서비스 키 인증 (개발/내부용)
-  const serviceKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-  if (serviceKey && auth === `Bearer ${serviceKey}`) return true;
-
-  return false;
+  return isAdminRequest(req);
 }
 
 // ── 타입 ─────────────────────────────────────────────────
@@ -60,7 +54,7 @@ interface QueryParams {
 // ── GET /api/admin/keyword-stats ─────────────────────────
 
 export async function GET(req: NextRequest) {
-  if (!verifyCronOrAdmin(req)) {
+  if (!(await verifyCronOrAdmin(req))) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

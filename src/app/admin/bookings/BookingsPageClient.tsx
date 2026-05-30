@@ -27,6 +27,7 @@ import CommandPalette from '@/components/CommandPalette';
 import { useVendors } from '@/hooks/useVendors';
 import { useLocations } from '@/hooks/useLocations';
 import { isValidTransition } from '@/lib/booking-state-machine';
+import { maskPhone } from '@/lib/pii-mask';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -1916,7 +1917,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         ? <Link href={`/admin/customers/${b.customers.id}`} className="font-bold text-admin-base text-admin-text-2 hover:text-blue-600 hover:underline block">{b.customers.name}</Link>
                         : <span className="font-bold text-admin-base text-admin-text-2">{b.customers?.name || '-'}</span>}
                       {b.customers?.phone
-                        ? <p className="text-admin-sm text-admin-muted mt-0.5">{b.customers.phone}</p>
+                        ? <p className="text-admin-sm text-admin-muted mt-0.5">{maskPhone(b.customers.phone, 'cs_agent')}</p>
                         : <p className="text-admin-sm text-amber-400 mt-0.5">번호 없음</p>}
                     </td>
 

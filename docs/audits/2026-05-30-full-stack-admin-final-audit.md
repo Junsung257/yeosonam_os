@@ -1,0 +1,246 @@
+﻿# ?ъ냼??OS ?꾨줎?몄뿏?쑣룸갚?붾뱶쨌?대뱶誘??꾩닔 ?ш컧??諛?理쒖쟻 ?ㅽ뻾??
+- ?묒꽦?? 2026-05-30 KST
+- 踰붿쐞: 怨듦컻 ?꾨줎?몄뿏?? 怨좉컼 ?꾪솚 UI, API/backend, DB drift, admin IA/UX, build/perf
+- 湲곗? 臾몄꽌:
+  - `CURRENT_STATUS.md`
+  - `.claude/CLAUDE.md`
+  - `.agents/skills/source-command-admin-dashboard-review/SKILL.md`
+  - `docs/audits/2026-05-30-www-yeosonam-uxui-audit.md`
+  - `docs/audits/2026-05-30-authenticated-admin-uxui-audit.md`
+  - `docs/audits/2026-05-30-uxui-plan-codebase-verification.md`
+  - `docs/audits/2026-05-30-admin-erp-uxui-optimization.md`
+
+## 1. 理쒖쥌 寃곕줎
+
+?ъ냼??OS??媛뺤젏? 遺꾨챸?섎떎. ?⑥닚 ?ы뻾紐곗씠 ?꾨땲???곹뭹 ?깅줉, ?쒕뱶?? ?덉빟 ?곹깭 癒몄떊, ?쒗쑕/?뺤궛, 肄섑뀗痢? AI/Jarvis, QA, 留덉씪由ъ?/寃뚯씠誘명뵾耳?댁뀡源뚯? 媛吏?B2B2C ?ы뻾 SaaS?? ?곕씪??理쒖쟻 ?꾨왂? "??湲곕뒫????留롮씠 遺숈씠??寃????꾨땲???ㅼ쓬 ?쒖꽌??
+
+1. 源⑥쭊 ?좊ː瑜?癒쇱? 蹂듦뎄?쒕떎.
+2. ?대? ?덈뒗 異붿쿇/鍮꾧탳/肄섑뀗痢??쒗쑕/AI ?먯궛??怨좉컼 ?꾪솚 ?먮쫫???щ같移섑븳??
+3. backend ?몄쬆/RLS/?ㅽ궎留?drift瑜??댁쁺 ?덉젙??湲곗??쇰줈 ?좉렐??
+4. admin? ?붾젮????쒕낫?쒓? ?꾨땲??action queue 以묒떖 ERP濡?怨좊룄?뷀븳??
+5. 紐⑤뱺 媛쒖꽑? tracking, recommendation outcome, A/B engine?쇰줈 痢≪젙?쒕떎.
+
+## 2. ?먮룞 寃利?寃곌낵
+
+| ??ぉ | 寃곌낵 | ?먮떒 |
+|---|---:|---|
+| `npm run build` | ?듦낵 | 諛고룷 媛?μ꽦? ?뺣낫 |
+| `npm run type-check -- --pretty false` | ?듦낵 | ???而댄뙆??湲곗? ?듦낵 |
+| `npm run lint` | ?듦낵, warning ?ㅼ닔 | ?묎렐??hydration 遺梨?議댁옱 |
+| `npm run audit:api-drift` | ?듦낵 | ?⑦궎吏 SELECT ?꾨뱶 ?숆린???뺤긽 |
+| `npm run audit:select-cols` | ?듦낵 | ?곸꽭/list SELECT 臾몄옄???뺥빀 |
+| `npm run audit:drift` | ?ㅽ뙣??寃쎄퀬 | `travel_packages` drift 349嫄?|
+| `npm run audit:migration-prefix` | 寃쎄퀬 | migration timestamp collision 15媛?|
+| `npm run lint:secrets:all` | ?ㅽ뙣 | 吏곸젒 `process.env` ?묎렐 25媛??뚯씪 |
+| `npm run check:deps:circular` | ?듦낵???뺣낫 | error/warning 0, info 24媛?|
+| `npm run check:perf` | ?ш린?????듦낵 | 6/6 pass, 湲곗〈 500? dev artifact 臾몄젣 |
+
+鍮뚮뱶 以?異붽? 愿李?
+
+- `/admin/search-ads`: First Load JS 325kB
+- `/admin/packages`: First Load JS 209kB
+- `/admin/payments`: First Load JS 205kB
+- build 以?`[unmatched upsert ?ㅽ뙣] ON CONFLICT DO UPDATE command cannot affect row a second time` 諛섎났
+
+?뺤쟻 ?ㅼ틪:
+
+- API route: 514媛?- admin API route: 110媛?- admin API 以??몄쬆 留덉빱 誘멸?異? 21媛?- service role/admin client ?ъ슜 route: 356媛?- 吏곸젒 env ?묎렐 route: 87媛?- page: 202媛?- admin page: 122媛?- public page: 80媛?- public page 以?h1 留덉빱 誘멸?異? 27媛?- locale/hydration ?꾪뿕 page: 91媛?- 500以?珥덇낵 page: 33媛? admin page留?23媛?
+## 3. P0: 利됱떆 ?닿껐??寃?
+### P0-1. production 怨듦컻 UX ?좊ː 蹂듦뎄
+
+?대? ?쇱씠釉?媛먯궗?먯꽌 ?뺤씤??臾몄젣??
+
+- `/concierge` 紐⑤컮???덉씠?꾩썐 遺뺢눼
+- `/destinations/[city]` ?쇰? 500
+- ???섏씠吏 CSP ?ㅻ쪟: `https://o*.sentry.io`
+- ?⑦궎吏 ?곸꽭 鍮꾨줈洹몄씤 `user_actions` 401/RLS ?ㅽ뙣
+- 紐⑤컮??CTA/?섎떒 ?ㅻ퉬/移댁뭅??踰꾪듉 異⑸룎
+
+理쒖쟻 寃곌낵:
+
+- ?듭떖 怨좉컼 吏꾩엯?먯뿉??肄섏넄 error 0
+- 紐⑤컮??390px 湲곗? 二쇱슂 CTA 寃뱀묠 0
+- 紐⑹쟻吏 ?곸꽭 500 0
+- ?듬챸 tracking? ?쒕쾭 API 寃쎌쑀 ?먮뒗 紐낆떆??anon ?뺤콉?쇰줈 ?듭씪
+
+### P0-2. admin 怨듯넻 ?몄쬆/API ?덉젙??
+?쇱씠釉??몄쬆 媛먯궗?먯꽌 濡쒓렇???깃났 ?꾩뿉??`/api/admin/session`, `/api/admin/alerts`, `/api/admin/badge-counts` ??401??諛섎났?먮떎. ?대쾲 ?뺤쟻 ?ㅼ틪?먯꽌??admin API 以??몄쬆 留덉빱 誘멸?異?21媛쒓? ?≫삍??
+
+理쒖쟻 寃곌낵:
+
+- admin API ?몄쬆 諛⑹떇? `requireAdmin`/`session-guard` 怨꾩뿴濡??쒖???- service role ?ъ슜 route??紐⑤몢 ?몄쬆/沅뚰븳/媛먯궗濡쒓렇 議곌굔 ?뺤씤
+- 401? ?꾩뿭 session ?곹깭濡???踰덈쭔 泥섎━?섍퀬 ?섏씠吏蹂?以묐났 console error瑜??쒓굅
+
+?곗꽑 ?섑뵆 媛먯궗 ???
+
+- `src/app/api/admin/ai-policies/route.ts`
+- `src/app/api/admin/bookings/[id]/concierge-messages/route.ts`
+- `src/app/api/admin/bookings/[id]/guest-portal/route.ts`
+- `src/app/api/admin/cron-trigger/route.ts`
+- `src/app/api/admin/publishing-policies/route.ts`
+- `src/app/api/admin/social-configs/route.ts`
+
+### P0-3. DB/schema drift ?뺣━
+
+`travel_packages` 375嫄?以?drift 349嫄댁씠 諛쒓껄?먮떎.
+
+- `optional_tours_ambiguous_no_region`: 52嫄?- `itinerary_data_object_wrapper`: 344嫄?
+理쒖쟻 寃곌낵:
+
+- ???깅줉 ?뚯씠?꾨씪?몄? drift瑜?留뚮뱾吏 ?딅룄濡?guard
+- 湲곗〈 row???먮룞 ?섏젙 媛?ν븳 ?뺥깭留?migration/backfill
+- 怨좉컼 ?몄텧 ?꾨뱶? ?대? ?꾨뱶??寃쎄퀎??`db/FIELD_POLICY.md` 湲곗? ?좎?
+
+### P0-4. Windows ?쒓? 寃쎈줈 dev artifact 由ъ뒪??
+perf check 1李??ㅽ뙣??API ?먯껜蹂대떎 `.next/prerender-manifest.json` 寃쎈줈媛 mojibake???곹깭?먯꽌 諛쒖깮?덈떎. build ??dev ?ш린?숈쑝濡?perf???듦낵?덈떎.
+
+理쒖쟻 寃곌낵:
+
+- dev server ?먭? ??`.next` ?곹깭/寃쎈줈 ?몄퐫??泥댄겕
+- 媛먯궗 ?ㅽ겕由쏀듃??`npm run dev:clean` ?먮뒗 build artifact ?뺤씤 ???ㅽ뻾
+- ?쒓? workspace path?먯꽌 Next artifact ?묎렐 ?ㅻ쪟 ?щ컻 ???곷Ц junction/worktree ?댁쁺 寃??
+## 4. P1: ?꾪솚쨌?댁쁺 ?⑥쑉??諛붾줈 ?щ┫ 寃?
+### P1-1. ?묎렐??hydration warning ?뺣━
+
+`npm run lint`?먯꽌 ?묎렐??label, interactive role, click handler keyboard, locale hydration warning???ㅼ닔 諛쒖깮?덈떎.
+
+理쒖쟻 寃곌낵:
+
+- 怨좉컼 ?낅젰 ?? label-control ?곌껐 100%
+- ?대┃ 媛?ν븳 `div`/`span`? button/link濡??꾪솚
+- client component???좎쭨 ?щ㎎? `admin-utils` ?먮뒗 deterministic formatter ?ъ슜
+- ???⑦궎吏 ??public ?듭떖 page??h1 蹂닿컯
+
+媛??癒쇱? 蹂??뚯씪:
+
+- `src/app/packages/PackagesClient.tsx`
+- `src/app/packages/[id]/DetailClient.tsx`
+- `src/app/concierge/page.tsx`
+- `src/app/group/GroupLandingClient.tsx`
+- `src/app/partner-apply/page.tsx`
+- `src/components/customer/GlobalNav.tsx`
+- `src/components/customer/PackageCard.tsx`
+
+### P1-2. admin shell怨?IA??諛섏쁺 ?꾨즺, ?섏씠吏 ?대?濡??뺤옣
+
+?대? `src/components/AdminLayout.tsx`???ㅼ쓬??諛섏쁺?덈떎.
+
+- ?낅Т ?먮쫫 湲곗? 硫붾돱 ?щ같??- ?덉젙?곸씤 硫붾돱 ?꾩튂 ?좎?
+- 紐⑤컮??drawer
+- density root ?곸슜
+
+?ㅼ쓬? ?섏씠吏 ?대???
+
+- `bookings`, `packages`, `settlements`, `blog/queue`??table overflow瑜?`DataTable` priority columns/card row濡??꾪솚
+- `rounded-[16px]`, ?꾩쓽 shadow, ?꾩쓽 ?됱긽媛믪쓣 admin token?쇰줈 ?≪닔
+- admin 紐⑤컮?쇱? ?꾩껜 ?댁쁺???꾨땲???뺤씤/?뱀씤/?곕씫/?곹깭 蹂寃?以묒떖?쇰줈 醫곹엺??
+### P1-3. 臾닿굅???대뱶誘??붾㈃ 踰덈뱾 遺꾨━
+
+鍮뚮뱶??`/admin/search-ads`, `/admin/packages`, `/admin/payments`媛 臾닿쾪??
+
+理쒖쟻 寃곌낵:
+
+- chart/editor/studio/preview 怨꾩뿴? dynamic import
+- 泥??붾㈃? KPI/filter/table skeleton留?癒쇱? ?뚮뜑
+- ???먮뵒??紐⑤떖/李⑦듃??interaction ?댄썑 濡쒕뱶
+
+### P1-4. 吏곸젒 env ?묎렐 ?쒖???
+`lint:secrets:all` 湲곗? 吏곸젒 `process.env` ?묎렐??25媛??뚯씪???⑥븘 ?덈떎.
+
+理쒖쟻 寃곌낵:
+
+- server secret? `src/env.ts`/secret registry 寃쎌쑀
+- client-exposed 媛믪? `NEXT_PUBLIC_*`? ???寃利?- ?뚯뒪???뚯씪? allowlist ?먮뒗 蹂꾨룄 洹쒖튃?쇰줈 遺꾨━
+
+## 5. P2: ?쒗뭹 李⑤퀎?붾? ?ㅼ슱 寃?
+### P2-1. ?좊ː???곹뭹 ?곸꽭
+
+`DetailClient`?먮뒗 ?대? 由щ럭 ?붿빟, 異붿쿇 移대뱶, ?곹빀?? 媛寃? 痍⑥냼, 移댁뭅??CTA, recommendation outcome 濡쒓퉭???덈떎. ??釉붾줉??留뚮뱾湲곕낫???꾧퀎瑜??뺣━?쒕떎.
+
+理쒖쟻 寃곌낵:
+
+- 媛寃? 湲곕낯媛, ?꾩닔 異붽?, ?좏깮 異붽?, ?꾩? 吏遺?媛?μ꽦 遺꾨━
+- 異붿쿇: ??異붿쿇/??鍮꾩텛泥?二쇱쓽?ы빆/???鍮꾧탳
+- CTA: 紐⑤컮???섎떒 ?섎굹??booking bar ?덉뿉???덉빟 臾몄쓽? 移댁뭅?ㅻ? ?뺣━
+
+### P2-2. 肄섑뀗痢?而ㅻ㉧??
+釉붾줈洹?移대뱶?댁뒪/?쒗쑕 留곹겕???대? ?곹뭹怨??곌껐??湲곕컲???덈떎. ?듭떖? "議고쉶??媛 ?꾨땲??"?덉빟 媛?ν븳 ?ㅼ쓬 ?됰룞"?대떎.
+
+理쒖쟻 寃곌낵:
+
+- 釉붾줈洹??섎떒 愿?④?蹂대떎 愿???곹뭹/?곷떞/鍮꾧탳 CTA ?곗꽑
+- 移대뱶?댁뒪 怨듭쑀 ???곹뭹 ?곸꽭/?곷떞 ??recommendation outcome ?곌껐
+- content attribution dashboard瑜??쒗쑕/移대뱶?댁뒪/釉붾줈洹몃퀎濡?遺꾨━
+
+### P2-3. AI/Jarvis ?쒗뭹??
+AI瑜??덈줈 留뚮뱶??寃껋씠 ?꾨땲??QA/Jarvis/llm-gateway/recommendation_outcomes瑜?怨좉컼 臾몄젣 ?닿껐 ?먮쫫?쇰줈 ?ъ옣?쒕떎.
+
+理쒖쟻 寃곌낵:
+
+- intent chip: 遺紐⑤떂 ?⑤룄, 怨⑦봽, ?⑥껜, 遺?곗텧諛? ?덉궛
+- 寃곌낵: 異붿쿇 移대뱶 + 鍮꾧탳??+ 移댁뭅???꾨떖 ?붿빟
+- ?댁쁺: 異붿쿇 outcome怨?policy A/B 鍮꾧탳濡??깃낵 ?먮떒
+
+### P2-4. ?쒗쑕쨌留덉씪由ъ?쨌寃뚯씠誘명뵾耳?댁뀡 ?깆옣 猷⑦봽
+
+?ъ냼?⑥쓽 ??李⑤퀎?먯씠??
+
+理쒖쟻 寃곌낵:
+
+- `/with/[code]`, `/influencer/[code]`?먯꽌 ?좊ː 諛곕꼫? 異붿쿇 ?곹뭹 媛뺥솕
+- ?쒗쑕 肄섑뀗痢??깃낵? ?뺤궛 ?щ챸??媛뺥솕
+- 留덉씪由ъ?/梨뚮┛吏??由щ럭, ?ш뎄留? referral 蹂댁긽怨??곌껐
+
+## 6. P3: 援ъ“ 媛쒖꽑
+
+### P3-1. ??page 遺꾪빐
+
+500以?珥덇낵 page媛 33媛? admin留?23媛쒕떎. ?좎?蹂댁닔?깃낵 hydration ?덉젙?깆뿉 遺덈━?섎떎.
+
+?곗꽑 遺꾪빐 ?꾨낫:
+
+- `src/app/admin/customers/page.tsx` 1342以?- `src/app/admin/products/review/page.tsx` 1007以?- `src/app/admin/affiliates/[id]/page.tsx` 1006以?- `src/app/admin/marketing/card-news/[id]/v2/page.tsx` 995以?- `src/app/admin/attractions/page.tsx` 951以?- `src/app/admin/content-hub/page.tsx` 866以?- `src/app/admin/ledger/page.tsx` 819以?
+### P3-2. migration timestamp collision ?뺣━
+
+15媛?timestamp prefix collision???덈떎. ?대? ?곸슜??migration? 議곗떖?댁빞 ?섎?濡? 利됱떆 rename蹂대떎 ?뺤콉/媛먯궗遺??媛뺥솕?쒕떎.
+
+理쒖쟻 寃곌낵:
+
+- ?좉퇋 migration prefix collision CI fail
+- 怨쇨굅 collision? ?곸슜 ?쒖꽌? production ?곹깭瑜?臾몄꽌??- Supabase remote migration history? 濡쒖뺄 ?뚯씪 ?쒖꽌 鍮꾧탳
+
+### P3-3. `as any`/TODO/ESLint disable ?뺣━
+
+as any? eslint disable? AI/Jarvis/移대뱶?댁뒪/???admin page??紐곕젮 ?덈떎. 湲곕뒫??留롮? ?곸뿭?대?濡????寃쎄퀎遺??留뚮뱺??
+
+理쒖쟻 寃곌낵:
+
+- ?몃? API ?묐떟 zod schema
+- Supabase row ???alias
+- Jarvis tool result discriminated union
+- card-news slide schema ?듭씪
+
+## 7. ?ㅽ뻾 ?쒖꽌
+
+1. `/concierge`, `/destinations`, CSP, `user_actions` ?섏젙
+2. admin session/alerts/badge-counts 401 ?쒖???3. admin API ?몄쬆 留덉빱 誘멸?異?21媛??섑뵆 媛먯궗 ??guard ?곸슜
+4. `travel_packages` drift ?먮룞 ?섏젙 媛?λ텇 backfill
+5. ?묎렐??hydration warning ?곸쐞 怨좉컼 ?먮쫫遺???쒓굅
+6. admin table overflow? ?섏씠吏 ?대? token ?뺣━
+7. 臾닿굅??admin page dynamic import
+8. 肄섑뀗痢??쒗쑕/AI 異붿쿇 outcome dashboard 援ъ텞
+
+## 8. ?몃? 湲곗? ?뺥빀??
+- OWASP API Security Top 10? object/property/function level authorization??API ?듭떖 由ъ뒪?щ줈 蹂몃떎. admin API guard ?쒖??붽? ?곗꽑?대떎.
+- Supabase RLS??service role怨?anon/auth policy 寃쎄퀎瑜?紐낇솗???댁빞 ?쒕떎. ?듬챸 tracking怨?admin service role route??遺꾨━ 媛먯궗媛 ?꾩슂?섎떎.
+- Next.js App Router??route handler, middleware, server/client boundary媛 紐낇솗?댁빞 ?쒕떎. ?꾩옱 hydration warning怨??좎쭨 ?щ㎎ 臾몄젣????boundary ?뺣━媛 ?????좏샇??
+- SAP Fiori, Fluent 2, Atlassian 怨꾩뿴 ERP/SaaS UI???덉젙?곸씤 navigation ?꾩튂, role-based IA, progressive disclosure瑜?媛뺤“?쒕떎. ?대쾲 admin shell 蹂댁젙 諛⑺뼢怨??쇱튂?쒕떎.
+
+李멸퀬:
+
+- https://owasp.org/API-Security/editions/2023/en/0x00-header/
+- https://supabase.com/docs/guides/database/postgres/row-level-security
+- https://nextjs.org/docs/app
+- https://experience.sap.com/fiori-design-web/best-practices-for-designing-sap-fiori-apps/
+- https://fluent2.microsoft.design/layout
+- https://www.atlassian.com/blog/design/designing-atlassians-new-navigation

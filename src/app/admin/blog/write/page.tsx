@@ -237,7 +237,7 @@ export default function BlogWritePage() {
       </div>
 
       {/* 글 유형 + 설정 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         {/* 유형 선택 */}
         <div className="flex gap-4">
           <label className="flex items-center gap-1.5 text-admin-sm cursor-pointer">
@@ -352,7 +352,7 @@ export default function BlogWritePage() {
       </div>
 
       {/* SEO 설정 + 점수 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-admin-xs font-semibold text-admin-text-2">SEO 설정</p>
           {grade && seoScore && (

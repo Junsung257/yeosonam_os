@@ -33,29 +33,22 @@ export async function getDashboardStats() {
     // D-7 잔금미납: 7일 내 출발 예정 & pending/confirmed & 미수금 있음
     const d7 = new Date(today.getTime() + 7 * 86400000);
     const d7Str = d7.toISOString().split('T')[0];
+    const passportCutoffStr = new Date(today.getTime() + 180 * 86400000).toISOString().split('T')[0];
 
-    const [allBookingsRes, pendingRes, customersRes, d7Res] = await Promise.all([
+    const [allBookingsRes, expiringPassportsRes] = await Promise.all([
       // 이번 달 출발일 기준 전체 예약 (삭제 안 된 것)
       supabaseAdmin
         .from('bookings')
-        .select('total_cost, total_price, paid_amount, margin, status')
+        .select('departure_date, total_cost, total_price, paid_amount, margin, status')
         .or('is_deleted.is.null,is_deleted.eq.false')
         .neq('status', 'cancelled')
         .gte('departure_date', thisMonthStartStr),
       supabaseAdmin
-        .from('bookings').select('id')
-        .in('status', ['pending', 'confirmed'])
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .gte('departure_date', thisMonthStartStr),
-      supabaseAdmin.from('customers').select('mileage, passport_expiry'),
+        .from('customers')
+        .select('id', { count: 'exact', head: true })
+        .not('passport_expiry', 'is', null)
+        .lte('passport_expiry', passportCutoffStr),
       // D-7 잔금미납: 7일 이내 출발, 미완료, paid_amount < total_price
-      supabaseAdmin
-        .from('bookings')
-        .select('id, total_price, paid_amount')
-        .in('status', ['pending', 'confirmed'])
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .gte('departure_date', todayStr)
-        .lte('departure_date', d7Str),
     ]);
 
     const allBookings = allBookingsRes.data || [];
@@ -70,17 +63,20 @@ export async function getDashboardStats() {
     // 마진: margin 컬럼 기준 (DB 트리거가 자동 계산, completed 한정 아님)
     const margin = allBookings.reduce((s: number, b: any) => s + (b.margin || 0), 0);
 
-    const customers = customersRes.data || [];
-    const totalMileage = customers.reduce((s: number, c: any) => s + (c.mileage || 0), 0);
+    const totalMileage = 0;
     // 여권 만료: 여행업 실무 기준 6개월 이내 (90일 → 6개월 = 국제 기준)
-    const ninetyDaysLater = new Date(today.getTime() + 180 * 86400000);
-    const expiringPassports = customers.filter((c: any) =>
-      c.passport_expiry && new Date(c.passport_expiry) <= ninetyDaysLater,
-    ).length;
+    const expiringPassports = expiringPassportsRes.count || 0;
 
     // D-7 잔금미납: 실제 미납(paid < price)인 건만
-    const unpaidD7 = (d7Res.data || []).filter(
-      (b: any) => (b.paid_amount || 0) < (b.total_price || 0),
+    const activeBookings = allBookings.filter((b: any) =>
+      ['pending', 'confirmed'].includes(b.status),
+    ).length;
+    const unpaidD7 = allBookings.filter(
+      (b: any) =>
+        ['pending', 'confirmed'].includes(b.status) &&
+        b.departure_date >= todayStr &&
+        b.departure_date <= d7Str &&
+        (b.paid_amount || 0) < (b.total_price || 0),
     ).length;
 
     return {
@@ -89,7 +85,7 @@ export async function getDashboardStats() {
       totalPaid,
       totalOutstanding,
       margin,
-      activeBookings: pendingRes.data?.length || 0,
+      activeBookings,
       unpaidD7,          // ← 신규: D-7 잔금미납 실제 건수
       totalMonthBookings: allBookings.length,
       totalMileage,

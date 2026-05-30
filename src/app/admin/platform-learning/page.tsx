@@ -293,7 +293,7 @@ export default function PlatformLearningPage() {
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 flex items-center gap-3">
+                <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 flex items-center gap-3">
                   <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
                   <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-20" />
                 </div>

@@ -26,7 +26,7 @@ import { getSecret } from '@/lib/secret-registry'
 
 // ─── 환경 변수 ──────────────────────────────────────────────────────────
 
-const GOOGLE_CLOUD_API_KEY = () => getSecret('GOOGLE_API_KEY') ?? process.env.GOOGLE_AI_API_KEY
+const GOOGLE_CLOUD_API_KEY = () => getSecret('GOOGLE_API_KEY') ?? getSecret('GOOGLE_AI_API_KEY')
 
 // ─── STT: Speech-to-Text ──────────────────────────────────────────────
 

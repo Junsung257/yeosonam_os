@@ -15,6 +15,7 @@ import { cookies } from 'next/headers';
 import { MAGIC_SESSION_COOKIE, verifyMagicSessionToken } from '@/lib/magic-session';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Metadata } from 'next';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -197,7 +198,7 @@ function Submitted({ info }: { info: PassportMeta }) {
             <dd className="inline font-medium text-gray-700">{info.expiry_date ?? '—'}</dd>
           </div>
           <div className="text-[10px] text-gray-400 mt-2">
-            제출 시각 {info.submitted_at ? new Date(info.submitted_at).toLocaleString('ko-KR') : '—'}
+            제출 시각 {info.submitted_at ? fmtDateTime(info.submitted_at) : '—'}
           </div>
         </dl>
       </div>

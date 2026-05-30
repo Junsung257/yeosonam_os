@@ -1,4 +1,5 @@
 import { hasSecrets } from '@/lib/secret-registry';
+import { maskPhoneForLog } from '@/lib/pii-mask';
 
 /**
  * 카카오 알림톡 발송 라이브러리 (Solapi 사용)
@@ -65,7 +66,11 @@ async function sendAlimtalk(params: {
   }
 
   if (!isSolapiConfigured()) {
-    console.warn('[알림톡] Solapi 미설정 - 발송 건너뜀 (수기 관리 모드)', params);
+    console.warn('[알림톡] Solapi 미설정 - 발송 건너뜀 (수기 관리 모드)', {
+      to: maskPhoneForLog(params.to),
+      templateId: params.templateId,
+      variableKeys: Object.keys(params.variables),
+    });
     return { skipped: true };
   }
 
@@ -78,7 +83,7 @@ async function sendAlimtalk(params: {
   // const service = new SolapiMessageService(/* SOLAPI_API_KEY */, /* SOLAPI_API_SECRET */); // 활성화 시 getSecret 사용
   // return service.send({ to: params.to, from: /* KAKAO_SENDER_NUMBER */, kakaoOptions: { pfId: /* KAKAO_CHANNEL_ID */, templateId: params.templateId, variables: params.variables } });
 
-  console.log('[알림톡 수기모드] 발송 대상:', params.to, '| 템플릿:', params.templateId, '| 변수:', params.variables);
+  console.log('[알림톡 수기모드] 발송 대상:', maskPhoneForLog(params.to), '| 템플릿:', params.templateId, '| 변수키:', Object.keys(params.variables));
   return { skipped: true, mode: 'manual' };
 }
 
@@ -420,7 +425,7 @@ export async function sendFreeTravelRetarget(params: {
 }) {
   const templateId = getTemplate('FREE_TRAVEL_RETARGET');
   if (!templateId) {
-    console.log('[자유여행 리타게팅] FREE_TRAVEL_RETARGET 템플릿 미설정 — 수기 모드', params.phone, params.destination);
+    console.log('[자유여행 리타게팅] FREE_TRAVEL_RETARGET 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.destination);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -445,7 +450,7 @@ export async function sendConciergeCartRetarget(params: {
   if (!templateId) {
     console.log(
       '[컨시어지 장바구니 리타게팅] CONCIERGE_CART_RETARGET 템플릿 미설정 — 수기 모드',
-      params.phone,
+      maskPhoneForLog(params.phone),
       params.itemCount,
     );
     return { skipped: true, mode: 'manual' };
@@ -475,7 +480,7 @@ export async function sendMileageEarnedAlimtalk(params: {
 }) {
   const templateId = getTemplate('MILEAGE_EARNED');
   if (!templateId) {
-    console.log('[마일리지 적립] 템플릿 미설정 — 수기 모드', params.phone, params.earnedAmount);
+    console.log('[마일리지 적립] 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.earnedAmount);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -500,7 +505,7 @@ export async function sendMileageUsedAlimtalk(params: {
 }) {
   const templateId = getTemplate('MILEAGE_USED');
   if (!templateId) {
-    console.log('[마일리지 사용] 템플릿 미설정 — 수기 모드', params.phone, params.usedAmount);
+    console.log('[마일리지 사용] 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.usedAmount);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -525,7 +530,7 @@ export async function sendMileageExpiringSoonAlimtalk(params: {
 }) {
   const templateId = getTemplate('MILEAGE_EXPIRING');
   if (!templateId) {
-    console.log('[마일리지 소멸예정] 템플릿 미설정 — 수기 모드', params.phone, params.expiringAmount);
+    console.log('[마일리지 소멸예정] 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.expiringAmount);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -548,7 +553,7 @@ export async function sendMileageExpiredAlimtalk(params: {
 }) {
   const templateId = getTemplate('MILEAGE_EXPIRED');
   if (!templateId) {
-    console.log('[마일리지 소멸완료] 템플릿 미설정 — 수기 모드', params.phone, params.expiredAmount);
+    console.log('[마일리지 소멸완료] 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.expiredAmount);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -571,7 +576,7 @@ export async function sendMileageEventAlimtalk(params: {
 }) {
   const templateId = getTemplate('MILEAGE_EVENT');
   if (!templateId) {
-    console.log('[마일리지 이벤트] 템플릿 미설정 — 수기 모드', params.phone, params.eventTitle);
+    console.log('[마일리지 이벤트] 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.eventTitle);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({
@@ -594,7 +599,7 @@ export async function sendWelcomeMileageAlimtalk(params: {
 }) {
   const templateId = getTemplate('WELCOME_MILEAGE');
   if (!templateId) {
-    console.log('[웰컴 마일리지] 템플릿 미설정 — 수기 모드', params.phone, params.mileageAmount);
+    console.log('[웰컴 마일리지] 템플릿 미설정 — 수기 모드', maskPhoneForLog(params.phone), params.mileageAmount);
     return { skipped: true, mode: 'manual' };
   }
   return sendAlimtalk({

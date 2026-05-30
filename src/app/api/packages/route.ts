@@ -7,6 +7,7 @@ import {
   isSupabaseConfigured,
   supabaseAdmin,
 } from '@/lib/supabase';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { logError, logWarning } from '@/lib/sentry-logger';
 import {
   runSanitizePipeline,
@@ -122,14 +123,17 @@ async function generatePackageCode(
 const PACKAGE_LIST_FIELDS = `
   id, title, destination, country, category, product_type, trip_style,
   duration, departure_days, departure_airport, airline, min_participants, ticketing_deadline,
-  price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at,
+  price, price_tiers, price_dates, price_list, excluded_dates, confirmed_dates, status, confidence, created_at, updated_at,
   inclusions, excludes, guide_tip, single_supplement, small_group_surcharge, surcharges, normalized_surcharges,
   optional_tours, itinerary, special_notes, customer_notes, internal_notes, notices_parsed, land_operator, commission_rate, affiliate_commission_rate, commission_fixed_amount, commission_currency,
   product_tags, product_highlights, product_summary, itinerary_data,
   marketing_copies, internal_code, short_code, land_operator_id, is_airtel, display_title, hero_tagline,
   data_completeness, field_confidences, is_stub, stub_source,
+  catalog_id, price_markup_rate, hard_block_quota,
+  dp_reason, dp_triggered_at, view_count_snap_at, view_count_weekly_snap,
+  review_reject_category, review_reject_subnote,
   seats_held, seats_confirmed, nights, accommodations, cancellation_policy,
-  avg_rating, review_count,
+  avg_rating, review_count, view_count, inquiry_count,
   audit_status, audit_report, audit_checked_at,
   products(internal_code, display_name, departure_region, net_price, selling_price, margin_rate)
 `;
@@ -396,7 +400,7 @@ export async function POST(request: NextRequest) {
           body.destination ?? '',
           typeof body.duration === 'number' ? `${body.duration}일` : '',
           body.land_operator ?? '',
-          (body.rawText ?? body.raw_text ?? '').slice(0, 1000),
+          safeRawTextExcerpt(body.rawText ?? body.raw_text, 1000) ?? '',
         ].filter(Boolean).join(' ');
 
         const vec = await embedText(embedSource, getSecret('GOOGLE_AI_API_KEY')!, 'SEMANTIC_SIMILARITY');
@@ -812,7 +816,7 @@ export async function PATCH(request: NextRequest) {
             before_value: before ?? null,
             after_value: after ?? null,
             reflection: null, // 자동 추적은 reflection 텍스트 없음 — 사장님이 PATCH 로 추가 가능
-            raw_text_excerpt: beforePkgMeta.raw_text ? String(beforePkgMeta.raw_text).slice(0, 500) : null,
+            raw_text_excerpt: safeRawTextExcerpt(beforePkgMeta.raw_text),
             severity: SEVERITY_MAP[key] || 'medium',
             category: 'manual-correction',
             created_by: 'admin-inline-edit',

@@ -4,27 +4,38 @@ import { trackLead } from '@/components/MetaPixel';
 export interface KakaoLeadContext {
   productTitle?: string;
   internalCode?: string;
-  /** Meta Lead 이벤트 value (원) — 미입력 시 0 */
   leadValueForPixel?: number;
 }
 
 export interface LeadFormData {
-  desiredDate: string;       // "YYYY-MM-DD"
+  desiredDate: string;
   adults: number;
   children: number;
   name: string;
-  phone: string;             // "010-XXXX-XXXX"
+  phone: string;
   privacyConsent: boolean;
   termsConsent?: boolean;
 }
 
 export interface LeadPayload {
   productId: string;
-  channel: string;           // utm_source 또는 'organic'
+  channel: string;
   form: LeadFormData;
   tracking: TrackingData;
-  submittedAt: string;       // ISO
-  chatSessionId?: string;    // 채팅 세션 — 백엔드가 conversations/customer_facts 역참조에 사용
+  submittedAt: string;
+  chatSessionId?: string;
+  idempotencyKey?: string;
+}
+
+export interface LeadSubmitResult {
+  ok: boolean;
+  lead_id?: string | null;
+  idempotent_replay?: boolean;
+  booking?: {
+    id?: string;
+    booking_no?: string | null;
+    status?: string | null;
+  } | null;
 }
 
 export function buildPayload(
@@ -33,6 +44,7 @@ export function buildPayload(
   tracking: TrackingData,
   chatSessionId?: string,
 ): LeadPayload {
+  const phoneDigits = form.phone.replace(/\D/g, '');
   return {
     productId,
     channel: tracking.utmSource ?? 'organic',
@@ -40,27 +52,35 @@ export function buildPayload(
     tracking,
     submittedAt: new Date().toISOString(),
     chatSessionId,
+    idempotencyKey: [
+      'lp',
+      productId,
+      form.desiredDate || 'date',
+      phoneDigits || 'phone',
+      String(form.adults || 1),
+      String(form.children || 0),
+    ].join(':'),
   };
 }
 
-async function postLead(payload: LeadPayload): Promise<void> {
+async function postLead(payload: LeadPayload): Promise<LeadSubmitResult> {
   const res = await fetch('/api/leads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   });
+  const body = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
     throw new Error(body?.error ?? `HTTP ${res.status}`);
   }
+  return body as LeadSubmitResult;
 }
 
-export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Promise<void> {
+export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Promise<LeadSubmitResult> {
   let lastError: unknown;
   for (let attempt = 0; attempt < maxRetries; attempt++) {
     try {
-      await postLead(payload);
-      return;
+      return await postLead(payload);
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries - 1) {
@@ -71,14 +91,15 @@ export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Pro
   throw lastError;
 }
 
-function buildKakaoMessage(form: LeadFormData, ctx?: KakaoLeadContext): string {
-  const lines = ['안녕하세요! 아래 상품 문의드립니다.', ''];
+function buildKakaoMessage(form: LeadFormData, ctx?: KakaoLeadContext, result?: LeadSubmitResult): string {
+  const lines = ['안녕하세요. 아래 상품 예약 요청드립니다.', ''];
+  if (result?.booking?.booking_no) lines.push(`예약번호: ${result.booking.booking_no}`);
   if (ctx?.internalCode) lines.push(`상품코드: ${ctx.internalCode}`);
   if (ctx?.productTitle) lines.push(`상품명: ${ctx.productTitle}`);
   if (form.desiredDate) lines.push(`출발일: ${form.desiredDate}`);
   const paxParts: string[] = [];
-  if (form.adults) paxParts.push(`성인 ${form.adults}`);
-  if (form.children) paxParts.push(`소아 ${form.children}`);
+  if (form.adults) paxParts.push(`성인 ${form.adults}명`);
+  if (form.children) paxParts.push(`아동 ${form.children}명`);
   if (paxParts.length) lines.push(`인원: ${paxParts.join(', ')}`);
   if (form.name) lines.push(`이름: ${form.name}`);
   if (form.phone) lines.push(`연락처: ${form.phone}`);
@@ -91,13 +112,8 @@ export function redirectToKakao(kakaoChannelUrl: string): void {
     typeof navigator !== 'undefined' ? navigator.userAgent : ''
   );
   if (isMobile) {
-    // 카카오톡 앱 deep link 시도 후 fallback
-    const deepLink = 'kakaotalk://plusfriend/home/@여소남';
     const fallback = kakaoChannelUrl;
-    window.location.href = deepLink;
-    setTimeout(() => {
-      window.open(fallback, '_blank');
-    }, 1500);
+    window.location.href = fallback;
   } else {
     window.open(kakaoChannelUrl, '_blank');
   }
@@ -112,22 +128,25 @@ export async function submitLeadPipeline(
   chatSessionId?: string,
 ): Promise<void> {
   const payload = buildPayload(productId, form, tracking, chatSessionId);
+  let result: LeadSubmitResult | undefined;
+
   try {
-    await submitWithRetry(payload);
+    result = await submitWithRetry(payload);
     trackLead({
-      content_name: kakaoContext?.productTitle ?? '여행 상담 신청',
+      content_name: kakaoContext?.productTitle ?? '여행 예약 요청',
       value: kakaoContext?.leadValueForPixel ?? 0,
       content_ids: [productId],
     });
   } catch (err) {
     console.error('[LeadPipeline] submit failed:', err);
   }
-  // 카카오 채팅창에 붙여넣기 좋은 메시지를 클립보드에 복사
+
   try {
-    const message = buildKakaoMessage(form, kakaoContext);
+    const message = buildKakaoMessage(form, kakaoContext, result);
     await navigator.clipboard.writeText(message);
   } catch {
-    // 클립보드 API 실패 (HTTP 환경 등) 시 무시 — 카카오 이동은 진행
+    // Clipboard can fail on some mobile browsers; continue to Kakao.
   }
+
   redirectToKakao(kakaoChannelUrl);
 }

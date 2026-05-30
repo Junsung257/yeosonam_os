@@ -235,7 +235,7 @@ export default function ContentQueuePage() {
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 space-y-2">
+                <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 space-y-2">
                   <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-3/4" />
                   <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-1/2" />
                 </div>

@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { getSecret } from '@/lib/secret-registry';
 import crypto from 'crypto';
 
 export const runtime = 'nodejs';
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
     })
     .eq('id', aff.id);
 
-  const secret = process.env.AFFILIATE_TOKEN_SECRET || process.env.SUPABASE_JWT_SECRET || 'dev-secret-change-in-prod';
+  const secret = getSecret('AFFILIATE_TOKEN_SECRET') || getSecret('SUPABASE_JWT_SECRET') || 'dev-secret-change-in-prod';
   const token = generateToken(aff.id, secret);
 
   return NextResponse.json({

@@ -162,16 +162,19 @@ export default function TravelFitnessCard({
   seasonalSignals, representativeMonth, departureDistribution,
 }: Props) {
   const [selectedMonth, setSelectedMonth] = useState(representativeMonth);
-  if (!fitnessScores?.length) return null;
+  const safeMonthlyNormals = Array.isArray(monthlyNormals) ? monthlyNormals : [];
+  const safeFitnessScores = Array.isArray(fitnessScores) ? fitnessScores : [];
+  const safeSeasonalSignals = Array.isArray(seasonalSignals) ? seasonalSignals : null;
+  if (!safeFitnessScores.length || !safeMonthlyNormals.length) return null;
 
-  const sel = fitnessScores.find(f => f.month === selectedMonth) || fitnessScores[0];
-  const norm = monthlyNormals.find(m => m.month === selectedMonth) || monthlyNormals[0];
-  const sig = seasonalSignals?.find(s => s.month === selectedMonth) ?? null;
+  const sel = safeFitnessScores.find(f => f.month === selectedMonth) || safeFitnessScores[0];
+  const norm = safeMonthlyNormals.find(m => m.month === selectedMonth) || safeMonthlyNormals[0];
+  const sig = safeSeasonalSignals?.find(s => s.month === selectedMonth) ?? null;
   if (!sel || !norm) return null;
 
   const isRepMonth = selectedMonth === representativeMonth;
   const displayCity = primaryCity || destination;
-  const summary = chartSummary(fitnessScores!, seasonalSignals ?? null, representativeMonth);
+  const summary = chartSummary(safeFitnessScores, safeSeasonalSignals, representativeMonth);
 
   return (
     <section className="px-4 mt-4">
@@ -253,17 +256,17 @@ export default function TravelFitnessCard({
         <div className="px-5 pt-3 pb-4 border-t border-slate-50">
           <p className="text-[11px] text-slate-500 mb-2 font-medium">
             연중 추이 (탭하여 월 변경)
-            {seasonalSignals && (
+            {safeSeasonalSignals && (
               <span className="text-slate-400 font-normal"> · ⛅날씨 / 한국인 인기</span>
             )}
           </p>
           <div className="flex items-end gap-1 h-16">
-            {fitnessScores.map(f => {
+            {safeFitnessScores.map(f => {
               const isSel = f.month === selectedMonth;
               const isRep = f.month === representativeMonth;
               const isDep = (departureDistribution?.[f.month] ?? 0) > 0;
               const climateH = Math.max(8, f.score);
-              const sigForMonth = seasonalSignals?.find(s => s.month === f.month);
+              const sigForMonth = safeSeasonalSignals?.find(s => s.month === f.month);
               const popH = sigForMonth ? Math.max(8, sigForMonth.popularity_score) : null;
               return (
                 <button
@@ -312,7 +315,7 @@ export default function TravelFitnessCard({
             <Legend color="bg-emerald-500" label="날씨 매우 좋음" />
             <Legend color="bg-amber-400" label="날씨 보통" />
             <Legend color="bg-rose-400" label="날씨 험함" />
-            {seasonalSignals && <Legend color="bg-violet-500" label="한국인 인기" />}
+            {safeSeasonalSignals && <Legend color="bg-violet-500" label="한국인 인기" />}
           </div>
 
           <p className="text-[10px] text-slate-400 mt-2">

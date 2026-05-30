@@ -4,13 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { useToast } from '@/components/ui/Toast';
 
-const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
-const Bar = dynamic(() => import('recharts').then(m => ({ default: m.Bar })), { ssr: false });
-const XAxis = dynamic(() => import('recharts').then(m => ({ default: m.XAxis })), { ssr: false });
-const YAxis = dynamic(() => import('recharts').then(m => ({ default: m.YAxis })), { ssr: false });
-const Tooltip = dynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
-const ResponsiveContainer = dynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
-const Cell = dynamic(() => import('recharts').then(m => ({ default: m.Cell })), { ssr: false });
+const SearchAdsCtrChart = dynamic(() => import('./SearchAdsCtrChart'), { ssr: false });
 import {
   extractKeywords, createSearchAdKeyword, optimizeBids,
   loadKeywords, saveKeywords, archivePerformance, getTopKeywords,
@@ -241,7 +235,7 @@ function SearchAdsContent() {
             { label: '총 지출', value: `₩${(totalSpend / 10000).toFixed(0)}만`, sub: '' },
             { label: '동기화', value: lastSync || '-', sub: '' },
           ].map((kpi, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-3 py-2">
               <p className="text-[10px] text-admin-muted-2">{kpi.label}</p>
               <p className="text-admin-lg font-bold text-admin-text-2">{kpi.value}</p>
               {kpi.sub && <p className="text-[10px] text-admin-muted-2">{kpi.sub}</p>}
@@ -273,23 +267,14 @@ function SearchAdsContent() {
 
       {/* ── 차트 ──────────────────────────────────────── */}
       {chartData.length > 0 && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3">
           <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">CTR 상위 키워드</p>
-          <ResponsiveContainer width="100%" height={140}>
-            <BarChart data={chartData} margin={{ top: 0, right: 0, left: 0, bottom: 0 }}>
-              <XAxis dataKey="name" tick={{ fontSize: 9 }} />
-              <YAxis tick={{ fontSize: 9 }} tickFormatter={v => `${v}%`} />
-              <Tooltip formatter={(v: unknown, n: unknown) => [n === 'ctr' ? `${v}%` : `₩${Number(v).toFixed(0)}K`, n === 'ctr' ? 'CTR' : '지출'] as [string, string]} />
-              <Bar dataKey="ctr" radius={[3, 3, 0, 0]}>
-                {chartData.map((_, idx) => <Cell key={idx} fill={idx < 3 ? '#059669' : '#94a3b8'} />)}
-              </Bar>
-            </BarChart>
-          </ResponsiveContainer>
+          <SearchAdsCtrChart data={chartData} />
         </div>
       )}
 
       {/* ── 키워드 테이블 ─────────────────────────────── */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <table className="w-full">
           <thead>
             <tr className="bg-admin-bg border-b border-admin-border-mid">

@@ -38,10 +38,13 @@ interface ProviderCredit {
 
 type ProviderId = 'deepseek' | 'gemini' | 'anthropic';
 
-async function getMonthUsageFromLedger(
-  modelPrefix: string,
-): Promise<{ cost_usd: number; calls: number }> {
-  if (!isSupabaseConfigured) return { cost_usd: 0, calls: 0 };
+async function getMonthUsageByProvider(): Promise<Record<ProviderId, { cost_usd: number; calls: number }>> {
+  const empty = {
+    deepseek: { cost_usd: 0, calls: 0 },
+    gemini: { cost_usd: 0, calls: 0 },
+    anthropic: { cost_usd: 0, calls: 0 },
+  };
+  if (!isSupabaseConfigured) return empty;
   try {
     const since = new Date(
       new Date().getFullYear(),
@@ -50,17 +53,26 @@ async function getMonthUsageFromLedger(
     ).toISOString();
     const { data, error } = await supabaseAdmin
       .from('jarvis_cost_ledger')
-      .select('cost_usd')
+      .select('model, cost_usd')
       .gte('created_at', since)
-      .like('model', `${modelPrefix}%`);
-    if (error) return { cost_usd: 0, calls: 0 };
-    const rows = (data ?? []) as { cost_usd: number }[];
-    return {
-      cost_usd: rows.reduce((s, r) => s + (Number(r.cost_usd) || 0), 0),
-      calls: rows.length,
-    };
+      .or('model.like.deepseek%,model.like.gemini%,model.like.claude%');
+    if (error) return empty;
+
+    const out = { ...empty };
+    for (const row of (data ?? []) as Array<{ model: string | null; cost_usd: number | null }>) {
+      const model = row.model ?? '';
+      const provider: ProviderId | null =
+        model.startsWith('deepseek') ? 'deepseek'
+          : model.startsWith('gemini') ? 'gemini'
+            : model.startsWith('claude') ? 'anthropic'
+              : null;
+      if (!provider) continue;
+      out[provider].calls += 1;
+      out[provider].cost_usd += Number(row.cost_usd) || 0;
+    }
+    return out;
   } catch {
-    return { cost_usd: 0, calls: 0 };
+    return empty;
   }
 }
 
@@ -91,14 +103,18 @@ async function fetchDeepSeekBalance(): Promise<{
   }
 }
 
-const getHandler = async () => {
+const getHandler = async (request: Request) => {
+  const { searchParams } = new URL(request.url);
+  const includeLiveBalance = searchParams.get('live_balance') !== '0';
+
   // 병렬 조회
-  const [deepseekBalance, dsUsage, geminiUsage, claudeUsage] = await Promise.all([
-    fetchDeepSeekBalance(),
-    getMonthUsageFromLedger('deepseek'),
-    getMonthUsageFromLedger('gemini'),
-    getMonthUsageFromLedger('claude'),
+  const [deepseekBalance, usageByProvider] = await Promise.all([
+    includeLiveBalance ? fetchDeepSeekBalance() : Promise.resolve(null),
+    getMonthUsageByProvider(),
   ]);
+  const dsUsage = usageByProvider.deepseek;
+  const geminiUsage = usageByProvider.gemini;
+  const claudeUsage = usageByProvider.anthropic;
 
   const credits: Record<ProviderId, ProviderCredit> = {
     deepseek: {

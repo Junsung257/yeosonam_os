@@ -426,7 +426,7 @@ async function runSyncEngagement(request: NextRequest) {
           quotes: prev.quotes ?? null,
           impressions_legacy: prev.impressions_legacy ?? null,
           performance_score: prev.performance_score ?? null,
-          raw_response: { webhook_event_id: ev.id, event_type: ev.event_type, payload: ev.raw_payload },
+          raw_response: { webhook_event_id: ev.id, event_type: ev.event_type },
         };
         insertRow[incrementField] = (prev[incrementField] ?? 0) + 1;
         await supabaseAdmin.from('post_engagement_snapshots').insert(insertRow as never);

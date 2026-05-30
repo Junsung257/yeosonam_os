@@ -1,0 +1,1735 @@
+{
+  "generatedAt": "2026-05-29T15:55:09.437Z",
+  "base": "https://www.yeosonam.com",
+  "pagesChecked": 8,
+  "clicksAttempted": 22,
+  "pages": [
+    {
+      "url": "https://www.yeosonam.com",
+      "status": 200,
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "targets": [
+        {
+          "index": 1,
+          "text": "해외 패키지",
+          "href": "",
+          "x": 457.84375,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 2,
+          "text": "테마 여행",
+          "href": "",
+          "x": 581.8203125,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 5,
+          "text": "단체 문의",
+          "href": "https://www.yeosonam.com/group-inquiry",
+          "x": 859.2421875,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 6,
+          "text": "💬 카톡 상담",
+          "href": "https://pf.kakao.com/_xcFxkBG/chat",
+          "x": 1196.6171875,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        }
+      ],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        }
+      ],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages",
+      "status": 200,
+      "title": "패키지 상품 | 여소남",
+      "targets": [
+        {
+          "index": 1,
+          "text": "해외 패키지",
+          "href": "",
+          "x": 457.84375,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 2,
+          "text": "테마 여행",
+          "href": "",
+          "x": 581.8203125,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 5,
+          "text": "단체 문의",
+          "href": "https://www.yeosonam.com/group-inquiry",
+          "x": 859.2421875,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 6,
+          "text": "💬 카톡 상담",
+          "href": "https://pf.kakao.com/_xcFxkBG/chat",
+          "x": 1196.6171875,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        }
+      ],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        }
+      ],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "status": 200,
+      "title": "여행지 완벽 가이드 | 목적지별 총정리 | 여소남",
+      "targets": [
+        {
+          "index": 1,
+          "text": "해외 패키지",
+          "href": "",
+          "x": 474.890625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 2,
+          "text": "테마 여행",
+          "href": "",
+          "x": 589.0390625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 5,
+          "text": "단체 문의",
+          "href": "https://www.yeosonam.com/group-inquiry",
+          "x": 843.3828125,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 6,
+          "text": "💬 카톡 상담",
+          "href": "https://pf.kakao.com/_xcFxkBG/chat",
+          "x": 1201.7890625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        }
+      ],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        }
+      ],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/concierge",
+      "status": 200,
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "targets": [
+        {
+          "index": 1,
+          "text": "검색",
+          "href": "",
+          "x": 821.484375,
+          "y": 213,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 3,
+          "text": "지중해 크루즈 여행",
+          "href": "",
+          "x": 449.71875,
+          "y": 270,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        }
+      ],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        }
+      ],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/group-inquiry",
+      "status": 200,
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "targets": [],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        }
+      ],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/blog",
+      "status": 200,
+      "title": "여행 매거진 | 여소남",
+      "targets": [
+        {
+          "index": 1,
+          "text": "해외 패키지",
+          "href": "",
+          "x": 474.890625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 2,
+          "text": "테마 여행",
+          "href": "",
+          "x": 589.0390625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 5,
+          "text": "단체 문의",
+          "href": "https://www.yeosonam.com/group-inquiry",
+          "x": 843.3828125,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 6,
+          "text": "💬 카톡 상담",
+          "href": "https://pf.kakao.com/_xcFxkBG/chat",
+          "x": 1201.7890625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        }
+      ],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_FAILED"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        }
+      ],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD",
+      "status": 500,
+      "title": "500: Internal Server Error",
+      "targets": [],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 500 ()"
+        },
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        }
+      ],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD"
+        },
+        {
+          "status": 404,
+          "url": "https://www.yeosonam.com/_next/data/d1Z6fWYqyTf6xwoxFTlkr/destinations/%EB%8B%A4%EB%82%AD.json"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "status": 200,
+      "title": "PKG ZE 푸꾸옥 2색골프 에스츄리+빈펄 3박5일 | 여소남 | 여소남",
+      "targets": [
+        {
+          "index": 1,
+          "text": "해외 패키지",
+          "href": "",
+          "x": 474.890625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 2,
+          "text": "테마 여행",
+          "href": "",
+          "x": 589.0390625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 5,
+          "text": "단체 문의",
+          "href": "https://www.yeosonam.com/group-inquiry",
+          "x": 843.3828125,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        },
+        {
+          "index": 6,
+          "text": "💬 카톡 상담",
+          "href": "https://pf.kakao.com/_xcFxkBG/chat",
+          "x": 1201.7890625,
+          "y": 32,
+          "visible": true,
+          "disabled": false,
+          "match": true
+        }
+      ],
+      "pageErrors": [],
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "The source list for the Content Security Policy directive 'connect-src' contains an invalid source: 'https://o*.sentry.io'. It will be ignored."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT.Inspector"
+        }
+      ],
+      "responses": [],
+      "error": null
+    }
+  ],
+  "clicks": [
+    {
+      "url": "https://www.yeosonam.com",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "해외 패키지",
+        "href": "",
+        "x": 457.84375,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com",
+      "ordinal": 1,
+      "target": {
+        "index": 2,
+        "text": "테마 여행",
+        "href": "",
+        "x": 581.8203125,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com",
+      "ordinal": 2,
+      "target": {
+        "index": 5,
+        "text": "단체 문의",
+        "href": "https://www.yeosonam.com/group-inquiry",
+        "x": 859.2421875,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/group-inquiry",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com",
+      "ordinal": 3,
+      "target": {
+        "index": 6,
+        "text": "💬 카톡 상담",
+        "href": "https://pf.kakao.com/_xcFxkBG/chat",
+        "x": 1196.6171875,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/",
+      "popup": "https://pf.kakao.com/_xcFxkBG/chat",
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "해외 패키지",
+        "href": "",
+        "x": 457.84375,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/packages",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages",
+      "ordinal": 1,
+      "target": {
+        "index": 2,
+        "text": "테마 여행",
+        "href": "",
+        "x": 581.8203125,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/packages",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages",
+      "ordinal": 2,
+      "target": {
+        "index": 5,
+        "text": "단체 문의",
+        "href": "https://www.yeosonam.com/group-inquiry",
+        "x": 859.2421875,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/group-inquiry",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages",
+      "ordinal": 3,
+      "target": {
+        "index": 6,
+        "text": "💬 카톡 상담",
+        "href": "https://pf.kakao.com/_xcFxkBG/chat",
+        "x": 1201.7890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/packages",
+      "popup": "https://pf.kakao.com/_xcFxkBG/chat",
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "해외 패키지",
+        "href": "",
+        "x": 474.890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/destinations",
+      "popup": null,
+      "ok": false,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD?_rsc=cY29gi92DLBzvq13"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 1,
+      "target": {
+        "index": 2,
+        "text": "테마 여행",
+        "href": "",
+        "x": 589.0390625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/destinations",
+      "popup": null,
+      "ok": false,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD?_rsc=cY29gi92DLBzvq13"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 2,
+      "target": {
+        "index": 5,
+        "text": "단체 문의",
+        "href": "https://www.yeosonam.com/group-inquiry",
+        "x": 843.3828125,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/group-inquiry",
+      "popup": null,
+      "ok": false,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD?_rsc=cY29gi92DLBzvq13"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 3,
+      "target": {
+        "index": 6,
+        "text": "💬 카톡 상담",
+        "href": "https://pf.kakao.com/_xcFxkBG/chat",
+        "x": 1201.7890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/destinations",
+      "popup": "https://pf.kakao.com/_xcFxkBG/chat",
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/concierge",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "검색",
+        "href": "",
+        "x": 821.484375,
+        "y": 213,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/concierge",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/concierge",
+      "ordinal": 1,
+      "target": {
+        "index": 3,
+        "text": "지중해 크루즈 여행",
+        "href": "",
+        "x": 449.71875,
+        "y": 270,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/concierge",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/blog",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "해외 패키지",
+        "href": "",
+        "x": 474.890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/blog",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/blog",
+      "ordinal": 1,
+      "target": {
+        "index": 2,
+        "text": "테마 여행",
+        "href": "",
+        "x": 589.0390625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/blog",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/blog",
+      "ordinal": 2,
+      "target": {
+        "index": 5,
+        "text": "단체 문의",
+        "href": "https://www.yeosonam.com/group-inquiry",
+        "x": 843.3828125,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/group-inquiry",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/blog",
+      "ordinal": 3,
+      "target": {
+        "index": 6,
+        "text": "💬 카톡 상담",
+        "href": "https://pf.kakao.com/_xcFxkBG/chat",
+        "x": 1201.7890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/blog",
+      "popup": "https://pf.kakao.com/_xcFxkBG/chat",
+      "ok": true,
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "해외 패키지",
+        "href": "",
+        "x": 474.890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 401,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/user_actions"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "ordinal": 1,
+      "target": {
+        "index": 2,
+        "text": "테마 여행",
+        "href": "",
+        "x": 589.0390625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 401,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/user_actions"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "ordinal": 2,
+      "target": {
+        "index": 5,
+        "text": "단체 문의",
+        "href": "https://www.yeosonam.com/group-inquiry",
+        "x": 843.3828125,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/group-inquiry",
+      "popup": null,
+      "ok": true,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 401,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/user_actions"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "ordinal": 3,
+      "target": {
+        "index": 6,
+        "text": "💬 카톡 상담",
+        "href": "https://pf.kakao.com/_xcFxkBG/chat",
+        "x": 1201.7890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/packages/a2043efc-8908-44fc-bf17-e4efcd338e53",
+      "popup": "https://pf.kakao.com/_xcFxkBG/chat",
+      "ok": true,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 401,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/user_actions"
+        }
+      ],
+      "error": null
+    }
+  ],
+  "blockedMutations": [
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"2e8c2680-387d-47a6-ba10-bd69bee4d124\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":false,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_n"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":144.70000000298023,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"21c4c456-8332-4e64-97c7-cebb1def7804\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":424,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":49.099999994039536,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"35f8771d-b196-4eb2-8b8c-4e23acee8714\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":680,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":41.70000000298023,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"9bf74b69-98e6-4bbc-bba0-f7ca9801ef31\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":780,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":46,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":780,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":780,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":46,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"fbccc62c-5f68-44a1-9225-4038383e0848\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":46.400000005960464,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":908,\"path\":\"/\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"33a97792-cbbc-4389-9d02-be0579fcc8fd\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":36.70000000298023,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":936,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"269f0b80-c62b-4ac4-a6b8-c901d891b201\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":444,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":39,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":876,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"83e3a6db-f0ba-4593-a64e-a08a5f15370e\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":464,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":42.599999994039536,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"fb7fad79-6f28-4bb1-92f2-ff5799da85e3\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":452,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":48.5,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":452,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":48.5,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"29a045e8-58f5-4c3f-9384-b608b8bfd842\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":875.5,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":1932,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":1932,\"path\":\"/packages\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"d238b2bd-6a92-4092-8ed7-954b822dc7db\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":556,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":64.5,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"123a96ad-ade0-4fd2-ba82-96036a2c8266\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":592,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":70.09999999403954,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"64aab3f0-c016-4784-8a8b-320ebcd0c500\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":624,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":62.30000001192093,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"6973b3dc-8b3f-4b07-a216-a281d4de5e7d\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":560,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":72.79999999701977,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":560,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":72.79999999701977,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":560,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"7458af58-0b49-44a3-a053-b182fa886564\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":512,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":79,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":512,\"path\":\"/destinations\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"6239477d-973c-4e5e-9972-7ef0060dbfc0\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":556,\"path\":\"/concierge\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":107.70000000298023,\"path\":\"/concierge\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"2d823cb0-7131-4a59-8696-ed6fbe620007\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":536,\"path\":\"/concierge\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":73.5,\"path\":\"/concierge\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/concierge/search",
+      "postData": "{\"query\":\"지중해 크루즈 여행\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"5744b0cf-0a08-418b-8612-968ad25f4d0a\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":496,\"path\":\"/concierge\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":103.79999999701977,\"path\":\"/concierge\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"dce7a528-6275-4e85-ade1-a6632dfb9077\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":480,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":74.79999999701977,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"951e5315-6a6b-4359-a39a-25ab00c9949b\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":298.09999999403954,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":1260,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"0cc4510b-4207-4c4e-90c4-e4f45a54342c\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":984,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":339.79999999701977,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"2ed13d4d-5cab-489a-8861-2d3ed7c87029\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":760,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":272.59999999403954,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"d238dff3-554d-4eeb-a913-cb7c9c82cb68\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":1080,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":316.5,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":1080,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":1080,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":316.5,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"10ed2143-e78c-4e58-adc8-283b318efa28\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":748,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":291.8999999910593,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"LCP\",\"value\":1212,\"path\":\"/blog\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"3a214eba-2c7e-4397-bf5e-9230b9393175\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"ba712dcd-106a-44b0-807f-2c5a48905b9c\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":1016,\"path\":\"/packages/a2043efc-8908-44fc-bf17-e4efcd338e53\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":66.19999998807907,\"path\":\"/packages/a2043efc-8908-44fc-bf17-e4efcd338e53\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"91c34255-3e07-4930-8ae2-7516bdfd351b\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":1164,\"path\":\"/packages/a2043efc-8908-44fc-bf17-e4efcd338e53\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":260.5,\"path\":\"/packages/a2043efc-8908-44fc-bf17-e4efcd338e53\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"ff7edf98-06bb-492a-b15c-39090935d830\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":988,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":73.79999999701977,\"path\":\"/group-inquiry\",\"pageType\":\"page\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/tracking",
+      "postData": "{\"type\":\"traffic\",\"session_id\":\"214d0da0-b4da-48ef-9952-e460d133bbb5\",\"visitor_uid\":\"b33ed294-c3f1-450c-931a-2d33c80d5deb\",\"is_returning\":true,\"device_type\":\"desktop\",\"device_os\":\"Windows\",\"browser_na"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"FCP\",\"value\":920,\"path\":\"/packages/a2043efc-8908-44fc-bf17-e4efcd338e53\",\"pageType\":\"package\"}"
+    },
+    {
+      "method": "POST",
+      "url": "https://www.yeosonam.com/api/web-vitals",
+      "postData": "{\"name\":\"TTFB\",\"value\":83.59999999403954,\"path\":\"/packages/a2043efc-8908-44fc-bf17-e4efcd338e53\",\"pageType\":\"package\"}"
+    }
+  ],
+  "failures": [
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 0,
+      "target": {
+        "index": 1,
+        "text": "해외 패키지",
+        "href": "",
+        "x": 474.890625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/destinations",
+      "popup": null,
+      "ok": false,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD?_rsc=cY29gi92DLBzvq13"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 1,
+      "target": {
+        "index": 2,
+        "text": "테마 여행",
+        "href": "",
+        "x": 589.0390625,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/destinations",
+      "popup": null,
+      "ok": false,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD?_rsc=cY29gi92DLBzvq13"
+        }
+      ],
+      "error": null
+    },
+    {
+      "url": "https://www.yeosonam.com/destinations",
+      "ordinal": 2,
+      "target": {
+        "index": 5,
+        "text": "단체 문의",
+        "href": "https://www.yeosonam.com/group-inquiry",
+        "x": 843.3828125,
+        "y": 32,
+        "visible": true,
+        "disabled": false,
+        "match": true
+      },
+      "after": "https://www.yeosonam.com/group-inquiry",
+      "popup": null,
+      "ok": false,
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 500,
+          "url": "https://www.yeosonam.com/destinations/%EB%8B%A4%EB%82%AD?_rsc=cY29gi92DLBzvq13"
+        }
+      ],
+      "error": null
+    }
+  ]
+}

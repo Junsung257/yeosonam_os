@@ -273,7 +273,7 @@ export function PosterPrice({
             background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '3px',
             padding: '3px 8px', marginBottom: '4px', fontSize: '9.5px', color: '#166534', fontWeight: 600,
           }}>
-            🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
+            🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
             {Object.entries(byMonth).map(([m, days], i) => (
               <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
             ))}
