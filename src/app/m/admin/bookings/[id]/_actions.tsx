@@ -175,6 +175,15 @@ export default function BookingActions({
     );
   }
 
+  if (status === 'waiting_deposit') {
+    sheetActions.push({
+      label: '계약금 안내문 복사',
+      description: '좌석 가능 확인 후 고객에게 보낼 입금 안내문',
+      disabled: busy !== null,
+      onClick: () => copyKakaoMessage('deposit'),
+    });
+  }
+
   sheetActions.push(...transitions.map(t => ({
     label: t.label,
     description: t.isMock ? '테스트 시뮬레이션 모드' : undefined,

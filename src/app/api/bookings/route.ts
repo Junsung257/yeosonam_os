@@ -598,10 +598,21 @@ export async function PATCH(request: NextRequest) {
     }
 
     if (body.seat_check_confirmed === true) {
+      const { data: current, error: currentError } = await supabaseAdmin
+        .from('bookings')
+        .select('id, status, deposit_notice_blocked')
+        .eq('id', id)
+        .maybeSingle();
+      if (currentError) return ApiErrors.internalError(currentError.message);
+      if (!current) return ApiErrors.notFound('예약을 찾을 수 없습니다.');
+
+      const currentStatus = (current as { status?: string | null }).status;
+      const nextStatus = currentStatus === 'pending' ? 'waiting_deposit' : currentStatus;
       const { data, error } = await supabaseAdmin
         .from('bookings')
         .update({
           deposit_notice_blocked: false,
+          ...(nextStatus ? { status: nextStatus } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -615,7 +626,19 @@ export async function PATCH(request: NextRequest) {
         resolveSeatCheckRequiredTasks(id),
       ]);
 
-      return successResponse({ booking: data, seat_check_confirmed: true });
+      if (currentStatus === 'pending' || (current as { deposit_notice_blocked?: boolean }).deposit_notice_blocked === true) {
+        await supabaseAdmin.from('message_logs').insert({
+          booking_id: id,
+          log_type: 'manual',
+          event_type: 'MANUAL_MEMO',
+          title: '랜드사 좌석 가능 확인',
+          content: body.memo || '랜드사 좌석 가능 여부 확인 완료. 계약금 안내 단계로 전환했습니다.',
+          is_mock: false,
+          created_by: 'admin',
+        });
+      }
+
+      return successResponse({ booking: data, seat_check_confirmed: true, status: nextStatus });
     }
 
     if (body.seat_check_unavailable === true) {

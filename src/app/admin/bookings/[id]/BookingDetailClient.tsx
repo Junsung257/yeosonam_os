@@ -481,29 +481,37 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       )}
 
       {/* 수배 확정 체크리스트 + 명단 */}
-      {booking.status === 'pending' && (
+      {(booking.status === 'pending' || booking.status === 'waiting_deposit') && (
         <div className="rounded-admin-md border border-blue-200 bg-blue-50 p-4 space-y-3">
           <div>
-            <p className="text-sm font-bold text-blue-950">랜드사 좌석 확인 워크플로</p>
+            <p className="text-sm font-bold text-blue-950">
+              {booking.status === 'waiting_deposit' ? '계약금 안내 워크플로' : '랜드사 좌석 확인 워크플로'}
+            </p>
             <p className="text-xs text-blue-900/80 mt-1">
-              좌석 가능 여부는 수동으로 확인하고, 확인 결과에 따라 카카오 안내문을 복사해 고객 채팅에 붙여넣으세요.
+              {booking.status === 'waiting_deposit'
+                ? '좌석 가능 확인이 끝났습니다. 계약금 안내문을 복사해 고객 카카오 채팅에 붙여넣으세요.'
+                : '좌석 가능 여부는 수동으로 확인하고, 확인 결과에 따라 카카오 안내문을 복사해 고객 채팅에 붙여넣으세요.'}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => copyKakaoMessage('received')}
-              className="px-3 py-1.5 rounded-lg bg-white text-blue-700 border border-blue-200 text-xs font-semibold hover:bg-blue-100"
-            >
-              접수 안내문 복사
-            </button>
-            <button
-              type="button"
-              onClick={handleSeatAvailable}
-              className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
-            >
-              좌석 가능 확인
-            </button>
+            {booking.status === 'pending' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => copyKakaoMessage('received')}
+                  className="px-3 py-1.5 rounded-lg bg-white text-blue-700 border border-blue-200 text-xs font-semibold hover:bg-blue-100"
+                >
+                  접수 안내문 복사
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSeatAvailable}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                >
+                  좌석 가능 확인
+                </button>
+              </>
+            )}
             <button
               type="button"
               onClick={() => copyKakaoMessage('deposit')}
@@ -511,13 +519,15 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             >
               계약금 안내문 복사
             </button>
-            <button
-              type="button"
-              onClick={handleSeatUnavailable}
-              className="px-3 py-1.5 rounded-lg bg-white text-slate-600 border border-slate-200 text-xs font-semibold hover:bg-slate-100"
-            >
-              좌석 불가 안내문 복사
-            </button>
+            {booking.status === 'pending' && (
+              <button
+                type="button"
+                onClick={handleSeatUnavailable}
+                className="px-3 py-1.5 rounded-lg bg-white text-slate-600 border border-slate-200 text-xs font-semibold hover:bg-slate-100"
+              >
+                좌석 불가 안내문 복사
+              </button>
+            )}
           </div>
         </div>
       )}
