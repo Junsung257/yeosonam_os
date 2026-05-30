@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildKakaoMessage, buildPayload } from '@/lib/submitPipeline';
+import type { TrackingData } from '@/hooks/useTracking';
 
 vi.mock('@/components/MetaPixel', () => ({
   trackLead: vi.fn(),
@@ -14,12 +15,26 @@ const form = {
   privacyConsent: true,
 };
 
+const tracking: TrackingData = {
+  sessionId: 'session-1',
+  utmSource: 'meta',
+  utmMedium: null,
+  utmCampaign: null,
+  utmContent: null,
+  utmTerm: null,
+  referrer: '',
+  landingUrl: 'https://www.yeosonam.com/packages/pkg-123',
+  scrollDepthReached: 0,
+  timeOnPageSeconds: 0,
+  itineraryViewed: false,
+};
+
 describe('submitPipeline', () => {
   it('builds a stable landing idempotency key from product, date, phone, and pax', () => {
     const payload = buildPayload(
       'pkg-123',
       form,
-      { utmSource: 'meta' },
+      tracking,
       'chat-session-1',
     );
 
