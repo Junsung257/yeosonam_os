@@ -91,7 +91,7 @@ export async function submitWithRetry(payload: LeadPayload, maxRetries = 3): Pro
   throw lastError;
 }
 
-function buildKakaoMessage(form: LeadFormData, ctx?: KakaoLeadContext, result?: LeadSubmitResult): string {
+export function buildKakaoMessage(form: LeadFormData, ctx?: KakaoLeadContext, result?: LeadSubmitResult): string {
   const lines = ['안녕하세요. 아래 상품 예약 요청드립니다.', ''];
   if (result?.booking?.booking_no) lines.push(`예약번호: ${result.booking.booking_no}`);
   if (ctx?.internalCode) lines.push(`상품코드: ${ctx.internalCode}`);
