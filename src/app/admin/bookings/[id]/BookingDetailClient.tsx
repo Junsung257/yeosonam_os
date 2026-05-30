@@ -290,7 +290,14 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
   const copyKakaoMessage = async (kind: 'received' | 'deposit' | 'unavailable') => {
     try {
-      await navigator.clipboard.writeText(buildKakaoBookingSummary(kind));
+      const res = await fetch(`/api/admin/bookings/${id}/kakao-message?kind=${kind}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => ({}));
+      const message = res.ok && typeof data.message === 'string'
+        ? data.message
+        : buildKakaoBookingSummary(kind);
+      await navigator.clipboard.writeText(message);
       showToast('카카오 안내문을 복사했습니다.');
     } catch {
       showToast('복사에 실패했습니다.');
@@ -310,6 +317,22 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     }
     await Promise.all([fetchBooking(), fetchLogs()]);
     showToast('좌석 확인 완료. 계약금 안내를 진행할 수 있습니다.');
+  };
+
+  const handleSeatUnavailable = async () => {
+    await copyKakaoMessage('unavailable');
+    const res = await fetch('/api/bookings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, seat_check_unavailable: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(data.error ?? '좌석 불가 처리 실패');
+      return;
+    }
+    await Promise.all([fetchBooking(), fetchLogs()]);
+    showToast('좌석 불가 확인 기록을 남겼습니다.');
   };
 
   const handleAddMemo = async () => {
@@ -490,7 +513,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             </button>
             <button
               type="button"
-              onClick={() => copyKakaoMessage('unavailable')}
+              onClick={handleSeatUnavailable}
               className="px-3 py-1.5 rounded-lg bg-white text-slate-600 border border-slate-200 text-xs font-semibold hover:bg-slate-100"
             >
               좌석 불가 안내문 복사

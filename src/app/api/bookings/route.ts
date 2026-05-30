@@ -618,6 +618,22 @@ export async function PATCH(request: NextRequest) {
       return successResponse({ booking: data, seat_check_confirmed: true });
     }
 
+    if (body.seat_check_unavailable === true) {
+      const { resolveSeatUnavailableTasks } = await import('@/lib/booking-workflow-tasks');
+      await resolveSeatUnavailableTasks(id);
+      await supabaseAdmin.from('message_logs').insert({
+        booking_id: id,
+        log_type: 'manual',
+        event_type: 'MANUAL_MEMO',
+        title: '랜드사 좌석 불가 확인',
+        content: body.memo || '랜드사 좌석 가능 여부 확인 결과 진행 불가로 표시했습니다.',
+        is_mock: false,
+        created_by: 'admin',
+      });
+
+      return successResponse({ ok: true, seat_check_unavailable: true });
+    }
+
     // 일행 추가 (booking_passengers에 연결)
     if (body.addPassengerId) {
       const { error } = await supabaseAdmin

@@ -83,3 +83,19 @@ export async function resolveSeatCheckRequiredTasks(bookingId: string): Promise<
     .eq('task_type', SEAT_CHECK_TASK_TYPE)
     .in('status', ['open', 'snoozed']);
 }
+
+export async function resolveSeatUnavailableTasks(bookingId: string): Promise<void> {
+  const now = new Date().toISOString();
+  await supabaseAdmin
+    .from('booking_tasks')
+    .update({
+      status: 'resolved',
+      resolved_at: now,
+      resolved_by: 'user:admin',
+      resolution: 'seat_unavailable',
+      updated_at: now,
+    } satisfies Record<string, unknown> as never)
+    .eq('booking_id', bookingId)
+    .eq('task_type', SEAT_CHECK_TASK_TYPE)
+    .in('status', ['open', 'snoozed']);
+}
