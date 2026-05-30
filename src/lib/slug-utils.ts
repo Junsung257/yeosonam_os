@@ -124,3 +124,42 @@ export function slugifyTopic(topic: string): string {
     .substring(0, 80)
     .replace(/-+$/, '');
 }
+
+export interface SlugValidationResult {
+  ok: boolean;
+  slug: string;
+  reason?: string;
+}
+
+export function normalizeBlogSlug(input: string): string {
+  return String(input || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9가-힣-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .substring(0, 200)
+    .replace(/-+$/g, '');
+}
+
+export function validateBlogSlug(input: string): SlugValidationResult {
+  const slug = normalizeBlogSlug(input);
+
+  if (!slug) return { ok: false, slug, reason: 'slug is empty after normalization' };
+  if (slug.length < 3) return { ok: false, slug, reason: 'slug is too short' };
+  if (slug.length > 200) return { ok: false, slug, reason: 'slug is too long' };
+  if (slug.startsWith('-') || slug.endsWith('-')) return { ok: false, slug, reason: 'slug has edge hyphen' };
+  if (/--/.test(slug)) return { ok: false, slug, reason: 'slug has repeated hyphen' };
+  if (!/[a-z0-9가-힣]/.test(slug)) return { ok: false, slug, reason: 'slug has no searchable token' };
+
+  const tokens = slug.split('-').filter(Boolean);
+  if (tokens.length < 2 && slug.length < 8) {
+    return { ok: false, slug, reason: 'slug has too little semantic content' };
+  }
+
+  const weakLeadingTerms = new Set(['preparation', 'weather', 'currency', 'visa', 'travel', 'tour']);
+  if (tokens.length === 1 && weakLeadingTerms.has(tokens[0])) {
+    return { ok: false, slug, reason: 'slug is a generic topic without destination' };
+  }
+
+  return { ok: true, slug };
+}

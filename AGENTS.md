@@ -37,6 +37,7 @@
 |------|------|
 | 제휴 추적·쿠키·코브랜딩 | `docs/affiliate-attribution.md` |
 | 블로그 운영 런북 | `docs/blog-system-runbook.md` |
+| 마케팅 자동화 가드레일 | `docs/marketing-automation-guardrails.md` |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
 | AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
