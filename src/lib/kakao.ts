@@ -1,4 +1,4 @@
-import { hasSecrets } from '@/lib/secret-registry';
+import { getSecret, hasSecrets } from '@/lib/secret-registry';
 
 /**
  * 카카오 알림톡 발송 라이브러리 (Solapi 사용)
@@ -29,11 +29,17 @@ function isSolapiConfigured() {
   ]);
 }
 
+type AlimtalkSendResult = Record<string, unknown> & {
+  skipped?: boolean;
+  reason?: string;
+  mode?: string;
+};
+
 async function sendAlimtalk(params: {
   to: string;
   templateId: string;
   variables: Record<string, string>;
-}) {
+}): Promise<AlimtalkSendResult> {
   const emptyKeys = Object.entries(params.variables)
     .filter(([, value]) => !String(value ?? '').trim())
     .map(([key]) => key);
@@ -42,21 +48,41 @@ async function sendAlimtalk(params: {
   }
 
   if (!isSolapiConfigured()) {
-    console.warn('[알림톡] Solapi 미설정 - 발송 건너뜀 (수기 관리 모드)', params);
-    return { skipped: true };
+    console.warn('[알림톡] Solapi 설정 누락 - 발송 건너뜀', {
+      templateId: params.templateId,
+      variableKeys: Object.keys(params.variables),
+    });
+    return { skipped: true, reason: 'missing_solapi_config' };
   }
 
-  // TODO: solapi 준비 후 활성화
-  // 1. npm install solapi
-  // 2. .env.local에 SOLAPI_API_KEY, SOLAPI_API_SECRET, KAKAO_CHANNEL_ID, KAKAO_SENDER_NUMBER 추가
-  // 3. 아래 주석 해제
-  //
-  // const { default: SolapiMessageService } = await import('solapi');
-  // const service = new SolapiMessageService(/* SOLAPI_API_KEY */, /* SOLAPI_API_SECRET */); // 활성화 시 getSecret 사용
-  // return service.send({ to: params.to, from: /* KAKAO_SENDER_NUMBER */, kakaoOptions: { pfId: /* KAKAO_CHANNEL_ID */, templateId: params.templateId, variables: params.variables } });
+  const apiKey = getSecret('SOLAPI_API_KEY');
+  const apiSecret = getSecret('SOLAPI_API_SECRET');
+  const channelId = getSecret('KAKAO_CHANNEL_ID');
+  const senderNumber = getSecret('KAKAO_SENDER_NUMBER');
 
-  console.log('[알림톡 수기모드] 발송 대상:', params.to, '| 템플릿:', params.templateId, '| 변수:', params.variables);
-  return { skipped: true, mode: 'manual' };
+  if (!apiKey || !apiSecret || !channelId || !senderNumber) {
+    console.warn('[알림톡] Solapi 설정 누락 - 발송 건너뜀', {
+      templateId: params.templateId,
+      variableKeys: Object.keys(params.variables),
+    });
+    return { skipped: true, reason: 'missing_solapi_config' };
+  }
+
+  const { SolapiMessageService } = await import('solapi');
+  const service = new SolapiMessageService(apiKey, apiSecret);
+
+  const result = await service.send({
+    to: params.to,
+    from: senderNumber,
+    type: 'ATA',
+    kakaoOptions: {
+      pfId: channelId,
+      templateId: params.templateId,
+      variables: params.variables,
+      disableSms: false,
+    },
+  });
+  return result as AlimtalkSendResult;
 }
 
 /** 어필리에이터 예약 전환 축하 알림
@@ -372,10 +398,10 @@ export async function sendReviewRequestAlimtalk(params: {
     to: params.phone,
     templateId,
     variables: {
-      '고객명': params.name,
-      '상품명': params.productTitle,
-      '조사링크': `${baseUrl}/review/${params.bookingId}`,
-      '공유링크': `${baseUrl}/share/new?booking=${params.bookingId}&utm_source=alimtalk&utm_campaign=review`,
+      customer_name: params.name,
+      product_title: params.productTitle,
+      review_link: `${baseUrl}/review/${params.bookingId}`,
+      share_link: `${baseUrl}/share/new?booking=${params.bookingId}&utm_source=alimtalk&utm_campaign=review`,
     },
   });
 }
