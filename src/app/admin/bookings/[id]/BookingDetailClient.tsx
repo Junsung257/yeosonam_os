@@ -87,6 +87,18 @@ const EVENT_ICON: Record<string, string> = {
   MANUAL_MEMO:         '📝',
 };
 
+function apiErrorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === 'object' && 'error' in body) {
+    const error = (body as { error?: unknown }).error;
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+  }
+  return fallback;
+}
+
 // ─── Progress Bar ──────────────────────────────────────────────────────────
 function ProgressBar({ status }: { status: string }) {
   const currentStep = getStepIndex(status);
@@ -229,7 +241,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         body:    JSON.stringify({ to }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.error ?? '전이 실패'); return; }
+      if (!res.ok) { showToast(apiErrorMessage(data, '전이 실패')); return; }
       await Promise.all([fetchBooking(), fetchLogs()]);
       showToast(`상태가 "${getStatusLabel(to)}"(으)로 변경되었습니다.`);
     } catch {
@@ -312,7 +324,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     });
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error ?? '좌석 확인 처리 실패');
+      showToast(apiErrorMessage(data, '좌석 확인 처리 실패'));
       return;
     }
     await Promise.all([fetchBooking(), fetchLogs()]);
@@ -328,7 +340,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     });
     const data = await res.json();
     if (!res.ok) {
-      showToast(data.error ?? '좌석 불가 처리 실패');
+      showToast(apiErrorMessage(data, '좌석 불가 처리 실패'));
       return;
     }
     await Promise.all([fetchBooking(), fetchLogs()]);
@@ -382,7 +394,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.error ?? '취소 실패'); return; }
+      if (!res.ok) { showToast(apiErrorMessage(data, '취소 실패')); return; }
       setShowCancelModal(false);
       await Promise.all([fetchBooking(), fetchLogs()]);
       showToast('예약이 취소 처리되었습니다.');
@@ -469,7 +481,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                 body: JSON.stringify({ id, deposit_notice_blocked: false }),
               });
               const data = await res.json();
-              if (!res.ok) { showToast(data.error ?? '실패'); return; }
+              if (!res.ok) { showToast(apiErrorMessage(data, '실패')); return; }
               await fetchBooking();
               showToast('계약금 안내 단계로 넘길 수 있습니다');
             }}

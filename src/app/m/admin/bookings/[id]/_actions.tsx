@@ -15,6 +15,18 @@ interface Props {
   transitions: TransitionDef[];
 }
 
+function apiErrorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === 'object' && 'error' in body) {
+    const error = (body as { error?: unknown }).error;
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+  }
+  return fallback;
+}
+
 export default function BookingActions({
   bookingId,
   status,
@@ -37,7 +49,7 @@ export default function BookingActions({
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok || typeof body.message !== 'string') {
-        throw new Error(body.error || '안내문 생성 실패');
+        throw new Error(apiErrorMessage(body, '안내문 생성 실패'));
       }
       await navigator.clipboard.writeText(body.message);
       setSheetOpen(false);
@@ -59,7 +71,7 @@ export default function BookingActions({
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || '좌석 확인 처리 실패');
+        throw new Error(apiErrorMessage(body, '좌석 확인 처리 실패'));
       }
       setSheetOpen(false);
       router.refresh();
@@ -89,7 +101,7 @@ export default function BookingActions({
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || '좌석 불가 처리 실패');
+        throw new Error(apiErrorMessage(body, '좌석 불가 처리 실패'));
       }
       setSheetOpen(false);
       router.refresh();
@@ -111,7 +123,7 @@ export default function BookingActions({
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || '전이 실패');
+        throw new Error(apiErrorMessage(body, '전이 실패'));
       }
       setSheetOpen(false);
       router.refresh();
@@ -133,7 +145,7 @@ export default function BookingActions({
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || '취소 실패');
+        throw new Error(apiErrorMessage(body, '취소 실패'));
       }
       setConfirmOpen(false);
       router.refresh();
