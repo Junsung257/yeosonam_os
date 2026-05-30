@@ -386,10 +386,10 @@ export default function PrivateTourLandingClient() {
             </p>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <label htmlFor="private-tour-contact-name" className="block text-sm font-semibold mb-2">
                 이름 <span className="text-red-500">*</span>
               </label>
-              <input
+              <input id="private-tour-contact-name"
                 type="text"
                 value={form.contact_name}
                 onChange={(e) => update('contact_name', e.target.value)}
@@ -400,10 +400,10 @@ export default function PrivateTourLandingClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <label htmlFor="private-tour-contact-phone" className="block text-sm font-semibold mb-2">
                 연락처 <span className="text-red-500">*</span>
               </label>
-              <input
+              <input id="private-tour-contact-phone"
                 type="tel"
                 value={form.contact_phone}
                 onChange={(e) => update('contact_phone', e.target.value)}
@@ -417,10 +417,10 @@ export default function PrivateTourLandingClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <label htmlFor="private-tour-contact-email" className="block text-sm font-semibold mb-2">
                 이메일 (선택)
               </label>
-              <input
+              <input id="private-tour-contact-email"
                 type="email"
                 value={form.contact_email}
                 onChange={(e) => update('contact_email', e.target.value)}
@@ -452,9 +452,9 @@ export default function PrivateTourLandingClient() {
             </p>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <span className="block text-sm font-semibold mb-2">
                 여행 유형 <span className="text-red-500">*</span>
-              </label>
+              </span>
               <div className="grid grid-cols-2 gap-2">
                 {(['가족여행', '친구·모임', '회사 단체', '동호회·동문', '특별한 날', '혼자 여행'] as const).map((t) => (
                   <button
@@ -474,10 +474,10 @@ export default function PrivateTourLandingClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <label htmlFor="private-tour-pax" className="block text-sm font-semibold mb-2">
                 예상 인원 <span className="text-red-500">*</span>
               </label>
-              <select
+              <select id="private-tour-pax"
                 value={form.pax}
                 onChange={(e) => update('pax', e.target.value)}
                 className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -492,10 +492,10 @@ export default function PrivateTourLandingClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <label htmlFor="private-tour-destination" className="block text-sm font-semibold mb-2">
                 희망 목적지 <span className="text-red-500">*</span>
               </label>
-              <input
+              <input id="private-tour-destination"
                 type="text"
                 value={form.destination}
                 onChange={(e) => update('destination', e.target.value)}
@@ -507,8 +507,8 @@ export default function PrivateTourLandingClient() {
 
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-semibold mb-2">희망 출발일</label>
-                <input
+                <label htmlFor="private-tour-departure-date" className="block text-sm font-semibold mb-2">희망 출발일</label>
+                <input id="private-tour-departure-date"
                   type="date"
                   value={form.departure_date}
                   onChange={(e) => update('departure_date', e.target.value)}
@@ -516,8 +516,8 @@ export default function PrivateTourLandingClient() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2">여행 기간</label>
-                <select
+                <label htmlFor="private-tour-duration-days" className="block text-sm font-semibold mb-2">여행 기간</label>
+                <select id="private-tour-duration-days"
                   value={form.duration_days}
                   onChange={(e) => update('duration_days', e.target.value)}
                   className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -566,7 +566,7 @@ export default function PrivateTourLandingClient() {
             {form.group_type === '가족여행' && (
               <>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">어르신(65세 이상) 동행</label>
+                  <span className="block text-sm font-semibold mb-2">어르신(65세 이상) 동행</span>
                   <div className="grid grid-cols-2 gap-2">
                     {['있음', '없음'].map((opt) => (
                       <button
@@ -585,7 +585,7 @@ export default function PrivateTourLandingClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">유아(만 2세 미만) 동반</label>
+                  <span className="block text-sm font-semibold mb-2">유아(만 2세 미만) 동반</span>
                   <div className="grid grid-cols-2 gap-2">
                     {['있음', '없음'].map((opt) => (
                       <button
@@ -610,7 +610,7 @@ export default function PrivateTourLandingClient() {
             {form.group_type === '친구·모임' && (
               <>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">원하는 분위기 (중복 선택)</label>
+                  <span className="block text-sm font-semibold mb-2">원하는 분위기 (중복 선택)</span>
                   <div className="flex flex-wrap gap-2">
                     {VIBE_OPTIONS.map((v) => (
                       <button
@@ -629,8 +629,8 @@ export default function PrivateTourLandingClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">액티비티 선호도</label>
-                  <select
+                  <label htmlFor="private-tour-activity-preference-friends" className="block text-sm font-semibold mb-2">액티비티 선호도</label>
+                  <select id="private-tour-activity-preference-friends"
                     value={form.activity_preference}
                     onChange={(e) => update('activity_preference', e.target.value)}
                     className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -649,7 +649,7 @@ export default function PrivateTourLandingClient() {
             {form.group_type === '회사 단체' && (
               <>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">세미나·회의 필요</label>
+                  <span className="block text-sm font-semibold mb-2">세미나·회의 필요</span>
                   <div className="grid grid-cols-2 gap-2">
                     {['필요', '불필요'].map((opt) => (
                       <button
@@ -668,7 +668,7 @@ export default function PrivateTourLandingClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">법인카드 결제</label>
+                  <span className="block text-sm font-semibold mb-2">법인카드 결제</span>
                   <div className="grid grid-cols-2 gap-2">
                     {['법인카드 가능', '개인 결제'].map((opt) => (
                       <button
@@ -687,8 +687,8 @@ export default function PrivateTourLandingClient() {
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-semibold mb-2">액티비티 선호도</label>
-                  <select
+                  <label htmlFor="private-tour-activity-preference-company" className="block text-sm font-semibold mb-2">액티비티 선호도</label>
+                  <select id="private-tour-activity-preference-company"
                     value={form.activity_preference}
                     onChange={(e) => update('activity_preference', e.target.value)}
                     className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -706,8 +706,8 @@ export default function PrivateTourLandingClient() {
             {/* 동호회·동문 */}
             {form.group_type === '동호회·동문' && (
               <div>
-                <label className="block text-sm font-semibold mb-2">취미/관심 분야</label>
-                <select
+                <label htmlFor="private-tour-hobby-type" className="block text-sm font-semibold mb-2">취미/관심 분야</label>
+                <select id="private-tour-hobby-type"
                   value={form.hobby_type}
                   onChange={(e) => update('hobby_type', e.target.value)}
                   className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -724,8 +724,8 @@ export default function PrivateTourLandingClient() {
             {/* 특별한 날 */}
             {form.group_type === '특별한 날' && (
               <div>
-                <label className="block text-sm font-semibold mb-2">기념일 유형</label>
-                <select
+                <label htmlFor="private-tour-anniversary-type" className="block text-sm font-semibold mb-2">기념일 유형</label>
+                <select id="private-tour-anniversary-type"
                   value={form.anniversary_type}
                   onChange={(e) => update('anniversary_type', e.target.value)}
                   className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
@@ -742,7 +742,7 @@ export default function PrivateTourLandingClient() {
             {/* 혼자 여행 */}
             {form.group_type === '혼자 여행' && (
               <div>
-                <label className="block text-sm font-semibold mb-2">가이드 동행 여부</label>
+                <span className="block text-sm font-semibold mb-2">가이드 동행 여부</span>
                 <div className="grid grid-cols-1 gap-2">
                   {SOLO_GUIDE_OPTIONS.map((opt) => (
                     <button
@@ -794,9 +794,9 @@ export default function PrivateTourLandingClient() {
             </p>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <span className="block text-sm font-semibold mb-2">
                 1인당 예산 (대략적인 구간) <span className="text-red-500">*</span>
-              </label>
+              </span>
               <div className="grid grid-cols-2 gap-2">
                 {BUDGET_OPTIONS.map((b) => (
                   <button
@@ -816,7 +816,7 @@ export default function PrivateTourLandingClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">호텔 등급</label>
+              <span className="block text-sm font-semibold mb-2">호텔 등급</span>
               <div className="grid grid-cols-2 gap-2">
                 {HOTEL_OPTIONS.map((h) => (
                   <button
@@ -836,10 +836,10 @@ export default function PrivateTourLandingClient() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold mb-2">
+              <label htmlFor="private-tour-notes" className="block text-sm font-semibold mb-2">
                 요청사항
               </label>
-              <textarea
+              <textarea id="private-tour-notes"
                 value={form.notes}
                 onChange={(e) => update('notes', e.target.value)}
                 placeholder="이런 여행이었으면 좋겠어요! (예: '부모님 모시고 가는 효도여행이라 천천히 둘러볼 수 있는 일정이면 좋겠어요', '계모임 친구들과 신나는 파티 분위기 여행을 원해요')"

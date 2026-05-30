@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -13,6 +13,7 @@ import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
+import { getDestinationUrl } from '@/lib/regions';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -45,63 +46,81 @@ interface Destination {
 
 const DOMESTIC_KEYWORDS = /국내|제주|부산|서울|강원|경주|여수/;
 
-function computeRankingMinPrice(p: any, today: string): number {
-  const pd = (p.price_dates || []) as Array<{ date?: string; price?: number }>;
-  const futurePd = pd.filter((d: any) => d?.date && d.date >= today);
+interface AttractionPhoto {
+  src_large?: string | null;
+  src_medium?: string | null;
+  pexels_id?: number | null;
+}
+interface AttractionRow {
+  name: string | null;
+  photos: AttractionPhoto[] | null;
+  country: string | null;
+  region: string | null;
+  mention_count: number | null;
+}
+
+interface AggPkgRow {
+  destination: string | null;
+  price: number | null;
+  price_tiers: Array<{ adult_price?: number }> | null;
+  price_dates: Array<{ date?: string; price?: number }> | null;
+  country: string | null;
+}
+interface RankingPkg extends AggPkgRow {
+  id: string;
+  title: string | null;
+  display_title: string | null;
+  hero_tagline?: string | null;
+  destination: string | null;
+  duration: number | null;
+  nights: number | null;
+  product_type: string | null;
+  ticketing_deadline: string | null;
+}
+
+function computeRankingMinPrice(p: RankingPkg, today: string): number {
+  const pd = p.price_dates ?? [];
+  const futurePd = pd.filter((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
   if (futurePd.length > 0) {
-    const prices = futurePd.map((d: any) => d.price).filter(Boolean) as number[];
+    const prices = futurePd.map((d) => d.price).filter((v): v is number => v != null);
     if (prices.length > 0) return Math.min(...prices);
   }
-  const tierPrices = (p.price_tiers || []).map((t: any) => t.adult_price).filter(Boolean) as number[];
-  const fallback = [p.price, ...tierPrices].filter(Boolean) as number[];
+  const tierPrices = (p.price_tiers ?? []).map((t) => t.adult_price).filter((v): v is number => v != null);
+  const fallback = [p.price, ...tierPrices].filter((v): v is number => v != null);
   return fallback.length > 0 ? Math.min(...fallback) : 0;
 }
 
 /** 랭킹 카드: 동일 이미지 URL이 여러 상품에 반복되지 않게 할당 */
 function buildRankingItemsUnique(
-  rankingPkgs: any[],
-  attractions: any[],
+  rankingPkgs: RankingPkg[],
+  attractions: AttractionRow[],
   today: string,
   overseasOnly: boolean,
   usedUrls: Set<string>,
 ): RankingItem[] {
   const list = rankingPkgs
-    .filter((p: any) => {
+    .filter((p) => {
       const isDom = DOMESTIC_KEYWORDS.test(p.destination || '');
       return overseasOnly ? !isDom : isDom;
     })
     .slice(0, 7);
 
-  return list.map((p: any) => {
-    const tryList: string[] = [];
-    if (p.hero_image_url) tryList.push(p.hero_image_url);
-    if (Array.isArray(p.thumbnail_urls)) {
-      for (const u of p.thumbnail_urls) {
-        if (u) tryList.push(u);
-      }
-    }
-
+  return list.map((p) => {
     let image: string | null = null;
-    for (const url of tryList) {
-      if (url && !usedUrls.has(url)) {
-        image = url;
-        usedUrls.add(url);
-        break;
-      }
-    }
 
+    // attractions 매칭으로 이미지 찾기
     if (!image) {
-      const destParts = (p.destination || '').split(/[\/,\s]/).map((s: string) => s.trim()).filter(Boolean);
+      const destParts = (p.destination || '').split(/[\/,\s]/).map((s) => s.trim()).filter(Boolean);
       const matched = attractions
-        .filter((a: any) => {
+        .filter((a) => {
           if (!a.photos?.length) return false;
-          return destParts.some((part: string) => {
+          return destParts.some((part) => {
             const r = a.region || '';
             const c = a.country || '';
             return r === part || r.includes(part) || part.includes(r) || (!!c && c.includes(part));
           });
         })
-        .sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
+        .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
 
       outer: for (const a of matched) {
         for (const ph of a.photos || []) {
@@ -115,9 +134,10 @@ function buildRankingItemsUnique(
       }
     }
 
+
     return {
       id: p.id,
-      title: p.display_title || p.title,
+      title: (p.display_title || p.title) ?? '',
       destination: p.destination,
       image,
       minPrice: computeRankingMinPrice(p, today),
@@ -130,9 +150,10 @@ function buildRankingItemsUnique(
 export default async function HomePage() {
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
+  const emptyResult = { data: [] };
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
-  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = await Promise.all([
+  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
     sb.from('travel_packages')
       .select('destination, price, price_tiers, price_dates, country')
       .in('status', ['active', 'approved']),
@@ -146,14 +167,14 @@ export default async function HomePage() {
       .order('created_at', { ascending: false })
       .limit(30),
     sb.from('active_destinations')
-      .select('*')
+      .select('destination, package_count, country')
       .order('package_count', { ascending: false })
       .limit(20),
     sb.from('travel_packages')
       .select('avg_rating, review_count')
       .not('avg_rating', 'is', null)
       .gte('review_count', 1),
-  ]);
+  ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
   const allPkgs = pkgResult.data ?? [];
   const attractions = attrResult.data ?? [];
@@ -163,19 +184,19 @@ export default async function HomePage() {
   const cutoffTeaser = new Date();
   cutoffTeaser.setDate(cutoffTeaser.getDate() + 14);
   const cutoffTeaserStr = cutoffTeaser.toISOString().slice(0, 10);
-  function pkgAliveForTeaser(p: any) {
-    const pd = (p.price_dates || []) as Array<{ date?: string }>;
+  function pkgAliveForTeaser(p: RankingPkg) {
+    const pd = p.price_dates ?? [];
     if (!pd.length) return true;
-    return pd.some(d => d?.date && d.date >= today);
+    return pd.some((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
   }
-  function pkgUrgentForTeaser(p: any) {
+  function pkgUrgentForTeaser(p: RankingPkg) {
     if (p.product_type === 'urgency') return true;
     const td = p.ticketing_deadline ? String(p.ticketing_deadline).slice(0, 10) : '';
     return !!(td && td <= cutoffTeaserStr);
   }
   const homeUrgencyTop3: { id: string; title: string; destination: string | undefined; minPrice: number }[] = [];
   const seenUrgent = new Set<string>();
-  for (const p of rankingPkgs as any[]) {
+  for (const p of rankingPkgs) {
     if (!pkgAliveForTeaser(p) || !pkgUrgentForTeaser(p)) continue;
     if (seenUrgent.has(p.id)) continue;
     seenUrgent.add(p.id);
@@ -190,23 +211,23 @@ export default async function HomePage() {
 
   // 목적지별 집계
   const destMap: Record<string, { count: number; minPrice: number; country: string }> = {};
-  allPkgs.forEach((p: any) => {
+  allPkgs.forEach((p: AggPkgRow) => {
     const dest = p.destination;
     if (!dest) return;
-    const pd = (p.price_dates || []) as Array<{ date?: string; price?: number }>;
-    const futurePd = pd.filter((d: any) => d?.date && d.date >= today);
+    const pd = p.price_dates ?? [];
+    const futurePd = pd.filter((d): d is { date: string; price?: number } => !!d?.date && d.date >= today);
     const isAlive = pd.length === 0 || futurePd.length > 0;
     if (!isAlive) return;
     if (!destMap[dest]) destMap[dest] = { count: 0, minPrice: Infinity, country: p.country || '' };
     destMap[dest].count++;
     let min = Infinity;
     if (futurePd.length > 0) {
-      const pdPrices = futurePd.map((d: any) => d.price).filter(Boolean) as number[];
+      const pdPrices = futurePd.map((d) => d.price).filter((v): v is number => v != null);
       if (pdPrices.length > 0) min = Math.min(...pdPrices);
     }
     if (min === Infinity) {
-      const tierPrices = (p.price_tiers || []).map((t: any) => t.adult_price).filter(Boolean);
-      const allPrices = [p.price, ...tierPrices].filter(Boolean);
+      const tierPrices = (p.price_tiers ?? []).map((t) => t.adult_price).filter((v): v is number => v != null);
+      const allPrices = [p.price, ...tierPrices].filter((v): v is number => v != null);
       if (allPrices.length > 0) min = Math.min(...allPrices);
     }
     if (min < destMap[dest].minPrice) destMap[dest].minPrice = min;
@@ -226,18 +247,18 @@ export default async function HomePage() {
   const destsWithImages = destinations.map(dest => {
     const destParts = dest.destination.split(/[\/,\s]/).map(s => s.trim()).filter(Boolean);
     const matched = attractions
-      .filter((a: any) => {
+      .filter((a: AttractionRow) => {
         if (!a.photos || a.photos.length === 0) return false;
         const aRegion = a.region || '';
         const aCountry = a.country || '';
-        return destParts.some((part: string) =>
+        return destParts.some((part) =>
           aRegion === part || aRegion.includes(part) || part.includes(aRegion) ||
           aCountry.includes(part) || dest.destination.includes(aRegion)
         );
       })
-      .sort((a: any, b: any) => (b.mention_count || 0) - (a.mention_count || 0));
-    const unused = matched.find((a: any) => {
-      const photoId = a.photos[0]?.pexels_id;
+      .sort((a, b) => (b.mention_count || 0) - (a.mention_count || 0));
+    const unused = matched.find((a: AttractionRow) => {
+      const photoId = a.photos?.[0]?.pexels_id;
       return photoId && !usedPhotoIds.has(photoId);
     });
     const chosen = unused || matched[0];
@@ -254,7 +275,6 @@ export default async function HomePage() {
 
   const topDestsRaw = ((topDestsRawAll as Array<{
     destination: string; package_count: number;
-    avg_rating: number | null; total_reviews: number | null; min_price: number | null;
   }>) || [])
     .map(d => {
       const alive = destMap[d.destination];
@@ -262,7 +282,7 @@ export default async function HomePage() {
       return {
         ...d,
         package_count: alive.count,
-        min_price: alive.minPrice !== Infinity ? alive.minPrice : (d.min_price ?? null),
+        min_price: alive.minPrice !== Infinity ? alive.minPrice : null,
       };
     })
     .filter((d): d is NonNullable<typeof d> => d !== null)
@@ -276,7 +296,7 @@ export default async function HomePage() {
     : [{ data: null }];
 
   const attrImageByDest: Record<string, string> = {};
-  (attractions as any[]).forEach((a: any) => {
+  (attractions as AttractionRow[]).forEach((a) => {
     if (!a.photos?.length) return;
     const region = a.region || '';
     const match = topDestNames.find(d => d === region || d.includes(region) || region.includes(d));
@@ -304,6 +324,7 @@ export default async function HomePage() {
   //   3) `getSecret('PEXELS_API_KEY')` (process.env[key] 동적 인덱싱) → `process.env.PEXELS_API_KEY` 정적 참조
   // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
   //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
+  let pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
   if (process.env.PEXELS_API_KEY?.trim()) {
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
@@ -316,7 +337,6 @@ export default async function HomePage() {
         missingDests.map(async dest => {
           try {
             const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
-            // 추천여행지 히어로용 large2x, 나머지는 large
             return { dest, large2x: photo?.src.large2x ?? null, large: photo?.src.large ?? null };
           } catch {
             return { dest, large2x: null, large: null };
@@ -324,7 +344,7 @@ export default async function HomePage() {
         })
       );
 
-      const pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
+      pexelsByDest = {};
       filled.forEach(({ dest, large2x, large }) => {
         if (large2x || large) pexelsByDest[dest] = { large2x, large };
       });
@@ -338,7 +358,7 @@ export default async function HomePage() {
       // 인기여행지 그리드 — large (카드 크기에 충분)
       destsWithImages.forEach(d => {
         if (!d.image && pexelsByDest[d.destination]) {
-          (d as any).image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x;
+          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x;
         }
       });
     }
@@ -347,10 +367,14 @@ export default async function HomePage() {
   // HeroBanner 슬라이드 — Pexels 폴백 이후에 생성해야 빈 슬롯이 채워진 topDests를 사용
   // display_title / hero_tagline 이 있는 대표 패키지를 목적지별로 먼저 찾아 타이틀 품질 향상
   const bestPkgByDest: Record<string, { display_title?: string; hero_tagline?: string; title?: string }> = {};
-  (rankingPkgs as any[]).forEach(p => {
+  (rankingPkgs as RankingPkg[]).forEach(p => {
     if (!p.destination) return;
     if (!bestPkgByDest[p.destination] && (p.display_title || p.hero_tagline || p.title)) {
-      bestPkgByDest[p.destination] = { display_title: p.display_title, hero_tagline: p.hero_tagline, title: p.title };
+      bestPkgByDest[p.destination] = {
+        display_title: p.display_title ?? undefined,
+        hero_tagline: p.hero_tagline ?? undefined,
+        title: p.title ?? undefined,
+      };
     }
   });
 
@@ -373,12 +397,47 @@ export default async function HomePage() {
   const overseas: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, true, new Set());
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
 
+  // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백 (기존 pexelsByDest 우선, 없으면 직접 조회)
+  if (process.env.PEXELS_API_KEY?.trim()) {
+    const noImgRankingDests = [...new Set([
+      ...overseas.filter(i => !i.image && i.destination).map(i => i.destination!),
+      ...domestic.filter(i => !i.image && i.destination).map(i => i.destination!),
+    ])].filter(d => !pexelsByDest[d]);
+
+    if (noImgRankingDests.length > 0) {
+      const rankingFilled = await Promise.all(
+        noImgRankingDests.map(async dest => {
+          try {
+            const photo = await getDeterministicPexelsPhoto(destToEnKeyword(dest));
+            return { dest, url: photo?.src.large ?? photo?.src.large2x ?? null };
+          } catch {
+            return { dest, url: null };
+          }
+        })
+      );
+      for (const { dest, url } of rankingFilled) {
+        if (url) pexelsByDest[dest] = { large: url, large2x: url };
+      }
+    }
+
+    const fillRankingImage = (item: RankingItem): RankingItem => {
+      if (item.image || !item.destination) return item;
+      const fallback = pexelsByDest[item.destination];
+      if (fallback) {
+        return { ...item, image: fallback.large ?? fallback.large2x ?? null };
+      }
+      return item;
+    };
+    for (let i = 0; i < overseas.length; i++) overseas[i] = fillRankingImage(overseas[i]);
+    for (let i = 0; i < domestic.length; i++) domestic[i] = fillRankingImage(domestic[i]);
+  }
+
   /** 메인 랭킹 카드 소셜 프루프(초기 트래픽: 임계값 미만이면 미노출) */
   const RANK_BOOKING_MIN = 3;
   const RANK_INTEREST_MIN = 8;
   const rankingIds = [...new Set([...overseas, ...domestic].map((p) => p.id))];
   const socialByPackage: Record<string, { bookings: number; interest: number }> = {};
-  if (rankingIds.length > 0) {
+  if (isSupabaseConfigured && rankingIds.length > 0) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
     const [bkRes, sgRes] = await Promise.all([
       sb
@@ -479,6 +538,7 @@ export default async function HomePage() {
       />
 
       <GlobalNav />
+      <h1 className="sr-only">여소남 프리미엄 패키지 여행</h1>
 
       {/* ── 히어로 배너 — 감성 훅 먼저 ── */}
       {heroSlides.length > 0 && (
@@ -528,7 +588,7 @@ export default async function HomePage() {
               {topDests.map((d, idx) => (
                 <Link
                   key={d.destination}
-                  href={`/destinations/${encodeURIComponent(d.destination)}`}
+                  href={getDestinationUrl(d.destination)}
                   className="group relative h-52 md:h-64 rounded-[16px] overflow-hidden bg-bg-section shadow-card hover:shadow-card-hover transition-shadow card-touch"
                 >
                   {d.image ? (
@@ -560,7 +620,6 @@ export default async function HomePage() {
                         <span>다양한 출발 일정</span>
                       )}
                       {d.min_price && <span>· {Math.round(d.min_price / 10000)}만원~</span>}
-                      {d.avg_rating && <span>· ⭐ {Number(d.avg_rating).toFixed(1)}</span>}
                     </div>
                   </div>
                 </Link>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -51,7 +52,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
     p.destination === decoded || p.travel_packages?.destination === decoded
   ).slice(0, 20);
 
-  const channelUrl = `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`;
+  const channelUrl = `${BASE_URL}/destinations/${encodeDestinationPathSegment(decoded)}`;
   const channelTitle = `${decoded} 여행 매거진 | 여소남`;
   const channelDesc = `여소남이 엄선한 ${decoded} 여행 가이드와 꿀팁 — 실시간 업데이트`;
   const lastBuild = filtered[0]?.published_at

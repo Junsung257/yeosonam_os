@@ -268,10 +268,10 @@ function buildDesignElementStyle(el: DesignElement): Record<string, string | num
  */
 async function ensureBucket() {
   try {
-    const { data: buckets } = await (supabaseAdmin as any).storage.listBuckets();
-    const exists = buckets?.some((b: any) => b.name === STORAGE_BUCKET);
+    const { data: buckets } = await (supabaseAdmin as unknown as { storage: { listBuckets: () => Promise<{ data: { name: string }[] | null }> } }).storage.listBuckets();
+    const exists = buckets?.some(b => b.name === STORAGE_BUCKET);
     if (!exists) {
-      await (supabaseAdmin as any).storage.createBucket(STORAGE_BUCKET, { public: true });
+      await (supabaseAdmin as unknown as { storage: { createBucket: (name: string, opts: { public: boolean }) => Promise<unknown> } }).storage.createBucket(STORAGE_BUCKET, { public: true });
     }
   } catch {
     // 이미 존재하거나 권한 문제 — 무시
@@ -339,16 +339,16 @@ export async function POST(request: NextRequest) {
         // 결정적 path — 재렌더 시 덮어씀 (upsert)
         const path = `${card_news_id}/slide-${i + 1}.png`;
 
-        const { error: uploadError } = await (supabaseAdmin as any).storage
+        const { error: uploadError } = await (supabaseAdmin as unknown as { storage: { from: (bucket: string) => { upload: (path: string, blob: ArrayBuffer, opts: { contentType: string; upsert: boolean }) => Promise<{ error: unknown }> } } }).storage
           .from(STORAGE_BUCKET)
           .upload(path, blob, { contentType: 'image/png', upsert: true });
 
         if (uploadError) {
-          console.error(`[card-news/render] slide ${i + 1} upload failed:`, uploadError.message);
+          console.error(`[card-news/render] slide ${i + 1} upload failed:`, (uploadError as { message: string }).message);
           continue;
         }
 
-        const { data: { publicUrl } } = (supabaseAdmin as any).storage
+        const { data: { publicUrl } } = (supabaseAdmin as unknown as { storage: { from: (bucket: string) => { getPublicUrl: (path: string) => { data: { publicUrl: string } } } } }).storage
           .from(STORAGE_BUCKET)
           .getPublicUrl(path);
 
@@ -367,7 +367,7 @@ export async function POST(request: NextRequest) {
         .update({
           slide_image_urls: uploadedUrls,
           updated_at: new Date().toISOString(),
-        } as any)
+        } as unknown as Record<string, unknown>)
         .eq('id', card_news_id);
 
       if (updateError) {

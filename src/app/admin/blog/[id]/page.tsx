@@ -196,7 +196,7 @@ export default function BlogEditPage() {
   if (loading) return (
     <div className="space-y-4">
       <div className="h-8 bg-admin-surface-2 rounded animate-pulse w-64" />
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-3">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse" style={{ width: `${85 - i * 8}%` }} />
         ))}
@@ -269,7 +269,7 @@ export default function BlogEditPage() {
       </div>
 
       {/* SEO 설정 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
         <div className="flex items-center justify-between mb-3">
           <p className="text-admin-xs font-semibold text-admin-text-2">SEO 설정</p>
           {grade && seoScore && (
@@ -320,7 +320,7 @@ export default function BlogEditPage() {
 
       {/* 카드뉴스 연결 패널 — 상품 블로그일 때만 노출 */}
       {productId && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <div className="flex items-center justify-between mb-3">
             <div>
               <p className="text-admin-xs font-semibold text-admin-text-2">카드뉴스 연결</p>

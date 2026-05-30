@@ -27,7 +27,7 @@ import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
 import { recordCritiqueResult } from '@/lib/response-learning'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { createAgentTask, transitionAgentTask, createApprovalRequest } from '@/lib/agent/tasking'
-import { requiresApproval } from '@/lib/jarvis/risk-scorer'
+import { requiresApproval, scoreRiskLevel } from '@/lib/jarvis/risk-scorer'
 import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 import { getClientIpFromRequest } from '@/lib/simple-rate-limit'
 import { resolveJarvisAuth } from '@/lib/jarvis/auth-resolver'
@@ -43,6 +43,47 @@ const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9)
 
 function applyCommission(price: number) {
   return Math.round(price * (1 + COMMISSION_RATE / 100))
+}
+
+const FREE_TRAVEL_INTENT_RE =
+  /자유여행|항공\s*\+\s*호텔|호텔\s*만|항공\s*만|일정\s*짜|견적\s*잡|마이리얼|직접\s*골라|패키지\s*말고|커스텀|맞춤\s*일정|비행기\s*만|숙소\s*만/i
+
+function buildFreeTravelHref(userMessage: string, reply: string): string | null {
+  const text = `${userMessage}\n${reply}`
+  const hasIntent =
+    FREE_TRAVEL_INTENT_RE.test(text) ||
+    userMessage.includes('자유') ||
+    userMessage.includes('항공') ||
+    userMessage.includes('호텔') ||
+    userMessage.includes('견적')
+  if (!hasIntent) return null
+  const params = new URLSearchParams()
+  const dest = extractQaDestinationHint(userMessage)
+  const month = userMessage.match(/(\d{1,2})\s*월/)?.[1]
+  if (dest) params.set('dest', dest)
+  if (month) params.set('month', month)
+  const qs = params.toString()
+  return qs ? `/free-travel?${qs}` : '/free-travel'
+}
+
+function extractRecommendedPackageIds(reply: string, packages: any[]): string[] {
+  const ids = new Set<string>()
+  for (const match of reply.matchAll(/\/packages\/([a-zA-Z0-9-]+)/g)) {
+    ids.add(match[1])
+  }
+  for (const p of packages) {
+    const title = typeof p.title === 'string' ? p.title.trim() : ''
+    if (title && reply.includes(title)) ids.add(p.id)
+  }
+  return [...ids].filter((id) => packages.some((p) => p.id === id)).slice(0, 3)
+}
+
+function pickFallbackPackageIds(userMessage: string, packages: any[]): string[] {
+  const destinationHint = extractQaDestinationHint(userMessage)
+  const scoped = destinationHint
+    ? packages.filter((p: any) => String(p.destination ?? '').includes(destinationHint))
+    : packages
+  return scoped.slice(0, 3).map((p: any) => p.id)
 }
 
 export async function POST(req: NextRequest) {
@@ -61,20 +102,14 @@ export async function POST(req: NextRequest) {
   const affiliateId = bodyAffiliateId ?? req.headers.get('x-affiliate-id') ?? undefined
 
   if (!message?.trim()) {
-    return new Response(JSON.stringify({ error: '메시지가 필요합니다.' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
+    return Response.json({ error: '메시지가 필요합니다.', code: 'MISSING_MESSAGE' }, { status: 400 })
   }
 
   const ip = getClientIpFromRequest(req)
   const rlKey = `qa_chat_v2:${ip}:${sessionId ?? 'anon'}`
   const { allowRateLimit } = await import('@/lib/simple-rate-limit')
   if (!allowRateLimit(rlKey, 25, 60_000)) {
-    return new Response(
-      JSON.stringify({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' }),
-      { status: 429, headers: { 'Content-Type': 'application/json' } },
-    )
+    return Response.json({ error: '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.', code: 'RATE_LIMITED' }, { status: 429 })
   }
 
   const correlationId = crypto.randomUUID()
@@ -92,14 +127,11 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Jarvis 인증 (게스트 모드 지원) ──
+  // QA Chat 은 공개 API — 인증 실패 시 V1 폴백을 위해 ctx 만 fallback 생성
   const auth = await resolveJarvisAuth(req, body)
-  if (auth.type === 'unauthenticated') {
-    return new Response(
-      JSON.stringify({ error: '인증되지 않은 요청입니다.' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
-  const ctx = auth.ctx
+  const ctx = auth.type === 'unauthenticated'
+    ? { surface: 'customer' as const, tenantId: undefined, userId: undefined, userRole: 'customer' as const }
+    : auth.ctx
 
   // ── SSE 스트림 ──
   const stream = new ReadableStream<Uint8Array>({
@@ -236,20 +268,22 @@ export async function POST(req: NextRequest) {
             confidence: dispatch.routerConfidence,
             fallback: 'v1',
           })
-          // V1 QA Chat 으로 프록시
-          const v1Res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/api/qa/chat`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
+          // V1 QA Chat 직접 호출 (HTTP 폴백 제거 — 내부 함수 직접 사용)
+          const { createV1QaChatStream } = await import('@/lib/qa-chat-engine')
+          const v1Stream = await createV1QaChatStream({
+            message: body.message,
+            history: body.history ?? [],
+            sessionId: body.sessionId ?? null,
+            referrer: body.referrer ?? null,
+            affiliateRef: body.affiliateRef ?? null,
+            affiliateId: (body.affiliateId as string | undefined) ?? null,
           })
-          const v1Reader = v1Res.body?.getReader()
-          if (v1Reader) {
-            const decoder = new TextDecoder()
-            while (true) {
-              const { value, done } = await v1Reader.read()
-              if (done) break
-              controller.enqueue(encoder.encode(decoder.decode(value)))
-            }
+          const v1Reader = v1Stream.getReader()
+          const decoder = new TextDecoder()
+          while (true) {
+            const { value, done } = await v1Reader.read()
+            if (done) break
+            controller.enqueue(encoder.encode(decoder.decode(value)))
           }
           emitSSE('done', {})
           controller.close()
@@ -313,6 +347,14 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        const explicitRecommendedPackageIds = extractRecommendedPackageIds(
+          fullResponse || finalResult?.response || '',
+          packages,
+        )
+        const recommendedPackageIds = explicitRecommendedPackageIds.length > 0
+          ? explicitRecommendedPackageIds
+          : pickFallbackPackageIds(message, packages)
+
         // ── 8. Response Critic (Self-RAG 검증) ──
         const critique = await critiqueReply({
           userQuestion: message,
@@ -320,7 +362,7 @@ export async function POST(req: NextRequest) {
             ? packages.map((p: any) => `[${p.id}] ${p.title} ${p.destination} ${p.price ? p.price.toLocaleString() + '원' : ''}`).join('\n')
             : '',
           reply: fullResponse || finalResult?.response || '',
-          recommendedPackageIds: [],
+          recommendedPackageIds,
           validPackageIds: packages.map((p: any) => p.id),
         })
         const gated = applyCritique(
@@ -329,7 +371,13 @@ export async function POST(req: NextRequest) {
           critique,
         )
 
-        const finalReply = gated.wasGated ? gated.reply : (fullResponse || finalResult?.response || '')
+        let finalReply = gated.wasGated ? gated.reply : (fullResponse || finalResult?.response || '')
+        const riskEscalate = requiresApproval(scoreRiskLevel({ message }))
+        const finalEscalate = gated.escalate || riskEscalate || !finalReply.trim()
+        if (!finalReply.trim()) {
+          finalReply = '정확한 안내가 필요한 문의입니다. 담당자가 확인 후 이어서 안내드릴게요.'
+          emitSSE('text', { content: finalReply })
+        }
 
         // critique 결과 영속화
         void recordCritiqueResult({
@@ -352,19 +400,32 @@ export async function POST(req: NextRequest) {
         // ── 9. Customer Journey 업데이트 ──
         const journeySnapshot = advanceCustomerJourney(existingJourney, {
           userMessage: message,
-          escalate: gated.escalate,
-          recommendedPackageIds: [],
+          escalate: finalEscalate,
+          recommendedPackageIds,
           critiqueSeverity: critique.severity,
           destinationHint: extractQaDestinationHint(qaHintSource),
         })
 
+        const recommendedPackages = packages
+          .filter((p: any) => recommendedPackageIds.includes(p.id))
+          .map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            destination: p.destination,
+            duration: p.duration,
+            price: p.price,
+            sellingPrice: p.price ? applyCommission(p.price) : null,
+            commissionRate: COMMISSION_RATE,
+          }))
+        const freeTravelHref = buildFreeTravelHref(message, finalReply)
+
         // ── 10. 메타 이벤트 + done ──
         emitSSE('meta', {
-          packages: [],
-          escalate: gated.escalate,
+          packages: recommendedPackages,
+          escalate: finalEscalate,
           critiqueSeverity: critique.severity,
           journey: journeySnapshot,
-          freeTravelHref: null,
+          freeTravelHref,
         })
         emitSSE('done', {
           sessionId: jarvisSession.id,
@@ -381,12 +442,14 @@ export async function POST(req: NextRequest) {
           userMessage: message,
           payload: {
             journey: { stage: journeySnapshot.stage },
-            escalate: gated.escalate,
+            escalate: finalEscalate,
             critiqueSeverity: critique.severity,
             llm_provider: 'deepseek',
             llm_model: 'deepseek-v4-flash',
             trace_id: traceId,
             tools_used: finalResult?.toolsUsed ?? [],
+            recommended_count: recommendedPackages.length,
+            free_travel_cta: Boolean(freeTravelHref),
             v2_engine: true,
           },
         })
@@ -399,7 +462,7 @@ export async function POST(req: NextRequest) {
             .eq('id', sessionId)
             .maybeSingle()
 
-          const prevMessages = (existing?.messages as any[]) || []
+          const prevMessages = (existing?.messages as unknown as Array<{ role: string; content: string; timestamp: string }>) || []
           const updatedMessages: any[] = [
             ...prevMessages,
             { role: 'user', content: message, timestamp: new Date().toISOString() },
@@ -412,6 +475,15 @@ export async function POST(req: NextRequest) {
               toolsUsed: finalResult?.toolsUsed ?? [],
             },
           ]
+          if (freeTravelHref) {
+            updatedMessages.push({
+              role: 'assistant',
+              content: '항공·호텔을 직접 조합해 보고 싶다면 자유여행 AI 견적 페이지에서 이어가실 수 있어요.',
+              type: 'cta_links',
+              ctaLinks: [{ label: '내 맞춤 자유여행 일정표 짜러가기', href: freeTravelHref }],
+              timestamp: new Date().toISOString(),
+            })
+          }
 
           if (existing) {
             await supabaseAdmin
@@ -451,29 +523,35 @@ export async function POST(req: NextRequest) {
               tenantId: factTenantId,
               recentMessages: recentForExtraction,
               sourceMessageIdx: updatedMessages.length - 1,
-            }).catch(() => {})
+            }).catch((e: unknown) => {
+              console.warn('[qa-chat-v2] 사실 추출 실패 (무시):', e instanceof Error ? e.message : e);
+            })
           }
         }
 
         // 태스크 완료
         if (agentTaskId) {
-          await transitionAgentTask(agentTaskId, 'running', 'done', {
-            completed_at: new Date().toISOString(),
-          }).catch(() => {})
+          await transitionAgentTask(agentTaskId, 'running', 'done').catch((e: unknown) => {
+            console.warn('[qa-chat-v2] 태스크 완료 실패 (무시):', e instanceof Error ? e.message : e);
+          })
         }
         if (traceSpan) {
           await endTraceSpan({
             id: traceSpan.id,
             startedAt: traceSpan.started_at,
             metadata: { traceId, totalLatencyMs: Date.now() - started },
-          }).catch(() => {})
+          }).catch((e: unknown) => {
+            console.warn('[qa-chat-v2] traceSpan 종료 실패 (무시):', e instanceof Error ? e.message : e);
+          })
         }
       } catch (error) {
         console.error('[qa-chat-v2] 오류:', error)
         if (agentTaskId) {
           await transitionAgentTask(agentTaskId, 'running', 'failed', {
             last_error: error instanceof Error ? error.message : 'unknown',
-          }).catch(() => {})
+          }).catch((e: unknown) => {
+            console.warn('[qa-chat-v2] 태스크 실패 기록 실패 (무시):', e instanceof Error ? e.message : e);
+          })
         }
         try {
           emitSSE('error', { message: error instanceof Error ? error.message : 'AI 처리 실패' })

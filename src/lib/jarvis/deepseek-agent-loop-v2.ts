@@ -60,7 +60,7 @@ async function logIncident(
 export interface DeepSeekAgentV2Config {
   agentType: AgentType;
   systemPrompt: string;
-  tools: any[]; // Anthropic/OpenAI style tools
+  tools: unknown[]; // Anthropic/OpenAI style tools
   executeTool: (name: string, args: Record<string, any>, ctx: JarvisContext) => Promise<any>;
   contextExtractor?: (toolName: string, result: any) => Record<string, any>;
   model?: string;
@@ -147,12 +147,12 @@ export async function* runDeepSeekAgentLoopV2(
   let pendingActionId: string | null = null;
 
   // DeepSeek tools format (Anthropic tools 와 유사하나 OpenAI 스펙 준수 필요)
-  const openaiTools: OpenAI.Chat.ChatCompletionTool[] = config.tools.map(t => ({
+  const openaiTools: OpenAI.Chat.ChatCompletionTool[] = config.tools.map((t: unknown) => ({
     type: 'function',
     function: {
-      name: t.name,
-      description: t.description,
-      parameters: t.input_schema || t.parameters, // 둘 다 지원
+      name: (t as { name: string }).name,
+      description: (t as { description: string }).description,
+      parameters: ((t as { input_schema?: unknown; parameters?: unknown }).input_schema || (t as { input_schema?: unknown; parameters?: unknown }).parameters) as OpenAI.Chat.ChatCompletionTool['function']['parameters'], // 둘 다 지원
     }
   }));
 
@@ -189,8 +189,8 @@ export async function* runDeepSeekAgentLoopV2(
           }
         }
         // Usage tracking (OpenAI SDK 는 마지막 chunk 에 usage 포함 가능)
-        if ((chunk as any).usage) {
-          const u = (chunk as any).usage;
+        if (chunk.usage) {
+          const u = chunk.usage as { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number };
           totalUsage.promptTokenCount += u.prompt_tokens || 0;
           totalUsage.candidatesTokenCount += u.completion_tokens || 0;
           totalUsage.cachedContentTokenCount += u.prompt_cache_hit_tokens || 0; // DeepSeek 캐시 히트 추적

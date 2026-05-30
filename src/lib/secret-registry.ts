@@ -32,6 +32,9 @@ export type SecretKey =
   | 'KAKAO_TEMPLATE_REVIEW_REQUEST'
   | 'KAKAO_TEMPLATE_MAGIC_LINK'
   | 'META_ACCESS_TOKEN'
+  | 'META_CAPI_ACCESS_TOKEN'
+  | 'META_GRAPH_API_VERSION'
+  | 'NEXT_PUBLIC_META_PIXEL_ID'
   | 'META_PIXEL_ID'
   | 'META_IG_USER_ID'
   | 'META_AD_ACCOUNT_ID'
@@ -68,6 +71,11 @@ export type SecretKey =
   | 'KAKAO_CHANNEL_SECRET'
   | 'GOOGLE_ADS_CLIENT_ID'
   | 'GOOGLE_ADS_CLIENT_SECRET'
+  | 'GOOGLE_ADS_DEVELOPER_TOKEN'
+  | 'GOOGLE_ADS_CUSTOMER_ID'
+  | 'NAVER_ADS_API_KEY'
+  | 'NAVER_ADS_SECRET_KEY'
+  | 'NAVER_ADS_CUSTOMER_ID'
   | 'VAPID_PRIVATE_KEY'
   | 'NEXT_PUBLIC_VAPID_PUBLIC_KEY'
   | 'REVALIDATE_SECRET'
@@ -87,10 +95,18 @@ export type SecretKey =
   | 'MAGIC_LINK_SECRET'
   | 'MAGIC_SESSION_SECRET'
   | 'INDEXNOW_KEY'
+  | 'AMADEUS_CLIENT_ID'
+  | 'AMADEUS_CLIENT_SECRET'
+  | 'AGODA_AFFILIATE_API_KEY'
+  | 'SKYSCANNER_API_KEY'
   | 'ENCRYPTION_SECRET_KEY'
   | 'NEXT_PUBLIC_APP_URL'
   | 'NEXT_PUBLIC_BASE_URL'
+  | 'NEXT_PUBLIC_GA4_ID'
   | 'NEXT_PUBLIC_NAVER_ANALYTICS_ID'
+  | 'NEXT_PUBLIC_KAKAO_PIXEL_ID'
+  | 'NEXT_PUBLIC_CLARITY_PROJECT_ID'
+  | 'NEXT_PUBLIC_CONSULT_PHONE'
   | 'NEXT_PUBLIC_NAVER_ADS_API_KEY'
   | 'NEXT_PUBLIC_NAVER_ADS_SECRET_KEY'
   | 'NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'
@@ -99,11 +115,13 @@ export type SecretKey =
   | 'NEXT_PUBLIC_SITE_URL'
   | 'NEXT_PUBLIC_DEFAULT_TENANT_ID'
   | 'INSTAGRAM_BUSINESS_ACCOUNT_ID'
+  | 'X_BEARER_TOKEN'
   | 'TWITTER_BEARER_TOKEN'
   | 'NAVER_CAFE_ID'
   | 'META_ADS_DRY_RUN'
   | 'META_ADS_TEST_MODE'
   | 'AFFILIATE_IP_SALT'
+  | 'AFFILIATE_TOKEN_SECRET'
   | 'AFFILIATE_JWT_SECRET'
   | 'AFFILIATE_INVITE_CODES'
   | 'BAND_RSS_URL'
@@ -133,5 +151,17 @@ export function getAiProviderSecret(provider: 'deepseek' | 'claude' | 'gemini'):
   if (provider === 'deepseek') return getSecret('DEEPSEEK_API_KEY');
   if (provider === 'claude') return getSecret('ANTHROPIC_API_KEY');
   return getSecret('GEMINI_API_KEY') || getSecret('GOOGLE_AI_API_KEY');
+}
+
+/**
+ * 복원력 있는 LLM 설정 확인 — 하나 이상의 LLM 공급자 키가 설정되어 있으면 true.
+ * DeepSeek + Gemini 중 하나라도 있으면 통과.
+ */
+export function hasResilientLlmConfig(): boolean {
+  return Boolean(
+    getSecret('DEEPSEEK_API_KEY') ||
+      getSecret('GEMINI_API_KEY') ||
+      getSecret('GOOGLE_AI_API_KEY'),
+  );
 }
 

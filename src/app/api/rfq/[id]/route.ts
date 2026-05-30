@@ -89,7 +89,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         try {
           const sb = (await import('@/lib/supabase')).getSupabaseAdmin();
           if (sb) {
-            const selectedProposalId = (rfq as any).selected_proposal_id;
+            const selectedProposalId = (rfq as unknown as Record<string, unknown>).selected_proposal_id;
             let proposal: Record<string, unknown> | null = null;
             let tenantName: string | null = null;
 
@@ -99,7 +99,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
                 .select('title, price, tenant_id')
                 .eq('id', selectedProposalId)
                 .single();
-              proposal = prop as Record<string, unknown> | null;
+              proposal = prop as unknown as Record<string, unknown> | null;
 
               // tenant_id로 tenants 테이블 조회
               if (proposal?.tenant_id) {
@@ -108,24 +108,24 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
                   .select('name')
                   .eq('id', proposal.tenant_id)
                   .single();
-                tenantName = (tenant as any)?.name ?? null;
+                tenantName = (tenant as unknown as Record<string, unknown>)?.name as string ?? null;
               }
             }
 
             const { error: insertError } = await sb
               .from('user_travel_histories')
               .upsert({
-                customer_id: (rfq as any).customer_id,
+                customer_id: (rfq as unknown as Record<string, unknown>).customer_id,
                 rfq_id: id,
-                destination: (rfq as any).destination ?? '미등록',
+                destination: (rfq as unknown as Record<string, unknown>).destination ?? '미등록',
                 destination_country: null,
-                departure_date: (rfq as any).departure_date_from ?? null,
-                duration_nights: (rfq as any).duration_nights ?? null,
-                trip_type: (rfq as any).custom_requirements?.group_type ?? null,
+                departure_date: (rfq as unknown as Record<string, unknown>).departure_date_from ?? null,
+                duration_nights: (rfq as unknown as Record<string, unknown>).duration_nights ?? null,
+                trip_type: ((rfq as unknown as Record<string, unknown>).custom_requirements as { group_type?: string } | undefined)?.group_type ?? null,
                 tenant_name: tenantName,
                 proposal_title: proposal?.title ?? null,
                 total_price: proposal?.price ?? null,
-                total_pax: ((rfq as any).adult_count ?? 0) + ((rfq as any).child_count ?? 0),
+                total_pax: (((rfq as unknown as Record<string, unknown>).adult_count as number) ?? 0) + (((rfq as unknown as Record<string, unknown>).child_count as number) ?? 0),
                 review_submitted: false,
               } as never, { onConflict: 'customer_id,rfq_id', ignoreDuplicates: 'true' } as never);
             if (insertError) {

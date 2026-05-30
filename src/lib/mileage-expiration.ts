@@ -77,11 +77,48 @@ export function calcExpiresAt(from: Date, validityMonths?: number): Date {
 export async function getExpiringMileage(daysBefore: number = 30): Promise<ExpiringMileage[]> {
   if (!isSupabaseConfigured) return [];
 
-  const { data } = await supabaseAdmin
-    .from('customer_expiring_mileage')
-    .select('*') as unknown as { data: ExpiringMileage[] | null };
+  const now = new Date();
+  const targetEnd = new Date(now.getTime() + daysBefore * 86400000);
+  const targetStart = new Date(now.getTime() - 86400000); // 이미 지난 건 제외
 
-  return data ?? [];
+  // mileage_transactions에서 expires_at이 [오늘, 오늘+daysBefore] 범위인 미소멸 EARNED 건 조회
+  const { data } = await supabaseAdmin
+    .from('mileage_transactions')
+    .select('user_id, amount, expires_at')
+    .eq('type', 'EARNED')
+    .is('expired_at', null)
+    .not('expires_at', 'is', null)
+    .gte('expires_at', targetStart.toISOString().split('T')[0])
+    .lt('expires_at', targetEnd.toISOString().split('T')[0]);
+
+  if (!data || data.length === 0) return [];
+
+  // 사용자별 집계
+  const grouped = new Map<string, { total: number; earliest: string; count: number }>();
+  for (const tx of data as Array<{ user_id: string; amount: number; expires_at: string }>) {
+    const g = grouped.get(tx.user_id) ?? { total: 0, earliest: tx.expires_at, count: 0 };
+    g.total += tx.amount;
+    g.count++;
+    if (tx.expires_at < g.earliest) g.earliest = tx.expires_at;
+    grouped.set(tx.user_id, g);
+  }
+
+  // 고객명 조회 (한 번에)
+  const userIds = Array.from(grouped.keys());
+  const { data: customers } = await supabaseAdmin
+    .from('customers')
+    .select('id, name, phone')
+    .in('id', userIds);
+  const customerMap = new Map<string, { name: string; phone: string | null }>((customers ?? []).map((c: any) => [c.id, { name: c.name || '', phone: c.phone || null }]));
+
+  return Array.from(grouped.entries()).map(([userId, g]) => ({
+    user_id: userId,
+    customer_name: customerMap.get(userId)?.name ?? '',
+    phone: customerMap.get(userId)?.phone ?? null,
+    expiring_amount: g.total,
+    earliest_expire_at: g.earliest,
+    transaction_count: g.count,
+  })) as ExpiringMileage[];
 }
 
 // ── 자동 소멸 실행 ───────────────────────────────────────────

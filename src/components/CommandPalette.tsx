@@ -79,7 +79,12 @@ export default function CommandPalette({ bookings, onSelect }: CommandPalettePro
   return (
     <div className="fixed inset-0 z-[200] flex items-start justify-center pt-[15vh]">
       {/* Overlay */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
+      <button
+        type="button"
+        aria-label="Close command palette"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={() => setOpen(false)}
+      />
 
       {/* Panel */}
       <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl ring-1 ring-gray-900/10 overflow-hidden">

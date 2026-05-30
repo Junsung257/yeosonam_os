@@ -7,7 +7,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase';
 import { searchPexelsPhotos } from '@/lib/pexels';
 import { generateAdVariants } from '@/lib/ai';
@@ -15,6 +14,7 @@ import { checkAiCopyConsistency } from '@/lib/ai-consistency-checker';
 import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
+import { rawTextHash, safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const PRODUCT_FAQ_FALLBACK = `
 다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
@@ -266,13 +266,15 @@ async function handleApprove(body: {
         .select('raw_extracted_text')
         .eq('internal_code', product_id)
         .maybeSingle();
-      const rawText = (prod as any)?.raw_extracted_text ?? '';
+      const rawText = prod?.raw_extracted_text ?? '';
       if (rawText) {
-        const fingerprint = createHash('sha256').update(rawText.slice(0, 500)).digest('hex');
-        flywheelJson.text_fingerprint     = fingerprint;
-        flywheelJson.supplier_inferred    = 'ETC';
-        flywheelJson.supplier_name        = resolved_supplier_name;
-        flywheelJson.land_operator_id     = resolved_supplier_id;
+        const fingerprint = rawTextHash(rawText);
+        if (fingerprint) {
+          flywheelJson.text_fingerprint     = fingerprint;
+          flywheelJson.supplier_inferred    = 'ETC';
+          flywheelJson.supplier_name        = resolved_supplier_name;
+          flywheelJson.land_operator_id     = resolved_supplier_id;
+        }
       }
     } catch (e) {
       console.warn('[handleApprove] fingerprint 계산 실패:', e);
@@ -344,8 +346,10 @@ async function handleReject(body: { product_id: string; reason?: string }) {
         ? ((qLog as { leak_incidents: Array<{ patternId?: string; field?: string; matched?: string }> }).leak_incidents)
         : [];
 
-      const rawExcerpt = ((prod as { raw_extracted_text?: string }).raw_extracted_text
-                       ?? (pkg as { raw_text?: string } | null)?.raw_text ?? '').slice(0, 500);
+      const rawExcerpt = safeRawTextExcerpt(
+        (prod as { raw_extracted_text?: string }).raw_extracted_text
+        ?? (pkg as { raw_text?: string } | null)?.raw_text,
+      );
 
       const rows: Array<Record<string, unknown>> = [];
       rows.push({
@@ -420,7 +424,7 @@ async function handleFaq(body: { product_id: string }) {
 
   if (!product) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
 
-  const rawText = ((product as any).raw_extracted_text ?? '') as string;
+  const rawText = product.raw_extracted_text ?? '';
   const snippet = rawText.slice(0, 8000);
 
   const apiKey = getSecret('GOOGLE_GEMINI_API_KEY') || getSecret('GOOGLE_API_KEY') || '';
@@ -441,8 +445,8 @@ async function handleFaq(body: { product_id: string }) {
     const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
 
     const prompt = (await getPrompt('product-faq-generation', PRODUCT_FAQ_FALLBACK))
-      .replace('{{display_name}}', (product as any).display_name ?? '')
-      .replace('{{destination}}', (product as any).destination ?? '')
+      .replace('{{display_name}}', product.display_name ?? '')
+      .replace('{{destination}}', product.destination ?? '')
       .replace('{{snippet}}', snippet);
 
     const result = await model.generateContent(prompt);
@@ -470,8 +474,8 @@ async function handleImages(body: { product_id: string }) {
 
   if (!product) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
 
-  const destination = (product as any).destination ?? '';
-  const tags: string[] = (product as any).theme_tags ?? [];
+  const destination = product.destination ?? '';
+  const tags: string[] = (product.theme_tags ?? []) as string[];
   const keyword = `${destination} ${tags.slice(0, 2).join(' ')} travel`.trim();
 
   try {
@@ -500,20 +504,18 @@ async function handleMarketing(body: {
 
   if (!product) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
 
-  const p = product as any;
-
   if (type === 'itinerary') {
     // 일정표는 데이터 JSON 반환 (프론트에서 렌더)
     return NextResponse.json({
       type: 'itinerary',
       data: {
         product_id,
-        destination: p.destination,
-        duration_days: p.duration_days,
-        net_price: p.net_price,
-        highlights: p.highlights ?? [],
-        selling_points: p.selling_points ?? null,
-        product_prices: p.product_prices ?? [],
+        destination: product.destination,
+        duration_days: product.duration_days,
+        net_price: product.net_price,
+        highlights: product.highlights ?? [],
+        selling_points: product.selling_points ?? null,
+        product_prices: product.product_prices ?? [],
       },
     });
   }
@@ -523,11 +525,11 @@ async function handleMarketing(body: {
   try {
     const variants = await generateAdVariants(
       {
-        destination: p.destination ?? '해외여행',
-        price: p.net_price ?? 0,
-        duration: p.duration_days ?? 3,
-        product_highlights: p.highlights ?? [],
-        product_summary: (p.raw_extracted_text ?? '').slice(0, 1000),
+        destination: product.destination ?? '해외여행',
+        price: product.net_price ?? 0,
+        duration: product.duration_days ?? 3,
+        product_highlights: product.highlights ?? [],
+        product_summary: (product.raw_extracted_text ?? '').slice(0, 1000),
       },
       platform,
       'gemini',

@@ -56,7 +56,7 @@ export async function autoPublishWinners(tenantId: string): Promise<AutoPublishR
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const rawGroups = (groups ?? []) as any[];
+  const rawGroups = (groups ?? []) as Record<string, unknown>[];
   const uniqueGroups: string[] = [
     ...new Set<string>(rawGroups.map((r) => (r.variant_group_id as string | null) ?? '')),
   ].filter((id) => id.length > 0);

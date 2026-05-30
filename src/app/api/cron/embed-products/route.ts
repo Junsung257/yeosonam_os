@@ -19,6 +19,7 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { embedBatch } from '@/lib/embeddings';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -52,7 +53,7 @@ function buildEmbeddingText(p: any): string {
   if (Array.isArray(p.accommodations) && p.accommodations.length > 0) {
     parts.push(`숙소: ${p.accommodations.slice(0, 10).join(', ')}`);
   }
-  if (p.raw_text) parts.push(String(p.raw_text).slice(0, 2500));
+  if (p.raw_text) parts.push(safeRawTextExcerpt(String(p.raw_text), 2500) ?? '');
   return parts.join('\n');
 }
 
@@ -93,12 +94,12 @@ export async function GET(request: NextRequest) {
     }
     if (!packages || packages.length === 0) break;
 
-    const texts = (packages as any[]).map(buildEmbeddingText);
+    const texts = (packages as unknown as Array<Record<string, unknown>>).map(buildEmbeddingText);
     const embeddings = await embedBatch(texts, apiKey, 'RETRIEVAL_DOCUMENT');
 
     for (let i = 0; i < packages.length; i++) {
       const emb = embeddings[i];
-      const pkg = packages[i] as any;
+      const pkg = packages[i] as Record<string, unknown>;
       if (!emb) {
         totalFailed++;
         continue;

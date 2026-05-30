@@ -70,13 +70,11 @@ function generateProductText(pkg: any): string {
   const days = pkg.itinerary_data?.days || [];
   if (days.length) {
     lines.push('[일정 안내]');
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    for (const day of days as any[]) {
+    for (const day of days) {
       const regions = (day.regions || []).join(' → ');
       lines.push(`${day.day}일차: ${regions}`);
       const schedule = day.schedule || [];
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      for (const s of schedule as any[]) {
+      for (const s of schedule) {
         if (s.type === 'optional') continue; // 옵션은 별도 섹션
         const time = s.time && s.time !== '전일' ? `${s.time} ` : '';
         lines.push(`  ${time}${s.activity}`);
@@ -172,7 +170,7 @@ interface ProductErp {
   margin_rate: number;     // 마진율 소수점 (0.09 = 9%)
 }
 
-interface Package {
+export interface Package {
   id: string;
   title: string;
   destination?: string;
@@ -755,7 +753,7 @@ const PackageRow = React.memo(function PackageRow({
               title="플랫폼별 AI 프롬프트 복사"
             >복사</button>
             {copyDropdownId === pkg.id && (
-              <div className="absolute right-0 top-full mt-1 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] z-50 py-1 min-w-[120px]">
+              <div className="absolute right-0 top-full mt-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs z-50 py-1 min-w-[120px]">
                 {PLATFORMS.map(p => (
                   <button key={p.key} type="button"
                     className="w-full text-left px-3 py-2 text-[11px] text-admin-text-2 hover:bg-admin-bg flex items-center gap-2"

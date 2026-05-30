@@ -141,6 +141,7 @@ export default function PaymentActions({
           <button
             key={c.bookingId}
             type="button"
+            aria-label={`Confirm payment match for ${c.customer_name ?? c.booking_no ?? 'booking'}`}
             onClick={() => confirmMatch(c.bookingId)}
             disabled={busy !== null}
             className="w-full text-left bg-admin-bg border border-admin-border-mid rounded-admin-md px-3 py-2.5 active:bg-admin-surface-2 disabled:opacity-50 transition"

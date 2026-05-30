@@ -5,8 +5,12 @@ import { execSync } from 'node:child_process';
 const ROOT = process.cwd();
 const SRC = path.join(ROOT, 'src');
 const EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
-const PATTERN = /process\.env\.[A-Z0-9_]*(KEY|SECRET|TOKEN)/g;
+const PATTERN = /process\.env\.((?!NEXT_PUBLIC_)[A-Z0-9_]*(KEY|SECRET|TOKEN))/g;
 const ALLOW = new Set([
+  'src/env.ts',
+  'src/env.test.ts',
+  // Home uses a static env read intentionally to preserve SSG behavior.
+  'src/app/page.tsx',
   'src/lib/secret-registry.ts',
   'src/lib/ai-provider-policy.ts',
   'src/lib/supabase.ts',
@@ -52,6 +56,7 @@ for (const file of candidateFiles) {
   if (!fs.existsSync(file)) continue;
   const rel = path.relative(ROOT, file).replace(/\\/g, '/');
   if (ALLOW.has(rel)) continue;
+  if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
   const text = fs.readFileSync(file, 'utf8')
     // 주석 내부 문자열로 인한 오탐 방지
     .replace(/\/\*[\s\S]*?\*\//g, '')

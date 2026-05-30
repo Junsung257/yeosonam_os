@@ -64,12 +64,12 @@ async function paginatedFetch(table, select, filter) {
   };
 
   // ── Packages 감사 ─────────────────────────────────────────────────
-  const pkgs = await paginatedFetch('travel_packages', 'id, title, duration, status, departure_days, optional_tours, itinerary_data');
+  const pkgs = await paginatedFetch('travel_packages', 'id, title, duration, status, departure_days, optional_tours, itinerary_data, special_notes');
   report.packages.total = pkgs.length;
 
   let jsonArrayDeparture = 0;
   let optTourRegionMissing = 0;
-  let itineraryObjectFormat = 0;
+  let itineraryMalformed = 0;
   let statusInvalid = 0;
   let internalKeywordLeaks = 0;
 
@@ -98,11 +98,19 @@ async function paginatedFetch(table, select, filter) {
       }
     }
 
-    // 3. itinerary_data 포맷 (배열 권장, 객체 { days: [...] }는 레거시)
+    // 3. itinerary_data 포맷
+    // 현재 A4/모바일 SSOT는 { days, meta, highlights, flight_segments } 객체와 순수 days[]를 모두 정상 입력으로 지원한다.
+    // 실제 drift는 중첩 wrapper 또는 days가 배열이 아닌 malformed 형태만 잡는다.
     if (pkg.itinerary_data && !Array.isArray(pkg.itinerary_data) && typeof pkg.itinerary_data === 'object') {
-      if ('days' in pkg.itinerary_data) {
-        issues.push({ field: 'itinerary_data', issue: 'OBJECT_WRAPPER_FORMAT' });
-        itineraryObjectFormat++;
+      if ('itinerary_data' in pkg.itinerary_data) {
+        issues.push({ field: 'itinerary_data', issue: 'NESTED_WRAPPER_FORMAT' });
+        itineraryMalformed++;
+      } else if ('days' in pkg.itinerary_data && !Array.isArray(pkg.itinerary_data.days)) {
+        issues.push({ field: 'itinerary_data', issue: 'MALFORMED_DAYS' });
+        itineraryMalformed++;
+      } else if (!('days' in pkg.itinerary_data)) {
+        issues.push({ field: 'itinerary_data', issue: 'MISSING_DAYS' });
+        itineraryMalformed++;
       }
     }
 
@@ -168,7 +176,7 @@ async function paginatedFetch(table, select, filter) {
     packages_issues: {
       departure_days_json_array: jsonArrayDeparture,
       optional_tours_ambiguous_no_region: optTourRegionMissing,
-      itinerary_data_object_wrapper: itineraryObjectFormat,
+      itinerary_data_malformed: itineraryMalformed,
       status_invalid: statusInvalid,
       internal_keyword_leaks: internalKeywordLeaks,
     },

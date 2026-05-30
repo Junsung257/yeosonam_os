@@ -1,10 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
 import { fetchGscSearchAnalytics } from '@/lib/keyword-research';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-);
+import { supabaseAdmin as supabase } from '@/lib/supabase';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 const SLACK_WEBHOOK_URL = process.env.SLACK_CWV_WEBHOOK_URL || process.env.SLACK_ALERTS_WEBHOOK_URL;
 
@@ -168,7 +164,7 @@ export async function sendSeoAlerts(alerts: SeoAlert[]): Promise<void> {
           `${alert.title}`,
           `· ${alert.message}`,
           `· 심각도: ${alert.severity}`,
-          `· 시간: ${new Date().toLocaleString('ko-KR')}`,
+          `· 시간: ${fmtDateTime(new Date().toISOString())}`,
         ].join('\n'),
       }),
     });

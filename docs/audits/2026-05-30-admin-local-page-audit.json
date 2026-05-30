@@ -1,0 +1,368 @@
+{
+  "generatedAt": "2026-05-29T16:24:54.904Z",
+  "base": "http://localhost:3000",
+  "count": 20,
+  "results": [
+    {
+      "route": "/admin",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 14454,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/bookings",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/bookings",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 9958,
+      "h1": "예약 관리",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        },
+        {
+          "type": "error",
+          "text": "In HTML, whitespace text nodes cannot be a child of <%s>. Make sure you don't have any extra whitespace between tags on each line of your source code.\nThis will cause a hydration error.%s tr \n\n  ...\n    <LoadingBoundary loading={[...]}>\n      <Suspense fallback={<Fragment>}>\n        <HTTPAccessFallbackBoundary notFound={undefined} forbidden={undefined} unauthorized={undefined}>\n          <Redirect"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 401,
+          "url": "http://localhost:3000/api/admin/session"
+        }
+      ],
+      "error": null
+    },
+    {
+      "route": "/admin/packages",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/packages",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 10109,
+      "h1": "상품 관리",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [
+        {
+          "status": 401,
+          "url": "http://localhost:3000/api/admin/session"
+        }
+      ],
+      "error": null
+    },
+    {
+      "route": "/admin/payments",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/payments",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 6758,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "warning",
+          "text": "GoTrueClient@sb-ixaxnvbmhzjvupissmly-auth-token:1 (2.106.2) 2026-05-29T16:22:55.163Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key."
+        },
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/ledger",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/ledger",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 7760,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/customers",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/customers",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 7774,
+      "h1": "고객 관리",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/leads",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/leads",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 7754,
+      "h1": "예약 문의",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/marketing",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/marketing",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 8699,
+      "h1": "통합 광고 대시보드",
+      "consoleIssues": [],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/marketing/system-health",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/marketing/system-health",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 6451,
+      "h1": "통합 광고 대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/content-analytics",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/content-analytics",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 6882,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/affiliate-analytics",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/affiliate-analytics",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 8804,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/land-settlements",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/land-settlements",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 7545,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/jarvis",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/jarvis",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 5116,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/scoring",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/scoring",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 6855,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/attractions",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/attractions",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 7044,
+      "h1": "여행지/관광지",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/blog",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/blog",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 9226,
+      "h1": "블로그",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/registration-monitor",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/registration-monitor",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 7617,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/free-travel",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/free-travel",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 5906,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/web-vitals",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/web-vitals",
+      "title": "Web Vitals 모니터링 | 여소남",
+      "ms": 6339,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    },
+    {
+      "route": "/admin/settings/integrations",
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin/settings/integrations",
+      "title": "여소남 | 믿고 떠나는 프리미엄 패키지 여행",
+      "ms": 5419,
+      "h1": "대시보드",
+      "consoleIssues": [
+        {
+          "type": "error",
+          "text": "Loading the script 'https://va.vercel-scripts.com/v1/speed-insights/script.debug.js' violates the following Content Security Policy directive: \"script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io htt"
+        }
+      ],
+      "pageErrors": [],
+      "responses": [],
+      "error": null
+    }
+  ]
+}

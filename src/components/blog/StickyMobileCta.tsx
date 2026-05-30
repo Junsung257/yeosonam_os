@@ -45,7 +45,7 @@ export default function StickyMobileCta({
         visible ? 'translate-y-0' : 'translate-y-full'
       }`}
       role="complementary"
-      aria-label="예약 바로가기"
+      aria-label="예약 문의 바로가기"
     >
       <div className="bg-white/95 backdrop-blur border-t border-slate-200 shadow-2xl">
         <div className="flex items-center gap-2 px-3 py-2.5 max-w-screen-sm mx-auto">
@@ -67,7 +67,7 @@ export default function StickyMobileCta({
             href={productUrl}
             className="flex-1 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-bold rounded-lg text-center"
           >
-            → 예약하기
+            예약 문의
           </a>
         </div>
       </div>

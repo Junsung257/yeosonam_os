@@ -1,4 +1,6 @@
-# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-03 기준)
+# 여소남 OS — 전체 기능 및 DB 스키마 현황 (2026-05-28 기준)
+
+> **최근 작업 (2026-05-28):** as any 전수조사/제거, 타입 안전성 대폭 개선, 마일리지 시스템 전면 구현 (적립/사용/소멸/개인화/알림/분석), 게이미피케이션(출석/도전과제) 추가
 
 > AI·코파일럿 진입 요약: 루트 **`AGENTS.md`** → (심층) `.claude/CLAUDE.md`.
 
@@ -119,15 +121,20 @@
 | 10 | **mileage_history** | `id`, `customer_id`(FK), `booking_id`(FK), `delta`(±), `reason`, `balance_after` | 마일리지 적립/사용 원장 |
 | 11 | **mileage_transactions** | `id`, `user_id`(FK), `booking_id`(FK), `amount`, `type`(EARNED/USED/CLAWBACK), `margin_impact`, `mileage_rate`(5%), `ref_transaction_id`(자기참조) | 수익 기반 마일리지 회계 |
 | 12 | **customer_mileage_balances** | `user_id`, `balance`, `total_earned`, `total_used`, `total_clawback` | (View) 마일리지 잔액 |
+| 13 | **mileage_expiration_policies** | `id`, `validity_months`(24), `notify_before_days`({30,7}), `auto_expire`, `extend_on_activity` | 마일리지 소멸 정책 |
+| 14 | **mileage_challenges** | `id`, `title`, `condition_type`(booking_count/new_destination/review_photo/referral), `reward_mileage`, `starts_at/ends_at` | 게이미피케이션 챌린지 |
+| 15 | **challenge_participants** | `id`, `challenge_id`(FK), `customer_id`(FK), `progress`, `completed_at`, `reward_claimed` | 챌린지 참여 로그 |
+| 16 | **customer_badges** | `id`, `customer_id`(FK), `badge_type`, `badge_data`(JSONB), `earned_at` | 고객 뱃지/칭호 |
+| 17 | **customer_checkins** | `id`, `customer_id`(FK), `streak`, `last_checkin`, `total_checkins` | 출석 체크인 |
 
 ### 제휴 / 인플루언서
 
 | # | 테이블 | 주요 컬럼 | 설명 |
 |---|--------|-----------|------|
-| 13 | **affiliates** | `id`, `name`, `phone`, `email`, `referral_code`(UNIQUE), `grade`(1-5), `bonus_rate`, `commission_rate`, `payout_type`(PERSONAL/BUSINESS), `is_active`, `pin`, `logo_url` | 제휴 파트너 |
-| 14 | **affiliate_applications** | `id`, `name`, `phone`, `channel_type/url`, `follower_count`, `business_type`, `status`(PENDING/APPROVED/REJECTED) | 파트너 신청 |
-| 15 | **influencer_links** | `id`, `affiliate_id`(FK), `referral_code`, `package_id`, `short_url`, `click_count`, `conversion_count` | 추천 링크 성과 |
-| 16 | **settlements** | `id`, `affiliate_id`(FK), `settlement_period`, `total_amount`, `carryover_balance`, `tax_deduction`(3.3%), `final_payout`, `status`(PENDING→COMPLETED), `pdf_url` | 월간 정산 |
+| 18 | **affiliates** | ... | 제휴 파트너 |
+| 19 | **affiliate_applications** | ... | 파트너 신청 |
+| 20 | **influencer_links** | ... | 추천 링크 성과 |
+| 21 | **settlements** | ... | 월간 정산 |
 
 ### 재무 / 결제
 
@@ -422,22 +429,11 @@ CREATE TABLE IF NOT EXISTS rfq_messages (
 | **파일 파싱** | PDF/HWP/JPG 텍스트 추출 |
 | **광고** | Meta Marketing API / Naver / Google Ads 연동 |
 | **배포** | Vercel |
+| **게이미피케이션** | 마일스톤 뱃지 출석체크 스트릭 도전과제 (src/lib/gamification-service.ts) |
+| **Cursor Rules** | .cursor/rules/ 8개 .mdc (alwaysApply 1만 path-scoped 4 agent-requested 1 신규 3) |
 | **결제** | 신한은행 SMS 파싱 + Slack 웹훅 자동매칭 |
 
 ---
 
 ## 5. 핵심 아키텍처 패턴
 
-| 패턴 | 적용 |
-|------|------|
-| **예약 상태 머신** | `pending → waiting_deposit → deposit_paid → waiting_balance → fully_paid` (+ cancelled) |
-| **Saga 패턴** | 컨시어지 트랜잭션: 멀티벤더 주문 보상 트랜잭션 |
-| **PII 마스킹** | secure_chats / rfq_messages — 결제 전까지 개인정보 마스킹 |
-| **멱등성** | bank_transactions(slack_event_id), transactions(idempotency_key) — ON CONFLICT 무시 |
-| **소프트 삭제** | is_active 플래그, UI에서 [비활성] 뱃지 |
-| **정책 엔진** | os_policies — 40+ 비즈니스 룰 (가격/마일리지/알림/디스플레이 등) |
-| **AI Fallback** | API 키 미설정 시 dummy 콘텐츠 반환, 전체 파이프라인 중단 금지 |
-| **알림 이중화** | KakaoNotificationAdapter(알림톡+DB) / MockNotificationAdapter(DB만) |
-| **자비스 오케스트레이션** | `resolveSpecialist` + 레지스트리(`src/lib/jarvis/orchestration/`), V2 `v2-dispatch.ts`, SSE `agent_picked` — 문서 `docs/jarvis-orchestration.md` |
-| **AI 학습 축 분리** | 업무 DB(예약·고객 PII)와 별도로 `platform_learning_events`에 라우팅·여정 신호만 적재 |
-| **에이전트 컨텍스트 규칙** | `.cursor/rules/yeosonam-context.mdc` — 사업·DB 작업 시 `CLAUDE.md`/`CURRENT_STATUS.md` 선행, 단순 수정 생략 |

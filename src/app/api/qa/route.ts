@@ -1,15 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { saveInquiry, saveAIResponse, getInquiries, isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { analyzeRecommendation, analyzeComparison, getConsultationAdvice } from '@/lib/ai-analyst';
 import { AIModel } from '@/lib/ai';
-import { cacheHeader } from '@/lib/api-response';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { error: 'Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.' },
-      { status: 500, headers: cacheHeader(120) }
-    );
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.');
   }
 
   try {
@@ -22,25 +19,16 @@ export async function GET(request: NextRequest) {
 
     const inquiries = await getInquiries(status || undefined, inquiryTypes);
 
-    return NextResponse.json({
-      inquiries,
-      count: inquiries.length,
-    }, { headers: cacheHeader(120) });
+    return successResponse({ inquiries, count: inquiries.length }, 200, 120);
   } catch (error) {
     console.error('Q&A 조회 오류:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '조회에 실패했습니다.' },
-      { status: 500, headers: cacheHeader(120) }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '조회에 실패했습니다.');
   }
 }
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { error: 'Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.' },
-      { status: 500 }
-    );
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다. 관리자에게 문의하세요.');
   }
 
   try {
@@ -64,7 +52,7 @@ export async function POST(request: NextRequest) {
     } = body;
 
     if (!question) {
-      return NextResponse.json({ error: '질문이 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('질문이 필요합니다.');
     }
 
     // Q&A 저장
@@ -113,7 +101,7 @@ export async function POST(request: NextRequest) {
         usedPackages,
       });
 
-      return NextResponse.json({
+      return successResponse({
         success: true,
         inquiryId: inquiry.id,
         response: responseText,
@@ -123,32 +111,25 @@ export async function POST(request: NextRequest) {
       console.error('AI 분석 오류:', aiError);
 
       // AI 처리 실패해도 질문은 저장됨
-      return NextResponse.json(
-        {
-          inquiryId: inquiry.id,
-          error: 'AI 분석에 실패했습니다. 관리자가 수동으로 답변하겠습니다.',
-          message: '질문이 저장되었습니다.',
-        },
-        { status: 500 }
+      return ApiErrors.internalError(
+        aiError instanceof Error ? aiError.message : 'AI 분석에 실패했습니다. 관리자가 수동으로 답변하겠습니다.',
+        { inquiryId: inquiry.id }
       );
     }
   } catch (error) {
     console.error('Q&A API 오류:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리에 실패했습니다.' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '처리에 실패했습니다.');
   }
 }
 
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const { inquiryId, status } = await request.json();
     if (!inquiryId || !status) {
-      return NextResponse.json({ error: 'inquiryId와 status가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('inquiryId와 status가 필요합니다.');
     }
     const { data, error } = await supabase
       .from('qa_inquiries')
@@ -156,11 +137,8 @@ export async function PATCH(request: NextRequest) {
       .eq('id', inquiryId)
       .select();
     if (error) throw error;
-    return NextResponse.json({ success: true, inquiry: data?.[0] });
+    return successResponse({ success: true, inquiry: data?.[0] });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '처리 실패');
   }
 }

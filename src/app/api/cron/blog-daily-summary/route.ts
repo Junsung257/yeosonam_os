@@ -65,12 +65,13 @@ async function runDailySummary(request: NextRequest) {
 
   // destination별 발행 분포
   const destDist: Record<string, number> = {};
-  for (const p of published as any[]) {
-    if (p.destination) destDist[p.destination] = (destDist[p.destination] || 0) + 1;
+  for (const p of published as unknown as Array<Record<string, unknown>>) {
+    const dest = p.destination as string | undefined;
+    if (dest) destDist[dest] = (destDist[dest] || 0) + 1;
   }
 
   // 가독성 평균
-  const readabilityScores = (published as any[]).map(p => p.readability_score).filter(Boolean);
+  const readabilityScores = (published as unknown as Array<{ readability_score?: number }>).map(p => p.readability_score).filter((s): s is number => s !== undefined && s !== null);
   const avgReadability = readabilityScores.length > 0
     ? Math.round(readabilityScores.reduce((a, b) => a + b, 0) / readabilityScores.length)
     : null;
@@ -160,8 +161,8 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
 
   const clickMap = new Map<string, number>();
   for (const r of clickRows || []) {
-    const slug = (r as any).slug;
-    clickMap.set(slug, (clickMap.get(slug) || 0) + ((r as any).clicks || 0));
+    const row = r as { slug: string; clicks: number };
+    clickMap.set(row.slug, (clickMap.get(row.slug) || 0) + (row.clicks || 0));
   }
 
   const underperformers = candidates.filter((c: any) => (clickMap.get(c.slug) || 0) === 0);
@@ -172,7 +173,7 @@ async function regenerateUnderperformers(): Promise<{ count: number }> {
     .from('blog_topic_queue')
     .select('destination, angle_type')
     .gte('created_at', fourteenDaysAgo.toISOString());
-  const recentKeys = new Set(((recentQueue || []) as any[]).map(r => `${r.destination}::${r.angle_type}`));
+  const recentKeys = new Set(((recentQueue || []) as unknown as Array<Record<string, unknown>>).map(r => `${r.destination}::${r.angle_type}`));
 
   const fresh = underperformers.filter((c: any) =>
     !recentKeys.has(`${c.destination}::${c.angle_type}`)

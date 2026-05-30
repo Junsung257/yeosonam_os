@@ -92,12 +92,12 @@ export async function POST(request: NextRequest) {
     let angleType = 'value';
 
     // ── 신규: Brief 기반 통합 파이프라인 (큐레이터 페르소나 + Few-shot) ──
-    let brief: ContentBrief | null = (cn.generation_config as any)?.brief || null;
+    let brief: ContentBrief | null = (cn.generation_config as Record<string, unknown>)?.brief as ContentBrief | null || null;
     let productData: any = null;
 
     if (cardMode === 'product' && cn.package_id) {
       productId = cn.package_id;
-      angleType = (cn as any).angle_type || 'value';
+      angleType = (cn as Record<string, unknown>).angle_type as string || 'value';
 
       const { data: pkg } = await supabaseAdmin
         .from('travel_packages')
@@ -219,13 +219,13 @@ export async function POST(request: NextRequest) {
 
     // OG 이미지: 카드뉴스 첫 번째 PNG (우선) > 배경 이미지
     const ogImage = cardNewsImages[0]
-      || (cn.slides as any[])?.[0]?.bg_image_url
+      || (cn.slides as unknown as Array<Record<string, unknown>>)?.[0]?.bg_image_url
       || null;
 
     // SEO 점수 산출
     const seoScore = calculateSeoScore({
       content: blogHtml,
-      primaryKeyword: (cardMode === 'product' ? (cn as any).destination : cn.topic) || undefined,
+      primaryKeyword: (cardMode === 'product' ? (cn as Record<string, unknown>).destination : cn.topic) as string || undefined,
       metaTitle: seoTitle,
       metaDescription: seoDesc,
     });
@@ -288,7 +288,7 @@ export async function POST(request: NextRequest) {
     await supabaseAdmin
       .from('card_news')
       .update({
-        linked_blog_id: (creative as any).id,
+        linked_blog_id: (creative as Record<string, unknown>).id as string,
         slide_image_urls: cardNewsImages,
         updated_at: new Date().toISOString(),
       })
@@ -331,7 +331,7 @@ async function geminiRewriteWithHybridImages(opts: {
   isProduct: boolean;
 }): Promise<string> {
   const { baseBlog, cardNewsImages, pkg, angle } = opts;
-  const angleLabel = (ANGLE_PRESETS as any)[angle]?.label || angle;
+  const angleLabel = (ANGLE_PRESETS as Record<string, { label: string }>)[angle]?.label || angle;
   const dest = pkg.destination || '여행지';
   const nightsVal = pkg.nights ?? (pkg.duration ? pkg.duration - 1 : 0);
   const dur = pkg.duration ? `${nightsVal}박${pkg.duration}일` : '';

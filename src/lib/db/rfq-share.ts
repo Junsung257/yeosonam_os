@@ -44,7 +44,7 @@ export async function getSharedRfq(token: string): Promise<SharedRfqData | null>
   const sb = getSupabase();
   if (!sb) return null;
 
-  const { data } = await sb
+  const { data: rawData } = await sb
     .from('group_rfqs')
     .select(`
       id, rfq_code, customer_name, destination,
@@ -56,9 +56,9 @@ export async function getSharedRfq(token: string): Promise<SharedRfqData | null>
     .eq('share_token', token)
     .single();
 
-  if (!data) return null;
+  if (!rawData) return null;
 
-  const d = data as any;
+  const d = rawData as unknown as { id: string };
 
   // proposals 조회 (selected_proposal_id만 살아있는 것)
   const { data: proposals } = await sb
@@ -66,16 +66,17 @@ export async function getSharedRfq(token: string): Promise<SharedRfqData | null>
     .select('id, title, summary, price, ai_review, tenants!inner(name)')
     .eq('rfq_id', d.id);
 
-  const result: SharedRfqData = { ...d };
+  const result: Record<string, unknown> = { ...d };
 
   if (proposals) {
     const labels = ['proposal_a', 'proposal_b', 'proposal_c'];
+    const resultAny = result;
     proposals.forEach((p, i) => {
       if (i < 3) {
-        const pp = p as any;
+        const pp = p as unknown as { id: string; title: string; summary: string; price: number; ai_review?: { score?: number }; tenants?: { name: string } };
         const score = pp.ai_review?.score ?? null;
         const tenantName = pp.tenants?.name ?? null;
-        (result as any)[labels[i]] = {
+        resultAny[labels[i]] = {
           ...pp,
           ai_score: score,
           tenant_name: tenantName,
@@ -84,7 +85,7 @@ export async function getSharedRfq(token: string): Promise<SharedRfqData | null>
     });
   }
 
-  return result;
+  return result as unknown as SharedRfqData;
 }
 
 /**
@@ -99,8 +100,7 @@ export async function addRfqReaction(
   const sb = getSupabase();
   if (!sb) return false;
 
-  const { error } = await (sb
-    .from('rfq_share_reactions') as any)
+  const { error } = await (sb.from('rfq_share_reactions') as unknown as { upsert: (rows: unknown, opts?: unknown) => Promise<{ error: unknown }> })
     .upsert(
       { rfq_id: rfqId, visitor_token: visitorToken, reaction_type: reactionType, comment },
       { onConflict: 'rfq_id, visitor_token, reaction_type' },

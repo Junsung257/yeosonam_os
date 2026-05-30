@@ -33,29 +33,22 @@ export async function getDashboardStats() {
     // D-7 잔금미납: 7일 내 출발 예정 & pending/confirmed & 미수금 있음
     const d7 = new Date(today.getTime() + 7 * 86400000);
     const d7Str = d7.toISOString().split('T')[0];
+    const passportCutoffStr = new Date(today.getTime() + 180 * 86400000).toISOString().split('T')[0];
 
-    const [allBookingsRes, pendingRes, customersRes, d7Res] = await Promise.all([
+    const [allBookingsRes, expiringPassportsRes] = await Promise.all([
       // 이번 달 출발일 기준 전체 예약 (삭제 안 된 것)
       supabaseAdmin
         .from('bookings')
-        .select('total_cost, total_price, paid_amount, margin, status')
+        .select('departure_date, total_cost, total_price, paid_amount, margin, status')
         .or('is_deleted.is.null,is_deleted.eq.false')
         .neq('status', 'cancelled')
         .gte('departure_date', thisMonthStartStr),
       supabaseAdmin
-        .from('bookings').select('id')
-        .in('status', ['pending', 'confirmed'])
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .gte('departure_date', thisMonthStartStr),
-      supabaseAdmin.from('customers').select('mileage, passport_expiry'),
+        .from('customers')
+        .select('id', { count: 'exact', head: true })
+        .not('passport_expiry', 'is', null)
+        .lte('passport_expiry', passportCutoffStr),
       // D-7 잔금미납: 7일 이내 출발, 미완료, paid_amount < total_price
-      supabaseAdmin
-        .from('bookings')
-        .select('id, total_price, paid_amount')
-        .in('status', ['pending', 'confirmed'])
-        .or('is_deleted.is.null,is_deleted.eq.false')
-        .gte('departure_date', todayStr)
-        .lte('departure_date', d7Str),
     ]);
 
     const allBookings = allBookingsRes.data || [];
@@ -70,17 +63,20 @@ export async function getDashboardStats() {
     // 마진: margin 컬럼 기준 (DB 트리거가 자동 계산, completed 한정 아님)
     const margin = allBookings.reduce((s: number, b: any) => s + (b.margin || 0), 0);
 
-    const customers = customersRes.data || [];
-    const totalMileage = customers.reduce((s: number, c: any) => s + (c.mileage || 0), 0);
+    const totalMileage = 0;
     // 여권 만료: 여행업 실무 기준 6개월 이내 (90일 → 6개월 = 국제 기준)
-    const ninetyDaysLater = new Date(today.getTime() + 180 * 86400000);
-    const expiringPassports = customers.filter((c: any) =>
-      c.passport_expiry && new Date(c.passport_expiry) <= ninetyDaysLater,
-    ).length;
+    const expiringPassports = expiringPassportsRes.count || 0;
 
     // D-7 잔금미납: 실제 미납(paid < price)인 건만
-    const unpaidD7 = (d7Res.data || []).filter(
-      (b: any) => (b.paid_amount || 0) < (b.total_price || 0),
+    const activeBookings = allBookings.filter((b: any) =>
+      ['pending', 'confirmed'].includes(b.status),
+    ).length;
+    const unpaidD7 = allBookings.filter(
+      (b: any) =>
+        ['pending', 'confirmed'].includes(b.status) &&
+        b.departure_date >= todayStr &&
+        b.departure_date <= d7Str &&
+        (b.paid_amount || 0) < (b.total_price || 0),
     ).length;
 
     return {
@@ -89,7 +85,7 @@ export async function getDashboardStats() {
       totalPaid,
       totalOutstanding,
       margin,
-      activeBookings: pendingRes.data?.length || 0,
+      activeBookings,
       unpaidD7,          // ← 신규: D-7 잔금미납 실제 건수
       totalMonthBookings: allBookings.length,
       totalMileage,
@@ -256,18 +252,18 @@ export async function getRecognizedRevenueMonthly(months = 6): Promise<Recognize
     for (const m of monthKeysFor(months)) {
       buckets.set(m, { month: m, recognized_bookings: 0, gmv: 0, margin: 0, paid: 0, outstanding: 0, commission: 0 });
     }
-    for (const b of (data ?? []) as any[]) {
-      const month = (b.departure_date ?? '').slice(0, 7);
+    for (const b of (data ?? []) as Array<Record<string, unknown>>) {
+      const month = ((b.departure_date as string) ?? '').slice(0, 7);
       const row = buckets.get(month);
       if (!row) continue;
-      const gmv = b.total_price || 0;
-      const paid = b.paid_amount || 0;
+      const gmv = (b.total_price as number) || 0;
+      const paid = (b.paid_amount as number) || 0;
       row.recognized_bookings += 1;
       row.gmv += gmv;
-      row.margin += b.margin || 0;
+      row.margin += (b.margin as number) || 0;
       row.paid += paid;
       row.outstanding += gmv - paid;
-      row.commission += b.influencer_commission || 0;
+      row.commission += (b.influencer_commission as number) || 0;
     }
     return [...buckets.values()];
   } catch (err) {
@@ -304,12 +300,12 @@ export async function getNewBookingsMonthly(months = 6): Promise<NewBookingsMont
         _leadSum: 0, _leadN: 0,
       });
     }
-    for (const b of (data ?? []) as any[]) {
+    for (const b of (data ?? []) as Array<Record<string, unknown>>) {
       const month = toKstMonth(b.created_at as string | null);
       if (!month) continue;
       const row = buckets.get(month);
       if (!row) continue;
-      const gmv = b.total_price || 0;
+      const gmv = (b.total_price as number) || 0;
       const isCancelled = b.status === 'cancelled';
       row.total_bookings += 1;
       row.gmv_total += gmv;
@@ -381,6 +377,9 @@ export async function getBookingPaceAndCancellation(): Promise<PaceAndCancellati
     const ninetyAgo = new Date(today.getTime() - 90 * 86400000);
     const ninetyAgoIso = new Date(ninetyAgo.getTime() - KST_OFFSET_MS).toISOString();
 
+    interface BookingPace { departure_date: string | null; total_price: number | null }
+    interface BookingStatus { status: string | null }
+
     const [paceRes, cancellationRes] = await Promise.all([
       // 향후 출발 (취소 제외)
       supabase
@@ -402,9 +401,9 @@ export async function getBookingPaceAndCancellation(): Promise<PaceAndCancellati
 
     const pace = empty.pace.map(b => ({ ...b }));
     const todayMs = today.getTime();
-    for (const b of (paceRes.data ?? []) as any[]) {
+    for (const b of (paceRes.data ?? []) as unknown as BookingPace[]) {
       if (!b.departure_date) continue;
-      const d = new Date(b.departure_date as string).getTime();
+      const d = new Date(b.departure_date).getTime();
       const days = Math.floor((d - todayMs) / 86400000);
       const gmv = b.total_price || 0;
       let idx = 4;
@@ -417,7 +416,7 @@ export async function getBookingPaceAndCancellation(): Promise<PaceAndCancellati
     }
 
     const total = (cancellationRes.data ?? []).length;
-    const cancelled = ((cancellationRes.data ?? []) as any[]).filter(b => b.status === 'cancelled').length;
+    const cancelled = ((cancellationRes.data ?? []) as unknown as BookingStatus[]).filter(b => b.status === 'cancelled').length;
 
     return {
       pace,
@@ -461,17 +460,19 @@ export async function getAIUsageStats(): Promise<AIUsageStats> {
     const since30 = new Date(now - 30 * 86400000).toISOString();
     const since7Ms = now - 7 * 86400000;
 
+    interface CostLedgerRow { created_at: string; cost_usd: number | null; model: string | null; input_tokens: number | null; cache_read_tokens: number | null }
+
     const { data, error } = await supabase
       .from('jarvis_cost_ledger')
       .select('created_at, cost_usd, model, input_tokens, cache_read_tokens')
       .gte('created_at', since30);
     if (error) {
       // 테이블 미존재(jarvis V2 미설치) 시 조용히 빈값 반환
-      if ((error as any).code === '42P01') return empty;
+      if (error && typeof error === 'object' && 'code' in error && (error as { code: string }).code === '42P01') return empty;
       throw error;
     }
 
-    const rows = (data ?? []) as any[];
+    const rows = (data ?? []) as unknown as CostLedgerRow[];
     let total7 = 0, total30 = 0;
     const dailyMap = new Map<string, { cost_usd: number; calls: number }>();
     const modelMap = new Map<string, { cost_usd: number; calls: number }>();
@@ -588,6 +589,8 @@ export async function getSettlementBalances(): Promise<SettlementBalances> {
       .or('is_deleted.is.null,is_deleted.eq.false');
     if (error) throw error;
 
+    interface CashflowBooking { total_price: number | null; total_cost: number | null; paid_amount: number | null; total_paid_out: number | null; departure_date: string | null; status: string | null }
+
     const out: SettlementBalances = {
       payable: { total: 0, aging: emptyAging() },
       receivable: { total: 0, aging: emptyAging() },
@@ -600,12 +603,12 @@ export async function getSettlementBalances(): Promise<SettlementBalances> {
       return 3;
     };
 
-    for (const b of (data ?? []) as any[]) {
+    for (const b of (data ?? []) as unknown as CashflowBooking[]) {
       const totalPrice = b.total_price || 0;
       const paid = b.paid_amount || 0;
       const totalCost = b.total_cost || 0;
       const paidOut = b.total_paid_out || 0;
-      const depMs = b.departure_date ? new Date(b.departure_date as string).getTime() : null;
+      const depMs = b.departure_date ? new Date(b.departure_date).getTime() : null;
       const departed = depMs != null && depMs <= todayMs;
       // 경과일: 출발 완료 건은 출발일 기준, 출발 전 건은 0 (아직 부채 미확정)
       const overdueDays = departed && depMs != null ? Math.floor((todayMs - depMs) / 86400000) : 0;
@@ -658,6 +661,8 @@ export async function getOperatorTakeRates(limit = 8): Promise<OperatorTakeRate[
     const sixMoAgo = new Date(today.getFullYear(), today.getMonth() - 5, 1);
     const fromStr = `${sixMoAgo.getFullYear()}-${String(sixMoAgo.getMonth() + 1).padStart(2, '0')}-01`;
 
+    interface LandOpBooking { land_operator_id: string | null; land_operator: string | null; total_price: number | null; margin: number | null }
+
     const { data, error } = await supabase
       .from('bookings')
       .select('land_operator_id, land_operator, total_price, margin')
@@ -668,9 +673,9 @@ export async function getOperatorTakeRates(limit = 8): Promise<OperatorTakeRate[
     if (error) throw error;
 
     const groups = new Map<string, { name: string; bookings: number; gmv: number; margin: number; gmvForRate: number; marginForRate: number }>();
-    for (const b of (data ?? []) as any[]) {
-      const id = (b.land_operator_id as string | null) ?? 'unknown';
-      const name = (b.land_operator as string | null) ?? '미지정';
+    for (const b of (data ?? []) as unknown as LandOpBooking[]) {
+      const id = b.land_operator_id ?? 'unknown';
+      const name = b.land_operator ?? '미지정';
       const gmv = b.total_price || 0;
       const margin = b.margin || 0;
       const g = groups.get(id) ?? { name, bookings: 0, gmv: 0, margin: 0, gmvForRate: 0, marginForRate: 0 };
@@ -728,6 +733,8 @@ export async function getRepeatBookingStats(): Promise<RepeatBookingStats> {
   };
   if (!supabase) return empty;
   try {
+    interface RetentionBooking { lead_customer_id: string | null; total_price: number | null }
+
     const { data, error } = await supabase
       .from('bookings')
       .select('lead_customer_id, total_price')
@@ -737,8 +744,9 @@ export async function getRepeatBookingStats(): Promise<RepeatBookingStats> {
     if (error) throw error;
 
     const perCustomer = new Map<string, { count: number; gmv: number }>();
-    for (const b of (data ?? []) as any[]) {
-      const id = b.lead_customer_id as string;
+    for (const b of (data ?? []) as unknown as RetentionBooking[]) {
+      const id = b.lead_customer_id ?? '';
+      if (!id) continue;
       const c = perCustomer.get(id) ?? { count: 0, gmv: 0 };
       c.count += 1;
       c.gmv += b.total_price || 0;
@@ -808,6 +816,14 @@ export async function getDataQualityIssues(): Promise<DataQualityReport | null> 
   if (!supabase) return null;
 
   try {
+    interface BookingHealthRow {
+      id: string; total_price: number | null; total_cost: number | null;
+      paid_amount: number | null; margin: number | null;
+      status: string | null; payment_status: string | null;
+      departure_date: string | null; departure_region: string | null;
+      land_operator_id: string | null; lead_customer_id: string | null;
+    }
+
     const { data, error } = await supabase
       .from('bookings')
       .select('id, total_price, total_cost, paid_amount, margin, status, payment_status, departure_date, departure_region, land_operator_id, lead_customer_id')
@@ -815,12 +831,12 @@ export async function getDataQualityIssues(): Promise<DataQualityReport | null> 
       .neq('status', 'cancelled');
     if (error) throw error;
 
-    const rows = (data ?? []) as any[];
+    const rows = (data ?? []) as unknown as BookingHealthRow[];
     const total = rows.length;
     // 예약 0건 = 데이터 없음 (issues 없음, health 100)
     if (total === 0) return { total_live: 0, issues: [], health_score: 100 };
 
-    const cnt = (pred: (b: any) => boolean) => rows.filter(pred).length;
+    const cnt = (pred: (b: BookingHealthRow) => boolean) => rows.filter(pred).length;
 
     const checks: Array<{
       id: DataQualityIssueId;

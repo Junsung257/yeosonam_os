@@ -8,30 +8,28 @@
  * - DB 함수 cleanup_expired_trend_posts() 호출
  */
 
-import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextRequest, NextResponse } from 'next/server';
+import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+export async function GET(request: NextRequest) {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
 
-  if (!url || !key) {
+  if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
   }
 
-  const supabase = createClient(url, key);
-
   try {
-    const { data, error } = await supabase.rpc('cleanup_expired_trend_posts');
+    const { data, error } = await supabaseAdmin.rpc('cleanup_expired_trend_posts');
 
     if (error) {
       console.error('[trend-cleanup] RPC error:', error.message);
 
       // RPC 실패 시 직접 삭제 (fallback)
-      const { count, error: delError } = await supabase
+      const { count, error: delError } = await supabaseAdmin
         .from('external_trend_posts')
         .delete({ count: 'exact' })
         .lt('expires_at', new Date().toISOString());

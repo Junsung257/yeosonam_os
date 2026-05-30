@@ -28,6 +28,7 @@ import { buildBlogPostPageJsonLd } from '@/lib/blog-jsonld';
 import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
+import { logError } from '@/lib/sentry-logger';
 
 /**
  * A/B 테스트용 headline variant 생성 (Power word + 연도 조정)
@@ -108,6 +109,7 @@ interface BlogPost {
     product_highlights: string[] | null;
     inclusions: string[] | null;
     status?: string | null;
+    hero_image_url?: string | null;
   } | null;
 }
 
@@ -206,19 +208,14 @@ async function getPost(slug: string): Promise<BlogPost | null> {
     .limit(1);
 
   // 사일런트 fail 차단: PostgREST가 400 등 비-200을 돌려보내면 data는 null이지만
-  // 사고 원인을 묻으면 안 된다. 운영 화면(admin_alerts)에 적재해 다음 사고 추적성 확보.
+  // 렌더 중 DB write는 금지하고 Sentry/console 로그로만 추적한다.
   if (error) {
-    console.error('[blog/getPost] supabase error:', { dbSlug, error });
-    try {
-      await supabaseAdmin.from('admin_alerts').insert({
-        kind: 'blog_get_post_fail',
-        severity: 'error',
-        message: `blog detail query failed: ${error.message ?? String(error)}`,
-        payload: { slug: dbSlug, rawParam: slug, code: (error as any).code ?? null, hint: (error as any).hint ?? null },
-      });
-    } catch {
-      /* alerts insert 실패도 페이지를 막지 않는다 */
-    }
+    logError('[blog/getPost] supabase error', error, {
+      slug: dbSlug,
+      rawParam: slug,
+      code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
+      hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
+    });
     return null;
   }
   if (!data || data.length === 0) return null;
@@ -312,6 +309,19 @@ async function getCurationProductsForInfo(destination: string) {
   if (!isSupabaseConfigured) return [];
   const today = new Date().toISOString().split('T')[0];
 
+  interface CurationPackage {
+    id: string;
+    title: string | null;
+    destination: string | null;
+    duration: number | null;
+    nights: number | null;
+    price: number | null;
+    category: string | null;
+    airline: string | null;
+    departure_airport: string | null;
+    price_dates: Array<{ date?: string; price?: number }> | null;
+  }
+
   const { data } = await supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
@@ -323,7 +333,7 @@ async function getCurationProductsForInfo(destination: string) {
   if (!data || data.length === 0) return [];
 
   // 미래 출발일 있는 상품만 필터
-  const alive = (data as any[]).filter((p) => {
+  const alive = (data as unknown as CurationPackage[]).filter((p) => {
     const pd = (p.price_dates || []) as Array<{ date?: string }>;
     if (pd.length === 0) return true; // 날짜 데이터 없으면 살아있다고 간주
     return pd.some((d) => d.date && d.date >= today);
@@ -459,18 +469,11 @@ export default async function BlogDetailPage({
   try {
     return await renderBlogDetail({ rawSlug, slug, utmCampaign, utmTerm, utmSource });
   } catch (err) {
-    console.error('[blog/detail] 렌더링 예외:', slug, err instanceof Error ? err.message : String(err));
-    try {
-      await supabaseAdmin.from('admin_alerts').insert({
-        category: 'general',
-        severity: 'error',
-        title: 'blog detail render fail',
-        message: `slug=${slug}: ${err instanceof Error ? err.message : String(err)}`,
-        ref_type: 'content_creative',
-        ref_id: slug,
-        meta: { digest: (err as any)?.digest ?? null, stack: err instanceof Error ? err.stack?.slice(0, 1000) : null },
-      });
-    } catch { /* noop */ }
+    logError('[blog/detail] render failed', err, {
+      slug,
+      rawSlug,
+      digest: err && typeof err === 'object' && 'digest' in err ? (err as { digest: string }).digest : null,
+    });
     notFound();
   }
 }
@@ -537,7 +540,7 @@ async function renderBlogDetail({
         // variantValue가 있으면 그걸로 타이틀 사용, 없으면 variantLabel로 판단
         if (result.variantValue && result.variantValue !== title) {
           // SEO title clean 적용
-          abTestTitle = result.variantValue
+          abTestTitle = (result.variantValue ?? '')
             .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
             .trim();
         }
@@ -789,7 +792,7 @@ async function renderBlogDetail({
             <LandingHero
               headline={dki.headline}
               subtitle={dki.subtitle || post.landing_subtitle || (pkg?.product_highlights?.slice(0, 3).join(' · ') ?? undefined)}
-              heroImage={post.og_image_url || (pkg as any)?.hero_image_url || null}
+              heroImage={post.og_image_url || pkg?.hero_image_url || null}
               priceKrw={pkg?.price ?? null}
               productUrl={pkg ? `/packages/${pkg.id}` : null}
               trustBadges={['운영팀 검증', '노팁·노옵션', pkg?.airline || '직항']}

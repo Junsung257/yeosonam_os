@@ -23,7 +23,7 @@ export async function GET() {
     }
 
     // ── Admin 인증 ─────────────────────────────────────────────
-    const sb = await supabase();
+    const sb = supabase;
     const { data: { user } } = await sb.auth.getUser();
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

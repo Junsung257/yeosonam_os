@@ -37,14 +37,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { sessionId, customerPhone, customerName } = UpsertSchema.parse(body);
 
-    const { error, count } = await supabaseAdmin
+    const { data: updatedRows, error } = await (supabaseAdmin
       .from('free_travel_sessions')
       .update({
         customer_phone: customerPhone,
         customer_name:  customerName ?? null,
       })
       .eq('id', sessionId)
-      .select('id', { count: 'exact', head: true });
+      .select('id') as unknown as Promise<{ data: { id: string }[] | null; error: unknown }>);
+    const count = updatedRows?.length ?? 0;
 
     if (error) throw error;
     if (!count) {

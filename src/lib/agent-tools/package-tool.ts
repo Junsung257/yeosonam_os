@@ -13,7 +13,7 @@ export async function submitPackageProposal(payload: any, summary: string, reque
     const validatedPayload = AgentProposalSchema.parse(payload);
 
     // 2. 비즈니스 규칙 검증 (W13~W19): raw_text 대조로 환각/교차오염 감지
-    const { warnings } = validatePackageBusinessRules(validatedPayload as any);
+    const { warnings } = validatePackageBusinessRules(validatedPayload as Record<string, unknown>);
 
     // 3. 결재함(agent_actions)에 PENDING 상태로 기안서 제출 (warnings 동봉)
     const { data, error } = await supabaseAdmin.from('agent_actions').insert({

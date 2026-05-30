@@ -214,7 +214,7 @@ async function getEntityDetail(qid: string): Promise<EntityDetail | null> {
         descriptions?: Record<string, { value: string }>;
         aliases?: Record<string, Array<{ value: string }>>;
         claims?: Record<string, Array<{
-          mainsna?: { datavalue?: { value?: { id?: string } | string } };
+          mainsnak?: { datavalue?: { value?: { id?: string } | string } };
         }>>;
       }>;
     };
@@ -240,7 +240,7 @@ async function getEntityDetail(qid: string): Promise<EntityDetail | null> {
     const p18Claims = entity.claims?.P18;
     if (p18Claims?.[0]) {
       const claim = p18Claims[0];
-      const filename = (claim as any).mainsnak?.datavalue?.value;
+      const filename = claim.mainsnak?.datavalue?.value;
       if (filename && typeof filename === 'string') {
         image_url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=480`;
       }
@@ -251,7 +251,8 @@ async function getEntityDetail(qid: string): Promise<EntityDetail | null> {
     const p31Claims = entity.claims?.P31;
     if (p31Claims) {
       for (const claim of p31Claims) {
-        const tid = (claim as any).mainsnak?.datavalue?.value?.id;
+        const value = claim.mainsnak?.datavalue?.value;
+        const tid = value && typeof value === 'object' ? (value as { id: string }).id : undefined;
         if (tid && typeof tid === 'string') type_qids.push(tid);
       }
     }
@@ -261,7 +262,8 @@ async function getEntityDetail(qid: string): Promise<EntityDetail | null> {
     const p17Claims = entity.claims?.P17;
     if (p17Claims) {
       for (const claim of p17Claims) {
-        const cid = (claim as any).mainsnak?.datavalue?.value?.id;
+        const value = claim.mainsnak?.datavalue?.value;
+        const cid = value && typeof value === 'object' ? (value as { id: string }).id : undefined;
         if (cid && typeof cid === 'string') {
           // QID → ISO2 코드 변환 (주요 국가)
           const iso2 = qidToCountryCode(cid);

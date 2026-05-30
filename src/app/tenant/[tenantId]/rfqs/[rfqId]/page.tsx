@@ -476,10 +476,10 @@ export default function TenantRfqDetailPage() {
 
             {/* 제목 */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="tenant-rfq-proposal-title" className="block text-sm font-medium text-gray-700 mb-1">
                 제안 제목 <span className="text-red-500">*</span>
               </label>
-              <input
+              <input id="tenant-rfq-proposal-title"
                 type="text"
                 value={form.proposal_title}
                 onChange={(e) => setForm(prev => ({ ...prev, proposal_title: e.target.value }))}
@@ -490,10 +490,10 @@ export default function TenantRfqDetailPage() {
 
             {/* 일정 요약 */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="tenant-rfq-itinerary-summary" className="block text-sm font-medium text-gray-700 mb-1">
                 일정 요약 <span className="text-red-500">*</span>
               </label>
-              <textarea
+              <textarea id="tenant-rfq-itinerary-summary"
                 rows={3}
                 value={form.itinerary_summary}
                 onChange={(e) => setForm(prev => ({ ...prev, itinerary_summary: e.target.value }))}
@@ -505,12 +505,12 @@ export default function TenantRfqDetailPage() {
             {/* 원가 / 판매가 */}
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="tenant-rfq-total-cost" className="block text-sm font-medium text-gray-700 mb-1">
                   원가 (플랫폼 내부용) <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₩</span>
-                  <input
+                  <input id="tenant-rfq-total-cost"
                     type="text"
                     value={form.total_cost}
                     onChange={(e) => setForm(prev => ({ ...prev, total_cost: e.target.value }))}
@@ -521,12 +521,12 @@ export default function TenantRfqDetailPage() {
                 <p className="text-xs text-gray-400 mt-0.5">고객에게 노출되지 않습니다</p>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="tenant-rfq-total-selling-price" className="block text-sm font-medium text-gray-700 mb-1">
                   판매가 (고객 노출) <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 top-2.5 text-gray-400 text-sm">₩</span>
-                  <input
+                  <input id="tenant-rfq-total-selling-price"
                     type="text"
                     value={form.total_selling_price}
                     onChange={(e) => setForm(prev => ({ ...prev, total_selling_price: e.target.value }))}
@@ -582,8 +582,8 @@ export default function TenantRfqDetailPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">포함 내역</label>
-                <textarea
+                <label htmlFor="tenant-rfq-inclusions" className="block text-sm font-medium text-gray-700 mb-1">포함 내역</label>
+                <textarea id="tenant-rfq-inclusions"
                   rows={3}
                   value={form.checklist.inclusions}
                   onChange={(e) => setForm(prev => ({
@@ -595,8 +595,8 @@ export default function TenantRfqDetailPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">불포함 내역</label>
-                <textarea
+                <label htmlFor="tenant-rfq-exclusions" className="block text-sm font-medium text-gray-700 mb-1">불포함 내역</label>
+                <textarea id="tenant-rfq-exclusions"
                   rows={3}
                   value={form.checklist.exclusions}
                   onChange={(e) => setForm(prev => ({
@@ -612,7 +612,7 @@ export default function TenantRfqDetailPage() {
             {/* 숙박 */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">호텔 등급</label>
+                <label htmlFor="tenant-rfq-hotel-grade" className="block text-sm font-medium text-gray-700 mb-1">호텔 등급</label>
                 <select
                   value={form.checklist.hotel_grade}
                   onChange={(e) => setForm(prev => ({
@@ -628,8 +628,8 @@ export default function TenantRfqDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">호텔명</label>
-                <input
+                <label htmlFor="tenant-rfq-hotel-name" className="block text-sm font-medium text-gray-700 mb-1">호텔명</label>
+                <input id="tenant-rfq-hotel-name"
                   type="text"
                   value={form.checklist.hotel_name}
                   onChange={(e) => setForm(prev => ({
@@ -644,8 +644,8 @@ export default function TenantRfqDetailPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">식사 플랜</label>
-                <select
+                <label htmlFor="tenant-rfq-meal-plan" className="block text-sm font-medium text-gray-700 mb-1">식사 플랜</label>
+                <select id="tenant-rfq-transportation"
                   value={form.checklist.meal_plan}
                   onChange={(e) => setForm(prev => ({
                     ...prev,
@@ -660,7 +660,7 @@ export default function TenantRfqDetailPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">이동 수단</label>
+                <label htmlFor="tenant-rfq-transportation" className="block text-sm font-medium text-gray-700 mb-1">이동 수단</label>
                 <select
                   value={form.checklist.transportation}
                   onChange={(e) => setForm(prev => ({

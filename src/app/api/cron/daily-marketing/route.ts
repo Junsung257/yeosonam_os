@@ -51,14 +51,14 @@ const handleDailyMarketing = async (request: NextRequest) => {
     if (s.status === 'fulfilled') return s.value;
     const errMsg = s.reason instanceof Error ? s.reason.message : String(s.reason);
     console.error(`[daily-marketing] 테넌트 예외 (${tenants[i].name}):`, s.reason);
-    void supabaseAdmin.from('agent_incidents').insert({
+    void Promise.resolve(supabaseAdmin.from('agent_incidents').insert({
       tenant_id: tenants[i].id,
       severity: 'error',
       category: 'unknown',
       message: `[daily-marketing] ${tenants[i].name}: ${errMsg}`,
       details: { tenantId: tenants[i].id },
       detected_by: 'cron/daily-marketing',
-    }).catch(() => null);
+    })).catch(() => null);
     errors.push(`${tenants[i].name}: ${errMsg}`);
     return { tenantId: tenants[i].id, tenantName: tenants[i].name, status: 'failed', elapsed_ms: 0, error: errMsg };
   });

@@ -1,5 +1,6 @@
 import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const HARD_LIMIT = 45000;
@@ -66,7 +67,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     for (const d of (activeDests || []) as Array<{ destination: string }>) {
       if (d.destination) {
         routes.push({
-          url: `${BASE_URL}/destinations/${encodeURIComponent(d.destination)}`,
+          url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(d.destination)}`,
           lastModified: new Date(),
           changeFrequency: 'daily' as const,
           priority: 0.9,

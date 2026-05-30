@@ -33,14 +33,14 @@ async function getPostsByAngle(angle: string): Promise<BlogPost[]> {
   try {
     const { data } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, travel_packages(id, title, destination, price)')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, travel_packages!inner(id, title, destination, price)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('angle_type', angle)
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
       .limit(60);
-    return (data || []) as BlogPost[];
+    return (data || []) as unknown as BlogPost[];
   } catch {
     return [];
   }

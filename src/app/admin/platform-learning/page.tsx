@@ -30,6 +30,20 @@ type CorrectionRow = {
   scope_tenant_id: string | null;
 };
 
+type ScenarioRow = {
+  id: string;
+  created_at: string;
+  category: string;
+  destination_hint: string | null;
+  user_message_redacted: string;
+  expected_behavior: Record<string, unknown>;
+  priority: number;
+  status: 'pending' | 'active' | 'archived';
+  generated_reason: string | null;
+  last_run_at: string | null;
+  last_result: Record<string, unknown> | null;
+};
+
 type MetricRow = {
   severity: string;
   cnt: number;
@@ -46,6 +60,13 @@ type Summary = {
   hitlCount: number;
   topErrors: { severity: string; cnt: number }[];
   corrections: CorrectionRow[];
+  scenarios: ScenarioRow[];
+  totalScenarios: number;
+  pendingScenarios: number;
+  activeScenarios: number;
+  scenarioRunCount7d: number;
+  scenarioPassRate7d: number;
+  failedScenarioRuns7d: number;
 };
 
 interface FeedbackStats {
@@ -74,7 +95,7 @@ export default function PlatformLearningPage() {
   const [loading, setLoading] = useState(true);
   const [summaryLoading, setSummaryLoading] = useState(true);
   const [offset, setOffset] = useState(0);
-  const [tab, setTab] = useState<'events' | 'corrections' | 'critique' | 'feedback'>('events');
+  const [tab, setTab] = useState<'events' | 'corrections' | 'scenarios' | 'critique' | 'feedback'>('events');
   const [feedbackStats, setFeedbackStats] = useState<FeedbackStats | null>(null);
   const [feedbackLoading, setFeedbackLoading] = useState(false);
   const limit = 40;
@@ -147,6 +168,24 @@ export default function PlatformLearningPage() {
     void loadSummary();
   };
 
+  const setScenarioStatus = async (id: string, status: 'pending' | 'active' | 'archived') => {
+    await fetch(`/api/admin/platform-learning/scenarios/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    });
+    void loadSummary();
+  };
+
+  const runActiveScenarios = async () => {
+    await fetch('/api/admin/platform-learning/scenarios/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ limit: 5 }),
+    });
+    void loadSummary();
+  };
+
   // ── 요약 카드 ──
   const SummaryCard = ({ label, value, icon, color }: { label: string; value: string | number; icon: React.ReactNode; color: string }) => (
     <div className="bg-white rounded-admin-md border border-admin-border p-4 flex items-center gap-3 shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
@@ -183,7 +222,7 @@ export default function PlatformLearningPage() {
             <SummaryCard label="전체 이벤트" value={summary.totalEvents} icon={<Database size={18} />} color="bg-blue-100 text-blue-600" />
             <SummaryCard label="HITL 건수" value={summary.hitlCount} icon={<Activity size={18} />} color="bg-yellow-100 text-yellow-600" />
             <SummaryCard label="활성 교정 패턴" value={summary.activeCorrections} icon={<CheckCircle size={18} />} color="bg-green-100 text-green-600" />
-            <SummaryCard label="최근 7일 Critique" value={summary.recentCritiques} icon={<BarChart3 size={18} />} color="bg-purple-100 text-purple-600" />
+            <SummaryCard label="학습 시나리오" value={summary.totalScenarios} icon={<BarChart3 size={18} />} color="bg-purple-100 text-purple-600" />
           </div>
 
           {/* critique 심각도 분포 */}
@@ -211,6 +250,7 @@ export default function PlatformLearningPage() {
         {([
           { id: 'events', label: '이벤트 로그' },
           { id: 'corrections', label: '교정 패턴' },
+          { id: 'scenarios', label: '고객 시나리오' },
           { id: 'critique', label: 'Critique 현황' },
           { id: 'feedback', label: '고객 피드백' },
         ] as const).map((t) => (
@@ -253,7 +293,7 @@ export default function PlatformLearningPage() {
           {loading ? (
             <div className="space-y-2">
               {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 flex items-center gap-3">
+                <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 flex items-center gap-3">
                   <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
                   <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-20" />
                 </div>
@@ -361,6 +401,121 @@ export default function PlatformLearningPage() {
             </div>
           ) : (
             <p className="text-admin-muted text-admin-sm py-8 text-center">등록된 교정 패턴이 없습니다.</p>
+          )}
+        </div>
+      )}
+
+      {tab === 'scenarios' && (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-admin-sm text-admin-muted">
+              전체 <b className="admin-num text-admin-text">{fmtNum(summary?.totalScenarios ?? 0)}</b>개
+              · 검토 대기 <b className="admin-num text-admin-text">{fmtNum(summary?.pendingScenarios ?? 0)}</b>개
+              · 활성 <b className="admin-num text-admin-text">{fmtNum(summary?.activeScenarios ?? 0)}</b>개
+              · 7일 통과율 <b className="admin-num text-admin-text">{(summary?.scenarioPassRate7d ?? 0).toFixed(1)}%</b>
+              · 실패 <b className="admin-num text-admin-text">{fmtNum(summary?.failedScenarioRuns7d ?? 0)}</b>회
+            </span>
+            <Button variant="secondary" size="sm" onClick={() => loadSummary()}>
+              <RefreshCw size={14} />
+            </Button>
+            <Button variant="secondary" size="sm" onClick={() => runActiveScenarios()}>
+              <Activity size={14} />
+              활성 시나리오 검증
+            </Button>
+          </div>
+
+          {summary?.scenarios && summary.scenarios.length > 0 ? (
+            <div className="space-y-2">
+              {summary.scenarios.map((s) => (
+                <div key={s.id} className="admin-card p-4 text-admin-sm">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-2">
+                        <span className={`text-admin-xs font-medium px-1.5 py-0.5 rounded-full ${
+                          s.status === 'active' ? 'bg-green-100 text-green-700' :
+                          s.status === 'archived' ? 'bg-admin-surface-2 text-admin-muted' :
+                          'bg-yellow-100 text-yellow-700'
+                        }`}>
+                          {s.status}
+                        </span>
+                        <span className="text-admin-xs font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                          {s.category}
+                        </span>
+                        {s.destination_hint && (
+                          <span className="text-admin-xs font-medium px-1.5 py-0.5 rounded-full bg-violet-50 text-violet-700">
+                            {s.destination_hint}
+                          </span>
+                        )}
+                        <span className="text-admin-xs text-admin-muted">priority {s.priority}</span>
+                        <span className="text-admin-xs text-admin-muted">{fmtDateTime(s.created_at)}</span>
+                      </div>
+                      <p className="text-admin-text font-medium whitespace-pre-wrap">{s.user_message_redacted}</p>
+                      {s.generated_reason && (
+                        <p className="text-admin-xs text-admin-muted mt-1">{s.generated_reason}</p>
+                      )}
+                      <pre className="text-[11px] bg-admin-surface-2 rounded-admin-sm p-2 overflow-x-auto text-admin-text-2 font-mono mt-2">
+                        {JSON.stringify(s.expected_behavior, null, 2)}
+                      </pre>
+                      {s.last_result && (
+                        <div className={`mt-2 rounded-admin-sm border px-3 py-2 ${
+                          s.last_result.passed === true
+                            ? 'border-green-200 bg-green-50 text-green-800'
+                            : 'border-red-200 bg-red-50 text-red-800'
+                        }`}>
+                          <div className="flex flex-wrap items-center gap-2 text-admin-xs font-medium">
+                            <span>last run: {s.last_result.passed === true ? 'pass' : 'fail'}</span>
+                            {typeof s.last_result.score === 'number' && <span>score {s.last_result.score}</span>}
+                            {s.last_run_at && <span>{fmtDateTime(s.last_run_at)}</span>}
+                          </div>
+                          {Array.isArray(s.last_result.checks) && (
+                            <pre className="mt-1 text-[11px] overflow-x-auto font-mono whitespace-pre-wrap">
+                              {JSON.stringify(
+                                s.last_result.checks.filter((c: { passed?: boolean }) => c.passed === false).slice(0, 3),
+                                null,
+                                2,
+                              )}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      {s.status !== 'active' && (
+                        <button
+                          type="button"
+                          onClick={() => setScenarioStatus(s.id, 'active')}
+                          className="text-admin-xs px-3 py-1 rounded-full border border-green-200 text-green-600 hover:bg-green-50 transition-colors"
+                        >
+                          활성화
+                        </button>
+                      )}
+                      {s.status !== 'pending' && (
+                        <button
+                          type="button"
+                          onClick={() => setScenarioStatus(s.id, 'pending')}
+                          className="text-admin-xs px-3 py-1 rounded-full border border-yellow-200 text-yellow-700 hover:bg-yellow-50 transition-colors"
+                        >
+                          대기
+                        </button>
+                      )}
+                      {s.status !== 'archived' && (
+                        <button
+                          type="button"
+                          onClick={() => setScenarioStatus(s.id, 'archived')}
+                          className="text-admin-xs px-3 py-1 rounded-full border border-admin-border-mid text-admin-muted hover:bg-admin-surface-2 transition-colors"
+                        >
+                          보관
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-admin-muted text-admin-sm py-8 text-center">
+              아직 자동 생성된 고객 시나리오가 없습니다. learning-flywheel cron이 최근 문의를 분석하면 이곳에 후보가 쌓입니다.
+            </p>
           )}
         </div>
       )}
@@ -525,7 +680,7 @@ export default function PlatformLearningPage() {
                             <span className="font-semibold text-admin-text">{f.rating === 'up' ? '긍정' : '부정'}</span>
                             <span className="text-admin-muted">{fmtDateTime(f.created_at)}</span>
                             <span className="text-admin-muted font-mono">
-                              {(f.payload as any)?.leadSource || '-'}
+                              {(f.payload as Record<string, unknown>)?.leadSource as string || '-'}
                             </span>
                           </div>
                           {f.session_id && (

@@ -264,6 +264,8 @@ export interface GatewayCallParams {
    *   - 신규 escalation: 성공+불확실 → advisor 가 직접 최종 응답 생성
    */
   escalateIfLowConfidence?: (data: unknown, rawText?: string) => boolean;
+  /** tenant_id (어필리에이트 스코프) — null이면 platform 소속 */
+  tenantId?: string | null;
 }
 
 export interface GatewayResult<T = unknown> {
@@ -657,10 +659,11 @@ export async function llmCall<T = unknown>(params: GatewayCallParams): Promise<G
         model,
         usage: { prompt_tokens: input, completion_tokens: output, prompt_cache_hit_tokens: cache_hit },
         latencyMs: result.elapsed_ms,
+        tenantId: params.tenantId,
       });
     } else {
       void trackCost({
-        ctx: { userRole: 'platform_admin' },
+        ctx: { tenantId: params.tenantId ?? undefined, userRole: 'platform_admin' },
         agentType: effectiveTask,
         model,
         usage: {
@@ -925,6 +928,7 @@ export async function tryDeepSeekStream(
         prompt_cache_hit_tokens: result._usage.cache_hit,
       },
       latencyMs: result.elapsed_ms,
+      tenantId: params.tenantId,
     });
   }
   return result as GatewayResult<string>;

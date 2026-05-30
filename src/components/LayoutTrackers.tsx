@@ -9,6 +9,7 @@ import TrackerBootstrap from '@/components/TrackerBootstrap';
 import GA4Tracker from '@/components/GA4Tracker';
 import MetaPixel from '@/components/MetaPixel';
 import KakaoMomentPixel from '@/components/KakaoMomentPixel';
+import NaverAnalyticsPixel from '@/components/NaverAnalyticsPixel';
 import MsClarity from '@/components/MsClarity';
 import WebVitalsReporter from '@/components/WebVitalsReporter';
 
@@ -18,6 +19,7 @@ export default function LayoutTrackers() {
       <TrackerBootstrap />
       <GA4Tracker />
       <MetaPixel />
+      <NaverAnalyticsPixel />
       <KakaoMomentPixel />
       <MsClarity />
       <WebVitalsReporter />

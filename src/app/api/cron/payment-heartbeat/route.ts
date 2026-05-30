@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
       .limit(1)
       .maybeSingle();
 
-    const lastAt = (lastRow as any)?.received_at as string | undefined;
+    const lastAt = (lastRow as Record<string, unknown>)?.received_at as string | undefined;
     summary.last_slack_event_at = lastAt ?? null;
     const silenceHours = lastAt ? (Date.now() - new Date(lastAt).getTime()) / 3600_000 : 999;
     summary.silence_hours = Number(silenceHours.toFixed(2));

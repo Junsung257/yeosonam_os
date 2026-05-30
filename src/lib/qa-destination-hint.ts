@@ -1,29 +1,107 @@
-/**
- * QA 채팅·자유여행 CTA 등에서 쓰는 **짧은 목적지 키워드** 매칭.
- * (정규화된 목적지 마스터와 다를 수 있음 — 없으면 전체 상품 컨텍스트로 폴백)
- */
+const DEST = {
+  danang: '\uB2E4\uB0AD',
+  hoian: '\uD638\uC774\uC548',
+  nhatrang: '\uB098\uD2B8\uB791',
+  hanoi: '\uD558\uB178\uC774',
+  phuquoc: '\uD478\uAFB8\uC625',
+  hochiminh: '\uD638\uCE58\uBBFC',
+  vietnam: '\uBCA0\uD2B8\uB0A8',
+  bohol: '\uBCF4\uD640',
+  cebu: '\uC138\uBD80',
+  manila: '\uB9C8\uB2D0\uB77C',
+  philippines: '\uD544\uB9AC\uD540',
+  osaka: '\uC624\uC0AC\uCE74',
+  kyoto: '\uAD50\uD1A0',
+  fukuoka: '\uD6C4\uCFE0\uC624\uCE74',
+  tokyo: '\uB3C4\uCFC4',
+  sapporo: '\uC0BF\uD3EC\uB85C',
+  japan: '\uC77C\uBCF8',
+  guilin: '\uACC4\uB9BC',
+  yangshuo: '\uC591\uC0AD',
+  china: '\uC911\uAD6D',
+  bangkok: '\uBC29\uCF55',
+  pattaya: '\uD30C\uD0C0\uC57C',
+  phuket: '\uD478\uCF13',
+  chiangmai: '\uCE58\uC559\uB9C8\uC774',
+  singapore: '\uC2F1\uAC00\uD3EC\uB974',
+  taipei: '\uD0C0\uC774\uBCA0\uC774',
+  macau: '\uB9C8\uCE74\uC624',
+  bali: '\uBC1C\uB9AC',
+  guam: '\uAD0C',
+  boracay: '\uBCF4\uB77C\uCE74\uC774',
+  saipan: '\uC0AC\uC774\uD310',
+  paris: '\uD30C\uB9AC',
+  london: '\uB7F0\uB358',
+  rome: '\uB85C\uB9C8',
+  barcelona: '\uBC14\uB974\uC140\uB85C\uB098',
+  prague: '\uD504\uB77C\uD558',
+  newyork: '\uB274\uC695',
+  sydney: '\uC2DC\uB4DC\uB2C8',
+  lisbon: '\uB9AC\uC2A4\uBCF8',
+  xian: '\uC2DC\uC548',
+  hongkong: '\uD64D\uCF69',
+} as const;
+
 export const QA_KNOWN_DESTINATION_KEYWORDS = [
-  '다낭', '나트랑', '푸꾸옥', '하노이', '호치민',
-  '오사카', '도쿄', '후쿠오카', '훗카이도', '교토', '시즈오카', '나고야',
-  '방콕', '푸켓', '파타야', '치앙마이',
-  '싱가포르', '홍콩', '마카오', '타이베이',
-  '발리', '세부', '보라카이', '괌', '사이판',
-  '파리', '런던', '로마', '바르셀로나', '프라하',
-  '뉴욕', '하와이', '라스베가스', '시안', '장가계',
+  DEST.danang,
+  DEST.hoian,
+  DEST.nhatrang,
+  DEST.hanoi,
+  DEST.phuquoc,
+  DEST.hochiminh,
+  DEST.vietnam,
+  DEST.bohol,
+  DEST.cebu,
+  DEST.manila,
+  DEST.philippines,
+  DEST.osaka,
+  DEST.kyoto,
+  DEST.fukuoka,
+  DEST.tokyo,
+  DEST.sapporo,
+  DEST.japan,
+  DEST.guilin,
+  DEST.yangshuo,
+  DEST.china,
+  DEST.bangkok,
+  DEST.pattaya,
+  DEST.phuket,
+  DEST.chiangmai,
+  DEST.singapore,
+  DEST.taipei,
+  DEST.macau,
+  DEST.bali,
+  DEST.guam,
+  DEST.boracay,
+  DEST.saipan,
+  DEST.paris,
+  DEST.london,
+  DEST.rome,
+  DEST.barcelona,
+  DEST.prague,
+  DEST.newyork,
+  DEST.sydney,
+  DEST.lisbon,
+  DEST.xian,
+  DEST.hongkong,
 ] as const;
 
-/** 본문에 알려진 목적지 키워드가 있으면 첫 매칭만 반환 */
+const QA_DESTINATION_ALIASES: Record<string, string> = {
+  [DEST.vietnam]: DEST.danang,
+  [DEST.philippines]: DEST.bohol,
+  [DEST.japan]: DEST.osaka,
+  [DEST.china]: DEST.guilin,
+};
+
 export function extractQaDestinationHint(text: string): string | null {
   if (!text?.trim()) return null;
+  const normalized = text.normalize('NFC');
   for (const dest of QA_KNOWN_DESTINATION_KEYWORDS) {
-    if (text.includes(dest)) return dest;
+    if (normalized.includes(dest)) return QA_DESTINATION_ALIASES[dest] ?? dest;
   }
   return null;
 }
 
-/**
- * 현재 질문 + 최근 고객 발화 몇 줄을 합쳐 목적지 힌트 추출 (후속 턴에서 "거기"만 쳐도 이전 목적지 반영).
- */
 export function buildQaPackageHintSource(
   message: string,
   history: { role: string; content: string }[] = [],

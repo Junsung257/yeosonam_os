@@ -56,7 +56,7 @@ interface Props {
 
 function computeMinPrice(pkg: PackageCardData): number {
   if (pkg.price_dates && pkg.price_dates.length > 0) {
-    const v = getMinPriceFromDates(pkg.price_dates as any);
+    const v = getMinPriceFromDates(pkg.price_dates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
     if (v && v > 0) return v;
   }
   if (pkg.price_tiers && pkg.price_tiers.length > 0) {
@@ -310,7 +310,11 @@ function CardImage({
           </button>
           {isReasonOpen && recommendedReasons.length > 0 && (
             <div
+              role="button"
+              tabIndex={-1}
+              aria-label="Recommendation reasons"
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onKeyDown={(e) => { if (e.key === 'Escape') onToggleReason?.(); }}
               className="absolute top-9 right-1.5 md:top-10 md:right-2.5 z-20 bg-white shadow-modal rounded-[12px] p-2.5 text-[11px] text-text-body max-w-[220px] border border-admin-border"
             >
               <div className="font-semibold text-amber-700 mb-1.5">왜 추천?</div>
@@ -401,8 +405,9 @@ function CardBody({
       )}
 
       {/* 가격 + 평점 + 잔여석 + CTA */}
-      <div className="mt-3 md:mt-4 flex items-center justify-between gap-2 flex-wrap">
-        <div className="flex items-baseline gap-0.5">
+      <div className="mt-3 md:mt-4 flex items-end justify-between gap-2">
+        <div className="min-w-0 flex flex-col gap-1">
+          <div className="flex items-baseline gap-0.5 flex-wrap">
           {minPrice > 0 ? (
             <>
               <span className="text-price md:text-h1 text-brand tabular-nums">
@@ -414,24 +419,25 @@ function CardBody({
           ) : (
             <span className="text-body text-text-secondary">가격 문의</span>
           )}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap min-h-[20px]">
+            {pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0 && (
+              <span className="text-micro text-amber-500 font-semibold tabular-nums">
+                ★ {Number(pkg.avg_rating).toFixed(1)}
+                <span className="text-text-secondary font-normal ml-0.5">({pkg.review_count})</span>
+              </span>
+            )}
+            {rankBadge && (
+              <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-success-light text-success">
+                {rankBadge}
+              </span>
+            )}
+            <SeatBadge pkg={pkg} />
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          {pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0 && (
-            <span className="text-micro text-amber-500 font-semibold tabular-nums">
-              ★ {Number(pkg.avg_rating).toFixed(1)}
-              <span className="text-text-secondary font-normal ml-0.5">({pkg.review_count})</span>
-            </span>
-          )}
-          {rankBadge && (
-            <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-success-light text-success">
-              {rankBadge}
-            </span>
-          )}
-          <SeatBadge pkg={pkg} />
-          {!rankBadge && (
-            <span className="text-[11px] text-text-secondary/70 font-medium">일정 보기 →</span>
-          )}
-        </div>
+        <span className="inline-flex h-8 min-w-[76px] shrink-0 items-center justify-center rounded-full bg-brand px-3 text-[12px] font-bold text-white shadow-sm transition-colors group-hover:bg-[#1B64DA]">
+          상세 보기
+        </span>
       </div>
     </div>
   );

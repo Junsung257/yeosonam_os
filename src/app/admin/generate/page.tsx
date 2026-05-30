@@ -80,9 +80,11 @@ export default function GeneratePage() {
               price: p.price || 0,
               itinerary: p.itinerary,
               inclusions: p.inclusions,
-              parsedData: p.raw_text
-                ? { 요금: `${(p.price || 0).toLocaleString()}원`, 일정: p.itinerary?.join(' → ') || '', 써차지: '' }
-                : undefined,
+              parsedData: {
+                price: `${(p.price || 0).toLocaleString()}원`,
+                itinerary: Array.isArray(p.itinerary) ? p.itinerary.join(' > ') : '',
+                inclusions: Array.isArray(p.inclusions) ? p.inclusions.join(', ') : '',
+              },
             }))
           );
         } else {

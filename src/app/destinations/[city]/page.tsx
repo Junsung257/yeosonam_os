@@ -8,7 +8,7 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import DestinationPackagesSection from '@/components/customer/DestinationPackagesSection';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
-import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion } from '@/lib/regions';
+import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment } from '@/lib/regions';
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300;
@@ -190,10 +190,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   ]);
 
   if (!stats || stats.length === 0) return null;
-  const stat = stats[0] as any;
+  const stat = stats[0];
 
-  const alivePkgs = ((packages || []) as any[]).filter(p => {
-    const pd = (p.price_dates || []) as Array<{ date?: string }>;
+  const alivePkgs = (packages || []).filter(p => {
+    const pd = (p.price_dates || []) as unknown as Array<{ date?: string }>;
     if (pd.length === 0) return true;
     return pd.some(d => d.date && d.date >= today);
   });
@@ -220,7 +220,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     metadataResult.error ? null : (metadataResult.data as DestinationMeta | null);
 
   const climateData: ClimateData | null =
-    climateResult.error ? null : (climateResult.data as ClimateData | null);
+    climateResult.error ? null : (climateResult.data as unknown as ClimateData | null);
 
   return {
     destination: city,
@@ -228,10 +228,10 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     avgRating: stat.avg_rating ? Number(stat.avg_rating) : null,
     reviewCount: stat.total_reviews || 0,
     minPrice: stat.min_price || null,
-    attractions: (attractions as any[]) || [],
+    attractions: (attractions || []) as unknown as PillarData['attractions'],
     packages: alivePkgs,
-    relatedPosts: (posts as any[]) || [],
-    pillarPost: (pillarRow as any[])?.[0] || null,
+    relatedPosts: (posts || []) as unknown as PillarData['relatedPosts'],
+    pillarPost: (pillarRow as unknown as PillarData['pillarPost'][] | null)?.[0] || null,
     siblingCities,
     metadata,
     climateData,
@@ -242,21 +242,22 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 export async function generateMetadata({ params }: { params: Promise<{ city: string }> }): Promise<Metadata> {
   const { city } = await params;
   const decoded = decodeURIComponent(city);
+  const encodedCity = encodeDestinationPathSegment(decoded);
   return {
     title: `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`,
     description: `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`,
     alternates: {
-      canonical: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+      canonical: `${BASE_URL}/destinations/${encodedCity}`,
       types: {
         'application/rss+xml': [
-          { url: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}/rss.xml`, title: `${decoded} 여행 매거진 RSS` },
+          { url: `${BASE_URL}/destinations/${encodedCity}/rss.xml`, title: `${decoded} 여행 매거진 RSS` },
         ],
       },
     },
     openGraph: {
       title: `${decoded} 여행 완벽 가이드 | 여소남`,
       description: `${decoded} 여행의 모든 것. 운영팀 검증 관광지와 엄선 패키지까지.`,
-      url: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+      url: `${BASE_URL}/destinations/${encodedCity}`,
       type: 'website',
     },
   };
@@ -274,6 +275,7 @@ async function renderPillarBody(md: string): Promise<string> {
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
   const decoded = decodeURIComponent(city);
+  const encodedCity = encodeDestinationPathSegment(decoded);
   let data: PillarData | null = null;
   try {
     data = await getPillarData(decoded);
@@ -334,7 +336,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 '@type': 'TouristDestination',
                 name: decoded,
                 description: data.pillarPost?.seo_description || `${decoded} 여행 완벽 가이드`,
-                url: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+                url: `${BASE_URL}/destinations/${encodedCity}`,
                 ...(heroImage ? { image: heroImage } : {}),
                 ...(data.avgRating
                   ? {
@@ -362,7 +364,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                     '@type': 'ListItem',
                     position: region ? 4 : 3,
                     name: decoded,
-                    item: `${BASE_URL}/destinations/${encodeURIComponent(decoded)}`,
+                    item: `${BASE_URL}/destinations/${encodedCity}`,
                   },
                 ],
               },
@@ -538,9 +540,9 @@ export default async function DestinationPillarPage({ params }: { params: Promis
               destination={data.climateData.destination}
               primaryCity={data.climateData.primary_city}
               country={data.climateData.country}
-              monthlyNormals={data.climateData.monthly_normals as any}
-              fitnessScores={data.climateData.fitness_scores as any}
-              seasonalSignals={data.climateData.seasonal_signals as any}
+              monthlyNormals={data.climateData.monthly_normals as unknown as import('@/lib/travel-fitness-score').MonthlyNormal[]}
+              fitnessScores={data.climateData.fitness_scores as unknown as import('@/lib/travel-fitness-score').FitnessScore[]}
+              seasonalSignals={data.climateData.seasonal_signals as unknown as import('@/lib/seasonal-signals').SeasonalSignal[]}
               representativeMonth={new Date().getMonth() + 1}
               departureDistribution={Object.keys(departureDist).length > 0 ? departureDist : undefined}
             />
@@ -607,7 +609,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
           {data.packages.length > 0 && (
             <DestinationPackagesSection
               destination={decoded}
-              packages={data.packages as any}
+              packages={data.packages as unknown as Array<{ id: string; title: string; destination: string; duration: number | null; nights: number | null; price: number | null; airline: string | null; departure_airport: string | null; avg_rating: number | null; review_count: number; price_dates: Array<{ date?: string }> | null; [key: string]: unknown }>}
               departureCities={showDepartureTabs ? data.departureCities : []}
             />
           )}

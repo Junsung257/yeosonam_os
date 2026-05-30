@@ -34,6 +34,12 @@ export const TENANT_SCOPED_TABLES = {
     'jarvis_pending_actions',
     'customer_facts',
     'agent_actions',
+    'customer_events',          // Phase 1-1: 고객 360
+    'recommendation_events',    // Phase 2-1: 추천 전환 피드백
+    'anomaly_alerts',           // Phase 2-3: 이상 징후 탐지
+    'billing_settings',         // Phase 3-3: Toss Billing
+    'billing_invoices',         // Phase 3-3: Toss Billing
+    'billing_history',          // Phase 3-3: Toss Billing
     // 테넌트 전용 리소스
     'inventory_blocks',
     'rfq_access',
@@ -64,6 +70,9 @@ export const TENANT_SCOPED_TABLES = {
     'land_operators',
     'policies',
     'group_rfqs',              // RFQ 본체는 글로벌, rfq_access/proposals 만 STRICT
+    'prompt_registry',         // Phase 1-2: 프로프트 관리 (글로벌)
+    'demand_forecasts',        // Phase 2-2: 수요 예측 (글로벌, 어드민 전용)
+    'cancellation_predictions', // Phase 2-2: 취소 예측 (글로벌, 어드민 전용)
   ]),
 } as const
 

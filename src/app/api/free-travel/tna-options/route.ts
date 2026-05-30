@@ -11,6 +11,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getTnaOptions } from '@/lib/travel-providers/mrt';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const QuerySchema = z.object({
   gid: z.string().min(1),
   url: z.string().url(),

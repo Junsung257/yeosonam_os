@@ -72,7 +72,9 @@ export default function ConsentBanner() {
     <>
       {/* 백드롭 (open=true: 상세 설정 모달) */}
       {open && (
-        <div
+        <button
+          type="button"
+          aria-label="Close cookie settings"
           className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         />
@@ -81,8 +83,10 @@ export default function ConsentBanner() {
       {/* 배너 */}
       <div className="fixed bottom-0 inset-x-0 z-[70] flex justify-center px-3 pb-3 sm:pb-4">
         <div
+          role="dialog"
+          tabIndex={-1}
+          aria-label="Cookie consent"
           className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
-          onClick={e => e.stopPropagation()}
         >
           <div className="px-5 py-4">
             <div className="flex items-start gap-3">
@@ -187,6 +191,7 @@ function ConsentRow({
         onClick={() => !disabled && onChange?.(!checked)}
         disabled={disabled}
         aria-pressed={checked}
+        aria-label={`${title} cookie consent`}
         className={`mt-0.5 shrink-0 w-9 h-5 rounded-full transition-colors relative ${
           disabled ? 'bg-slate-300' : checked ? 'bg-blue-600' : 'bg-slate-200'
         }`}

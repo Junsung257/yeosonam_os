@@ -79,7 +79,7 @@ export async function getAffiliatePerformanceSummary(
 
   // 2. 각 카드의 최신 engagement 스냅샷 (마지막 1개만)
   const stats: PerformanceStats[] = await Promise.all(
-    cards.map(async (c: { id: number; title?: string; created_at?: string; template_family?: string | null; branding_level?: string | null }) => {
+    cards.map(async (c: { id: number; title?: string; created_at?: string; template_family?: string | null; branding_level?: string | null }): Promise<PerformanceStats> => {
       const { data: snaps } = await supabaseAdmin
         .from('post_engagement_snapshots')
         .select('views, likes, comments, shares, saves, clicks, reach, ctr, created_at')
@@ -87,11 +87,11 @@ export async function getAffiliatePerformanceSummary(
         .order('captured_at', { ascending: false })
         .limit(1);
 
-      const s = snaps?.[0];
+      const s = snaps?.[0] as Record<string, any> | undefined;
       if (!s) {
         return {
-          card_news_id: c.id,
-          title: c.title,
+          card_news_id: String(c.id),
+          title: c.title ?? '',
           totalViews: 0,
           totalLikes: 0,
           totalComments: 0,
@@ -102,17 +102,17 @@ export async function getAffiliatePerformanceSummary(
           engagementRate: 0,
           ctr: 0,
           snapshots: 0,
-          templateFamily: c.template_family,
-          brandingLevel: c.branding_level,
-          createdAt: c.created_at,
+          templateFamily: c.template_family ?? null,
+          brandingLevel: c.branding_level ?? null,
+          createdAt: c.created_at ?? '',
         };
       }
 
       const totalEngagement = (s.likes ?? 0) + (s.comments ?? 0) * 3 + (s.shares ?? 0) * 5 + (s.saves ?? 0) * 5;
       const reach = s.reach ?? 1;
       return {
-        card_news_id: c.id,
-        title: c.title,
+        card_news_id: String(c.id),
+          title: c.title ?? '',
         totalViews: s.views ?? 0,
         totalLikes: s.likes ?? 0,
         totalComments: s.comments ?? 0,
@@ -123,9 +123,9 @@ export async function getAffiliatePerformanceSummary(
         engagementRate: Math.round((totalEngagement / Math.max(reach, 1)) * 10000) / 100,
         ctr: s.ctr ?? 0,
         snapshots: snaps?.length ?? 0,
-        templateFamily: c.template_family,
-        brandingLevel: c.branding_level,
-        createdAt: c.created_at,
+        templateFamily: c.template_family ?? null,
+        brandingLevel: c.branding_level ?? null,
+        createdAt: c.created_at ?? '',
       };
     }),
   );

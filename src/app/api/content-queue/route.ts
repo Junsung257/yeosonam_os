@@ -104,7 +104,7 @@ const postHandler = async (request: NextRequest) => {
         .select('product_id, travel_packages(destination)')
         .eq('id', creative_id)
         .limit(1);
-      const dest = (creative?.[0] as any)?.travel_packages?.destination;
+      const dest = ((creative?.[0] as Record<string, unknown>)?.travel_packages as { destination?: string } | undefined)?.destination;
       if (dest) revalidatePath(`/blog/destination/${encodeURIComponent(dest)}`);
 
       // 통합 색인 알림 (Google Indexing API + IndexNow + Bing sitemap)

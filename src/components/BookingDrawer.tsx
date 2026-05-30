@@ -608,8 +608,8 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="block text-[10px] text-amber-700 mb-0.5">커미션율 (%)</label>
-              <input type="number" min={0} max={100} step={0.1}
+              <label htmlFor="booking-drawer-commission-rate" className="block text-[10px] text-amber-700 mb-0.5">커미션율 (%)</label>
+              <input id="booking-drawer-commission-rate" type="number" min={0} max={100} step={0.1}
                 placeholder="예: 10"
                 value={commissionRate ?? ''}
                 disabled={disabled}
@@ -632,8 +632,8 @@ const DynamicQuoteBuilder = React.memo(function DynamicQuoteBuilder({
                 className="w-full border border-amber-200 bg-white rounded-lg px-2 py-1.5 text-right text-[13px] tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-400 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
             </div>
             <div>
-              <label className="block text-[10px] text-amber-700 mb-0.5">커미션 총액 (원)</label>
-              <input type="number" min={0}
+              <label htmlFor="booking-drawer-commission-amount" className="block text-[10px] text-amber-700 mb-0.5">커미션 총액 (원)</label>
+              <input id="booking-drawer-commission-amount" type="number" min={0}
                 placeholder="또는 직접 입력"
                 value={commissionAmount ?? ''}
                 disabled={disabled}
@@ -1170,7 +1170,9 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   return (
     <>
       {/* Overlay */}
-      <div
+      <button
+        type="button"
+        aria-label="Close booking drawer"
         className={`fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       />

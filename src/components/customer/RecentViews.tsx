@@ -1,21 +1,38 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { getRecentViews, getSimilarPackages } from '@/lib/user-actions';
 
 interface RecentPkg {
   id: string;
   title: string;
   destination: string;
-  price: number;
+  price: number | null;
 }
 
 interface Props {
   customerId?: string | null;
   sessionId?: string | null;
-  /** 특정 패키지 상세 페이지에서 호출 시 유사 상품 표시 */
   currentPackageId?: string;
+}
+
+function getBrowserSessionId(): string {
+  const key = 'ysn_session_id';
+  try {
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    window.localStorage.setItem(key, created);
+    return created;
+  } catch {
+    return crypto.randomUUID();
+  }
+}
+
+function formatPrice(price: number | null): string {
+  return typeof price === 'number' && Number.isFinite(price)
+    ? `${price.toLocaleString('ko-KR')}원`
+    : '가격 문의';
 }
 
 export default function RecentViews({ customerId, sessionId, currentPackageId }: Props) {
@@ -23,63 +40,80 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
   const [loading, setLoading] = useState(true);
   const [type, setType] = useState<'recent' | 'similar'>('recent');
 
+  const effectiveCustomerId = customerId ?? null;
+  const providedSessionId = sessionId ?? null;
+
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
+      const effectiveSessionId = providedSessionId || getBrowserSessionId();
 
       if (currentPackageId) {
-        // 상세 페이지: 패키지 조회 트래킹 (마운트 시 1회)
-        const { trackUserAction } = await import('@/lib/user-actions');
-        trackUserAction({
-          customerId,
-          sessionId: sessionId || crypto.randomUUID(),
-          actionType: 'package_view',
-          targetId: currentPackageId,
+        void fetch('/api/user-actions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            customerId: effectiveCustomerId,
+            sessionId: effectiveSessionId,
+            actionType: 'package_view',
+            targetId: currentPackageId,
+          }),
+          keepalive: true,
         }).catch(() => {});
 
-        // 유사 상품 조회
-        const similar = await getSimilarPackages(currentPackageId, { limit: 6 });
+        const params = new URLSearchParams({
+          mode: 'similar',
+          packageId: currentPackageId,
+          limit: '6',
+        });
+        const res = await fetch(`/api/user-actions?${params.toString()}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({ packages: [] }));
         if (!cancelled) {
-          setPackages(similar);
+          setPackages(Array.isArray(data.packages) ? data.packages : []);
           setType('similar');
         }
       } else {
-        // 일반: 최근 본 상품
-        const ids = await getRecentViews({ customerId, sessionId, limit: 6 });
-        if (ids.length > 0 && !cancelled) {
-          // ID → 패키지 데이터
-          const { supabaseAdmin } = await import('@/lib/supabase');
-          const { data } = await supabaseAdmin
-            .from('travel_packages')
-            .select('id, title, destination, price')
-            .in('id', ids)
-            .in('status', ['active', 'approved']);
-          // IDs 순서 유지
-          const idOrder = new Map(ids.map((id, i) => [id, i]));
-          const sorted = ((data ?? []) as RecentPkg[]).sort(
-            (a, b) => (idOrder.get(a.id) ?? 999) - (idOrder.get(b.id) ?? 999),
-          );
-          setPackages(sorted);
+        const params = new URLSearchParams({
+          mode: 'recent',
+          sessionId: effectiveSessionId,
+          limit: '6',
+        });
+        if (effectiveCustomerId) params.set('customerId', effectiveCustomerId);
+        const res = await fetch(`/api/user-actions?${params.toString()}`, { cache: 'no-store' });
+        const data = await res.json().catch(() => ({ packages: [] }));
+        if (!cancelled) {
+          setPackages(Array.isArray(data.packages) ? data.packages : []);
+          setType('recent');
         }
       }
 
       if (!cancelled) setLoading(false);
     }
 
-    load();
-    return () => { cancelled = true; };
-  }, [customerId, sessionId, currentPackageId]);
+    load().catch(() => {
+      if (!cancelled) {
+        setPackages([]);
+        setLoading(false);
+      }
+    });
 
-  if (loading) return null;
-  if (packages.length === 0) return null;
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPackageId, effectiveCustomerId, providedSessionId]);
+
+  const heading = useMemo(
+    () => (type === 'similar' ? '이 상품과 비슷한 여행' : '최근 본 상품'),
+    [type],
+  );
+
+  if (loading || packages.length === 0) return null;
 
   return (
     <section className="px-4 mt-6">
-      <h2 className="text-[16px] font-bold text-text-primary mb-3">
-        {type === 'similar' ? '이 상품과 비슷한 여행' : '최근 본 상품'}
-      </h2>
+      <h2 className="text-[16px] font-bold text-text-primary mb-3">{heading}</h2>
       <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 snap-x snap-mandatory">
         {packages.map((pkg) => (
           <Link
@@ -94,7 +128,7 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
               {pkg.title}
             </p>
             <p className="text-[14px] font-extrabold text-brand tabular-nums">
-              ₩{pkg.price?.toLocaleString() ?? '가격 문의'}
+              {formatPrice(pkg.price)}
             </p>
           </Link>
         ))}

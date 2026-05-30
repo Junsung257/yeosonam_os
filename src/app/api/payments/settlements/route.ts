@@ -1,5 +1,44 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { successResponse, ApiErrors } from '@/lib/api-response';
+
+interface LandSettlementRow {
+  id: string;
+  land_operator_id: string | null;
+  bank_transaction_id: string | null;
+  total_amount: number;
+  bundled_total: number;
+  fee_amount: number;
+  is_refund: boolean;
+  status: string;
+  notes: string | null;
+  created_at: string | null;
+  created_by: string | null;
+  confirmed_at: string | null;
+  confirmed_by: string | null;
+  reversed_at: string | null;
+  reversed_by: string | null;
+  reversal_reason: string | null;
+  land_operators: { name?: string | null } | { name?: string | null }[] | null;
+  bank_transactions: {
+    received_at?: string | null;
+    counterparty_name?: string | null;
+    memo?: string | null;
+  } | {
+    received_at?: string | null;
+    counterparty_name?: string | null;
+    memo?: string | null;
+  }[] | null;
+  land_settlement_bookings: Array<{
+    amount: number;
+    bookings: {
+      id: string;
+      booking_no: string;
+      departure_date: string | null;
+      customers: { name?: string | null } | { name?: string | null }[] | null;
+    } | null;
+  }> | null;
+}
 
 /**
  * GET /api/payments/settlements
@@ -9,7 +48,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  */
 export async function GET(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ settlements: [] });
+    return successResponse({ settlements: [] });
   }
 
   const status = req.nextUrl.searchParams.get('status') ?? 'all';
@@ -50,7 +89,7 @@ export async function GET(req: NextRequest) {
       return v;
     };
 
-    const settlements = ((data ?? []) as any[]).map(row => {
+    const settlements = ((data ?? []) as unknown as LandSettlementRow[]).map(row => {
       const lsb = (row.land_settlement_bookings ?? []) as Array<{
         amount: number;
         bookings: { id: string; booking_no: string; departure_date: string | null; customers: Embed1 } | null;
@@ -86,11 +125,8 @@ export async function GET(req: NextRequest) {
       };
     });
 
-    return NextResponse.json({ settlements });
+    return successResponse({ settlements });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : '조회 실패');
   }
 }

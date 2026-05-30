@@ -178,19 +178,19 @@ export async function GET(request: Request) {
           agent_type: 'finance',
           action_type: 'notify_affiliate_anomaly',
           summary: `[이상탐지] ${finding.affiliate_name} — ${finding.kind}`,
-          payload: finding as any,
+          payload: finding as unknown as Record<string, unknown>,
           requested_by: 'jarvis',
           priority: 'critical',
         })),
       );
     }
 
-    await supabaseAdmin.from('audit_logs').insert({
+    await void(supabaseAdmin.from('audit_logs').insert({
       action: 'AFFILIATE_ANOMALY_DETECT',
       target_type: 'affiliate',
       description: `전일 이상탐지: ${findings.length}건`,
-      after_value: { date: yesterdayIso, findings } as any,
-    }).then(() => {}).catch(() => {});
+      after_value: { date: yesterdayIso, findings } as unknown as Record<string, unknown>,
+    }));
 
     await reportAffiliateCronSuccess('affiliate-anomaly-detect', { date: yesterdayIso, findings: findings.length });
     return NextResponse.json({ date: yesterdayIso, findings: findings.length, details: findings });

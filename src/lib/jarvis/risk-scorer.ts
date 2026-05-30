@@ -5,7 +5,12 @@ const CRITICAL_PATTERNS = [
   /결제\s*취소/i,
   /강제\s*취소/i,
   /카드\s*취소/i,
+  /입금\s*취소/i,
   /계좌\s*변경/i,
+  /송금/i,
+  /refund/i,
+  /payment\s*cancel/i,
+  /card\s*cancel/i,
 ];
 
 const HIGH_PATTERNS = [
@@ -15,9 +20,20 @@ const HIGH_PATTERNS = [
   /정산/i,
   /재고\s*차감/i,
   /좌석\s*확정/i,
+  /예약\s*변경/i,
+  /예약\s*취소/i,
+  /cancel\s*booking/i,
+  /settlement/i,
 ];
 
-const MEDIUM_PATTERNS = [/예약\s*상태/i, /에스컬레이션/i, /재확인/i, /랜드사/i];
+const MEDIUM_PATTERNS = [
+  /예약\s*상태/i,
+  /에스컬레이션/i,
+  /확약/i,
+  /대기\s*예약/i,
+  /컴플레인/i,
+  /불만/i,
+];
 
 export interface ScoreRiskInput {
   message: string;

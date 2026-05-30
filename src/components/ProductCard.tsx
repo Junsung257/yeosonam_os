@@ -112,7 +112,7 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
 
 function getMinPrice(pkg: Package): number {
   if (pkg.price_dates?.length) {
-    const min = getMinPriceFromDates(pkg.price_dates as any);
+    const min = getMinPriceFromDates(pkg.price_dates as unknown as Parameters<typeof getMinPriceFromDates>[0]);
     if (min > 0) return min;
   }
   const tierPrices = (pkg.price_tiers || []).map((t) => t.adult_price).filter(Boolean) as number[];
@@ -122,7 +122,7 @@ function getMinPrice(pkg: Package): number {
 
 function getNextDeparture(pkg: Package): string | null {
   if (pkg.price_dates?.length) {
-    const next = getNextDepartureFromDates(pkg.price_dates as any);
+    const next = getNextDepartureFromDates(pkg.price_dates as unknown as Parameters<typeof getNextDepartureFromDates>[0]);
     if (next) return next;
   }
   const today = new Date().toISOString().split('T')[0];

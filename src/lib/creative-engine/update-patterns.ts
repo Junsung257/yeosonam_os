@@ -71,11 +71,12 @@ export async function updateWinningPatterns(): Promise<{ updated: number; skippe
   }>();
 
   for (const row of performers) {
-    const ac = (row as any).ad_creatives;
-    const tp = ac?.travel_packages;
+    const rowAny = row as unknown as { ad_creatives: unknown; channel: string; impressions: number; clicks: number; spend: number; inquiries: number; revenue: number; ctr: number };
+    const ac = rowAny.ad_creatives as { travel_packages: unknown; hook_type: string; creative_type: string; target_segment: string; tone: string; key_selling_point: string; headline: string; body: string } | null;
+    const tp = (ac as unknown as { travel_packages: unknown } | null)?.travel_packages as unknown as { country: string; nights: number; price: number } | null;
     if (!ac || !tp) continue;
 
-    const key = `${ac.hook_type}_${ac.creative_type}_${row.channel}_${ac.target_segment}_${tp.country}`;
+    const key = `${ac.hook_type}_${ac.creative_type}_${rowAny.channel}_${ac.target_segment}_${tp.country}`;
 
     if (!grouped.has(key)) {
       grouped.set(key, {
@@ -83,7 +84,7 @@ export async function updateWinningPatterns(): Promise<{ updated: number; skippe
         tone: ac.tone,
         key_selling_point: ac.key_selling_point,
         target_segment: ac.target_segment,
-        channel: row.channel,
+        channel: rowAny.channel,
         creative_type: ac.creative_type,
         country: tp.country || '기타',
         nights: tp.nights || 0,
@@ -101,14 +102,14 @@ export async function updateWinningPatterns(): Promise<{ updated: number; skippe
     }
 
     const g = grouped.get(key)!;
-    g.total_impressions += row.impressions || 0;
-    g.total_clicks += row.clicks || 0;
-    g.total_spend += Number(row.spend) || 0;
-    g.total_inquiries += row.inquiries || 0;
-    g.total_revenue += Number(row.revenue) || 0;
+    g.total_impressions += rowAny.impressions || 0;
+    g.total_clicks += rowAny.clicks || 0;
+    g.total_spend += Number(rowAny.spend) || 0;
+    g.total_inquiries += rowAny.inquiries || 0;
+    g.total_revenue += Number(rowAny.revenue) || 0;
     g.data_days += 1;
 
-    const rowCtr = Number(row.ctr) || 0;
+    const rowCtr = Number(rowAny.ctr) || 0;
     if (rowCtr > g.best_ctr) {
       g.best_ctr = rowCtr;
       g.best_headline = ac.headline || g.best_headline;

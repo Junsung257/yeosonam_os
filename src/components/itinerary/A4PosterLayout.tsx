@@ -202,7 +202,7 @@ export function PosterPrice({
   singleSupplement?: string | null;
   guideTip?: string | null;
 }) {
-  const tiers = filterTiersByDepartureDays(priceTiers ?? [] as any, meta.departure_days || undefined) as PriceTier[];
+  const tiers = filterTiersByDepartureDays(priceTiers as unknown as import('@/lib/parser').PriceTier[] ?? [], meta.departure_days || undefined) as unknown as PriceTier[];
   const highlightDay = highlightDate ? new Date(highlightDate).getDate().toString() : null;
 
   // 요금 데이터 없으면 표시 안함
@@ -214,7 +214,7 @@ export function PosterPrice({
   const allPrices = usePriceList
     ? priceList!.flatMap(p => p.rules.map(r => r.price).filter((v): v is number => v !== null))
     : tiers.map(t => t.adult_price);
-  const minPrice = allPrices.length > 0 ? Math.min(...allPrices) : null;
+  const minPrice = allPrices.length > 0 ? Math.min(...allPrices.filter((v): v is number => v != null)) : null;
   const isSinglePrice = tiers.length <= 1 && (!usePriceList || (priceList!.length === 1 && priceList![0].rules.length <= 1));
 
   const thS: React.CSSProperties = {
@@ -273,7 +273,7 @@ export function PosterPrice({
             background: '#f0fdf4', border: '1px solid #86efac', borderRadius: '3px',
             padding: '3px 8px', marginBottom: '4px', fontSize: '9.5px', color: '#166534', fontWeight: 600,
           }}>
-            🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
+            🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
             {Object.entries(byMonth).map(([m, days], i) => (
               <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
             ))}

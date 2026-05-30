@@ -7,7 +7,7 @@
  * 보안: admin 세션 필요
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { supabaseAdmin, getSupabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -15,9 +15,9 @@ export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
     // ── Admin 인증 ───────────────────────────────────────────
-    const { supabase } = await import('@/lib/supabase');
-    const sb = await supabase();
-    const { data: { user } } = await sb.auth.getUser();
+    const supabaseClient = getSupabase();
+    if (!supabaseClient) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    const { data: { user } } = await supabaseClient.auth.getUser();
 
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -122,8 +122,7 @@ export async function GET(request: NextRequest) {
     const { data: trendTransactions } = await supabaseAdmin
       .from('mileage_transactions')
       .select('amount, type, created_at')
-      .eq('type', 'EARNED')
-      .or('type.eq.USED')
+      .or('type.eq.EARNED,type.eq.USED')
       .gte('created_at', sixMonthsAgo.toISOString());
 
     const trendMap = new Map<string, { earned: number; used: number }>();

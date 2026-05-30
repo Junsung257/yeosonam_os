@@ -22,6 +22,7 @@ import {
   verifyWebhookSignature,
   type WebhookPayload,
 } from '@/lib/meta-webhook';
+import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
 
 export const runtime = 'nodejs';
 
@@ -66,7 +67,7 @@ export async function POST(request: NextRequest) {
           platform: 'threads',
           event_type: change.field,
           external_id: mediaId,
-          raw_payload: value,
+          raw_payload: sanitizeWebhookPayload(value),
         });
       }
     }

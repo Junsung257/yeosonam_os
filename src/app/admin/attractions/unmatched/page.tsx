@@ -495,7 +495,7 @@ export default function UnmatchedPage() {
 
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-center">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 text-center">
             <div className="text-2xl font-bold text-admin-text-2">{summary.counts.pending}</div>
             <div className="text-xs text-admin-muted">대기중</div>
           </div>
@@ -516,7 +516,7 @@ export default function UnmatchedPage() {
             </div>
             <div className="text-xs text-admin-muted mt-1">누적 별칭 연결</div>
           </div>
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 text-left text-xs text-admin-muted">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 text-left text-xs text-admin-muted">
             <div className="font-semibold text-admin-text-2 mb-1">최근 자동 처리</div>
             {summary.recent_auto_alias.length === 0 ? (
               <span className="text-admin-muted-2">아직 없음</span>
@@ -611,7 +611,7 @@ export default function UnmatchedPage() {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 flex items-center gap-3">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 flex items-center gap-3">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
               <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-14" />
             </div>

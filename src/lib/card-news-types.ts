@@ -238,8 +238,9 @@ export function migrateSlideV1toV2(slide: CardNewsSlide, totalSlides: number): C
     'gradient-top': { type: 'gradient-top', color: '#000000', opacity: 80 },
   };
 
-  const hs = (slide as any).headline_style ?? {};
-  const bs = (slide as any).body_style ?? {};
+  type CardNewsStyle = { fontFamily?: string; fontSize?: number; fontWeight?: string; color?: string; textAlign?: string };
+  const hs = ((slide as unknown as Record<string, unknown>).headline_style ?? {}) as CardNewsStyle;
+  const bs = ((slide as unknown as Record<string, unknown>).body_style ?? {}) as CardNewsStyle;
 
   const textLayers: TextLayer[] = [];
 

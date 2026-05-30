@@ -166,7 +166,7 @@ export async function POST(req: NextRequest) {
             finalResult = step.value
             break
           }
-          if (firstTokenAt === null && (step.value as any)?.type === 'token') {
+          if (firstTokenAt === null && ((step.value as StreamEvent) as { type: string })?.type === 'token') {
             firstTokenAt = Date.now()
           }
           controller.enqueue(encodeSSE(step.value))
@@ -237,7 +237,7 @@ export async function POST(req: NextRequest) {
                     { role: 'assistant', content: appliedReply, timestamp: new Date().toISOString() },
                   ],
                   context: session?.context ?? {},
-                } as never)
+                } as Record<string, unknown>)
               }
             }
           } catch (e) {
@@ -291,9 +291,7 @@ export async function POST(req: NextRequest) {
       } finally {
         if (finalResult) {
           try {
-            await transitionAgentTask(createdTask.id, 'running', 'done', {
-              completed_at: new Date().toISOString(),
-            })
+            await transitionAgentTask(createdTask.id, 'running', 'done')
           } catch {
             // ignore
           }

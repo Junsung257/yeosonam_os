@@ -58,16 +58,16 @@ const getHandler = async (req: NextRequest) => {
       payload: Record<string, unknown> | null;
     }>;
 
-    const up = rows.filter((r) => (r.payload as any)?.rating === 'up');
-    const down = rows.filter((r) => (r.payload as any)?.rating === 'down');
+    const up = rows.filter((r) => (r.payload as Record<string, unknown>)?.rating === 'up');
+    const down = rows.filter((r) => (r.payload as Record<string, unknown>)?.rating === 'down');
 
     // 소스별 분포
     const sourceMap = new Map<string, { up: number; down: number }>();
     for (const r of rows) {
-      const src = (r.payload as any)?.leadSource || 'unknown';
+      const src = String((r.payload as Record<string, unknown>)?.leadSource || 'unknown');
       if (!sourceMap.has(src)) sourceMap.set(src, { up: 0, down: 0 });
       const s = sourceMap.get(src)!;
-      if ((r.payload as any)?.rating === 'up') s.up++;
+      if ((r.payload as Record<string, unknown>)?.rating === 'up') s.up++;
       else s.down++;
     }
     const bySource = [...sourceMap.entries()].map(([source, v]) => ({
@@ -84,7 +84,7 @@ const getHandler = async (req: NextRequest) => {
       if (!date) continue;
       if (!dayMap.has(date)) dayMap.set(date, { up: 0, down: 0 });
       const d = dayMap.get(date)!;
-      if ((r.payload as any)?.rating === 'up') d.up++;
+      if ((r.payload as Record<string, unknown>)?.rating === 'up') d.up++;
       else d.down++;
     }
     const byDay = [...dayMap.entries()]
@@ -102,7 +102,7 @@ const getHandler = async (req: NextRequest) => {
       latest: rows.slice(0, 20).map((r) => ({
         id: r.id,
         created_at: r.created_at,
-        rating: ((r.payload as any)?.rating as string) ?? 'unknown',
+        rating: ((r.payload as Record<string, unknown>)?.rating as string) ?? 'unknown',
         source: r.source,
         session_id: r.session_id,
         payload: r.payload,

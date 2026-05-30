@@ -8,14 +8,13 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * 활성 테넌트를 조회한 뒤 각각 marketing/tenant.run 이벤트를 발행.
  * tenantMarketingFn이 테넌트별로 독립 실행.
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const dailyMarketingFn = inngest.createFunction(
   {
     id: 'daily-marketing-orchestrator',
     name: '데일리 마케팅 오케스트레이터',
     concurrency: { limit: 1 },
     cron: '20 0 * * *',
-  } as any,
+  } as unknown as Parameters<typeof inngest.createFunction>[0],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async ({ step }: any) => {
     if (!isSupabaseConfigured) return { skipped: true, reason: 'Supabase 미설정' };

@@ -37,10 +37,10 @@ export async function POST(request: NextRequest) {
         .select('slug, product_id, travel_packages(destination)')
         .eq('id', creative_id)
         .limit(1);
-      const row = creative?.[0] as any;
+      const row = creative?.[0] as Record<string, unknown>;
       if (row?.slug) revalidatePath(`/blog/${row.slug}`);
-      if (row?.travel_packages?.destination) {
-        revalidatePath(`/blog/destination/${encodeURIComponent(row.travel_packages.destination)}`);
+      if ((row?.travel_packages as { destination?: string } | undefined)?.destination) {
+        revalidatePath(`/blog/destination/${encodeURIComponent((row?.travel_packages as { destination?: string } | undefined)?.destination ?? '')}`);
       }
 
       // 통합 색인 알림 (Google Indexing API + IndexNow)

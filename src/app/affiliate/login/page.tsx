@@ -65,8 +65,9 @@ export default function AffiliateLoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">파트너 코드</label>
+            <label htmlFor="affiliate-code" className="block text-xs font-medium text-gray-700 mb-1">파트너 코드</label>
             <input
+              id="affiliate-code"
               type="text"
               required
               value={code}
@@ -76,8 +77,9 @@ export default function AffiliateLoginPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">PIN 번호</label>
+            <label htmlFor="affiliate-pin" className="block text-xs font-medium text-gray-700 mb-1">PIN 번호</label>
             <input
+              id="affiliate-pin"
               type="password"
               required
               value={pin}

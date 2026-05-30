@@ -50,16 +50,16 @@ export async function GET(request: NextRequest) {
     // 추천 로그 저장 (fire-and-forget)
     const sessionId = request.cookies.get('ys_session_id')?.value;
     if (recommendations.length > 0) {
-      supabaseAdmin
-        .from('recommendation_logs')
-        .insert({
-          session_id: sessionId || null,
-          customer_id: customerId || null,
-          recommended_packages: recommendations.map((r: any) => r.package_id),
-          algorithm: usedAlgorithm,
-        })
-        .then(() => {})
-        .catch(() => {});
+      try {
+        await supabaseAdmin
+          .from('recommendation_logs')
+          .insert({
+            session_id: sessionId || null,
+            customer_id: customerId || null,
+            recommended_packages: recommendations.map((r: any) => r.package_id),
+            algorithm: usedAlgorithm,
+          });
+      } catch { /* fire-and-forget */ }
     }
 
     return NextResponse.json({

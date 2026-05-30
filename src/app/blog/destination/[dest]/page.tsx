@@ -37,7 +37,7 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
       .order('published_at', { ascending: false })
       .limit(100);
 
-    const posts = ((allPosts || []) as BlogPost[]).filter(
+    const posts = ((allPosts || []) as unknown as BlogPost[]).filter(
       p => p.travel_packages?.destination?.includes(decodeURIComponent(dest))
     );
 

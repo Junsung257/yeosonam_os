@@ -318,26 +318,28 @@ export async function computeRFM(): Promise<{ computed: number }> {
   // 4. RFM 매칭 → UPSERT
   let computed = 0;
   for (const c of scored) {
+    type ScoredCustomer = CustomerAggregate & { rScore: number; fScore: number; mScore: number; rfmCombined: string };
+    const s = c as unknown as ScoredCustomer;
     const { segmentId } = await matchSegment(
-      (c as any).rScore,
-      (c as any).fScore,
-      (c as any).mScore,
+      s.rScore,
+      s.fScore,
+      s.mScore,
     );
 
-    const email = emailMap.get(c.customerId) ?? null;
+    const email = emailMap.get(s.customerId) ?? null;
 
     const { error } = await supabaseAdmin
       .from('customer_rfm')
       .upsert({
-        customer_id: c.customerId,
+        customer_id: s.customerId,
         customer_email: email,
-        recency_days: c.recencyDays,
-        frequency: c.frequency,
-        monetary_total: c.monetaryTotal,
-        r_score: (c as any).rScore,
-        f_score: (c as any).fScore,
-        m_score: (c as any).mScore,
-        rfm_combined: (c as any).rfmCombined,
+        recency_days: s.recencyDays,
+        frequency: s.frequency,
+        monetary_total: s.monetaryTotal,
+        r_score: s.rScore,
+        f_score: s.fScore,
+        m_score: s.mScore,
+        rfm_combined: s.rfmCombined,
         segment_id: segmentId || null,
         last_booking_at: c.lastBookingAt,
         first_booking_at: c.firstBookingAt,

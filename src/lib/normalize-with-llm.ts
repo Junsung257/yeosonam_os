@@ -166,7 +166,7 @@ export async function normalizeWithLlm(
 
   const [eprResult, reflexionResult] = await Promise.all([
     (fewShotEnabled && sb && geminiKey)
-      ? retrieveSimilarExamples(input.rawText, sb as any, geminiKey, {
+      ? retrieveSimilarExamples(input.rawText, sb as unknown as Parameters<typeof retrieveSimilarExamples>[1], geminiKey, {
           limit: fewShotLimit,
           minSimilarity: 0.55,
         }).catch((e: unknown) => {
@@ -285,7 +285,7 @@ async function runDeepSeek(
       const usage = response.usage;
 
       // 캐시 히트 로깅
-      const cacheHitTokens = (usage as any)?.prompt_cache_hit_tokens ?? 0;
+      const cacheHitTokens = ((usage as unknown as Record<string, unknown>)?.prompt_cache_hit_tokens as number) ?? 0;
       if (cacheHitTokens > 0) {
         console.log(`[normalize-with-llm deepseek cache] hit=${cacheHitTokens} tokens`);
       }
@@ -460,7 +460,7 @@ async function runClaudeLegacy(
         continue;
       }
 
-      const raw = (toolUse as any).input as Record<string, unknown>;
+      const raw = (toolUse as Record<string, unknown>).input as Record<string, unknown>;
       raw.rawText = input.rawText;
       raw.rawTextHash = sha256(input.rawText);
       raw.normalizerVersion = NORMALIZER_VERSION;
@@ -471,7 +471,7 @@ async function runClaudeLegacy(
         return {
           success: true,
           ir: validation.data,
-          rawLlmResponse: (toolUse as any).input,
+          rawLlmResponse: (toolUse as Record<string, unknown>).input,
           tokensUsed: { input: response.usage.input_tokens, output: response.usage.output_tokens },
           retryCount: attempt,
         };

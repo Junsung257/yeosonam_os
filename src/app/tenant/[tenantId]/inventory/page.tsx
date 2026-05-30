@@ -219,10 +219,11 @@ export default function TenantInventoryPage() {
             const isToday = dateStr === new Date().toISOString().slice(0, 10);
 
             return (
-              <div
+              <button
+                type="button"
                 key={day}
                 onClick={() => openDayModal(day)}
-                className={`border-b border-r min-h-[80px] p-2 cursor-pointer hover:bg-indigo-50 transition ${
+                className={`w-full text-left border-b border-r min-h-[80px] p-2 cursor-pointer hover:bg-indigo-50 transition ${
                   !selectedProduct ? 'opacity-40 cursor-not-allowed' : ''
                 } ${isToday ? 'bg-indigo-50' : ''}`}
               >
@@ -244,7 +245,7 @@ export default function TenantInventoryPage() {
                 ) : (
                   <div className="text-xs text-gray-300">-</div>
                 )}
-              </div>
+              </button>
             );
           })}
         </div>
@@ -276,8 +277,9 @@ export default function TenantInventoryPage() {
             </p>
             <form onSubmit={saveDayBlock} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">총 좌석 수</label>
+                <label htmlFor="tenant-inventory-total-seats" className="block text-sm font-medium text-gray-700 mb-1">총 좌석 수</label>
                 <input
+                  id="tenant-inventory-total-seats"
                   type="number" min="0" value={modalForm.total_seats}
                   onChange={e => setModalForm(f => ({ ...f, total_seats: Number(e.target.value) }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -289,8 +291,9 @@ export default function TenantInventoryPage() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">상태</label>
+                <label htmlFor="tenant-inventory-status" className="block text-sm font-medium text-gray-700 mb-1">상태</label>
                 <select
+                  id="tenant-inventory-status"
                   value={modalForm.status}
                   onChange={e => setModalForm(f => ({ ...f, status: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
@@ -301,8 +304,9 @@ export default function TenantInventoryPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">가격 오버라이드 (비워두면 기본가)</label>
+                <label htmlFor="tenant-inventory-price-override" className="block text-sm font-medium text-gray-700 mb-1">가격 오버라이드 (비워두면 기본가)</label>
                 <input
+                  id="tenant-inventory-price-override"
                   type="number" min="0" value={modalForm.price_override}
                   onChange={e => setModalForm(f => ({ ...f, price_override: e.target.value }))}
                   className="w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"

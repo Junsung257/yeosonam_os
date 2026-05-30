@@ -120,7 +120,7 @@ export async function assertQuota(ctx: JarvisContext): Promise<void> {
       .maybeSingle(),
   ])
 
-  const used = Number((usage as any)?.[0]?.total_tokens ?? 0)
+  const used = Number(((usage as Record<string, unknown>)?.[0] as Record<string, unknown>)?.total_tokens ?? 0)
   const quota = Number(profile?.monthly_token_quota ?? Number.POSITIVE_INFINITY)
 
   if (used >= quota) {
@@ -131,7 +131,7 @@ export async function assertQuota(ctx: JarvisContext): Promise<void> {
 /** 관리자 UI 에서 사용 — 현재 사용량 조회 */
 export async function getMonthlyUsage(tenantId: string) {
   const { data } = await supabaseAdmin.rpc('jarvis_current_month_usage', { p_tenant_id: tenantId })
-  const row = (data as any)?.[0] ?? {}
+  const row = ((data as Record<string, unknown>)?.[0] as Record<string, unknown>) ?? {}
   return {
     totalTokens: Number(row.total_tokens ?? 0),
     totalCostUsd: Number(row.total_cost_usd ?? 0),
@@ -153,6 +153,8 @@ export interface TrackDeepSeekCostParams {
   model: string;
   usage: DeepSeekUsage;
   latencyMs?: number;
+  /** tenant_id 가 null 이면 platform 소속으로 기록 */
+  tenantId?: string | null;
 }
 
 /** DeepSeek API 호출 비용을 jarvis_cost_ledger 에 기록. 실패해도 서비스 차단 안 함 (fail-open). */
@@ -170,7 +172,7 @@ export async function trackDeepSeekCost(p: TrackDeepSeekCostParams): Promise<voi
     ) / 1_000_000
 
     await supabaseAdmin.from('jarvis_cost_ledger').insert({
-      tenant_id: null,
+      tenant_id: p.tenantId ?? null,
       session_id: null,
       agent_type: p.task,
       model: p.model,

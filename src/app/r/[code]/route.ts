@@ -38,17 +38,16 @@ export async function GET(request: NextRequest, props: { params: Promise<{ code:
     const record = data[0];
 
     // 클릭 기록: DB 레벨 increment로 race condition 방지 (SELECT→UPDATE 패턴 대신)
-    await supabaseAdmin.rpc('increment_commission_click', { p_id: code })
-      .then(({ error: rpcErr }: { error: unknown }) => {
-        if (rpcErr) {
-          // RPC가 없는 환경(로컬)은 단순 UPDATE 폴백
-          return supabaseAdmin!
-            .from('free_travel_commissions')
-            .update({ clicked_at: new Date().toISOString() })
-            .eq('id', code);
-        }
-      })
-      .catch(() => { /* 클릭 기록 실패는 redirect 막지 않음 */ });
+    try {
+      const { error: rpcErr } = await supabaseAdmin.rpc('increment_commission_click', { p_id: code });
+      if (rpcErr) {
+        // RPC가 없는 환경(로컬)은 단순 UPDATE 폴백
+        await supabaseAdmin!
+          .from('free_travel_commissions')
+          .update({ clicked_at: new Date().toISOString() })
+          .eq('id', code);
+      }
+    } catch { /* 클릭 기록 실패는 redirect 막지 않음 */ }
 
     return NextResponse.redirect(record.affiliate_link, { status: 302 });
   } catch {

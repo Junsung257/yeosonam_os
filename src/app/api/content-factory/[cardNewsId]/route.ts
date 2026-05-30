@@ -79,7 +79,7 @@ export async function GET(request: NextRequest, props: { params: Promise<{ cardN
       distributions = dists ?? [];
     }
 
-    const metaAds = (distributions as any[]).filter(d =>
+    const metaAds = (distributions as unknown as Array<Record<string, unknown>>).filter(d =>
       (d.platform as string)?.toLowerCase().includes('meta')
     );
 
@@ -103,9 +103,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ cardN
           .select('display_name, is_active')
           .eq('tenant_id', pkg.tenant_id)
           .eq('is_active', true)
-          .maybeSingle()
-          .then((r: { data: { display_name: string; is_active: boolean } | null; error: unknown }) => r)
-          .catch(() => ({ data: null, error: null }));
+          .maybeSingle();
+        if (!igAcc) {
+          // fallback: no instagram account found
+        }
 
         // brand_kit_id가 있으면 해당 kit, 없으면 yeosonam 기본 kit
         const cnBrandKitId = (cn as Record<string, unknown>).brand_kit_id as string | null | undefined;
@@ -204,8 +205,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ card
           const data = await r.json().catch(() => ({}));
           // orchestrator 결과를 steps에 반영
           if (data.distributions?.length) {
-            const hasMeta = (data.distributions as any[]).some(d => d.platform?.includes('meta'));
-            const hasIg = (data.distributions as any[]).some(d => d.platform === 'instagram_caption');
+            const hasMeta = (data.distributions as unknown as Array<Record<string, unknown>>).some(d => (d.platform as string)?.includes('meta'));
+            const hasIg = (data.distributions as unknown as Array<Record<string, unknown>>).some(d => d.platform === 'instagram_caption');
             if (hasMeta) updateFactoryJobStep(cardNewsId, 'meta_ads', 'done');
             if (hasIg) updateFactoryJobStep(cardNewsId, 'ig_publish', 'queued');
           }

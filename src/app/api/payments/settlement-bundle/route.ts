@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { FEE_TOLERANCE } from '@/lib/payment-matcher';
 import { getAdminContext } from '@/lib/admin-context';
+import { successResponse, errorResponse, ApiErrors } from '@/lib/api-response';
 
 /**
  * POST /api/payments/settlement-bundle
@@ -20,14 +21,14 @@ import { getAdminContext } from '@/lib/admin-context';
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: '잘못된 JSON' }, { status: 400 });
+    return ApiErrors.badRequest('잘못된 JSON');
   }
 
   const {
@@ -45,10 +46,7 @@ export async function POST(req: NextRequest) {
   };
 
   if (!transactionId || !landOperatorId || !Array.isArray(bookingAmounts) || bookingAmounts.length === 0) {
-    return NextResponse.json(
-      { error: 'transactionId, landOperatorId, bookingAmounts(>=1) 필수' },
-      { status: 400 },
-    );
+    return ApiErrors.badRequest('transactionId, landOperatorId, bookingAmounts(>=1) 필수');
   }
 
   const validated = bookingAmounts.map(b => ({
@@ -56,10 +54,7 @@ export async function POST(req: NextRequest) {
     amount: Number(b.amount),
   }));
   if (validated.some(b => !b.booking_id || !Number.isFinite(b.amount) || b.amount <= 0)) {
-    return NextResponse.json(
-      { error: '각 항목은 bookingId + 양수 amount 필수' },
-      { status: 400 },
-    );
+    return ApiErrors.badRequest('각 항목은 bookingId + 양수 amount 필수');
   }
 
   try {
@@ -75,20 +70,14 @@ export async function POST(req: NextRequest) {
 
     if (error) {
       // P0001 = 검증 실패(400), P0002 = 리소스 없음(404)
-      const status =
-        (error as any).code === 'P0001'
-          ? 400
-          : (error as any).code === 'P0002'
-            ? 404
-            : 500;
-      return NextResponse.json({ error: error.message }, { status });
+      const code = (error as { code?: string }).code;
+      if (code === 'P0001') return ApiErrors.badRequest(error.message);
+      if (code === 'P0002') return ApiErrors.notFound(error.message);
+      return ApiErrors.internalError(error.message);
     }
 
-    return NextResponse.json(data);
+    return successResponse(data);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '묶기 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : '묶기 실패');
   }
 }

@@ -91,7 +91,7 @@ interface BookingRow {
   departure_date: string;
   status: string;
   payment_status: string;
-  customers?: { name: string } | null;
+  customers?: { name: string } | Array<{ name: string }> | null;
 }
 
 async function loadActiveBookings(): Promise<BookingCandidate[]> {
@@ -107,7 +107,7 @@ async function loadActiveBookings(): Promise<BookingCandidate[]> {
 
   return (data || []).map((b: BookingRow) => ({
     ...b,
-    customer_name: b.customers?.name,
+    customer_name: (b.customers as { name?: string } | null)?.name,
   }));
 }
 
@@ -174,7 +174,7 @@ async function applyToBooking(
 
   const row = Array.isArray(data) ? data[0] : data;
   const newStatus: string | null =
-    (row as any)?.auto_status_changed ? ((row as any)?.booking_status ?? null) : null;
+    (row as Record<string, unknown>)?.auto_status_changed ? ((row as Record<string, unknown>)?.booking_status as string | null ?? null) : null;
 
   // ── 타임라인 자동 로그 (적용 시에만) ──────────────────────────────────────
   if (delta === 1) {
@@ -210,7 +210,7 @@ async function applyToBooking(
             content:    logContent,
             is_mock:    false,
             created_by: '🤖 시스템',
-          } as never);
+          } satisfies Record<string, unknown>);
       } catch {
         // 테이블 미존재 시 무시
       }
@@ -224,6 +224,7 @@ export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
 
   const { searchParams } = new URL(request.url);
+  const summaryOnly  = searchParams.get('summary') === '1';
   const statusFilter = searchParams.get('status') ?? 'active';   // active | excluded | all
   const aggregate    = searchParams.get('aggregate');             // 'monthly'
   const months       = parseInt(searchParams.get('months') || '6', 10);
@@ -244,12 +245,12 @@ export async function GET(request: NextRequest) {
       .limit(5000);
 
     const map = new Map<string, { income: number; expense: number }>();
-    for (const tx of (txs || []) as any[]) {
+    for (const tx of (txs || []) as Array<Record<string, unknown>>) {
       const key = (tx.received_at as string).slice(0, 7);
       if (!map.has(key)) map.set(key, { income: 0, expense: 0 });
       const e = map.get(key)!;
-      if (tx.transaction_type === '입금') e.income += tx.amount;
-      else e.expense += tx.amount;
+      if (tx.transaction_type === '입금') e.income += (tx.amount as number);
+      else e.expense += (tx.amount as number);
     }
     const chartData = Array.from(map.entries())
       .map(([month, { income, expense }]) => ({ month, income, expense, net: income - expense }))
@@ -260,6 +261,17 @@ export async function GET(request: NextRequest) {
 
   // ── 미매칭 전체 기간 조회 (limit 없음) ────────────────────────────────────
   if (matchStatus === 'unmatched') {
+    if (summaryOnly) {
+      const { count, error: countError } = await supabaseAdmin
+        .from('bank_transactions')
+        .select('id', { count: 'exact', head: true })
+        .in('match_status', ['unmatched'])
+        .neq('status', 'excluded');
+
+      if (countError) return NextResponse.json({ error: countError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ count: count ?? 0, transactions: [] }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
     const { data: unmatchedData, error: unmatchedError } = await supabaseAdmin
       .from('bank_transactions')
       .select(`
@@ -780,7 +792,7 @@ export async function POST(request: NextRequest) {
       `)
       .in('status', ['pending', 'confirmed', 'completed']);
 
-    const bookings = (bookingsRaw || []).map((b: BookingRow) => ({ ...b, customer_name: b.customers?.name }));
+    const bookings = (bookingsRaw || []).map((b: BookingRow) => ({ ...b, customer_name: (b.customers as { name?: string } | null)?.name }));
 
     const results: Array<Record<string, unknown>> = [];
 
@@ -846,14 +858,14 @@ export async function POST(request: NextRequest) {
           p_paid_delta: txType === '입금' ? amount : 0,
           p_payout_delta: txType === '출금' ? amount : 0,
           p_source: 'bank_tx_manual_match',
-          p_source_ref_id: (inserted as any)?.id ?? null,
-          p_idempotency_key: (inserted as any)?.id ? `bulk:${(inserted as any).id}` : null,
+          p_source_ref_id: (inserted as { id?: string })?.id ?? null,
+          p_idempotency_key: (inserted as { id?: string })?.id ? `bulk:${(inserted as { id?: string }).id}` : null,
           p_memo: `bulk insert auto-match ${txType}`,
           p_created_by: 'bulk_retroactive',
         });
       }
 
-      results.push({ ...previewRow, status: 'inserted', txId: (inserted as any)?.id });
+      results.push({ ...previewRow, status: 'inserted', txId: (inserted as { id?: string })?.id });
     }
 
     if (preview) return NextResponse.json({ preview: true, rows: results });
@@ -863,7 +875,7 @@ export async function POST(request: NextRequest) {
       duplicates: results.filter(r => r.status === 'duplicate').length,
       errors:     results.filter(r => r.status === 'error').length,
       matched:    results.filter(r => r.status === 'inserted' && r.matchStatus === 'auto').length,
-      firstError: (results.find(r => r.status === 'error') as any)?.error || null,
+      firstError: (results.find(r => r.status === 'error') as { error?: string } | undefined)?.error || null,
       results,
     });
   } catch (e) {

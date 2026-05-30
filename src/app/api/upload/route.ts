@@ -50,6 +50,7 @@ import { recordSignal, lookupSignal } from '@/lib/parser/classification-signals'
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const ATTRACTION_EXTRACT_FALLBACK = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
 
@@ -293,8 +294,8 @@ async function identifySupplierFromText(
       .maybeSingle();
 
     if (log) {
-      const diff = (log as any).correction_diff as Record<string, { from: string; to: string }> | null;
-      const corrected = (log as any).human_corrected_json as Record<string, string> | null;
+      const diff = (log as { correction_diff?: Record<string, { from: string; to: string }> | null }).correction_diff ?? null;
+      const corrected = (log as { human_corrected_json?: Record<string, string> | null }).human_corrected_json ?? null;
       const toCode     = diff?.supplier_code?.to;
       const supplierName = corrected?.supplier_name ?? null;
       const landOpId     = corrected?.land_operator_id ?? null;
@@ -833,7 +834,7 @@ const postHandler = async (request: NextRequest) => {
           catalogSplitWarning = {
             headerCount,
             processedCount: 1,
-            raw_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+            raw_excerpt: safeRawTextExcerpt(parsedDocument.rawText) ?? '',
           };
           console.warn(`[Upload API] ⚠️ catalog split silent fallback — 헤더 ${headerCount}개 감지됐는데 1상품으로 처리됨`);
           if (isSupabaseConfigured) {
@@ -1195,7 +1196,7 @@ const postHandler = async (request: NextRequest) => {
               reflection:       `V2 cross-validation 실패 [${c.severity}]: ${c.message}`,
               before_value:     null,
               after_value:      null,
-              raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+              raw_text_excerpt: safeRawTextExcerpt(parsedDocument.rawText),
               severity:         c.severity,
               category:         'v2_cross_validation_failure',
               land_operator_id: effectiveLandOperatorId,
@@ -1303,7 +1304,7 @@ JSON 배열로 응답:
               reflection: `업로드 파싱 실패: ${e}`,
               before_value: null,
               after_value: null,
-              raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+              raw_text_excerpt: safeRawTextExcerpt(parsedDocument.rawText),
               severity: 'critical',
               category: 'parse_failure',
               land_operator_id: effectiveLandOperatorId,
@@ -1311,8 +1312,11 @@ JSON 배열로 응답:
               is_active: true,
               applied_count: 0,
             }));
-            supabaseAdmin.from('extractions_corrections').insert(correctionRows)
-              .then(() => {}).catch((e: Error) => console.warn('[Upload API] corrections 기록 실패(무시):', e.message));
+          try {
+            supabaseAdmin.from('extractions_corrections').insert(correctionRows);
+          } catch {
+            // fire-and-forget: corrections 기록 실패는 무시
+          }
           }
           scheduleUploadReviewInsert({
             severity: 'critical',
@@ -1320,7 +1324,7 @@ JSON 배열로 응답:
             source_filename: fileName,
             file_hash: fileHash,
             normalized_content_hash: normalizedCatalogHash,
-            raw_text_chunk: (parsedDocument.rawText ?? '').slice(0, 12000),
+            raw_text_chunk: safeRawTextExcerpt(parsedDocument.rawText, 12000),
             parsed_draft_json: ed as unknown as Record<string, unknown>,
             product_title: title,
             land_operator_id: effectiveLandOperatorId,
@@ -1336,7 +1340,7 @@ JSON 배열로 응답:
             reflection: `낮은 파싱 신뢰도: ${w}`,
             before_value: null,
             after_value: null,
-            raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+            raw_text_excerpt: safeRawTextExcerpt(parsedDocument.rawText),
             severity: 'high',
             category: 'low_confidence',
             land_operator_id: effectiveLandOperatorId,
@@ -1344,8 +1348,11 @@ JSON 배열로 응답:
             is_active: true,
             applied_count: 0,
           }));
-          supabaseAdmin.from('extractions_corrections').insert(warnRows)
-            .then(() => {}).catch(() => {});
+          try {
+            supabaseAdmin.from('extractions_corrections').insert(warnRows);
+          } catch {
+            // fire-and-forget: warnRows 기록 실패는 무시
+          }
         }
 
         // ── G3.5. 등록 write pipeline (일정 보강 + postProcess + sanitize + L1) ──
@@ -1446,10 +1453,10 @@ JSON 배열로 응답:
         const draftRow = regWrite.row;
         const l1Gate = regWrite.l1;
         let productStatus = regWrite.productsStatus;
-        let pkgStatus = regWrite.travelPackageStatus;
+        let pkgStatus: string = regWrite.travelPackageStatus;
         if (uploadGate === 'BLOCKED') {
           productStatus = 'REVIEW_NEEDED';
-          pkgStatus = 'pending' as any;  // ★ 변경: pending_review → pending (어드민 목록에 보이도록)
+          pkgStatus = 'pending';
         }
         if (l1Gate.reasons.length > 0) {
           console.warn('[Upload API] L1 Gate BLOCK:', l1Gate.codes.join(','), '—', l1Gate.reasons.join('; '));
@@ -1477,7 +1484,7 @@ JSON 배열로 응답:
 
         if (uploadGate === 'REVIEW_NEEDED' && productStatus === 'approved') {
           productStatus = 'draft';
-          pkgStatus = 'pending' as any;  // ★ 변경: pending_review → pending
+          pkgStatus = 'pending';
         }
 
         console.log(`[Upload API] 상태 결정: products=${productStatus}, travel_packages=${pkgStatus} (confidence=${(confidenceV3 * 100).toFixed(0)}%)`);
@@ -1694,7 +1701,7 @@ JSON 배열로 응답:
 
             // P1 — upload → normalized_intakes 역변환 SSOT + IR canary shadow (샘플만 forward LLM)
             if (isSupabaseConfigured) {
-              const intakePkgRow = pkgResult as any;
+              const intakePkgRow = pkgResult as unknown as Record<string, unknown>;
               nextAfter(async () => {
                 try {
                   const snap = await persistIntakeSnapshot(supabaseAdmin, {
@@ -1852,7 +1859,7 @@ JSON 배열로 응답:
           source_filename: fileName,
           file_hash: fileHash,
           normalized_content_hash: normalizedCatalogHash,
-          raw_text_chunk: (parsedDocument.rawText ?? '').slice(0, 12000),
+          raw_text_chunk: safeRawTextExcerpt(parsedDocument.rawText, 12000),
           parsed_draft_json: ed as unknown as Record<string, unknown>,
           product_title: title,
           land_operator_id: effectiveLandOperatorId,
@@ -1954,7 +1961,7 @@ JSON 배열로 응답:
 
                 if (existing) {
                   // 기존 attraction 에 alias 만 추가 (원래 activity 명칭을 alias 로)
-                  const existingAliases: string[] = (existing as any).aliases ?? [];
+                  const existingAliases: string[] = (existing.aliases as string[] | null) ?? [];
                   if (!existingAliases.includes(kw) && kw !== top.label_ko && kw !== top.label_en) {
                     await supabaseAdmin
                       .from('attractions')
@@ -1962,7 +1969,7 @@ JSON 배열로 응답:
                         aliases: [...new Set([...existingAliases, kw])],
                         updated_at: new Date().toISOString(),
                       })
-                      .eq('id', (existing as any).id);
+                      .eq('id', existing.id);
                     console.log(`[Upload P11-3] 기존 ${top.qid} 에 alias 추가: "${kw}"`);
                   }
                   // unmatched 큐 제거 (status='added')
@@ -2010,7 +2017,7 @@ JSON 배열로 응답:
                       .eq('activity', kw);
 
                     // fire-and-forget: 사진 + 설명 백그라운드 생성
-                    const newId = (inserted as any).id;
+                    const newId = inserted.id;
                     nextAfter(async () => {
                       try {
                         // 설명 생성

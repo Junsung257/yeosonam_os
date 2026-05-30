@@ -60,13 +60,13 @@ export async function publishWithSaga(
 
       // agent_incidents 기록
       if (isSupabaseConfigured) {
-        void supabaseAdmin.from('agent_incidents').insert({
+        void Promise.resolve(supabaseAdmin.from('agent_incidents').insert({
           severity: 'error',
           category: 'publish_saga_failure',
           message: `[publish-saga] ${msg}`,
           details: { contentId, failedPlatform: step.platform, rolledBack, error },
           detected_by: 'publish-saga',
-        }).catch(() => null);
+        })).catch(() => null);
       }
 
       return { ok: false, publishedPlatforms, rolledBack, error };

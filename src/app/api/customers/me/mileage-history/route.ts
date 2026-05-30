@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   try {
     // ── 세션 확인 ────────────────────────────────────────────
     const { supabase } = await import('@/lib/supabase');
-    const sb = await supabase();
+    const sb = supabase;
     const { data: { user } } = await sb.auth.getUser();
 
     if (!user) {
@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const limit = Math.min(parseInt(searchParams.get('limit') ?? '20', 10), 100);
     const offset = parseInt(searchParams.get('offset') ?? '0', 10);
-    const typeFilter = searchParams.get('type'); // 'EARNED' | 'USED' | 'CLAWBACK' | null
+    const typeFilter = searchParams.get('type'); // 'EARNED' | 'USED' | 'EXPIRED' | 'CLAWBACK' | null
 
     // ── 쿼리 빌드 ────────────────────────────────────────────
     let query = supabaseAdmin
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1);
 
-    if (typeFilter && ['EARNED', 'USED', 'CLAWBACK'].includes(typeFilter)) {
+    if (typeFilter && ['EARNED', 'USED', 'EXPIRED', 'CLAWBACK'].includes(typeFilter)) {
       query = query.eq('type', typeFilter);
     }
 
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     const transactions = (data ?? []) as Array<{
       id: string;
       amount: number;
-      type: 'EARNED' | 'USED' | 'CLAWBACK';
+      type: 'EARNED' | 'USED' | 'EXPIRED' | 'CLAWBACK';
       memo: string | null;
       base_net_profit: number;
       mileage_rate: number;

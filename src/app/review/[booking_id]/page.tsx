@@ -1,12 +1,21 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import type { Metadata } from 'next';
 import ReviewForm from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
 
 async function getBookingInfo(bookingId: string) {
   if (!isSupabaseConfigured) return null;
+
+  interface BookingWithPackage {
+    id: string;
+    product_id: string | null;
+    lead_customer_id: string | null;
+    status: string | null;
+    travel_packages: { title: string | null; destination: string | null } | null;
+  }
 
   const { data } = await supabaseAdmin
     .from('bookings')
@@ -24,8 +33,33 @@ async function getBookingInfo(bookingId: string) {
     .limit(1);
 
   return {
-    booking: data[0] as any,
+    booking: data[0] as unknown as BookingWithPackage,
     hasReview: (existing?.length ?? 0) > 0,
+  };
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ booking_id: string }> }): Promise<Metadata> {
+  const { booking_id } = await params;
+  if (!isSupabaseConfigured) {
+    return { title: '후기 작성 | 여소남' };
+  }
+
+  const { data } = await supabaseAdmin
+    .from('bookings')
+    .select('travel_packages(title)')
+    .eq('id', booking_id)
+    .limit(1);
+
+  const pkg = data?.[0]?.travel_packages as { title?: string } | null;
+  const title = pkg?.title ? `${pkg.title} 후기 | 여소남` : '후기 작성 | 여소남';
+
+  return {
+    title,
+    description: '여소남 여행 후기를 작성해주세요. 다른 여행자분들께 큰 도움이 됩니다.',
+    openGraph: {
+      title,
+      description: '여소남 여행 후기를 작성해주세요.',
+    },
   };
 }
 

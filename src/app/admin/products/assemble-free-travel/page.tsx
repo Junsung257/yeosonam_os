@@ -180,7 +180,7 @@ export default function AssembleFreeTravelPage() {
 
       {/* ── Step 1: 입력 ── */}
       {step === 1 && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 shadow-admin-xs space-y-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 shadow-admin-xs space-y-4">
           <h2 className="text-lg font-semibold text-admin-text-2">1단계: 여행 정보 입력</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
@@ -228,7 +228,7 @@ export default function AssembleFreeTravelPage() {
       {step === 2 && (
         <div className="space-y-5">
           {/* 호텔 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 shadow-admin-xs">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 shadow-admin-xs">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-admin-text-2">호텔 선택 (1개)</h2>
               <span className="text-xs text-admin-muted">{hotels.length}건</span>
@@ -266,7 +266,7 @@ export default function AssembleFreeTravelPage() {
           </div>
 
           {/* 액티비티 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 shadow-admin-xs">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 shadow-admin-xs">
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-base font-semibold text-admin-text-2">액티비티 선택 (최대 5개)</h2>
               <span className="text-xs text-admin-muted">{selectedActs.size}/5 선택됨</span>
@@ -322,7 +322,7 @@ export default function AssembleFreeTravelPage() {
       {step === 3 && selectedHotel && (
         <div className="space-y-4">
           {/* 선택 요약 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 shadow-admin-xs">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 shadow-admin-xs">
             <h2 className="text-base font-semibold text-admin-text-2 mb-3">3단계: 가격 설정 + 등록</h2>
 
             <div className="bg-admin-bg rounded-lg p-4 space-y-1.5 text-sm mb-4">

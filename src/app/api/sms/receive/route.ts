@@ -60,21 +60,14 @@ export async function POST(request: NextRequest) {
     .select('id, booking_no, package_title, total_price, status, customers!lead_customer_id(name)')
     .in('status', ['pending', 'confirmed']);
 
-  const bookings: BookingCandidate[] = (bookingsRaw || []).map((b: {
-    id: string;
-    booking_no?: string;
-    package_title?: string;
-    total_price?: number;
-    status: string;
-    customers?: { name?: string } | null;
-  }) => ({
-    id: b.id,
-    booking_no: b.booking_no,
-    package_title: b.package_title,
-    total_price: b.total_price,
+  const bookings: BookingCandidate[] = (bookingsRaw || []).map((b: Record<string, unknown>) => ({
+    id: b.id as string,
+    booking_no: b.booking_no as string | undefined,
+    package_title: b.package_title as string | undefined,
+    total_price: b.total_price as number | undefined,
     paid_amount: 0, // TODO: 기입금 tracking 추가 시 반영
-    status: b.status,
-    customer_name: b.customers?.name,
+    status: b.status as string,
+    customer_name: ((b.customers as { name?: string } | null)?.name) ?? undefined,
   }));
 
   // 매칭 실행

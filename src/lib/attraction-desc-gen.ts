@@ -37,8 +37,8 @@ async function fetchWikidataDescription(qid: string): Promise<string | null> {
     const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=descriptions&languages=ko|en&format=json`;
     const res = await fetch(url, { headers: { 'User-Agent': 'YeosonamOS/1.0 attraction-desc-gen' } });
     if (!res.ok) return null;
-    const json = await res.json() as Record<string, unknown>;
-    const entity = (json as any).entities?.[qid];
+    const json = await res.json() as { entities?: Record<string, { descriptions?: Record<string, { value: string }> }> };
+    const entity = json.entities?.[qid];
     if (!entity) return null;
     return entity.descriptions?.ko?.value ?? entity.descriptions?.en?.value ?? null;
   } catch {

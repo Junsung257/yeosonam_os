@@ -13,9 +13,10 @@ import {
 import type { MessageLog } from '@/lib/supabase';
 import BookingConciergeAdminPanel from '@/components/booking/BookingConciergeAdminPanel';
 import { fmtMonthDayTime } from '@/lib/admin-utils';
+import { maskPassport, maskPhone } from '@/lib/pii-mask';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────
-interface BookingDetail {
+export interface BookingDetail {
   id: string;
   booking_no?: string;
   package_title?: string;
@@ -85,6 +86,18 @@ const EVENT_ICON: Record<string, string> = {
   CANCELLATION:        '❌',
   MANUAL_MEMO:         '📝',
 };
+
+function apiErrorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === 'object' && 'error' in body) {
+    const error = (body as { error?: unknown }).error;
+    if (typeof error === 'string') return error;
+    if (error && typeof error === 'object' && 'message' in error) {
+      const message = (error as { message?: unknown }).message;
+      if (typeof message === 'string' && message.trim()) return message;
+    }
+  }
+  return fallback;
+}
 
 // ─── Progress Bar ──────────────────────────────────────────────────────────
 function ProgressBar({ status }: { status: string }) {
@@ -228,7 +241,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         body:    JSON.stringify({ to }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.error ?? '전이 실패'); return; }
+      if (!res.ok) { showToast(apiErrorMessage(data, '전이 실패')); return; }
       await Promise.all([fetchBooking(), fetchLogs()]);
       showToast(`상태가 "${getStatusLabel(to)}"(으)로 변경되었습니다.`);
     } catch {
@@ -236,6 +249,102 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     } finally {
       setTransitioning(null);
     }
+  };
+
+  const buildKakaoBookingSummary = (kind: 'received' | 'deposit' | 'unavailable') => {
+    if (!booking) return '';
+    const depositAmount =
+      (booking.deposit_amount ?? 0) > 0
+        ? booking.deposit_amount ?? 0
+        : Math.max(0, Math.round((booking.total_price ?? 0) * 0.1));
+    const common = [
+      `예약번호: ${booking.booking_no || booking.id.slice(0, 8)}`,
+      `상품명: ${booking.package_title || '-'}`,
+      `출발일: ${booking.departure_date || '-'}`,
+      `인원: 성인 ${booking.adult_count || 0}명 / 아동 ${booking.child_count || 0}명`,
+      `예약자: ${booking.customers?.name || '-'} ${booking.customers?.phone || ''}`.trim(),
+    ];
+
+    if (kind === 'deposit') {
+      return [
+        '안녕하세요, 여소남입니다.',
+        '랜드사 좌석 가능 여부 확인되어 계약금 안내드립니다.',
+        '',
+        ...common,
+        `예상 총액: ${(booking.total_price ?? 0).toLocaleString('ko-KR')}원`,
+        `계약금: ${depositAmount.toLocaleString('ko-KR')}원`,
+        '입금계좌: [계좌번호 입력]',
+        '',
+        '입금 후 카카오톡으로 입금자명을 남겨주시면 확인 후 예약 확정 안내드리겠습니다.',
+      ].join('\n');
+    }
+
+    if (kind === 'unavailable') {
+      return [
+        '안녕하세요, 여소남입니다.',
+        '문의주신 일정은 현재 좌석 가능 여부를 확인한 결과 진행이 어렵습니다.',
+        '',
+        ...common,
+        '',
+        '가능한 다른 출발일 또는 유사 상품으로 다시 확인해드리겠습니다.',
+      ].join('\n');
+    }
+
+    return [
+      '안녕하세요, 여소남입니다.',
+      '예약 요청이 접수되어 랜드사 좌석 가능 여부를 확인 중입니다.',
+      '',
+      ...common,
+      '',
+      '확인되는 즉시 카카오톡으로 안내드리겠습니다.',
+    ].join('\n');
+  };
+
+  const copyKakaoMessage = async (kind: 'received' | 'deposit' | 'unavailable') => {
+    try {
+      const res = await fetch(`/api/admin/bookings/${id}/kakao-message?kind=${kind}`, {
+        cache: 'no-store',
+      });
+      const data = await res.json().catch(() => ({}));
+      const message = res.ok && typeof data.message === 'string'
+        ? data.message
+        : buildKakaoBookingSummary(kind);
+      await navigator.clipboard.writeText(message);
+      showToast('카카오 안내문을 복사했습니다.');
+    } catch {
+      showToast('복사에 실패했습니다.');
+    }
+  };
+
+  const handleSeatAvailable = async () => {
+    const res = await fetch('/api/bookings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, seat_check_confirmed: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(apiErrorMessage(data, '좌석 확인 처리 실패'));
+      return;
+    }
+    await Promise.all([fetchBooking(), fetchLogs()]);
+    showToast('좌석 확인 완료. 계약금 안내를 진행할 수 있습니다.');
+  };
+
+  const handleSeatUnavailable = async () => {
+    await copyKakaoMessage('unavailable');
+    const res = await fetch('/api/bookings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, seat_check_unavailable: true }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      showToast(apiErrorMessage(data, '좌석 불가 처리 실패'));
+      return;
+    }
+    await Promise.all([fetchBooking(), fetchLogs()]);
+    showToast('좌석 불가 확인 기록을 남겼습니다.');
   };
 
   const handleAddMemo = async () => {
@@ -285,7 +394,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
         }),
       });
       const data = await res.json();
-      if (!res.ok) { showToast(data.error ?? '취소 실패'); return; }
+      if (!res.ok) { showToast(apiErrorMessage(data, '취소 실패')); return; }
       setShowCancelModal(false);
       await Promise.all([fetchBooking(), fetchLogs()]);
       showToast('예약이 취소 처리되었습니다.');
@@ -298,7 +407,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     return (
       <div className="max-w-4xl mx-auto p-6 space-y-4">
         <div className="h-8 bg-admin-surface-2 rounded animate-pulse w-48" />
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-4">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex gap-4">
               <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24 shrink-0" />
@@ -372,7 +481,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                 body: JSON.stringify({ id, deposit_notice_blocked: false }),
               });
               const data = await res.json();
-              if (!res.ok) { showToast(data.error ?? '실패'); return; }
+              if (!res.ok) { showToast(apiErrorMessage(data, '실패')); return; }
               await fetchBooking();
               showToast('계약금 안내 단계로 넘길 수 있습니다');
             }}
@@ -384,8 +493,59 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       )}
 
       {/* 수배 확정 체크리스트 + 명단 */}
+      {(booking.status === 'pending' || booking.status === 'waiting_deposit') && (
+        <div className="rounded-admin-md border border-blue-200 bg-blue-50 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-bold text-blue-950">
+              {booking.status === 'waiting_deposit' ? '계약금 안내 워크플로' : '랜드사 좌석 확인 워크플로'}
+            </p>
+            <p className="text-xs text-blue-900/80 mt-1">
+              {booking.status === 'waiting_deposit'
+                ? '좌석 가능 확인이 끝났습니다. 계약금 안내문을 복사해 고객 카카오 채팅에 붙여넣으세요.'
+                : '좌석 가능 여부는 수동으로 확인하고, 확인 결과에 따라 카카오 안내문을 복사해 고객 채팅에 붙여넣으세요.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {booking.status === 'pending' && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => copyKakaoMessage('received')}
+                  className="px-3 py-1.5 rounded-lg bg-white text-blue-700 border border-blue-200 text-xs font-semibold hover:bg-blue-100"
+                >
+                  접수 안내문 복사
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSeatAvailable}
+                  className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700"
+                >
+                  좌석 가능 확인
+                </button>
+              </>
+            )}
+            <button
+              type="button"
+              onClick={() => copyKakaoMessage('deposit')}
+              className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
+            >
+              계약금 안내문 복사
+            </button>
+            {booking.status === 'pending' && (
+              <button
+                type="button"
+                onClick={handleSeatUnavailable}
+                className="px-3 py-1.5 rounded-lg bg-white text-slate-600 border border-slate-200 text-xs font-semibold hover:bg-slate-100"
+              >
+                좌석 불가 안내문 복사
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {!isCancelled && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-admin-sm font-semibold text-admin-text-2">수배 체크리스트</h3>
             {booking.status === 'fully_paid' && !booking.is_manifest_sent && (
@@ -506,7 +666,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-admin-muted">연락처</span>
-            <span className="text-admin-text-2">{booking.customers?.phone ?? '—'}</span>
+            <span className="text-admin-text-2">{maskPhone(booking.customers?.phone ?? null, 'cs_agent') ?? '—'}</span>
           </div>
           <div className="flex justify-between text-sm">
             <span className="text-admin-muted">상품</span>
@@ -541,7 +701,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                         {p.passenger_type === 'child_n' ? '소아' : p.passenger_type === 'infant' ? '유아' : '성인'}
                       </span>
                     </div>
-                    <span className="text-xs text-admin-muted-2">{p.phone || p.passport_no || ''}</span>
+                    <span className="text-xs text-admin-muted-2">{p.phone ? maskPhone(p.phone, 'cs_agent') : maskPassport(p.passport_no ?? null, 'cs_agent') || ''}</span>
                   </div>
                 ))}
               </div>

@@ -166,6 +166,7 @@ export interface PriceTier {
   departure_dates?: string[];           // 특정 날짜 배열 (YYYY-MM-DD)
   date_range?: { start: string; end: string }; // 기간 범위
   departure_day_of_week?: string;       // 화 | 금 | 수 | 토
+  excluded_dates?: string[];            // 해당 tier에서 제외할 날짜
   adult_price?: number;
   child_price?: number;
   infant_price?: number;

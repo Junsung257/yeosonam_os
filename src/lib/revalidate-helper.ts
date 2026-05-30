@@ -14,6 +14,8 @@
  *   await revalidatePackagePaths(packageId)
  */
 
+import { getSecret } from '@/lib/secret-registry';
+
 const DEFAULT_DEV = process.env.DEV_REVALIDATE_URL || 'http://localhost:3001';
 const DEFAULT_PROD = process.env.PROD_REVALIDATE_URL || 'https://yeosonam.com';
 
@@ -44,7 +46,7 @@ export async function revalidatePackagePaths(
   }
 
   const paths = buildPackageSurfacePaths(packageId, shortCode);
-  const secret = process.env.REVALIDATE_SECRET;
+  const secret = getSecret('REVALIDATE_SECRET');
   const result: RevalidateResult = {
     prod: { ok: false },
     dev: { ok: false },

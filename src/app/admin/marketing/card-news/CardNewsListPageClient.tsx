@@ -199,7 +199,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
       {loading ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
               <div className="aspect-[9/16] bg-admin-surface-2 animate-pulse" />
               <div className="p-3 space-y-2">
                 <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-3/4" />

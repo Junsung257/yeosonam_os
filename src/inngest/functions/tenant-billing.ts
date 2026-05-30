@@ -9,7 +9,6 @@ const TOSS_BASE = 'https://api.tosspayments.com/v1';
  * 테넌트별 자동결제 실행 — monthly-billing 팬아웃에서 호출
  * 독립 함수로 분리: 실패 시 테넌트별 재시도, 다른 테넌트에 영향 없음
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const tenantBillingFn = inngest.createFunction(
   {
     id: 'tenant-billing-charge',
@@ -17,7 +16,7 @@ export const tenantBillingFn = inngest.createFunction(
     retries: 2,
     timeouts: { finish: '5m' },
     event: 'billing/charge.tenant',
-  } as any,
+  } as unknown as Parameters<typeof inngest.createFunction>[0],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async ({ event, step }: any) => {
     if (!isSupabaseConfigured) return { skipped: true };

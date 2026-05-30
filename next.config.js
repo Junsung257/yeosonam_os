@@ -18,6 +18,7 @@ const isProd = process.env.NODE_ENV === 'production';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   // ESLint 빌드 통합 활성화 (2026-05-11 복원)
   // 플러그인 설치 완료 → 빌드 중 lint 오류 즉시 감지
@@ -31,13 +32,11 @@ const nextConfig = {
     '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
     'satori',          // yoga-wasm 번들 포함 — external 권장
     'pdf-parse',
+    'googleapis',
   ],
   experimental: {
-    // PPR(Partial Prerendering): Next 15 canary+ 필요, 현재 14.2.20에서는 build 오류 발생.
-    // Next.js 업그레이드 후 재활성화 예정.
-    // Windows 환경에서 prod 빌드 중 manifest 누락(ENOENT) 재현이 있어 당분간 비활성화.
-    // 안정화 후 CI/Linux에서만 조건부 재활성화 검토.
     webpackBuildWorker: false,
+    prerenderEarlyExit: false,
   },
   images: {
     formats: ['image/avif', 'image/webp'],
@@ -87,11 +86,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://va.vercel-scripts.com https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://t1.kakaocdn.net",
               "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://*.wikimedia.org https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com",
               "font-src 'self' https://cdn.jsdelivr.net",
-              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://o*.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
+              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
               "frame-src 'self' https://www.facebook.com https://www.instagram.com https://www.youtube.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",
@@ -167,6 +166,40 @@ const nextConfig = {
       {
         source: '/packages',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      // ─── 패키지 상세 페이지 ─────────────────────────────────────
+      {
+        source: '/packages/:id',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      // ─── 패키지 공개 API (목록 + 상세) ──────────────────────────
+      {
+        source: '/api/packages',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      {
+        source: '/api/packages/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=300' }],
+      },
+      // ─── FAQ 공개 API ──────────────────────────────────────────
+      {
+        source: '/api/faqs/:path*',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
+      },
+      // ─── 리뷰 공개 API (추가 경로) ──────────────────────────────
+      {
+        source: '/api/reviews',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=60, stale-while-revalidate=600' }],
+      },
+      // ─── FAQ 페이지 ────────────────────────────────────────────
+      {
+        source: '/faq',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
+      },
+      // ─── 리뷰 페이지 ───────────────────────────────────────────
+      {
+        source: '/reviews',
+        headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=1800' }],
       },
       // ─── 블로그 목록 ───────────────────────────────────────────
       {

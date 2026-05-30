@@ -1,14 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
-import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { getSecret } from '@/lib/secret-registry';
-
-const supabaseAdmin = createClient(
-  getSecret('NEXT_PUBLIC_SUPABASE_URL')!,
-  getSecret('SUPABASE_SERVICE_ROLE_KEY')!,
-  { auth: { persistSession: false } }
-);
+import { supabaseAdmin } from '@/lib/supabase';
 
 const { PIN_MAX_ATTEMPTS, PIN_WINDOW_MINUTES, PIN_LOCKOUT_MINUTES } = AFFILIATE_CONFIG;
 

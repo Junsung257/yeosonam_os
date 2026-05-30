@@ -19,6 +19,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const PRODUCT_SCAN_FALLBACK = `당신은 여행사 내부 ERP용 상품 파일 분석 전문가입니다.
 문서에서 상품 정보를 추출하여 순수 JSON으로만 응답하세요 (마크다운 코드블록 없이).
@@ -362,7 +363,7 @@ export async function POST(request: NextRequest) {
         ai_tags:              ai.ai_tags,
         source_filename:      file.name,
       },
-      raw_text_preview: rawText.slice(0, 500),
+      raw_text_preview: safeRawTextExcerpt(rawText),
     });
 
   } catch (error) {

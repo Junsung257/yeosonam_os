@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import { maskPhone } from '@/lib/pii-mask';
 
 // ── 타입 ────────────────────────────────────────────────────────────
 
@@ -774,7 +775,7 @@ export default function KakaoImportPage() {
                             {p.isRep && <span className="text-amber-500 text-[10px]">★</span>}
                             <span>{p.name || '이름미상'}</span>
                             <span className="text-admin-muted-2">({AGE_GROUP_LABEL[p.ageGroup]})</span>
-                            {p.phone && <span className="text-admin-muted-2">{p.phone}</span>}
+                            {p.phone && <span className="text-admin-muted-2">{maskPhone(p.phone, 'cs_agent')}</span>}
                           </div>
                         ))}
                       </div>

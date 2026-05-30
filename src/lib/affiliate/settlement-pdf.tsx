@@ -1,5 +1,6 @@
 import React from 'react';
 import { Document, Page, Text, View, StyleSheet, Font } from '@react-pdf/renderer';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 Font.register({
   family: 'NotoSansKR',
@@ -95,7 +96,7 @@ const styles = StyleSheet.create({
   note: { fontSize: 8, color: '#999', marginTop: 4 },
 });
 
-interface SettlementPdfProps {
+export interface SettlementPdfProps {
   affiliateName: string;
   referralCode: string;
   phone: string | null;
@@ -250,7 +251,7 @@ export function SettlementPdfDocument(props: SettlementPdfProps) {
         </View>
 
         <Text style={styles.footer}>
-          여소남 | 이 문서는 자동 생성되었습니다. | 발행일: {new Date().toLocaleDateString('ko-KR')}
+          여소남 | 이 문서는 자동 생성되었습니다. | 발행일: {fmtDateISO(new Date().toISOString())}
         </Text>
       </Page>
     </Document>

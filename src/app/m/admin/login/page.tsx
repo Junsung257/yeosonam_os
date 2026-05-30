@@ -79,8 +79,9 @@ function MobileLoginForm() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-admin-text-2 mb-1.5">이메일</label>
+            <label htmlFor="mobile-admin-email" className="block text-xs font-medium text-admin-text-2 mb-1.5">이메일</label>
             <input
+              id="mobile-admin-email"
               type="email"
               required
               value={email}
@@ -94,8 +95,9 @@ function MobileLoginForm() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-admin-text-2 mb-1.5">비밀번호</label>
+            <label htmlFor="mobile-admin-password" className="block text-xs font-medium text-admin-text-2 mb-1.5">비밀번호</label>
             <input
+              id="mobile-admin-password"
               type="password"
               required
               value={password}

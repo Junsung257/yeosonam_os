@@ -329,7 +329,7 @@ export async function sendSegmentCampaign(
         html: payload.html,
       });
 
-      const resendMessageId = (res as any)?.data?.id ?? null;
+      const resendMessageId = ((res as Record<string, unknown>)?.data as Record<string, unknown>)?.id ?? null;
 
       // segment_campaign_logs 저장 (발송 성공)
       await supabaseAdmin.from('segment_campaign_logs').insert({

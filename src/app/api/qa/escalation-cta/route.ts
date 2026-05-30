@@ -7,7 +7,7 @@ import { resolveAffiliateScopeId } from '@/lib/affiliate-scope';
 import { redactForPlatformLearning } from '@/lib/message-redact';
 import { recordPlatformLearningEvent } from '@/lib/platform-learning';
 import { allowRateLimit, getClientIpFromRequest } from '@/lib/simple-rate-limit';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseConfigured, saveInquiry } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
@@ -80,20 +80,11 @@ export async function POST(req: NextRequest) {
       question += `\n\n--- 고객 발화 요약(PII 마스킹) ---\n${summaryRedacted}`;
     }
 
-    void supabaseAdmin
-      .from('qa_inquiries')
-      .insert({
-        question,
-        inquiry_type: 'escalation_cta',
-        related_packages: [],
-        status: 'pending',
-      })
-      .then(
-        (res: { error: { message: string } | null }) => {
-          if (res.error) console.warn('[escalation-cta] qa_inquiries:', res.error.message);
-        },
-        (e: unknown) => console.warn('[escalation-cta] qa_inquiries exception:', e),
-      );
+    void saveInquiry({
+      question,
+      inquiryType: 'escalation_cta',
+      relatedPackages: [],
+    }).catch((e: unknown) => console.warn('[escalation-cta] qa_inquiries exception:', e));
   }
 
   return NextResponse.json({ ok: true });

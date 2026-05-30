@@ -1,6 +1,7 @@
 ---
 description: '★필독★ 과거 오류 반복 금지 — DB 확인 우선, 추측 금지, SSG null-safe'
-alwaysApply: true
+globs: ['src/**/*.ts', 'src/**/*.tsx', 'supabase/migrations/**']
+alwaysApply: false
 ---
 
 # 여소남 OS — 학습된 금지 규칙 (반복 방지)

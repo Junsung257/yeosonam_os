@@ -151,10 +151,10 @@ export default function CompanionOnboardingPage(props: PageProps) {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* 한글 이름 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="join-name" className="block text-sm font-medium text-gray-700 mb-1">
               한글 이름 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="join-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -166,10 +166,10 @@ export default function CompanionOnboardingPage(props: PageProps) {
 
           {/* 여권 영문 이름 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="join-passport-name" className="block text-sm font-medium text-gray-700 mb-1">
               여권 영문 이름 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="join-passport-name"
               type="text"
               value={passportName}
               onChange={(e) => setPassportName(e.target.value.toUpperCase())}
@@ -182,10 +182,10 @@ export default function CompanionOnboardingPage(props: PageProps) {
 
           {/* 여권 번호 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="join-passport-no" className="block text-sm font-medium text-gray-700 mb-1">
               여권 번호 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="join-passport-no"
               type="text"
               value={passportNo}
               onChange={(e) => setPassportNo(e.target.value.toUpperCase())}
@@ -197,10 +197,10 @@ export default function CompanionOnboardingPage(props: PageProps) {
 
           {/* 생년월일 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="join-birth-date" className="block text-sm font-medium text-gray-700 mb-1">
               생년월일 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="join-birth-date"
               type="date"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
@@ -211,10 +211,10 @@ export default function CompanionOnboardingPage(props: PageProps) {
 
           {/* 전화번호 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="join-phone" className="block text-sm font-medium text-gray-700 mb-1">
               전화번호 <span className="text-red-500">*</span>
             </label>
-            <input
+            <input id="join-phone"
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
@@ -226,10 +226,10 @@ export default function CompanionOnboardingPage(props: PageProps) {
 
           {/* 이메일 (선택) */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label htmlFor="join-email" className="block text-sm font-medium text-gray-700 mb-1">
               이메일 <span className="text-gray-400 font-normal">(선택)</span>
             </label>
-            <input
+            <input id="join-email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}

@@ -123,6 +123,12 @@ export default function MarketingDashboardPage() {
               + 새 링크 만들기
             </button>
           )}
+          <Link href="/admin/marketing/command-center" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+            Command Center
+          </Link>
+          <Link href="/admin/marketing/system-health" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
+            System Health
+          </Link>
           <Link href="/admin/marketing/card-news" className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm font-medium rounded-lg hover:bg-admin-bg">
             카드뉴스
           </Link>
@@ -246,7 +252,7 @@ export default function MarketingDashboardPage() {
               { label: '총 광고비 지출', value: `${(totalSpend / 10000).toFixed(0)}만원`, color: 'text-red-600', iconBg: 'bg-red-50', sub: '캠페인 합계',
                 icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18.75a60.07 60.07 0 0115.797 2.101c.727.198 1.453-.342 1.453-1.096V18.75M3.75 4.5v.75A.75.75 0 013 6h-.75m0 0v-.375c0-.621.504-1.125 1.125-1.125H20.25M2.25 6v9m18-10.5v.75c0 .414.336.75.75.75h.75m-1.5-1.5h.375c.621 0 1.125.504 1.125 1.125v9.75c0 .621-.504 1.125-1.125 1.125h-.375m1.5-1.5H21a.75.75 0 00-.75.75v.75m0 0H3.75m0 0h-.375a1.125 1.125 0 01-1.125-1.125V15m1.5 1.5v-.75A.75.75 0 003 15h-.75M15 10.5a3 3 0 11-6 0 3 3 0 016 0zm3 0h.008v.008H18V10.5zm-12 0h.008v.008H6V10.5z" /></svg>,
               },
-              { label: '광고 마진', value: `${(campaigns.reduce((s, c) => s + ((c as any).total_attributed_margin ?? 0), 0) / 10000).toFixed(0)}만원`, color: 'text-emerald-600', iconBg: 'bg-emerald-50', sub: '귀속 마진 합계',
+              { label: '광고 마진', value: `${(campaigns.reduce((s, c) => s + ((c as unknown as { total_attributed_margin?: number }).total_attributed_margin ?? 0), 0) / 10000).toFixed(0)}만원`, color: 'text-emerald-600', iconBg: 'bg-emerald-50', sub: '귀속 마진 합계',
                 icon: <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" /></svg>,
               },
               { label: 'Net ROAS', value: `${avgRoas}%`, color: avgRoas >= 200 ? 'text-emerald-600' : avgRoas >= 100 ? 'text-amber-600' : 'text-red-600', iconBg: avgRoas >= 200 ? 'bg-emerald-50' : avgRoas >= 100 ? 'bg-amber-50' : 'bg-red-50', sub: '마진/광고비',
@@ -276,7 +282,7 @@ export default function MarketingDashboardPage() {
                 {topCampaigns.map((c, idx) => {
                   const grade = getRoasGrade(c.latest_roas ?? 0);
                   return (
-                    <div key={c.id} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                    <div key={c.id} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                       <div className="flex items-start justify-between">
                         <span className="text-xl font-bold text-admin-muted-2">#{idx + 1}</span>
                         <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${grade.bgColor} ${grade.color}`}>
@@ -297,7 +303,7 @@ export default function MarketingDashboardPage() {
           </div>
 
           {/* 캠페인 전체 테이블 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
             <div className="px-4 py-3 border-b border-admin-border-mid">
               <h2 className="text-admin-base font-semibold text-admin-text-2">전체 캠페인</h2>
             </div>

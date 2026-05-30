@@ -300,7 +300,7 @@ export default function FreeTravelSettlementsPage() {
               <tbody className="divide-y divide-[#F2F4F6]">
                 {commissions.map(c => (
                   <tr key={c.id} className="hover:bg-[#F7F8FA]">
-                    <td className="px-4 py-3">{(c.free_travel_sessions as any)?.destination ?? '−'}</td>
+                    <td className="px-4 py-3">{(c as { free_travel_sessions?: { destination?: string } }).free_travel_sessions?.destination ?? '−'}</td>
                     <td className="px-4 py-3 font-semibold">{c.ota.toUpperCase()}</td>
                     <td className="px-4 py-3 tabular-nums">{c.click_count}회</td>
                     <td className="px-4 py-3 tabular-nums">{c.estimated_krw?.toLocaleString() ?? '−'}원</td>

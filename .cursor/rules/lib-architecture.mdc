@@ -1,0 +1,22 @@
+---
+description: 'src/lib/ 아키텍처 규칙 — barrel export, 도메인 분리, 외부 의존성 관리'
+globs: ['src/lib/**']
+alwaysApply: false
+---
+
+# lib/ 아키텍처 규칙
+
+## barrel export 원칙
+- 모든 서브디렉토리에는 `index.ts`를 두어 외부 노출을 중앙화한다.
+- `index.ts`는 해당 디렉토리의 public API만 노출한다 (internal 함수는 노출 금지).
+- 외부에서 `@/lib/mileage`처럼 디렉토리 레벨로 import한다.
+
+## 도메인 분리
+- `src/lib/` 하위는 도메인별 서브디렉토리로 분리한다: `mileage/`, `blog/`, `booking/`, `auth/`, `gamification/` 등.
+- 하나의 파일이 300줄을 넘으면 서브디렉토리로 분리할 것을 고려한다.
+- 공통 유틸리티는 `src/lib/common/` 또는 `src/lib/utils/`에 배치한다.
+
+## 외부 의존성 관리
+- Client Component에서 `@supabase/supabase-js`를 직접 import하지 않는다 (번들 크기 증가 방지).
+- `sharp`, `puppeteer` 등 무거운 패키지는 서버 전용(API Route, Server Component)에서만 import한다.
+- OpenAI SDK 등 AI 관련 의존성은 `src/lib/jarvis/` 또는 `src/lib/ai/`에 캡슐화한다.

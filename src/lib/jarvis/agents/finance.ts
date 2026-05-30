@@ -167,7 +167,7 @@ const FINANCE_TOOLS_RAW = [
   },
 ]
 
-const FINANCE_TOOLS = FINANCE_TOOLS_RAW as any
+const FINANCE_TOOLS = FINANCE_TOOLS_RAW as unknown[]
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {

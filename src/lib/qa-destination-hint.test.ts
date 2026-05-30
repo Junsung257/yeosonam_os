@@ -5,39 +5,62 @@ import {
   QA_KNOWN_DESTINATION_KEYWORDS,
 } from './qa-destination-hint';
 
+const K = {
+  danang: '\uB2E4\uB0AD',
+  vietnam: '\uBCA0\uD2B8\uB0A8',
+  bohol: '\uBCF4\uD640',
+  philippines: '\uD544\uB9AC\uD540',
+  osaka: '\uC624\uC0AC\uCE74',
+  japan: '\uC77C\uBCF8',
+  guilin: '\uACC4\uB9BC',
+  china: '\uC911\uAD6D',
+  hongkong: '\uD64D\uCF69',
+} as const;
+
 describe('extractQaDestinationHint', () => {
-  it('본문에 목적지가 있으면 첫 매칭 키워드를 반환한다', () => {
-    expect(extractQaDestinationHint('5월에 다낭 가고 싶어요')).toBe('다낭');
-    // 키워드表 순서상 '오사카'가 '후쿠오카'보다 먼저라, 둘 다 있으면 오사카만 잡힌다
-    expect(extractQaDestinationHint('후쿠오카 3박4일')).toBe('후쿠오카');
+  it('returns the first known destination keyword in the message', () => {
+    expect(extractQaDestinationHint(`5\uC6D4\uC5D0 ${K.danang} \uAC00\uACE0 \uC2F6\uC5B4`)).toBe(K.danang);
+    expect(extractQaDestinationHint(`${K.osaka} 3\uBC15 4\uC77C`)).toBe(K.osaka);
   });
 
-  it('목적지가 없으면 null', () => {
-    expect(extractQaDestinationHint('추천 좀 해줘')).toBeNull();
+  it('returns aliases for country-level keywords', () => {
+    expect(extractQaDestinationHint(`${K.vietnam} \uC790\uC720\uC5EC\uD589`)).toBe(K.danang);
+    expect(extractQaDestinationHint(`${K.japan} \uD328\uD0A4\uC9C0`)).toBe(K.osaka);
+    expect(extractQaDestinationHint(`${K.china} \uD6A8\uB3C4\uC5EC\uD589`)).toBe(K.guilin);
+  });
+
+  it('returns null when no destination exists', () => {
+    expect(extractQaDestinationHint('\uCD94\uCC9C \uC880 \uD574\uC918')).toBeNull();
     expect(extractQaDestinationHint('')).toBeNull();
   });
 
-  it('표에 있는 키워드는 모두 문자열에 포함 검사로 매칭', () => {
+  it('all registered keywords can be detected', () => {
+    const aliases: Record<string, string> = {
+      [K.vietnam]: K.danang,
+      [K.philippines]: K.bohol,
+      [K.japan]: K.osaka,
+      [K.china]: K.guilin,
+    };
     for (const dest of QA_KNOWN_DESTINATION_KEYWORDS) {
-      expect(extractQaDestinationHint(`${dest} 여행`)).toBe(dest);
+      expect(extractQaDestinationHint(`${dest} \uC5EC\uD589`)).toBe(aliases[dest] ?? dest);
     }
   });
 });
 
 describe('buildQaPackageHintSource', () => {
-  it('현재 메시지 + 최근 user 발화를 합친다', () => {
+  it('combines the current message and recent user messages', () => {
     const history = [
-      { role: 'user', content: '안녕' },
-      { role: 'assistant', content: '무엇을 도와드릴까요' },
-      { role: 'user', content: '다낭이 궁금해' },
+      { role: 'user', content: '\uC548\uB155' },
+      { role: 'assistant', content: '\uBB34\uC5C7\uC744 \uB3C4\uC640\uB4DC\uB9B4\uAE4C\uC694' },
+      { role: 'user', content: `${K.danang}\uC774 \uAD81\uAE08\uD574` },
     ];
-    const src = buildQaPackageHintSource('가격대는 얼마야?', history);
-    expect(src).toContain('가격대는 얼마야?');
-    expect(src).toContain('다낭이 궁금해');
-    expect(extractQaDestinationHint(src)).toBe('다낭');
+    const src = buildQaPackageHintSource('\uAC00\uACA9\uB300\uB294 \uC5BC\uB9C8\uC57C?', history);
+    expect(src).toContain('\uAC00\uACA9\uB300\uB294 \uC5BC\uB9C8\uC57C?');
+    expect(src).toContain(`${K.danang}\uC774 \uAD81\uAE08\uD574`);
+    expect(extractQaDestinationHint(src)).toBe(K.danang);
   });
 
-  it('빈 히스토리면 메시지만 사용', () => {
-    expect(buildQaPackageHintSource('  장가계  ', [])).toBe('장가계');
+  it('uses only message when history is empty', () => {
+    expect(buildQaPackageHintSource(`  ${K.hongkong}  `, [])).toBe(K.hongkong);
   });
 });

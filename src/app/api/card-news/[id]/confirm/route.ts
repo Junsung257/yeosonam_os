@@ -11,6 +11,7 @@ import {
 import { getRateInfo } from '@/lib/exchange-rate';
 import { upsertCampaign } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
+import type { CampaignObjective } from '@/types/meta-ads';
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     const dbCampaign = await upsertCampaign({
       package_id: cardNews.package_id ?? undefined,
       name: campaignName,
-      objective: objective as any,
+      objective: objective as CampaignObjective,
       daily_budget_krw: dailyBudgetKrw,
       status: 'PAUSED',
       meta_campaign_id: metaCampaign.id,

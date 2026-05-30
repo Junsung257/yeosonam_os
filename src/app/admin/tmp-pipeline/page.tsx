@@ -100,7 +100,7 @@ export default function TmpPipelinePage() {
           { label: 'IG 발행완료', value: counts.igDone, color: 'text-pink-600' },
           { label: '블로그 발행', value: counts.blogDone, color: 'text-blue-600' },
         ].map(kpi => (
-          <div key={kpi.label} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 text-center">
+          <div key={kpi.label} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 text-center">
             <p className={`text-2xl font-bold ${kpi.color}`}>{kpi.value}</p>
             <p className="text-xs text-admin-muted mt-0.5">{kpi.label}</p>
           </div>
@@ -125,7 +125,7 @@ export default function TmpPipelinePage() {
       </div>
 
       {/* 테이블 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         {loading ? (
           <div className="divide-y divide-slate-50">
             {Array.from({ length: 5 }).map((_, i) => (

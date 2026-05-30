@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { successResponse, ApiErrors } from '@/lib/api-response';
+import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
@@ -8,6 +10,13 @@ import { checkSelfReferral } from '@/lib/affiliate/self-referral';
 import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
+
+/** fire-and-forget: 에러는 console.warn으로 기록 */
+function ff<T>(p: PromiseLike<T>, label?: string): void {
+  Promise.resolve(p).then(() => {}).catch((e: unknown) => {
+    console.warn(`[ff] ${label ?? 'unknown'} 실패:`, e instanceof Error ? e.message : e);
+  });
+}
 
 /**
  * Rule 5: 소급 매칭 (retroactive matching)
@@ -25,8 +34,9 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
 
   if (!booking) return;
 
-  const customerName    = (booking as any).customers?.name;
-  const actualPayerName = (booking as any).actual_payer_name;
+  const bk = booking as Record<string, unknown>;
+  const customerName    = (bk.customers as Record<string, unknown> | undefined)?.name as string | undefined;
+  const actualPayerName = bk.actual_payer_name as string | undefined;
 
   // unmatched 입금 내역 조회 (최근 90일)
   const since = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
@@ -42,10 +52,10 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   const bookingCandidate = [{
     id:                booking.id,
     booking_no:        booking.booking_no,
-    total_price:       (booking as any).total_price,
-    total_cost:        (booking as any).total_cost,
-    paid_amount:       (booking as any).paid_amount || 0,
-    total_paid_out:    (booking as any).total_paid_out || 0,
+    total_price:       bk.total_price as number | undefined,
+    total_cost:        bk.total_cost as number | undefined,
+    paid_amount:       (bk.paid_amount as number) || 0,
+    total_paid_out:    (bk.total_paid_out as number) || 0,
     status:            'pending',
     customer_name:     customerName,
     actual_payer_name: actualPayerName,
@@ -110,20 +120,23 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
   if (totalMatchedAmount > 0) {
     // 자동 status 갱신은 update_booking_ledger RPC 안에서 처리됨 (payment_status/booking.status 모두).
     // 여기는 로깅만.
-    const paidAmount = ((booking as any).paid_amount || 0) + totalMatchedAmount;
+    const paidAmount = (bk.paid_amount as number || 0) + totalMatchedAmount;
     const newStatus  = calcPaymentStatus({
-      total_price:    (booking as any).total_price,
-      total_cost:     (booking as any).total_cost,
+      total_price:    bk.total_price as number | undefined,
+      total_cost:     bk.total_cost as number | undefined,
       paid_amount:    paidAmount,
-      total_paid_out: (booking as any).total_paid_out || 0,
+      total_paid_out: (bk.total_paid_out as number) || 0,
     });
     console.log(`[소급매칭] ${booking.booking_no?.slice(0, 4)}**** — ${Math.round(totalMatchedAmount / 10000)}만원대 자동 연결, 상태: ${newStatus}`);
   }
 }
 
 export async function GET(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   const { searchParams } = new URL(request.url);
   const id = searchParams.get('id');
@@ -140,7 +153,7 @@ export async function GET(request: NextRequest) {
 
   if (id) {
     const booking = await getBookingById(id);
-    return NextResponse.json({ booking });
+    return successResponse({ booking });
   }
   const bookings = await getBookings(
     status || undefined,
@@ -154,10 +167,11 @@ export async function GET(request: NextRequest) {
       offset: offsetParam ? Math.max(0, parseInt(offsetParam, 10)) : undefined,
     },
   );
-  return NextResponse.json(
+  return successResponse(
     { bookings, count: bookings.length },
+    200,
     // 어드민 목록 — list 프리셋(30s/60s/5분).
-    { headers: ADMIN_CACHE.list },
+    60,
   );
 }
 
@@ -165,7 +179,7 @@ export async function POST(request: NextRequest) {
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
@@ -180,31 +194,28 @@ export async function POST(request: NextRequest) {
     if (idempotencyKey) {
       // 멱등 키는 로깅/DB 인덱싱 안전을 위해 길이·문자 제한
       if (idempotencyKey.length > 128 || !/^[a-zA-Z0-9:_-]+$/.test(idempotencyKey)) {
-        return NextResponse.json(
-          { error: 'idempotencyKey 형식이 올바르지 않습니다. (영문/숫자/:_- , 128자 이하)' },
-          { status: 400 },
-        );
+        return ApiErrors.badRequest('idempotencyKey 형식이 올바르지 않습니다. (영문/숫자/:_- , 128자 이하)');
       }
       body.idempotencyKey = idempotencyKey;
     }
 
     // 서버사이드 유효성 검사
     if (!body.leadCustomerId) {
-      return NextResponse.json({ error: '대표 예약자(leadCustomerId)가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('대표 예약자(leadCustomerId)가 필요합니다.');
     }
     if (!body.adultCount || body.adultCount < 1) {
-      return NextResponse.json({ error: '성인 인원은 1명 이상이어야 합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('성인 인원은 1명 이상이어야 합니다.');
     }
 
     // 멱등성: idempotency_key 가 있으면 기존 booking 반환 (재시도/이중제출 방어)
     if (idempotencyKey) {
       const { data: existing } = await supabaseAdmin
         .from('bookings')
-        .select('*')
+        .select('id, status, idempotency_key')
         .eq('idempotency_key', idempotencyKey)
         .maybeSingle();
       if (existing) {
-        return NextResponse.json({ booking: existing, idempotent_replay: true }, { status: 200 });
+        return successResponse({ booking: existing, idempotent_replay: true });
       }
     }
 
@@ -238,9 +249,14 @@ export async function POST(request: NextRequest) {
       : null;
 
     // 두 쿼리가 있으면 동시에 실행
+    const safeExecute = async (q: any): Promise<{ data: unknown }> => {
+      if (!q) return { data: null };
+      try { const r = await q; return { data: r.data ?? null }; }
+      catch { return { data: null }; }
+    };
     const [affResult, pkgResult] = await Promise.all([
-      affQuery ? affQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
-      pkgQuery ? pkgQuery.catch(() => ({ data: null })) : Promise.resolve({ data: null }),
+      safeExecute(affQuery),
+      safeExecute(pkgQuery),
     ]);
 
     if (affResult.data) {
@@ -390,46 +406,42 @@ export async function POST(request: NextRequest) {
 
     if (booking && (booking as { deposit_notice_blocked?: boolean }).deposit_notice_blocked) {
       const { enqueueDepositNoticeGateTask } = await import('@/lib/booking-workflow-tasks');
-      enqueueDepositNoticeGateTask(booking.id as string).catch(() => {});
+      ff(enqueueDepositNoticeGateTask(booking.id as string), 'enqueueDepositNoticeGateTask');
     }
 
     // 셀프 리퍼럴 차단 건은 감사 로그로 남겨 정산 이슈를 사전 방지
     if (booking?.id && affData && selfReferralBlocked) {
-      supabaseAdmin.from('audit_logs').insert({
+      ff(supabaseAdmin.from('audit_logs').insert({
         action: 'AFFILIATE_SELF_REFERRAL_BLOCKED',
         target_type: 'booking',
         target_id: booking.id,
         description: `affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`,
-      }).then(() => {}).catch(() => {});
+      }), 'audit_logs.self_referral_blocked');
     }
 
     // 어필리에이트 last_conversion_at 업데이트
     if (affData && booking?.id) {
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('affiliates')
         .update({ last_conversion_at: new Date().toISOString() })
-        .eq('id', affData.id)
-        .then(() => {})
-        .catch(() => {});
+        .eq('id', affData.id), 'affiliates.last_conversion_at');
     }
 
     // 어필리에이트 링크 conversion_count 증가
     if (affRef && booking?.id) {
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('influencer_links')
         .select('id, conversion_count')
         .eq('referral_code', affRef)
         .then(({ data: links }: { data: { id: string; conversion_count: number }[] | null }) => {
           if (links?.length) {
             const link = links[0];
-            supabaseAdmin
+            ff(supabaseAdmin
               .from('influencer_links')
               .update({ conversion_count: (link.conversion_count || 0) + 1 })
-              .eq('id', link.id)
-              .then(() => console.log(`[Affiliate] 전환 기록: ${affRef}`));
+              .eq('id', link.id), 'influencer_links.conversion_count_update');
           }
-        })
-        .catch(() => {});
+        }), 'influencer_links.conversion_count_select');
     }
 
     // 프로모코드 사용량 증가 (예약 생성 성공 후)
@@ -441,12 +453,10 @@ export async function POST(request: NextRequest) {
         .maybeSingle();
       if (promo) {
         const pr = promo as { id: string; uses_count: number };
-        supabaseAdmin
+        ff(supabaseAdmin
           .from('affiliate_promo_codes')
           .update({ uses_count: (pr.uses_count || 0) + 1, updated_at: new Date().toISOString() })
-          .eq('id', pr.id)
-          .then(() => {})
-          .catch(() => {});
+          .eq('id', pr.id), 'affiliate_promo_codes.uses_count');
       }
     }
 
@@ -461,12 +471,12 @@ export async function POST(request: NextRequest) {
         .eq('affiliate_id', body.affiliateId)
         .maybeSingle();
       if (!existsLink) {
-        supabaseAdmin.from('affiliate_lifetime_links').insert({
+        ff(supabaseAdmin.from('affiliate_lifetime_links').insert({
           customer_id: body.leadCustomerId,
           affiliate_id: body.affiliateId,
           origin_booking_id: booking.id,
           experiment_group: group,
-        } as never).then(() => {}).catch(() => {});
+        }), 'affiliate_lifetime_links.insert');
       }
     }
 
@@ -507,7 +517,7 @@ export async function POST(request: NextRequest) {
       const leadTime = Math.floor(
         (new Date(body.departureDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('bookings')
         .update({
           lead_time: leadTime,
@@ -517,26 +527,22 @@ export async function POST(request: NextRequest) {
             booking_day_of_week: new Date().getDay(),
           },
         })
-        .eq('id', booking.id)
-        .then(() => {})
-        .catch(() => {});
+        .eq('id', booking.id), 'bookings.lead_time_update');
     }
 
     // 비동기 세션 병합: conversation → customer_id 연결
     if (booking?.conversation_id && body.leadCustomerId) {
-      supabaseAdmin
+      ff(supabaseAdmin
         .from('conversations')
         .update({ customer_id: body.leadCustomerId, updated_at: new Date().toISOString() })
-        .eq('id', booking.conversation_id)
-        .then(() => console.log(`[Session] 세션 병합: conv=${booking.conversation_id} → customer=${body.leadCustomerId}`))
-        .catch((err: unknown) => console.warn('[Session] 세션 병합 실패:', err));
+        .eq('id', booking.conversation_id), 'conversations.customer_id_update');
     }
 
     // Rule 5: 소급 매칭 — 기존 unmatched 입금 내역과 자동 연결 시도
     if (booking?.id) {
-      tryRetroactiveMatch(booking.id, body.leadCustomerId).catch(e =>
+      ff(tryRetroactiveMatch(booking.id, body.leadCustomerId).catch(e =>
         console.warn('[소급 매칭 실패]', e)
-      );
+      ));
     }
 
     // 모바일 관리자에게 새 예약 Web Push (fire-and-forget)
@@ -550,26 +556,26 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    return NextResponse.json({ booking });
+    return successResponse({ booking });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '예약 생성 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '예약 생성 실패');
   }
 }
 
 export async function PATCH(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   const rl = await rateLimitMutation(request);
   if (rl) return rl;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
   try {
     const body = await request.json();
     const { id } = body;
     if (!id) {
-      return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('id가 필요합니다.');
     }
 
     // 계약금 안내 게이트 해제 (assisted → 운영자 승인 후 전이 허용)
@@ -583,12 +589,72 @@ export async function PATCH(request: NextRequest) {
         .eq('id', id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error) return ApiErrors.internalError(error.message);
       if (body.deposit_notice_blocked === false) {
         const { resolveDepositNoticeGateTasks } = await import('@/lib/booking-workflow-tasks');
         await resolveDepositNoticeGateTasks(id);
       }
-      return NextResponse.json({ booking: data });
+      return successResponse({ booking: data });
+    }
+
+    if (body.seat_check_confirmed === true) {
+      const { data: current, error: currentError } = await supabaseAdmin
+        .from('bookings')
+        .select('id, status, deposit_notice_blocked')
+        .eq('id', id)
+        .maybeSingle();
+      if (currentError) return ApiErrors.internalError(currentError.message);
+      if (!current) return ApiErrors.notFound('예약을 찾을 수 없습니다.');
+
+      const currentStatus = (current as { status?: string | null }).status;
+      const nextStatus = currentStatus === 'pending' ? 'waiting_deposit' : currentStatus;
+      const { data, error } = await supabaseAdmin
+        .from('bookings')
+        .update({
+          deposit_notice_blocked: false,
+          ...(nextStatus ? { status: nextStatus } : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .select()
+        .single();
+      if (error) return ApiErrors.internalError(error.message);
+
+      const { resolveDepositNoticeGateTasks, resolveSeatCheckRequiredTasks } = await import('@/lib/booking-workflow-tasks');
+      await Promise.all([
+        resolveDepositNoticeGateTasks(id),
+        resolveSeatCheckRequiredTasks(id),
+      ]);
+
+      if (currentStatus === 'pending' || (current as { deposit_notice_blocked?: boolean }).deposit_notice_blocked === true) {
+        await supabaseAdmin.from('message_logs').insert({
+          booking_id: id,
+          log_type: 'manual',
+          event_type: 'MANUAL_MEMO',
+          title: '랜드사 좌석 가능 확인',
+          content: body.memo || '랜드사 좌석 가능 여부 확인 완료. 계약금 안내 단계로 전환했습니다.',
+          is_mock: false,
+          created_by: 'admin',
+        });
+      }
+
+      return successResponse({ booking: data, seat_check_confirmed: true, status: nextStatus });
+    }
+
+    if (body.seat_check_unavailable === true) {
+      const { resolveSeatUnavailableTasks } = await import('@/lib/booking-workflow-tasks');
+      await resolveSeatUnavailableTasks(id);
+      await supabaseAdmin.from('message_logs').insert({
+        booking_id: id,
+        log_type: 'manual',
+        event_type: 'MANUAL_MEMO',
+        title: '랜드사 좌석 불가 확인',
+        content: body.memo || '랜드사 좌석 가능 여부 확인 결과 진행 불가로 표시했습니다.',
+        is_mock: false,
+        created_by: 'admin',
+      });
+
+      return successResponse({ ok: true, seat_check_unavailable: true });
     }
 
     // 일행 추가 (booking_passengers에 연결)
@@ -600,8 +666,8 @@ export async function PATCH(request: NextRequest) {
           customer_id: body.addPassengerId,
           passenger_type: body.addPassengerType || 'adult',
         }, { onConflict: 'booking_id,customer_id' });
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ ok: true });
+      if (error) return ApiErrors.internalError(error.message);
+      return successResponse({ ok: true });
     }
 
     // 소프트 삭제 / 복구 처리 (supabaseAdmin 사용 — RLS 우회)
@@ -612,8 +678,8 @@ export async function PATCH(request: NextRequest) {
         .eq('id', id)
         .select()
         .single();
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ booking: data });
+      if (error) return ApiErrors.internalError(error.message);
+      return successResponse({ booking: data });
     }
 
     // SKU 코드 → products 조회 → bookings 원자적 업데이트 (상품명 + 랜드사 + 출발지)
@@ -625,35 +691,33 @@ export async function PATCH(request: NextRequest) {
         .maybeSingle();
 
       if (!product) {
-        return NextResponse.json(
-          { error: `존재하지 않는 상품 코드입니다: ${body.sku_code}` },
-          { status: 404 },
-        );
+        return ApiErrors.notFound(`존재하지 않는 상품 코드입니다: ${body.sku_code}`);
       }
 
       // 랜드사/출발지 텍스트 이름 조회 (3단 연쇄 자동완성용) — 병렬 fetch
-      const landOpId = (product as any).land_operator_id;
-      const depLocId = (product as any).departing_location_id;
+      const pr = product as Record<string, unknown>;
+      const landOpId = pr.land_operator_id;
+      const depLocId = pr.departing_location_id;
       const [loRes, dlRes] = await Promise.all([
         landOpId
-          ? supabaseAdmin.from('land_operators').select('name').eq('id', landOpId).maybeSingle()
+          ? supabaseAdmin.from('land_operators').select('name').eq('id', landOpId as string).maybeSingle()
           : Promise.resolve({ data: null }),
         depLocId
-          ? supabaseAdmin.from('departing_locations').select('name').eq('id', depLocId).maybeSingle()
+          ? supabaseAdmin.from('departing_locations').select('name').eq('id', depLocId as string).maybeSingle()
           : Promise.resolve({ data: null }),
       ]);
-      const landOpName: string | null = (loRes.data as any)?.name ?? null;
-      const depLocName: string | null = (dlRes.data as any)?.name ?? null;
+      const landOpName: string | null = loRes.data ? (loRes.data as unknown as { name: string }).name : null;
+      const depLocName: string | null = dlRes.data ? (dlRes.data as unknown as { name: string }).name : null;
 
       const updateFields: Record<string, unknown> = {
-        product_id:    (product as any).internal_code,
-        package_title: (product as any).display_name,
+        product_id:    pr.internal_code,
+        package_title: pr.display_name,
         updated_at:    new Date().toISOString(),
       };
-      if ((product as any).land_operator_id)      updateFields.land_operator_id = (product as any).land_operator_id;
-      if ((product as any).departing_location_id)  updateFields.departing_location_id = (product as any).departing_location_id;
-      if (landOpName)                              updateFields.land_operator = landOpName;
-      if ((product as any).departure_region)       updateFields.departure_region = (product as any).departure_region;
+      if (pr.land_operator_id)      updateFields.land_operator_id = pr.land_operator_id;
+      if (pr.departing_location_id)  updateFields.departing_location_id = pr.departing_location_id;
+      if (landOpName)                updateFields.land_operator = landOpName;
+      if (pr.departure_region)       updateFields.departure_region = pr.departure_region;
 
       const { data, error } = await supabaseAdmin
         .from('bookings')
@@ -662,10 +726,10 @@ export async function PATCH(request: NextRequest) {
         .select()
         .single();
 
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({
+      if (error) return ApiErrors.internalError(error.message);
+      return successResponse({
         booking: data,
-        resolvedProduct: { ...(product as any), landOpName, depLocName },
+        resolvedProduct: { ...pr, landOpName, depLocName },
       });
     }
 
@@ -699,7 +763,7 @@ export async function PATCH(request: NextRequest) {
         p_memo: 'PUT /api/bookings paid_amount manual edit',
         p_created_by: 'admin',
       });
-      if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+      if (rpcErr) return ApiErrors.internalError(rpcErr.message);
 
       // payment_status / status 자동 후처리 (RPC 가 손대지 않으므로 여기서)
       await supabaseAdmin.from('bookings').update({
@@ -709,13 +773,13 @@ export async function PATCH(request: NextRequest) {
       }).eq('id', id);
 
       const { data } = await supabase.from('bookings').select().eq('id', id).single();
-      return NextResponse.json({ booking: data });
+      return successResponse({ booking: data });
     }
 
     // 전체 필드 수정 (편집 페이지)
     if (body.fields !== undefined || body.adultCount !== undefined || body.adultCost !== undefined) {
       const booking = await updateBooking(id, body);
-      return NextResponse.json({ booking });
+      return successResponse({ booking });
     }
 
     // 인라인 셀 직접 수정 (예약 그리드)
@@ -768,17 +832,17 @@ export async function PATCH(request: NextRequest) {
               .eq('id', id);
           }
           // 에러 팝업 없이 조용히 성공 처리
-          return NextResponse.json({ booking: { id, ...updateFields } });
+          return successResponse({ booking: { id, ...updateFields } });
         }
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        return ApiErrors.internalError(error.message);
       }
-      return NextResponse.json({ booking: data });
+      return successResponse({ booking: data });
     }
 
     // 상태만 변경 (기존 동작)
     const { status } = body;
     if (!status) {
-      return NextResponse.json({ error: 'status가 필요합니다.' }, { status: 400 });
+      return ApiErrors.badRequest('status가 필요합니다.');
     }
     const booking = await updateBookingStatus(id, status);
 
@@ -821,11 +885,8 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ booking });
+    return successResponse({ booking });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '상태 변경 실패' },
-      { status: 500 }
-    );
+    return ApiErrors.internalError(error instanceof Error ? error.message : '상태 변경 실패');
   }
 }

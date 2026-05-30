@@ -124,16 +124,16 @@ export async function sampleArm(filter?: Partial<ArmDimensions>): Promise<ArmDim
   const { data, error } = await query;
   if (error || !data || data.length === 0) return null;
 
-  let best: { armKey: string; sample: number; row: any } | null = null;
-  for (const row of data as any[]) {
+  let best: { armKey: string; sample: number; row: Record<string, unknown> } | null = null;
+  for (const row of data as Record<string, unknown>[]) {
     const sample = sampleBeta(Number(row.alpha) || 2, Number(row.beta) || 2);
-    if (!best || sample > best.sample) best = { armKey: row.arm_key, sample, row };
+    if (!best || sample > best.sample) best = { armKey: row.arm_key as string, sample, row };
   }
   if (!best) return null;
   await supabaseAdmin
     .from('bandit_arms')
     .update({
-      total_pulls: (best.row.total_pulls ?? 0) + 1,
+      total_pulls: ((best.row.total_pulls as number) ?? 0) + 1,
       last_pull_at: new Date().toISOString(),
     })
     .eq('arm_key', best.armKey);

@@ -101,13 +101,15 @@ export default function LedgerViewer({ bookingId, onClose }: Props) {
   useEffect(() => { load(); }, [load]);
 
   return (
-    <div
-      className="fixed inset-0 z-[60] bg-black/40 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Close ledger viewer"
+        className="absolute inset-0 bg-black/40"
+        onClick={onClose}
+      />
       <div
-        className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
+        className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between p-4 border-b">

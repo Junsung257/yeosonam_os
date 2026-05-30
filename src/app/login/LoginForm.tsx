@@ -64,8 +64,9 @@ function LoginFormInner() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">이메일</label>
+            <label htmlFor="admin-email" className="block text-xs font-medium text-gray-700 mb-1">이메일</label>
             <input
+              id="admin-email"
               type="email"
               required
               value={email}
@@ -75,8 +76,9 @@ function LoginFormInner() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">비밀번호</label>
+            <label htmlFor="admin-password" className="block text-xs font-medium text-gray-700 mb-1">비밀번호</label>
             <input
+              id="admin-password"
               type="password"
               required
               value={password}

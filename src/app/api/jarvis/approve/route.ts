@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { executeAction } from '@/lib/agent-action-executor'
+import { isAdminRequest } from '@/lib/admin-guard'
 
 export async function POST(req: NextRequest) {
   try {
+    if (!(await isAdminRequest(req))) {
+      return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 })
+    }
+
     const { pendingActionId, approved } = await req.json()
 
     if (!pendingActionId) {
@@ -45,7 +50,7 @@ export async function POST(req: NextRequest) {
         .update({ status: 'approved', approved_at: new Date().toISOString() })
         .eq('id', pendingActionId)
 
-      await supabaseAdmin.from('jarvis_tool_logs').insert({
+      await void(supabaseAdmin.from('jarvis_tool_logs').insert({
         session_id: action.session_id,
         agent_type: action.agent_type,
         tool_name: action.tool_name,
@@ -53,7 +58,7 @@ export async function POST(req: NextRequest) {
         result: result.data,
         is_hitl: true,
         pending_action_id: pendingActionId,
-      })
+      }))
 
       await supabaseAdmin.from('audit_logs').insert({
         action: action.tool_name,
@@ -66,11 +71,12 @@ export async function POST(req: NextRequest) {
     } catch (err: any) {
       // 실행 실패 시 pending_action status를 failed로 마킹 + 실패 로그 기록
       const errorMessage = err instanceof Error ? err.message : String(err)
-      await supabaseAdmin
-        .from('jarvis_pending_actions')
-        .update({ status: 'rejected', approved_at: new Date().toISOString() })
-        .eq('id', pendingActionId)
-        .then(() => {}).catch(() => {})
+      try {
+        await supabaseAdmin
+          .from('jarvis_pending_actions')
+          .update({ status: 'rejected', approved_at: new Date().toISOString() })
+          .eq('id', pendingActionId);
+      } catch { /* fire-and-forget */ }
       await supabaseAdmin.from('jarvis_tool_logs').insert({
         session_id: action.session_id,
         agent_type: action.agent_type,
@@ -79,7 +85,7 @@ export async function POST(req: NextRequest) {
         result: { error: errorMessage },
         is_hitl: true,
         pending_action_id: pendingActionId,
-      }).then(() => {}).catch(() => {})
+      })
 
       return NextResponse.json({
         error: errorMessage,

@@ -434,7 +434,7 @@ async function publishToTwitter(request: PublishRequest): Promise<PublishResult>
     const token = await resolveOAuthToken('', 'twitter');
     if (!token) {
       // Twitter OAuth 없으면 X API v2 OAuth 2.0 Bearer Token 시도
-      const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+      const bearerToken = getSecret('TWITTER_BEARER_TOKEN');
       if (!bearerToken) {
         return { platform: 'twitter', success: false, publishedAt: now, error: 'Twitter OAuth 토큰 및 Bearer Token 없음' };
       }
@@ -645,7 +645,7 @@ async function checkTwitterTokenHealth(
   tenantId?: string,
 ): Promise<{ ok: boolean; message: string }> {
   const token = await resolveOAuthToken(tenantId ?? '', 'twitter');
-  const bearerToken = process.env.TWITTER_BEARER_TOKEN;
+  const bearerToken = getSecret('TWITTER_BEARER_TOKEN');
 
   if (!token && !bearerToken) {
     return { ok: false, message: 'Twitter OAuth 토큰 및 Bearer Token 없음' };

@@ -160,7 +160,7 @@ export async function analyzeRecommendation(
   const analysis = analyzeQuestionKeywords(question);
 
   // DB에서 승인된 패키지 조회
-  const packages = await getApprovedPackages(analysis.destination);
+  const packages = (await getApprovedPackages(analysis.destination)) as unknown as TravelPackage[];
 
   if (packages.length === 0) {
     return {
@@ -259,7 +259,7 @@ export async function analyzeComparison(
   packageIds: string[],
   model: AIModel = 'gemini'
 ): Promise<QAComparison> {
-  const packages = await getApprovedPackages();
+  const packages = (await getApprovedPackages()) as unknown as TravelPackage[];
   const selectedPackages = (packages as TravelPackage[]).filter((pkg) => packageIds.includes(pkg.id)).slice(0, 3);
 
   if (selectedPackages.length === 0) {
@@ -342,7 +342,7 @@ export async function getConsultationAdvice(question: string, model: AIModel = '
   const analysis = analyzeQuestionKeywords(question);
 
   // 관련 패키지 정보 포함
-  const packages = (await getApprovedPackages(analysis.destination)) as TravelPackage[];
+  const packages = (await getApprovedPackages(analysis.destination)) as unknown as TravelPackage[];
   const packageInfo =
     packages.length > 0
       ? `참고할 수 있는 유사 패키지들:\n${packages

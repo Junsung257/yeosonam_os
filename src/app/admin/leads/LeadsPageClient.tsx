@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import type { AdminInquiryRow } from '@/app/api/admin/leads/route';
+import { maskPhone } from '@/lib/pii-mask';
 
 type Filter = 'all' | 'lead' | 'qa';
 
@@ -122,7 +123,7 @@ export default function LeadsPageClient() {
                   </td>
                   <td className="px-3 py-3 text-gray-600 whitespace-nowrap">{fmtDate(r.created_at)}</td>
                   <td className="px-3 py-3 font-medium text-gray-900">{r.name ?? '-'}</td>
-                  <td className="px-3 py-3 text-gray-700 tabular-nums">{r.phone ?? '-'}</td>
+                  <td className="px-3 py-3 text-gray-700 tabular-nums">{maskPhone(r.phone, 'marketer') ?? '-'}</td>
                   <td className="px-3 py-3 max-w-md">
                     {r.product_id && r.product_title ? (
                       <Link href={`/packages/${r.product_id}`} target="_blank" className="text-brand hover:underline">

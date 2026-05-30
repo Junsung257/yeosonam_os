@@ -7,6 +7,7 @@
 import { searchPexelsPhotos, isPexelsConfigured } from './pexels';
 import { getMinPriceFromDates } from './price-dates';
 import { matchAttraction as matchAttr } from './attraction-matcher';
+import type { AttractionData } from './attraction-matcher';
 import { romanize } from './slug-utils';
 
 // ── 타입 ─────────────────────────────────────────────────
@@ -59,6 +60,7 @@ export interface ProductData {
   product_highlights?: string[];
   itinerary?: string[];
   optional_tours?: { name: string; price_usd?: number }[];
+  notices_parsed?: { title: string; text: string }[];
 }
 
 export interface GenerateOptions {
@@ -149,7 +151,7 @@ export const CHANNEL_PRESETS: Record<Channel, { label: string; description: stri
 function uid(): string { return crypto.randomUUID(); }
 function getLowestPrice(p: ProductData): number {
   if (p.price_dates?.length) {
-    const min = getMinPriceFromDates(p.price_dates as any);
+    const min = getMinPriceFromDates(p.price_dates);
     if (min > 0) return min;
   }
   const prices: number[] = [];
@@ -696,7 +698,7 @@ export function generateBlogPost(
     const matchedSpots: { name: string; desc: string; photo?: string }[] = [];
     if (attractions?.length && itinerary.length > 0) {
       for (const item of itinerary) {
-        const attr = matchAttr(item, attractions as any, product.destination);
+        const attr = matchAttr(item, attractions as unknown as AttractionData[], product.destination);
         if (!attr) continue;
 
         const itemNoSpace = item.replace(/\s+/g, '').toLowerCase();
@@ -765,7 +767,7 @@ export function generateBlogPost(
 
   // ── FAQ (FAQPage JSON-LD 자동 추출 + 롱테일 검색 유입) ──────────────
   // 1) notices_parsed 우선, 2) 없으면 상품 스펙 기반 기본 FAQ 3종 생성
-  const notices = (product as any).notices_parsed;
+  const notices = product.notices_parsed;
   const faqItems: { title: string; text: string }[] = [];
 
   if (Array.isArray(notices) && notices.length > 0) {
@@ -872,7 +874,7 @@ export function generateBlogSeo(
   // 루트 layout(src/app/layout.tsx)의 metadata template이 " | 여소남"을 자동으로 붙이므로
   // seoTitle에는 브랜드/접미사를 넣지 않는다 (이전 형식 " | 여소남 2026"은 이중 표기 유발).
   // 패턴: [출발지]출발 [목적지] [기간] [앵글] 패키지 [가격]~ ([년도])
-  const departure = (product as any).departure_airport as string | undefined;
+  const departure = product.departure_airport;
   const depPrefix = departure ? `${departure.replace(/\(.*?\)/g, '').trim()}출발 ` : '';
   const priceShort = price > 0 ? ` ${Math.round(price / 10000)}만원~` : '';
   const destClean = dest.replace(/\s+/g, ' ').trim();

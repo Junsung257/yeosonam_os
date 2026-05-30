@@ -145,6 +145,6 @@ ${JSON.stringify(overflowItems.map(s => ({
     ...s,
     headline: truncateHeadline(s.headline, 20),  // 20자 넘으면 …로 잘라냄
     body: truncateBody(s.body, 50),
-    template_id: TEMPLATE_IDS.includes(s.template_id as any) ? s.template_id : TEMPLATE_IDS[0],
+    template_id: TEMPLATE_IDS.includes(s.template_id as typeof TEMPLATE_IDS[number]) ? s.template_id as typeof TEMPLATE_IDS[number] : TEMPLATE_IDS[0],
   }));
 }

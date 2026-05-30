@@ -500,8 +500,9 @@ export default function ConciergePage() {
             <h3 className="text-lg font-bold text-slate-900 mb-4">고객 정보 입력</h3>
             <form onSubmit={handleCheckout} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">이름 *</label>
+                <label htmlFor="concierge-customer-name" className="block text-sm font-medium text-slate-700 mb-1">이름 *</label>
                 <input
+                  id="concierge-customer-name"
                   type="text"
                   required
                   value={customer.name}
@@ -511,8 +512,9 @@ export default function ConciergePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">연락처</label>
+                <label htmlFor="concierge-customer-phone" className="block text-sm font-medium text-slate-700 mb-1">연락처</label>
                 <input
+                  id="concierge-customer-phone"
                   type="tel"
                   value={customer.phone}
                   onChange={e => setCustomer(c => ({ ...c, phone: e.target.value }))}
@@ -521,8 +523,9 @@ export default function ConciergePage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">이메일</label>
+                <label htmlFor="concierge-customer-email" className="block text-sm font-medium text-slate-700 mb-1">이메일</label>
                 <input
+                  id="concierge-customer-email"
                   type="email"
                   value={customer.email}
                   onChange={e => setCustomer(c => ({ ...c, email: e.target.value }))}

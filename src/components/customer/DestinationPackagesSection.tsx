@@ -89,7 +89,7 @@ export default function DestinationPackagesSection({ destination, packages, depa
           {visible.map((p, index) => (
             <PackageCard
               key={p.id}
-              pkg={p as any}
+              pkg={p as unknown as React.ComponentProps<typeof PackageCard>['pkg']}
               isYeosonamPick={index === 0}
               rankBadge={index === 0 ? '이 일정 1위' : index === 1 ? '이 일정 2위' : undefined}
             />

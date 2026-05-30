@@ -284,7 +284,7 @@ const MARKETING_TOOLS_RAW = [
   },
 ]
 
-const MARKETING_TOOLS = MARKETING_TOOLS_RAW as any
+const MARKETING_TOOLS = MARKETING_TOOLS_RAW as unknown[]
 
 async function executeTool(toolName: string, args: any, ctx?: JarvisContext): Promise<any> {
   const sb = ctx ? getScopedClient(ctx) : supabaseAdmin

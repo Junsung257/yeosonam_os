@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { checkAffiliateContentQuota, incrementAffiliateContentUsage, logAffiliateMonthlyUsage } from '@/lib/card-news/affiliate-quota';
 import { getAffiliateBrandKit, buildBrandOverrides } from '@/lib/card-news/brand-kit';
+import { getSecret } from '@/lib/secret-registry';
 import crypto from 'crypto';
 
 export const runtime = 'nodejs';
@@ -20,7 +21,7 @@ function verifyToken(token: string): string | null {
     const parts = token.split('.');
     if (parts.length !== 2) return null;
     const payload = JSON.parse(Buffer.from(parts[0], 'base64').toString());
-    const secret = process.env.AFFILIATE_TOKEN_SECRET || process.env.SUPABASE_JWT_SECRET || 'dev-secret-change-in-prod';
+    const secret = getSecret('AFFILIATE_TOKEN_SECRET') || getSecret('SUPABASE_JWT_SECRET') || 'dev-secret-change-in-prod';
     const expectedHmac = crypto.createHmac('sha256', secret).update(parts[0]).digest('hex');
     if (parts[1] !== expectedHmac) return null;
     return payload.affiliate_id;

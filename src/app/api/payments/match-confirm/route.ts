@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { parseCommandInput } from '@/lib/payment-command-parser';
 import {
@@ -7,6 +7,7 @@ import {
   type MatchBranch,
 } from '@/lib/payment-command-resolver';
 import { getAdminContext } from '@/lib/admin-context';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 
 /**
  * POST /api/payments/match-confirm
@@ -20,14 +21,14 @@ import { getAdminContext } from '@/lib/admin-context';
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: '잘못된 JSON' }, { status: 400 });
+    return ApiErrors.badRequest('잘못된 JSON');
   }
 
   const { input, bookingId, transactionId } = body as {
@@ -37,7 +38,7 @@ export async function POST(req: NextRequest) {
   };
 
   if (!input?.trim() || !bookingId) {
-    return NextResponse.json({ error: 'input, bookingId 필수' }, { status: 400 });
+    return ApiErrors.badRequest('input, bookingId 필수');
   }
 
   const ctx = getAdminContext(req);
@@ -48,10 +49,7 @@ export async function POST(req: NextRequest) {
 
     const chosen = resolved.bookings.find(b => b.id === bookingId);
     if (!chosen) {
-      return NextResponse.json(
-        { error: '선택한 예약이 현재 후보에 없습니다 — 입력을 확인하세요' },
-        { status: 400 },
-      );
+      return ApiErrors.badRequest('선택한 예약이 현재 후보에 없습니다 — 입력을 확인하세요');
     }
 
     const top = resolved.bookings[0];
@@ -68,13 +66,13 @@ export async function POST(req: NextRequest) {
         p_created_by: ctx.actor,
       });
       if (error) {
-        const status =
-          (error as any).code === 'P0001'
-            ? 400
-            : (error as any).code === 'P0002'
-              ? 404
-              : 500;
-        return NextResponse.json({ error: error.message }, { status });
+      const code =
+          error && typeof error === 'object' && 'code' in error
+            ? (error as { code: string }).code
+            : null;
+        if (code === 'P0001') return ApiErrors.badRequest(error.message);
+        if (code === 'P0002') return ApiErrors.notFound(error.message);
+        return ApiErrors.internalError(error.message);
       }
       rpcInfo = data;
     }
@@ -102,13 +100,12 @@ export async function POST(req: NextRequest) {
         })
         .select('id')
         .limit(1);
-      logId = (logRow as any[] | null)?.[0]?.id ?? null;
+      logId = (Array.isArray(logRow) ? (logRow as { id: string }[] | null) : null)?.[0]?.id ?? null;
     } catch {
       // audit 실패는 매칭을 무효화하지 않음
     }
 
-    return NextResponse.json({
-      ok: true,
+    return successResponse({
       log_id: logId,
       transaction_updated: !!transactionId,
       server_branch: resolved.branch,
@@ -117,10 +114,7 @@ export async function POST(req: NextRequest) {
       rpc: rpcInfo,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '확정 실패' },
-      { status: 500 },
-    );
+    return ApiErrors.internalError(err instanceof Error ? err.message : '확정 실패');
   }
 }
 

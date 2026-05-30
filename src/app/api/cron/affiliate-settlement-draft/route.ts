@@ -28,10 +28,17 @@ export async function GET(request: Request) {
   try {
     const { period, periodStart, periodEnd, todayIso } = resolvePreviousPeriod();
 
-    const { data: affiliates } = await supabaseAdmin
+interface AffiliateRow {
+      id: string;
+      name: string;
+      payout_type: string;
+      booking_count: number;
+    }
+    const { data: rawAffiliates } = await supabaseAdmin
       .from('affiliates')
       .select('id, name, payout_type, booking_count')
       .eq('is_active', true);
+    const affiliates = rawAffiliates as AffiliateRow[] | null;
 
     if (!affiliates || affiliates.length === 0) {
       return NextResponse.json({ message: '활성 어필리에이트 없음', period });
@@ -45,7 +52,7 @@ export async function GET(request: Request) {
     // 각 어필리에이트 작업은 서로 독립 (같은 affiliate_id 중복 호출 없음).
     // calculateDraftForAffiliate 가 외부 API 호출을 포함하지 않으므로 병렬 안전.
     const CHUNK = 10;
-    async function processAffiliate(aff: typeof affiliates[number]) {
+    async function processAffiliate(aff: NonNullable<typeof affiliates>[number]) {
       const { data: existingAction } = await supabaseAdmin
         .from('agent_actions')
         .select('id')
@@ -78,7 +85,7 @@ export async function GET(request: Request) {
         agent_type: 'finance',
         action_type: 'approve_monthly_settlement',
         summary,
-        payload: draft as any,
+        payload: draft as unknown as Record<string, unknown>,
         requested_by: 'jarvis',
         priority: draft.qualified && draft.final_payout >= 1_000_000 ? 'high' : 'normal',
       });
@@ -92,12 +99,12 @@ export async function GET(request: Request) {
       await Promise.allSettled(batch.map(processAffiliate));
     }
 
-    await supabaseAdmin.from('audit_logs').insert({
+    await void(supabaseAdmin.from('audit_logs').insert({
       action: 'AFFILIATE_SETTLEMENT_DRAFT',
       target_type: 'settlement',
       description: `${period} 정산 기안: ${drafted.length}건 확정, ${carried.length}건 이월, ${skipped.length}건 스킵`,
-      after_value: { period, drafted, carried, skipped } as any,
-    }).then(() => {}).catch(() => {});
+      after_value: { period, drafted, carried, skipped } as unknown as Record<string, unknown>,
+    }));
 
     await reportAffiliateCronSuccess('affiliate-settlement-draft', {
       period,

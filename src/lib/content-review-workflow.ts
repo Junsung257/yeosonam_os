@@ -422,12 +422,12 @@ export async function getPendingReviews(
     reason: string;
     created_at: string;
     due_at: string | null;
-    content_creatives: { title: string; status: string };
+    content_creatives: { title: string; status: string } | Array<{ title: string; status: string }>;
   }>) || []).map((r) => ({
     queueId: r.id,
     creativeId: r.creative_id,
-    title: r.content_creatives?.title ?? '(제목 없음)',
-    channel: r.content_creatives?.status ?? '',
+    title: r.content_creatives && 'length' in r.content_creatives ? (r.content_creatives as Array<{ title: string }>)[0]?.title ?? '(제목 없음)' : r.content_creatives?.title ?? '(제목 없음)',
+    channel: r.content_creatives && 'length' in r.content_creatives ? (r.content_creatives as Array<{ status: string }>)[0]?.status ?? '' : r.content_creatives?.status ?? '',
     priority: r.priority,
     reason: r.reason,
     queuedAt: r.created_at,

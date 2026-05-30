@@ -95,7 +95,7 @@ export default function PartnerPreviewClient() {
         </p>
       </div>
 
-      <div className="rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] bg-white p-4 space-y-3">
+      <div className="rounded-admin-md border border-admin-border-mid shadow-admin-xs bg-admin-surface p-4 space-y-3">
         <label className="block text-xs font-semibold text-admin-muted uppercase tracking-wide">추천코드 (슬러그)</label>
         <input
           type="text"

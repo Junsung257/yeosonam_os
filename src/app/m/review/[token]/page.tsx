@@ -15,6 +15,7 @@ import { MAGIC_SESSION_COOKIE, verifyMagicSessionToken } from '@/lib/magic-sessi
 import { supabaseAdmin } from '@/lib/supabase';
 import JarvisSidekick from '@/components/jarvis/JarvisSidekick';
 import type { Metadata } from 'next';
+import { fmtDateTime } from '@/lib/admin-utils';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -89,7 +90,7 @@ export default async function ReviewPage({ params }: PageParams) {
       >
         {/* 별점 */}
         <div>
-          <label className="block text-xs text-gray-600 mb-2">별점</label>
+          <span className="block text-xs text-gray-600 mb-2">별점</span>
           <div className="flex gap-2" role="radiogroup" aria-label="별점">
             {[1, 2, 3, 4, 5].map((n) => (
               <label key={n} className="flex-1 relative">
@@ -160,7 +161,7 @@ export default async function ReviewPage({ params }: PageParams) {
 
       {review.submitted_at && (
         <div className="mx-4 mt-4 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg p-3">
-          ✓ 이미 후기를 남겨주셨어요 ({new Date(review.submitted_at).toLocaleString('ko-KR')}). 추가 사진을 올리시면 함께 보관됩니다.
+          ✓ 이미 후기를 남겨주셨어요 ({fmtDateTime(review.submitted_at)}). 추가 사진을 올리시면 함께 보관됩니다.
         </div>
       )}
 

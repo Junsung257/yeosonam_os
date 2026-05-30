@@ -34,7 +34,7 @@ interface BlogPost {
   created_at: string;
   view_count: number | null;
   topic_source: string | null;
-  travel_packages: { title: string; destination: string } | null;
+  travel_packages: { title: string; destination: string } | { title: string; destination: string }[] | null;
 }
 
 export default async function BlogDataFetcher({
@@ -115,7 +115,7 @@ export default async function BlogDataFetcher({
               <tr key={post.id}>
                 <td>
                   <p className="text-admin-sm font-medium text-admin-text truncate max-w-md">
-                    {post.seo_title || post.travel_packages?.title || '(제목 없음)'}
+                    {post.seo_title || (Array.isArray(post.travel_packages) ? post.travel_packages[0]?.title : post.travel_packages?.title) || '(제목 없음)'}
                   </p>
                   {post.slug && (
                     <p className="text-admin-xs text-admin-muted-2 mt-0.5 font-mono">/blog/{post.slug}</p>
@@ -123,7 +123,7 @@ export default async function BlogDataFetcher({
                 </td>
                 <td>
                   <span className="text-admin-2xs text-admin-muted">
-                    {CAT_LABELS[post.category || ''] || post.travel_packages?.destination || '—'}
+                    {CAT_LABELS[post.category || ''] || (Array.isArray(post.travel_packages) ? post.travel_packages[0]?.destination : post.travel_packages?.destination) || '—'}
                   {post.category && !CAT_LABELS[post.category] && (
                     <span className="ml-1 px-1 py-0.5 text-[9px] bg-red-100 text-red-600 rounded-admin-xs font-semibold" title="정의되지 않은 카테고리">
                       !{post.category}

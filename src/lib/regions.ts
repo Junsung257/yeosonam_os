@@ -221,9 +221,15 @@ export function resolveLegacyFilterLabel(filter: string): string {
  * 도시가 어떤 region 에도 속하지 않으면 /destinations/[city] 로 폴백.
  */
 export function getDestinationUrl(city: string): string {
-  return `/destinations/${encodeURIComponent(city)}`;
+  return `/destinations/${encodeDestinationPathSegment(city)}`;
 }
 
 export function getRegionUrl(slug: string): string {
   return `/destinations/region/${slug}`;
+}
+
+export function encodeDestinationPathSegment(city: string): string {
+  // Some edge/CDN layers decode %2F before Next.js route matching.
+  // Double-encode slash-bearing city names so they remain a single segment.
+  return encodeURIComponent(city).replace(/%2F/gi, '%252F');
 }

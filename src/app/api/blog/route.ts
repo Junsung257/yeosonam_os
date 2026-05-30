@@ -265,7 +265,7 @@ export async function PATCH(request: NextRequest) {
     if (error) throw error;
 
     if (reqStatus === 'published') {
-      const finalSlug = (updateData.slug as string) || (data?.[0] as any)?.slug;
+      const finalSlug = (updateData.slug as string) || (data?.[0] as Record<string, unknown>)?.slug as string;
       revalidatePath('/blog');
       if (finalSlug) revalidatePath(`/blog/${finalSlug}`);
 

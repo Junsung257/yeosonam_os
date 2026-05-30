@@ -425,11 +425,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     [pkg],
   );
   const tiers = useMemo(
-    () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers || [] as any, pkg.departure_days) as PriceTier[]) : []),
+    () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers as unknown as import('@/lib/parser').PriceTier[] ?? [], pkg.departure_days) as unknown as import('@/lib/parser').PriceTier[]) : []),
     [pkg],
   );
   const allPriceDates = useMemo(
-    () => (pkg ? getEffectivePriceDates(pkg as any) : []),
+    () => (pkg ? getEffectivePriceDates(pkg as unknown as Parameters<typeof getEffectivePriceDates>[0]) : []),
     [pkg],
   );
   const minPrice = useMemo(() => {
@@ -1141,7 +1141,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               className="w-full h-12 rounded-2xl bg-brand text-white font-bold text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <span>
-                {parseInt(selectedDate.split('-')[1])}/{parseInt(selectedDate.split('-')[2])} 출발 예약하기
+                {parseInt(selectedDate.split('-')[1])}/{parseInt(selectedDate.split('-')[2])} 출발 예약 문의
               </span>
               {selectedDateInfo && (
                 <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
@@ -1623,54 +1623,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         destination={pkg.destination ?? ''}
         productType={pkg.product_type ?? null}
         kakaoChannel={() => openKakaoChannel({
-          internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
+          internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
           productTitle: pkg.products?.display_name || pkg.title,
           departureDate: selectedDate || selectedTier?.departure_dates?.[0],
         })}
       />
-
-      {/* ═══ 유의사항 · 예약 약관 (본문은 미리보기, 전문은 바텀시트) ═══ */}
-      <div ref={el => { sectionRefs.current['유의사항'] = el; }} data-section="유의사항" className="px-4 py-8 scroll-mt-[108px]">
-        {(() => {
-          if (initialNotices.length === 0 && !pkg.customer_notes) return null;
-          const hasSpecialTerms = hasSpecialTermsBanner(initialNotices);
-          return (
-            <div>
-              <h2 className="text-lg font-extrabold text-gray-900 mb-3">유의사항 · 예약 약관</h2>
-              {initialNotices.length > 0 ? (
-                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
-                  <p className="text-sm font-bold text-gray-900 mb-1.5">📋 예약 전 꼭 확인해 주세요</p>
-                  {hasSpecialTerms ? (
-                    <p className="text-xs text-red-700 leading-relaxed mb-3">
-                      <span className="font-bold">특별약관 적용 상품</span>
-                      {' — '}
-                      예약 확정(발권·파이널) 이후 취소 시, 시점과 무관하게 항공·호텔 실제 위약금이{' '}
-                      <span className="font-bold">최대 100% 청구</span>될 수 있습니다.
-                    </p>
-                  ) : (
-                    <p className="text-xs text-gray-600 leading-relaxed mb-3">
-                      항공·숙박·취소 규정이 포함된 상품입니다. 예약 전 약관 확인이 필요합니다.
-                    </p>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setTermsSheetOpen(true)}
-                    className={`text-sm font-semibold hover:underline ${
-                      hasSpecialTerms ? 'text-red-700' : 'text-brand'
-                    }`}
-                  >
-                    {hasSpecialTerms
-                      ? '🚨 특별약관 및 취소 규정 전체 보기 →'
-                      : '여행 약관 및 취소 규정 전체 보기 →'}
-                  </button>
-                </div>
-              ) : (
-                <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">{pkg.customer_notes}</p>
-              )}
-            </div>
-          );
-        })()}
-      </div>
 
       {/* ═══ 여행 준비 가이드 (통합 블로그 섹션) ═══
           ① 이 상품을 다룬 글 (relatedBlogPosts) — 큰 가로 카드, 위쪽
@@ -1795,7 +1752,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         </div>
       )}
 
-      {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약하기 (Jiwonnote 분석 P3) ═══ */}
+      {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약 문의 (Jiwonnote 분석 P3) ═══ */}
       <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-40 border-t border-gray-100 safe-area-bottom">
         {/* 신뢰 배너 — 특약 상품은 방어형 카피, 일반 상품은 전환형 카피 */}
         {(() => {
@@ -1869,7 +1826,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 }),
               }).catch(() => {});
               const copied = await openKakaoChannel({
-                internalCode: pkg.products?.internal_code || (pkg as any).internal_code,
+                internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
                 productTitle: pkg.products?.display_name || pkg.title,
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
               });
@@ -1884,24 +1841,30 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <span>카톡</span>
           </button>
 
-          {/* 예약하기 — primary, 폼 열기 (상태형: 날짜 선택 여부에 따라 텍스트 변경) */}
+          {/* 예약 문의 — primary, 폼 열기 (상태형: 날짜 선택 여부에 따라 텍스트 변경) */}
           <button
             type="button"
             onClick={() => setShowForm(true)}
-            className="h-11 px-5 rounded-full bg-brand text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
-            aria-label="예약 문의 폼 열기"
+            className="h-11 px-4 sm:px-5 rounded-full bg-brand text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
+            aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
           >
             {selectedDate
-              ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 예약`
-              : '예약하기'}
+              ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
+              : '예약 문의'}
           </button>
         </div>
       </div>
 
       {/* ═══ 관광지 상세 바텀시트 ═══ */}
       {attractionModal && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setAttractionModal(null)}>
-          <div className="bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl overflow-hidden max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end">
+          <button
+            type="button"
+            aria-label="Close attraction details"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setAttractionModal(null)}
+          />
+          <div className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl overflow-hidden max-h-[80vh] overflow-y-auto">
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2" />
             {/* 대표 사진 */}
             {attractionModal.photos && attractionModal.photos.length > 0 && (
@@ -1934,8 +1897,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 예약 폼 바텀시트 ═══ */}
       {showForm && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-end" onClick={() => setShowForm(false)}>
-          <div className="bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-end">
+          <button
+            type="button"
+            aria-label="Close reservation inquiry"
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowForm(false)}
+          />
+          <div className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl p-6">
             {submitted ? (
               <div className="text-center py-8">
                 <p className="text-3xl mb-2">✅</p>

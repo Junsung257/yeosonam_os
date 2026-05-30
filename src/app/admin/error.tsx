@@ -8,7 +8,7 @@ interface Props {
 }
 
 export default function AdminError({ error, reset }: Props) {
-  const errCode = (error as any)?.code;
+  const errCode = error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : undefined;
   const def = errCode ? getErrorByCode(errCode) : getErrorByCode('E2001');
 
   return (

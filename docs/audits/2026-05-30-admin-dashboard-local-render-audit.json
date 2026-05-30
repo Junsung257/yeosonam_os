@@ -1,0 +1,262 @@
+{
+  "generatedAt": "2026-05-29T20:17:12.437Z",
+  "results": [
+    {
+      "name": "desktop",
+      "viewport": {
+        "width": 1440,
+        "height": 900
+      },
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin",
+      "console": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        },
+        {
+          "type": "warning",
+          "text": "GoTrueClient@sb-ixaxnvbmhzjvupissmly-auth-token:1 (2.106.2) 2026-05-29T20:16:45.469Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        }
+      ],
+      "pageErrors": [],
+      "badResponses": [
+        {
+          "status": 401,
+          "url": "http://localhost:3000/api/auth/refresh"
+        },
+        {
+          "status": 404,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/keyword_performance_daily?select=*&date=gte.2026-04-29&order=date.asc"
+        },
+        {
+          "status": 404,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/keyword_performance_daily?select=*&date=gte.2026-04-29&order=date.asc"
+        }
+      ],
+      "overflow": [],
+      "h1": [
+        "대시보드",
+        "어드민 대시보드"
+      ],
+      "screenshot": "C:\\Users\\admin\\Desktop\\여소남OS\\docs\\audits\\2026-05-30-admin-dashboard-local-screens\\desktop-admin-dashboard.png"
+    },
+    {
+      "name": "tablet",
+      "viewport": {
+        "width": 768,
+        "height": 1024
+      },
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin",
+      "console": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        },
+        {
+          "type": "warning",
+          "text": "GoTrueClient@sb-ixaxnvbmhzjvupissmly-auth-token:1 (2.106.2) 2026-05-29T20:16:57.715Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        }
+      ],
+      "pageErrors": [],
+      "badResponses": [
+        {
+          "status": 401,
+          "url": "http://localhost:3000/api/auth/refresh"
+        },
+        {
+          "status": 404,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/keyword_performance_daily?select=*&date=gte.2026-04-29&order=date.asc"
+        },
+        {
+          "status": 404,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/keyword_performance_daily?select=*&date=gte.2026-04-29&order=date.asc"
+        }
+      ],
+      "overflow": [],
+      "h1": [
+        "대시보드",
+        "어드민 대시보드"
+      ],
+      "screenshot": "C:\\Users\\admin\\Desktop\\여소남OS\\docs\\audits\\2026-05-30-admin-dashboard-local-screens\\tablet-admin-dashboard.png"
+    },
+    {
+      "name": "mobile",
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "status": 200,
+      "finalUrl": "http://localhost:3000/admin",
+      "console": [
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+        },
+        {
+          "type": "warning",
+          "text": "GoTrueClient@sb-ixaxnvbmhzjvupissmly-auth-token:1 (2.106.2) 2026-05-29T20:17:11.406Z Multiple GoTrueClient instances detected in the same browser context. It is not an error, but this should be avoided as it may produce undefined behavior when used concurrently under the same storage key."
+        },
+        {
+          "type": "error",
+          "text": "Failed to load resource: the server responded with a status of 404 ()"
+        }
+      ],
+      "pageErrors": [],
+      "badResponses": [
+        {
+          "status": 401,
+          "url": "http://localhost:3000/api/auth/refresh"
+        },
+        {
+          "status": 404,
+          "url": "https://ixaxnvbmhzjvupissmly.supabase.co/rest/v1/keyword_performance_daily?select=*&date=gte.2026-04-29&order=date.asc"
+        }
+      ],
+      "overflow": [
+        {
+          "tag": "aside",
+          "text": "여소남 OS ERP 운영 대시보드 고객 문의 예약 문의 예약 관리 고객 관리 리뷰 분석 항공 지연 상품·공급 더보기 (9개) 영업·제휴 더보기 (11개) 재무 더",
+          "className": "fixed top-0 left-0 h-full bg-admin-surface border-r border-admin-border z-40 transition-all duration-200 flex flex-col overflow-hidden -tran",
+          "left": -256,
+          "right": 0,
+          "width": 256,
+          "overflowBy": 256,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "여소남 OS ERP",
+          "className": "h-14 flex items-center border-b border-admin-border px-4 gap-2",
+          "left": -256,
+          "right": -1,
+          "width": 255,
+          "overflowBy": 256,
+          "visible": true
+        },
+        {
+          "tag": "nav",
+          "text": "운영 대시보드 고객 문의 예약 문의 예약 관리 고객 관리 리뷰 분석 항공 지연 상품·공급 더보기 (9개) 영업·제휴 더보기 (11개) 재무 더보기 (7개) 마케팅",
+          "className": "flex-1 overflow-y-auto py-3 space-y-1 px-2",
+          "left": -256,
+          "right": -1,
+          "width": 255,
+          "overflowBy": 256,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "AI 명령...",
+          "className": "px-2 pb-2",
+          "left": -256,
+          "right": -1,
+          "width": 255,
+          "overflowBy": 256,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "편안함 로그아웃",
+          "className": "px-3 py-3 border-t border-admin-border space-y-1.5",
+          "left": -256,
+          "right": -1,
+          "width": 255,
+          "overflowBy": 256,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "운영 대시보드 고객 문의 예약 문의 예약 관리 고객 관리 리뷰 분석 항공 지연",
+          "className": "",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "운영",
+          "className": "px-2 pb-1.5 flex items-center gap-1.5 text-admin-2xs font-semibold text-admin-muted uppercase tracking-[0.08em] cursor-pointer select-none h",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "대시보드 고객 문의 예약 문의 예약 관리 고객 관리 리뷰 분석 항공 지연",
+          "className": "space-y-0.5",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "대시보드",
+          "className": "group relative",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        },
+        {
+          "tag": "a",
+          "text": "대시보드",
+          "className": "flex items-center gap-2.5 px-2.5 py-1.5 rounded-admin-sm text-admin-sm transition-colors duration-160 relative bg-brand-light text-brand fon",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        },
+        {
+          "tag": "div",
+          "text": "고객 문의",
+          "className": "group relative",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        },
+        {
+          "tag": "a",
+          "text": "고객 문의",
+          "className": "flex items-center gap-2.5 px-2.5 py-1.5 rounded-admin-sm text-admin-sm transition-colors duration-160 relative text-admin-text-2 hover:bg-ad",
+          "left": -248,
+          "right": -9,
+          "width": 239,
+          "overflowBy": 248,
+          "visible": true
+        }
+      ],
+      "h1": [
+        "대시보드",
+        "어드민 대시보드"
+      ],
+      "screenshot": "C:\\Users\\admin\\Desktop\\여소남OS\\docs\\audits\\2026-05-30-admin-dashboard-local-screens\\mobile-admin-dashboard.png"
+    }
+  ]
+}

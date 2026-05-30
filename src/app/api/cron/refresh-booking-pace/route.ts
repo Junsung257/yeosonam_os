@@ -55,7 +55,7 @@ async function run() {
   };
   const groups = new Map<string, Group>();
 
-  for (const r of rows as any[]) {
+  for (const r of rows as unknown as Array<{ departure_date: string; created_at: string; travel_packages: { destination: string } | null; departing_location_id: string; cancelled_at: string | null; adult_count: number; child_count: number; total_price: number }>) {
     const depDate: string | null = r.departure_date ?? null;
     const createdAt: string = r.created_at;
     let leadDays: number | null = null;

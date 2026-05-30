@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams } from 'next/navigation';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 interface Slide {
   id: string;
@@ -143,6 +144,8 @@ export default function AffiliateCardNewsDetailPage() {
               {slides.map((_, i) => (
                 <button
                   key={i}
+                  type="button"
+                  aria-label={`Go to slide ${i + 1}`}
                   onClick={() => setCurrentSlide(i)}
                   className={`w-2 h-2 rounded-full transition-all ${
                     i === currentSlide ? 'bg-amber-500 w-4' : 'bg-gray-300'
@@ -207,7 +210,7 @@ export default function AffiliateCardNewsDetailPage() {
         {/* 정보 + 액션 */}
         <div className="bg-white rounded-xl border p-4 space-y-3">
           <div className="flex items-center justify-between text-xs text-gray-500">
-            <span>생성일: {new Date(cardNews.created_at).toLocaleDateString('ko-KR')}</span>
+            <span>생성일: {fmtDateISO(cardNews.created_at)}</span>
             <span className={`px-2 py-0.5 rounded-full ${
               cardNews.status === 'published' ? 'bg-green-100 text-green-700' :
               cardNews.status === 'scheduled' ? 'bg-blue-100 text-blue-700' :

@@ -2,13 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuthenticatedRoute } from '@/lib/session-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
+import { successResponse, errorResponse } from '@/lib/api-response';
 
 const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
 // GET: 정산 목록 조회
 export async function GET(request: NextRequest) {
+  const guard = await requireAuthenticatedRoute(request);
+  if (guard instanceof NextResponse) return guard;
+
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
   const { searchParams } = new URL(request.url);
   const affiliateId = searchParams.get('affiliateId');
@@ -20,7 +24,7 @@ export async function GET(request: NextRequest) {
     // UUID 형식 사전 검증 — 잘못된 affiliateId 는 빈 결과 반환 (500 회피)
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (affiliateId && !UUID_RE.test(affiliateId)) {
-      return NextResponse.json({ settlements: [] }, { headers: { 'Cache-Control': 'no-store' } });
+      return successResponse({ settlements: [] });
     }
 
     let query = supabase
@@ -34,9 +38,9 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ settlements: data || [] }, { headers: { 'Cache-Control': 'no-store' } });
+    return successResponse({ settlements: data || [] });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+    return errorResponse('FETCH_FAILED', err instanceof Error ? err.message : '조회 실패', 500);
   }
 }
 
@@ -46,7 +50,7 @@ export async function POST(request: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
   const supabase = supabaseAdmin;
 
@@ -54,8 +58,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { affiliateId, period } = body; // period: "2026-03"
 
-    if (!affiliateId) return NextResponse.json({ error: 'affiliateId가 필요합니다.' }, { status: 400 });
-    if (!period) return NextResponse.json({ error: 'period가 필요합니다. (예: 2026-03)' }, { status: 400 });
+    if (!affiliateId) return errorResponse('MISSING_FIELD', 'affiliateId가 필요합니다.', 400);
+    if (!period) return errorResponse('MISSING_FIELD', 'period가 필요합니다. (예: 2026-03)', 400);
 
     // ① 어필리에이트 정보 조회
     const { data: affiliate, error: aErr } = await supabase
@@ -63,7 +67,7 @@ export async function POST(request: NextRequest) {
       .select('id, name, payout_type, booking_count')
       .eq('id', affiliateId)
       .single();
-    if (aErr || !affiliate) return NextResponse.json({ error: '어필리에이트를 찾을 수 없습니다.' }, { status: 404 });
+    if (aErr || !affiliate) return errorResponse('NOT_FOUND', '어필리에이트를 찾을 수 없습니다.', 404);
 
     // ② 해당 period의 귀국일이 지난 확정 예약 조회
     const [year, month] = period.split('-').map(Number);
@@ -186,9 +190,9 @@ export async function POST(request: NextRequest) {
       after_value: settlement,
     }]);
 
-    return NextResponse.json({ settlement, qualified, qualifiedCount, totalAmount });
+    return successResponse({ settlement, qualified, qualifiedCount, totalAmount });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '정산 처리 실패' }, { status: 500 });
+    return errorResponse('SETTLEMENT_FAILED', err instanceof Error ? err.message : '정산 처리 실패', 500);
   }
 }
 
@@ -198,16 +202,16 @@ export async function PATCH(request: NextRequest) {
   if (guard instanceof NextResponse) return guard;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
   const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();
     const { id, status } = body;
-    if (!id) return NextResponse.json({ error: 'id가 필요합니다.' }, { status: 400 });
+    if (!id) return errorResponse('MISSING_FIELD', 'id가 필요합니다.', 400);
     if (!['COMPLETED', 'VOID', 'PENDING', 'READY', 'HOLD'].includes(status)) {
-      return NextResponse.json({ error: '유효하지 않은 상태값입니다.' }, { status: 400 });
+      return errorResponse('INVALID_STATUS', '유효하지 않은 상태값입니다.', 400);
     }
 
     // 현재 정산 정보 조회 (원복용)
@@ -217,7 +221,7 @@ export async function PATCH(request: NextRequest) {
       .eq('id', id)
       .single();
 
-    if (fetchErr || !current) return NextResponse.json({ error: '정산을 찾을 수 없습니다.' }, { status: 404 });
+    if (fetchErr || !current) return errorResponse('NOT_FOUND', '정산을 찾을 수 없습니다.', 404);
 
     const payload: Record<string, unknown> = { status };
     if (status === 'COMPLETED') payload.settled_at = new Date().toISOString();
@@ -235,11 +239,12 @@ export async function PATCH(request: NextRequest) {
 
     // ── VOID 원복 로직 ─────────────────────────────────
     if (status === 'VOID' && ['READY', 'COMPLETED'].includes(current.status)) {
-      const affiliate = current.affiliates as any;
+      const affiliate = current.affiliates as Record<string, unknown> | null;
+      const affBookingCount = (affiliate?.booking_count as number) ?? 0;
 
       // 1. booking_count 차감 (정산 시 증가한 만큼 되돌림)
       if (affiliate && current.qualified_booking_count > 0) {
-        const newCount = Math.max(0, (affiliate.booking_count || 0) - current.qualified_booking_count);
+        const newCount = Math.max(0, affBookingCount - current.qualified_booking_count);
         await supabase
           .from('affiliates')
           .update({ booking_count: newCount })
@@ -278,19 +283,22 @@ export async function PATCH(request: NextRequest) {
     if (error) throw error;
 
     // audit_log
+    const logAffiliate = current.affiliates as Record<string, unknown> | null;
+    const logName = logAffiliate?.name ?? '';
+    const logBookCount = logAffiliate?.booking_count;
     await supabase.from('audit_logs').insert([{
       action: status === 'VOID' ? 'SETTLEMENT_VOID_ROLLBACK' : `SETTLEMENT_${status}`,
       target_type: 'settlement',
       target_id: id,
       description: status === 'VOID'
-        ? `${(current.affiliates as any)?.name} ${current.settlement_period} 정산 원복 — booking_count 차감, 이월 복구`
+        ? `${logName} ${current.settlement_period} 정산 원복 — booking_count 차감, 이월 복구`
         : `정산 상태 → ${status}`,
-      before_value: { status: current.status, final_payout: current.final_payout, booking_count: (current.affiliates as any)?.booking_count },
+      before_value: { status: current.status, final_payout: current.final_payout, booking_count: logBookCount },
       after_value: { status, final_payout: data?.final_payout },
     }]);
 
-    return NextResponse.json({ settlement: data });
+    return successResponse({ settlement: data });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '상태 변경 실패' }, { status: 500 });
+    return errorResponse('PATCH_FAILED', err instanceof Error ? err.message : '상태 변경 실패', 500);
   }
 }

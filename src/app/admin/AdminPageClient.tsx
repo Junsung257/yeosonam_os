@@ -92,7 +92,7 @@ interface DataQualityReport {
   total_live: number; issues: DataQualityIssue[]; health_score: number;
 }
 
-interface TravelPackage {
+export interface TravelPackage {
   id: string; title: string; destination?: string; duration?: number;
   price?: number; filename: string; file_type: string;
   confidence: number; status: string; created_at: string;
@@ -156,9 +156,9 @@ function TwoTrackKPI({
   const bookingsSpark = newBookings.map(r => r.live_bookings);
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
       {/* 카드 1: 출발일 기준 확정매출 (회계, IFRS 15) */}
-      <Link href="/admin/bookings?mode=recognized" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+      <Link href="/admin/bookings?mode=recognized" className="block bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">확정매출 · 출발일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
           {recognizedGrowth !== 0 && (
@@ -177,7 +177,7 @@ function TwoTrackKPI({
       </Link>
 
       {/* 카드 2: 생성일 기준 신규예약 (영업, 취소 가능) */}
-      <Link href="/admin/bookings?mode=new" className="block bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow">
+      <Link href="/admin/bookings?mode=new" className="block bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">신규예약 · 생성일 기준 <span className="font-normal normal-case">({periodLabel})</span></span>
           {bookingsGrowth !== 0 && (
@@ -209,7 +209,7 @@ function TwoTrackKPI({
 function CashflowChart({ chartData, periodLabel }: { chartData: MonthlyChartData[]; periodLabel: string }) {
   if (chartData.length === 0) return null;
   return (
-    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+    <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">캐시플로우 ({periodLabel})</h2>
         <span className="text-[10px] text-admin-muted-2">출발일 기준 / 직접·제휴 합산</span>
@@ -260,7 +260,7 @@ function BookingPaceWidget({
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {/* Booking Pace — 향후 출발 분포 */}
-      <Link href="/admin/bookings?mode=upcoming" className="md:col-span-2 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+      <Link href="/admin/bookings?mode=upcoming" className="md:col-span-2 bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-admin-base font-semibold text-text-primary">Booking Pace · 향후 출발</h2>
           <span className="text-[11px] text-admin-muted tabular-nums">
@@ -290,7 +290,7 @@ function BookingPaceWidget({
       </Link>
 
       {/* 90일 Cancellation Rate */}
-      <Link href="/admin/bookings?lifecycle=cancelled" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+      <Link href="/admin/bookings?lifecycle=cancelled" className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
         <div className="flex items-center justify-between mb-2">
           <h2 className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">취소율 (최근 90일)</h2>
           <span className="text-[10px] text-admin-muted-2">Booking.com 표준</span>
@@ -356,7 +356,7 @@ function OperationsKPI({
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {/* 정산 잔여 — Payable (랜드사 미지급) */}
-      <Link href="/admin/land-settlements" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+      <Link href="/admin/land-settlements" className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">랜드사 미지급</span>
           <span className="text-[10px] text-admin-muted-2">payable</span>
@@ -382,7 +382,7 @@ function OperationsKPI({
       </Link>
 
       {/* 정산 잔여 — Receivable (고객 미입금) */}
-      <Link href="/admin/payments?filter=outstanding" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+      <Link href="/admin/payments?filter=outstanding" className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">고객 미입금</span>
           <span className="text-[10px] text-admin-muted-2">receivable</span>
@@ -408,7 +408,7 @@ function OperationsKPI({
       </Link>
 
       {/* AI 비용 추이 + 프로바이더 크레딧 */}
-      <Link href="/admin/jarvis" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+      <Link href="/admin/jarvis" className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">AI 비용 (30일)</span>
           <span className="text-[10px] text-admin-muted-2">자비스 V2 ledger</span>
@@ -506,7 +506,7 @@ function OperatorTakeRatesWidget({ rows }: { rows: OperatorTakeRate[] }) {
   if (rows.length === 0) return null;
   const maxGmv = Math.max(1, ...rows.map(r => r.gmv));
   return (
-    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+    <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">랜드사별 GMV · Take Rate</h2>
         <span className="text-[10px] text-admin-muted-2">최근 6개월 출발 완료 기준</span>
@@ -551,7 +551,7 @@ function RepeatBookingCard({ stats }: { stats: RepeatBookingStats | null }) {
   const repeatColor = repeatPct >= 20 ? 'text-emerald-700' : repeatPct >= 10 ? 'text-blue-700' : 'text-admin-text-2';
 
   return (
-    <Link href="/admin/customers?sort=mileage" className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 hover:shadow-[0_4px_16px_rgba(0,0,0,0.08)] transition-shadow block">
+    <Link href="/admin/customers?sort=mileage" className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[11px] font-semibold text-text-secondary uppercase tracking-wide">재방문 고객</span>
         <span className="text-[10px] text-admin-muted-2">retention</span>
@@ -724,7 +724,7 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
   };
 
   return (
-    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+    <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary">실무자 경고판</h2>
         {cards.some(c => c.count > 0) && (
@@ -831,7 +831,7 @@ function SocialMetricsWidget() {
   const COLORS = ['#3b82f6', '#8b5cf6', '#0ea5e9', '#ef4444'];
 
   return (
-    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+    <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-admin-base font-semibold text-text-primary flex items-center gap-1.5">
           SNS 채널 현황
@@ -934,7 +934,7 @@ function AIInsights({ packages, chartData }: { packages: TravelPackage[]; chartD
   }, [chartData]);
 
   return (
-    <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+    <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
       <h2 className="text-admin-base font-semibold text-text-primary mb-3">AI 인사이트</h2>
       <div className="grid grid-cols-3 gap-3">
         <div>
@@ -1074,6 +1074,92 @@ function RecentFailuresWidget() {
   );
 }
 
+type DashboardFetchResult<T> =
+  | { ok: true; data: T; status: number; url: string }
+  | { ok: false; data: null; status: number | null; url: string; error: string; authExpired?: boolean };
+
+interface PackagesResponse {
+  packages?: TravelPackage[];
+}
+
+interface DashboardStatsResponse {
+  stats?: DashboardStats;
+}
+
+interface CapitalSummaryResponse {
+  total?: number;
+}
+
+interface BankTransactionsSummaryResponse {
+  count?: number;
+  transactions?: unknown[];
+}
+
+interface ChartResponse {
+  data?: MonthlyChartData[];
+  error?: string;
+}
+
+interface RevenueRecognitionResponse {
+  recognized?: RecognizedRevenueMonth[];
+  newBookings?: NewBookingsMonth[];
+  pace?: BookingPaceBucket[];
+  cancellation_90d?: Cancellation90d;
+  error?: string;
+}
+
+interface OperationsResponse {
+  aiUsage?: AIUsageStats;
+  settlement?: SettlementBalances;
+  takeRates?: OperatorTakeRate[];
+  repeat?: RepeatBookingStats;
+  dataQuality?: DataQualityReport;
+  error?: string;
+}
+
+interface AgentActionsResponse {
+  actions?: any[];
+}
+
+async function fetchDashboardJson<T>(url: string): Promise<DashboardFetchResult<T>> {
+  try {
+    const res = await fetch(url, {
+      redirect: 'manual',
+      headers: { Accept: 'application/json' },
+    });
+    const contentType = res.headers.get('content-type') ?? '';
+    const authExpired = res.status === 401 || res.status === 307 || res.status === 308;
+
+    if (!res.ok || !contentType.includes('application/json')) {
+      return {
+        ok: false,
+        data: null,
+        status: res.status,
+        url,
+        authExpired,
+        error: authExpired ? 'session-expired' : `HTTP ${res.status}`,
+      };
+    }
+
+    const data = (await res.json()) as T;
+    return { ok: true, data, status: res.status, url };
+  } catch (err) {
+    return {
+      ok: false,
+      data: null,
+      status: null,
+      url,
+      error: err instanceof Error ? err.message : 'network-error',
+    };
+  }
+}
+
+function fetchErrorLabel(label: string, result: DashboardFetchResult<unknown>) {
+  if (!result.ok && result.authExpired) return '세션 만료';
+  if (result.status === 404) return `${label} 없음`;
+  return label;
+}
+
 export default function AdminPage({
   initialPendingPackages,
   initialPackages,
@@ -1115,84 +1201,90 @@ export default function AdminPage({
   const [processingId, setProcessingId] = useState<string | null>(null);
 
   const loadAll = async (months = 6) => {
-    setIsLoading(true);
     setFetchErrors([]);
     try {
       // 서버 pre-fetch 패키지가 있으면 packages 2개 fetch 스킵 — stats/capital만 병렬 조회
       const skipPkg = _skipPackageFetch.current;
       _skipPackageFetch.current = false;
+      const hasHydratedShell = skipPkg || stats !== null || packages.length > 0 || pendingPackages.length > 0;
+      setIsLoading(!hasHydratedShell);
 
-      const fetches: Promise<Response | null>[] = [
-        skipPkg ? Promise.resolve(null) : fetch('/api/packages?status=pending'),
-        skipPkg ? Promise.resolve(null) : fetch('/api/packages'),
-        fetch('/api/dashboard'),
-        fetch('/api/capital').catch(() => null),
-        // BUG-1: 서버에서 필터 완료 (기존: 500건 limit → client filter, 신규: 전체 기간 unmatched만)
-        fetch('/api/bank-transactions?match_status=unmatched').catch(() => null),
-      ];
-      const [pendingRes, approvedRes, statsRes, capRes, unmatchedRes] = await Promise.all(fetches);
+      const addFetchError = (label: string, result?: DashboardFetchResult<unknown> | null) => {
+        setFetchErrors(prev => [...new Set([...prev, result ? fetchErrorLabel(label, result) : label])]);
+      };
 
-      if (pendingRes) {
-        const pendingData = await pendingRes.json();
-        setPendingPackages(pendingData.packages || []);
-      }
-      if (approvedRes) {
-        const approvedData = await approvedRes.json();
-        setPackages(approvedData.packages || []);
-      }
-      const statsData = await statsRes!.json();
-      if (statsData.stats) setStats(statsData.stats);
+      const pendingReq: Promise<DashboardFetchResult<PackagesResponse> | null> =
+        skipPkg ? Promise.resolve(null) : fetchDashboardJson<PackagesResponse>('/api/packages?status=pending');
+      const approvedReq: Promise<DashboardFetchResult<PackagesResponse> | null> =
+        skipPkg ? Promise.resolve(null) : fetchDashboardJson<PackagesResponse>('/api/packages');
 
-      if (capRes && (capRes as Response).ok) {
-        const capData = await (capRes as Response).json().catch(() => null);
-        if (capData?.total != null) setCapitalTotal(capData.total);
-      }
-      if (unmatchedRes && (unmatchedRes as Response).ok) {
-        const txData = await (unmatchedRes as Response).json().catch(() => null);
-        if (txData?.transactions) setUnmatchedCount((txData.transactions as any[]).length);
+      const [pendingRes, approvedRes, statsRes, capRes, unmatchedRes] = await Promise.all([
+        pendingReq,
+        approvedReq,
+        fetchDashboardJson<DashboardStatsResponse>('/api/dashboard'),
+        fetchDashboardJson<CapitalSummaryResponse>('/api/capital?summary=1'),
+        fetchDashboardJson<BankTransactionsSummaryResponse>('/api/bank-transactions?match_status=unmatched&summary=1'),
+      ]);
+
+      if (pendingRes?.ok) setPendingPackages(pendingRes.data.packages || []);
+      else if (pendingRes) addFetchError('승인대기 상품', pendingRes);
+
+      if (approvedRes?.ok) setPackages(approvedRes.data.packages || []);
+      else if (approvedRes) addFetchError('상품 목록', approvedRes);
+
+      if (statsRes.ok && statsRes.data.stats) setStats(statsRes.data.stats);
+      else addFetchError('기본 KPI', statsRes);
+
+      if (capRes.ok && capRes.data.total != null) setCapitalTotal(capRes.data.total);
+      else if (!capRes.ok) addFetchError('자본 잔액', capRes);
+
+      if (unmatchedRes.ok) {
+        if (unmatchedRes.data.count != null) setUnmatchedCount(Number(unmatchedRes.data.count) || 0);
+        else if (unmatchedRes.data.transactions) setUnmatchedCount(unmatchedRes.data.transactions.length);
+      } else {
+        addFetchError('미매칭 입금', unmatchedRes);
       }
 
       // 차트 (fire-and-forget — 느려도 초기 렌더 블록 안 함)
-      fetch(`/api/dashboard/chart?months=${months}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.data) setChartData(d.data); })
-        .catch(() => { setFetchErrors(prev => [...new Set([...prev, '차트'])]); });
+      fetchDashboardJson<ChartResponse>(`/api/dashboard/chart?months=${months}`)
+        .then(r => {
+          if (r.ok && r.data.data) setChartData(r.data.data);
+          else addFetchError('차트', r);
+        });
 
       // V4: 매출 인식 분리 + Booking Pace + 90일 취소율
-      fetch(`/api/dashboard/revenue-recognition?months=${months}`)
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (!d || d.error) { setFetchErrors(prev => [...new Set([...prev, '매출인식'])]); return; }
-          if (d.recognized) setRecognized(d.recognized);
-          if (d.newBookings) setNewBookings(d.newBookings);
-          if (d.pace) setPace(d.pace);
-          if (d.cancellation_90d) setCancellation90d(d.cancellation_90d);
-        })
-        .catch(() => { setFetchErrors(prev => [...new Set([...prev, '매출인식'])]); });
+      fetchDashboardJson<RevenueRecognitionResponse>(`/api/dashboard/revenue-recognition?months=${months}`)
+        .then(r => {
+          if (!r.ok || r.data.error) { addFetchError('매출인식', r); return; }
+          if (r.data.recognized) setRecognized(r.data.recognized);
+          if (r.data.newBookings) setNewBookings(r.data.newBookings);
+          if (r.data.pace) setPace(r.data.pace);
+          if (r.data.cancellation_90d) setCancellation90d(r.data.cancellation_90d);
+        });
 
       // V4: 운영 KPI — BUG-3: 에러 응답 방어 추가
-      fetch('/api/dashboard/operations')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => {
-          if (!d || d.error) { setFetchErrors(prev => [...new Set([...prev, '운영KPI'])]); return; }
-          if (d.aiUsage) setAiUsage(d.aiUsage);
-          if (d.settlement) setSettlement(d.settlement);
-          if (d.takeRates) setTakeRates(d.takeRates);
-          if (d.repeat) setRepeat(d.repeat);
-          if (d.dataQuality) setDataQuality(d.dataQuality);
-        })
-        .catch(() => { setFetchErrors(prev => [...new Set([...prev, '운영KPI'])]); });
+      fetchDashboardJson<OperationsResponse>('/api/dashboard/operations?mode=dashboard')
+        .then(r => {
+          if (!r.ok || r.data.error) { addFetchError('운영KPI', r); return; }
+          if (r.data.aiUsage) setAiUsage(r.data.aiUsage);
+          if (r.data.settlement) setSettlement(r.data.settlement);
+          if (r.data.takeRates) setTakeRates(r.data.takeRates);
+          if (r.data.repeat) setRepeat(r.data.repeat);
+          if (r.data.dataQuality) setDataQuality(r.data.dataQuality);
+        });
 
-      fetch('/api/agent-actions?status=pending&limit=6')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.actions) setPendingActions(d.actions); })
-        .catch(() => {});
+      fetchDashboardJson<AgentActionsResponse>('/api/agent-actions?status=pending&limit=6&count=none&fields=compact')
+        .then(r => {
+          if (r.ok && r.data.actions) setPendingActions(r.data.actions);
+          else if (!r.ok) addFetchError('자비스 결재', r);
+        });
 
       // AI 프로바이더 크레딧 (DeepSeek 잔액 + Gemini/Claude 사용량)
-      fetch('/api/admin/ai-credits')
-        .then(r => r.ok ? r.json() : null)
-        .then(d => { if (d?.credits) setAiCredits(d); })
-        .catch(() => {});
+      fetchDashboardJson<AICredits>('/api/admin/ai-credits?live_balance=0')
+        .then(r => {
+          if (r.ok && r.data.credits) setAiCredits(r.data);
+          else if (!r.ok) addFetchError('AI 크레딧', r);
+        });
 
     } catch (err) {
       console.error('대시보드 로드 실패:', err);
@@ -1204,6 +1296,8 @@ export default function AdminPage({
     }
   };
 
+  // 첫 진입 1회만 서버 프리패치 보강 로드. period 변경은 버튼 핸들러가 직접 호출한다.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { loadAll(6); }, []);
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject') => {
@@ -1233,16 +1327,16 @@ export default function AdminPage({
           <div className="h-8 bg-admin-surface-2 rounded w-24" />
         </div>
         {/* ActionBoard 스켈레톤 */}
-        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 animate-pulse">
+        <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 animate-pulse">
           <div className="h-4 bg-admin-surface-2 rounded w-24 mb-3" />
           <div className="space-y-2">
             {[...Array(4)].map((_, i) => <div key={i} className="h-12 bg-admin-surface-2 rounded" />)}
           </div>
         </div>
         {/* TwoTrackKPI 스켈레톤 — 2열 */}
-        <div className="grid grid-cols-2 gap-3 animate-pulse">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 animate-pulse">
           {[...Array(2)].map((_, i) => (
-            <div key={i} className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+            <div key={i} className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
               <div className="h-3 bg-admin-surface-2 rounded w-32 mb-2" />
               <div className="h-8 bg-admin-surface-2 rounded w-24 mb-1" />
               <div className="h-3 bg-admin-surface-2 rounded w-40" />
@@ -1252,14 +1346,14 @@ export default function AdminPage({
         {/* 재무 카드 스켈레톤 — 4열 */}
         <div className="grid grid-cols-4 gap-2 animate-pulse">
           {[...Array(4)].map((_, i) => (
-            <div key={i} className="bg-white rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3">
+            <div key={i} className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-3">
               <div className="h-3 bg-admin-surface-2 rounded w-16 mb-2" />
               <div className="h-5 bg-admin-surface-2 rounded w-20" />
             </div>
           ))}
         </div>
         {/* 차트 스켈레톤 */}
-        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4 animate-pulse">
+        <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4 animate-pulse">
           <div className="h-4 bg-admin-surface-2 rounded w-32 mb-3" />
           <div className="h-[200px] bg-admin-surface-2 rounded" />
         </div>
@@ -1346,7 +1440,7 @@ export default function AdminPage({
 
       {/* 자비스 결재 대기 */}
       {pendingActions.length > 0 && (
-        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+        <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-admin-base font-semibold text-text-primary flex items-center gap-2">
               자비스 결재 대기
@@ -1356,7 +1450,7 @@ export default function AdminPage({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingActions.slice(0, 6).map((act: any) => (
-              <div key={act.id} className="rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition-shadow">
+              <div key={act.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
                 <div className="flex items-center gap-1.5 mb-1">
                   <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
                     { operations: 'bg-blue-50 text-blue-600', sales: 'bg-purple-50 text-purple-600',
@@ -1413,14 +1507,14 @@ export default function AdminPage({
 
       {/* 승인 대기 상품 */}
       {pendingPackages.length > 0 && (
-        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-4">
+        <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-admin-base font-semibold text-text-primary">승인 대기 ({pendingPackages.length})</h2>
             <Link href="/admin/packages" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingPackages.slice(0, 6).map(pkg => (
-              <div key={pkg.id} className="rounded-[12px] shadow-[0_2px_8px_rgba(0,0,0,0.04)] p-3 hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] cursor-pointer transition-shadow"
+              <div key={pkg.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm cursor-pointer transition-all duration-160"
                 onClick={() => setSelectedPackage(pkg)}>
                 <p className="text-admin-sm font-medium text-admin-text-2 truncate">{pkg.title}</p>
                 <div className="flex items-center gap-2 mt-1">
@@ -1494,7 +1588,7 @@ export default function AdminPage({
             </Link>
             {/* 자본 잔액 */}
             <Link href="/admin/ledger"
-              className="bg-white border border-admin-border rounded-admin-md p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-admin-border-mid hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              className="bg-admin-surface border border-admin-border-mid rounded-admin-md p-4 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[11px] text-admin-muted-2 font-medium">자본 잔액</p>
                 <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1508,7 +1602,7 @@ export default function AdminPage({
             </Link>
             {/* 미수금 */}
             <Link href="/admin/payments?filter=outstanding"
-              className="bg-white border border-admin-border rounded-admin-md p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-admin-border-mid hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              className="bg-admin-surface border border-admin-border-mid rounded-admin-md p-4 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[11px] text-admin-muted-2 font-medium">미수금</p>
                 <svg className={`w-4 h-4 ${stats && stats.totalOutstanding > 0 ? 'text-red-400' : 'text-admin-muted-2'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -1522,7 +1616,7 @@ export default function AdminPage({
             </Link>
             {/* 진행 예약 */}
             <Link href="/admin/bookings?status=pending,confirmed"
-              className="bg-white border border-admin-border rounded-admin-md p-4 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:border-admin-border-mid hover:shadow-[0_4px_12px_rgba(0,0,0,0.06)] transition block">
+              className="bg-admin-surface border border-admin-border-mid rounded-admin-md p-4 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
               <div className="flex items-center justify-between mb-2">
                 <p className="text-[11px] text-admin-muted-2 font-medium">진행 예약</p>
                 <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

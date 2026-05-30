@@ -179,7 +179,7 @@ export default function VariantGroupComparePage() {
         <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {Array.from({ length: 6 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
               <div className="aspect-[9/16] bg-admin-surface-2 animate-pulse" />
               <div className="p-2 space-y-1.5">
                 <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-2/3" />

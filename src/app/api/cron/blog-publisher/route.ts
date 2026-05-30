@@ -136,19 +136,21 @@ async function runBlogPublisher(request: NextRequest) {
       if (r.status === 'published' && r.reason) {
         const slug = r.reason;
         indexingPromises.push(
-          notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
-            .then(report => {
-              return supabaseAdmin.from('indexing_reports').insert({
-                url: report.url,
-                google_status: report.google,
-                google_error: report.google_error ?? null,
-                indexnow_status: report.indexnow,
-                indexnow_error: report.indexnow_error ?? null,
-                sitemap_pings: report.sitemap_pings,
-                duration_ms: report.duration_ms,
-              });
-            })
-            .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
+          Promise.resolve(
+            notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
+              .then(async (report) => {
+                await supabaseAdmin.from('indexing_reports').insert({
+                  url: report.url,
+                  google_status: report.google,
+                  google_error: report.google_error ?? null,
+                  indexnow_status: report.indexnow,
+                  indexnow_error: report.indexnow_error ?? null,
+                  sitemap_pings: report.sitemap_pings,
+                  duration_ms: report.duration_ms,
+                });
+              })
+              .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
+          ),
         );
         try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
       }
@@ -427,7 +429,7 @@ async function processQueueItem(
       seo_description: generated.seo_description,
       og_image_url: generated.og_image_url,
       product_id: item.product_id ?? null,
-      category: VALID_CATEGORIES.includes(item.category as any) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
+      category: VALID_CATEGORIES.includes(item.category as (typeof VALID_CATEGORIES)[number]) ? item.category : (item.product_id ? 'product_intro' : 'travel_tips'),
       channel: 'naver_blog' as const,
       angle_type: item.angle_type || 'value',
       status: 'published' as const,

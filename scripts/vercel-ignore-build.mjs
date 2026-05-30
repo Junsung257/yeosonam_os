@@ -15,6 +15,12 @@
  */
 import { execSync } from 'node:child_process';
 
+const DISABLED_VERCEL_PROJECT_IDS = new Set([
+  // Duplicate preview project without production Supabase env.
+  // The canonical project is "os" (prj_QTQa2iUwEkBON4QczULxG1HPYLSE).
+  'prj_EnrqNIHGZfirnL0Nggv360ZuUZ5q',
+]);
+
 const IGNORED_PATTERNS = [
   /^.*\.md$/,
   /^docs\//,
@@ -37,6 +43,11 @@ function isIgnored(filePath) {
 }
 
 function main() {
+  if (DISABLED_VERCEL_PROJECT_IDS.has(process.env.VERCEL_PROJECT_ID || '')) {
+    console.log(`[ignore-build] disabled duplicate Vercel project ${process.env.VERCEL_PROJECT_ID} — skipping build`);
+    process.exit(0);
+  }
+
   let changedFiles;
   try {
     // HEAD^ 가 없는 첫 커밋 등 edge case 는 보수적으로 빌드 진행.

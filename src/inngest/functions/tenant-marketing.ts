@@ -9,7 +9,6 @@ import { autoPublishWinners } from '@/lib/creative-engine/winner-auto-publish';
  *   - 실패 시 자동 재시도 (최대 2회)
  *   - Inngest 대시보드에서 테넌트별 실행 추적
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const tenantMarketingFn = inngest.createFunction(
   {
     id: 'tenant-marketing-pipeline',
@@ -17,7 +16,7 @@ export const tenantMarketingFn = inngest.createFunction(
     retries: 2,
     timeouts: { finish: '10m' },
     event: 'marketing/tenant.run',
-  } as any,
+  } as unknown as Parameters<typeof inngest.createFunction>[0],
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async ({ event, step }: any) => {
     const { tenantId, tenantName } = event.data as { tenantId: string; tenantName: string };

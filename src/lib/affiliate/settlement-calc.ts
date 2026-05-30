@@ -162,7 +162,7 @@ export async function calculateDraftForAffiliate(
   if (prevSettlementRes.error) throw new Error(`settlement prev-carryover query failed: ${prevSettlementRes.error.message}`);
   if (pendingAdjustmentsRes.error) throw new Error(`settlement adjustments query failed: ${pendingAdjustmentsRes.error.message}`);
 
-  const prevCarryover = (prevSettlementRes.data as any)?.carryover_balance ?? 0;
+  const prevCarryover = (prevSettlementRes.data as { carryover_balance?: number } | null)?.carryover_balance ?? 0;
 
   return computeSettlementDraft(
     (bookingsRes.data ?? []) as BookingForSettlement[],
@@ -235,7 +235,7 @@ export async function applySettlementApproval(draft: SettlementDraft): Promise<v
     target_type: 'settlement',
     target_id: draft.affiliate_id,
     description: `${draft.period} ${draft.affiliate_name} 정산 ${draft.qualified ? '확정' : '이월'} (${draft.final_payout.toLocaleString()}원)`,
-    after_value: draft as any,
+    after_value: draft as unknown as Record<string, unknown>,
   }).then(
     () => {},
     (e: unknown) => console.error(`[settlement-calc] audit_logs insert failed for ${draft.affiliate_id}:`, (e as Error)?.message ?? e),

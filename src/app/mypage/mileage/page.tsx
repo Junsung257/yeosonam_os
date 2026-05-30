@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 // ── 타입 ─────────────────────────────────────────────────────
 
@@ -32,7 +33,7 @@ interface StreakInfo {
 interface MileageTx {
   id: string;
   amount: number;
-  type: 'EARNED' | 'USED' | 'CLAWBACK';
+  type: 'EARNED' | 'USED' | 'EXPIRED' | 'CLAWBACK';
   memo: string | null;
   base_net_profit: number;
   mileage_rate: number;
@@ -76,7 +77,8 @@ const GRADE_META: Record<string, {
 const TX_LABEL: Record<string, { label: string; color: string }> = {
   EARNED:   { label: '적립',  color: 'text-blue-600 bg-blue-50' },
   USED:     { label: '사용',  color: 'text-red-600 bg-red-50' },
-  CLAWBACK: { label: '소멸/회수', color: 'text-gray-500 bg-gray-100' },
+  EXPIRED:  { label: '소멸',  color: 'text-gray-500 bg-gray-100' },
+  CLAWBACK: { label: '회수',  color: 'text-orange-600 bg-orange-50' },
 };
 
 // 뱃지 아이콘/라벨
@@ -102,7 +104,7 @@ export default function MileagePage() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [txFilter, setTxFilter] = useState<'ALL' | 'EARNED' | 'USED' | 'CLAWBACK'>('ALL');
+  const [txFilter, setTxFilter] = useState<'ALL' | 'EARNED' | 'USED' | 'EXPIRED' | 'CLAWBACK'>('ALL');
   const pageRef = useRef(0);
 
   // ── 뱃지 / 출석 체크 상태 ────────────────────────────────
@@ -476,7 +478,7 @@ export default function MileagePage() {
                           {txInfo.label}
                         </span>
                         <span className="text-xs text-gray-400">
-                          {new Date(tx.created_at).toLocaleDateString('ko-KR')}
+                          {fmtDateISO(tx.created_at)}
                         </span>
                       </div>
                       <span className={`font-bold text-sm ${
@@ -490,7 +492,7 @@ export default function MileagePage() {
                     )}
                     {tx.expires_at && (
                       <p className="text-xs text-gray-400 mt-0.5">
-                        소멸 예정일: {new Date(tx.expires_at).toLocaleDateString('ko-KR')}
+                        소멸 예정일: {fmtDateISO(tx.expires_at)}
                       </p>
                     )}
                   </div>

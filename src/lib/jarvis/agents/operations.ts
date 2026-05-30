@@ -245,7 +245,7 @@ const OPERATIONS_TOOLS_RAW = [
   },
 ]
 
-const OPERATIONS_TOOLS = OPERATIONS_TOOLS_RAW as any
+const OPERATIONS_TOOLS = OPERATIONS_TOOLS_RAW as unknown[]
 
 async function executeTool(toolName: string, args: any): Promise<any> {
   switch (toolName) {
@@ -381,7 +381,10 @@ async function executeTool(toolName: string, args: any): Promise<any> {
 
       const failedActions = actionsRes.data ?? []
       // tool_logs에서 result.error 있는 것만 필터
-      const toolErrors = ((logsRes.data ?? []) as any[]).filter(l => l.result && l.result.error)
+      const toolErrors = ((logsRes.data ?? []) as unknown[]).filter((l: unknown) => {
+        const result = (l as Record<string, unknown>)?.result as Record<string, unknown> | undefined;
+        return result?.error;
+      })
 
       return {
         window_hours: hours,
@@ -405,8 +408,8 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         .select('id, name, phone, booking_count, total_spent, deleted_at')
         .in('id', [args.primary_id, args.duplicate_id])
 
-      const primary = (pair ?? []).find((c: any) => c.id === args.primary_id) as any
-      const duplicate = (pair ?? []).find((c: any) => c.id === args.duplicate_id) as any
+      const primary = (pair ?? []).find((c: { id: string }) => c.id === args.primary_id) as Record<string, unknown>
+      const duplicate = (pair ?? []).find((c: { id: string }) => c.id === args.duplicate_id) as Record<string, unknown>
       if (!primary || !duplicate) throw new Error('고객 조회 실패')
 
       const summary = `[병합 제안] ${duplicate.name}(${duplicate.booking_count || 0}건) → ${primary.name}(${primary.booking_count || 0}건) | 사유: ${args.reason}`

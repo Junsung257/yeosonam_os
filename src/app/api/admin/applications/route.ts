@@ -104,7 +104,7 @@ const postHandler = async (request: NextRequest) => {
         const portalUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'https://yesonam.co.kr'}/influencer/${code}`;
         await adapter.send({
           bookingId: affiliate.id,
-          eventType: 'PARTNER_APPROVED' as any,
+          eventType: 'PARTNER_APPROVED' as const,
           title: '파트너 승인 완료',
           content: `[여소남] ${app.name}님, 파트너 승인이 완료되었습니다!\n추천코드: ${code}\nPIN: ${pin}\n포털: ${portalUrl}`,
           customerName: app.name,

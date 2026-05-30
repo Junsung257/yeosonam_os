@@ -1,59 +1,55 @@
 # OS Improvement Inbox
 
-- generated_at_kst: 2026-05-28T11:21:25+09:00
-- actionable_changed_files: 47
+- generated_at_kst: 2026-05-29T20:28:38+09:00
+- actionable_changed_files: 43
 - todo_markers: 0
-- areas: LIB 18, API 11, APP 11, DB 3, ETC 3, UI 1
+- areas: ETC 18, LIB 14, DB 8, API 3
 
 ## 1) Actionable Changed Files
 
-- `M ` `.gitignore`
-- ` M` `src/app/admin/control-tower/page.tsx`
-- ` M` `src/app/admin/customers/page.tsx`
-- ` M` `src/app/api/auth/threads-oauth-start/route.ts`
-- ` D` `src/app/api/card-news/[id]/publish-threads/route.ts`
-- ` M` `src/app/api/cron/publish-scheduled/route.ts`
-- ` M` `src/app/api/customers/route.ts`
-- ` M` `src/app/api/upload/route.ts`
-- ` M` `src/app/blog/[slug]/page.tsx`
-- ` M` `src/app/blog/error.tsx`
-- ` M` `src/app/destinations/[city]/page.tsx`
-- ` M` `src/app/lp/[id]/LpDeferSections.tsx`
-- ` M` `src/app/lp/[id]/page.tsx`
-- ` M` `src/app/mypage/page.tsx`
-- ` M` `src/app/packages/PackagesClient.tsx`
-- ` M` `src/components/blog/DestinationCuration.tsx`
-- ` M` `src/lib/content-pipeline/agents/threads-post.ts`
-- ` M` `src/lib/content-pipeline/blog-body.ts`
-- ` M` `src/lib/jarvis/agents/marketing.ts`
-- ` M` `src/lib/jarvis/orchestration/specialist-registry.ts`
-- ` M` `src/lib/kakao.ts`
-- ` M` `src/lib/lp-hero-resolver.ts`
-- ` M` `src/lib/map-travel-package-to-lp.ts`
-- ` M` `src/lib/mileage-service.ts`
-- ` D` `src/lib/package-register.ts`
-- ` M` `src/lib/parser.ts`
-- ` M` `src/lib/policy-engine.ts`
-- ` M` `src/lib/render-contract.ts`
+- ` M` `src/app/api/qa/chat/route.ts`
+- ` M` `src/app/api/qa/chat/v2/route.ts`
+- ` M` `src/lib/jarvis/cost-tracker.ts`
+- ` M` `src/lib/jarvis/response-critic.ts`
+- ` M` `src/lib/jarvis/scoped-tables.ts`
+- ` M` `src/lib/llm-gateway.ts`
+- ` M` `src/lib/prompt-loader.ts`
 - ` M` `src/lib/secret-registry.ts`
-- ` M` `src/lib/threads-publisher.ts`
-- `??` `db/fix-content-creative-slugs.sql`
-- `??` `db/fix-content-creative-slugs.ts`
-- `??` `src/app/admin/mileage-analytics/`
-- `??` `src/app/api/admin/mileage-analytics/`
-- `??` `src/app/api/blog/report-error/`
-- `??` `src/app/api/cron/expire-mileage/`
-- `??` `src/app/api/customers/me/`
-- `??` `src/app/api/gamification/`
-- `??` `src/app/api/mileage/`
-- `??` `src/app/mypage/mileage/`
-- `??` `src/lib/gamification-service.ts`
-- `??` `src/lib/mileage-expiration.ts`
-- `??` `src/lib/mileage-notification.ts`
-- `??` `src/lib/mileage-personalization.ts`
-- `??` `supabase/migrations/20260528170000_mileage_expiration_and_badges.sql`
-- `??` `supabase/migrations/20260528173000_mileage_challenges.sql`
-- `??` `supabase/migrations/20260528180000_mileage_expiration.sql`
+- `??` `api_test.json`
+- `??` `api_total.txt`
+- `??` `packages_response.txt`
+- `??` `response1.json`
+- `??` `response2.json`
+- `??` `response3.json`
+- `??` `response4.json`
+- `??` `response5.json`
+- `??` `result-01.txt`
+- `??` `result-sc12.txt`
+- `??` `scripts/demand-forecast-pipeline.py`
+- `??` `scripts/qa-chat-scenario-test.mjs`
+- `??` `scripts/requirements.txt`
+- `??` `src/app/api/v1/`
+- `??` `src/lib/anomaly-detection.ts`
+- `??` `src/lib/api-key-middleware.ts`
+- `??` `src/lib/api-key-service.ts`
+- `??` `src/lib/customer-events.ts`
+- `??` `src/lib/multimodal-sdk.ts`
+- `??` `src/lib/qa-chat-engine.ts`
+- `??` `src/lib/recommendation-events.ts`
+- `??` `src/lib/toss-billing.ts`
+- `??` `supabase/migrations/20260529100000_customer_events.sql`
+- `??` `supabase/migrations/20260529110000_prompt_registry.sql`
+- `??` `supabase/migrations/20260529120000_recommendation_events.sql`
+- `??` `supabase/migrations/20260529130000_demand_forecasts.sql`
+- `??` `supabase/migrations/20260529140000_anomaly_detection.sql`
+- `??` `supabase/migrations/20260529150000_api_keys.sql`
+- `??` `supabase/migrations/20260529160000_toss_billing.sql`
+- `??` `supabase/migrations/20260529170000_agent_tasks.sql`
+- `??` `test_quick.mjs`
+- `??` `test_sc_12.mjs`
+- `??` `test_scenario_01.mjs`
+- `??` `test_scenarios.mjs`
+- `??` `test_ux.mjs`
 
 ## 2) TODO/FIXME/HACK/XXX Markers
 
@@ -61,13 +57,14 @@
 
 ## 3) Auto Priority Candidates (P0/P1)
 
-- [ ] P0 ` M` `src/app/api/auth/threads-oauth-start/route.ts`
-- [ ] P1 ` M` `src/app/api/cron/publish-scheduled/route.ts`
-- [ ] P1 ` M` `src/lib/kakao.ts`
-- [ ] P1 `??` `src/app/api/cron/expire-mileage/`
-- [ ] P1 `??` `supabase/migrations/20260528170000_mileage_expiration_and_badges.sql`
-- [ ] P1 `??` `supabase/migrations/20260528173000_mileage_challenges.sql`
-- [ ] P1 `??` `supabase/migrations/20260528180000_mileage_expiration.sql`
+- [ ] P1 `??` `supabase/migrations/20260529100000_customer_events.sql`
+- [ ] P1 `??` `supabase/migrations/20260529110000_prompt_registry.sql`
+- [ ] P1 `??` `supabase/migrations/20260529120000_recommendation_events.sql`
+- [ ] P1 `??` `supabase/migrations/20260529130000_demand_forecasts.sql`
+- [ ] P1 `??` `supabase/migrations/20260529140000_anomaly_detection.sql`
+- [ ] P1 `??` `supabase/migrations/20260529150000_api_keys.sql`
+- [ ] P1 `??` `supabase/migrations/20260529160000_toss_billing.sql`
+- [ ] P1 `??` `supabase/migrations/20260529170000_agent_tasks.sql`
 
 ## 4) Next Actions (Manual Prioritization Queue)
 

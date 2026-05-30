@@ -4,6 +4,14 @@ import Script from 'next/script';
 import { useMarketingConsent } from '@/lib/consent';
 import { thirdPartyScriptType } from '@/lib/third-party-script-type';
 
+declare global {
+  interface Window {
+    wcs?: {
+      conv?: (params: Record<string, string>) => void;
+    };
+  }
+}
+
 /**
  * 네이버 애널리틱스 / 전환추적 스크립트
  *
@@ -66,7 +74,7 @@ export function trackNaverPurchase(params: {
   try {
     // wcs 호출: 전환추적 픽셀 발송
     // wcs_conv 함수: ({wo: 계정ID, co: 전환액, rc: ROAS, gr: 구분})
-    const wcs = (window as any).wcs;
+    const wcs = window.wcs;
     if (wcs?.conv) {
       wcs.conv({
         wo: ACCOUNT_ID,

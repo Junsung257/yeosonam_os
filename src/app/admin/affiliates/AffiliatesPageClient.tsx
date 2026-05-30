@@ -7,6 +7,7 @@ import { Leaderboard } from '@/components/affiliate/Leaderboard';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, Users, Wallet, Gem, Award, X } from 'lucide-react';
+import { maskPhone } from '@/lib/pii-mask';
 
 interface Affiliate {
   id: string;
@@ -135,7 +136,7 @@ export default function AffiliatesPageClient({
                 <tr key={a.id}>
                   <td className="font-medium text-admin-text">
                     <div>{a.name}</div>
-                    {a.phone && <div className="text-admin-xs text-admin-muted admin-num">{a.phone}</div>}
+                    {a.phone && <div className="text-admin-xs text-admin-muted admin-num">{maskPhone(a.phone, 'finance')}</div>}
                   </td>
                   <td className="font-mono text-admin-xs text-brand">
                     {a.referral_code}

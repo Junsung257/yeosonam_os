@@ -34,19 +34,16 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ toke
     }
 
     const row = companion[0];
-    const booking = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
-    const pkg = booking
-      ? Array.isArray((booking as { travel_packages: unknown }).travel_packages)
-        ? ((booking as { travel_packages: unknown[] }).travel_packages[0] as { title: string } | undefined)
-        : (booking as { travel_packages: { title: string } }).travel_packages
-      : null;
+    const rawBooking = Array.isArray(row.bookings) ? row.bookings[0] : row.bookings;
+    const booking = rawBooking as unknown as { departure_date: string; travel_packages: { title: string }[] } | null;
+    const pkg = booking?.travel_packages?.[0] ?? null;
 
     return NextResponse.json({
       alreadySubmitted: !!row.submitted_at,
       booking: booking
         ? {
-            departure_date: (booking as { departure_date: string }).departure_date,
-            product_title: (pkg as { title: string } | null)?.title ?? null,
+            departure_date: booking.departure_date,
+            product_title: pkg?.title ?? null,
           }
         : null,
     });

@@ -18,5 +18,5 @@ export default async function PackagesPage() {
     .order('created_at', { ascending: false })
     .limit(200);
 
-  return <PackagesPageClient initialPackages={(data ?? []) as any} />;
+  return <PackagesPageClient initialPackages={(data ?? []) as unknown as import('./PackagesPageClient').Package[]} />;
 }

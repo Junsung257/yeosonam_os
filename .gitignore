@@ -168,3 +168,17 @@ dev-server.log
 
 .vercel
 .env*.local
+
+# 세션 작업 파일 (git에 포함 금지)
+.commit-msg.txt
+PR_BODY.md
+PLAN.md
+fix-catch-patterns.py
+
+# Codex local workspace metadata
+.agents/
+.codex/
+.codex-*.err.log
+.codex-*.out.log
+.codex-*.pid
+.codex-*.mjs

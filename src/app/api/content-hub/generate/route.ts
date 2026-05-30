@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   generateCardSlides, generateBlogPost, generateAdCopy, generateTrackingId, generateBlogSeo,
-  ANGLE_PRESETS, type AngleType, type Channel, type ImageRatio,
+  ANGLE_PRESETS, type ProductData, type AngleType, type Channel, type ImageRatio,
 } from '@/lib/content-generator';
 import { matchAttraction, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
@@ -46,13 +46,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 상품 조회
-    const { data: pkg } = await supabaseAdmin
+    const { data: pkgRaw } = await supabaseAdmin
       .from('travel_packages')
       .select('id, title, destination, duration, nights, price, price_tiers, price_dates, inclusions, excludes, product_type, airline, departure_airport, product_highlights, itinerary, itinerary_data, optional_tours, notices_parsed')
       .eq('id', product_id)
       .single();
 
-    if (!pkg) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
+    if (!pkgRaw) return NextResponse.json({ error: '상품 없음' }, { status: 404 });
+    const pkg = pkgRaw as unknown as ProductData & { photo_urls?: string[] };
 
     const trackingId = trackingIdOverride || generateTrackingId(pkg.destination || '');
     const options = {

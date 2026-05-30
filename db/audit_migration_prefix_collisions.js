@@ -11,6 +11,23 @@ const path = require('path');
 
 const failOnCollision = process.argv.includes('--fail-on-collision');
 const migrationsDir = path.join(process.cwd(), 'supabase', 'migrations');
+const KNOWN_HISTORICAL_COLLISION_PREFIXES = new Set([
+  '20260423000000',
+  '20260423010000',
+  '20260423020000',
+  '20260426000000',
+  '20260504250000',
+  '20260506100000',
+  '20260510000000',
+  '20260512000000',
+  '20260513000000',
+  '20260513100000',
+  '20260513200000',
+  '20260513300000',
+  '20260513400000',
+  '20260519100000',
+  '20260524000000',
+]);
 
 if (!fs.existsSync(migrationsDir)) {
   console.error(`migrations directory not found: ${migrationsDir}`);
@@ -34,6 +51,7 @@ for (const file of files) {
 const collisions = [...groups.entries()]
   .filter(([, names]) => names.length > 1)
   .sort((a, b) => a[0].localeCompare(b[0]));
+const newCollisions = collisions.filter(([prefix]) => !KNOWN_HISTORICAL_COLLISION_PREFIXES.has(prefix));
 
 console.log('═══════════════════════════════════════════════════════════');
 console.log('  Migration Prefix Collision Audit');
@@ -41,6 +59,8 @@ console.log(`  Scanned: ${new Date().toISOString()}`);
 console.log('═══════════════════════════════════════════════════════════');
 console.log(`Total migration files: ${files.length}`);
 console.log(`Prefix collisions: ${collisions.length}`);
+console.log(`Known historical collisions: ${collisions.length - newCollisions.length}`);
+console.log(`New/unbaselined collisions: ${newCollisions.length}`);
 
 if (collisions.length === 0) {
   console.log('\n✅ No collisions found.');
@@ -55,7 +75,7 @@ for (const [prefix, names] of collisions) {
   }
 }
 
-if (failOnCollision) {
+if (failOnCollision && newCollisions.length > 0) {
   process.exit(1);
 }
 

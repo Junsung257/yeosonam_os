@@ -204,12 +204,12 @@ export async function getMonthlyAdStats(
     e.clicks += row.clicks ?? 0;
     byMonth.set(month, e);
   }
-  for (const b of (bookings ?? []) as any[]) {
+  for (const b of (bookings ?? []) as Record<string, unknown>[]) {
     if (!bookingPassesBasis(b, 'commission')) continue;
     const month = bookingMonthByBasis(b, 'commission');
     if (!month) continue;
     const e = byMonth.get(month) ?? { spend: 0, margin: 0, impressions: 0, clicks: 0 };
-    e.margin += b.margin ?? 0;
+    e.margin += (b.margin as number) ?? 0;
     byMonth.set(month, e);
   }
 

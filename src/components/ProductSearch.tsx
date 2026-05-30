@@ -17,8 +17,9 @@ export default function ProductSearch({ filters, onFilterChange }: Props) {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 목적지 검색 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">목적지</label>
+          <label htmlFor="product-search-destination" className="block text-sm font-medium text-gray-700 mb-2">목적지</label>
           <input
+            id="product-search-destination"
             type="text"
             placeholder="예: 다낭, 오사카"
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 transition-colors"
@@ -29,8 +30,9 @@ export default function ProductSearch({ filters, onFilterChange }: Props) {
 
         {/* 최소 가격 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">최소 가격</label>
+          <label htmlFor="product-search-price-min" className="block text-sm font-medium text-gray-700 mb-2">최소 가격</label>
           <select
+            id="product-search-price-min"
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 transition-colors"
             value={filters.priceMin}
             onChange={(e) => onFilterChange({ ...filters, priceMin: Number(e.target.value) })}
@@ -45,8 +47,9 @@ export default function ProductSearch({ filters, onFilterChange }: Props) {
 
         {/* 최대 가격 */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">최대 가격</label>
+          <label htmlFor="product-search-price-max" className="block text-sm font-medium text-gray-700 mb-2">최대 가격</label>
           <select
+            id="product-search-price-max"
             className="w-full px-4 py-2.5 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 transition-colors"
             value={filters.priceMax}
             onChange={(e) => onFilterChange({ ...filters, priceMax: Number(e.target.value) })}

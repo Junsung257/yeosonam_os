@@ -4,6 +4,8 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
+import { getDestinationUrl } from '@/lib/regions';
+import { fmtDateISO } from '@/lib/admin-utils';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -101,7 +103,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   const [destRes, featuredRes, listRes] = await Promise.all([
     supabaseAdmin
       .from('active_destinations')
-      .select('*')
+      .select('destination, package_count, country')
       .order('package_count', { ascending: false })
       .limit(16),
     supabaseAdmin
@@ -119,17 +121,17 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     listQuery,
   ]);
 
-  const posts = (listRes.data as BlogPost[]) || [];
+  const posts = (listRes.data as unknown as BlogPost[]) || [];
   const featuredIds = new Set((featuredRes.data || []).map((f: any) => f.id));
   const filteredPosts = page === 1 && !filter.destination && !filter.angle
     ? posts.filter(p => !featuredIds.has(p.id))
     : posts;
 
   return {
-    featured: page === 1 && !filter.destination && !filter.angle ? (featuredRes.data as BlogPost[]) || [] : [],
+    featured: page === 1 && !filter.destination && !filter.angle ? (featuredRes.data as unknown as BlogPost[]) || [] : [],
     posts: filteredPosts,
     total: listRes.count ?? 0,
-    destinations: (destRes.data as DestinationStat[]) || [],
+    destinations: (destRes.data as unknown as DestinationStat[]) || [],
   };
 }
 
@@ -308,7 +310,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
 
         <div className="mt-3 flex items-center justify-between">
           <div className="flex items-center gap-2 text-[11px] text-text-secondary">
-            <time>{new Date(post.published_at).toLocaleDateString('ko-KR', { year: 'numeric', month: 'short', day: 'numeric' })}</time>
+            <time>{fmtDateISO(post.published_at)}</time>
             <span className="text-[#D1D5DB]">·</span>
             <span>📖 {readMin}분 읽기</span>
             {post.view_count && post.view_count >= 100 && (
@@ -509,7 +511,7 @@ export default async function BlogData({ searchParams }: Props) {
                 {destinations.slice(0, 8).map(d => (
                   <Link
                     key={d.destination}
-                    href={`/destinations/${encodeURIComponent(d.destination)}`}
+                    href={getDestinationUrl(d.destination)}
                     className="flex items-center justify-between py-5 group"
                   >
                     <span className="text-[15px] font-semibold text-text-primary group-hover:text-brand transition-colors">

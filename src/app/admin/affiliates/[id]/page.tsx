@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { maskEmail, maskPhone } from '@/lib/pii-mask';
 
 interface Affiliate {
   id: string; name: string; phone?: string; email?: string;
@@ -13,6 +14,9 @@ interface Affiliate {
   landing_intro?: string | null;
   landing_pick_package_ids?: string[] | null;
   landing_video_url?: string | null;
+  commission_rate?: number;
+  is_active?: boolean;
+  business_number?: string;
 }
 
 interface Settlement {
@@ -60,6 +64,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function AffiliateDetailPage() {
   const params = useParams<{ id: string }>();
+  const affiliateId = typeof params?.id === 'string' ? params.id : '';
   const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,12 +87,13 @@ export default function AffiliateDetailPage() {
   }, []);
 
   const load = useCallback(async () => {
+    if (!affiliateId) return;
     setLoading(true);
     try {
       const [aRes, sRes, pRes] = await Promise.all([
-        fetch(`/api/affiliates?id=${params.id}&showBankInfo=false`),
-        fetch(`/api/settlements?affiliateId=${params.id}`),
-        fetch(`/api/admin/affiliate-promo-report?affiliateId=${params.id}`),
+        fetch(`/api/affiliates?id=${affiliateId}&showBankInfo=false`),
+        fetch(`/api/settlements?affiliateId=${affiliateId}`),
+        fetch(`/api/admin/affiliate-promo-report?affiliateId=${affiliateId}`),
       ]);
       const aJson = await aRes.json();
       const sJson = await sRes.json();
@@ -114,7 +120,7 @@ export default function AffiliateDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [affiliateId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -166,19 +172,21 @@ export default function AffiliateDetailPage() {
   }, [pkgQuery]);
 
   const toggleBankInfo = async () => {
-    const res = await fetch(`/api/affiliates?id=${params.id}&showBankInfo=true`);
+    if (!affiliateId) return;
+    const res = await fetch(`/api/affiliates?id=${affiliateId}&showBankInfo=true`);
     const json = await res.json();
     setAffiliate(prev => prev ? { ...prev, bank_info: json.affiliate?.bank_info } : prev);
     setShowBankInfo(true);
   };
 
   const handleSave = async () => {
+    if (!affiliateId) return;
     setSaving(true);
     try {
       await fetch('/api/affiliates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: params.id, ...form }),
+        body: JSON.stringify({ id: affiliateId, ...form }),
       });
       setEditMode(false);
       load();
@@ -188,13 +196,14 @@ export default function AffiliateDetailPage() {
   };
 
   const handleSaveLanding = async () => {
+    if (!affiliateId) return;
     setSavingLanding(true);
     try {
       const res = await fetch('/api/affiliates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: params.id,
+          id: affiliateId,
           landing_intro: landingIntro.trim() || null,
           landing_video_url: landingVideoUrl.trim() || null,
           landing_pick_package_ids: pickPackageIds,
@@ -240,7 +249,7 @@ export default function AffiliateDetailPage() {
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-40" />
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex items-center gap-4">
             <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-28 shrink-0" />
@@ -248,7 +257,7 @@ export default function AffiliateDetailPage() {
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
         ))}
@@ -274,7 +283,7 @@ export default function AffiliateDetailPage() {
       </Link>
 
       {/* 파트너 기본 정보 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-3">
@@ -284,7 +293,7 @@ export default function AffiliateDetailPage() {
               </span>
             </div>
             <p className="text-sm text-admin-muted font-mono mt-1">코드: {affiliate.referral_code}</p>
-            {affiliate.phone && <p className="text-sm text-admin-muted">{affiliate.phone}</p>}
+            {affiliate.phone && <p className="text-sm text-admin-muted">{maskPhone(affiliate.phone, 'finance')}</p>}
           </div>
           <button
             onClick={() => setEditMode(!editMode)}
@@ -305,7 +314,7 @@ export default function AffiliateDetailPage() {
                 <label className="w-16 text-xs text-admin-muted">{f.label}</label>
                 <input
                   type={f.type}
-                  value={(form as any)[f.key]}
+                  value={(form as Record<string, string | number | boolean>)[f.key] as string}
                   onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                   className="flex-1 border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm"
                 />
@@ -368,13 +377,13 @@ export default function AffiliateDetailPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 border-t pt-4 text-sm">
-            <div><span className="text-admin-muted-2">이메일 </span>{affiliate.email || '-'}</div>
+            <div><span className="text-admin-muted-2">이메일 </span>{maskEmail(affiliate.email || null, 'finance') || '-'}</div>
             <div><span className="text-admin-muted-2">정산유형 </span>
               {affiliate.payout_type === 'PERSONAL' ? '개인 (원천세 3.3%)' : '사업자'}
             </div>
-            <div><span className="text-admin-muted-2">커미션율 </span>{((affiliate as any).commission_rate * 100 || 9).toFixed(1)}%</div>
+            <div><span className="text-admin-muted-2">커미션율 </span>{((affiliate.commission_rate ?? 0.09) * 100).toFixed(1)}%</div>
             <div><span className="text-admin-muted-2">상태 </span>
-              {(affiliate as any).is_active !== false
+              {affiliate.is_active !== false
                 ? <span className="text-green-600">활성</span>
                 : <span className="text-red-500">비활성</span>}
             </div>
@@ -393,7 +402,7 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 코브랜딩 랜딩 /with/[추천코드] */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-admin-text">코브랜딩 랜딩</h2>
@@ -514,7 +523,7 @@ export default function AffiliateDetailPage() {
       {/* KPI 카드 3종 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 등급 & 진행률 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <p className="text-xs text-admin-muted mb-2">등급 진행률</p>
           <div className="flex items-center gap-2 mb-3">
             <span className={`px-2 py-0.5 rounded-full text-sm font-bold ${GRADE_COLORS[affiliate.grade]}`}>
@@ -538,7 +547,7 @@ export default function AffiliateDetailPage() {
         </div>
 
         {/* 이번 달 정산 예정 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <p className="text-xs text-admin-muted mb-2">이번 달 정산 예정</p>
           {thisMonthSettlement ? (
             <>
@@ -563,7 +572,7 @@ export default function AffiliateDetailPage() {
         </div>
 
         {/* 누적 수수료 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <p className="text-xs text-admin-muted mb-2">누적 수수료 수익</p>
           <p className="text-xl font-bold text-purple-700">
             ₩{Number(affiliate.total_commission).toLocaleString()}
@@ -576,7 +585,7 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 정산 이력 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-admin-border">
           <h2 className="font-semibold text-admin-text-2">정산 이력</h2>
         </div>
@@ -616,16 +625,16 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 파트너 포털 설정 */}
-      <PortalSettingsSection affiliateId={params.id} affiliateName={affiliate.name} />
+      <PortalSettingsSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* 카드뉴스 콘텐츠 현황 */}
-      <ContentSection affiliateId={params.id} affiliateName={affiliate.name} />
+      <ContentSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* AI 콘텐츠 인사이트 */}
-      <ContentInsightSection affiliateId={params.id} affiliateName={affiliate.name} />
+      <ContentInsightSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* 프로모코드 성과 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-admin-border">
           <h2 className="font-semibold text-admin-text-2">프로모코드 성과</h2>
         </div>
@@ -694,7 +703,7 @@ function ContentSection({ affiliateId, affiliateName }: { affiliateId: string; a
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
         <h2 className="font-semibold text-admin-text-2">카드뉴스 콘텐츠</h2>
         <span className="text-xs text-admin-muted">{loading ? '로딩 중...' : `${cardNews.length}개`}</span>
@@ -828,7 +837,7 @@ function ContentInsightSection({
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-admin-text-2">AI 콘텐츠 인사이트</h2>
@@ -944,7 +953,7 @@ function PortalSettingsSection({
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border">
         <h2 className="font-semibold text-admin-text-2">파트너 포털 설정</h2>
         <p className="text-xs text-admin-muted mt-0.5">

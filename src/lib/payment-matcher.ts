@@ -32,6 +32,7 @@ export interface BookingCandidate {
   customer_name?: string;           // 예약자명 (lead_customer)
   actual_payer_name?: string | null; // Rule 4: 실제 입금자명 (대리입금)
   passenger_names?: string[];
+  lead_customer_id?: string;
 }
 
 export interface MatchResult {

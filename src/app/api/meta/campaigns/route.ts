@@ -1,3 +1,4 @@
+import type { CampaignStatus } from '@/types/meta-ads';
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, getAdCampaigns, upsertCampaign } from '@/lib/supabase';
 import {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = request.nextUrl;
   const packageId = searchParams.get('package_id') ?? undefined;
-  const status = searchParams.get('status') as any ?? undefined;
+  const status = searchParams.get('status') as CampaignStatus | null ?? undefined;
   const page = parseInt(searchParams.get('page') ?? '1');
   const limit = parseInt(searchParams.get('limit') ?? '20');
 
