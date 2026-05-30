@@ -35,6 +35,38 @@ type AlimtalkSendResult = Record<string, unknown> & {
   mode?: string;
 };
 
+function randomSalt(length = 32): string {
+  const alphabet = '1234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const bytes = new Uint8Array(length);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, byte => alphabet[byte % alphabet.length]).join('');
+}
+
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer))
+    .map(byte => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function createSolapiAuthorization(apiKey: string, apiSecret: string): Promise<string> {
+  const salt = randomSalt();
+  const date = new Date().toISOString();
+  const key = await globalThis.crypto.subtle.importKey(
+    'raw',
+    new TextEncoder().encode(apiSecret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = toHex(await globalThis.crypto.subtle.sign(
+    'HMAC',
+    key,
+    new TextEncoder().encode(date + salt),
+  ));
+
+  return `HMAC-SHA256 apiKey=${apiKey}, date=${date}, salt=${salt}, signature=${signature}`;
+}
+
 async function sendAlimtalk(params: {
   to: string;
   templateId: string;
@@ -68,20 +100,37 @@ async function sendAlimtalk(params: {
     return { skipped: true, reason: 'missing_solapi_config' };
   }
 
-  const { SolapiMessageService } = await import('solapi');
-  const service = new SolapiMessageService(apiKey, apiSecret);
-
-  const result = await service.send({
-    to: params.to,
-    from: senderNumber,
-    type: 'ATA',
-    kakaoOptions: {
-      pfId: channelId,
-      templateId: params.templateId,
-      variables: params.variables,
-      disableSms: false,
+  const response = await fetch('https://api.solapi.com/messages/v4/send-many/detail', {
+    method: 'POST',
+    headers: {
+      Authorization: await createSolapiAuthorization(apiKey, apiSecret),
+      'Content-Type': 'application/json',
     },
+    body: JSON.stringify({
+      messages: [{
+        to: params.to,
+        from: senderNumber,
+        type: 'ATA',
+        kakaoOptions: {
+          pfId: channelId,
+          templateId: params.templateId,
+          variables: params.variables,
+          disableSms: false,
+        },
+      }],
+      allowDuplicates: false,
+      showMessageList: true,
+    }),
   });
+
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message = typeof result === 'object' && result && 'message' in result
+      ? String(result.message)
+      : `Solapi request failed with ${response.status}`;
+    throw new Error(message);
+  }
+
   return result as AlimtalkSendResult;
 }
 
