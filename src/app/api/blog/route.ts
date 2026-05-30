@@ -3,6 +3,7 @@ import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
 import { runQualityGates } from '@/lib/blog-quality-gate';
+import { validateBlogSlug } from '@/lib/slug-utils';
 
 /**
  * 공개 블로그 API — 발행된(published) 블로그 글만 반환
@@ -125,7 +126,14 @@ export async function POST(request: NextRequest) {
     }
 
     // slug 정규화
-    const cleanSlug = slug.toLowerCase()
+    const slugValidation = validateBlogSlug(slug);
+    if (!slugValidation.ok) {
+      return NextResponse.json(
+        { error: 'slug 품질 검증 실패', slug: slugValidation.slug, reason: slugValidation.reason },
+        { status: 400 },
+      );
+    }
+    const cleanSlug = slugValidation.slug.toLowerCase()
       .replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
       .substring(0, 200);
 
@@ -203,7 +211,14 @@ export async function PATCH(request: NextRequest) {
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (blog_html !== undefined) updateData.blog_html = blog_html;
     if (slug !== undefined) {
-      updateData.slug = slug.toLowerCase()
+      const slugValidation = validateBlogSlug(slug);
+      if (!slugValidation.ok) {
+        return NextResponse.json(
+          { error: 'slug 품질 검증 실패', slug: slugValidation.slug, reason: slugValidation.reason },
+          { status: 400 },
+        );
+      }
+      updateData.slug = slugValidation.slug.toLowerCase()
         .replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
         .substring(0, 200);
     }

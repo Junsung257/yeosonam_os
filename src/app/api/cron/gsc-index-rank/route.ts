@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { notifyIndexing } from '@/lib/indexing';
 import {
   isGSCApiConfigured,
   fetchPageLevelMetrics,
@@ -34,6 +35,7 @@ export const dynamic = 'force-dynamic';
 const PAGE_LOOKBACK_DAYS = 7;       // 최근 7일 평균
 const MAX_INSPECT_PER_RUN = 25;     // URL Inspection 일일 한도 보호
 const PAGE_AGGREGATE_QUERY_KEY = '__page__';
+const DEFAULT_INDEXING_RETRY_PER_RUN = 10;
 
 function toDateString(d: Date): string {
   return d.toISOString().split('T')[0];
@@ -137,6 +139,14 @@ async function runGscIndexRank(request: NextRequest) {
   const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/+$/, '');
   let inspected = 0;
   let notIndexed = 0;
+  let indexingRetried = 0;
+  const retryLimit = Math.max(
+    0,
+    Math.min(
+      MAX_INSPECT_PER_RUN,
+      Number(process.env.GSC_INDEXING_RETRY_PER_RUN || DEFAULT_INDEXING_RETRY_PER_RUN) || 0,
+    ),
+  );
   const inspectionResults: Array<Record<string, unknown>> = [];
 
   for (const slug of candidates) {
@@ -148,7 +158,25 @@ async function runGscIndexRank(request: NextRequest) {
       continue;
     }
     const isIndexed = r.verdict === 'PASS' && r.coverageState?.toLowerCase().includes('index');
-    if (!isIndexed) notIndexed += 1;
+    let indexingRetry: Record<string, unknown> | null = null;
+    if (!isIndexed) {
+      notIndexed += 1;
+      if (indexingRetried < retryLimit) {
+        try {
+          const report = await notifyIndexing(url, baseUrl, { pingSitemap: false });
+          indexingRetried += 1;
+          indexingRetry = {
+            google: report.google,
+            indexnow: report.indexnow,
+            google_error: report.google_error,
+            indexnow_error: report.indexnow_error,
+          };
+        } catch (err) {
+          indexingRetried += 1;
+          indexingRetry = { error: err instanceof Error ? err.message : String(err) };
+        }
+      }
+    }
     inspectionResults.push({
       slug,
       verdict: r.verdict,
@@ -158,6 +186,7 @@ async function runGscIndexRank(request: NextRequest) {
       page_fetch_state: r.pageFetchState,
       google_canonical: r.googleCanonical,
       user_canonical: r.userCanonical,
+      indexing_retry: indexingRetry,
     });
   }
 
@@ -168,6 +197,7 @@ async function runGscIndexRank(request: NextRequest) {
     inserted,
     inspected,
     not_indexed: notIndexed,
+    indexing_retried: indexingRetried,
     inspections: inspectionResults,
     errors,
     ranAt: new Date().toISOString(),
