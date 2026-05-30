@@ -16,7 +16,6 @@ import {
   loadKeywords, saveKeywords, archivePerformance, getTopKeywords,
   type SearchAdKeyword, type Platform, type KeywordTier, type BidRecommendation,
 } from '@/lib/keyword-brain';
-import { fetchAllPerformance } from '@/lib/search-ads-api';
 import SubNav from '@/components/admin/SubNav';
 
 // ── 탭/필터 상수 ─────────────────────────────────────────
@@ -96,6 +95,7 @@ function SearchAdsContent() {
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
+      const { fetchAllPerformance } = await import('@/lib/search-ads-api');
       const perf = await fetchAllPerformance(keywords);
       const syncPromises: Promise<unknown>[] = [];
       const updated = keywords.map(k => {
