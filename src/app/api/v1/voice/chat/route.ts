@@ -35,6 +35,7 @@ import { NextRequest } from 'next/server'
 import { withApiKey } from '@/lib/api-key-middleware'
 import { transcribeSpeech, synthesizeSpeech, type VoiceChatRequest } from '@/lib/multimodal-sdk'
 import { createV1QaChatStream } from '@/lib/qa-chat-engine'
+import { redactKoreanPII } from '@/lib/pii-redactor'
 
 export const maxDuration = 60
 
@@ -110,12 +111,13 @@ export async function POST(request: NextRequest) {
   }
 
   const audioBase64 = Buffer.from(audioResponse).toString('base64')
+  const safeTranscript = redactKoreanPII(transcription.text).redacted
 
   return Response.json({
     ok: true,
     data: {
       audio: audioBase64,
-      transcript: transcription.text,
+      transcript: safeTranscript,
       text: fullText,
       sessionId: body.sessionId ?? `voice-${Date.now()}`,
     },

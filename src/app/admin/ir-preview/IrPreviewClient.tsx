@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { fmtDateTime } from '@/lib/admin-utils';
 import Button from '@/components/ui/Button';
 import { Inbox } from 'lucide-react';
+import SensitiveRawText from '@/components/admin/SensitiveRawText';
 
 interface DraftRow {
   id: string;
@@ -37,15 +38,27 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
     if (!confirm(`승인하여 travel_packages 에 등록하시겠습니까?\n\n${row.region} / ${row.land_operator}`)) return;
     setBusy(row.id);
     try {
+      const rawRes = await fetch('/api/admin/ir-preview/raw', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: row.id }),
+      });
+      const rawJson = await rawRes.json();
+      if (!rawRes.ok || !rawJson.rawText) {
+        setToast(`rawText load failed: ${rawJson.error || rawRes.status}`);
+        return;
+      }
+      const rawText = String(rawJson.rawText);
+      const ir = { ...row.ir, rawText };
       const res = await fetch('/api/register-via-ir', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           engine: 'direct',
-          ir: row.ir,
+          ir,
           landOperator: row.land_operator,
-          commissionRate: (row.ir as { meta?: { commissionRate?: number } })?.meta?.commissionRate ?? 10,
-          rawText: row.raw_text,
+          commissionRate: (ir as { meta?: { commissionRate?: number } })?.meta?.commissionRate ?? 10,
+          rawText,
         }),
       });
       const json = await res.json();
@@ -162,8 +175,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
               <div className="border-t border-admin-border grid grid-cols-1 md:grid-cols-3 gap-0 max-h-[600px] overflow-y-auto">
                 {/* rawText */}
                 <div className="p-3 border-r border-admin-border bg-admin-surface-2">
-                  <div className="text-admin-2xs font-semibold uppercase tracking-wider text-admin-muted mb-2 sticky top-0 bg-admin-surface-2 py-1">원문 (raw_text)</div>
-                  <pre className="text-[11px] font-mono whitespace-pre-wrap leading-relaxed text-admin-text-2">{row.raw_text}</pre>
+                  <SensitiveRawText value={row.raw_text} title="원문" />
                 </div>
 
                 {/* IR JSON */}

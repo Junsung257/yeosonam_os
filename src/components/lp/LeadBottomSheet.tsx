@@ -207,8 +207,9 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                 <p className="text-sm text-gray-500 text-center">상담사가 빠르게 연락드릴게요</p>
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">이름</label>
+                    <label htmlFor="lead-bottom-name" className="block text-sm font-medium text-gray-700 mb-1">이름</label>
                     <input
+                      id="lead-bottom-name"
                       type="text"
                       value={name}
                       onChange={e => setName(e.target.value)}
@@ -217,8 +218,9 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">휴대폰 번호</label>
+                    <label htmlFor="lead-bottom-phone" className="block text-sm font-medium text-gray-700 mb-1">휴대폰 번호</label>
                     <input
+                      id="lead-bottom-phone"
                       type="tel"
                       value={phone}
                       onChange={e => setPhone(formatPhone(e.target.value))}
@@ -227,14 +229,16 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                     />
                   </div>
                   <label className="flex items-start gap-2.5 cursor-pointer">
-                    <div
+                    <button
+                      type="button"
+                      aria-label="개인정보 수집 및 이용 동의"
                       onClick={() => setPrivacy(v => !v)}
                       className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition ${
                         privacy ? 'bg-yellow-400 border-yellow-400' : 'border-gray-300'
                       }`}
                     >
                       {privacy && <Check size={12} className="text-white" strokeWidth={3} />}
-                    </div>
+                    </button>
                     <span className="text-sm text-gray-600 leading-snug">
                       <span className="font-medium text-gray-800">[필수]</span> 개인정보 수집 및 이용에 동의합니다.
                       수집된 정보는 여행 상담 목적으로만 사용되며, 상담 완료 후 즉시 파기됩니다.
@@ -242,14 +246,16 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
                   </label>
                   {/* 취소·약관 동의 */}
                   <div className="flex items-start gap-2.5">
-                    <div
+                    <button
+                      type="button"
+                      aria-label="취소 및 약관 동의"
                       onClick={() => setTerms(v => !v)}
                       className={`mt-0.5 w-5 h-5 rounded flex-shrink-0 border-2 flex items-center justify-center transition cursor-pointer ${
                         terms ? 'bg-yellow-400 border-yellow-400' : 'border-gray-300'
                       }`}
                     >
                       {terms && <Check size={12} className="text-white" strokeWidth={3} />}
-                    </div>
+                    </button>
                     <div className="flex-1">
                       <p className="text-sm text-gray-600 leading-snug">
                         {hasSpecialTerms ? (

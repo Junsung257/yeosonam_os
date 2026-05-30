@@ -542,7 +542,7 @@ export default function ProductReviewPage() {
           {loading ? (
             <div className="flex-1 p-4 space-y-2">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3 space-y-1.5">
+                <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 space-y-1.5">
                   <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-3/4" />
                   <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-1/2" />
                 </div>
@@ -728,14 +728,14 @@ export default function ProductReviewPage() {
                     )}
 
                     {/* AI 신뢰도 바 + V2 분해 (Phase 1+2 박제) */}
-                    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                       <ConfidenceBar score={selected.ai_confidence_score} />
                       <V2QualityPanel q={selected.v2_quality} />
                     </div>
 
                     {/* selling_points */}
                     {selected.selling_points && (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                         <h3 className="text-admin-sm font-bold text-admin-text-2 mb-3">핵심 셀링포인트</h3>
                         <div className="grid grid-cols-3 gap-3">
                           {selected.selling_points.hotel && (
@@ -765,7 +765,7 @@ export default function ProductReviewPage() {
                     )}
 
                     {/* theme_tags 편집 */}
-                    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                       <h3 className="text-admin-sm font-bold text-admin-text-2 mb-3">테마 태그</h3>
                       <div className="flex flex-wrap gap-2 mb-3">
                         {tags.map(tag => (
@@ -790,7 +790,7 @@ export default function ProductReviewPage() {
 
                     {/* flight_info */}
                     {selected.flight_info && (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                         <h3 className="text-admin-sm font-bold text-admin-text-2 mb-3">항공 정보</h3>
                         <div className="flex items-center gap-4 text-admin-sm">
                           <span className="font-semibold text-blue-700">{selected.flight_info.airline ?? '-'}</span>
@@ -813,7 +813,7 @@ export default function ProductReviewPage() {
 
                     {/* 가격 테이블 */}
                     {(selected.product_prices?.length ?? 0) > 0 && (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                         <h3 className="text-admin-sm font-bold text-admin-text-2 mb-3">가격 테이블 ({selected.product_prices!.length}행)</h3>
                         <div className="overflow-x-auto">
                           <table className="w-full text-admin-sm">
@@ -846,7 +846,7 @@ export default function ProductReviewPage() {
                     )}
 
                     {/* 이미지 매칭 */}
-                    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                       <div className="flex items-center justify-between mb-3">
                         <h3 className="text-admin-sm font-bold text-admin-text-2">대표 이미지 선택</h3>
                         <button
@@ -901,14 +901,14 @@ export default function ProductReviewPage() {
                     </div>
 
                     {faq.length === 0 ? (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-10 text-center text-admin-muted-2">
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-10 text-center text-admin-muted-2">
                         <p className="text-admin-sm">FAQ 자동 생성 버튼을 클릭하세요</p>
                         <p className="text-[11px] mt-1">상품 원문을 분석해 Q&A 10개를 생성합니다</p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {faq.map((item, i) => (
-                          <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+                          <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
                             <div className="mb-2">
                               <label className="text-[11px] text-blue-600 font-medium">Q{i + 1}</label>
                               <textarea
@@ -962,11 +962,11 @@ export default function ProductReviewPage() {
                     </div>
 
                     {loadingMarketing && (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-10 text-center text-admin-muted-2 text-admin-sm">생성 중...</div>
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-10 text-center text-admin-muted-2 text-admin-sm">생성 중...</div>
                     )}
 
                     {!loadingMarketing && marketing && (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                         <div className="flex items-center justify-between mb-3">
                           <span className="text-admin-sm font-bold text-admin-muted uppercase">{marketing.type}</span>
                           <button
@@ -983,7 +983,7 @@ export default function ProductReviewPage() {
                     )}
 
                     {!loadingMarketing && !marketing && (
-                      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-10 text-center text-admin-muted-2">
+                      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-10 text-center text-admin-muted-2">
                         <p className="text-admin-sm">위 버튼을 클릭해 마케팅 콘텐츠를 생성하세요</p>
                       </div>
                     )}

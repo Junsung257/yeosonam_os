@@ -21,6 +21,23 @@ import {
 import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
+function getSafeInternalNext(request: NextRequest): string | null {
+  const next = request.nextUrl.searchParams.get('next');
+  if (!next || !next.startsWith('/')) return null;
+  if (next.startsWith('//')) return null;
+  return next;
+}
+
+function jsonOrRedirect(request: NextRequest, response: NextResponse, body: Record<string, unknown>) {
+  const next = getSafeInternalNext(request);
+  if (!next) return NextResponse.json(body, { headers: response.headers });
+
+  const redirectUrl = request.nextUrl.clone();
+  redirectUrl.pathname = next.split('?')[0] || '/';
+  redirectUrl.search = next.includes('?') ? `?${next.split('?').slice(1).join('?')}` : '';
+  return NextResponse.redirect(redirectUrl, { headers: response.headers });
+}
+
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
 
@@ -73,7 +90,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (botDetected) {
-      return NextResponse.json({ ok: true, affiliate_id: affiliate.id, filtered: 'bot' });
+      return jsonOrRedirect(request, response, { ok: true, affiliate_id: affiliate.id, filtered: 'bot' });
     }
 
     if (pkg && !isDuplicate) {
@@ -122,9 +139,10 @@ export async function GET(request: NextRequest) {
       response.cookies.set('aff_sub', sub, cookieBase);
     }
 
-    return NextResponse.json(
+    return jsonOrRedirect(
+      request,
+      response,
       { ok: true, affiliate_id: affiliate.id, affiliate_name: affiliate.name, duplicate: isDuplicate },
-      { headers: response.headers },
     );
   } catch (err) {
     console.error('[Affiliate Track]', err);

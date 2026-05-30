@@ -1,13 +1,15 @@
-/**
- * Q&A Inquiry — 고객 질문 + AI 응답 저장
- *
- * supabase.ts god 모듈에서 분리 (2026-04-27 단계 1).
- * 호출자는 기존 그대로 `@/lib/supabase` 에서 import 가능 (re-export 유지).
- */
+import { isSupabaseAdminConfigured, supabase, supabaseAdmin } from '../supabase';
 
-import { supabase } from '../supabase';
+type InquiryInsert = {
+  question: string;
+  inquiry_type: string;
+  related_packages: string[];
+  customer_name?: string;
+  customer_email?: string;
+  customer_phone?: string;
+  status: 'pending';
+};
 
-// Q&A 저장
 export async function saveInquiry(data: {
   question: string;
   inquiryType: string;
@@ -16,34 +18,33 @@ export async function saveInquiry(data: {
   customerEmail?: string;
   customerPhone?: string;
 }) {
-  try {
-    const { data: result, error } = await supabase
-      .from('qa_inquiries')
-      .insert([
-        {
-          question: data.question,
-          inquiry_type: data.inquiryType,
-          related_packages: data.relatedPackages || [],
-          customer_name: data.customerName,
-          customer_email: data.customerEmail,
-          customer_phone: data.customerPhone,
-          status: 'pending',
-        },
-      ])
-      .select();
+  if (!isSupabaseAdminConfigured) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is required to save customer inquiries');
+  }
 
-    if (error) {
-      throw error;
-    }
+  const row: InquiryInsert = {
+    question: data.question.slice(0, 5000),
+    inquiry_type: (data.inquiryType || 'general_consultation').slice(0, 80),
+    related_packages: data.relatedPackages || [],
+    customer_name: data.customerName?.slice(0, 120),
+    customer_email: data.customerEmail?.slice(0, 240),
+    customer_phone: data.customerPhone?.slice(0, 80),
+    status: 'pending',
+  };
 
-    return result?.[0];
-  } catch (error) {
-    console.error('문의 저장 실패:', error);
+  const { data: result, error } = await supabaseAdmin
+    .from('qa_inquiries')
+    .insert([row])
+    .select();
+
+  if (error) {
+    console.error('Inquiry save failed:', error);
     throw error;
   }
+
+  return result?.[0];
 }
 
-// Q&A 조회
 export async function getInquiries(status?: string, inquiryTypes?: string[]) {
   try {
     let query = supabase
@@ -58,7 +59,7 @@ export async function getInquiries(status?: string, inquiryTypes?: string[]) {
           created_at,
           approved
         )
-      `
+      `,
       )
       .order('created_at', { ascending: false });
 
@@ -73,18 +74,14 @@ export async function getInquiries(status?: string, inquiryTypes?: string[]) {
 
     const { data, error } = await query;
 
-    if (error) {
-      throw error;
-    }
-
+    if (error) throw error;
     return data || [];
   } catch (error) {
-    console.error('문의 조회 실패:', error);
+    console.error('Inquiry list failed:', error);
     return [];
   }
 }
 
-// AI 응답 저장
 export async function saveAIResponse(data: {
   inquiryId: string;
   responseText: string;
@@ -92,27 +89,23 @@ export async function saveAIResponse(data: {
   confidence: number;
   usedPackages?: string[];
 }) {
-  try {
-    const { data: result, error } = await supabase
-      .from('ai_responses')
-      .insert([
-        {
-          inquiry_id: data.inquiryId,
-          response_text: data.responseText,
-          ai_model: data.aiModel,
-          confidence: data.confidence,
-          used_packages: data.usedPackages || [],
-        },
-      ])
-      .select();
+  const { data: result, error } = await supabase
+    .from('ai_responses')
+    .insert([
+      {
+        inquiry_id: data.inquiryId,
+        response_text: data.responseText,
+        ai_model: data.aiModel,
+        confidence: data.confidence,
+        used_packages: data.usedPackages || [],
+      },
+    ])
+    .select();
 
-    if (error) {
-      throw error;
-    }
-
-    return result?.[0];
-  } catch (error) {
-    console.error('AI 응답 저장 실패:', error);
+  if (error) {
+    console.error('AI response save failed:', error);
     throw error;
   }
+
+  return result?.[0];
 }

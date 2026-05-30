@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { maskPhone } from '@/lib/pii-mask';
 
 interface Package {
   id: string;
@@ -333,7 +334,7 @@ export default function EditBookingClient({ params, initialBooking, initialPacka
       <div className="min-h-screen bg-admin-bg py-8">
         <div className="max-w-3xl mx-auto px-4 space-y-4">
           <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-40" />
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-4">
             {Array.from({ length: 6 }).map((_, i) => (
               <div key={i} className="space-y-1.5">
                 <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24" />
@@ -432,7 +433,7 @@ export default function EditBookingClient({ params, initialBooking, initialPacka
               <div className="flex items-center justify-between gap-2 p-3 bg-blue-50 border border-blue-100 rounded-lg">
                 <div className="min-w-0">
                   <p className="font-bold text-admin-text text-sm truncate">{currentLeadCustomer.name}</p>
-                  <p className="text-xs text-admin-muted truncate">{currentLeadCustomer.phone || '연락처 없음'}</p>
+                  <p className="text-xs text-admin-muted truncate">{maskPhone(currentLeadCustomer.phone ?? null, 'cs_agent') || '연락처 없음'}</p>
                 </div>
                 <div className="flex gap-1.5 shrink-0">
                   <button type="button"
@@ -497,7 +498,7 @@ export default function EditBookingClient({ params, initialBooking, initialPacka
                       <button key={c.id} type="button"
                         onClick={() => { setForm(f => ({ ...f, leadCustomerId: c.id })); setCustomerSearch(c.name); setCustomerMode('view'); }}
                         className={`w-full text-left px-4 py-2.5 text-sm hover:bg-admin-bg transition ${form.leadCustomerId === c.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-admin-text-2'}`}>
-                        {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{c.phone}</span>}
+                        {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{maskPhone(c.phone, 'cs_agent')}</span>}
                       </button>
                     ))}
                   </div>
@@ -534,7 +535,7 @@ export default function EditBookingClient({ params, initialBooking, initialPacka
                   <button key={c.id} type="button"
                     onClick={() => { setSelectedPassengers(prev => [...prev, c]); setPassengerSearch(''); }}
                     className="w-full text-left px-4 py-2.5 text-sm hover:bg-admin-bg text-admin-text-2 transition">
-                    + {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{c.phone}</span>}
+                    + {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{maskPhone(c.phone, 'cs_agent')}</span>}
                   </button>
                 ))}
               </div>

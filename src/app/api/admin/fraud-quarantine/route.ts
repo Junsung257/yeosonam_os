@@ -8,8 +8,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { withAdminGuard } from '@/lib/admin-guard';
 
-export async function GET(request: NextRequest) {
+async function getHandler(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   const url = new URL(request.url);
@@ -43,7 +44,7 @@ export async function GET(request: NextRequest) {
 }
 
 /** POST: 격리 해결 (resolved_at + resolved_by + notes) */
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
   try {
     const body = await request.json() as { id?: number; action?: 'resolve' | 'unresolve' | 'block'; resolved_by?: string; notes?: string };
@@ -103,3 +104,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+export const POST = withAdminGuard(postHandler);

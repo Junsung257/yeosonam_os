@@ -156,7 +156,7 @@ export async function GET(request: NextRequest) {
               display: 'flex',
             }}
           >
-            👉 자세히 보기 / 예약하기
+            👉 자세히 보기 / 상담하기
           </div>
           <div style={{ fontSize: 16, opacity: 0.6, display: 'flex' }}>
             yeosonam.co.kr/r/{code}

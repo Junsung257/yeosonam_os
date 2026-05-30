@@ -249,7 +249,7 @@ export default function AffiliateDetailPage() {
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-40" />
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="flex items-center gap-4">
             <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse w-28 shrink-0" />
@@ -257,7 +257,7 @@ export default function AffiliateDetailPage() {
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-2">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-2">
         {Array.from({ length: 4 }).map((_, i) => (
           <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
         ))}
@@ -283,7 +283,7 @@ export default function AffiliateDetailPage() {
       </Link>
 
       {/* 파트너 기본 정보 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6">
         <div className="flex items-start justify-between mb-4">
           <div>
             <div className="flex items-center gap-3">
@@ -402,7 +402,7 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 코브랜딩 랜딩 /with/[추천코드] */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-semibold text-admin-text">코브랜딩 랜딩</h2>
@@ -523,7 +523,7 @@ export default function AffiliateDetailPage() {
       {/* KPI 카드 3종 */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {/* 등급 & 진행률 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <p className="text-xs text-admin-muted mb-2">등급 진행률</p>
           <div className="flex items-center gap-2 mb-3">
             <span className={`px-2 py-0.5 rounded-full text-sm font-bold ${GRADE_COLORS[affiliate.grade]}`}>
@@ -547,7 +547,7 @@ export default function AffiliateDetailPage() {
         </div>
 
         {/* 이번 달 정산 예정 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <p className="text-xs text-admin-muted mb-2">이번 달 정산 예정</p>
           {thisMonthSettlement ? (
             <>
@@ -572,7 +572,7 @@ export default function AffiliateDetailPage() {
         </div>
 
         {/* 누적 수수료 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
           <p className="text-xs text-admin-muted mb-2">누적 수수료 수익</p>
           <p className="text-xl font-bold text-purple-700">
             ₩{Number(affiliate.total_commission).toLocaleString()}
@@ -585,7 +585,7 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 정산 이력 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-admin-border">
           <h2 className="font-semibold text-admin-text-2">정산 이력</h2>
         </div>
@@ -634,7 +634,7 @@ export default function AffiliateDetailPage() {
       <ContentInsightSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* 프로모코드 성과 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-6 py-4 border-b border-admin-border">
           <h2 className="font-semibold text-admin-text-2">프로모코드 성과</h2>
         </div>
@@ -703,7 +703,7 @@ function ContentSection({ affiliateId, affiliateName }: { affiliateId: string; a
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
         <h2 className="font-semibold text-admin-text-2">카드뉴스 콘텐츠</h2>
         <span className="text-xs text-admin-muted">{loading ? '로딩 중...' : `${cardNews.length}개`}</span>
@@ -837,7 +837,7 @@ function ContentInsightSection({
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-admin-text-2">AI 콘텐츠 인사이트</h2>
@@ -953,7 +953,7 @@ function PortalSettingsSection({
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border">
         <h2 className="font-semibold text-admin-text-2">파트너 포털 설정</h2>
         <p className="text-xs text-admin-muted mt-0.5">

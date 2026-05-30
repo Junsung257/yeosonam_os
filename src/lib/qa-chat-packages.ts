@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
 import { getTopRecommendedPackages } from '@/lib/scoring/top-recommended';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 /** QA 컨텍스트에 필요한 컬럼만 — `select *` 대비 페이로드·파싱 비용 절감 */
 const QA_PACKAGE_SELECT =
@@ -9,6 +10,13 @@ const QA_PACKAGE_SELECT =
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 90_000;
+
+function sanitizeQaPackageRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
+  return rows.map((row) => ({
+    ...row,
+    raw_text: safeRawTextExcerpt(typeof row.raw_text === 'string' ? row.raw_text : null, 800) ?? '',
+  }));
+}
 
 function fresh(entry: CacheEntry | undefined, now: number): boolean {
   return Boolean(entry && now - entry.t < TTL_MS);
@@ -25,7 +33,7 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .limit(120);
 
   if (error) throw error;
-  return rankQaPackagesForHint((data || []) as Record<string, unknown>[], destinationHint);
+  return sanitizeQaPackageRows(await rankQaPackagesForHint((data || []) as Record<string, unknown>[], destinationHint));
 }
 
 async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
@@ -38,7 +46,7 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .limit(150);
 
   if (error) throw error;
-  return (data || []) as Record<string, unknown>[];
+  return sanitizeQaPackageRows((data || []) as Record<string, unknown>[]);
 }
 
 async function rankQaPackagesForHint(

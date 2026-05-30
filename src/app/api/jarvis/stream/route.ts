@@ -291,9 +291,7 @@ export async function POST(req: NextRequest) {
       } finally {
         if (finalResult) {
           try {
-            await transitionAgentTask(createdTask.id, 'running', 'done', {
-              completed_at: new Date().toISOString(),
-            })
+            await transitionAgentTask(createdTask.id, 'running', 'done')
           } catch {
             // ignore
           }

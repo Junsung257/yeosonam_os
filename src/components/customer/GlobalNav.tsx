@@ -128,6 +128,7 @@ export default function GlobalNav() {
                 <div
                   className="absolute top-full left-0 mt-1.5 w-[640px] bg-white rounded-[20px] shadow-xl border border-admin-border p-5 z-50"
                   role="menu"
+                  tabIndex={-1}
                   onMouseEnter={() => handleMenuEnter('overseas')}
                   onMouseLeave={handleMenuLeave}
                 >
@@ -203,6 +204,7 @@ export default function GlobalNav() {
                 <div
                   className="absolute top-full left-0 mt-1.5 w-[260px] bg-white rounded-[20px] shadow-xl border border-admin-border py-2 z-50"
                   role="menu"
+                  tabIndex={-1}
                   onMouseEnter={() => handleMenuEnter('theme')}
                   onMouseLeave={handleMenuLeave}
                 >
@@ -297,7 +299,12 @@ export default function GlobalNav() {
       {/* ── 모바일 드로어 ── */}
       {drawerOpen && (
         <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="메뉴">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDrawerOpen(false)} />
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50"
+            aria-label="Close menu"
+            onClick={() => setDrawerOpen(false)}
+          />
           <div className="absolute right-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl flex flex-col">
             <div className="h-14 flex items-center justify-between px-4 border-b border-admin-border flex-shrink-0">
               <span className="text-base font-bold text-slate-900">메뉴</span>

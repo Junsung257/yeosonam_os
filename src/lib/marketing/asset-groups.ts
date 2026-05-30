@@ -41,6 +41,14 @@ export interface MarketingAssetGroup {
       published: number;
       failed: number;
     };
+    indexing: {
+      latest_blog_slug: string | null;
+      gsc_impressions: number;
+      gsc_clicks: number;
+      gsc_position: number | null;
+      health_score: number;
+      last_seen_date: string | null;
+    };
   };
   flags: string[];
   next_actions: MarketingNextAction[];
@@ -105,6 +113,14 @@ type AdCreativeRow = {
   naver_ad_id: string | null;
 };
 
+type RankHistoryRow = {
+  slug: string;
+  date: string;
+  impressions: number | null;
+  clicks: number | null;
+  position: number | null;
+};
+
 function byProduct<T extends { product_id?: string | null; package_id?: string | null }>(rows: T[], productId: string): T[] {
   return rows.filter((row) => (row.product_id ?? row.package_id) === productId);
 }
@@ -130,6 +146,7 @@ function scoreGroup(args: {
   hasDeployedCreative: boolean;
   hasDistributionFailure: boolean;
   hasUrgentDeadline: boolean;
+  indexingHealthScore: number;
 }) {
   let score = 0;
   if (args.hasBlog) score += 20;
@@ -138,9 +155,19 @@ function scoreGroup(args: {
   if (args.hasCampaign) score += 16;
   if (args.hasDeployedCreative) score += 18;
   score += 10;
+  score += Math.round(args.indexingHealthScore * 0.1);
   if (args.hasDistributionFailure) score -= 12;
   if (args.hasUrgentDeadline && !args.hasCampaign) score -= 10;
   return Math.max(0, Math.min(100, score));
+}
+
+function scoreGscHealth(rank: RankHistoryRow | null, hasPublishedBlog: boolean) {
+  if (!hasPublishedBlog) return 0;
+  if (!rank) return 20;
+  const impressionScore = (rank.impressions ?? 0) > 0 ? 55 : 15;
+  const clickScore = Math.min(25, Math.round((rank.clicks ?? 0) * 5));
+  const positionScore = Math.max(0, Math.min(20, Math.round(20 - ((rank.position ?? 40) / 2))));
+  return Math.max(0, Math.min(100, impressionScore + clickScore + positionScore));
 }
 
 function buildActions(group: Omit<MarketingAssetGroup, 'next_actions'>): MarketingNextAction[] {
@@ -259,6 +286,24 @@ function buildActions(group: Omit<MarketingAssetGroup, 'next_actions'>): Marketi
     });
   }
 
+  if (
+    group.stages.blog.published > 0
+    && group.stages.indexing.latest_blog_slug
+    && group.stages.indexing.health_score < 35
+  ) {
+    actions.push({
+      id: id('blog-gsc-low-signal'),
+      product_id: p.id,
+      title: 'Published blog has weak GSC signal',
+      reason: 'The product has a published blog, but Search Console impressions/clicks are still weak or missing.',
+      category: 'tracking',
+      severity: 'medium',
+      action_url: `/admin/blog/${group.stages.indexing.latest_blog_slug}`,
+      action_label: 'Review SEO',
+      automation_level: 2,
+    });
+  }
+
   return actions.sort((a, b) => severityRank(b.severity) - severityRank(a.severity));
 }
 
@@ -313,6 +358,23 @@ export async function getMarketingAssetGroups(limit = 30): Promise<{ groups: Mar
   const distributions = (distRes.data ?? []) as DistributionRow[];
   const campaigns = (campaignsRes.data ?? []) as CampaignRow[];
   const creatives = (creativesRes.data ?? []) as AdCreativeRow[];
+  const publishedSlugs = blogs
+    .filter((blog) => blog.status === 'published' && blog.slug)
+    .map((blog) => blog.slug as string);
+  const rankBySlug = new Map<string, RankHistoryRow>();
+  if (publishedSlugs.length > 0) {
+    const { data: rankRows, error: rankError } = await supabaseAdmin
+      .from('rank_history')
+      .select('slug, date, impressions, clicks, position')
+      .in('slug', publishedSlugs)
+      .eq('query', '__page__')
+      .eq('source', 'gsc-page')
+      .order('date', { ascending: false });
+    if (rankError && rankError.code !== '42P01') throw rankError;
+    for (const row of (rankRows ?? []) as RankHistoryRow[]) {
+      if (!rankBySlug.has(row.slug)) rankBySlug.set(row.slug, row);
+    }
+  }
 
   const groups = productRows.map((product) => {
     const productBlogs = byProduct(blogs, product.id);
@@ -327,6 +389,9 @@ export async function getMarketingAssetGroups(limit = 30): Promise<{ groups: Mar
       Boolean(creative.meta_creative_id || creative.google_ad_id || creative.naver_ad_id),
     );
     const deadline = deadlineDays(product.ticketing_deadline);
+    const latestSlug = publishedBlogs[0]?.slug ?? null;
+    const latestRank = latestSlug ? rankBySlug.get(latestSlug) ?? null : null;
+    const gscHealthScore = scoreGscHealth(latestRank, publishedBlogs.length > 0);
 
     const partial: Omit<MarketingAssetGroup, 'next_actions'> = {
       product,
@@ -358,6 +423,14 @@ export async function getMarketingAssetGroups(limit = 30): Promise<{ groups: Mar
           published: productDistributions.filter((row) => row.status === 'published').length,
           failed: productDistributions.filter((row) => row.status === 'failed').length,
         },
+        indexing: {
+          latest_blog_slug: latestSlug,
+          gsc_impressions: latestRank?.impressions ?? 0,
+          gsc_clicks: latestRank?.clicks ?? 0,
+          gsc_position: latestRank?.position ?? null,
+          health_score: gscHealthScore,
+          last_seen_date: latestRank?.date ?? null,
+        },
       },
       flags: [
         ...(deadline != null && deadline <= 14 ? ['deadline_soon'] : []),
@@ -376,6 +449,7 @@ export async function getMarketingAssetGroups(limit = 30): Promise<{ groups: Mar
       hasDeployedCreative: partial.stages.ads.deployed_creatives > 0,
       hasDistributionFailure: partial.stages.distribution.failed > 0 || partial.stages.card_news.ig_failed > 0,
       hasUrgentDeadline: deadline != null && deadline <= 14,
+      indexingHealthScore: partial.stages.indexing.health_score,
     });
 
     const group: MarketingAssetGroup = {

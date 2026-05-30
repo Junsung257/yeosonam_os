@@ -91,22 +91,22 @@ export default function PartnerApplyPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">이름 *</label>
-              <input type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+              <label htmlFor="partner-name" className="block text-sm font-medium text-gray-700 mb-1">이름 *</label>
+              <input id="partner-name" type="text" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                 placeholder="홍길동" required
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">연락처 *</label>
-              <input type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
+              <label htmlFor="partner-phone" className="block text-sm font-medium text-gray-700 mb-1">연락처 *</label>
+              <input id="partner-phone" type="tel" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))}
                 placeholder="010-0000-0000" required
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">채널 유형 *</label>
-              <select value={form.channel_type} onChange={e => setForm(f => ({ ...f, channel_type: e.target.value }))}
+              <label htmlFor="partner-channel-type" className="block text-sm font-medium text-gray-700 mb-1">채널 유형 *</label>
+              <select id="partner-channel-type" value={form.channel_type} onChange={e => setForm(f => ({ ...f, channel_type: e.target.value }))}
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none">
                 {CHANNEL_TYPES.map(ct => (
                   <option key={ct.value} value={ct.value}>{ct.label}</option>
@@ -115,28 +115,28 @@ export default function PartnerApplyPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">채널 URL *</label>
-              <input type="url" value={form.channel_url} onChange={e => setForm(f => ({ ...f, channel_url: e.target.value }))}
+              <label htmlFor="partner-channel-url" className="block text-sm font-medium text-gray-700 mb-1">채널 URL *</label>
+              <input id="partner-channel-url" type="url" value={form.channel_url} onChange={e => setForm(f => ({ ...f, channel_url: e.target.value }))}
                 placeholder="https://blog.naver.com/example" required
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">팔로워/구독자 수</label>
-              <input type="number" value={form.follower_count} onChange={e => setForm(f => ({ ...f, follower_count: e.target.value }))}
+              <label htmlFor="partner-follower-count" className="block text-sm font-medium text-gray-700 mb-1">팔로워/구독자 수</label>
+              <input id="partner-follower-count" type="number" value={form.follower_count} onChange={e => setForm(f => ({ ...f, follower_count: e.target.value }))}
                 placeholder="예: 5000"
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">자기소개</label>
-              <textarea value={form.intro} onChange={e => setForm(f => ({ ...f, intro: e.target.value }))}
+              <label htmlFor="partner-intro" className="block text-sm font-medium text-gray-700 mb-1">자기소개</label>
+              <textarea id="partner-intro" value={form.intro} onChange={e => setForm(f => ({ ...f, intro: e.target.value }))}
                 rows={3} placeholder="어떤 여행 콘텐츠를 만드시나요?"
                 className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none resize-none" />
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">사업자 유형</label>
+              <span className="block text-sm font-medium text-gray-700 mb-1">사업자 유형</span>
               <div className="flex gap-4">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input type="radio" name="btype" value="individual"
@@ -155,8 +155,8 @@ export default function PartnerApplyPage() {
 
             {form.business_type === 'business' && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">사업자번호</label>
-                <input type="text" value={form.business_number} onChange={e => setForm(f => ({ ...f, business_number: e.target.value }))}
+                <label htmlFor="partner-business-number" className="block text-sm font-medium text-gray-700 mb-1">사업자번호</label>
+                <input id="partner-business-number" type="text" value={form.business_number} onChange={e => setForm(f => ({ ...f, business_number: e.target.value }))}
                   placeholder="000-00-00000"
                   className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none" />
               </div>

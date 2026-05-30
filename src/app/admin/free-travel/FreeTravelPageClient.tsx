@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
+import { maskPhone } from '@/lib/pii-mask';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 
@@ -328,7 +329,7 @@ export default function FreeTravelPageClient({
       {loading && (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-3">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 flex items-center gap-3">
               <div className="h-3.5 bg-admin-surface-2 rounded animate-pulse flex-1" />
               <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-16" />
             </div>
@@ -350,7 +351,7 @@ export default function FreeTravelPageClient({
             </div>
           )}
           {sessions.map(s => (
-            <div key={s.id} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 shadow-admin-xs hover:shadow-admin-sm transition-shadow">
+            <div key={s.id} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 shadow-admin-xs hover:shadow-admin-sm transition-shadow">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -386,7 +387,7 @@ export default function FreeTravelPageClient({
                   <div className="flex items-center gap-3 mt-2 text-sm flex-wrap">
                     {s.customer_phone ? (
                       <a href={`tel:${s.customer_phone}`} className="text-blue-600 font-medium hover:underline">
-                        {s.customer_phone} {s.customer_name && `(${s.customer_name})`}
+                        {maskPhone(s.customer_phone, 'cs_agent')} {s.customer_name && `(${s.customer_name})`}
                       </a>
                     ) : (
                       <span className="text-admin-muted-2">연락처 미수집</span>

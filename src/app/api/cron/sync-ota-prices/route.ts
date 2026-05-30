@@ -15,6 +15,7 @@
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
+import { getSecret } from '@/lib/secret-registry';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -24,8 +25,8 @@ async function run() {
   if (!isSupabaseConfigured) return { ok: true, mock: true };
 
   // 미등록 secret 키 — secret-registry 외부이므로 process.env 직접 사용
-  const agodaKey = process.env.AGODA_AFFILIATE_API_KEY;
-  const skyscannerKey = process.env.SKYSCANNER_API_KEY;
+  const agodaKey = getSecret('AGODA_AFFILIATE_API_KEY');
+  const skyscannerKey = getSecret('SKYSCANNER_API_KEY');
   if (!agodaKey && !skyscannerKey) {
     return {
       ok: true,

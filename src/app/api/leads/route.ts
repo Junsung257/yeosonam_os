@@ -1,23 +1,23 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
-import { findOrCreateCustomerByPhone, supabaseAdmin as supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
+import { createLandingBookingRequest } from '@/lib/lead-booking-request';
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { productId, channel, form, tracking, submittedAt, chatSessionId } = body;
+    const { productId, channel, form, tracking, submittedAt, chatSessionId, idempotencyKey } = body;
 
     if (!productId || !form?.name || !form?.phone || !form?.privacyConsent) {
       return ApiErrors.badRequest('필수 항목 누락');
     }
 
-    // 인플루언서/제휴 추천인 코드 (미들웨어가 ?ref= 파라미터에서 쿠키로 저장)
     const affRaw = req.cookies.get('aff_ref')?.value || null;
     const affCanon = affRaw?.trim() ? normalizeAffiliateReferralCode(affRaw) : '';
     const affRef = affCanon || null;
 
-    const { error } = await supabase.from('leads').insert({
+    const { data: insertedLead, error } = await supabase.from('leads').insert({
       product_id: productId,
       channel,
       desired_date: form.desiredDate || null,
@@ -38,17 +38,26 @@ export async function POST(req: NextRequest) {
       time_on_page_seconds: tracking?.timeOnPageSeconds || 0,
       itinerary_viewed: tracking?.itineraryViewed || false,
       submitted_at: submittedAt || new Date().toISOString(),
-    });
+    }).select('id').single();
 
     if (error) {
       console.error('[leads] supabase error:', error);
       return ApiErrors.internalError(error.message);
     }
 
-    // ── P4.5: 고객 식별 + 채팅 세션 역참조 ──
-    // 실패해도 lead 저장은 이미 성공 — 사용자 흐름에 영향 주지 않기 위해 try로 감싸고 skip
+    const bookingResult = await createLandingBookingRequest({
+      productId,
+      channel,
+      form,
+      tracking,
+      chatSessionId,
+      leadId: insertedLead?.id ?? null,
+      affiliateRef: affRef,
+      idempotencyKey,
+    });
+
     try {
-      const customerId = await findOrCreateCustomerByPhone(form.phone, form.name);
+      const customerId = bookingResult.customerId;
       if (customerId && chatSessionId) {
         await supabase
           .from('conversations')
@@ -63,12 +72,17 @@ export async function POST(req: NextRequest) {
           .is('customer_id', null);
       }
     } catch (e) {
-      console.warn('[leads] customer backlink 실패 (무시):', e);
+      console.warn('[leads] customer backlink failed:', e);
     }
 
-    return successResponse({ ok: true });
+    return successResponse({
+      ok: true,
+      lead_id: insertedLead?.id ?? null,
+      booking: bookingResult.booking,
+      idempotent_replay: bookingResult.idempotentReplay,
+    });
   } catch (err) {
     console.error('[leads] unexpected error:', err);
-    return ApiErrors.internalError('Internal server error');
+    return ApiErrors.internalError(err instanceof Error ? err.message : 'Internal server error');
   }
 }

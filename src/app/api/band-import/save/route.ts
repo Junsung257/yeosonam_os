@@ -9,6 +9,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { triggerContentGeneration } from '@/lib/auto-content-trigger';
 import { BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 interface Preview {
   internal_code: string;
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin.from('band_import_log').insert({
         post_url:    preview.band_post_url,
         post_title:  preview.display_name,
-        raw_text:    rawText?.slice(0, 2000) ?? null,
+        raw_text:    safeRawTextExcerpt(rawText, 2000),
         product_id:  productId,
         status:      'imported',
       });

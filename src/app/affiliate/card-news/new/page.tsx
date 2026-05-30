@@ -80,8 +80,9 @@ export default function AffiliateCardNewsNewPage() {
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">주제</label>
+              <label htmlFor="card-news-topic" className="block text-sm font-medium text-gray-700 mb-2">주제</label>
               <input
+                id="card-news-topic"
                 type="text"
                 value={topic}
                 onChange={e => setTopic(e.target.value)}
@@ -93,8 +94,9 @@ export default function AffiliateCardNewsNewPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">스타일</label>
+              <label htmlFor="card-news-style" className="block text-sm font-medium text-gray-700 mb-2">스타일</label>
               <select
+                id="card-news-style"
                 value={style}
                 onChange={e => setStyle(e.target.value)}
                 className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"

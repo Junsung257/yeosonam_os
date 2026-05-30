@@ -18,6 +18,7 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { LEAK_PATTERNS } from '@/lib/customer-leak-sanitizer';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
+import { getSecret } from '@/lib/secret-registry';
 
 interface QAIncident {
   id: string;
@@ -209,7 +210,7 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
     const revalidatePaths = buildRevalidatePaths(packageId, expected.shortCode);
 
-    const secret = process.env.REVALIDATE_SECRET;
+    const secret = getSecret('REVALIDATE_SECRET');
     if (secret) {
       void fetch(`${url}/api/revalidate`, {
         method: 'POST',

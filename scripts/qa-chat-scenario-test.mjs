@@ -63,7 +63,7 @@ async function testScenario(scenario, index) {
       body: JSON.stringify({
         message: scenario.message,
         history: scenario.history || [],
-        sessionId: `test-${index}-${Date.now()}`,
+        sessionId: crypto.randomUUID(),
       }),
     });
 

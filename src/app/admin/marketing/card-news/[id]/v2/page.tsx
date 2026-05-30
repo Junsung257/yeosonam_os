@@ -405,7 +405,7 @@ export default function CardNewsV2Studio() {
       <div className="p-6 space-y-4">
         <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
         <div className="flex gap-4">
-          <div className="flex-1 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] aspect-[9/16] animate-pulse" />
+          <div className="flex-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs aspect-[9/16] animate-pulse" />
           <div className="w-72 space-y-3">
             {Array.from({ length: 5 }).map((_, i) => (
               <div key={i} className="h-10 bg-admin-surface-2 rounded-lg animate-pulse" />
@@ -485,7 +485,7 @@ export default function CardNewsV2Studio() {
 
         {/* 편집 + 미리보기 좌우 분할 */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs flex flex-col overflow-hidden">
             <div className="px-4 py-2 border-b border-admin-border-mid flex items-center justify-between bg-admin-bg">
               <div className="text-sm font-bold text-admin-text">
                 HTML 코드 편집
@@ -506,7 +506,7 @@ export default function CardNewsV2Studio() {
             />
           </div>
 
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] flex flex-col overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs flex flex-col overflow-hidden">
             <div className="px-4 py-2 border-b border-admin-border-mid bg-admin-bg text-sm font-bold text-admin-text">
               실시간 미리보기 ({htmlDirty ? '편집 중' : '저장됨'})
             </div>
@@ -551,7 +551,7 @@ export default function CardNewsV2Studio() {
 
         {/* PNG 결과 그리드 */}
         {htmlRenderResults.length > 0 && (
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 mb-6">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 mb-6">
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-bold text-admin-text">
                 PNG 렌더 결과 (
@@ -591,7 +591,7 @@ export default function CardNewsV2Studio() {
 
         {/* 원문 텍스트 (참고용) */}
         {htmlRawText && (
-          <details className="mb-6 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
+          <details className="mb-6 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs">
             <summary className="px-4 py-3 cursor-pointer text-sm font-bold text-admin-text-2">
               📄 생성에 사용된 원문 텍스트 (펼치기)
             </summary>

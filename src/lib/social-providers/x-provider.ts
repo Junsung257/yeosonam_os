@@ -16,12 +16,17 @@ import type {
   QuotaStatus,
   ProviderMetrics,
 } from './types';
+import { getSecret } from '@/lib/secret-registry';
+
+function getXBearerToken(): string | null {
+  return getSecret('X_BEARER_TOKEN') || getSecret('TWITTER_BEARER_TOKEN');
+}
 
 export class XProvider implements SocialProvider {
   readonly platform = 'x' as const;
 
   isConfigured(): boolean {
-    return !!(process.env.X_BEARER_TOKEN || process.env.TWITTER_BEARER_TOKEN);
+    return !!getXBearerToken();
   }
 
   validate(input: PublishInput) {
@@ -36,7 +41,7 @@ export class XProvider implements SocialProvider {
     const validation = this.validate!(input);
     if (!validation.ok) return { ok: false, step: 'validate', error: validation.error };
 
-    const bearerToken = process.env.X_BEARER_TOKEN || process.env.TWITTER_BEARER_TOKEN;
+    const bearerToken = getXBearerToken();
 
     if (!bearerToken) {
       return { ok: false, step: 'config', error: 'X Bearer Token 미설정' };
@@ -74,7 +79,7 @@ export class XProvider implements SocialProvider {
   }
 
   async checkQuota(): Promise<QuotaStatus | null> {
-    const bearerToken = process.env.X_BEARER_TOKEN || process.env.TWITTER_BEARER_TOKEN;
+    const bearerToken = getXBearerToken();
     if (!bearerToken) return null;
 
     try {
@@ -86,7 +91,7 @@ export class XProvider implements SocialProvider {
   }
 
   async fetchMetrics(externalId: string): Promise<ProviderMetrics | null> {
-    const bearerToken = process.env.X_BEARER_TOKEN || process.env.TWITTER_BEARER_TOKEN;
+    const bearerToken = getXBearerToken();
     if (!bearerToken) return null;
 
     try {

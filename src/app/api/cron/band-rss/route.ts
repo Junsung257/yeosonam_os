@@ -13,6 +13,7 @@ import { analyzeFromText, BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/
 import { triggerContentGeneration } from '@/lib/auto-content-trigger';
 import { getSecret } from '@/lib/secret-registry';
 import { withCronLogging } from '@/lib/cron-observability';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 export const maxDuration = 300;
 
@@ -112,7 +113,7 @@ const handleBandRss = async (request: NextRequest) => {
         const productId = (product as { id: string }).id;
         await supabaseAdmin.from('band_import_log').insert({
           post_url: post.url, post_title: post.title,
-          raw_text: post.content.slice(0, 2000),
+          raw_text: safeRawTextExcerpt(post.content, 2000),
           product_id: productId, status: 'imported',
         });
 

@@ -39,6 +39,7 @@ import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 import { requiresApproval } from '@/lib/jarvis/risk-scorer'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { hasResilientLlmConfig } from '@/lib/secret-registry'
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy'
 
 const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9)
 const QA_SYSTEM_FALLBACK = [
@@ -363,7 +364,7 @@ export async function createV1QaChatStream(params: {
 포함사항: ${(p.inclusions ?? []).join(', ') || '없음'}
 불포함: ${(p.excludes ?? []).join(', ') || '없음'}
 일정: ${(p.itinerary ?? []).join(' | ') || '없음'}
-상세내용: ${(p.raw_text ?? '').slice(0, 800)}`
+상세내용: ${safeRawTextExcerpt(p.raw_text, 800) ?? ''}`
             ).join('\n\n---\n\n')
           : '현재 등록된 상품이 없습니다.'
 

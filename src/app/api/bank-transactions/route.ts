@@ -224,6 +224,7 @@ export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
 
   const { searchParams } = new URL(request.url);
+  const summaryOnly  = searchParams.get('summary') === '1';
   const statusFilter = searchParams.get('status') ?? 'active';   // active | excluded | all
   const aggregate    = searchParams.get('aggregate');             // 'monthly'
   const months       = parseInt(searchParams.get('months') || '6', 10);
@@ -260,6 +261,17 @@ export async function GET(request: NextRequest) {
 
   // ── 미매칭 전체 기간 조회 (limit 없음) ────────────────────────────────────
   if (matchStatus === 'unmatched') {
+    if (summaryOnly) {
+      const { count, error: countError } = await supabaseAdmin
+        .from('bank_transactions')
+        .select('id', { count: 'exact', head: true })
+        .in('match_status', ['unmatched'])
+        .neq('status', 'excluded');
+
+      if (countError) return NextResponse.json({ error: countError.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+      return NextResponse.json({ count: count ?? 0, transactions: [] }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+
     const { data: unmatchedData, error: unmatchedError } = await supabaseAdmin
       .from('bank_transactions')
       .select(`

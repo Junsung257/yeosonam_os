@@ -178,3 +178,7 @@ fix-catch-patterns.py
 # Codex local workspace metadata
 .agents/
 .codex/
+.codex-*.err.log
+.codex-*.out.log
+.codex-*.pid
+.codex-*.mjs

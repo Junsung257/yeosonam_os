@@ -9,6 +9,7 @@ import {
 import { applyPendingBanditRewards } from '@/lib/content-pipeline/bandit';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * Auto Publish Loop — 시간당 1회
@@ -178,7 +179,7 @@ async function runAutoPublishLoop(request: NextRequest) {
         errors.push(`base url 미설정 — ${card.id} 발행 스킵`);
         continue;
       }
-      const cronSecret = process.env.CRON_SECRET || process.env.ADMIN_API_TOKEN || '';
+      const cronSecret = getSecret('CRON_SECRET') || getSecret('ADMIN_API_TOKEN') || '';
       const res = await fetch(`${baseUrl}/api/card-news/${card.id}/publish-instagram`, {
         method: 'POST',
         headers: {

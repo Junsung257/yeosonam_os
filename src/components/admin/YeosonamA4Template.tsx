@@ -622,7 +622,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
         {/* 출발확정일 배너 */}
         {Object.keys(pdConfirmedByMonth).length > 0 && (
           <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-admin-sm text-green-800 font-semibold">
-            🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
+            🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
             {Object.entries(pdConfirmedByMonth).map(([m, days], i) => (
               <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
             ))}
@@ -789,7 +789,7 @@ function PriceTable({ priceList, priceDates, tiers, excludedDates, confirmedDate
       {/* 출발확정일 배너 */}
       {Object.keys(confirmedByMonth).length > 0 && (
         <div className="bg-green-50 border border-green-300 rounded px-2 py-1.5 mb-2 text-admin-sm text-green-800 font-semibold">
-          🟢 출발확정 (바로 예약 가능)&nbsp;&nbsp;
+          🟢 출발확정 (예약 문의 가능)&nbsp;&nbsp;
           {Object.entries(confirmedByMonth).map(([m, days], i) => (
             <span key={m}>{i > 0 ? ' | ' : ''}{m}: {days.join(', ')}일</span>
           ))}

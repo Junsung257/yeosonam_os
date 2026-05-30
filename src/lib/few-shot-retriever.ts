@@ -16,6 +16,7 @@
  */
 
 import { embedText } from './embeddings';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 export interface SimilarExample {
   id: string;
@@ -139,7 +140,7 @@ export async function retrieveSimilarExamples(
       destination: pkg?.destination || hit.destination,
       duration: pkg?.duration || hit.duration,
       similarity: Number(hit.similarity || 0),
-      rawTextSnippet: (pkg?.raw_text || '').slice(0, 1500),
+      rawTextSnippet: safeRawTextExcerpt(pkg?.raw_text, 1500) ?? '',
       metaSummary,
     };
   });

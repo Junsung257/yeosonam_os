@@ -5,6 +5,7 @@ import useSWR from 'swr';
 import Link from 'next/link';
 import { GRADE_STYLE, LIFECYCLE_STAGES, getNextAction, type CustomerStatus } from '@/lib/mileage';
 import { BOOKING_STATUS_COLOR, BOOKING_STATUS_LABEL } from '@/lib/status-colors';
+import { maskPhone } from '@/lib/pii-mask';
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -674,7 +675,7 @@ export default function CustomersPage() {
                         <div className="min-w-0">
                           <p className="text-admin-sm font-semibold text-admin-text-2 truncate">{c.name}</p>
                           {c.phone ? (
-                            <p className="text-[11px] text-admin-muted-2 truncate">···{c.phone.slice(-4)}</p>
+                            <p className="text-[11px] text-admin-muted-2 truncate">{maskPhone(c.phone, 'cs_agent')}</p>
                           ) : (
                             <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
                               연락처 미상
@@ -947,7 +948,7 @@ export default function CustomersPage() {
                     })()}
                   </div>
                   <p className="text-admin-sm text-admin-muted">
-                    {drawer.phone ?? <span className="text-red-500">연락처 미상</span>}
+                    {maskPhone(drawer.phone ?? null, 'cs_agent') ?? <span className="text-red-500">연락처 미상</span>}
                     {' · '}{fmtNum(drawer.mileage)}P
                   </p>
                 </div>
@@ -1244,7 +1245,7 @@ export default function CustomersPage() {
                   <div className="mt-2 bg-orange-50 border border-orange-300 rounded p-3">
                     <p className="text-[11px] font-semibold text-orange-700 mb-1.5">이미 등록된 번호입니다</p>
                     <p className="text-admin-sm text-admin-text-2 font-medium">{phoneDupe.name}</p>
-                    <p className="text-[11px] text-admin-muted mb-2">{phoneDupe.phone} · {phoneDupe.grade} · {fmtNum(phoneDupe.mileage)}P</p>
+                    <p className="text-[11px] text-admin-muted mb-2">{maskPhone(phoneDupe.phone ?? null, 'cs_agent')} · {phoneDupe.grade} · {fmtNum(phoneDupe.mileage)}P</p>
                     <button type="button" onClick={loadDupeCustomer}
                       className="w-full bg-orange-500 text-white py-2 rounded text-[11px] font-semibold hover:bg-orange-600">
                       기존 고객 정보 불러오기

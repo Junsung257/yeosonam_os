@@ -11,6 +11,12 @@
 
 import { getMinPriceFromDates } from './price-dates';
 
+async function getKeywordSupabaseAdmin() {
+  if (typeof window !== 'undefined') return null;
+  const { supabaseAdmin, isSupabaseConfigured } = await import('@/lib/supabase');
+  return isSupabaseConfigured ? supabaseAdmin : null;
+}
+
 // ── 타입 ─────────────────────────────────────────────────
 export type KeywordTier = 'core' | 'mid' | 'longtail' | 'negative';
 export type MatchType = 'broad' | 'phrase' | 'exact';
@@ -671,12 +677,8 @@ export async function savePerformanceToDB(
   // 서버 환경: Supabase에도 저장
   if (typeof window === 'undefined') {
     try {
-      const { createClient } = await import('@supabase/supabase-js');
-      const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-      if (!supabaseUrl || !supabaseKey) return;
-
-      const supabase = createClient(supabaseUrl, supabaseKey);
+      const supabase = await getKeywordSupabaseAdmin();
+      if (!supabase) return;
       const today = new Date().toISOString().slice(0, 10);
 
       const data: SupabaseKeywordRow = {
@@ -720,12 +722,8 @@ export async function loadPerformanceFromDB(
   if (typeof window !== 'undefined') return [];
 
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !supabaseKey) return [];
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = await getKeywordSupabaseAdmin();
+    if (!supabase) return [];
     const since = new Date();
     since.setDate(since.getDate() - days);
 
@@ -759,12 +757,8 @@ export async function saveSearchTerm(params: {
   if (typeof window !== 'undefined') return;
 
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !supabaseKey) return;
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = await getKeywordSupabaseAdmin();
+    if (!supabase) return;
     const today = new Date().toISOString().slice(0, 10);
 
     // 기존 레코드 확인
@@ -833,12 +827,8 @@ export async function logOptimization(params: {
   if (typeof window !== 'undefined') return;
 
   try {
-    const { createClient } = await import('@supabase/supabase-js');
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-    if (!supabaseUrl || !supabaseKey) return;
-
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const supabase = await getKeywordSupabaseAdmin();
+    if (!supabase) return;
     await supabase.from('optimization_log').insert({
       action: params.action,
       platform: params.platform,

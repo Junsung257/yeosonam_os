@@ -87,46 +87,47 @@ interface NavGroup {
 const navGroups: NavGroup[] = [
   {
     title: '운영',
-    icon: Inbox,
+    icon: LayoutDashboard,
     items: [
       { href: '/admin',                    label: '대시보드',     icon: LayoutDashboard, exact: true },
       { href: '/admin/inbox',              label: '고객 문의',    icon: Inbox },
+      { href: '/admin/leads',              label: '예약 문의',    icon: MessageSquare },
       { href: '/admin/bookings',           label: '예약 관리',    icon: BookOpenCheck },
       { href: '/admin/customers',          label: '고객 관리',    icon: Users },
-      { href: '/admin/leads',              label: '예약 문의',    icon: MessageSquare },
-      { href: '/admin/reviews',            label: '리뷰 감정분석', icon: Star },
+      { href: '/admin/reviews',            label: '리뷰 분석',    icon: Star },
       { href: '/admin/flight-alerts',      label: '항공 지연',    icon: Plane },
-      { href: '/admin/payments',           label: '입금/정산',    icon: Wallet, minRole: 'tenant_admin' },
     ],
   },
   {
-    title: '상품',
+    title: '상품·공급',
     icon: Package,
     items: [
       { href: '/admin/packages',                      label: '상품 관리',          icon: Package },
-      { href: '/admin/upload',                        label: '업로드',             icon: Upload },
+      { href: '/admin/products/review',                label: '상품 검수',          icon: ClipboardCheck },
+      { href: '/admin/upload',                        label: '상품 업로드',        icon: Upload },
       { href: '/admin/land-operators',                label: '랜드사 관리',        icon: Building2, minRole: 'tenant_admin' },
       { href: '/admin/attractions',                   label: '여행지/관광지',       icon: Mountain },
-      { href: '/admin/destinations',                  label: '출발지 관리',        icon: MapPinned },
+      { href: '/admin/destinations',                  label: '목적지 관리',        icon: MapPinned },
+      { href: '/admin/departing-locations',           label: '출발지 관리',        icon: Globe },
       { href: '/admin/terms-templates',               label: '약관 템플릿',        icon: ScrollText, minRole: 'tenant_admin' },
       { href: '/admin/products/assemble-free-travel', label: '자유여행 상품 조립', icon: Combine, minRole: 'tenant_admin' },
     ],
   },
   {
-    title: '영업',
+    title: '영업·제휴',
     icon: BarChart3,
     minRole: 'tenant_admin',
     items: [
+      { href: '/admin/rfqs',                label: '단체 RFQ',               icon: FileQuestion },
+      { href: '/admin/concierge',           label: '컨시어지',               icon: Headset },
+      { href: '/admin/free-travel',         label: '자유여행 플래너',        icon: Compass },
       { href: '/admin/affiliates',          label: '제휴/인플루언서',        icon: Handshake },
       { href: '/admin/affiliate-analytics', label: '제휴 분석',              icon: BarChart3 },
       { href: '/admin/affiliate-promo-report', label: '프로모코드 성과',      icon: Tags },
       { href: '/admin/applications',        label: '파트너 신청',            icon: UserPlus },
       { href: '/admin/partner-preview',     label: '파트너 프론트 미리보기', icon: Eye },
-      { href: '/admin/rfqs',                label: '단체 RFQ',               icon: FileQuestion },
       { href: '/admin/competitor-prices',   label: '경쟁사 가격',            icon: TrendingUp },
       { href: '/admin/analytics',           label: 'LTV 코호트',             icon: BarChart3 },
-      { href: '/admin/concierge',           label: '컨시어지',               icon: Headset },
-      { href: '/admin/free-travel',         label: '자유여행 플래너',        icon: Compass },
       { href: '/admin/tenants',             label: '테넌트 관리',            icon: Layers, minRole: 'platform_admin' },
     ],
   },
@@ -135,17 +136,22 @@ const navGroups: NavGroup[] = [
     icon: Wallet,
     minRole: 'tenant_admin',
     items: [
+      { href: '/admin/payments',                label: '입금 관리',    icon: Wallet },
+      { href: '/admin/payments/reconcile',      label: '입금 매칭',    icon: ArrowLeftRight },
       { href: '/admin/ledger',                  label: '통합 장부',    icon: BookCopy },
-      { href: '/admin/settlements',             label: '정산 관리',    icon: Coins },
+      { href: '/admin/settlements',             label: '제휴 정산',    icon: Coins },
+      { href: '/admin/land-settlements',        label: '랜드사 정산',  icon: BadgeDollarSign },
       { href: '/admin/tax',                     label: '세무 관리',    icon: Calculator },
       { href: '/admin/invoice',                 label: '인보이스 파싱', icon: Receipt },
     ],
   },
   {
-    title: '마케팅',
+    title: '마케팅·콘텐츠',
     icon: Megaphone,
     items: [
-      { href: '/admin/marketing',              label: '통합 광고 대시보드',  icon: Megaphone },
+      { href: '/admin/marketing',              label: '마케팅 대시보드',    icon: Megaphone },
+      { href: '/admin/marketing/command-center', label: '마케팅 커맨드센터', icon: Target, minRole: 'tenant_admin' },
+      { href: '/admin/marketing/system-health', label: '마케팅 시스템 점검', icon: Activity, minRole: 'tenant_admin' },
       { href: '/admin/marketing/card-news',    label: '카드뉴스',           icon: Newspaper },
       { href: '/admin/content-hub',            label: '콘텐츠',             icon: FolderKanban },
       { href: '/admin/search-ads',             label: '검색광고',           icon: SearchIcon },
@@ -157,15 +163,15 @@ const navGroups: NavGroup[] = [
     ],
   },
   {
-    title: 'AI',
+    title: 'AI·자동화',
     icon: Bot,
     minRole: 'tenant_admin',
     items: [
       { href: '/admin/jarvis',                  label: '자비스 AI',         icon: Bot },
+      { href: '/admin/qa',                      label: 'Q&A 챗봇',          icon: MessageCircle },
+      { href: '/admin/generate',                label: 'AI 생성',           icon: Wand2 },
       { href: '/admin/jarvis/rag',              label: 'RAG 검색',          icon: SearchIcon },
       { href: '/admin/mcp',                     label: 'MCP 게이트웨이',    icon: Link2 },
-      { href: '/admin/generate',                label: 'AI 생성',           icon: Wand2 },
-      { href: '/admin/qa',                      label: 'Q&A 챗봇',          icon: MessageCircle },
       { href: '/admin/platform-learning',       label: 'AI 플라이휠',       icon: LibraryBig, minRole: 'platform_admin' },
       { href: '/admin/agent-mas',               label: 'MAS 관제',          icon: GitBranch, minRole: 'platform_admin' },
       { href: '/admin/extractions/corrections', label: 'AI 파싱 교정 이력', icon: PencilLine, minRole: 'platform_admin' },
@@ -180,8 +186,8 @@ const navGroups: NavGroup[] = [
       { href: '/admin/control-tower',  label: 'OS 관제탑',     icon: Activity },
       { href: '/admin/ops',            label: '크론·작업',     icon: Timer },
       { href: '/admin/scoring',        label: '점수 정책',     icon: Star },
-      { href: '/admin/escalations',    label: '에스컬레이션',  icon: Siren },
       { href: '/admin/alerts',         label: '운영 알림',     icon: AlertTriangle },
+      { href: '/admin/escalations',    label: '에스컬레이션',  icon: Siren },
       { href: '/admin/gdpr',           label: '개인정보 삭제', icon: Shield },
       { href: '/admin/settings/integrations', label: '외부 플랫폼 연동', icon: Settings },
     ],
@@ -332,6 +338,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     if (typeof window === 'undefined') return 'full';
     return (window.localStorage.getItem('admin.sidebar-mode') as 'full' | 'slim') ?? 'full';
   });
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const { favs, isFav, toggle: toggleFav } = useFavorites();
   const { role: userRole, isLoading: roleLoading } = useUserRole();
@@ -349,20 +356,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     [userRole],
   );
 
-  /** 사용 빈도 데이터 읽기 + 동적 정렬 */
+  /** 사용 빈도 데이터 읽기. 그룹 위치는 안정적으로 유지하고 추천/접힘 판단에만 사용한다. */
   const { sortedGroups, usageCounts } = useMemo(() => {
     const counts = readNavUsage();
-    const sorted = [...visibleGroups].sort((a, b) => {
-      // 그룹 title별 총 방문 횟수
-      const aCount = a.items
-        .filter((it): it is NavItem => !('divider' in it))
-        .reduce((sum, it) => sum + (counts[it.href] ?? 0), 0);
-      const bCount = b.items
-        .filter((it): it is NavItem => !('divider' in it))
-        .reduce((sum, it) => sum + (counts[it.href] ?? 0), 0);
-      return bCount - aCount; // 내림차순
-    });
-    return { sortedGroups: sorted, usageCounts: counts };
+    return { sortedGroups: visibleGroups, usageCounts: counts };
   }, [visibleGroups]);
 
   /** 접힘 상태 초기화 — 방문 빈도 0인 그룹은 기본 접힘 */
@@ -423,6 +420,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     await fetch('/api/auth/session', { method: 'DELETE' });
     router.push('/login');
   };
+
+  const handleNavClick = useCallback((href: string) => {
+    trackNavClick(href);
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      setMobileSidebarOpen(false);
+    }
+  }, [trackNavClick]);
 
   const isActive = useCallback(
     (item: NavItem) => {
@@ -494,11 +498,23 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   }, [visibleGroups]);
 
   return (
-    <div className="admin-scope min-h-screen bg-admin-bg flex">
+    <div className="admin-scope min-h-screen bg-admin-bg flex" data-density={density}>
+      {mobileSidebarOpen && (
+        <button
+          type="button"
+          aria-label="사이드바 닫기"
+          onClick={() => setMobileSidebarOpen(false)}
+          className="fixed inset-0 z-30 bg-slate-950/35 md:hidden"
+        />
+      )}
       {/* ── 사이드바 ─────────────────────────────────── */}
       <aside
         className={`fixed top-0 left-0 h-full bg-admin-surface border-r border-admin-border z-40 transition-all duration-200 flex flex-col overflow-hidden ${
-          sidebarMode === 'slim' ? 'w-14' : 'w-52'
+          mobileSidebarOpen ? 'visible' : 'invisible md:visible'
+        } ${
+          mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
+        } ${
+          sidebarMode === 'slim' ? 'w-14' : 'w-64 md:w-52'
         }`}
       >
         {/* 로고 */}
@@ -531,7 +547,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                     isFavorite
                     onToggleFav={toggleFav}
                     badge={itemBadge(item)}
-                    onNavClick={trackNavClick}
+                    onNavClick={handleNavClick}
                   />
                 ))}
               </div>
@@ -563,7 +579,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                           onToggleFav={toggleFav}
                           badge={itemBadge(item)}
                           slim
-                          onNavClick={trackNavClick}
+                          onNavClick={handleNavClick}
                         />
                       )
                     )}
@@ -626,7 +642,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                           isFavorite={isFav(item.href)}
                           onToggleFav={toggleFav}
                           badge={itemBadge(item)}
-                          onNavClick={trackNavClick}
+                          onNavClick={handleNavClick}
                         />
                       )
                     )}
@@ -660,7 +676,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           <NavRecommendations
             groups={sortedGroups}
             usageCounts={usageCounts}
-            onNavClick={trackNavClick}
+            onNavClick={handleNavClick}
           />
         )}
 
@@ -697,25 +713,31 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       {/* ── 메인 영역 ────────────────────────────────── */}
       <div
         className={`flex-1 flex flex-col min-h-screen transition-all duration-200 ${
-          sidebarMode === 'slim' ? 'ml-14' : 'ml-52'
+          sidebarMode === 'slim' ? 'md:ml-14' : 'md:ml-52'
         }`}
       >
         {/* 상단바 */}
-        <header className="sticky top-0 z-30 bg-admin-surface border-b border-admin-border h-14 px-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
+        <header className="sticky top-0 z-30 bg-admin-surface border-b border-admin-border h-14 px-3 md:px-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
             <button
-              onClick={() => setSidebarMode(m => m === 'full' ? 'slim' : 'full')}
+              onClick={() => {
+                if (typeof window !== 'undefined' && window.innerWidth < 768) {
+                  setMobileSidebarOpen(true);
+                  return;
+                }
+                setSidebarMode(m => m === 'full' ? 'slim' : 'full');
+              }}
               className="p-1.5 rounded-admin-sm hover:bg-admin-surface-2 text-admin-muted hover:text-admin-text transition-colors duration-160"
               aria-label="사이드바 토글"
             >
               <MenuIcon size={18} />
             </button>
-            <h1 className="text-admin-h3 tracking-tight text-admin-text">
+            <h1 className="text-admin-h3 tracking-tight text-admin-text truncate">
               {currentPage}
             </h1>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
             <AlertsBadge />
             <SearchInput
               variant="topbar"
@@ -731,7 +753,6 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         {/* 콘텐츠 */}
         <main
           className="flex-1 px-4 lg:px-6 py-5"
-          data-density={density}
         >
           {/* 인텐트 기반 AI 추천 바 */}
           {sidebarMode === 'full' && (

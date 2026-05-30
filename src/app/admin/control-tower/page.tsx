@@ -407,19 +407,19 @@ export default function ControlTowerPage() {
 
       {/* ── KPI ────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-2">
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-3 py-2">
           <p className="text-[10px] text-admin-muted-2">전체 정책</p>
           <p className="text-[20px] font-bold text-admin-text-2">{policies.length}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-3 py-2">
           <p className="text-[10px] text-emerald-600">활성</p>
           <p className="text-[20px] font-bold text-emerald-600">{totalActive}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-3 py-2">
           <p className="text-[10px] text-admin-muted-2">비활성</p>
           <p className="text-[20px] font-bold text-admin-muted-2">{totalInactive}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-3 py-2">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-3 py-2">
           <p className="text-[10px] text-admin-muted-2">카테고리</p>
           <p className="text-[20px] font-bold text-admin-text-2">{Object.keys(catCounts).length}</p>
         </div>
@@ -474,7 +474,7 @@ export default function ControlTowerPage() {
           filtered.map(policy => {
             const catInfo = getCategoryInfo(policy.category);
             return (
-              <div key={policy.id} className={`bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 flex items-center gap-3 group hover:border-admin-border-strong transition ${!policy.is_active ? 'opacity-60' : ''}`}>
+              <div key={policy.id} className={`bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-4 py-3 flex items-center gap-3 group hover:border-admin-border-strong transition ${!policy.is_active ? 'opacity-60' : ''}`}>
                 {/* 상태 점 */}
                 <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getStatusDot(policy)}`} />
 

@@ -188,19 +188,19 @@ export default function FlightAlertsAdminPage() {
 
       {/* KPI */}
       <div className="grid grid-cols-4 gap-3">
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-[11px] text-admin-muted-2 uppercase tracking-wide">오늘 출발</p>
           <p className="text-[24px] font-bold text-admin-text-2 mt-1">{todayFlights.length}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-[11px] text-admin-muted-2 uppercase tracking-wide">내일 출발</p>
           <p className="text-[24px] font-bold text-admin-text-2 mt-1">{tomorrowFlights.length}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-[11px] text-admin-muted-2 uppercase tracking-wide">지연</p>
           <p className="text-[24px] font-bold text-amber-600 mt-1">{delayedCount}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-[11px] text-admin-muted-2 uppercase tracking-wide">취소</p>
           <p className="text-[24px] font-bold text-red-600 mt-1">{cancelledCount}</p>
         </div>
@@ -208,7 +208,7 @@ export default function FlightAlertsAdminPage() {
 
       {/* 항공편 등록 폼 */}
       {showAddForm && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <h2 className="text-admin-base font-semibold text-admin-text-2 mb-3">새 항공편 등록</h2>
           <form onSubmit={(e) => void handleAddFlight(e)} className="grid grid-cols-2 gap-3">
             <div>
@@ -329,7 +329,7 @@ function FlightSection({
   return (
     <div>
       <h2 className="text-admin-sm font-semibold text-admin-muted mb-2">{title}</h2>
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         {loading ? (
           <div className="divide-y divide-slate-50">
             {Array.from({ length: 4 }).map((_, i) => (

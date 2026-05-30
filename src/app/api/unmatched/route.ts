@@ -4,6 +4,7 @@ import { getUnmatchedBootstrapCandidates, getUnmatchedSummary } from '@/lib/unma
 import { getUnmatchedBootstrapEnvDefaults } from '@/lib/unmatched-bootstrap-config';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
+import { rateLimitMutation } from '@/lib/rate-limiter';
 
 // ── Internal interfaces for type safety (no `as any`) ──
 interface AttractionBase {
@@ -31,6 +32,9 @@ interface UnmatchedSingle {
  * body: { items: Array<{ activity, package_id?, package_title?, day_number?, country?, region? }> }
  */
 export async function POST(request: NextRequest) {
+  const limited = await rateLimitMutation(request);
+  if (limited) return limited;
+
   if (!isSupabaseConfigured) return NextResponse.json({ success: false });
 
   try {

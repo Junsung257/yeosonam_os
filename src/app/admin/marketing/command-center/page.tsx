@@ -15,6 +15,13 @@ interface MarketingNextAction {
   action_url: string;
   action_label: string;
   automation_level: number;
+  ledger?: {
+    id: string;
+    action_id: string;
+    status: 'open' | 'applied' | 'dismissed' | 'expired';
+    applied_at: string | null;
+    dismissed_at: string | null;
+  };
 }
 
 interface MarketingAssetGroup {
@@ -33,6 +40,14 @@ interface MarketingAssetGroup {
     card_news: { total: number; confirmed: number; ig_published: number; ig_queued: number; ig_failed: number; threads_published: number };
     ads: { campaigns: number; active_campaigns: number; creatives: number; deployed_creatives: number; total_spend_krw: number };
     distribution: { scheduled: number; published: number; failed: number };
+    indexing: {
+      latest_blog_slug: string | null;
+      gsc_impressions: number;
+      gsc_clicks: number;
+      gsc_position: number | null;
+      health_score: number;
+      last_seen_date: string | null;
+    };
   };
   flags: string[];
   next_actions: MarketingNextAction[];
@@ -42,6 +57,29 @@ interface ResponseShape {
   checked_at: string;
   groups: MarketingAssetGroup[];
   actions: MarketingNextAction[];
+}
+
+interface SnapshotTrendPoint {
+  date: string;
+  products: number;
+  avg_readiness: number;
+  avg_gsc_health: number;
+  critical_actions: number;
+  high_actions: number;
+  active_campaigns: number;
+  spend_krw: number;
+}
+
+interface SnapshotResponse {
+  checked_at?: string;
+  trend: SnapshotTrendPoint[];
+  summary: {
+    latest: SnapshotTrendPoint;
+    readiness_delta: number;
+    gsc_delta: number;
+  } | null;
+  error?: string;
+  skipped?: string;
 }
 
 const SEVERITY_CLASS: Record<Severity, string> = {
@@ -80,18 +118,25 @@ function canCreateDraft(action: MarketingNextAction) {
 
 export default function MarketingCommandCenterPage() {
   const [data, setData] = useState<ResponseShape | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
 
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/admin/marketing/asset-groups?limit=40', { cache: 'no-store' });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData(await res.json());
+      const [assetRes, snapshotRes] = await Promise.all([
+        fetch('/api/admin/marketing/asset-groups?limit=40', { cache: 'no-store' }),
+        fetch('/api/admin/marketing/snapshots?days=14', { cache: 'no-store' }),
+      ]);
+      if (!assetRes.ok) throw new Error(`Asset groups HTTP ${assetRes.status}`);
+      if (!snapshotRes.ok) throw new Error(`Snapshots HTTP ${snapshotRes.status}`);
+      setData(await assetRes.json());
+      setSnapshots(await snapshotRes.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
@@ -129,6 +174,27 @@ export default function MarketingCommandCenterPage() {
     }
   }
 
+  async function dismissAction(action: MarketingNextAction) {
+    setDismissingId(action.id);
+    setApplyMessage(null);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/marketing/actions/dismiss', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_id: action.id, reason: 'dismissed_from_command_center' }),
+      });
+      const payload = await res.json();
+      if (!res.ok) throw new Error(payload?.error ?? `HTTP ${res.status}`);
+      setApplyMessage('Recommendation dismissed.');
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Dismiss failed');
+    } finally {
+      setDismissingId(null);
+    }
+  }
+
   const summary = useMemo(() => {
     const groups = data?.groups ?? [];
     const actions = data?.actions ?? [];
@@ -143,6 +209,7 @@ export default function MarketingCommandCenterPage() {
 
   const topActions = (data?.actions ?? []).slice(0, 8);
   const groups = (data?.groups ?? []).slice().sort((a, b) => a.readiness_score - b.readiness_score);
+  const snapshotSummary = snapshots?.summary;
 
   return (
     <div className="space-y-6">
@@ -206,6 +273,57 @@ export default function MarketingCommandCenterPage() {
       </div>
 
       <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-admin-base font-semibold text-admin-text-2">Automation Trend</h2>
+          <span className="text-admin-xs text-admin-muted">Last 14 days</span>
+        </div>
+        {snapshots?.error || snapshots?.skipped ? (
+          <div className="py-4 text-admin-sm text-admin-muted">{snapshots.error ?? snapshots.skipped}</div>
+        ) : snapshotSummary ? (
+          <div className="grid gap-3 md:grid-cols-4">
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">Latest Readiness</p>
+              <p className={`mt-1 text-xl font-bold ${scoreClass(snapshotSummary.latest.avg_readiness)}`}>
+                {snapshotSummary.latest.avg_readiness}%
+                <span className="ml-2 text-admin-xs font-semibold text-admin-muted">
+                  {snapshotSummary.readiness_delta >= 0 ? '+' : ''}{snapshotSummary.readiness_delta}p
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">GSC Health</p>
+              <p className={`mt-1 text-xl font-bold ${scoreClass(snapshotSummary.latest.avg_gsc_health)}`}>
+                {snapshotSummary.latest.avg_gsc_health}%
+                <span className="ml-2 text-admin-xs font-semibold text-admin-muted">
+                  {snapshotSummary.gsc_delta >= 0 ? '+' : ''}{snapshotSummary.gsc_delta}p
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">Open Risk</p>
+              <p className="mt-1 text-xl font-bold text-red-700">
+                {snapshotSummary.latest.critical_actions}
+                <span className="ml-2 text-admin-xs font-semibold text-orange-700">
+                  high {snapshotSummary.latest.high_actions}
+                </span>
+              </p>
+            </div>
+            <div>
+              <p className="text-admin-xs font-semibold uppercase text-admin-muted">Active Campaigns</p>
+              <p className="mt-1 text-xl font-bold text-admin-text-2">
+                {snapshotSummary.latest.active_campaigns}
+                <span className="ml-2 text-admin-xs font-semibold text-admin-muted">
+                  {formatWon(snapshotSummary.latest.spend_krw)}
+                </span>
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="py-4 text-admin-sm text-admin-muted">No snapshots captured yet.</div>
+        )}
+      </section>
+
+      <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-admin-base font-semibold text-admin-text-2">Next Best Actions</h2>
           <span className="text-admin-xs text-admin-muted">{topActions.length} shown</span>
@@ -224,7 +342,14 @@ export default function MarketingCommandCenterPage() {
                   </span>
                 </div>
                 <div>
-                  <p className="text-admin-sm font-semibold text-admin-text-2">{action.title}</p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-admin-sm font-semibold text-admin-text-2">{action.title}</p>
+                    {action.ledger?.status === 'applied' && (
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                        applied
+                      </span>
+                    )}
+                  </div>
                   <p className="mt-1 text-admin-xs text-admin-muted">{action.reason}</p>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2">
@@ -241,6 +366,14 @@ export default function MarketingCommandCenterPage() {
                   <Link href={action.action_url} className="rounded-lg border border-admin-border-strong px-3 py-2 text-center text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
                     {action.action_label}
                   </Link>
+                  <button
+                    type="button"
+                    onClick={() => dismissAction(action)}
+                    disabled={dismissingId === action.id}
+                    className="rounded-lg border border-admin-border-strong px-3 py-2 text-admin-xs font-semibold text-admin-muted hover:bg-admin-bg disabled:opacity-50"
+                  >
+                    {dismissingId === action.id ? 'Dismissing...' : 'Dismiss'}
+                  </button>
                 </div>
               </div>
             ))}
@@ -260,6 +393,7 @@ export default function MarketingCommandCenterPage() {
                 <th className="border-b border-admin-border py-2 pr-3">Product</th>
                 <th className="border-b border-admin-border py-2 pr-3">Score</th>
                 <th className="border-b border-admin-border py-2 pr-3">Blog</th>
+                <th className="border-b border-admin-border py-2 pr-3">GSC</th>
                 <th className="border-b border-admin-border py-2 pr-3">Card News</th>
                 <th className="border-b border-admin-border py-2 pr-3">Ads</th>
                 <th className="border-b border-admin-border py-2 pr-3">Distribution</th>
@@ -275,6 +409,9 @@ export default function MarketingCommandCenterPage() {
                   </td>
                   <td className={`border-b border-admin-border py-3 pr-3 font-bold ${scoreClass(group.readiness_score)}`}>{group.readiness_score}%</td>
                   <td className="border-b border-admin-border py-3 pr-3">{group.stages.blog.published}/{group.stages.blog.total}</td>
+                  <td className="border-b border-admin-border py-3 pr-3">
+                    {group.stages.indexing.health_score}% / {group.stages.indexing.gsc_impressions.toLocaleString('ko-KR')} imp
+                  </td>
                   <td className="border-b border-admin-border py-3 pr-3">
                     {group.stages.card_news.total} total / {group.stages.card_news.ig_published} IG
                   </td>

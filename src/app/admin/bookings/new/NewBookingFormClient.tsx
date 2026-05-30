@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { maskPhone } from '@/lib/pii-mask';
 
 interface Package {
   id: string;
@@ -276,7 +277,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                   <button key={c.id} type="button"
                     onClick={() => { setForm(f => ({...f, leadCustomerId: c.id})); setCustomerSearch(c.name); }}
                     className={`w-full text-left px-4 py-2.5 text-sm hover:bg-admin-bg transition ${form.leadCustomerId === c.id ? 'bg-blue-50 text-blue-700 font-medium' : 'text-admin-text-2'}`}>
-                    {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{c.phone}</span>}
+                    {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{maskPhone(c.phone, 'cs_agent')}</span>}
                   </button>
                 ))}
               </div>
@@ -308,7 +309,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                   <button key={c.id} type="button"
                     onClick={() => { setSelectedPassengers(prev => [...prev, c]); setPassengerSearch(''); }}
                     className="w-full text-left px-4 py-2.5 text-sm hover:bg-admin-bg text-admin-text-2 transition flex items-center gap-2">
-                    <span>+ {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{c.phone}</span>}</span>
+                    <span>+ {c.name} {c.phone && <span className="text-admin-muted-2 ml-2">{maskPhone(c.phone, 'cs_agent')}</span>}</span>
                     {isPassportExpiringSoon(c.passport_expiry) && (
                       <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded">여권만료임박</span>
                     )}

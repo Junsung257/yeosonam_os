@@ -184,6 +184,22 @@
 
 ---
 
+## Marketing CAPI / Command Center additions (2026-05-30)
+
+| Variable | Purpose |
+|---|---|
+| `META_CAPI_ACCESS_TOKEN` | Meta Conversions API server-event token. Falls back to `META_ACCESS_TOKEN` or `META_ADS_ACCESS_TOKEN` when unset. |
+| `META_GRAPH_API_VERSION` | Optional Meta Graph API version for CAPI calls. Defaults to `v23.0`; bump this when Meta deprecates old versions. |
+| `META_PIXEL_ID` | Server-side CAPI Pixel ID. Falls back to `NEXT_PUBLIC_META_PIXEL_ID` when unset. |
+| `NEXT_PUBLIC_META_PIXEL_ID` | Browser Meta Pixel ID and fallback Pixel ID for server CAPI. |
+| `GSC_SITE_URL` | Exact Google Search Console property URL used by GSC page metrics and URL Inspection. |
+| `GSC_SERVICE_ACCOUNT_JSON` | Dedicated Search Console service account JSON. Falls back to `GOOGLE_SERVICE_ACCOUNT_JSON`. |
+
+New DB migrations that must be applied for full persistence:
+
+- `supabase/migrations/20260530090000_marketing_recommendations_ledger.sql`
+- `supabase/migrations/20260530091000_marketing_capi_and_asset_snapshots.sql`
+
 ## 🚨 누락 시 영향도
 
 | 누락 변수 | 영향 |

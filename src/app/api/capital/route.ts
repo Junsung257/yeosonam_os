@@ -9,9 +9,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured)
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+
+  const { searchParams } = new URL(request.url);
+  const summaryOnly = searchParams.get('summary') === '1';
+  if (summaryOnly) {
+    const { data, error } = await supabaseAdmin.rpc('get_capital_total');
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
+
+    return NextResponse.json(data ?? { entries: [], total: 0 }, { headers: { 'Cache-Control': 'no-store' } });
+  }
 
   const { data, error } = await supabaseAdmin
     .from('capital_entries')

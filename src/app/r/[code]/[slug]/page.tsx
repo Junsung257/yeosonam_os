@@ -76,22 +76,9 @@ export default async function AffiliateShortLinkPage(props: Params) {
   // 서버측 클릭 추적 (best-effort) — 실패해도 redirect 진행.
   // /api/influencer/track 은 쿠키도 발급하지만 redirect 시 쿠키 set 어려우므로,
   // 클라이언트가 /packages/{id}?ref={code} 도착 시 다시 ref 처리되어 쿠키 발급됨.
-  if (isSupabaseConfigured && code) {
-    try {
-      // affiliate_touchpoints 에 직접 INSERT (단축링크 도달 자체를 기록)
-      await supabaseAdmin.from('affiliate_touchpoints').insert({
-        session_id: `r-shortlink-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        referral_code: code,
-        package_id: slug,
-        sub_id: subRaw || 'shortlink',
-        is_bot: false,
-        is_duplicate: false,
-      } as never);
-    } catch { /* */ }
-  }
-
   // /packages/{id}?ref={code} 로 영구 redirect (302 — 검색 인덱싱 안 됨)
   const refParam = code || normalizeAffiliateReferralCode(rawCode);
   const target = `/packages/${encodeURIComponent(slug)}?ref=${encodeURIComponent(refParam)}&utm_source=shortlink${subRaw ? `&sub=${encodeURIComponent(subRaw)}` : ''}`;
-  redirect(target);
+  const trackUrl = `/api/influencer/track?ref=${encodeURIComponent(refParam)}&pkg=${encodeURIComponent(slug)}&sub=${encodeURIComponent(subRaw || 'shortlink')}&next=${encodeURIComponent(target)}`;
+  redirect(trackUrl);
 }

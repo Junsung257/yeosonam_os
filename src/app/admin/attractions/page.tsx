@@ -739,7 +739,7 @@ export default function AttractionsPage() {
             const isExpanded = expandedId === a.id;
             const isPhotoOpen = photoPanel?.id === a.id;
             return (
-              <div key={a.id} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden hover:shadow-admin-xs transition">
+              <div key={a.id} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden hover:shadow-admin-xs transition">
                 {/* 메인 행 */}
                 <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : a.id)}>
                   {/* 사진 썸네일 */}

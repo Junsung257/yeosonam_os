@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { fmtDateTime } from '@/lib/admin-utils';
+import { maskPhone } from '@/lib/pii-mask';
 
 interface MockApiConfig {
   id:        string;
@@ -119,22 +120,22 @@ export default function AdminConciergePage() {
 
       {/* 요약 카드 */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-admin-sm text-admin-muted">완료된 거래</p>
           <p className="text-2xl font-bold text-emerald-600 mt-1">{completedCount}</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-admin-sm text-admin-muted">순마진 합계</p>
           <p className="text-2xl font-bold text-blue-700 mt-1">{totalMargin.toLocaleString()}원</p>
         </div>
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <p className="text-admin-sm text-admin-muted">실패 건수</p>
           <p className="text-2xl font-bold text-red-600 mt-1">{failCount}</p>
         </div>
       </div>
 
       {/* Mock API 제어판 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-4 py-3 border-b border-admin-border-mid">
           <h2 className="text-admin-base font-semibold text-admin-text-2">Mock API 에러 주입 제어판</h2>
           <p className="text-admin-sm text-admin-muted mt-0.5">success / fail / timeout 모드 설정 후 저장</p>
@@ -188,7 +189,7 @@ export default function AdminConciergePage() {
       </div>
 
       {/* 트랜잭션 목록 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-4 py-3 border-b border-admin-border-mid flex items-center justify-between">
           <h2 className="text-admin-base font-semibold text-admin-text-2">트랜잭션 목록</h2>
           <div className="flex items-center gap-2">
@@ -241,7 +242,7 @@ export default function AdminConciergePage() {
                     <td className="px-3 py-2">
                       <p className="font-medium text-admin-text-2">{tx.customer_name ?? '-'}</p>
                       {tx.customer_phone && (
-                        <p className="text-[11px] text-admin-muted-2">{tx.customer_phone}</p>
+                        <p className="text-[11px] text-admin-muted-2">{maskPhone(tx.customer_phone, 'cs_agent')}</p>
                       )}
                     </td>
                     <td className="px-3 py-2">

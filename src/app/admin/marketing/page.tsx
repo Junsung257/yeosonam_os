@@ -282,7 +282,7 @@ export default function MarketingDashboardPage() {
                 {topCampaigns.map((c, idx) => {
                   const grade = getRoasGrade(c.latest_roas ?? 0);
                   return (
-                    <div key={c.id} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+                    <div key={c.id} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
                       <div className="flex items-start justify-between">
                         <span className="text-xl font-bold text-admin-muted-2">#{idx + 1}</span>
                         <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${grade.bgColor} ${grade.color}`}>
@@ -303,7 +303,7 @@ export default function MarketingDashboardPage() {
           </div>
 
           {/* 캠페인 전체 테이블 */}
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
             <div className="px-4 py-3 border-b border-admin-border-mid">
               <h2 className="text-admin-base font-semibold text-admin-text-2">전체 캠페인</h2>
             </div>

@@ -150,7 +150,7 @@ export function useMarketingGap(dataEnabled: boolean): {
       prevTotalRevenue,
     });
     setLoading(false);
-  }, [dataEnabled]);
+  }, []);
 
   useEffect(() => {
     fetchData();

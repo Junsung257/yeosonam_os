@@ -105,7 +105,7 @@ export default function BandImportPage() {
       </div>
 
       {/* 입력 영역 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">
         <div>
           <label className="block text-sm font-medium text-admin-text-2 mb-1">
             밴드 게시글 URL <span className="text-admin-muted-2">(선택 — 중복 방지용)</span>
@@ -155,7 +155,7 @@ export default function BandImportPage() {
 
       {/* AI 추출 미리보기 */}
       {preview && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">
           <h2 className="text-base font-semibold text-admin-text-2">AI 추출 결과</h2>
 
           <div className="grid grid-cols-2 gap-3 text-sm">
@@ -198,7 +198,7 @@ export default function BandImportPage() {
       )}
 
       {/* 임포트 이력 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5">
         <h2 className="text-base font-semibold text-admin-text-2 mb-3">임포트 이력</h2>
         {logs.length === 0 ? (
           <p className="text-sm text-admin-muted-2">아직 임포트 이력이 없습니다</p>

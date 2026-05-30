@@ -16,6 +16,7 @@
 'use client';
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
+import SensitiveRawText from '@/components/admin/SensitiveRawText';
 
 interface FieldConfidence {
   score: number;
@@ -221,7 +222,7 @@ export default function PackageReviewPage() {
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-3">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="h-3.5 bg-admin-surface-2 rounded animate-pulse" style={{ width: `${90 - i * 5}%` }} />
         ))}
@@ -484,10 +485,8 @@ export default function PackageReviewPage() {
 
       {/* 원문 발췌 (참고용) */}
       <div className="mt-6 bg-admin-bg border border-admin-border-mid rounded-admin-md p-4">
-        <h3 className="text-sm font-bold text-admin-text-2 mb-2">📄 원문 (raw_text) — 참고용</h3>
-        <pre className="text-[11px] text-admin-muted whitespace-pre-wrap font-mono max-h-96 overflow-auto">
-          {pkg.raw_text}
-        </pre>
+        <h3 className="text-sm font-bold text-admin-text-2 mb-2">검수 원문 참고</h3>
+        <SensitiveRawText value={pkg.raw_text} title="검수 원문" />
       </div>
     </div>
   );

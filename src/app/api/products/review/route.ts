@@ -7,7 +7,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createHash } from 'crypto';
 import { supabaseAdmin } from '@/lib/supabase';
 import { searchPexelsPhotos } from '@/lib/pexels';
 import { generateAdVariants } from '@/lib/ai';
@@ -15,6 +14,7 @@ import { checkAiCopyConsistency } from '@/lib/ai-consistency-checker';
 import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
+import { rawTextHash, safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const PRODUCT_FAQ_FALLBACK = `
 다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
@@ -268,11 +268,13 @@ async function handleApprove(body: {
         .maybeSingle();
       const rawText = prod?.raw_extracted_text ?? '';
       if (rawText) {
-        const fingerprint = createHash('sha256').update(rawText.slice(0, 500)).digest('hex');
-        flywheelJson.text_fingerprint     = fingerprint;
-        flywheelJson.supplier_inferred    = 'ETC';
-        flywheelJson.supplier_name        = resolved_supplier_name;
-        flywheelJson.land_operator_id     = resolved_supplier_id;
+        const fingerprint = rawTextHash(rawText);
+        if (fingerprint) {
+          flywheelJson.text_fingerprint     = fingerprint;
+          flywheelJson.supplier_inferred    = 'ETC';
+          flywheelJson.supplier_name        = resolved_supplier_name;
+          flywheelJson.land_operator_id     = resolved_supplier_id;
+        }
       }
     } catch (e) {
       console.warn('[handleApprove] fingerprint 계산 실패:', e);
@@ -344,8 +346,10 @@ async function handleReject(body: { product_id: string; reason?: string }) {
         ? ((qLog as { leak_incidents: Array<{ patternId?: string; field?: string; matched?: string }> }).leak_incidents)
         : [];
 
-      const rawExcerpt = ((prod as { raw_extracted_text?: string }).raw_extracted_text
-                       ?? (pkg as { raw_text?: string } | null)?.raw_text ?? '').slice(0, 500);
+      const rawExcerpt = safeRawTextExcerpt(
+        (prod as { raw_extracted_text?: string }).raw_extracted_text
+        ?? (pkg as { raw_text?: string } | null)?.raw_text,
+      );
 
       const rows: Array<Record<string, unknown>> = [];
       rows.push({

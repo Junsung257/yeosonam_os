@@ -50,6 +50,7 @@ import { recordSignal, lookupSignal } from '@/lib/parser/classification-signals'
 import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendation-copy';
 import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const ATTRACTION_EXTRACT_FALLBACK = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
 
@@ -833,7 +834,7 @@ const postHandler = async (request: NextRequest) => {
           catalogSplitWarning = {
             headerCount,
             processedCount: 1,
-            raw_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+            raw_excerpt: safeRawTextExcerpt(parsedDocument.rawText) ?? '',
           };
           console.warn(`[Upload API] ⚠️ catalog split silent fallback — 헤더 ${headerCount}개 감지됐는데 1상품으로 처리됨`);
           if (isSupabaseConfigured) {
@@ -1195,7 +1196,7 @@ const postHandler = async (request: NextRequest) => {
               reflection:       `V2 cross-validation 실패 [${c.severity}]: ${c.message}`,
               before_value:     null,
               after_value:      null,
-              raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+              raw_text_excerpt: safeRawTextExcerpt(parsedDocument.rawText),
               severity:         c.severity,
               category:         'v2_cross_validation_failure',
               land_operator_id: effectiveLandOperatorId,
@@ -1303,7 +1304,7 @@ JSON 배열로 응답:
               reflection: `업로드 파싱 실패: ${e}`,
               before_value: null,
               after_value: null,
-              raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+              raw_text_excerpt: safeRawTextExcerpt(parsedDocument.rawText),
               severity: 'critical',
               category: 'parse_failure',
               land_operator_id: effectiveLandOperatorId,
@@ -1323,7 +1324,7 @@ JSON 배열로 응답:
             source_filename: fileName,
             file_hash: fileHash,
             normalized_content_hash: normalizedCatalogHash,
-            raw_text_chunk: (parsedDocument.rawText ?? '').slice(0, 12000),
+            raw_text_chunk: safeRawTextExcerpt(parsedDocument.rawText, 12000),
             parsed_draft_json: ed as unknown as Record<string, unknown>,
             product_title: title,
             land_operator_id: effectiveLandOperatorId,
@@ -1339,7 +1340,7 @@ JSON 배열로 응답:
             reflection: `낮은 파싱 신뢰도: ${w}`,
             before_value: null,
             after_value: null,
-            raw_text_excerpt: (parsedDocument.rawText ?? '').slice(0, 500),
+            raw_text_excerpt: safeRawTextExcerpt(parsedDocument.rawText),
             severity: 'high',
             category: 'low_confidence',
             land_operator_id: effectiveLandOperatorId,
@@ -1858,7 +1859,7 @@ JSON 배열로 응답:
           source_filename: fileName,
           file_hash: fileHash,
           normalized_content_hash: normalizedCatalogHash,
-          raw_text_chunk: (parsedDocument.rawText ?? '').slice(0, 12000),
+          raw_text_chunk: safeRawTextExcerpt(parsedDocument.rawText, 12000),
           parsed_draft_json: ed as unknown as Record<string, unknown>,
           product_title: title,
           land_operator_id: effectiveLandOperatorId,

@@ -6,6 +6,7 @@ import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, FormRow } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, X } from 'lucide-react';
+import { maskPhone } from '@/lib/pii-mask';
 
 interface Tenant {
   id:               string;
@@ -147,7 +148,7 @@ export default function TenantsPage() {
       {loading ? (
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, i) => (
-            <div key={i} className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 flex items-center gap-4">
+            <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 flex items-center gap-4">
               <div className="h-4 bg-admin-surface-2 rounded animate-pulse flex-1" />
               <div className="h-4 bg-admin-surface-2 rounded-full animate-pulse w-20" />
               <div className="h-4 bg-admin-surface-2 rounded animate-pulse w-24" />
@@ -175,7 +176,7 @@ export default function TenantsPage() {
                       </span>
                     </div>
                     {t.contact_name && (
-                      <p className="text-admin-xs text-admin-muted mt-1">담당: {t.contact_name} {t.contact_phone && `/ ${t.contact_phone}`}</p>
+                      <p className="text-admin-xs text-admin-muted mt-1">담당: {t.contact_name} {t.contact_phone && `/ ${maskPhone(t.contact_phone, 'finance')}`}</p>
                     )}
                   </div>
                   <span className="text-admin-xs bg-brand-light text-brand px-2 py-0.5 rounded-admin-xs font-semibold admin-num">

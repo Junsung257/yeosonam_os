@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { getFareCalendar } from '@/lib/travel-providers/mrt';
 
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const QuerySchema = z.object({
   from: z.string().regex(/^[A-Z]{3}$/),
   to: z.string().regex(/^[A-Z]{3}$/),

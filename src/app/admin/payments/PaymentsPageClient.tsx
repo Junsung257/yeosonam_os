@@ -882,7 +882,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {/* 트랜잭션 테이블 */}
       {isLoading ? (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-2">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex gap-4 py-2 border-b border-slate-50 last:border-0">
               {[80, 120, 160, 80, 60, 60].map((w, j) => (
@@ -892,7 +892,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] py-14 text-center">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs py-14 text-center">
           <div className="flex flex-col items-center gap-3">
             <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
             <p className="text-admin-sm font-medium text-admin-muted">해당 항목이 없습니다.</p>
@@ -934,7 +934,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           </div>
         )}
 
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           <table className="w-full">
             <thead className="bg-admin-bg border-b border-admin-border-mid">
               <tr>
@@ -1122,7 +1122,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         <div className="mt-4">
           <button
             onClick={() => setTrashOpen(o => !o)}
-            className="w-full flex items-center justify-between px-4 py-3 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] text-admin-sm text-admin-muted hover:bg-admin-bg transition"
+            className="w-full flex items-center justify-between px-4 py-3 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs text-admin-sm text-admin-muted hover:bg-admin-bg transition"
           >
             <span className="flex items-center gap-2">
               <span>제외된 내역 {trashTxs.length}건 보기</span>
@@ -1131,7 +1131,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           </button>
 
           {trashOpen && (
-            <div className="mt-2 bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+            <div className="mt-2 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
               <table className="w-full text-admin-sm">
                 <thead className="bg-admin-bg border-b border-admin-border-mid">
                   <tr>

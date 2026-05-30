@@ -166,7 +166,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   if (loading) return (
     <div className="p-6 space-y-4 max-w-5xl mx-auto">
       <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-6 space-y-4">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-4">
         {Array.from({ length: 5 }).map((_, i) => (
           <div key={i} className="space-y-1.5">
             <div className="h-3 bg-admin-surface-2 rounded animate-pulse w-24" />
@@ -202,7 +202,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         </div>
       </div>
       {/* 기본 정보 */}
-      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+      <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         <h2 className="text-sm font-bold text-admin-text">기본 정보</h2>
         <div>
           <label className="text-xs font-bold text-admin-muted">이름 *</label>
@@ -260,7 +260,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         </div>
       </section>
       {/* Scope */}
-      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+      <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         <h2 className="text-sm font-bold text-admin-text">Scope (적용 조건)</h2>
         {tpl.tier === 1 && (
           <p className="text-xs text-admin-muted">Tier 1 은 모든 상품에 적용됩니다 ({`{"all": true}`}).</p>
@@ -300,7 +300,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         )}
       </section>
       {/* Notices */}
-      <section className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-4 space-y-3">
+      <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-bold text-admin-text">Notice 블록 ({tpl.notices.length}개)</h2>
           <button

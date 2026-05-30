@@ -137,7 +137,7 @@ export default function TenantTokensPage() {
 
       {/* 토큰 추가 폼 */}
       {showForm && (
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-5 space-y-4">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">
           <h2 className="text-base font-semibold text-admin-text-2">새 토큰 등록</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -203,7 +203,7 @@ export default function TenantTokensPage() {
       )}
 
       {/* 토큰 목록 */}
-      <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-5 py-3 border-b border-admin-border flex items-center justify-between">
           <h2 className="text-sm font-semibold text-admin-text-2">등록된 토큰</h2>
           <span className="text-xs text-admin-muted-2">access_token은 표시되지 않습니다 (보안)</span>

@@ -13,6 +13,7 @@ import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
+import { getDestinationUrl } from '@/lib/regions';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -537,6 +538,7 @@ export default async function HomePage() {
       />
 
       <GlobalNav />
+      <h1 className="sr-only">여소남 프리미엄 패키지 여행</h1>
 
       {/* ── 히어로 배너 — 감성 훅 먼저 ── */}
       {heroSlides.length > 0 && (
@@ -586,7 +588,7 @@ export default async function HomePage() {
               {topDests.map((d, idx) => (
                 <Link
                   key={d.destination}
-                  href={`/destinations/${encodeURIComponent(d.destination)}`}
+                  href={getDestinationUrl(d.destination)}
                   className="group relative h-52 md:h-64 rounded-[16px] overflow-hidden bg-bg-section shadow-card hover:shadow-card-hover transition-shadow card-touch"
                 >
                   {d.image ? (

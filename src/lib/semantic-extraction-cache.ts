@@ -13,6 +13,7 @@
 import { createHash } from 'crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import type { ExtractedData } from '@/lib/parser';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 export function hashRawText(rawText: string): string {
   return createHash('sha256').update(rawText.trim()).digest('hex');
@@ -68,7 +69,7 @@ export async function storeExtractionCache(args: {
       .from('semantic_extraction_cache')
       .upsert({
         raw_text_hash:         hash,
-        raw_text_snippet:      args.rawText.slice(0, 500),
+        raw_text_snippet:      safeRawTextExcerpt(args.rawText) ?? '',
         destination:           args.destination ?? null,
         land_operator_id:      args.landOperatorId ?? null,
         cached_extracted_data: args.extractedData,

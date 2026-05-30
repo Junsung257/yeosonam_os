@@ -463,7 +463,7 @@ export function ContentCalendarPage() {
             ].map((stat) => (
               <div
                 key={stat.label}
-                className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] px-4 py-3 text-center"
+                className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-4 py-3 text-center"
               >
                 <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
                 <p className="text-[11px] text-admin-muted-2">{stat.label}</p>
@@ -481,7 +481,7 @@ export function ContentCalendarPage() {
         )}
 
         {/* 캘린더 */}
-        <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
           {/* 헤더 */}
           <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
             <button onClick={prevMonth} className="text-sm text-admin-muted hover:text-admin-text-2">
@@ -645,7 +645,7 @@ function RecommendationsPanel({
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <button
         onClick={onToggle}
         className="w-full px-6 py-4 flex items-center justify-between hover:bg-admin-bg transition-colors"
@@ -812,7 +812,7 @@ function DayDetailPanel({
   };
 
   return (
-    <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+    <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
       <div className="px-6 py-4 border-b border-admin-border flex items-center justify-between">
         <div>
           <h2 className="font-semibold text-admin-text-2">

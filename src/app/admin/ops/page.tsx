@@ -169,7 +169,7 @@ export default function AdminOpsCronPage() {
 
       {data && (
         <>
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
             <div className="px-3 py-2 bg-admin-bg border-b border-admin-border-mid text-admin-xs font-semibold text-admin-text-2">
               cron_health (전체)
             </div>
@@ -190,7 +190,7 @@ export default function AdminOpsCronPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
             <div className="px-3 py-2 bg-admin-bg border-b border-admin-border-mid text-admin-xs font-semibold text-admin-text-2">
               최근 24시간 비성공 실행 (전체 크론)
             </div>
@@ -213,7 +213,7 @@ export default function AdminOpsCronPage() {
             )}
           </div>
 
-          <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] p-3">
+          <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3">
             <h2 className="text-admin-xs font-semibold text-admin-text-2 mb-2">7일 성공률 (%)</h2>
             <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto">
               {Object.entries(data.success_rate_7d_percent || {})

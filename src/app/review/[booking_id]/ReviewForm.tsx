@@ -92,9 +92,9 @@ export default function ReviewForm({ bookingId }: Props) {
     <div className="mt-6 space-y-5">
       {/* 전체 평점 */}
       <section className="p-5 bg-white border border-slate-200 rounded-xl">
-        <label className="block text-[13px] font-semibold text-slate-700 mb-3">
+        <span className="block text-[13px] font-semibold text-slate-700 mb-3">
           전체 만족도 <span className="text-rose-500">*</span>
-        </label>
+        </span>
         <StarInput value={overall} onChange={setOverall} />
         {overall > 0 && (
           <p className="mt-2 text-[12px] text-slate-500">
@@ -127,10 +127,10 @@ export default function ReviewForm({ bookingId }: Props) {
       {/* 후기 내용 */}
       <section className="p-5 bg-white border border-slate-200 rounded-xl space-y-3">
         <div>
-          <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+          <label htmlFor="review-title" className="block text-[13px] font-semibold text-slate-700 mb-1.5">
             후기 제목 (선택)
           </label>
-          <input
+          <input id="review-title"
             value={title}
             onChange={e => setTitle(e.target.value)}
             maxLength={50}
@@ -139,10 +139,10 @@ export default function ReviewForm({ bookingId }: Props) {
           />
         </div>
         <div>
-          <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+          <label htmlFor="review-body" className="block text-[13px] font-semibold text-slate-700 mb-1.5">
             자세한 후기 <span className="text-rose-500">*</span>
           </label>
-          <textarea
+          <textarea id="review-body"
             value={body}
             onChange={e => setBody(e.target.value)}
             rows={5}
@@ -153,10 +153,10 @@ export default function ReviewForm({ bookingId }: Props) {
           <p className="mt-1 text-[11px] text-slate-400">{body.length}/2,000자</p>
         </div>
         <div>
-          <label className="block text-[13px] font-semibold text-slate-700 mb-1.5">
+          <label htmlFor="review-pros" className="block text-[13px] font-semibold text-slate-700 mb-1.5">
             좋았던 점 키워드 (쉼표로 구분)
           </label>
-          <input
+          <input id="review-pros"
             value={prosText}
             onChange={e => setProsText(e.target.value)}
             placeholder="예: 노팁, 친절한 가이드, 깨끗한 호텔"
@@ -167,9 +167,9 @@ export default function ReviewForm({ bookingId }: Props) {
 
       {/* 추천 여부 */}
       <section className="p-5 bg-white border border-slate-200 rounded-xl">
-        <label className="block text-[13px] font-semibold text-slate-700 mb-3">
+        <span className="block text-[13px] font-semibold text-slate-700 mb-3">
           지인에게 추천하시겠어요?
-        </label>
+        </span>
         <div className="flex gap-2">
           <button
             type="button"
