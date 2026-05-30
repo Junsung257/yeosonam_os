@@ -1,4 +1,5 @@
 import type React from 'react';
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import DetailClient from './DetailClient';
@@ -562,6 +563,17 @@ export default async function PackageDetailPage({
   return (
     <>
       <UnmatchedActivitiesBeacon items={unmatchedItems} />
+      {normalizedPkg && (
+        <div className="sr-only">
+          <h1>{normalizedPkg.display_title || normalizedPkg.title || '여소남 패키지 여행 상품 상세'}</h1>
+          <p>
+            {normalizedPkg.destination ? `${normalizedPkg.destination} 여행 ` : ''}
+            일정, 가격, 포함 사항, 취소 규정, 예약 문의 정보를 확인할 수 있는 여소남 패키지 상품 상세 페이지입니다.
+          </p>
+          <Link href="/group-inquiry">예약 문의</Link>
+          <Link href="/packages">다른 패키지 보기</Link>
+        </div>
+      )}
       {pkgJsonLd && (
         <script
           type="application/ld+json"
