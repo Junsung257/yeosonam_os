@@ -29,7 +29,7 @@ export async function GET() {
 
     // 사용자 참여 정보 조회
     const challengeIds = (challenges ?? []).map((c: any) => c.id);
-    let participationMap = new Map<string, { progress: number; completed: boolean }>();
+    const participationMap = new Map<string, { progress: number; completed: boolean }>();
 
     if (challengeIds.length > 0) {
       const { data: participation } = await supabaseAdmin

@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { supabaseAdmin } from '@/lib/supabase';
 import DetailClient from './DetailClient';
 import ReviewsSection from '@/components/reviews/ReviewsSection';
-import RecentViews from '@/components/customer/RecentViews';
+import RecentViewsDeferred from '@/components/customer/RecentViewsDeferred';
 import type { Metadata } from 'next';
 import { matchAttractions, normalizeDays, buildAttractionIndex, matchAttractionIndexed } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
@@ -589,7 +589,7 @@ export default async function PackageDetailPage({
         <ReviewsSection packageId={id} limit={5} />
       </div>
       {/* 최근 본 상품 / 유사 상품 */}
-      <RecentViews currentPackageId={id} />
+      <RecentViewsDeferred currentPackageId={id} />
     </>
   );
 }
