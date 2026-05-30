@@ -36,6 +36,7 @@ const nextConfig = {
   ],
   experimental: {
     webpackBuildWorker: false,
+    prerenderEarlyExit: false,
   },
   images: {
     formats: ['image/avif', 'image/webp'],
