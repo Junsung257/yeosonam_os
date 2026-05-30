@@ -1,7 +1,7 @@
 'use client';
 
 import Script from 'next/script';
-import { useAnalyticsConsent } from '@/lib/consent';
+import { hasMarketingConsent, useMarketingConsent } from '@/lib/consent';
 import { thirdPartyScriptType } from '@/lib/third-party-script-type';
 
 declare global {
@@ -11,20 +11,16 @@ declare global {
 }
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
-const META_ALLOWED_HOSTS = new Set(['yeosonam.com', 'www.yeosonam.com']);
+const META_ALLOWED_HOSTS = new Set(['yeosonam.com', 'www.yeosonam.com', 'localhost', '127.0.0.1']);
 
 function isMetaTrackingHost() {
   if (typeof window === 'undefined') return false;
+  if (process.env.NEXT_PUBLIC_META_PIXEL_ALLOW_PREVIEW === '1') return true;
   return META_ALLOWED_HOSTS.has(window.location.hostname);
 }
 
-/**
- * Meta 픽셀 초기화 + PageView 자동 추적
- * NEXT_PUBLIC_META_PIXEL_ID 없으면 렌더링 안 함
- * PIPA: 사용자 분석 동의 전엔 발화 안 함 (`@/lib/consent`)
- */
 export default function MetaPixel() {
-  const consent = useAnalyticsConsent();
+  const consent = useMarketingConsent();
   if (!PIXEL_ID || !consent || !isMetaTrackingHost()) return null;
 
   return (
@@ -62,88 +58,104 @@ export default function MetaPixel() {
   );
 }
 
-// 동의 게이트 — 외부에서 import 시 사용
-import { hasAnalyticsConsent } from '@/lib/consent';
+function createMetaEventId(eventName: string) {
+  const random =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return `ys:${eventName}:${random}`;
+}
 
-/**
- * ViewContent 이벤트 (상품 상세·LP 등)
- * `content_ids` 는 카탈로그·전환 최적화용으로 Meta 권장 필드.
- * 동의 없으면 noop.
- */
+function sendServerConversion(eventName: string, eventId: string, payload: Record<string, unknown>) {
+  if (!hasMarketingConsent() || !isMetaTrackingHost()) return;
+  const body = {
+    event_name: eventName,
+    event_id: eventId,
+    event_source_url: typeof window !== 'undefined' ? window.location.href : undefined,
+    ...payload,
+  };
+  const json = JSON.stringify(body);
+  if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+    navigator.sendBeacon('/api/tracking/meta-conversion', new Blob([json], { type: 'application/json' }));
+    return;
+  }
+  void fetch('/api/tracking/meta-conversion', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: json,
+    keepalive: true,
+  }).catch(() => {});
+}
+
 export function trackViewContent(params: {
   content_name: string;
   content_category: string;
   value: number;
-  /** 패키지 UUID·SKU 등 — 있으면 content_type 과 함께 전송 */
   content_ids?: string[];
-  /** 기본 product (Meta 카탈로그 관례) */
   content_type?: string;
 }) {
-  if (!hasAnalyticsConsent() || !isMetaTrackingHost()) return;
-  if (typeof window !== 'undefined' && window.fbq) {
-    const payload: Record<string, unknown> = {
-      content_name: params.content_name,
-      content_category: params.content_category,
-      value: params.value,
-      currency: 'KRW',
-    };
-    if (params.content_ids?.length) {
-      payload.content_ids = params.content_ids;
-      payload.content_type = params.content_type ?? 'product';
-    }
-    window.fbq('track', 'ViewContent', payload);
+  if (!hasMarketingConsent() || !isMetaTrackingHost()) return;
+  const eventId = createMetaEventId('ViewContent');
+  const payload: Record<string, unknown> = {
+    content_name: params.content_name,
+    content_category: params.content_category,
+    value: params.value,
+    currency: 'KRW',
+  };
+  if (params.content_ids?.length) {
+    payload.content_ids = params.content_ids;
+    payload.content_type = params.content_type ?? 'product';
   }
+  if (typeof window !== 'undefined' && window.fbq) {
+    window.fbq('track', 'ViewContent', payload, { eventID: eventId });
+  }
+  sendServerConversion('ViewContent', eventId, payload);
 }
 
-/**
- * Lead 이벤트 (문의·리드 제출)
- * 동의 없으면 noop.
- */
 export function trackLead(params: {
   content_name: string;
   value: number;
   content_ids?: string[];
   content_type?: string;
 }) {
-  if (!hasAnalyticsConsent() || !isMetaTrackingHost()) return;
-  if (typeof window !== 'undefined' && window.fbq) {
-    const payload: Record<string, unknown> = {
-      content_name: params.content_name,
-      value: params.value,
-      currency: 'KRW',
-    };
-    if (params.content_ids?.length) {
-      payload.content_ids = params.content_ids;
-      payload.content_type = params.content_type ?? 'product';
-    }
-    window.fbq('track', 'Lead', payload);
+  if (!hasMarketingConsent() || !isMetaTrackingHost()) return;
+  const eventId = createMetaEventId('Lead');
+  const payload: Record<string, unknown> = {
+    content_name: params.content_name,
+    value: params.value,
+    currency: 'KRW',
+  };
+  if (params.content_ids?.length) {
+    payload.content_ids = params.content_ids;
+    payload.content_type = params.content_type ?? 'product';
   }
+  if (typeof window !== 'undefined' && window.fbq) {
+    window.fbq('track', 'Lead', payload, { eventID: eventId });
+  }
+  sendServerConversion('Lead', eventId, payload);
 }
 
-/**
- * Purchase 이벤트 (결제·예약 완료)
- * 서버사이드 CAPI 포스트백과 별도로 브라우저 픽셀에서도 전송.
- * 동의 없으면 noop.
- */
 export function trackPurchase(params: {
   value: number;
   content_ids?: string[];
   content_type?: string;
   num_items?: number;
 }) {
-  if (!hasAnalyticsConsent() || !isMetaTrackingHost()) return;
-  if (typeof window !== 'undefined' && window.fbq) {
-    const payload: Record<string, unknown> = {
-      value: params.value,
-      currency: 'KRW',
-    };
-    if (params.content_ids?.length) {
-      payload.content_ids = params.content_ids;
-      payload.content_type = params.content_type ?? 'product';
-    }
-    if (params.num_items !== undefined) {
-      payload.num_items = params.num_items;
-    }
-    window.fbq('track', 'Purchase', payload);
+  if (!hasMarketingConsent() || !isMetaTrackingHost()) return;
+  const eventId = createMetaEventId('Purchase');
+  const payload: Record<string, unknown> = {
+    value: params.value,
+    currency: 'KRW',
+  };
+  if (params.content_ids?.length) {
+    payload.content_ids = params.content_ids;
+    payload.content_type = params.content_type ?? 'product';
   }
+  if (params.num_items !== undefined) {
+    payload.num_items = params.num_items;
+  }
+  if (typeof window !== 'undefined' && window.fbq) {
+    window.fbq('track', 'Purchase', payload, { eventID: eventId });
+  }
+  sendServerConversion('Purchase', eventId, payload);
 }
