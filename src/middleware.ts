@@ -235,6 +235,17 @@ const PUBLIC_EXACT_SHORT = new Set([
 function isPublicPath(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  // Vercel Cron and server-to-server cron calls must reach their route-level
+  // CRON_SECRET guards. Without this, newly added cron routes can be redirected
+  // to /login before their own authorization code runs.
+  if (pathname.startsWith('/api/cron/')) {
+    const hasCronSignal =
+      request.headers.get('x-vercel-cron') === '1'
+      || request.headers.get('authorization')?.startsWith('Bearer ')
+      || request.nextUrl.searchParams.has('secret');
+    if (hasCronSignal) return true;
+  }
+
   // /api/packages는 GET 요청만 PUBLIC 허용
   if (pathname === '/api/packages' || pathname.startsWith('/api/packages/')) {
     return request.method === 'GET';
