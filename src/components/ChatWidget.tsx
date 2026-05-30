@@ -192,7 +192,7 @@ export default function ChatWidget() {
 }
 
 // ── 스트리밍 API 호출 ──────────────────────────────────
-// V2 (SSE) → 실패 시 V1 (NDJSON) 폴백
+// V1 (NDJSON) is the public-stable path. V2 can be canaried with NEXT_PUBLIC_QA_CHAT_V2_ENABLED=true.
 
 type StreamEventV1 =
   | { type: 'text'; content: string }
@@ -214,11 +214,11 @@ type StreamEventV1 =
   | { type: 'done' };
 
 async function streamChat(text: string) {
-  // V2 우선 시도
-  const v2Ok = await tryV2Stream(text);
-  if (v2Ok) return;
+  if (process.env.NEXT_PUBLIC_QA_CHAT_V2_ENABLED === 'true') {
+    const v2Ok = await tryV2Stream(text);
+    if (v2Ok) return;
+  }
 
-  // V2 폴백 → V1 NDJSON
   await streamV1(text);
 }
 
@@ -229,7 +229,10 @@ async function tryV2Stream(text: string): Promise<boolean> {
 
   let assistantId: string | null = null;
   let firstChunkReceived = false;
+  let hasTextChunk = false;
   let metaEscalate = false;
+  let metaPackages: any[] = [];
+  let metaFreeTravelHref: string | null = null;
 
   const ensureMessage = () => {
     if (!assistantId) {
@@ -297,16 +300,21 @@ async function tryV2Stream(text: string): Promise<boolean> {
           // text or text_final
           if (currentEvent === 'text' && parsed.content != null) {
             ensureMessage();
+            hasTextChunk = true;
             appendToMessage(assistantId!, parsed.content);
           } else if (currentEvent === 'tool_use_start') {
-            ensureMessage();
-            const name = parsed?.name ?? parsed?.toolName ?? '';
-            appendToMessage(assistantId!, `[${name} 검색 중...]`);
+            // 내부 도구 호출은 노출하지 않는다. 초반 오류 시 V1 폴백을 방해하지 않기 위함.
           } else if (currentEvent === 'tool_result') {
             // tool result는 표시하지 않음 (에이전트 내부)
           } else if (currentEvent === 'meta') {
             metaEscalate = !!parsed.escalate;
+            metaPackages = parsed.packages || [];
+            metaFreeTravelHref =
+              typeof parsed.freeTravelHref === 'string' && parsed.freeTravelHref.length > 0
+                ? parsed.freeTravelHref
+                : null;
           } else if (currentEvent === 'error') {
+            if (!hasTextChunk) return false;
             ensureMessage();
             updateMessage(assistantId!, {
               content: parsed.message || '죄송합니다. 다시 시도해주세요.',
@@ -314,7 +322,35 @@ async function tryV2Stream(text: string): Promise<boolean> {
             });
           } else if (currentEvent === 'done') {
             if (assistantId) {
-              updateMessage(assistantId!, { isStreaming: false });
+              if (metaPackages.length > 0) {
+                updateMessage(assistantId, {
+                  type: 'product_cards',
+                  products: metaPackages.map((p: any) => ({
+                    id: p.id,
+                    title: p.title,
+                    destination: p.destination,
+                    duration: p.duration,
+                    price: p.sellingPrice || p.price,
+                  })),
+                  isStreaming: false,
+                });
+              } else {
+                updateMessage(assistantId!, { isStreaming: false });
+              }
+            }
+            if (metaFreeTravelHref) {
+              addMessage({
+                role: 'assistant',
+                content:
+                  '항공·호텔을 직접 조합해 보고 싶다면 자유여행 AI 견적 페이지에서 이어가실 수 있어요.',
+                type: 'cta_links',
+                ctaLinks: [
+                  {
+                    label: '🚀 내 맞춤 자유여행 일정표 짜러가기',
+                    href: metaFreeTravelHref,
+                  },
+                ],
+              });
             }
             if (metaEscalate) {
               addEscalationMessage();

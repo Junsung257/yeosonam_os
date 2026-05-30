@@ -18,6 +18,7 @@ const isProd = process.env.NODE_ENV === 'production';
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  distDir: process.env.NEXT_DIST_DIR || '.next',
   reactStrictMode: true,
   // ESLint 빌드 통합 활성화 (2026-05-11 복원)
   // 플러그인 설치 완료 → 빌드 중 lint 오류 즉시 감지
@@ -31,9 +32,10 @@ const nextConfig = {
     '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
     'satori',          // yoga-wasm 번들 포함 — external 권장
     'pdf-parse',
+    'googleapis',
   ],
   experimental: {
-    webpackBuildWorker: true,
+    webpackBuildWorker: false,
   },
   images: {
     formats: ['image/avif', 'image/webp'],
@@ -83,11 +85,11 @@ const nextConfig = {
             key: 'Content-Security-Policy',
             value: [
               "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.googletagmanager.com https://www.google-analytics.com https://connect.facebook.net https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://js.sentry-cdn.com *.sentry.io https://va.vercel-scripts.com https://cdn.jsdelivr.net https://t1.kakaocdn.net https://www.instagram.com https://static.cloudflareinsights.com https://generativelanguage.googleapis.com",
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://t1.kakaocdn.net",
               "img-src 'self' blob: data: https://images.pexels.com https://ixaxnvbmhzjvupissmly.supabase.co *.supabase.co https://dry7pvlp22cox.cloudfront.net https://*.wikimedia.org https://www.facebook.com https://www.googletagmanager.com https://www.google-analytics.com https://t1.kakaocdn.net https://wcs.naver.net https://generativelanguage.googleapis.com https://*.googleapis.com",
               "font-src 'self' https://cdn.jsdelivr.net",
-              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://o*.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
+              "connect-src 'self' https://*.supabase.co https://ixaxnvbmhzjvupissmly.supabase.co https://*.sentry.io https://*.ingest.sentry.io https://www.google-analytics.com https://www.googletagmanager.com https://wcs.naver.net https://wcs.call.naver.com https://www.clarity.ms https://*.vercel-insights.com https://vitals.vercel-insights.com https://generativelanguage.googleapis.com",
               "frame-src 'self' https://www.facebook.com https://www.instagram.com https://www.youtube.com",
               "frame-ancestors 'none'",
               "base-uri 'self'",

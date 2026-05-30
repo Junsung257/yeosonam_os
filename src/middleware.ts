@@ -24,8 +24,11 @@ const PUBLIC_EXACT = new Set([
   '/auth/reset-password',
   '/api/auth/session',
   '/api/auth/refresh',
+  '/api/user-actions',
   '/m/admin/login',
   '/api/qa/chat',
+  '/api/qa/chat/v2',
+  '/api/qa/escalation-cta',
   '/api/qa/vision',
   '/api/sms/receive',
   '/api/notify/alimtalk',
@@ -110,6 +113,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/agent-executor',
   '/api/cron/booking-attribution-audit',
   '/api/cron/marketing-rules',
+  '/api/cron/marketing-asset-snapshot',
   '/api/cron/concierge-cart-retarget',
   '/api/cron/hard-block-alert',
   '/api/cron/dynamic-pricing',
@@ -240,6 +244,10 @@ function isPublicPath(request: NextRequest) {
     return request.method === 'GET';
   }
 
+  if (pathname === '/api/unmatched') {
+    return request.method === 'POST';
+  }
+
   // O(1) 정확 일치
   if (PUBLIC_EXACT.has(pathname) || PUBLIC_EXACT_SHORT.has(pathname)) return true;
 
@@ -257,6 +265,18 @@ export async function middleware(request: NextRequest) {
   const isSecure = process.env.NODE_ENV === 'production';
   const isDev = process.env.NODE_ENV !== 'production';
   const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/m/admin');
+
+  // Legacy links can carry a literal encoded slash (`%2F`) inside the city
+  // segment. Redirect to the canonical double-encoded form before routing.
+  const legacyDestinationSlash = request.url.match(
+    /^(https?:\/\/[^/]+\/destinations\/)(?!region\/)([^?#]*%2f[^?#]*)(.*)$/i,
+  );
+  if (legacyDestinationSlash) {
+    return NextResponse.redirect(
+      `${legacyDestinationSlash[1]}${legacyDestinationSlash[2].replace(/%2f/gi, '%252F')}${legacyDestinationSlash[3]}`,
+      308,
+    );
+  }
 
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────
   // sessionStorage 대신 서버에서 30일 쿠키로 세션 ID 발급

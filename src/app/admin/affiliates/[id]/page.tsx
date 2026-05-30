@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { maskEmail, maskPhone } from '@/lib/pii-mask';
 
 interface Affiliate {
   id: string; name: string; phone?: string; email?: string;
@@ -63,6 +64,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default function AffiliateDetailPage() {
   const params = useParams<{ id: string }>();
+  const affiliateId = typeof params?.id === 'string' ? params.id : '';
   const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,12 +87,13 @@ export default function AffiliateDetailPage() {
   }, []);
 
   const load = useCallback(async () => {
+    if (!affiliateId) return;
     setLoading(true);
     try {
       const [aRes, sRes, pRes] = await Promise.all([
-        fetch(`/api/affiliates?id=${params.id}&showBankInfo=false`),
-        fetch(`/api/settlements?affiliateId=${params.id}`),
-        fetch(`/api/admin/affiliate-promo-report?affiliateId=${params.id}`),
+        fetch(`/api/affiliates?id=${affiliateId}&showBankInfo=false`),
+        fetch(`/api/settlements?affiliateId=${affiliateId}`),
+        fetch(`/api/admin/affiliate-promo-report?affiliateId=${affiliateId}`),
       ]);
       const aJson = await aRes.json();
       const sJson = await sRes.json();
@@ -117,7 +120,7 @@ export default function AffiliateDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.id]);
+  }, [affiliateId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -169,19 +172,21 @@ export default function AffiliateDetailPage() {
   }, [pkgQuery]);
 
   const toggleBankInfo = async () => {
-    const res = await fetch(`/api/affiliates?id=${params.id}&showBankInfo=true`);
+    if (!affiliateId) return;
+    const res = await fetch(`/api/affiliates?id=${affiliateId}&showBankInfo=true`);
     const json = await res.json();
     setAffiliate(prev => prev ? { ...prev, bank_info: json.affiliate?.bank_info } : prev);
     setShowBankInfo(true);
   };
 
   const handleSave = async () => {
+    if (!affiliateId) return;
     setSaving(true);
     try {
       await fetch('/api/affiliates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: params.id, ...form }),
+        body: JSON.stringify({ id: affiliateId, ...form }),
       });
       setEditMode(false);
       load();
@@ -191,13 +196,14 @@ export default function AffiliateDetailPage() {
   };
 
   const handleSaveLanding = async () => {
+    if (!affiliateId) return;
     setSavingLanding(true);
     try {
       const res = await fetch('/api/affiliates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          id: params.id,
+          id: affiliateId,
           landing_intro: landingIntro.trim() || null,
           landing_video_url: landingVideoUrl.trim() || null,
           landing_pick_package_ids: pickPackageIds,
@@ -287,7 +293,7 @@ export default function AffiliateDetailPage() {
               </span>
             </div>
             <p className="text-sm text-admin-muted font-mono mt-1">코드: {affiliate.referral_code}</p>
-            {affiliate.phone && <p className="text-sm text-admin-muted">{affiliate.phone}</p>}
+            {affiliate.phone && <p className="text-sm text-admin-muted">{maskPhone(affiliate.phone, 'finance')}</p>}
           </div>
           <button
             onClick={() => setEditMode(!editMode)}
@@ -371,7 +377,7 @@ export default function AffiliateDetailPage() {
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3 border-t pt-4 text-sm">
-            <div><span className="text-admin-muted-2">이메일 </span>{affiliate.email || '-'}</div>
+            <div><span className="text-admin-muted-2">이메일 </span>{maskEmail(affiliate.email || null, 'finance') || '-'}</div>
             <div><span className="text-admin-muted-2">정산유형 </span>
               {affiliate.payout_type === 'PERSONAL' ? '개인 (원천세 3.3%)' : '사업자'}
             </div>
@@ -619,13 +625,13 @@ export default function AffiliateDetailPage() {
       </div>
 
       {/* 파트너 포털 설정 */}
-      <PortalSettingsSection affiliateId={params.id} affiliateName={affiliate.name} />
+      <PortalSettingsSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* 카드뉴스 콘텐츠 현황 */}
-      <ContentSection affiliateId={params.id} affiliateName={affiliate.name} />
+      <ContentSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* AI 콘텐츠 인사이트 */}
-      <ContentInsightSection affiliateId={params.id} affiliateName={affiliate.name} />
+      <ContentInsightSection affiliateId={affiliateId} affiliateName={affiliate.name} />
 
       {/* 프로모코드 성과 */}
       <div className="bg-white rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)] overflow-hidden">

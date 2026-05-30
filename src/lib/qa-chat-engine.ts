@@ -109,6 +109,69 @@ function encodeEvent(ev: StreamEvent, encoder: TextEncoder): Uint8Array {
   return encoder.encode(`${JSON.stringify(ev)}\n`);
 }
 
+const HANDOFF_REPLY =
+  '요청하신 내용은 정확한 확인이 필요한 상담으로 분류되어 담당자가 이어서 도와드리겠습니다. 남겨주신 조건은 관리자 상담 큐에 전달해두었습니다.';
+
+type QaPackageCard = {
+  id: string
+  title: string
+  destination: string | null
+  duration: number | null
+  price: number | null
+  sellingPrice: number | null
+  commissionRate: number
+}
+
+function buildRecommendedPackageCards(packages: any[], ids: string[] | undefined): QaPackageCard[] {
+  const validIds = new Set((ids ?? []).filter(Boolean))
+  const picked = validIds.size > 0
+    ? packages.filter((p) => validIds.has(p.id))
+    : packages.slice(0, 3)
+
+  return picked.slice(0, 3).map((p) => ({
+    id: p.id,
+    title: p.title,
+    destination: p.destination ?? null,
+    duration: p.duration ?? null,
+    price: p.price ?? null,
+    sellingPrice: p.price ? applyCommission(p.price) : null,
+    commissionRate: COMMISSION_RATE,
+  }))
+}
+
+function stripInvalidPackageLinks(reply: string, validIds: string[]): string {
+  const valid = new Set(validIds);
+  return reply
+    .replace(/\[([^\]]+)\]\(\/packages\/([a-zA-Z0-9-]+)\)/g, (_match, label: string, id: string) => {
+      return valid.has(id) ? `[${label}](/packages/${id})` : label;
+    })
+    .replace(/\/packages\/([a-zA-Z0-9-]+)/g, (match, id: string) => {
+      return valid.has(id) ? match : '';
+    })
+    .replace(/[ \t]{2,}/g, ' ');
+}
+
+function scopePackagesToDestination(packages: any[], destinationHint: string | null): any[] {
+  if (!destinationHint) return packages;
+  return packages.filter((p) =>
+    typeof p.destination === 'string' && p.destination.normalize('NFC').includes(destinationHint),
+  );
+}
+
+function scopePackageIdsToDestination(packages: any[], destinationHint: string | null): string[] {
+  return scopePackagesToDestination(packages, destinationHint)
+    .map((p) => p.id)
+    .filter((id): id is string => typeof id === 'string' && id.length > 0);
+}
+
+function inferQaDestinationHint(text: string): string | null {
+  if (/\uB2E4\uB0AD|\uD638\uC774\uC548|\uB098\uD2B8\uB791|\uD558\uB178\uC774|\uD478\uAFB8\uC625|\uD638\uCE58\uBBFC|\uBCA0\uD2B8\uB0A8/.test(text)) return '\uB2E4\uB0AD'
+  if (/\uBCF4\uD640|\uC138\uBD80|\uB9C8\uB2D0\uB77C|\uD544\uB9AC\uD540/.test(text)) return '\uBCF4\uD640'
+  if (/\uC624\uC0AC\uCE74|\uAD50\uD1A0|\uD6C4\uCFE0\uC624\uCE74|\uB3C4\uCFC4|\uC0BF\uD3EC\uB85C|\uC77C\uBCF8/.test(text)) return '\uC624\uC0AC\uCE74'
+  if (/\uACC4\uB9BC|\uC591\uC0AD|\uC911\uAD6D/.test(text)) return '\uACC4\uB9BC'
+  return null
+}
+
 const FREE_TRAVEL_INTENT_RE =
   /자유여행|항공\s*\+\s*호텔|호텔\s*만|항공\s*만|일정\s*짜|견적\s*잡|마이리얼|직접\s*골라|패키지\s*말고|커스텀|맞춤\s*일정|비행기\s*만|숙소\s*만/i;
 
@@ -129,6 +192,24 @@ function extractThemeFromText(text: string): FreeTravelTheme | null {
   return null;
 }
 
+const SAFE_FREE_TRAVEL_INTENT_RE =
+  /\uC790\uC720\uC5EC\uD589|\uD56D\uACF5\s*\+\s*\uD638\uD154|\uD638\uD154\s*\uB9CC|\uD56D\uACF5\s*\uB9CC|\uC77C\uC815\s*\uC9DC|\uACAC\uC801\s*\uC7A1|\uB9C8\uC774\uB9AC\uC5BC|\uC9C1\uC811\s*\uACE8\uB77C|\uD328\uD0A4\uC9C0\s*\uB9D0\uACE0|\uCEE4\uC2A4\uD140|\uB9DE\uCDA4\s*\uC77C\uC815|\uBE44\uD589\uAE30\s*\uB9CC|\uC219\uC18C\s*\uB9CC/i;
+
+function extractSafeMonthFromText(text: string): string | null {
+  const m = text.match(/(\d{1,2})\s*\uC6D4/);
+  if (!m) return null;
+  const n = parseInt(m[1], 10);
+  if (n >= 1 && n <= 12) return String(n);
+  return null;
+}
+
+function extractSafeThemeFromText(text: string): FreeTravelTheme | null {
+  if (/\uBD80\uBAA8\uB2D8|\uD6A8\uB3C4/.test(text)) return 'parents';
+  if (/\uAC00\uC871/.test(text)) return 'family';
+  if (/\uCEE4\uD50C|\uD5C8\uB2C8\uBB38/.test(text)) return 'couple';
+  return null;
+}
+
 function normalizeTheme(v: unknown): FreeTravelTheme | null {
   if (v === 'family' || v === 'parents' || v === 'couple') return v;
   return null;
@@ -143,7 +224,7 @@ function buildFreeTravelHref(
   llmFt?: { showCta?: boolean; dest?: string | null; month?: number | null; theme?: string | null },
 ): string | null {
   const intentFromLlm = llmFt?.showCta === true;
-  const intentFromText = FREE_TRAVEL_INTENT_RE.test(userMessage);
+  const intentFromText = SAFE_FREE_TRAVEL_INTENT_RE.test(userMessage) || FREE_TRAVEL_INTENT_RE.test(userMessage);
   if (!intentFromLlm && !intentFromText) return null;
   const destRaw = (llmFt?.dest && String(llmFt.dest).trim()) || '';
   let monthStr: string | null = null;
@@ -151,9 +232,9 @@ function buildFreeTravelHref(
     const m = Math.round(Number(llmFt.month));
     if (m >= 1 && m <= 12) monthStr = String(m);
   }
-  if (!monthStr) monthStr = extractMonthFromText(userMessage);
+  if (!monthStr) monthStr = extractSafeMonthFromText(userMessage) ?? extractMonthFromText(userMessage);
   let theme = normalizeTheme(llmFt?.theme);
-  if (!theme) theme = extractThemeFromText(userMessage);
+  if (!theme) theme = extractSafeThemeFromText(userMessage) ?? extractThemeFromText(userMessage);
   const params = new URLSearchParams();
   if (destRaw) params.set('dest', destRaw);
   if (monthStr) params.set('month', monthStr);
@@ -186,7 +267,20 @@ export async function createV1QaChatStream(params: {
 
   const stream = new ReadableStream({
     async start(controller) {
-      const emit = (ev: StreamEvent) => controller.enqueue(encodeEvent(ev, encoder))
+      let streamClosed = false
+      const emit = (ev: StreamEvent) => {
+        if (streamClosed) return
+        try {
+          controller.enqueue(encodeEvent(ev, encoder))
+        } catch {
+          streamClosed = true
+        }
+      }
+      const closeStream = () => {
+        if (streamClosed) return
+        streamClosed = true
+        try { controller.close() } catch { /* client may already have closed the stream */ }
+      }
       let agentTaskId: string | null = null
       let traceSpan: { id: string; started_at: string } | null = null
       const traceId = crypto.randomUUID()
@@ -223,13 +317,26 @@ export async function createV1QaChatStream(params: {
             })
             await createApprovalRequest({
               taskId,
-              reason: '고위험 고객요청으로 수동 승인 필요',
+              reason: 'High-risk customer request requires human approval before response',
               requestedBy: 'system:qa-chat',
               metadata: { riskLevel: preDecision.riskLevel, specialistId: preDecision.specialistId },
             })
-            emit({ type: 'error', message: '요청이 고위험으로 분류되어 관리자 승인 대기 상태로 전환되었습니다. 잠시 후 상담원이 이어서 안내드립니다.' })
+            emit({ type: 'text', content: HANDOFF_REPLY })
+            emit({
+              type: 'meta',
+              packages: [],
+              escalate: true,
+              critiqueSeverity: 'handoff',
+              journey: { stage: 'handoff', reason: 'risk_gate' },
+              freeTravelHref: null,
+            })
             emit({ type: 'done' })
-            controller.close()
+            saveInquiry({
+              question: message,
+              inquiryType: 'escalation',
+              relatedPackages: [],
+            }).catch((err: unknown) => console.warn('risk handoff inquiry save failed:', err))
+            closeStream()
             return
           }
         }
@@ -238,10 +345,12 @@ export async function createV1QaChatStream(params: {
           message,
           (history as { role: string; content: string }[]) ?? [],
         )
+        const destinationHint = extractQaDestinationHint(qaHintSource) ?? inferQaDestinationHint(qaHintSource)
 
         let packages: any[] = []
         if (isSupabaseConfigured) {
           packages = await getQaChatPackageContext(qaHintSource)
+          packages = scopePackagesToDestination(packages, destinationHint)
         }
 
         const packageContext = packages.length > 0
@@ -310,7 +419,6 @@ export async function createV1QaChatStream(params: {
           ? `\n## 이 고객에 대해 기억하는 정보\n${memoryFacts.join('\n')}\n`
           : ''
 
-        const destinationHint = extractQaDestinationHint(qaHintSource)
         const [corrections, negExamples] = await Promise.all([
           getRelevantCorrections({
             source: 'qa_chat',
@@ -345,16 +453,18 @@ ${message}`
           tenantId: affiliateScopeId,
         }
         let lastReplyStreamLen = 0
-        let gen = await tryDeepSeekStream(
-          llmCommon,
-          ({ replyVisible }) => {
-            if (!replyVisible || replyVisible.length <= lastReplyStreamLen) return
-            emit({ type: 'text', content: replyVisible.slice(lastReplyStreamLen) })
-            lastReplyStreamLen = replyVisible.length
-          },
-        )
+        let usedNonStreamFallback = packages.length === 0
+        let gen = usedNonStreamFallback
+          ? await llmCall(llmCommon)
+          : await tryDeepSeekStream(
+              llmCommon,
+              ({ replyVisible }) => {
+                if (!replyVisible || replyVisible.length <= lastReplyStreamLen) return
+                emit({ type: 'text', content: replyVisible.slice(lastReplyStreamLen) })
+                lastReplyStreamLen = replyVisible.length
+              },
+            )
 
-        let usedNonStreamFallback = false
         if (!gen.success || !gen.rawText?.trim()) {
           usedNonStreamFallback = true
           lastReplyStreamLen = 0
@@ -387,8 +497,20 @@ ${message}`
         if (!parsed.freeTravel || typeof parsed.freeTravel !== 'object') {
           parsed.freeTravel = { showCta: false, dest: null, month: null, theme: null }
         }
+        const scopedPackageIds = scopePackageIdsToDestination(packages, destinationHint)
+        const scopedPackageIdSet = new Set(scopedPackageIds)
+        parsed.recommendedPackageIds = (parsed.recommendedPackageIds ?? [])
+          .filter((id) => scopedPackageIdSet.has(id))
 
-        const freeTravelHref = buildFreeTravelHref(message, parsed.freeTravel)
+        let freeTravelHref = buildFreeTravelHref(message, parsed.freeTravel)
+        if (!freeTravelHref && destinationHint && packages.length === 0) {
+          freeTravelHref = buildFreeTravelHref(message, {
+            showCta: true,
+            dest: destinationHint,
+            month: null,
+            theme: null,
+          })
+        }
 
         // ★ Critic은 참고용 로깅만 — 응답 차단 절대 안 함
         const critique = await critiqueReply({
@@ -396,7 +518,7 @@ ${message}`
           packageContext,
           reply: parsed.reply,
           recommendedPackageIds: parsed.recommendedPackageIds ?? [],
-          validPackageIds: packages.map((p) => p.id),
+          validPackageIds: scopedPackageIds,
         })
         if (critique.severity !== 'ok') {
           console.warn(`[Critic] ${critique.severity}: ${critique.issues.join(' | ')}`)
@@ -404,6 +526,10 @@ ${message}`
 
         // ★ 후처리: LLM 출력을 고객 친화적 포맷으로 강제 변환
         // (LLM이 프롬프트 규칙을 무시할 경우 안전장치)
+        const effectiveCritiqueSeverity =
+          critique.severity === 'block' && scopedPackageIds.length === 0 && freeTravelHref
+            ? 'ok'
+            : critique.severity
         let finalReply = parsed.reply
         const airlineNames: Record<string, string> = {
           BX:'에어부산', LJ:'진에어', KE:'대한항공', OZ:'아시아나항공',
@@ -447,10 +573,21 @@ ${message}`
           const linkStr = parsed.recommendedPackageIds.map((id:string) => `/packages/${id}`).join(', ')
           finalReply = finalReply.trimEnd() + `\n\n자세한 내용: ${linkStr}`
         }
-        const finalEscalate = parsed.escalate ?? false
+        finalReply = stripInvalidPackageLinks(finalReply, scopedPackageIds)
+        if (!/\/packages\/[a-zA-Z0-9-]+/.test(finalReply) && parsed.recommendedPackageIds?.length > 0) {
+          const linkStr = parsed.recommendedPackageIds
+            .filter((id: string) => scopedPackageIdSet.has(id))
+            .map((id: string) => `/packages/${id}`)
+            .join(', ')
+          if (linkStr) finalReply = finalReply.trimEnd() + `\n\n자세한 상품 보기: ${linkStr}`
+        }
+        const suppressNoInventoryEscalation = scopedPackageIds.length === 0 && Boolean(freeTravelHref)
+        const finalEscalate =
+          ((parsed.escalate ?? false) && !suppressNoInventoryEscalation) ||
+          effectiveCritiqueSeverity === 'block'
 
         // ★ Critic 수정본이 있으면 후처리된 버전에 추가 병합 (warn 수준만)
-        if (critique.severity === 'warn' && critique.correctedReply) {
+        if (effectiveCritiqueSeverity === 'warn' && critique.correctedReply) {
           finalReply = `💡 ${critique.correctedReply}\n\n---\n${finalReply}`
         }
 
@@ -463,7 +600,7 @@ ${message}`
           affiliateId: affiliateScopeId ?? null,
           llmProvider: gen.provider ?? null,
           llmModel: gen.model ?? null,
-          severity: critique.severity,
+          severity: effectiveCritiqueSeverity,
           issues: critique.issues ?? [],
           userQuestion: message,
           reply: parsed.reply ?? '',
@@ -477,25 +614,18 @@ ${message}`
           },
         })
 
-        const recommendedPackages = packages
-          .filter((p) => parsed.recommendedPackageIds?.includes(p.id))
-          .map((p) => ({
-            id: p.id,
-            title: p.title,
-            destination: p.destination,
-            duration: p.duration,
-            price: p.price,
-            sellingPrice: p.price ? applyCommission(p.price) : null,
-            commissionRate: COMMISSION_RATE,
-          }))
+        const recommendedPackages = scopePackagesToDestination(
+          buildRecommendedPackageCards(packages, parsed.recommendedPackageIds),
+          destinationHint,
+        )
 
         const journeyIds = parsed.recommendedPackageIds ?? []
         const journeySnapshot = advanceCustomerJourney(existingJourney, {
           userMessage: message,
           escalate: finalEscalate,
           recommendedPackageIds: journeyIds,
-          critiqueSeverity: critique.severity,
-          destinationHint: extractQaDestinationHint(qaHintSource),
+          critiqueSeverity: effectiveCritiqueSeverity,
+          destinationHint,
         })
 
         if (usedNonStreamFallback) {
@@ -510,7 +640,7 @@ ${message}`
           type: 'meta',
           packages: recommendedPackages,
           escalate: finalEscalate,
-          critiqueSeverity: critique.severity,
+          critiqueSeverity: effectiveCritiqueSeverity,
           journey: journeySnapshot,
           freeTravelHref,
         })
@@ -524,7 +654,7 @@ ${message}`
           payload: {
             journey: { stage: journeySnapshot.stage },
             escalate: finalEscalate,
-            critiqueSeverity: critique.severity,
+            critiqueSeverity: effectiveCritiqueSeverity,
             recommended_count: recommendedPackages.length,
             llm_provider: gen.provider,
             llm_model: gen.model,
@@ -532,7 +662,7 @@ ${message}`
             trace_id: traceId,
           },
         })
-        controller.close()
+        closeStream()
 
         if (agentTaskId && isSupabaseConfigured) {
           try {
@@ -547,7 +677,7 @@ ${message}`
         if (finalEscalate && isSupabaseConfigured) {
           saveInquiry({
             question: message,
-            inquiryType: critique.severity === 'block' ? 'critic_blocked' : 'escalation',
+            inquiryType: effectiveCritiqueSeverity === 'block' ? 'critic_blocked' : 'escalation',
             relatedPackages: parsed.recommendedPackageIds ?? [],
           }).catch((err: unknown) => console.warn('에스컬레이션 저장 실패:', err))
         }
@@ -565,7 +695,7 @@ ${message}`
               const updatedMessages: any[] = [
                 ...prevMessages,
                 { role: 'user', content: message, timestamp: new Date().toISOString() },
-                { role: 'assistant', content: finalReply, timestamp: new Date().toISOString(), critiqueSeverity: critique.severity },
+                { role: 'assistant', content: finalReply, timestamp: new Date().toISOString(), critiqueSeverity: effectiveCritiqueSeverity },
               ]
               if (freeTravelHref) {
                 updatedMessages.push({
@@ -625,10 +755,25 @@ ${message}`
           } catch { /* ignore */ }
         }
         try {
-          emit({ type: 'error', message: error instanceof Error ? error.message : 'AI 처리 실패' })
+          emit({ type: 'text', content: HANDOFF_REPLY })
+          emit({
+            type: 'meta',
+            packages: [],
+            escalate: true,
+            critiqueSeverity: 'error',
+            journey: { stage: 'handoff', reason: 'runtime_error' },
+            freeTravelHref: null,
+          })
           emit({ type: 'done' })
+          if (isSupabaseConfigured) {
+            saveInquiry({
+              question: message,
+              inquiryType: 'escalation',
+              relatedPackages: [],
+            }).catch((err: unknown) => console.warn('runtime handoff inquiry save failed:', err))
+          }
         } catch { /* ignore */ }
-        controller.close()
+        closeStream()
       }
     },
   })

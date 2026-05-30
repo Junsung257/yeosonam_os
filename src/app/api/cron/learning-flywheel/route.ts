@@ -14,12 +14,64 @@
 import { NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
+import { extractQaDestinationHint } from '@/lib/qa-destination-hint';
+import { runActiveQaLearningScenarios } from '@/lib/qa-scenario-regression';
 import { createHash } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 
 function sha256(text: string): string {
   return createHash('sha256').update(text.trim().toLowerCase(), 'utf8').digest('hex');
+}
+
+function redactPII(text: string): string {
+  return text
+    .replace(/01[016789][-\s]?\d{3,4}[-\s]?\d{4}/g, '[전화]')
+    .replace(/\d{6}[-\s]?[1-4]\d{6}/g, '[주민번호]')
+    .replace(/[\w._%+-]+@[\w.-]+\.[A-Za-z]{2,}/g, '[이메일]')
+    .slice(0, 1200);
+}
+
+function classifyCustomerScenario(message: string, inquiryType?: string | null) {
+  const text = message.toLowerCase();
+  if (/환불|결제\s*취소|카드\s*취소|입금\s*취소|refund|payment cancel/.test(text)) {
+    return {
+      category: 'handoff_payment_refund',
+      priority: 95,
+      expectedBehavior: { escalate: true, handoff: true, packageLinks: false },
+      reason: 'payment/refund risk must be handed off',
+    };
+  }
+  if (/자유여행|항공\s*\+\s*호텔|항공권|숙소|액티비티|맞춤\s*일정|free travel/.test(text)) {
+    return {
+      category: 'free_travel_cta',
+      priority: 80,
+      expectedBehavior: { freeTravelCta: true, noFalsePackageCards: true },
+      reason: 'free-travel intent should receive CTA',
+    };
+  }
+  if (/가격|예산|만원|포함|불포함|비교|얼마|price|budget/.test(text)) {
+    return {
+      category: 'price_or_inclusion',
+      priority: 70,
+      expectedBehavior: { packageLinksWhenAvailable: true, noInvalidPackageLinks: true },
+      reason: 'price/inclusion question needs grounded product links',
+    };
+  }
+  if (/추천|상품|패키지|여행지|가족|부모님|커플|휴양|recommend|package/.test(text) || inquiryType?.toLowerCase().includes('recommend')) {
+    return {
+      category: 'package_recommendation',
+      priority: 65,
+      expectedBehavior: { packageLinksWhenAvailable: true, noInvalidPackageLinks: true, noFalsePackageCards: true },
+      reason: 'recommendation should be grounded in approved package inventory',
+    };
+  }
+  return {
+    category: 'general_consultation',
+    priority: 45,
+    expectedBehavior: { answerSmoothly: true, escalateWhenRisky: true },
+    reason: 'general customer question',
+  };
 }
 
 interface CritiqueRow {
@@ -182,6 +234,158 @@ const getHandler = async () => {
   } catch (e) {
     const msg = e instanceof Error ? e.message : 'unknown';
     (result.warnings as string[]).push(`Step B 실패: ${msg}`);
+  }
+
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 14);
+    const sinceIso = since.toISOString();
+
+    const { data: inquiries } = await supabaseAdmin
+      .from('qa_inquiries')
+      .select('id, question, inquiry_type, related_packages, status, created_at')
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: false })
+      .limit(150);
+
+    let inserted = 0;
+    let refreshed = 0;
+
+    for (const row of inquiries ?? []) {
+      const question = typeof row.question === 'string' ? row.question.trim() : '';
+      if (question.length < 6) continue;
+
+      const redacted = redactPII(question);
+      const destinationHint = extractQaDestinationHint(redacted);
+      const classified = classifyCustomerScenario(redacted, row.inquiry_type as string | null);
+      const relatedPackages = Array.isArray(row.related_packages) ? row.related_packages : [];
+      const scenarioHash = sha256([
+        'qa_inquiries',
+        classified.category,
+        destinationHint ?? '-',
+        redacted.replace(/\s+/g, ' ').slice(0, 240),
+      ].join('|'));
+
+      const { data: upserted, error } = await supabaseAdmin
+        .from('qa_learning_scenarios')
+        .upsert({
+          scenario_hash: scenarioHash,
+          source: 'qa_inquiries',
+          source_inquiry_id: row.id,
+          category: classified.category,
+          destination_hint: destinationHint,
+          user_message_redacted: redacted,
+          expected_behavior: {
+            ...classified.expectedBehavior,
+            destinationHint,
+            relatedPackageCount: relatedPackages.length,
+            sourceStatus: row.status ?? null,
+          },
+          priority: classified.priority,
+          status: 'pending',
+          auto_generated: true,
+          generated_reason: classified.reason,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'scenario_hash' })
+        .select('id, created_at, updated_at')
+        .single();
+
+      if (!error && upserted) {
+        const createdAt = new Date((upserted as { created_at: string }).created_at).getTime();
+        const updatedAt = new Date((upserted as { updated_at: string }).updated_at).getTime();
+        if (Math.abs(updatedAt - createdAt) < 2000) inserted++;
+        else refreshed++;
+      }
+    }
+
+    const { data: events } = await supabaseAdmin
+      .from('platform_learning_events')
+      .select('id, source, message_redacted, payload, created_at')
+      .eq('source', 'qa_chat')
+      .gte('created_at', sinceIso)
+      .not('message_redacted', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(100);
+
+    for (const row of events ?? []) {
+      const message = typeof row.message_redacted === 'string' ? row.message_redacted.trim() : '';
+      if (message.length < 6) continue;
+      const payload = (row.payload ?? {}) as Record<string, unknown>;
+      const shouldCapture =
+        payload.escalate === true ||
+        payload.free_travel_cta === true ||
+        Number(payload.recommended_count ?? 0) > 0;
+      if (!shouldCapture) continue;
+
+      const destinationHint = extractQaDestinationHint(message);
+      const classified = classifyCustomerScenario(message, null);
+      const scenarioHash = sha256([
+        'platform_learning_events',
+        classified.category,
+        destinationHint ?? '-',
+        message.replace(/\s+/g, ' ').slice(0, 240),
+      ].join('|'));
+
+      const { error } = await supabaseAdmin
+        .from('qa_learning_scenarios')
+        .upsert({
+          scenario_hash: scenarioHash,
+          source: 'platform_learning_events',
+          source_event_id: row.id,
+          category: classified.category,
+          destination_hint: destinationHint,
+          user_message_redacted: message,
+          expected_behavior: {
+            ...classified.expectedBehavior,
+            destinationHint,
+            sourcePayload: {
+              recommended_count: payload.recommended_count ?? null,
+              free_travel_cta: payload.free_travel_cta ?? null,
+              escalate: payload.escalate ?? null,
+              critiqueSeverity: payload.critiqueSeverity ?? null,
+            },
+          },
+          priority: classified.priority,
+          status: 'pending',
+          auto_generated: true,
+          generated_reason: `${classified.reason}; captured from qa_chat learning event`,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'scenario_hash' });
+
+      if (!error) refreshed++;
+    }
+
+    (result.actions as string[]).push(`scenario_auto: ${inserted}개 신규, ${refreshed}개 갱신 후보 생성`);
+    result.scenarioSummary = { inserted, refreshed };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'unknown';
+    (result.warnings as string[]).push(`Step C 실패: ${msg}`);
+  }
+
+  try {
+    const regression = await runActiveQaLearningScenarios({
+      limit: Number(process.env.QA_SCENARIO_REGRESSION_LIMIT ?? 5),
+    });
+    (result.actions as string[]).push(
+      `scenario_regression: ${regression.passed}/${regression.total} 통과, ${regression.failed}개 실패`,
+    );
+    result.scenarioRegression = {
+      runGroupId: regression.runGroupId,
+      total: regression.total,
+      passed: regression.passed,
+      failed: regression.failed,
+      results: regression.results.map((r) => ({
+        scenarioId: r.scenarioId,
+        category: r.category,
+        passed: r.passed,
+        score: r.score,
+        elapsedMs: r.elapsedMs,
+        failedChecks: r.checks.filter((c) => !c.passed).map((c) => c.name),
+      })),
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : 'unknown';
+    (result.warnings as string[]).push(`Step D 실패: ${msg}`);
   }
 
   return NextResponse.json(result);

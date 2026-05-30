@@ -34,6 +34,10 @@ export const isSupabaseConfigured = Boolean(
   isValidUrl(supabaseUrl) && supabaseKey && !supabaseUrl?.includes('your_supabase_url')
 );
 
+export const isSupabaseAdminConfigured = Boolean(
+  isValidUrl(supabaseUrl) && supabaseServiceKey && !supabaseUrl?.includes('your_supabase_url')
+);
+
 // Lazy initialization - 사용할 때만 클라이언트 생성
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 

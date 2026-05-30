@@ -27,7 +27,7 @@ import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
 import { recordCritiqueResult } from '@/lib/response-learning'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { createAgentTask, transitionAgentTask, createApprovalRequest } from '@/lib/agent/tasking'
-import { requiresApproval } from '@/lib/jarvis/risk-scorer'
+import { requiresApproval, scoreRiskLevel } from '@/lib/jarvis/risk-scorer'
 import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 import { getClientIpFromRequest } from '@/lib/simple-rate-limit'
 import { resolveJarvisAuth } from '@/lib/jarvis/auth-resolver'
@@ -43,6 +43,47 @@ const COMMISSION_RATE = Number(process.env.DEFAULT_COMMISSION_RATE ?? 9)
 
 function applyCommission(price: number) {
   return Math.round(price * (1 + COMMISSION_RATE / 100))
+}
+
+const FREE_TRAVEL_INTENT_RE =
+  /자유여행|항공\s*\+\s*호텔|호텔\s*만|항공\s*만|일정\s*짜|견적\s*잡|마이리얼|직접\s*골라|패키지\s*말고|커스텀|맞춤\s*일정|비행기\s*만|숙소\s*만/i
+
+function buildFreeTravelHref(userMessage: string, reply: string): string | null {
+  const text = `${userMessage}\n${reply}`
+  const hasIntent =
+    FREE_TRAVEL_INTENT_RE.test(text) ||
+    userMessage.includes('자유') ||
+    userMessage.includes('항공') ||
+    userMessage.includes('호텔') ||
+    userMessage.includes('견적')
+  if (!hasIntent) return null
+  const params = new URLSearchParams()
+  const dest = extractQaDestinationHint(userMessage)
+  const month = userMessage.match(/(\d{1,2})\s*월/)?.[1]
+  if (dest) params.set('dest', dest)
+  if (month) params.set('month', month)
+  const qs = params.toString()
+  return qs ? `/free-travel?${qs}` : '/free-travel'
+}
+
+function extractRecommendedPackageIds(reply: string, packages: any[]): string[] {
+  const ids = new Set<string>()
+  for (const match of reply.matchAll(/\/packages\/([a-zA-Z0-9-]+)/g)) {
+    ids.add(match[1])
+  }
+  for (const p of packages) {
+    const title = typeof p.title === 'string' ? p.title.trim() : ''
+    if (title && reply.includes(title)) ids.add(p.id)
+  }
+  return [...ids].filter((id) => packages.some((p) => p.id === id)).slice(0, 3)
+}
+
+function pickFallbackPackageIds(userMessage: string, packages: any[]): string[] {
+  const destinationHint = extractQaDestinationHint(userMessage)
+  const scoped = destinationHint
+    ? packages.filter((p: any) => String(p.destination ?? '').includes(destinationHint))
+    : packages
+  return scoped.slice(0, 3).map((p: any) => p.id)
 }
 
 export async function POST(req: NextRequest) {
@@ -306,6 +347,14 @@ export async function POST(req: NextRequest) {
           }
         }
 
+        const explicitRecommendedPackageIds = extractRecommendedPackageIds(
+          fullResponse || finalResult?.response || '',
+          packages,
+        )
+        const recommendedPackageIds = explicitRecommendedPackageIds.length > 0
+          ? explicitRecommendedPackageIds
+          : pickFallbackPackageIds(message, packages)
+
         // ── 8. Response Critic (Self-RAG 검증) ──
         const critique = await critiqueReply({
           userQuestion: message,
@@ -313,7 +362,7 @@ export async function POST(req: NextRequest) {
             ? packages.map((p: any) => `[${p.id}] ${p.title} ${p.destination} ${p.price ? p.price.toLocaleString() + '원' : ''}`).join('\n')
             : '',
           reply: fullResponse || finalResult?.response || '',
-          recommendedPackageIds: [],
+          recommendedPackageIds,
           validPackageIds: packages.map((p: any) => p.id),
         })
         const gated = applyCritique(
@@ -322,7 +371,13 @@ export async function POST(req: NextRequest) {
           critique,
         )
 
-        const finalReply = gated.wasGated ? gated.reply : (fullResponse || finalResult?.response || '')
+        let finalReply = gated.wasGated ? gated.reply : (fullResponse || finalResult?.response || '')
+        const riskEscalate = requiresApproval(scoreRiskLevel({ message }))
+        const finalEscalate = gated.escalate || riskEscalate || !finalReply.trim()
+        if (!finalReply.trim()) {
+          finalReply = '정확한 안내가 필요한 문의입니다. 담당자가 확인 후 이어서 안내드릴게요.'
+          emitSSE('text', { content: finalReply })
+        }
 
         // critique 결과 영속화
         void recordCritiqueResult({
@@ -345,19 +400,32 @@ export async function POST(req: NextRequest) {
         // ── 9. Customer Journey 업데이트 ──
         const journeySnapshot = advanceCustomerJourney(existingJourney, {
           userMessage: message,
-          escalate: gated.escalate,
-          recommendedPackageIds: [],
+          escalate: finalEscalate,
+          recommendedPackageIds,
           critiqueSeverity: critique.severity,
           destinationHint: extractQaDestinationHint(qaHintSource),
         })
 
+        const recommendedPackages = packages
+          .filter((p: any) => recommendedPackageIds.includes(p.id))
+          .map((p: any) => ({
+            id: p.id,
+            title: p.title,
+            destination: p.destination,
+            duration: p.duration,
+            price: p.price,
+            sellingPrice: p.price ? applyCommission(p.price) : null,
+            commissionRate: COMMISSION_RATE,
+          }))
+        const freeTravelHref = buildFreeTravelHref(message, finalReply)
+
         // ── 10. 메타 이벤트 + done ──
         emitSSE('meta', {
-          packages: [],
-          escalate: gated.escalate,
+          packages: recommendedPackages,
+          escalate: finalEscalate,
           critiqueSeverity: critique.severity,
           journey: journeySnapshot,
-          freeTravelHref: null,
+          freeTravelHref,
         })
         emitSSE('done', {
           sessionId: jarvisSession.id,
@@ -374,12 +442,14 @@ export async function POST(req: NextRequest) {
           userMessage: message,
           payload: {
             journey: { stage: journeySnapshot.stage },
-            escalate: gated.escalate,
+            escalate: finalEscalate,
             critiqueSeverity: critique.severity,
             llm_provider: 'deepseek',
             llm_model: 'deepseek-v4-flash',
             trace_id: traceId,
             tools_used: finalResult?.toolsUsed ?? [],
+            recommended_count: recommendedPackages.length,
+            free_travel_cta: Boolean(freeTravelHref),
             v2_engine: true,
           },
         })
@@ -405,6 +475,15 @@ export async function POST(req: NextRequest) {
               toolsUsed: finalResult?.toolsUsed ?? [],
             },
           ]
+          if (freeTravelHref) {
+            updatedMessages.push({
+              role: 'assistant',
+              content: '항공·호텔을 직접 조합해 보고 싶다면 자유여행 AI 견적 페이지에서 이어가실 수 있어요.',
+              type: 'cta_links',
+              ctaLinks: [{ label: '내 맞춤 자유여행 일정표 짜러가기', href: freeTravelHref }],
+              timestamp: new Date().toISOString(),
+            })
+          }
 
           if (existing) {
             await supabaseAdmin
@@ -452,9 +531,7 @@ export async function POST(req: NextRequest) {
 
         // 태스크 완료
         if (agentTaskId) {
-          await transitionAgentTask(agentTaskId, 'running', 'done', {
-            completed_at: new Date().toISOString(),
-          }).catch((e: unknown) => {
+          await transitionAgentTask(agentTaskId, 'running', 'done').catch((e: unknown) => {
             console.warn('[qa-chat-v2] 태스크 완료 실패 (무시):', e instanceof Error ? e.message : e);
           })
         }
