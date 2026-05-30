@@ -11,6 +11,12 @@ declare global {
 }
 
 const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
+const META_ALLOWED_HOSTS = new Set(['yeosonam.com', 'www.yeosonam.com']);
+
+function isMetaTrackingHost() {
+  if (typeof window === 'undefined') return false;
+  return META_ALLOWED_HOSTS.has(window.location.hostname);
+}
 
 /**
  * Meta 픽셀 초기화 + PageView 자동 추적
@@ -19,7 +25,7 @@ const PIXEL_ID = process.env.NEXT_PUBLIC_META_PIXEL_ID;
  */
 export default function MetaPixel() {
   const consent = useAnalyticsConsent();
-  if (!PIXEL_ID || !consent) return null;
+  if (!PIXEL_ID || !consent || !isMetaTrackingHost()) return null;
 
   return (
     <>
@@ -73,7 +79,7 @@ export function trackViewContent(params: {
   /** 기본 product (Meta 카탈로그 관례) */
   content_type?: string;
 }) {
-  if (!hasAnalyticsConsent()) return;
+  if (!hasAnalyticsConsent() || !isMetaTrackingHost()) return;
   if (typeof window !== 'undefined' && window.fbq) {
     const payload: Record<string, unknown> = {
       content_name: params.content_name,
@@ -99,7 +105,7 @@ export function trackLead(params: {
   content_ids?: string[];
   content_type?: string;
 }) {
-  if (!hasAnalyticsConsent()) return;
+  if (!hasAnalyticsConsent() || !isMetaTrackingHost()) return;
   if (typeof window !== 'undefined' && window.fbq) {
     const payload: Record<string, unknown> = {
       content_name: params.content_name,
@@ -125,7 +131,7 @@ export function trackPurchase(params: {
   content_type?: string;
   num_items?: number;
 }) {
-  if (!hasAnalyticsConsent()) return;
+  if (!hasAnalyticsConsent() || !isMetaTrackingHost()) return;
   if (typeof window !== 'undefined' && window.fbq) {
     const payload: Record<string, unknown> = {
       value: params.value,
