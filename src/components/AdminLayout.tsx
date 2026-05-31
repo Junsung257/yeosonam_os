@@ -103,7 +103,7 @@ const navGroups: NavGroup[] = [
     icon: Package,
     items: [
       { href: '/admin/packages',                      label: '상품 관리',          icon: Package },
-      { href: '/admin/products/review',                label: '상품 검수',          icon: ClipboardCheck },
+      { href: '/admin/packages?status=pending',         label: '상품 검수',          icon: ClipboardCheck },
       { href: '/admin/upload',                        label: '상품 업로드',        icon: Upload },
       { href: '/admin/land-operators',                label: '랜드사 관리',        icon: Building2, minRole: 'tenant_admin' },
       { href: '/admin/attractions',                   label: '여행지/관광지',       icon: Mountain },
@@ -451,7 +451,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     if (item.href === '/admin/jarvis' && pendingActionsCount > 0) return pendingActionsCount;
     if (item.href === '/admin/attractions/unmatched' && unmatchedAttrCount > 0) return unmatchedAttrCount;
     if (item.href === '/admin/payments/reconcile' && ledgerDriftCount > 0) return ledgerDriftCount;
-    if (item.href === '/admin/products/review' && pendingReviewCount > 0) return pendingReviewCount;
+    if (item.href === '/admin/packages?status=pending' && pendingReviewCount > 0) return pendingReviewCount;
     if (item.href === '/admin/blog/queue' && blogQueueCount > 0) return blogQueueCount;
     return undefined;
   };
