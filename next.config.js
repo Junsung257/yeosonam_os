@@ -38,6 +38,13 @@ const nextConfig = {
     webpackBuildWorker: false,
     prerenderEarlyExit: false,
   },
+  // Next server chunks are emitted under .next/server/chunks; keep runtime lookup aligned.
+  webpack(config, { isServer }) {
+    if (isServer && config.output) {
+      config.output.chunkFilename = 'chunks/[name].js';
+    }
+    return config;
+  },
   images: {
     formats: ['image/avif', 'image/webp'],
     // 기본 7개 deviceSizes → 3개로 축소: Vercel Image Transformation 횟수를 1/2 이상 절감.
