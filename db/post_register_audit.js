@@ -609,20 +609,12 @@ async function auditOne(pkg, baseUrl) {
     else {
       r._persisted_status = auditStatus;
 
-      // ★ 2026-05-24 박제 (ERR-pending-review-404):
-      //   audit_status='clean' 이면 status='active' 로 자동 승격.
-      //   /register SKILL Step 7 (meta rule) 과 동일 정책 — 어드민 경로/CLI 경로 모두 동일하게 동작.
-      //   'info' 도 자동 승인 OK (안내성 경고만 있음 — 실제 데이터 무결성 영향 없음).
-      //   'warnings' 또는 'blocked' 는 그대로 두고 사장님이 어드민에서 확인.
+      // ★ 2026-05-31 박제:
+      //   audit_status='clean/info' 여도 자동 고객 노출하지 않는다.
+      //   업로드 후 CoVe/mobile QA/운영자 원문 확인까지 비동기로 이어지므로, clean 은
+      //   "승인 가능" 신호일 뿐 "자동 승인" 신호가 아니다.
       if (auditStatus === 'clean' || auditStatus === 'info') {
-        const { error: promoteErr } = await sb.from('travel_packages')
-          .update({ status: 'active', updated_at: new Date().toISOString() })
-          .eq('id', id);
-        if (promoteErr) {
-          console.log(`⚠️  status→active 승격 실패 (${id}): ${promoteErr.message}`);
-        } else {
-          console.log(`   ✅ audit_status=${auditStatus} — status→active 자동 승격 완료 (고객 노출 가능)`);
-        }
+        console.log(`   ✅ audit_status=${auditStatus} — 자동 활성화 보류, 관리자 승인 필요`);
       }
     }
   }

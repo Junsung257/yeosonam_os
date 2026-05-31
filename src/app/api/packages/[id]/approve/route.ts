@@ -7,6 +7,8 @@ import { recomputeGroupForPackage } from '@/lib/scoring/recommend';
 import { indexPackage } from '@/lib/jarvis/rag/indexer';
 import { sendVaContentPackage } from '@/lib/va-email';
 import { getSecret } from '@/lib/secret-registry';
+import type { SourceEvidenceMap } from '@/lib/source-evidence';
+import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
@@ -42,7 +44,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   const { data: pkg, error: fetchError } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, internal_code, short_code, marketing_copies, status, title, audit_status, audit_report')
+    .select('*')
     .eq('id', id)
     .single();
 
@@ -56,27 +58,88 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   // ── 승인 처리 ─────────────────────────────────────────────────────────────
 
   if (action === 'approve') {
-    // 🆕 감사 게이트 (ERR-FUK-rawtext-pollution 재발 방지)
-    // audit_status === 'blocked' → 승인 차단. 수정 후 재감사 필요.
-    // audit_status === 'warnings' → force=true 필요. 감사 리포트 확인했다는 명시적 신호.
-    // 레거시 상품(audit_status === null)은 기존 동작 유지.
     const force = body.force === true;
-    if ((pkg as { audit_status?: string }).audit_status === 'blocked') {
+
+    const { data: latestQualityLog } = await supabaseAdmin
+      .from('ai_quality_log')
+      .select('failed_checks')
+      .eq('package_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const failedChecks = Array.isArray((latestQualityLog as { failed_checks?: unknown[] } | null)?.failed_checks)
+      ? ((latestQualityLog as { failed_checks: Array<{ id?: string; severity?: string; message?: string; passed?: boolean }> }).failed_checks)
+      : [];
+
+    const { data: latestIntake } = await supabaseAdmin
+      .from('normalized_intakes')
+      .select('ir')
+      .eq('package_id', id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const sourceEvidence = ((latestIntake as { ir?: { sourceEvidence?: unknown } } | null)?.ir?.sourceEvidence ?? null) as SourceEvidenceMap | null;
+    const delivery = evaluateCustomerDeliveryReadiness({
+      pkg: pkg as Parameters<typeof evaluateCustomerDeliveryReadiness>[0]['pkg'],
+      failedChecks,
+      sourceEvidence,
+      requireCompletedAudit: true,
+    });
+    const publishGate = delivery.publishGate;
+    /*
+    if (!sourceEvidence || Object.keys(sourceEvidence).length === 0) {
+      const fallback = pkgToIntake(pkg as Parameters<typeof pkgToIntake>[0], {
+        landOperatorName: (pkg as { land_operator?: string | null }).land_operator ?? undefined,
+      });
+      sourceEvidence = fallback.ir.sourceEvidence;
+    }
+    const renderCoverage = evaluateRenderClaimCoverage(pkg as Parameters<typeof evaluateRenderClaimCoverage>[0], sourceEvidence);
+    const finalRenderFailedChecks = renderCoverage.unsupported.map((claim) => ({
+      id: `final_render_unsupported:${claim.id}`,
+      severity: 'critical',
+      passed: false,
+      message: `고객 노출 문구 원문 근거 없음: ${claim.value}`,
+    }));
+
+    const publishGate = evaluateProductPublishGate({
+      auditStatus: (pkg as { audit_status?: string | null }).audit_status ?? null,
+      auditReport: (pkg as { audit_report?: unknown }).audit_report ?? null,
+      failedChecks: [...failedChecks, ...finalRenderFailedChecks],
+      sourceEvidence,
+      requiredEvidenceFields: [...REQUIRED_PACKAGE_EVIDENCE_FIELDS],
+      minEvidenceCoverage: MIN_PACKAGE_EVIDENCE_COVERAGE,
+      requireCompletedAudit: true,
+    });
+
+    */
+    if (publishGate.decision === 'block') {
       return NextResponse.json(
         {
-          error: '감사 차단 상태입니다. 수정 후 post_register_audit.js 재실행 후에 승인할 수 있습니다.',
-          audit_status: 'blocked',
-          audit_report: (pkg as { audit_report?: unknown }).audit_report ?? null,
+          error: '출판 게이트 차단 상태입니다. 원문/품질 검증 실패를 수정한 뒤 재검증해야 승인할 수 있습니다.',
+          publish_gate: publishGate,
+          render_claim_coverage: {
+            total: delivery.renderClaimCoverage.total,
+            supported: delivery.renderClaimCoverage.supported,
+            ratio: delivery.renderClaimCoverage.ratio,
+            unsupported: delivery.renderClaimCoverage.unsupported.slice(0, 20),
+          },
+          source_evidence_origin: delivery.sourceEvidenceOrigin,
+          customer_deliverable: delivery.customerDeliverable,
+          audit_status: (pkg as { audit_status?: string | null }).audit_status ?? null,
+          audit_report: publishGate.auditReport ?? null,
         },
         { status: 409 },
       );
     }
-    if ((pkg as { audit_status?: string }).audit_status === 'warnings' && !force) {
+
+    if (publishGate.decision === 'force_required' && !force) {
       return NextResponse.json(
         {
-          error: '경고가 있는 상품입니다. 감사 리포트를 확인한 뒤 force=true 로 재호출하세요.',
-          audit_status: 'warnings',
-          audit_report: (pkg as { audit_report?: unknown }).audit_report ?? null,
+          error: '경고가 있는 상품입니다. 감사/품질 리포트를 확인한 뒤 force=true 로 재호출하세요.',
+          publish_gate: publishGate,
+          audit_status: (pkg as { audit_status?: string | null }).audit_status ?? null,
+          audit_report: publishGate.auditReport ?? null,
         },
         { status: 409 },
       );
@@ -184,6 +247,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     let dripInfo: { queued: number; angles: string[] } | null = null;
     let cardNewsInfo: { triggered: boolean; reason?: string } | null = null;
     let orchestratorInfo: { triggered: boolean; reason?: string } | null = null;
+    let searchAdsInfo: { triggered: boolean; saved?: number; keywords?: number; reason?: string } | null = null;
 
     // 정책 조회
     const { getBlogPublishingPolicy } = await import('@/lib/blog-scheduler');
@@ -271,6 +335,16 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       orchestratorInfo = { triggered: false, reason: 'policy disabled — /admin/blog/policy에서 활성' };
     }
 
+    // 4) 검색광고 키워드 플랜 자동 생성 (draft-first, 실제 집행은 별도 publish 플래그 필요)
+    try {
+      const { buildAndSaveSearchAdPackagePlan } = await import('@/lib/search-ads-auto-planner');
+      const plan = await buildAndSaveSearchAdPackagePlan(id);
+      searchAdsInfo = { triggered: true, saved: plan.saved, keywords: plan.summary.total };
+    } catch (e) {
+      searchAdsInfo = { triggered: false, reason: e instanceof Error ? e.message : 'unknown' };
+      await alertWarn('search-ads-auto-plan', e);
+    }
+
     // VA 이메일 알림 — fire-and-forget (비중단)
     const vaNotification = await sendVaContentPackage(id).catch(e => {
       console.warn('[Approve] VA email failed (non-blocking):', e instanceof Error ? e.message : e);
@@ -286,6 +360,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       drip: dripInfo,
       card_news: cardNewsInfo,
       orchestrator: orchestratorInfo,
+      search_ads: searchAdsInfo,
       va_notification: vaNotification,
       // 2026-05-18 박제: post-approve fail-soft 단계 실패 가시화 (admin_alerts 와 일치)
       warnings: postApproveWarnings.length > 0 ? postApproveWarnings : undefined,

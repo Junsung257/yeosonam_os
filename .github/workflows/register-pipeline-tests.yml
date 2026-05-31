@@ -3,6 +3,13 @@ name: Register Pipeline Tests
 on:
   pull_request:
     paths:
+      - 'scripts/eval-product-registration-corpus.ts'
+      - 'src/lib/product-registration-evaluator.ts'
+      - 'src/lib/product-registration-golden-fixtures.ts'
+      - 'src/lib/supplier-raw-deterministic-facts.ts'
+      - 'src/lib/supplier-format-fingerprint.ts'
+      - 'src/lib/intake-section-cache.ts'
+      - 'src/lib/section-cache-canary.ts'
       - 'src/lib/parser.ts'
       - 'src/lib/customer-leak-sanitizer.ts'
       - 'src/lib/upload-verify.ts'
@@ -15,7 +22,24 @@ on:
       - 'src/app/api/upload/route.ts'
       - 'src/app/api/admin/upload/verify/route.ts'
 
+permissions:
+  contents: read
+
 jobs:
+  product-registration-golden-corpus:
+    name: product registration golden corpus
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run eval:product-registration:ci
+        env:
+          CI: true
+
   upload-verify-test:
     name: upload-verify deterministic rules
     runs-on: ubuntu-latest

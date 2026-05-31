@@ -29,13 +29,19 @@ export async function resolveOAuthToken(
 ): Promise<OAuthTokens | null> {
   if (!isSupabaseConfigured) return null;
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('tenant_api_tokens')
     .select('encrypted_access_token, encrypted_refresh_token, expires_at')
-    .eq('tenant_id', tenantId)
     .eq('provider', provider)
     .eq('is_active', true)
+    .order('updated_at', { ascending: false })
     .limit(1);
+
+  if (tenantId.trim()) {
+    query = query.eq('tenant_id', tenantId);
+  }
+
+  const { data, error } = await query;
 
   if (error || !data?.[0]) return null;
 
@@ -106,14 +112,19 @@ async function saveRefreshedToken(
   accessToken: string,
   expiresAt: Date | undefined,
 ): Promise<void> {
-  await supabaseAdmin
+  let query = supabaseAdmin
     .from('tenant_api_tokens')
     .update({
       encrypted_access_token: encrypt(accessToken),
       expires_at: expiresAt?.toISOString() ?? null,
     })
-    .eq('tenant_id', tenantId)
     .eq('provider', provider);
+
+  if (tenantId.trim()) {
+    query = query.eq('tenant_id', tenantId);
+  }
+
+  await query;
 }
 
 function tryDecrypt(ciphertext: string): string | undefined {

@@ -38,6 +38,19 @@ type ExpectedRender = {
   shortCode: string | null;
 };
 
+const AUTO_QA_CHECK_PREFIXES = [
+  'mobile_',
+  'lp_',
+  'mobile_attraction_',
+];
+
+function isAutoQACheck(check: unknown): boolean {
+  const id = typeof check === 'object' && check !== null && 'id' in check
+    ? String((check as { id?: unknown }).id ?? '')
+    : '';
+  return AUTO_QA_CHECK_PREFIXES.some(prefix => id.startsWith(prefix));
+}
+
 async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
   try {
     const { data } = await supabaseAdmin
@@ -267,29 +280,30 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
       }
     } catch { /* swallow — ai_quality_log fetch fail 시 alert skip */ }
 
-    // 4) ai_quality_log 적재
-    if (incidents.length > 0) {
-      const { data: latestLog } = await supabaseAdmin
-        .from('ai_quality_log')
-        .select('id, failed_checks')
-        .eq('package_id', packageId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+    // 4) ai_quality_log 적재. 이전 AutoQA 결과는 현재 HTML 기준으로 대체한다.
+    const { data: latestLog } = await supabaseAdmin
+      .from('ai_quality_log')
+      .select('id, failed_checks')
+      .eq('package_id', packageId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
 
-      if (latestLog?.id) {
-        const existing = Array.isArray((latestLog as { failed_checks?: unknown[] }).failed_checks)
-          ? ((latestLog as { failed_checks: unknown[] }).failed_checks)
-          : [];
-        const merged = [
-          ...existing,
-          ...incidents.map(i => ({ id: i.id, severity: i.severity, passed: false, message: i.message })),
-        ];
-        await supabaseAdmin
-          .from('ai_quality_log')
-          .update({ failed_checks: merged })
-          .eq('id', latestLog.id);
-      }
+    if (latestLog?.id) {
+      const existing = Array.isArray((latestLog as { failed_checks?: unknown[] }).failed_checks)
+        ? ((latestLog as { failed_checks: unknown[] }).failed_checks)
+        : [];
+      const merged = [
+        ...existing.filter(check => !isAutoQACheck(check)),
+        ...incidents.map(i => ({ id: i.id, severity: i.severity, passed: false, message: i.message })),
+      ];
+      await supabaseAdmin
+        .from('ai_quality_log')
+        .update({ failed_checks: merged })
+        .eq('id', latestLog.id);
+    }
+
+    if (incidents.length > 0) {
       console.warn(`[AutoQA] ${packageId}: ${incidents.length} mobile incident(s)`);
 
       // G5: high/critical incident 시 admin_alerts 적재 (사장님 어드민 대시보드 빨간 배지)

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { isNaverAdsConfigured } from '@/lib/search-ads-api';
 
 export type Platform = 'google_ads' | 'meta' | 'naver' | 'google_analytics';
 
@@ -20,16 +21,16 @@ const PLATFORM_LABELS: Record<Platform, string> = {
   google_analytics: 'Google Analytics',
 };
 
-const SUPPORTED_PLATFORMS: Platform[] = ['google_ads', 'meta'];
+const SUPPORTED_PLATFORMS: Platform[] = ['google_ads', 'meta', 'naver'];
 
 function emptyIntegrations(): IntegrationStatus[] {
   return SUPPORTED_PLATFORMS.map((p) => ({
     platform: p,
     label: PLATFORM_LABELS[p],
-    connected: false,
+    connected: p === 'naver' ? isNaverAdsConfigured() : false,
     connected_at: null,
     expires_at: null,
-    scopes: [],
+    scopes: p === 'naver' && isNaverAdsConfigured() ? ['searchad-api-key'] : [],
   }));
 }
 
@@ -62,7 +63,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       .from('tenant_api_tokens')
       .select('provider, is_active, expires_at, scopes, created_at, updated_at')
       .eq('tenant_id', tenantId)
-      .in('provider', SUPPORTED_PLATFORMS);
+      .in('provider', SUPPORTED_PLATFORMS.filter((p) => p !== 'naver'));
 
     if (error) throw error;
 
@@ -70,6 +71,16 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
     const tokenMap = new Map<Platform, TokenRow>((data ?? []).map((r: TokenRow) => [r.provider as Platform, r]));
 
     const integrations: IntegrationStatus[] = SUPPORTED_PLATFORMS.map((p) => {
+      if (p === 'naver') {
+        return {
+          platform: p,
+          label: PLATFORM_LABELS[p],
+          connected: isNaverAdsConfigured(),
+          connected_at: null,
+          expires_at: null,
+          scopes: isNaverAdsConfigured() ? ['searchad-api-key'] : [],
+        };
+      }
       const row = tokenMap.get(p);
       return {
         platform: p,

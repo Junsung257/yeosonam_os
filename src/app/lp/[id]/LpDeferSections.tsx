@@ -6,7 +6,7 @@ import {
   ChevronDown, ChevronUp, MapPin, Utensils, Hotel, Camera, Bus, Star,
   Clock, CheckCircle2, XCircle,
 } from 'lucide-react';
-import type { ItineraryDay, DayActivity } from '@/lib/map-travel-package-to-lp';
+import type { ItineraryDay, DayActivity, LandingProductData } from '@/lib/map-travel-package-to-lp';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 
 function fmt(n: number) {
@@ -193,12 +193,31 @@ function ReviewSummaryStrip({
   packageId,
   score,
   count,
+  recommendation,
 }: {
   packageId: string;
   score: number;
   count: number;
+  recommendation?: LandingProductData['recommendation'];
 }) {
-  if (count < 1) return null;
+  if (count < 1 && !recommendation) return null;
+  if (count < 1 && recommendation) {
+    return (
+      <section className="mt-2 border-t border-[var(--border-mid)] bg-white px-5 py-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-lg">
+            🔍
+          </div>
+          <div className="min-w-0">
+            <p className="text-base font-bold text-[var(--text-primary)]">{recommendation.label}</p>
+            <p className="mt-1 text-sm text-[var(--text-muted)] leading-relaxed break-keep">
+              {recommendation.comparisonSummary}
+            </p>
+          </div>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="mt-2 border-t border-[var(--border-mid)] bg-white px-5 py-5">
       <div className="flex items-center justify-between gap-3">
@@ -227,6 +246,7 @@ export interface LpDeferSectionsProps {
   packageId: string;
   reviewScore: number;
   reviewCount: number;
+  recommendation?: LandingProductData['recommendation'];
 }
 
 /** 일정·포함불포·후기 — 초기 JS 번들 분리용 동적 청크 */
@@ -239,13 +259,14 @@ export function LpDeferSections({
   packageId,
   reviewScore,
   reviewCount,
+  recommendation,
 }: LpDeferSectionsProps) {
   return (
     <>
       <ItinerarySection days={days} onViewed={onItineraryViewed} />
       <IncludeExclude includes={includes} excludes={excludes} />
       <LegalNotice legalNotices={legalNotices} />
-      <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} />
+      <ReviewSummaryStrip packageId={packageId} score={reviewScore} count={reviewCount} recommendation={recommendation} />
     </>
   );
 }

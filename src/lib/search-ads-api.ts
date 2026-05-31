@@ -4,12 +4,12 @@
  * ══════════════════════════════════════════════════════════
  *
  * 네이버 SearchAd API:
- *   - API 키: NEXT_PUBLIC_NAVER_ADS_API_KEY, NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID
+ *   - API 키: NAVER_ADS_API_KEY, NAVER_ADS_SECRET_KEY, NAVER_ADS_CUSTOMER_ID
  *   - Base: https://api.searchad.naver.com
  *   - 인증: API Key + Secret Key (HMAC 서명)
  *
  * 구글 Ads API:
- *   - Google Ads API v16 (REST)
+ *   - Google Ads API v22 (REST)
  *   - 인증: OAuth 2.0 + Developer Token
  *
  * API 키 미설정 시 mock 데이터 반환 (graceful fallback)
@@ -23,13 +23,32 @@ import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 
 export function isNaverAdsConfigured(): boolean {
   return !!(
-    getSecret('NEXT_PUBLIC_NAVER_ADS_API_KEY') &&
-    getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')
+    getSecret('NAVER_ADS_API_KEY') &&
+    getSecret('NAVER_ADS_SECRET_KEY') &&
+    getSecret('NAVER_ADS_CUSTOMER_ID')
   );
 }
 
 export function isGoogleAdsConfigured(): boolean {
-  return !!getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN');
+  return !!(
+    getSecret('GOOGLE_ADS_DEVELOPER_TOKEN') &&
+    getSecret('GOOGLE_ADS_CUSTOMER_ID')
+  );
+}
+
+export function getGoogleAdsConfigStatus(): {
+  configured: boolean;
+  developerToken: boolean;
+  customerId: boolean;
+  customerIdPreview: string | null;
+} {
+  const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID');
+  return {
+    configured: isGoogleAdsConfigured(),
+    developerToken: Boolean(getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')),
+    customerId: Boolean(customerId),
+    customerIdPreview: customerId ? `${customerId.slice(0, 3)}...${customerId.slice(-2)}` : null,
+  };
 }
 
 // ── 공통 성과 데이터 타입 ────────────────────────────────
@@ -52,14 +71,35 @@ export interface SearchAdPerformance {
 
 const NAVER_API_BASE = 'https://api.searchad.naver.com';
 
+export function getNaverAdsConfigStatus(): {
+  configured: boolean;
+  apiKey: boolean;
+  secretKey: boolean;
+  customerId: boolean;
+  customerIdPreview: string | null;
+} {
+  const customerId = getSecret('NAVER_ADS_CUSTOMER_ID');
+  return {
+    configured: isNaverAdsConfigured(),
+    apiKey: Boolean(getSecret('NAVER_ADS_API_KEY')),
+    secretKey: Boolean(getSecret('NAVER_ADS_SECRET_KEY')),
+    customerId: Boolean(customerId),
+    customerIdPreview: customerId ? `${customerId.slice(0, 3)}...${customerId.slice(-2)}` : null,
+  };
+}
+
+export function isNaverAdsMutableKeywordId(keywordId: string): boolean {
+  return /^nkw-[a-z0-9-]+$/i.test(keywordId);
+}
+
 /** Naver SearchAd API 인증 헤더 생성 (HMAC-SHA256) */
 async function buildNaverAuthHeaders(
   method: string = 'GET',
   path: string = '/keywordstool',
 ): Promise<Record<string, string>> {
-  const apiKey = getSecret('NEXT_PUBLIC_NAVER_ADS_API_KEY')!;
-  const secretKey = getSecret('NEXT_PUBLIC_NAVER_ADS_SECRET_KEY') ?? '';
-  const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
+  const apiKey = getSecret('NAVER_ADS_API_KEY')!;
+  const secretKey = getSecret('NAVER_ADS_SECRET_KEY')!;
+  const customerId = getSecret('NAVER_ADS_CUSTOMER_ID')!;
 
   // HMAC-SHA256 서명 생성 — path는 실제 요청 path와 일치해야 함
   const timestamp = Date.now().toString();
@@ -200,17 +240,20 @@ export async function fetchNaverPerformance(keywords: SearchAdKeyword[]): Promis
   }
 
   try {
-    const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
-    const statsPath = `/ncc/customers/${customerId}/stats`;
+    const statsPath = '/stats';
     const headers = await buildNaverAuthHeaders('GET', statsPath);
 
     // API 호출: 일괄 성과 조회
-    const keywordIds = naverKeywords.map(k => k.id).join(',');
+    const keywordIds = naverKeywords
+      .map(k => k.id)
+      .filter(isNaverAdsMutableKeywordId);
+    if (!keywordIds.length) return generateMockPerformance(naverKeywords);
+
     const url = `${NAVER_API_BASE}${statsPath}`;
     const params = new URLSearchParams({
-      ids: keywordIds,
-      datePreset: 'LAST_7_DAYS',
-      metrics: 'impressions,clicks,ctr,avgCpc,avgRank,cost,conversions',
+      ids: JSON.stringify(keywordIds),
+      fields: JSON.stringify(['impCnt', 'clkCnt', 'ctr', 'cpc', 'salesAmt', 'ccnt']),
+      datePreset: 'last7days',
     });
 
     const res = await fetch(`${url}?${params.toString()}`, {
@@ -228,13 +271,12 @@ export async function fetchNaverPerformance(keywords: SearchAdKeyword[]): Promis
       data?: Array<{
         id: string;
         keyword: string;
-        impressions: number;
-        clicks: number;
+        impCnt?: number;
+        clkCnt?: number;
         ctr: number;
-        avgCpc: number;
-        avgRank: number;
-        cost: number;
-        conversions: number;
+        cpc?: number;
+        salesAmt?: number;
+        ccnt?: number;
       }>;
     };
 
@@ -245,15 +287,15 @@ export async function fetchNaverPerformance(keywords: SearchAdKeyword[]): Promis
     const today = new Date().toISOString().slice(0, 10);
     return json.data.map(item => ({
       keywordId: item.id,
-      keyword: item.keyword,
+      keyword: item.keyword ?? naverKeywords.find(k => k.id === item.id)?.keyword ?? item.id,
       platform: 'naver' as const,
-      impressions: item.impressions ?? 0,
-      clicks: item.clicks ?? 0,
+      impressions: item.impCnt ?? 0,
+      clicks: item.clkCnt ?? 0,
       ctr: item.ctr ?? 0,
-      cpc: item.avgCpc ?? 0,
-      conversions: item.conversions ?? 0,
-      spend: item.cost ?? 0,
-      avgPosition: item.avgRank ?? 10,
+      cpc: item.cpc ?? 0,
+      conversions: item.ccnt ?? 0,
+      spend: item.salesAmt ?? 0,
+      avgPosition: 0,
       date: today,
     }));
   } catch (err) {
@@ -266,24 +308,28 @@ export async function fetchNaverPerformance(keywords: SearchAdKeyword[]): Promis
  * 네이버 키워드 입찰가 업데이트
  *
  * 실제 API:
- *   PUT /ncc/customers/{customerId}/keywords/{keywordId}
- *   Body: { "bidAmt": newBid }
+ *   PUT /ncc/keywords/{keywordId}
+ *   Body: { "nccKeywordId": keywordId, "bidAmt": newBid, "useGroupBidAmt": false }
  */
 export async function updateNaverBid(keywordId: string, newBid: number): Promise<boolean> {
+  if (!isNaverAdsMutableKeywordId(keywordId)) {
+    console.warn(`[search-ads] Naver 입찰가 변경 생략: 실제 ncc keyword id가 아닙니다 (${keywordId})`);
+    return false;
+  }
+
   if (!isNaverAdsConfigured()) {
     console.log(`[Mock] 네이버 입찰가 변경: ${keywordId} → ₩${newBid}`);
     return true;
   }
 
   try {
-    const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
-    const bidPath = `/ncc/customers/${customerId}/keywords/${keywordId}`;
+    const bidPath = `/ncc/keywords/${keywordId}`;
     const headers = await buildNaverAuthHeaders('PUT', bidPath);
 
     const res = await fetch(`${NAVER_API_BASE}${bidPath}`, {
       method: 'PUT',
       headers: { ...headers, 'Content-Type': 'application/json;charset=UTF-8' },
-      body: JSON.stringify({ bidAmt: newBid }),
+      body: JSON.stringify({ nccKeywordId: keywordId, bidAmt: newBid, useGroupBidAmt: false }),
     });
 
     if (!res.ok) {
@@ -304,24 +350,28 @@ export async function updateNaverBid(keywordId: string, newBid: number): Promise
  * 네이버 키워드 일시정지
  *
  * 실제 API:
- *   PUT /ncc/customers/{customerId}/keywords/{keywordId}
- *   Body: { "userLock": false, "status": "PAUSED" }
+ *   PUT /ncc/keywords/{keywordId}
+ *   Body: { "nccKeywordId": keywordId, "userLock": true }
  */
 export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
+  if (!isNaverAdsMutableKeywordId(keywordId)) {
+    console.warn(`[search-ads] Naver 키워드 정지 생략: 실제 ncc keyword id가 아닙니다 (${keywordId})`);
+    return false;
+  }
+
   if (!isNaverAdsConfigured()) {
     console.log(`[Mock] 네이버 키워드 정지: ${keywordId}`);
     return true;
   }
 
   try {
-    const customerId = getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID')!;
-    const pausePath = `/ncc/customers/${customerId}/keywords/${keywordId}`;
+    const pausePath = `/ncc/keywords/${keywordId}`;
     const headers = await buildNaverAuthHeaders('PUT', pausePath);
 
     const res = await fetch(`${NAVER_API_BASE}${pausePath}`, {
       method: 'PUT',
       headers: { ...headers, 'Content-Type': 'application/json;charset=UTF-8' },
-      body: JSON.stringify({ userLock: false, status: 'PAUSED' }),
+      body: JSON.stringify({ nccKeywordId: keywordId, userLock: true }),
     });
 
     if (!res.ok) {
@@ -340,10 +390,11 @@ export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
 
 // ── 구글 Ads API (실제 연동) ─────────────────────────────
 
-const GOOGLE_ADS_API_BASE = 'https://googleads.googleapis.com/v16';
+const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? 'v22';
+const GOOGLE_ADS_API_BASE = `https://googleads.googleapis.com/${GOOGLE_ADS_API_VERSION}`;
 
 /**
- * Google Ads API v16 — 성과 데이터 조회
+ * Google Ads API — 성과 데이터 조회
  *
  * POST /customers/{customerId}/googleAds:search
  *   { "query": "SELECT metrics.impressions, metrics.clicks, ... FROM keywords ..." }
@@ -358,8 +409,8 @@ export async function fetchGooglePerformance(keywords: SearchAdKeyword[]): Promi
 
   try {
     const token = await resolveOAuthToken('', 'google_ads');
-    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN')!;
-    const customerId = getSecret('NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
+    const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
+    const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
     if (!token || !customerId) {
       return generateMockPerformance(googleKeywords);
@@ -465,8 +516,8 @@ export async function updateGoogleBid(keywordId: string, newBid: number): Promis
 
   try {
     const token = await resolveOAuthToken('', 'google_ads');
-    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN')!;
-    const customerId = getSecret('NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
+    const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
+    const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
     if (!token) {
       return false;
@@ -517,8 +568,8 @@ export async function pauseGoogleKeyword(keywordId: string): Promise<boolean> {
 
   try {
     const token = await resolveOAuthToken('', 'google_ads');
-    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN')!;
-    const customerId = getSecret('NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
+    const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
+    const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
     if (!token) {
       return false;
@@ -597,8 +648,8 @@ export async function generateGoogleHistoricalMetrics(
 
   try {
     const token = await resolveOAuthToken('', 'google_ads');
-    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN')!;
-    const customerId = getSecret('NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
+    const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
+    const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
     if (!token || !customerId) {
       return generateMockHistoricalMetrics(keywords, 'google');
@@ -722,8 +773,8 @@ export async function fetchGoogleSearchTerms(
 
   try {
     const token = await resolveOAuthToken('', 'google_ads');
-    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN')!;
-    const customerId = getSecret('NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
+    const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')!;
+    const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '') ?? '';
 
     if (!token || !customerId) {
       return generateMockSearchTerms();

@@ -6,7 +6,12 @@
  * - 광고 계정 상태 확인
  */
 import { NextRequest, NextResponse } from 'next/server';
-import { isNaverAdsConfigured, fetchNaverKeywordTool, isGoogleAdsConfigured } from '@/lib/search-ads-api';
+import {
+  fetchNaverKeywordTool,
+  getGoogleAdsConfigStatus,
+  getNaverAdsConfigStatus,
+  isNaverAdsConfigured,
+} from '@/lib/search-ads-api';
 import { getSecret } from '@/lib/secret-registry';
 
 export const dynamic = 'force-dynamic';
@@ -17,15 +22,10 @@ export async function GET(request: NextRequest) {
   const result: Record<string, unknown> = {
     timestamp: new Date().toISOString(),
     naver_ads: {
-      configured: isNaverAdsConfigured(),
-      customer_id: getSecret('NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'),
-      api_key_prefix: getSecret('NEXT_PUBLIC_NAVER_ADS_API_KEY')?.slice(0, 8),
-      secret_key_prefix: getSecret('NEXT_PUBLIC_NAVER_ADS_SECRET_KEY')?.slice(0, 8),
+      ...getNaverAdsConfigStatus(),
     },
     google_ads: {
-      configured: isGoogleAdsConfigured(),
-      developer_token: getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN') ? '✅ 설정됨' : '❌ 미설정',
-      customer_id: getSecret('NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID') || '❌ 미설정',
+      ...getGoogleAdsConfigStatus(),
       client_id: getSecret('GOOGLE_ADS_CLIENT_ID') ? '✅ 설정됨' : '❌ 미설정',
     },
   };

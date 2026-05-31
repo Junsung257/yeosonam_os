@@ -36,7 +36,11 @@ import { getLandOperatorProfile, accumulateLandOperatorProfile } from '@/lib/lan
 import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
-import { enrichItineraryWithAttractionReferences, type ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
+import {
+  enrichItineraryWithAttractionReferences,
+  shouldAttemptAttractionMatch,
+  type ItineraryDataLike,
+} from '@/lib/itinerary-attraction-enricher';
 import { extractPriceTable } from '@/lib/parser/deterministic/price-table';
 import { extractPriceMatrix } from '@/lib/parser/deterministic/price-matrix';
 import { looksLikeCommaSplitBroken } from '@/lib/parser/deterministic/comma-split-signature';
@@ -51,6 +55,12 @@ import { generateRecommendationCopy, isWeakCopy } from '@/lib/parser/recommendat
 import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { isStandardProductMarkdown, parseStandardProductMarkdown } from '@/lib/standard-product-markdown';
+import {
+  buildSupplierRawDeterministicItinerary,
+  canUseSupplierRawDeterministicPreflight,
+  extractSupplierRawDeterministicFacts,
+} from '@/lib/supplier-raw-deterministic-facts';
 
 const ATTRACTION_EXTRACT_FALLBACK = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
 
@@ -228,6 +238,7 @@ function parseFilename(filename: string): {
  */
 function resolveSupplierCode(supplierRaw?: string): string {
   if (!supplierRaw) return 'ETC';
+  if (supplierRaw.includes('투어코코넛')) return 'TC';
   // 정확한 키 매칭
   if (SUPPLIER_MAP[supplierRaw]) return SUPPLIER_MAP[supplierRaw];
   // 부분 문자열 매칭 (예: '투어폰여행사' → 'TP')
@@ -502,7 +513,7 @@ const postHandler = async (request: NextRequest) => {
       console.log('[Upload API] 텍스트 모드 해시:', fileHash.slice(0, 12));
     } else {
       // 파일 모드: 기존 로직
-      const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx'];
+      const allowedExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.hwp', '.hwpx', '.txt', '.md'];
       const ext = '.' + (file!.name.split('.').pop()?.toLowerCase() ?? '');
       if (!allowedExtensions.includes(ext)) {
         return NextResponse.json(
@@ -703,7 +714,25 @@ const postHandler = async (request: NextRequest) => {
     // ── [E-1] PDF/HWP 텍스트 추출 (바이너리 → 텍스트) ──────────────────────
     // 중요: PDF는 바이너리이므로 buffer.toString('utf-8')은 깨진 문자열을 반환함
     // 반드시 pdf-parse로 먼저 텍스트를 추출한 후 분류기에 넘겨야 함
-    const parsedDocument = await parseDocument(buffer, fileName, parseOptions);
+    const shouldBypassLegacyParserForRawText =
+      Boolean(directRawText)
+      && !isStandardProductMarkdown(directRawText ?? '')
+      && process.env.RAW_UPLOAD_NORMALIZER_ENABLED !== '0';
+    let parsedDocument = directRawText && isStandardProductMarkdown(directRawText)
+      ? parseStandardProductMarkdown(directRawText, fileName)
+      : shouldBypassLegacyParserForRawText
+        ? {
+            filename: fileName,
+            fileType: 'hwp' as const,
+            rawText: directRawText ?? '',
+            extractedData: { rawText: directRawText ?? '' },
+            parsedAt: new Date(),
+            confidence: 0,
+          }
+        : await parseDocument(buffer, fileName, parseOptions);
+    if (!directRawText && isStandardProductMarkdown(parsedDocument.rawText ?? '')) {
+      parsedDocument = parseStandardProductMarkdown(parsedDocument.rawText, fileName);
+    }
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
     const normalizedCatalogHash = computeNormalizedContentHash(parsedDocument.rawText ?? '');
 
@@ -754,7 +783,7 @@ const postHandler = async (request: NextRequest) => {
       console.log('[Upload API] 텍스트 기반 랜드사 식별:', identified.identificationSource, effectiveSupplierCode);
     }
 
-    const departingLocationId = resolveDepartingLocationId(
+    let departingLocationId = resolveDepartingLocationId(
       parsedDocument.extractedData.departure_airport ?? filenameRule.cleanName,
       depLocs ?? [],
     );
@@ -763,17 +792,35 @@ const postHandler = async (request: NextRequest) => {
       departure: parsedDocument.extractedData.departure_airport, departingLocationId,
     });
 
-    // P1 — IR canary: 단일·복수 PKG 카탈로그 forward IR 추출로 parseDocument 결과 대체
+    // P1 — 원문 자동 정형화: 랜드사 원문은 기본적으로 IR normalizer 를 1차 파서로 사용한다.
+    // 표준 마크다운은 이미 정형화된 입력이므로 deterministic parser 를 유지한다.
+    // RAW_UPLOAD_NORMALIZER_ENABLED=0 일 때만 구 canary 샘플링으로 낮출 수 있다.
     let irCanaryPrimary = false;
+    let rawNormalizerFailedReason: string | null = null;
     const irLandOperatorName =
       landOps?.find((lo: { id: string; name: string }) => lo.id === effectiveLandOperatorId)?.name
       ?? filenameRule.supplierRaw
       ?? effectiveSupplierCode
       ?? '';
+    const isStructuredMarkdownUpload = isStandardProductMarkdown(parsedDocument.rawText ?? '');
+    const canUseDeterministicRawPreflight =
+      !isStructuredMarkdownUpload
+      && canUseSupplierRawDeterministicPreflight(parsedDocument.rawText ?? '');
+    const rawUploadNormalizerEnabled = process.env.RAW_UPLOAD_NORMALIZER_ENABLED !== '0';
+    const shouldRunRawUploadNormalizer =
+      !isStructuredMarkdownUpload
+      && isSupabaseConfigured
+      && Boolean(irLandOperatorName)
+      && !canUseDeterministicRawPreflight
+      && (
+        rawUploadNormalizerEnabled
+        || shouldSampleToIrCanary(normalizedCatalogHash)
+      );
+    if (canUseDeterministicRawPreflight) {
+      console.log('[Upload API] raw deterministic preflight 통과 — LLM normalizer 스킵 (토큰/시간 절약)');
+    }
     if (
-      isSupabaseConfigured &&
-      shouldSampleToIrCanary(normalizedCatalogHash) &&
-      irLandOperatorName
+      shouldRunRawUploadNormalizer
     ) {
       const irExtract = await tryExtractUploadViaIr({
         rawText: parsedDocument.rawText ?? '',
@@ -787,9 +834,13 @@ const postHandler = async (request: NextRequest) => {
         parsedDocument.extractedData = irExtract.products[0].extractedData;
         parsedDocument.itineraryData = irExtract.products[0].itineraryData;
         parsedDocument.confidence = irExtract.confidence;
+        departingLocationId = resolveDepartingLocationId(
+          parsedDocument.extractedData.departure_airport ?? filenameRule.cleanName,
+          depLocs ?? [],
+        );
         irCanaryPrimary = true;
         console.log(
-          '[Upload API] IR canary primary extraction:',
+          '[Upload API] raw upload normalizer primary extraction:',
           irExtract.engine,
           'products=',
           irExtract.products.length,
@@ -798,9 +849,24 @@ const postHandler = async (request: NextRequest) => {
         );
       } else {
         console.warn(
-          '[Upload API] IR canary extract failed — parseDocument fallback:',
+          '[Upload API] raw upload normalizer failed — parseDocument fallback:',
           irExtract.errors?.slice(0, 2).join('; '),
         );
+        rawNormalizerFailedReason = irExtract.errors?.slice(0, 3).join('; ') || 'unknown normalizer failure';
+        void postAlert({
+          category: 'general',
+          severity: 'warning',
+          title: '랜드사 원문 자동 정형화 실패',
+          message: rawNormalizerFailedReason,
+          ref_type: 'upload',
+          ref_id: normalizedCatalogHash.slice(0, 16),
+          meta: {
+            filename: fileName,
+            landOperator: irLandOperatorName,
+            normalizedCatalogHash,
+          },
+          dedupe: true,
+        });
       }
     }
 
@@ -856,6 +922,7 @@ const postHandler = async (request: NextRequest) => {
     const savedIds: string[]           = [];
     const savedTitles: string[]        = [];
     const savedInternalCodes: string[] = [];
+    const savedConfidences: number[]   = [];
     const saveErrors: { title: string; error: string }[] = [];
     let   totalPriceRowsSaved = 0;
     const unmatchedRowsToInsert: {
@@ -885,6 +952,67 @@ const postHandler = async (request: NextRequest) => {
     for (let productIndex = 0; productIndex < productsToSave.length; productIndex++) {
       const product = productsToSave[productIndex];
       const ed = product.extractedData;
+      let normalizerFailureCoveredByDeterministicFallback = false;
+      const preliminaryRawText =
+        (product as { sectionRawText?: string }).sectionRawText
+        ?? parsedDocument.rawText
+        ?? '';
+      const rawFacts = extractSupplierRawDeterministicFacts(preliminaryRawText);
+      if ((!ed.title || ed.title === '텍스트입력') && rawFacts.title) ed.title = rawFacts.title;
+      if ((!ed.destination || ed.destination === 'UNK') && rawFacts.region) ed.destination = rawFacts.region;
+      if ((!ed.trip_style || ed.trip_style === 'UNK') && rawFacts.tripStyle) ed.trip_style = rawFacts.tripStyle;
+      if ((!ed.duration || ed.duration <= 0) && rawFacts.durationDays) ed.duration = rawFacts.durationDays;
+      if ((!ed.departure_airport || ed.departure_airport === 'UNK') && rawFacts.departureAirport) ed.departure_airport = rawFacts.departureAirport;
+      if ((!ed.airline || ed.airline === 'UNK') && rawFacts.airline) ed.airline = rawFacts.airline;
+      if ((!ed.min_participants || ed.min_participants <= 0) && rawFacts.minParticipants) ed.min_participants = rawFacts.minParticipants;
+      if ((!ed.price_tiers?.length) && rawFacts.dates.length && rawFacts.prices.adult) {
+        ed.price_tiers = [{
+          period_label: '원문 출발일',
+          departure_dates: rawFacts.dates,
+          adult_price: rawFacts.prices.adult,
+          child_price: rawFacts.prices.child ?? undefined,
+          status: 'available',
+        }];
+        ed.price = rawFacts.prices.adult;
+      }
+      if ((!ed.inclusions?.length) && rawFacts.inclusions.length) ed.inclusions = rawFacts.inclusions;
+      if ((!ed.excludes?.length) && rawFacts.excludes.length) ed.excludes = rawFacts.excludes;
+      if ((!ed.notices_parsed?.length) && rawFacts.notices.length) ed.notices_parsed = rawFacts.notices;
+      if ((!ed.flight_info?.flight_no) && rawFacts.outbound?.code) {
+        ed.flight_info = {
+          ...(ed.flight_info ?? {}),
+          airline: ed.airline ?? rawFacts.airline,
+          flight_no: rawFacts.outbound.code,
+          depart: rawFacts.outbound.departure.time,
+          arrive: rawFacts.outbound.arrival.time,
+          return_depart: rawFacts.inbound?.departure.time,
+          return_arrive: rawFacts.inbound?.arrival.time,
+        };
+      }
+      if (rawFacts.outbound?.code || rawFacts.inbound?.code || ed.airline || ed.departure_airport) {
+        const fallbackItinerary = buildSupplierRawDeterministicItinerary(preliminaryRawText);
+        const itinerary = (product.itineraryData ?? fallbackItinerary ?? {}) as ItineraryDataLike & {
+          meta?: Record<string, string | null | undefined>;
+        };
+        itinerary.meta = {
+          ...(itinerary.meta ?? {}),
+          airline: itinerary.meta?.airline ?? ed.airline ?? rawFacts.airline,
+          flight_out: itinerary.meta?.flight_out ?? rawFacts.outbound?.code ?? null,
+          flight_in: itinerary.meta?.flight_in ?? rawFacts.inbound?.code ?? null,
+          departure_airport: itinerary.meta?.departure_airport ?? ed.departure_airport ?? rawFacts.departureAirport,
+        };
+        product.itineraryData = itinerary as unknown as typeof product.itineraryData;
+      }
+      normalizerFailureCoveredByDeterministicFallback = Boolean(
+        rawNormalizerFailedReason
+        && ed.airline
+        && ed.price_tiers?.length
+        && ed.inclusions?.length
+        && ed.excludes?.length
+        && ((product.itineraryData as { days?: unknown[] } | null)?.days?.length ?? 0) > 0
+        && (product.itineraryData as { meta?: { flight_out?: string | null; flight_in?: string | null } } | null)?.meta?.flight_out
+        && (product.itineraryData as { meta?: { flight_out?: string | null; flight_in?: string | null } } | null)?.meta?.flight_in
+      );
       const title = ed.title || filenameRule.cleanName || fileName;
       const productRawText =
         (product as { sectionRawText?: string }).sectionRawText
@@ -1383,25 +1511,34 @@ JSON 배열로 응답:
         let scheduleItemCount = 0;
         for (const day of itineraryInput?.days ?? []) {
           for (const s of day.schedule ?? []) {
-            if (!s.activity) continue;
-            const t = (s as { type?: string }).type;
-            if (t === 'flight' || t === 'hotel' || t === 'shopping') continue;
-            scheduleItemCount++;
+            if (shouldAttemptAttractionMatch(s as { activity: string; note?: string | null; type?: string })) {
+              scheduleItemCount++;
+            }
           }
         }
         const v2WithAttraction = calculateConfidenceV2(ed, {
           leakScore: sanitizeResult.leakScore,
-          itineraryData: product.itineraryData as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
+          itineraryData: itineraryInput as unknown as { days?: Array<{ schedule?: Array<{ type?: string }>; hotel?: { name?: string | null } }>; meta?: { airline?: string | null; flight_out?: string | null; flight_in?: string | null } } | undefined,
           policy: autoGatePolicy,
           attractionStats: {
-            matchedCount: enrichment.matchedCanonicalNames.length,
+            matchedCount: enrichment.matchedScheduleItemCount ?? enrichment.matchedCanonicalNames.length,
             unmatchedCount: enrichment.unmatchedCandidates.length,
             scheduleItemCount,
           },
         });
         const confidenceV3 = v2WithAttraction.confidence;
         const v3Checks = v2WithAttraction.checks;
-        const v3FailedChecks = v3Checks.filter(c => !c.passed);
+        const v3FailedChecks = [
+          ...v3Checks.filter(c => !c.passed),
+          ...(rawNormalizerFailedReason && !normalizerFailureCoveredByDeterministicFallback
+            ? [{
+                id: 'raw_upload_normalizer_failed',
+                passed: false,
+                severity: 'critical',
+                message: `랜드사 원문 자동 정형화 실패 — 고객 노출 전 검수 필요: ${rawNormalizerFailedReason}`,
+              }]
+            : []),
+        ];
         const itineraryDataToSave = postProcessItineraryData(
           (enrichment.itineraryData ?? product.itineraryData ?? null) as Parameters<
             typeof postProcessItineraryData
@@ -1511,7 +1648,7 @@ JSON 배열로 응답:
               departing_location_id: departingLocationId,
               // Phase 2 신규 필드
               status:                productStatus,
-              ai_confidence_score:   Math.round(confidence * 100),
+              ai_confidence_score:   Math.round(confidenceV3 * 100),
               theme_tags:            ed.theme_tags ?? [],
               selling_points:        ed.selling_points ?? null,
               flight_info:           ed.flight_info ?? null,
@@ -1603,7 +1740,7 @@ JSON 배열로 응답:
               single_supplement:     ed.single_supplement,
               small_group_surcharge: ed.small_group_surcharge,
               price_tiers:           ed.price_tiers       ?? [],
-              price_dates:           tiersToDatePrices(ed.price_tiers ?? []),
+              price_dates:           tiersToDatePrices(ed.price_tiers ?? [], { packageDepartureDays: ed.departure_days }),
               price_list:            ed.price_list        ?? [],
               surcharges:            ed.surcharges        ?? [],
               excluded_dates:        ed.excluded_dates    ?? [],
@@ -1639,12 +1776,13 @@ JSON 배열로 응답:
           if (pkgResult?.id) {
             savedIds.push(pkgResult.id);
             savedTitles.push(title);
+            savedConfidences.push(confidenceV3);
 
             // ── G8.5. ai_quality_log 적재 — V2 + leak incidents + LLM 메타 (P11-4)
             const llmMeta = (ed as { _llm_meta?: Record<string, unknown> })._llm_meta ?? {};
             // B1 박제 (2026-05-15): 관광지 매칭 통계 — 사장님 시각 검증용
             //   reflected 는 multi-product loop 종료 후 별도 UPDATE (시드 후 재반영 시점에)
-            const pkgMatchedCount   = enrichment.matchedCanonicalNames.length;
+            const pkgMatchedCount   = enrichment.matchedScheduleItemCount ?? enrichment.matchedCanonicalNames.length;
             const pkgUnmatchedCount = enrichment.unmatchedCandidates.length;
             void supabaseAdmin
               .from('ai_quality_log')
@@ -1664,6 +1802,12 @@ JSON 배열로 응답:
                 llm_tokens_input:  Number(llmMeta.tokens_input ?? 0),
                 llm_tokens_output: Number(llmMeta.tokens_output ?? 0),
                 llm_calls_count:   1 + (llmMeta.advisor_used ? 1 : 0),
+                section_cache_hit_count: Number(llmMeta.section_cache_hit_count ?? 0),
+                section_cache_reduced_chars: Number(llmMeta.section_cache_reduced_chars ?? 0),
+                section_cache_reduce_ready: Boolean(llmMeta.section_cache_reduce_ready),
+                section_cache_replaced_labels: Array.isArray(llmMeta.section_cache_replaced_labels)
+                  ? llmMeta.section_cache_replaced_labels.map(String)
+                  : [],
                 // B1 박제: 패키지 단위 관광지 매칭 통계
                 attraction_matched_count:   pkgMatchedCount,
                 attraction_unmatched_count: pkgUnmatchedCount,
@@ -1687,12 +1831,13 @@ JSON 배열로 응답:
               filenameRule.marginRate != null ? filenameRule.marginRate * 100 : marginRate * 100;
             const intakeRawText = productRawText ?? parsedDocument.rawText ?? '';
             const intakeRawHash = createHash('sha256').update(intakeRawText).digest('hex');
+            const auditBaseUrl = request.nextUrl.origin;
             nextAfter(async () => {
               try {
                 await Promise.allSettled([
                   runCoVeInBackground(pkgIdForAudit),
                   runUploadVerify(pkgIdForAudit),
-                  runAutoMobileQA(pkgIdForAudit),
+                  runAutoMobileQA(pkgIdForAudit, auditBaseUrl),
                 ]);
               } catch (e) {
                 console.warn('[upload-after] post-audit 묶음 실패:', e instanceof Error ? e.message : e);
@@ -1810,11 +1955,11 @@ JSON 배열로 응답:
           }
         }
 
-        // ★ 2026-05-24 박제 (ERR-pending-review-404):
-        //   nextAfter 에서 post_register_audit.js 가 실행되어 audit_status 가 설정됐을 수 있음.
-        //   audit_status='clean' or 'info' 이면 status='active' 로 즉시 승격 (고객 노출).
-        //   post_register_audit.js 내부에서도 동일 로직 수행하지만, 여기서도 한 번 더 확인해
-        //   응답 반환 전에 이미 감사가 완료된 케이스를 대비.
+        // ★ 2026-05-31 박제:
+        //   등록 직후 자동 고객 노출을 막는다. runUploadVerify / CoVe / mobile QA 는 nextAfter
+        //   묶음으로 돌며 완료 순서가 비결정적이라, 응답 직전 audit_status='clean' 만 보고
+        //   status='active' 로 올리면 뒤늦은 CoVe critical 이 고객 노출 뒤에 발견될 수 있다.
+        //   clean 상품도 관리자 approve route 를 통해 명시 승인한다.
         if (pkgResult?.id && isSupabaseConfigured) {
           try {
             const { data: check } = await supabaseAdmin
@@ -1823,11 +1968,7 @@ JSON 배열로 응답:
               .eq('id', pkgResult.id)
               .single();
             if (check && (check.audit_status === 'clean' || check.audit_status === 'info') && check.status !== 'active') {
-              await supabaseAdmin
-                .from('travel_packages')
-                .update({ status: 'active', updated_at: new Date().toISOString() })
-                .eq('id', pkgResult.id);
-              console.log(`[Upload API] ✅ audit_status=${check.audit_status} — status→active 자동 승격 (고객 노출 가능): ${pkgResult.id}`);
+              console.log(`[Upload API] audit_status=${check.audit_status} — 자동 활성화 보류, 관리자 승인 필요: ${pkgResult.id}`);
             }
           } catch (_e) {
             // fail-soft — post_register_audit.js 가 백그라운드에서 처리하므로 실패해도 무방
@@ -1931,7 +2072,8 @@ JSON 배열로 응답:
           //   2) 성공 → qid 중복 체크 → attractions INSERT (aliases+photos+descriptions)
           //   3) 실패 → 기존처럼 unmatched 큐 적재 (fallback)
           //   4) fire-and-forget: photo + description 백그라운드 생성
-          if (newActivities.length > 0) {
+          const allowAutoAttractionInsert = false;
+          if (allowAutoAttractionInsert && newActivities.length > 0) {
             const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
             const { inferCountryFromDestination } = await import('@/lib/destination-iso');
             const firstSeedCountry = inferCountryFromDestination(firstSeedDest);
@@ -2256,6 +2398,8 @@ JSON 배열로 응답:
       // 내부 코드 목록
       internal_codes: savedInternalCodes,
       internal_code:  savedInternalCodes[0] ?? null,
+      finalConfidence: savedConfidences[0] ?? parsedDocument.confidence,
+      finalConfidences: savedConfidences,
       productCount,
       // Phase 2 신규
       priceRowsSaved:  totalPriceRowsSaved,

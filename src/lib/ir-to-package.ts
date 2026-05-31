@@ -24,6 +24,7 @@ import type {
   IntakePriceGroup,
   IntakeSurcharge,
   IntakeNoticeBlock,
+  IntakeFlightSegment,
 } from './intake-normalizer';
 import {
   buildAttractionIndex,
@@ -124,6 +125,19 @@ function surchargeToObject(s: IntakeSurcharge): Record<string, unknown> {
     currency: s.currency,
     unit: s.unit,
   };
+}
+
+function uniqTruthy(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.map(v => v?.trim()).filter((v): v is string => Boolean(v)))];
+}
+
+export function regionsWithFlightEndpoints(regions: string[], flight: IntakeFlightSegment | null): string[] {
+  if (!flight) return regions;
+  return uniqTruthy([
+    flight.departure.airport,
+    ...regions,
+    flight.arrival.airport,
+  ]);
 }
 
 /** 세그먼트를 일정표 평탄 string 으로 변환 (pkg.itinerary[] 과 day.schedule 용) */
@@ -331,9 +345,11 @@ export async function convertIntakeToPackage(
         })()
       : { name: null, grade: null, note: null };
 
+    const dayRegions = regionsWithFlightEndpoints(d.regions, d.flight);
+
     pkgDays.push({
       day: d.day,
-      regions: d.regions,
+      regions: dayRegions,
       meals: {
         breakfast: d.meals.breakfast,
         lunch: d.meals.lunch,
@@ -347,7 +363,7 @@ export async function convertIntakeToPackage(
     });
 
     // itinerary[] — 요약 한 줄
-    const regionsStr = d.regions.join(' → ');
+    const regionsStr = dayRegions.join(' → ');
     const firstAttraction = d.segments.find((s) => s.kind === 'attraction')?.attractionNames?.[0] || '';
     itineraryStrings.push(`제${d.day}일 (${regionsStr})${firstAttraction ? ` · ${firstAttraction}` : ''}`);
   });

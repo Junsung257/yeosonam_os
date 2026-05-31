@@ -10,6 +10,7 @@ import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
 import { logError } from '@/lib/sentry-logger';
 import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
+import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -35,6 +36,10 @@ export async function GET(request: NextRequest) {
       imageByPkgId: {},
       recommendedIds: [],
       recommendedReasonMap: {},
+      scoreByPkgId: {},
+      scoreReasonMap: {},
+      rankByPkgId: {},
+      comparisonGroupSizeMap: {},
       hub: 'all' as DepartureHubId,
       filterForClient: '',
     });
@@ -189,7 +194,8 @@ export async function GET(request: NextRequest) {
     const customerId = request.headers.get('x-customer-id') || '';
     const pkgIds = packages.map((p: { id?: string }) => p.id).filter(Boolean) as string[];
     let recommendedIds: string[] = [];
-    let recommendedReasonMap: Record<string, string[]> = {};
+    const recommendedReasonMap: Record<string, string[]> = {};
+    let personalizedPayload: { reason: string } | undefined;
 
     if (customerId && pkgIds.length > 0) {
       // 개인화: customer_unified_profile 기반 weight override
@@ -206,38 +212,42 @@ export async function GET(request: NextRequest) {
         for (const pkg of boostedPkgs.slice(0, 5)) {
           recommendedReasonMap[pkg.id] = [personalized.reason];
         }
-        return NextResponse.json(
-          {
-            packages,
-            imageByPkgId,
-            recommendedIds,
-            recommendedReasonMap,
-            hub,
-            filterForClient,
-            personalized: { reason: personalized.reason },
-          },
-          {
-            headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
-          },
-        );
+        personalizedPayload = { reason: personalized.reason };
       }
       // profile 없으면 fall through → 일반 추천
     }
 
-    // 그룹 1위 추천 (기존 fallback)
+    const scoreByPkgId: Record<string, ReturnType<typeof buildRecommendationDisplay>> = {};
+    const scoreReasonMap: Record<string, string[]> = {};
+    const rankByPkgId: Record<string, number> = {};
+    const comparisonGroupSizeMap: Record<string, number> = {};
+
+    // 그룹 점수 전체 전달: 리뷰가 없는 상품도 비교판정 UI를 띄울 수 있게 한다.
     if (pkgIds.length > 0) {
       const { data: scores } = await sb
         .from('package_scores')
-        .select('package_id, rank_in_group, group_size, breakdown')
+        .select('package_id, group_key, departure_date, list_price, effective_price, topsis_score, rank_in_group, group_size, breakdown, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, duration_days')
         .in('package_id', pkgIds)
-        .eq('rank_in_group', 1)
-        .gte('group_size', 2);
-      type ScoreRow = { package_id: string; breakdown: { why?: string[] } | null };
-      recommendedIds = ((scores ?? []) as ScoreRow[]).map(s => s.package_id);
-      recommendedReasonMap = Object.fromEntries(
-        ((scores ?? []) as ScoreRow[])
-          .map(s => [s.package_id, s.breakdown?.why ?? []]),
-      );
+        .order('group_size', { ascending: false })
+        .order('rank_in_group', { ascending: true });
+      const bestRows = new Map<string, PackageScoreDisplayRow>();
+      for (const raw of (scores ?? []) as PackageScoreDisplayRow[]) {
+        if (!raw.package_id || bestRows.has(raw.package_id)) continue;
+        bestRows.set(raw.package_id, raw);
+      }
+      for (const [packageId, row] of bestRows.entries()) {
+        const display = buildRecommendationDisplay(row);
+        scoreByPkgId[packageId] = display;
+        if (display) {
+          scoreReasonMap[packageId] = display.reasons;
+          if (display.rankInGroup != null) rankByPkgId[packageId] = display.rankInGroup;
+          comparisonGroupSizeMap[packageId] = display.groupSize;
+          if (display.hasComparison && display.rankInGroup === 1 && !recommendedIds.includes(packageId)) {
+            recommendedIds.push(packageId);
+          }
+          if (!recommendedReasonMap[packageId]) recommendedReasonMap[packageId] = display.reasons;
+        }
+      }
     }
 
     return NextResponse.json(
@@ -246,8 +256,13 @@ export async function GET(request: NextRequest) {
         imageByPkgId,
         recommendedIds,
         recommendedReasonMap,
+        scoreByPkgId,
+        scoreReasonMap,
+        rankByPkgId,
+        comparisonGroupSizeMap,
         hub,
         filterForClient,
+        personalized: personalizedPayload,
       },
       {
         // Vercel Edge CDN: query string 별 cache key 누적 HIT.

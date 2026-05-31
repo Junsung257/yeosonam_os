@@ -53,6 +53,7 @@ export interface KeywordPerf {
   current_bid: number;
   clicks: number;
   conversions: number;
+  external_keyword_id?: string | null;
 }
 
 export type OptimizationAction =

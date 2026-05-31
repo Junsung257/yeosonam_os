@@ -300,6 +300,10 @@ export interface ExtractedData {
     tokens_input?: number;
     tokens_output?: number;
     cost_usd?: number;
+    section_cache_hit_count?: number;
+    section_cache_reduced_chars?: number;
+    section_cache_reduce_ready?: boolean;
+    section_cache_replaced_labels?: string[];
   };
 }
 

@@ -384,6 +384,9 @@ export interface KeywordPerformance {
   impressions: number;
   conversions: number;
   is_longtail: boolean;
+  external_keyword_id?: string | null;
+  external_campaign_id?: string | null;
+  external_ad_group_id?: string | null;
   discovered_at?: string | null;
   period_start?: string | null;
   period_end?: string | null;

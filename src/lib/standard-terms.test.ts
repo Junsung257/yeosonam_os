@@ -108,6 +108,23 @@ describe('filterNoticesForSurface — P2 A4·예약안내문·모바일 surface 
       'a4',
     )).toHaveLength(0);
   });
+
+  it('고객 surface — B2B 용어를 고객 표현으로 치환', () => {
+    const r = filterNoticesForSurface([
+      notice({
+        type: 'PAYMENT',
+        title: '파이널 조건',
+        text: '현지 호텔 객실 파이널(Final) 확정 후 실명단 기준 투어비가 확정됩니다.',
+        surfaces: ['mobile'],
+      }),
+    ], 'mobile');
+
+    expect(`${r[0].title} ${r[0].text}`).not.toMatch(/파이널|Final|실명단|투어비/);
+    expect(r[0].title).toContain('최종');
+    expect(r[0].text).toContain('최종 확정');
+    expect(r[0].text).toContain('여행자 정보');
+    expect(r[0].text).toContain('여행 요금');
+  });
 });
 
 describe('formatCancellationDates — 출발일 기준 날짜 자동 병기', () => {

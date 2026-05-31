@@ -18,6 +18,7 @@ import {
   flattenItems,
   classifyExcludes,
   SURCHARGE_RE,
+  renderPackage,
 } from './render-contract';
 
 describe('getAirlineName', () => {
@@ -87,6 +88,31 @@ describe('parseFlightActivity', () => {
     expect(r.depCity).toBe('김해');
     expect(r.arrCity).toBe('후쿠오카'); // non-greedy + 공항 strict 로 over-capture 차단
     expect(r.arrTime).toBe('08:25');
+  });
+});
+
+describe('renderPackage flight pair merge', () => {
+  it('does not expose placeholder cities for split plain flight rows', () => {
+    const view = renderPackage({
+      airline: 'LJ',
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            schedule: [
+              { type: 'flight', activity: 'LJ115 부산 출발', time: '21:35', transport: 'LJ115' },
+              { type: 'flight', activity: '나트랑 도착', time: '00:25', transport: 'LJ115' },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(view.days[0].schedule[0].activity).toBe('부산 출발 → 나트랑 도착 00:25');
+    expect(view.days[0].schedule[0].activity).not.toContain('출발지');
+    expect(view.days[0].schedule[0].activity).not.toContain('도착지');
+    expect(view.flightHeader.outbound?.depCity).toBe('부산');
+    expect(view.flightHeader.outbound?.arrCity).toBe('나트랑');
   });
 });
 

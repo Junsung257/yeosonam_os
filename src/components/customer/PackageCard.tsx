@@ -48,6 +48,12 @@ interface Props {
   isYeosonamPick?: boolean;
   primaryReason?: string;
   lossAversionText?: string;
+  comparisonLabel?: string;
+  comparisonSummary?: string;
+  comparisonReasons?: string[];
+  comparisonRank?: number | null;
+  comparisonGroupSize?: number | null;
+  hotelGradeLabel?: string | null;
   /** 랭킹 오버레이 숫자 (RankingSection 전용) */
   rankNumber?: number;
   /** 2026-05-19 박제 (P2-A / A2): 같은 catalog_id 그룹 안의 패키지 수 (≥2 면 "분기 선택 가능" 배지) */
@@ -149,6 +155,12 @@ export default function PackageCard({
   isYeosonamPick = false,
   primaryReason,
   lossAversionText,
+  comparisonLabel,
+  comparisonSummary,
+  comparisonReasons = [],
+  comparisonRank,
+  comparisonGroupSize,
+  hotelGradeLabel,
   rankNumber,
   catalogGroupCount,
 }: Props) {
@@ -180,6 +192,7 @@ export default function PackageCard({
         <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-admin-border last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow w-full min-w-0 max-w-full">
           <CardImage
             img={img}
+            packageId={pkg.id}
             title={title}
             airlineName={airlineName}
             isRecommended={isRecommended}
@@ -194,6 +207,12 @@ export default function PackageCard({
           <CardBody
             pkg={pkg} title={title} airlineName={airlineName} duration={duration} nextDate={nextDate} minPrice={minPrice} compact
             rankBadge={rankBadge} primaryReason={primaryReason} lossAversionText={lossAversionText}
+            comparisonLabel={comparisonLabel}
+            comparisonSummary={comparisonSummary}
+            comparisonReasons={comparisonReasons}
+            comparisonRank={comparisonRank}
+            comparisonGroupSize={comparisonGroupSize}
+            hotelGradeLabel={hotelGradeLabel}
             catalogGroupCount={catalogGroupCount}
           />
         </div>
@@ -209,6 +228,7 @@ export default function PackageCard({
     >
       <CardImage
         img={img}
+        packageId={pkg.id}
         title={title}
         airlineName={airlineName}
         isRecommended={isRecommended}
@@ -223,6 +243,12 @@ export default function PackageCard({
       <CardBody
         pkg={pkg} title={title} airlineName={airlineName} duration={duration} nextDate={nextDate} minPrice={minPrice}
         rankBadge={rankBadge} primaryReason={primaryReason} lossAversionText={lossAversionText}
+        comparisonLabel={comparisonLabel}
+        comparisonSummary={comparisonSummary}
+        comparisonReasons={comparisonReasons}
+        comparisonRank={comparisonRank}
+        comparisonGroupSize={comparisonGroupSize}
+        hotelGradeLabel={hotelGradeLabel}
         catalogGroupCount={catalogGroupCount}
       />
     </Link>
@@ -232,10 +258,10 @@ export default function PackageCard({
 // ── 내부 ────────────────────────────────────────────────────────────────────
 
 function CardImage({
-  img, title, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
+  img, packageId, title, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
   isYeosonamPick, rankNumber,
 }: {
-  img: string | null; title: string; airlineName: string | null;
+  img: string | null; packageId: string; title: string; airlineName: string | null;
   isRecommended: boolean; isReasonOpen: boolean; recommendedReasons: string[];
   onToggleReason?: () => void;
   sizeClass: string; sizes: string;
@@ -301,6 +327,11 @@ function CardImage({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
+              fetch('/api/tracking/score-signal', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ package_id: packageId, signal_type: 'recommend_reason_open' }),
+              }).catch(() => {});
               onToggleReason?.();
             }}
             className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md hover:scale-105 transition-transform cursor-pointer"
@@ -333,15 +364,25 @@ function CardImage({
 
 function CardBody({
   pkg, title, airlineName, duration, nextDate, minPrice, compact = false,
-  rankBadge, primaryReason, lossAversionText, catalogGroupCount,
+  rankBadge, primaryReason, lossAversionText, comparisonLabel, comparisonSummary, comparisonReasons,
+  comparisonRank, comparisonGroupSize, hotelGradeLabel, catalogGroupCount,
 }: {
   pkg: PackageCardData; title: string; airlineName: string | null;
   duration: string | null; nextDate: string | null; minPrice: number;
   compact?: boolean;
   rankBadge?: string; primaryReason?: string; lossAversionText?: string;
+  comparisonLabel?: string;
+  comparisonSummary?: string;
+  comparisonReasons?: string[];
+  comparisonRank?: number | null;
+  comparisonGroupSize?: number | null;
+  hotelGradeLabel?: string | null;
   catalogGroupCount?: number;
 }) {
   const hasCatalogGroup = (catalogGroupCount ?? 0) >= 2;
+  const hasReviews = pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0;
+  const showComparisonTrust = !hasReviews && Boolean(comparisonLabel || comparisonSummary);
+  const safeComparisonReasons = (comparisonReasons ?? []).slice(0, 3);
   return (
     <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
       {/* 목적지 + 일정 메타 */}
@@ -370,6 +411,38 @@ function CardBody({
       <h2 className="mt-1.5 text-[15px] md:text-[17px] font-bold text-text-primary leading-snug line-clamp-2 tracking-[-0.02em]">
         {title}
       </h2>
+
+      {showComparisonTrust && (
+        <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2">
+          <p className="text-[12px] font-extrabold text-blue-800 leading-snug">
+            {comparisonLabel || '조건을 비교했어요 🔍'}
+          </p>
+          {comparisonSummary && (
+            <p className="mt-0.5 text-[11px] font-medium text-blue-700 leading-snug break-keep">
+              {comparisonSummary}
+            </p>
+          )}
+          {(safeComparisonReasons.length > 0 || hotelGradeLabel || ((comparisonGroupSize ?? 0) >= 2 && comparisonRank)) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {(comparisonGroupSize ?? 0) >= 2 && comparisonRank != null && comparisonRank <= 3 && (
+                <span className="text-[10px] font-bold rounded-full bg-white px-2 py-0.5 text-blue-700">
+                  비교 {comparisonRank}위
+                </span>
+              )}
+              {hotelGradeLabel && (
+                <span className="text-[10px] font-bold rounded-full bg-white px-2 py-0.5 text-blue-700">
+                  {hotelGradeLabel}
+                </span>
+              )}
+              {safeComparisonReasons.slice(0, hotelGradeLabel ? 1 : 2).map((reason) => (
+                <span key={reason} className="text-[10px] font-bold rounded-full bg-white px-2 py-0.5 text-blue-700">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 2026-05-19 박제 (P2-A / A2 / 전문가 근거):
           Shopify Polaris "brand vs utility 분리" + Material 3 secondary indigo.
@@ -421,7 +494,7 @@ function CardBody({
           )}
           </div>
           <div className="flex items-center gap-1.5 flex-wrap min-h-[20px]">
-            {pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0 && (
+            {hasReviews && (
               <span className="text-micro text-amber-500 font-semibold tabular-nums">
                 ★ {Number(pkg.avg_rating).toFixed(1)}
                 <span className="text-text-secondary font-normal ml-0.5">({pkg.review_count})</span>

@@ -53,6 +53,10 @@ interface MonitorData {
     verify_deterministic_incidents: number;
     cove_incidents: number;
     confidence_mismatch_incidents: number;
+    section_cache_hit_count: number;
+    section_cache_reduce_ready_count: number;
+    section_cache_reduced_chars: number;
+    section_cache_hit_rate: number;
   };
   triggerEval: {
     conditions: TriggerCondition[];
@@ -71,9 +75,43 @@ interface MonitorData {
     auto_gate: string;
     failed_checks_count: number;
     leak_incidents_count: number;
+    section_cache_hit_count: number;
+    section_cache_reduced_chars: number;
+    section_cache_reduce_ready: boolean;
+    section_cache_replaced_labels: string[];
     created_at: string;
   }>;
   dailyTrend: Array<{ date: string; count: number; avg_confidence: number; rejected: number }>;
+  sectionCacheCanary: {
+    recommendation: 'collect_more_data' | 'investigate_quality' | 'enable_reduce_input_canary' | 'continue_canary';
+    readyRatio: number;
+    qualityIncidentRate: number;
+    reason: string;
+  };
+  productRegistrationCorpus: {
+    total: number;
+    passed: number;
+    failed: number;
+    passRate: number;
+    deterministicSkipRate: number;
+    duplicateSecondPassSkipRate: number;
+    sectionReduceReadyRate: number;
+    sectionReusableChars: number;
+    scenarioCoverage: Record<string, number>;
+    scenarioCoverageRate: number;
+    missingRequiredScenarios: string[];
+    fixtures: Array<{
+      id: string;
+      passed: boolean;
+      failures: string[];
+      deterministicSkippable: boolean;
+      expectedLlmSkippable: boolean;
+      sectionCacheEntryCount: number;
+      sectionCacheReduceReady: boolean;
+      sectionCacheReusableChars: number;
+      duplicateRawHash: string;
+    }>;
+  };
 }
 
 const gateLabel: Record<string, { text: string; cls: string }> = {
@@ -154,6 +192,12 @@ export default function RegistrationMonitorPage() {
 
   const { policy, last30dStats, triggerEval, recentLog, dailyTrend } = data;
   const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+  const sectionCacheCanaryLabel: Record<MonitorData['sectionCacheCanary']['recommendation'], string> = {
+    collect_more_data: 'collect data',
+    investigate_quality: 'investigate',
+    enable_reduce_input_canary: 'enable canary',
+    continue_canary: 'continue canary',
+  };
 
   return (
     <main className="p-6 space-y-6 max-w-6xl mx-auto">
@@ -240,6 +284,113 @@ export default function RegistrationMonitorPage() {
             tone={last30dStats.cove_incidents > 5 ? 'warn' : 'ok'}
           />
         </div>
+      </section>
+
+      <section className="bg-white border border-admin-border rounded-lg p-5">
+        <h2 className="text-admin-sm font-bold mb-3">
+          Section Cache
+          <span className="ml-2 text-[10px] text-admin-muted-2 font-normal">
+            exactHash hit / input reduction canary
+          </span>
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <Stat
+            label="hit sections"
+            value={last30dStats.section_cache_hit_count}
+            hint={`${pct(last30dStats.section_cache_hit_rate)} uploads`}
+            tone={last30dStats.section_cache_hit_count > 0 ? 'ok' : undefined}
+          />
+          <Stat
+            label="reduce ready"
+            value={last30dStats.section_cache_reduce_ready_count}
+            hint="all required fields covered"
+            tone={last30dStats.section_cache_reduce_ready_count > 0 ? 'ok' : undefined}
+          />
+          <Stat
+            label="reduced chars"
+            value={last30dStats.section_cache_reduced_chars.toLocaleString('ko-KR')}
+            hint="SECTION_CACHE_HIT replacements"
+            tone={last30dStats.section_cache_reduced_chars > 0 ? 'ok' : undefined}
+          />
+          <Stat
+            label="canary flag"
+            value={sectionCacheCanaryLabel[data.sectionCacheCanary.recommendation]}
+            hint={data.sectionCacheCanary.reason}
+            tone={data.sectionCacheCanary.recommendation === 'investigate_quality' ? 'warn' : 'ok'}
+          />
+        </div>
+      </section>
+
+      <section className="bg-white border border-admin-border rounded-lg p-5">
+        <h2 className="text-admin-sm font-bold mb-3">
+          Golden Corpus Eval
+          <span className="ml-2 text-[10px] text-admin-muted-2 font-normal">
+            supplier raw accuracy / token-save gates
+          </span>
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Stat
+            label="fixtures"
+            value={`${data.productRegistrationCorpus.passed}/${data.productRegistrationCorpus.total}`}
+            hint={data.productRegistrationCorpus.failed > 0 ? `${data.productRegistrationCorpus.failed} failed` : 'all passing'}
+            tone={data.productRegistrationCorpus.failed > 0 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="field pass"
+            value={pct(data.productRegistrationCorpus.passRate)}
+            hint="expected raw facts"
+            tone={data.productRegistrationCorpus.passRate < 1 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="LLM skip"
+            value={pct(data.productRegistrationCorpus.deterministicSkipRate)}
+            hint="deterministic preflight"
+            tone={data.productRegistrationCorpus.deterministicSkipRate < 1 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="duplicate skip"
+            value={pct(data.productRegistrationCorpus.duplicateSecondPassSkipRate)}
+            hint="same raw second pass"
+            tone={data.productRegistrationCorpus.duplicateSecondPassSkipRate < 1 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="reusable chars"
+            value={data.productRegistrationCorpus.sectionReusableChars.toLocaleString('ko-KR')}
+            hint={`${pct(data.productRegistrationCorpus.sectionReduceReadyRate)} reduce-ready`}
+            tone={data.productRegistrationCorpus.sectionReduceReadyRate < 1 ? 'warn' : 'ok'}
+          />
+        </div>
+        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Stat
+            label="scenario coverage"
+            value={pct(data.productRegistrationCorpus.scenarioCoverageRate)}
+            hint="required supplier-format scenarios"
+            tone={data.productRegistrationCorpus.missingRequiredScenarios.length > 0 ? 'warn' : 'ok'}
+          />
+          <div className={`p-3 rounded border ${
+            data.productRegistrationCorpus.missingRequiredScenarios.length > 0
+              ? 'bg-amber-50 border-amber-200'
+              : 'bg-white border-admin-border'
+          }`}>
+            <div className="text-[10px] text-admin-muted">missing scenarios</div>
+            <div className="text-[11px] text-admin-text-2 mt-1">
+              {data.productRegistrationCorpus.missingRequiredScenarios.length > 0
+                ? data.productRegistrationCorpus.missingRequiredScenarios.join(', ')
+                : 'none'}
+            </div>
+          </div>
+        </div>
+        {data.productRegistrationCorpus.failed > 0 && (
+          <div className="mt-3 space-y-1 text-[11px] text-red-600">
+            {data.productRegistrationCorpus.fixtures
+              .filter(fixture => !fixture.passed)
+              .map(fixture => (
+                <div key={fixture.id}>
+                  {fixture.id}: {fixture.failures.join(', ')}
+                </div>
+              ))}
+          </div>
+        )}
       </section>
 
       {/* ── Conformal Abstention 패널 (2026-05-22 박제) ────────── */}

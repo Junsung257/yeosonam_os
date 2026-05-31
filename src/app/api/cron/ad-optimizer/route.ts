@@ -18,6 +18,7 @@ import {
   type KeywordPerf,
   type OptimizationAction,
 } from '@/lib/ad-controller';
+import { pauseGoogleKeyword, pauseNaverKeyword, updateGoogleBid, updateNaverBid } from '@/lib/search-ads-api';
 
 /**
  * GET /api/cron/ad-optimizer
@@ -38,6 +39,9 @@ const handleAdOptimizer = async (request: NextRequest) => {
   const applyOffpeakAdjustment =
     process.env.AD_OPTIMIZER_APPLY_OFFPEAK_RULE === '1' ||
     process.env.AD_OPTIMIZER_APPLY_OFFPEAK_RULE === 'true';
+  const applyExternalAds =
+    process.env.AD_OPTIMIZER_APPLY_EXTERNAL_ADS === '1' ||
+    process.env.AD_OPTIMIZER_APPLY_EXTERNAL_ADS === 'true';
 
   const push = (msg: string) => {
     console.log('[ad-optimizer]', msg);
@@ -45,7 +49,7 @@ const handleAdOptimizer = async (request: NextRequest) => {
   };
 
   push('=== AI 마케팅 관제소 최적화 시작 ===');
-  push(`[mode] ${applyDbChanges ? 'apply' : 'dry-run'} / offpeak=${applyOffpeakAdjustment ? 'on' : 'off'}`);
+  push(`[mode] ${applyDbChanges ? 'apply' : 'dry-run'} / offpeak=${applyOffpeakAdjustment ? 'on' : 'off'} / external=${applyExternalAds ? 'on' : 'off'}`);
 
   if (!isSupabaseConfigured) {
     push('Supabase 미설정 — Mock 실행');
@@ -90,6 +94,7 @@ const handleAdOptimizer = async (request: NextRequest) => {
     total_cost: k.total_cost, net_profit: k.net_profit,
     roas_pct: k.roas_pct, status: k.status,
     current_bid: k.current_bid, clicks: k.clicks, conversions: k.conversions,
+    external_keyword_id: k.external_keyword_id,
   }));
 
   const actions: OptimizationAction[] = analyzeKeywords(kwPerfs);
@@ -102,16 +107,22 @@ const handleAdOptimizer = async (request: NextRequest) => {
     if (!kw) continue;
 
     if (action.type === 'PAUSE' && kw.status !== 'PAUSED') {
-      if (applyDbChanges) await updateKeywordStatus(kw.id, 'PAUSED');
-      push(`PAUSED: "${action.keyword}" — ${action.reason} (DB만 반영)`);
+      if (applyDbChanges) {
+        await updateKeywordStatus(kw.id, 'PAUSED');
+        if (applyExternalAds) await pauseExternalKeyword(kw);
+      }
+      push(`PAUSED: "${action.keyword}" — ${action.reason} (${applyDbChanges && applyExternalAds ? 'DB+외부 반영' : 'DB만 반영'})`);
 
     } else if (action.type === 'FLAG_UP' && kw.status !== 'FLAGGED_UP') {
       if (applyDbChanges) {
         await updateKeywordStatus(kw.id, 'FLAGGED_UP');
         const upBid = Math.round((kw.current_bid || 0) * Number(process.env.AD_FLAG_UP_BID_FACTOR || 1.1));
-        if (upBid > 0) await updateKeywordBid(kw.id, upBid);
+        if (upBid > 0) {
+          await updateKeywordBid(kw.id, upBid);
+          if (applyExternalAds) await updateExternalBid(kw, upBid);
+        }
       }
-      push(`FLAGGED_UP: "${action.keyword}" — ${action.reason} (DB만 반영)`);
+      push(`FLAGGED_UP: "${action.keyword}" — ${action.reason} (${applyDbChanges && applyExternalAds ? 'DB+외부 반영' : 'DB만 반영'})`);
     }
   }
 
@@ -136,6 +147,7 @@ const handleAdOptimizer = async (request: NextRequest) => {
         const nextBid = Math.max(minBid, Math.round((kw.current_bid || 0) * factor));
         if (nextBid > 0 && nextBid < (kw.current_bid || 0)) {
           await updateKeywordBid(kw.id, nextBid);
+          if (applyExternalAds) await updateExternalBid(kw, nextBid);
           adjusted += 1;
         }
       }
@@ -157,3 +169,24 @@ const handleAdOptimizer = async (request: NextRequest) => {
 };
 
 export const GET = withCronLogging('ad-optimizer', handleAdOptimizer);
+
+async function updateExternalBid(
+  kw: KeywordPerf & { external_keyword_id?: string | null },
+  nextBid: number,
+): Promise<boolean> {
+  const externalId = kw.external_keyword_id;
+  if (!externalId) return false;
+  if (kw.platform === 'naver') return updateNaverBid(externalId, nextBid);
+  if (kw.platform === 'google') return updateGoogleBid(externalId, nextBid);
+  return false;
+}
+
+async function pauseExternalKeyword(
+  kw: KeywordPerf & { external_keyword_id?: string | null },
+): Promise<boolean> {
+  const externalId = kw.external_keyword_id;
+  if (!externalId) return false;
+  if (kw.platform === 'naver') return pauseNaverKeyword(externalId);
+  if (kw.platform === 'google') return pauseGoogleKeyword(externalId);
+  return false;
+}

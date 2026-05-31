@@ -7,7 +7,7 @@
  *   3. AdPublishAgent가 approved → active로 전환 후 실제 API 게재
  *
  * Meta: meta-api.ts의 실제 함수 호출 (createMetaCampaign → createAdSet → uploadCreative → createAd)
- * Google: Google Ads REST API v16 직접 호출
+ * Google: Google Ads REST API 직접 호출
  *
  * 안전 장치:
  *   - 예산 상한 (기본 50,000 KRW / 일)
@@ -299,7 +299,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
     return { campaignId: metaCampaignId, adsetId, adId };
   }
 
-  // ── Google Ads API (REST v16) ────────────────────────────────────────────
+  // ── Google Ads API (REST) ────────────────────────────────────────────────
 
   private async publishToGoogle(
     campaign: AdCampaignRow,
@@ -307,7 +307,7 @@ export class AdPublishAgent extends BaseMarketingAgent {
     runDate: string,
   ): Promise<void> {
     const googleToken = await resolveOAuthToken('', 'google_ads');
-    const developerToken = getSecret('NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN');
+    const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN');
     const customerId = campaign.ad_account_id?.replace(/-/g, '') ?? '';
 
     if (!developerToken || !googleToken || !customerId) {
@@ -335,8 +335,8 @@ export class AdPublishAgent extends BaseMarketingAgent {
       googleUtm,
     );
 
-    // Google Ads REST API v16 — Campaign + AdGroup + Ad 생성
-    // 참고: https://developers.google.com/google-ads/api/reference/rpc/v16
+    // Google Ads REST API — Campaign + AdGroup + Ad 생성
+    // 참고: https://developers.google.com/google-ads/api/docs/release-notes
 
     const mutatePayload = {
       operations: [
@@ -382,7 +382,8 @@ export class AdPublishAgent extends BaseMarketingAgent {
     };
 
     try {
-      const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:mutate`;
+      const version = process.env.GOOGLE_ADS_API_VERSION ?? 'v22';
+      const url = `https://googleads.googleapis.com/${version}/customers/${customerId}/googleAds:mutate`;
       const res = await fetch(url, {
         method: 'POST',
         headers: {

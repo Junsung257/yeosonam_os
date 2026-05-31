@@ -676,11 +676,19 @@ export async function PATCH(request: NextRequest) {
     // 단건 상태 변경
     if (action === 'approve') {
       const result = await approvePackage(packageId);
+      let searchAds: { saved: number; keywords: number } | null = null;
+      try {
+        const { buildAndSaveSearchAdPackagePlan } = await import('@/lib/search-ads-auto-planner');
+        const plan = await buildAndSaveSearchAdPackagePlan(packageId);
+        searchAds = { saved: plan.saved, keywords: plan.summary.total };
+      } catch (e) {
+        logWarning('[api/packages] PATCH search ads auto-plan failed', e);
+      }
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
       revalidateLandingPagesForPackage(packageId, result?.short_code ?? null);
       invalidateQaChatPackageCache();
-      return successResponse({ package: result });
+      return successResponse({ package: result, search_ads: searchAds });
     }
 
     if (action === 'reject') {

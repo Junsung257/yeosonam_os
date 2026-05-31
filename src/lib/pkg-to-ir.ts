@@ -16,6 +16,7 @@
 import crypto from 'crypto';
 import type { NormalizedIntake, IntakeSegment, IntakePriceGroup, IntakeSurcharge, IntakeNoticeBlock, IntakeFlightSegment } from './intake-normalizer';
 import { NORMALIZER_VERSION } from './intake-normalizer';
+import { collectEvidenceForValues } from './source-evidence';
 
 type AnyObj = Record<string, unknown>;
 
@@ -331,6 +332,31 @@ export function pkgToIntake(pkg: PkgLike, options: { landOperatorName?: string }
     },
     rawText,
     rawTextHash: rawText ? sha256(rawText) : '',
+    sourceEvidence: collectEvidenceForValues(
+      rawText,
+      [
+        ['meta.region', pkg.destination],
+        ['meta.tripStyle', pkg.trip_style || inferTripStyle(pkg.duration, pkg.nights)],
+        ['meta.ticketingDeadline', pkg.ticketing_deadline],
+        ['meta.minParticipants', pkg.min_participants],
+        ['meta.departureAirport', pkg.departure_airport],
+        ['meta.airline', pkg.airline],
+        ['meta.departureDays', detectDepartureDays(pkg.departure_days)],
+        ['flights.outbound[0].code', meta.flight_out],
+        ['flights.inbound[0].code', meta.flight_in],
+        ...priceTiersToGroups(pkg.price_tiers).flatMap((pg, i) => [
+          [`priceGroups[${i}].adultPrice`, pg.adultPrice ? pg.adultPrice.toLocaleString('ko-KR') : null] as [string, unknown],
+          [`priceGroups[${i}].childPrice`, pg.childPrice ? pg.childPrice.toLocaleString('ko-KR') : null] as [string, unknown],
+        ]),
+        ...((pkg.inclusions ?? []).map((v, i) => [`inclusions[${i}]`, v] as [string, unknown])),
+        ...((pkg.excludes ?? []).map((v, i) => [`excludes[${i}]`, v] as [string, unknown])),
+        ...days.flatMap((d, dIdx) => {
+          const sch = Array.isArray((d as AnyObj).schedule) ? ((d as AnyObj).schedule as AnyObj[]) : [];
+          return sch.map((s, sIdx) => [`days[${dIdx}].segments[${sIdx}]`, s.activity] as [string, unknown]);
+        }),
+      ],
+      { rawTextHash: rawText ? sha256(rawText) : '' },
+    ),
     normalizerVersion: `${NORMALIZER_VERSION}-reverse`,
     extractedAt: new Date().toISOString(),
   };

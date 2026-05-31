@@ -7,7 +7,7 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { useSearchParams } from 'next/navigation';
 import {
   ShieldCheck, Award, Phone, Flame, MapPin, Star,
-  MessageCircle, Clock,
+  MessageCircle, Clock, Plane,
 } from 'lucide-react';
 import { useTracking } from '@/hooks/useTracking';
 import { submitLeadPipeline } from '@/lib/submitPipeline';
@@ -156,6 +156,88 @@ function Highlights({ items }: { items: string[] }) {
           </span>
         ))}
       </div>
+    </section>
+  );
+}
+
+function FlightSummary({ flight }: { flight: LandingProductData['flightSummary'] }) {
+  const legs = [
+    { label: '가는편', tone: 'text-[var(--brand)]', data: flight?.outbound },
+    { label: '오는편', tone: 'text-orange-500', data: flight?.inbound },
+  ].filter((leg): leg is { label: string; tone: string; data: NonNullable<LandingProductData['flightSummary']>['outbound'] & object } => Boolean(leg.data));
+
+  if (legs.length === 0) return null;
+
+  return (
+    <section className="px-5 py-5 bg-white border-t border-gray-100">
+      <div className="flex items-center gap-2 mb-3">
+        <Plane className="w-4 h-4 text-[var(--brand)]" />
+        <h3 className="text-base font-bold text-gray-900">항공 일정</h3>
+      </div>
+      <div className="grid grid-cols-1 gap-3">
+        {legs.map(({ label, tone, data }) => (
+          <div key={label} className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className={`text-xs font-bold ${tone}`}>{label}</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900">
+                  {[data?.depCity, data?.arrCity].filter(Boolean).join(' → ') || data?.code || '항공편'}
+                </p>
+              </div>
+              <div className="text-right">
+                {data?.code && <p className="text-xs font-semibold text-gray-500">{data.code}</p>}
+                <p className="mt-1 text-sm font-black text-gray-900 tabular-nums">
+                  {[data?.depTime, data?.arrTime].filter(Boolean).join(' - ') || '시간 미정'}
+                </p>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function ComparisonTrustPanel({ recommendation }: { recommendation: LandingProductData['recommendation'] }) {
+  if (!recommendation) return null;
+  const reasons = recommendation.reasons.slice(0, 3);
+  return (
+    <section className="border-t border-blue-100 bg-blue-50 px-5 py-5">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-lg shadow-sm">
+          🔍
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-black text-blue-900 leading-snug">
+            {recommendation.label}
+          </p>
+          <p className="mt-1 text-sm font-medium text-blue-800 leading-relaxed break-keep">
+            {recommendation.comparisonSummary}
+          </p>
+          {reasons.length > 0 && (
+            <div className="mt-3 flex flex-wrap gap-1.5">
+              {recommendation.hasComparison && recommendation.rankInGroup != null && recommendation.rankInGroup <= 3 && (
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-blue-700">
+                  비교 {recommendation.rankInGroup}위
+                </span>
+              )}
+              {recommendation.hotelGradeLabel && (
+                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-blue-700">
+                  {recommendation.hotelGradeLabel}
+                </span>
+              )}
+              {reasons.map((reason) => (
+                <span key={reason} className="rounded-full bg-white px-2.5 py-1 text-xs font-bold text-blue-700">
+                  {reason}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <p className="mt-3 text-xs font-medium text-blue-700/80 leading-relaxed">
+        후기가 적은 상품도 가격·호텔·쇼핑·옵션 조건을 먼저 비교해 보여드려요.
+      </p>
     </section>
   );
 }
@@ -328,11 +410,15 @@ export function LandingClient({
         hasReviewStats={hasReviewStats}
       />
 
+      <ComparisonTrustPanel recommendation={data.recommendation} />
+
       <PriceSection
         priceFrom={data.priceFrom}
         compareAtPrice={data.compareAtPrice}
         deadlineDays={data.deadlineDays}
       />
+
+      <FlightSummary flight={data.flightSummary} />
 
       {/* ── 상세 요금표 (날짜/조건별 카드 UI) ──────────────────────── */}
       {data.price_list && data.price_list.length > 0 && (
@@ -360,6 +446,7 @@ export function LandingClient({
         packageId={data.id}
         reviewScore={data.reviewScore}
         reviewCount={data.reviewCount}
+        recommendation={data.recommendation}
       />
 
       {/* 스크롤 90% 센티널 */}
@@ -373,7 +460,14 @@ export function LandingClient({
         <div className="w-full max-w-[430px] px-4 pb-5 pt-3 bg-gradient-to-t from-white via-white/90 to-transparent">
           <button
             type="button"
-            onClick={() => setSheetOpen(true)}
+            onClick={() => {
+              setSheetOpen(true);
+              fetch('/api/tracking/score-signal', {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ package_id: data.id, signal_type: 'lead_sheet_open' }),
+              }).catch(() => {});
+            }}
             className={`w-full py-4 rounded-2xl font-extrabold text-base flex items-center justify-center gap-2 transition-all duration-200
               bg-[#FEE500] text-gray-900 hover:brightness-95 active:scale-[0.98] shadow-lg
               ${itineraryViewed ? 'ring-2 ring-yellow-400/70 shadow-xl' : ''}`}

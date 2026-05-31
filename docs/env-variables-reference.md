@@ -125,8 +125,8 @@
 | `META_ACCESS_TOKEN` | Meta Ads 광고 API (배포 상태) |
 | `META_AD_ACCOUNT_ID` | Meta 광고 계정 |
 | `META_PAGE_ID` | Meta 페이지 |
-| `GOOGLE_ADS_*` | Google Ads API (미구현, 향후) |
-| `NAVER_AD_*` | 네이버 검색광고 API (미구현, 향후) |
+| `GOOGLE_ADS_*` | Google Ads API. Developer Token/Customer ID/OAuth 값은 서버 전용 값이며 `NEXT_PUBLIC_*`로 노출 금지 |
+| `NAVER_ADS_*` | 네이버 검색광고 API. 서버 전용 값이며 `NEXT_PUBLIC_*`로 노출 금지 |
 
 ### 성능 — 서드파티 스크립트 격리 (선택)
 
@@ -139,7 +139,11 @@
 | 키 | 용도 | 기본값 |
 |---|---|---|
 | `AD_OPTIMIZER_APPLY_CHANGES` | `true`/`1`이면 `ad-optimizer`가 키워드 상태/입찰을 실제 DB에 반영. 아니면 dry-run | `false` |
+| `AD_OPTIMIZER_APPLY_EXTERNAL_ADS` | `true`/`1`이면 `keyword_performances.external_keyword_id`가 있는 행에 한해 네이버/구글 광고 API에도 입찰·정지를 반영 | `false` |
 | `AD_OPTIMIZER_APPLY_OFFPEAK_RULE` | `true`/`1`이면 `ad-optimizer`에서 새벽 감액 규칙도 반영 | `false` |
+| `SEARCH_ADS_AUTO_DAILY_BUDGET_KRW` | 상품 승인 시 생성되는 검색광고 키워드 플랜의 기본 일 예산 | `30000` |
+| `SEARCH_ADS_MAX_DAILY_BUDGET_KRW` | 자동 플랜/발행에서 허용하는 상품별 최대 일 예산 상한 | `50000` |
+| `SEARCH_ADS_AUTO_PUBLISH_NAVER` | `true`/`1`이면 검색광고 플랜을 live 발행 후보로 표시. 실제 외부 생성 API 연결 전까지는 draft-first 유지 권장 | `false` |
 | `MARKETING_RULES_APPLY_BID_UPDATES` | `true`/`1`이면 `marketing-rules`에서 off-peak 감액 반영 | `false` |
 | `AD_OFFPEAK_BID_FACTOR` | off-peak 감액 배수 | `0.85` |
 | `AD_MIN_BID_KRW` | 감액 시 하한 입찰가(원) | `70` |
@@ -282,11 +286,13 @@ REVALIDATE_SECRET=your_random_secret
 
 | 키 | 용도 | 출처/발급처 |
 |---|---|---|
-| `NEXT_PUBLIC_GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API Developer Token | [Google Ads 개발자 토큰](https://developers.google.com/google-ads/api/docs/first-call/dev-token) |
-| `NEXT_PUBLIC_GOOGLE_ADS_CUSTOMER_ID` | Google Ads 계정 ID (예: `123-456-7890`) | Google Ads 대시보드 |
-| `NEXT_PUBLIC_NAVER_ADS_API_KEY` | 네이버 검색광고 API Key | [네이버 SearchAd 매니저](https://manage.searchad.naver.com) → 도구 → API Key |
-| `NEXT_PUBLIC_NAVER_ADS_SECRET_KEY` | 네이버 검색광고 Secret Key (HMAC 서명용) | 위와 동일 |
-| `NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID` | 네이버 검색광고 고객 ID (숫자) | 위와 동일 |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads API Developer Token (서버 전용) | [Google Ads 개발자 토큰](https://developers.google.com/google-ads/api/docs/first-call/dev-token) |
+| `GOOGLE_ADS_CUSTOMER_ID` | Google Ads 계정 ID (예: `123-456-7890`, 서버 전용) | Google Ads 대시보드 |
+| `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth 클라이언트 ID | Google Cloud Console |
+| `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth 클라이언트 Secret | Google Cloud Console |
+| `NAVER_ADS_API_KEY` | 네이버 검색광고 API Key | [네이버 SearchAd 매니저](https://manage.searchad.naver.com) → 도구 → API Key |
+| `NAVER_ADS_SECRET_KEY` | 네이버 검색광고 Secret Key (HMAC 서명용) | 위와 동일 |
+| `NAVER_ADS_CUSTOMER_ID` | 네이버 검색광고 고객 ID (숫자) | 위와 동일 |
 | `TWITTER_BEARER_TOKEN` | Twitter/X API v2 Bearer Token | [Twitter Developer Portal](https://developer.twitter.com) → Projects → Keys and tokens |
 | `NAVER_CAFE_ID` | 네이버 카페 고유 ID (카페 URL에서 숫자 부분) | 네이버 카페 관리 페이지 |
 | `INSTAGRAM_BUSINESS_ACCOUNT_ID` | Instagram 비즈니스 계정 ID (IG User ID와 다를 수 있음) | Meta Business Suite → Instagram 계정 설정 |

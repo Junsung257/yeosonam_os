@@ -42,6 +42,39 @@ interface PackageData {
   status: string;
   [key: string]: unknown;
 }
+interface QualityFailedCheck {
+  id?: string;
+  severity?: string | null;
+  message?: string | null;
+  passed?: boolean | null;
+}
+interface QualityCoverage {
+  total: number;
+  covered?: number;
+  supported?: number;
+  missing?: string[];
+  ratio: number;
+}
+interface UnsupportedRenderClaim {
+  id: string;
+  value: string;
+  surface: string;
+  severity: string;
+}
+interface QualityData {
+  audit_status: string | null;
+  quality_log_created_at: string | null;
+  confidence: number | null;
+  failed_checks: QualityFailedCheck[];
+  source_evidence_coverage: QualityCoverage | null;
+  render_claim_coverage: (QualityCoverage & { unsupported: UnsupportedRenderClaim[] }) | null;
+  publish_gate: {
+    decision: 'allow' | 'force_required' | 'block';
+    status: string;
+    reasons: string[];
+    warnings: string[];
+  };
+}
 
 const SEVERITY_BG: Record<string, string> = {
   critical: 'bg-red-50 border-red-300',
@@ -55,6 +88,97 @@ const SEVERITY_BADGE: Record<string, string> = {
   medium: 'bg-blue-100 text-blue-700 border-blue-200',
   low: 'bg-admin-surface-2 text-admin-muted border-admin-border-mid',
 };
+
+function formatPercent(value: number | null | undefined): string {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-';
+  return `${(value * 100).toFixed(0)}%`;
+}
+
+function QualityGatePanel({ quality }: { quality: QualityData }) {
+  const gate = quality.publish_gate;
+  const gateClass = gate.decision === 'block'
+    ? 'bg-red-50 border-red-200 text-red-700'
+    : gate.decision === 'force_required'
+      ? 'bg-amber-50 border-amber-200 text-amber-700'
+      : 'bg-emerald-50 border-emerald-200 text-emerald-700';
+  const gateLabel = gate.decision === 'block'
+    ? 'BLOCK'
+    : gate.decision === 'force_required'
+      ? 'FORCE REQUIRED'
+      : 'ALLOW';
+  const sourceCoverage = quality.source_evidence_coverage;
+  const renderCoverage = quality.render_claim_coverage;
+  const failed = quality.failed_checks.filter(c => c?.passed === false);
+  const unsupported = renderCoverage?.unsupported ?? [];
+
+  return (
+    <div className={`rounded-admin-md border p-4 mb-4 ${gateClass}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="text-xs font-mono font-bold tracking-wide">{gateLabel}</div>
+          <div className="text-sm font-bold text-admin-text-2 mt-1">출판 게이트 / 원문 근거</div>
+          <div className="text-xs text-admin-muted mt-1">
+            audit={quality.audit_status ?? '-'} · AI={quality.confidence == null ? '-' : `${quality.confidence.toFixed(1)}%`}
+            {quality.quality_log_created_at ? ` · ${new Date(quality.quality_log_created_at).toLocaleString('ko-KR')}` : ''}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 text-right text-xs">
+          <div className="bg-white/70 border border-current/20 rounded-admin-sm px-3 py-2">
+            <div className="font-bold text-admin-text-2">{formatPercent(sourceCoverage?.ratio)}</div>
+            <div className="text-admin-muted">source</div>
+          </div>
+          <div className="bg-white/70 border border-current/20 rounded-admin-sm px-3 py-2">
+            <div className="font-bold text-admin-text-2">{formatPercent(renderCoverage?.ratio)}</div>
+            <div className="text-admin-muted">render</div>
+          </div>
+        </div>
+      </div>
+
+      {(gate.reasons.length > 0 || gate.warnings.length > 0) && (
+        <div className="mt-3 space-y-1.5">
+          {[...gate.reasons, ...gate.warnings].slice(0, 8).map((reason, idx) => (
+            <div key={idx} className="text-xs bg-white/70 border border-current/20 rounded-admin-sm px-2 py-1.5 text-admin-text-2">
+              {reason}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(failed.length > 0 || unsupported.length > 0 || (sourceCoverage?.missing?.length ?? 0) > 0) && (
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          <div className="bg-white/70 border border-current/20 rounded-admin-sm p-2">
+            <div className="text-[10px] font-bold text-admin-muted mb-1">QUALITY FAIL</div>
+            {failed.length === 0 ? (
+              <div className="text-xs text-admin-muted">none</div>
+            ) : failed.slice(0, 6).map((check, idx) => (
+              <div key={idx} className="text-[11px] text-admin-text-2 truncate">
+                {check.severity ?? 'high'} · {check.message ?? check.id ?? 'failed_check'}
+              </div>
+            ))}
+          </div>
+          <div className="bg-white/70 border border-current/20 rounded-admin-sm p-2">
+            <div className="text-[10px] font-bold text-admin-muted mb-1">SOURCE MISSING</div>
+            {(sourceCoverage?.missing?.length ?? 0) === 0 ? (
+              <div className="text-xs text-admin-muted">none</div>
+            ) : sourceCoverage?.missing?.slice(0, 6).map(field => (
+              <div key={field} className="text-[11px] text-admin-text-2 truncate">{field}</div>
+            ))}
+          </div>
+          <div className="bg-white/70 border border-current/20 rounded-admin-sm p-2">
+            <div className="text-[10px] font-bold text-admin-muted mb-1">RENDER UNSUPPORTED</div>
+            {unsupported.length === 0 ? (
+              <div className="text-xs text-admin-muted">none</div>
+            ) : unsupported.slice(0, 6).map(claim => (
+              <div key={`${claim.id}:${claim.value}`} className="text-[11px] text-admin-text-2 truncate">
+                {claim.surface} · {claim.value}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getNestedValue(obj: unknown, path: string): unknown {
   if (!obj || typeof obj !== 'object') return undefined;
@@ -89,6 +213,7 @@ export default function PackageReviewPage() {
   const params = useParams();
   const packageId = String(params?.id || '');
   const [pkg, setPkg] = useState<PackageData | null>(null);
+  const [quality, setQuality] = useState<QualityData | null>(null);
   const [loading, setLoading] = useState(true);
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
@@ -101,10 +226,17 @@ export default function PackageReviewPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/packages?id=${packageId}`);
-      const json = await res.json();
+      const [res, qualityRes] = await Promise.all([
+        fetch(`/api/packages?id=${packageId}`),
+        fetch(`/api/admin/packages/${packageId}/quality`),
+      ]);
+      const [json, qualityJson] = await Promise.all([
+        res.json(),
+        qualityRes.ok ? qualityRes.json() : Promise.resolve(null),
+      ]);
       const data: PackageData | null = json.package || json.data || (Array.isArray(json.packages) ? json.packages[0] : null);
       setPkg(data);
+      setQuality(qualityJson?.quality ?? null);
     } finally {
       setLoading(false);
     }
@@ -308,6 +440,8 @@ export default function PackageReviewPage() {
       </div>
 
       {/* N2+N3 박제: 누락 필드 강제 표시 (트립박스/Travefy 표준 inline 보완) */}
+      {quality && <QualityGatePanel quality={quality} />}
+
       {missingFieldEntries.length > 0 && (
         <div className="space-y-3 mb-4">
           <h2 className="text-sm font-bold text-red-700">🚨 누락 필드 ({missingFieldEntries.length}건) — 사장님 1-click 보완 필요 (트립박스/Travefy 표준)</h2>
