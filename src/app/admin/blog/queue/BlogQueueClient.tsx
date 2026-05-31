@@ -43,6 +43,9 @@ const SOURCE_LABELS: Record<string, string> = {
   product: '🧳 상품',
   trend: '🔥 트렌드',
   pillar: '🏛️ 필러',
+  card_news: '🖼️ 카드뉴스',
+  programmatic_seo: '🔎 pSEO',
+  auto_heal: '🛠️ 자동복구',
 };
 
 const TIER_BADGES: Record<string, { label: string; cls: string }> = {

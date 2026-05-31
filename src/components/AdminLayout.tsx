@@ -150,6 +150,7 @@ const navGroups: NavGroup[] = [
     icon: Megaphone,
     items: [
       { href: '/admin/marketing',              label: '마케팅 대시보드',    icon: Megaphone },
+      { href: '/admin/ad-os',                  label: 'Ad OS',             icon: Bot, minRole: 'tenant_admin' },
       { href: '/admin/marketing/command-center', label: '마케팅 커맨드센터', icon: Target, minRole: 'tenant_admin' },
       { href: '/admin/marketing/system-health', label: '마케팅 시스템 점검', icon: Activity, minRole: 'tenant_admin' },
       { href: '/admin/marketing/card-news',    label: '카드뉴스',           icon: Newspaper },

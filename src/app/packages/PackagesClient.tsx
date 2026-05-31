@@ -10,6 +10,7 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard from '@/components/customer/PackageCard';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import { getSessionId } from '@/lib/tracker';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -62,6 +63,15 @@ const SORT_OPTIONS = [
 const REGION_FILTERS = REGIONS.filter(r => r.featuredCities.length > 0);
 const FILTER_OPTIONS = ['전체', ...REGION_FILTERS.map(r => r.label)] as const;
 
+const INTENT_OPTIONS = [
+  { id: 'family', label: '부모님/가족', hint: '이동·호텔·쇼핑 부담을 먼저 볼게요' },
+  { id: 'budget', label: '최저가', hint: '가격이 낮은 상품부터 볼게요' },
+  { id: 'no_shopping', label: '쇼핑 없는 상품', hint: '노쇼핑·부담 적은 조건을 먼저 볼게요' },
+  { id: 'consult', label: '상담원이 골라줘요', hint: '조건을 확인하고 상담으로 이어갈게요' },
+] as const;
+
+type IntentId = typeof INTENT_OPTIONS[number]['id'];
+
 function matchesFilter(pkg: Package, filter: string): boolean {
   const resolved = resolveLegacyFilterLabel(filter);
   if (resolved === '전체') return true;
@@ -100,6 +110,35 @@ interface SearchResponse {
   filterForClient: string;
 }
 
+function packageMinPrice(pkg: Package): number {
+  const dates = (pkg.price_dates || []) as Array<{ date: string; price: number }>;
+  const valid = dates.filter(d => d?.price && d.price > 0);
+  if (valid.length > 0) return Math.min(...valid.map(d => d.price));
+  return pkg.price && pkg.price > 0 ? pkg.price : Number.POSITIVE_INFINITY;
+}
+
+function packageIntentScore(pkg: Package, intent: IntentId | null): number {
+  if (!intent || intent === 'consult') return 0;
+  const haystack = [
+    pkg.title,
+    pkg.display_title,
+    pkg.hero_tagline,
+    pkg.product_type,
+    ...(pkg.product_highlights ?? []),
+    ...(pkg.product_tags ?? []),
+  ].filter(Boolean).join(' ');
+  if (intent === 'no_shopping') {
+    return /노쇼핑|쇼핑\s*(없|無|무)|쇼핑\s*0/i.test(haystack) ? 10 : 0;
+  }
+  if (intent === 'family') {
+    let score = 0;
+    if (/부모|가족|효도|시니어|어르신|편안|여유/i.test(haystack)) score += 5;
+    if (/노쇼핑|노팁|노옵션|직항|5성|특급|프리미엄|고품격/i.test(haystack)) score += 2;
+    return score;
+  }
+  return 0;
+}
+
 const EMPTY_PACKAGES: Package[] = [];
 const EMPTY_IMAGE_BY_PKG_ID: Record<string, string | null> = {};
 const EMPTY_RECOMMENDED_IDS: string[] = [];
@@ -110,6 +149,8 @@ export default function PackagesClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
+  const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(null);
+  const trackedRecommendViewsRef = useRef<Set<string>>(new Set());
 
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
@@ -139,6 +180,7 @@ export default function PackagesClient() {
   const hub = data?.hub ?? hubFromParam;
   const filter = data?.filterForClient ?? filterForClientInitial;
   const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
+  const selectedIntentInfo = INTENT_OPTIONS.find(opt => opt.id === selectedIntent) ?? null;
 
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [compareOpen, setCompareOpen] = useState(false);
@@ -188,6 +230,38 @@ export default function PackagesClient() {
     setActiveFilter(filter || '전체');
   }, [filter]);
 
+  const trackScoreSignal = useCallback((input: {
+    packageId?: string;
+    signalType: 'recommend_badge_view' | 'recommend_reason_open' | 'comparison_open' | 'intent_chip_select' | 'lead_sheet_open';
+    groupKey?: string;
+    rank?: number | null;
+    score?: number | null;
+  }) => {
+    const packageId = input.packageId ?? recommendedIds[0] ?? initialPackages[0]?.id;
+    if (!packageId) return;
+    fetch('/api/tracking/score-signal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        package_id: packageId,
+        signal_type: input.signalType,
+        group_key: input.groupKey ?? null,
+        rank: input.rank ?? null,
+        score: input.score ?? null,
+        session_id: getSessionId(),
+      }),
+    }).catch(() => {});
+  }, [initialPackages, recommendedIds]);
+
+  const handleIntentSelect = useCallback((intent: IntentId) => {
+    setSelectedIntent(prev => (prev === intent ? null : intent));
+    trackScoreSignal({ signalType: 'intent_chip_select', groupKey: `intent:${intent}` });
+    if (intent === 'budget') setSortBy('price_asc');
+    if (intent === 'consult') {
+      window.open('https://pf.kakao.com/_xcFxkBG/chat', '_blank', 'noopener,noreferrer');
+    }
+  }, [trackScoreSignal]);
+
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
     if (activeFilter !== '전체') list = list.filter(p => matchesFilter(p, activeFilter));
@@ -198,9 +272,11 @@ export default function PackagesClient() {
       return pd.some(d => d?.date && d.date >= today);
     });
     if (category) list = list.filter(p => p.product_type?.includes(category) || p.product_tags?.includes(category));
-    const sortFn = sortBy === 'price_asc' ? (a: Package, b: Package) => (a.price ?? Infinity) - (b.price ?? Infinity)
-      : sortBy === 'price_desc' ? (a: Package, b: Package) => (b.price ?? 0) - (a.price ?? 0)
+    const sortFn = sortBy === 'price_asc' ? (a: Package, b: Package) => packageMinPrice(a) - packageMinPrice(b)
+      : sortBy === 'price_desc' ? (a: Package, b: Package) => packageMinPrice(b) - packageMinPrice(a)
       : (a: Package, b: Package) => {
+        const intentDiff = packageIntentScore(b, selectedIntent) - packageIntentScore(a, selectedIntent);
+        if (intentDiff !== 0) return intentDiff;
         const aRec = recommendedSet.has(a.id);
         const bRec = recommendedSet.has(b.id);
         if (aRec && !bRec) return -1;
@@ -209,11 +285,24 @@ export default function PackagesClient() {
       };
     list.sort(sortFn);
     return list;
-  }, [initialPackages, activeFilter, sortBy, urgency, category, recommendedSet]);
+  }, [initialPackages, activeFilter, sortBy, urgency, category, recommendedSet, selectedIntent]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
+
+  useEffect(() => {
+    for (const pkg of visiblePackages) {
+      const score = scoreByPkgId[pkg.id];
+      if (!score?.hasComparison || trackedRecommendViewsRef.current.has(pkg.id)) continue;
+      trackedRecommendViewsRef.current.add(pkg.id);
+      trackScoreSignal({
+        packageId: pkg.id,
+        signalType: 'recommend_badge_view',
+        rank: score.rankInGroup,
+      });
+    }
+  }, [scoreByPkgId, trackScoreSignal, visiblePackages]);
 
   const minPriceByPkgId = useMemo(() => {
     const map = new Map<string, number>();
@@ -331,6 +420,31 @@ export default function PackagesClient() {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="px-4 pt-3 pb-1 md:max-w-7xl md:mx-auto md:px-8">
+        <p className="mb-2 text-[13px] font-bold text-text-primary">어떤 여행을 찾고 계세요?</p>
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          {INTENT_OPTIONS.map(opt => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => handleIntentSelect(opt.id)}
+              className={`shrink-0 h-10 rounded-full border px-3.5 text-[13px] font-bold transition ${
+                selectedIntent === opt.id
+                  ? 'border-brand bg-brand text-white shadow-sm'
+                  : 'border-[#DCE5F0] bg-white text-text-body hover:border-brand/60 hover:text-brand'
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        {selectedIntentInfo && (
+          <p className="mt-1.5 text-[12px] font-medium text-text-secondary">
+            {selectedIntentInfo.hint}
+          </p>
+        )}
       </div>
 
       <div ref={listTopRef} />
@@ -476,7 +590,14 @@ export default function PackagesClient() {
             <button
               type="button"
               disabled={compareIds.length < 2}
-              onClick={() => setCompareOpen(true)}
+              onClick={() => {
+                setCompareOpen(true);
+                trackScoreSignal({
+                  packageId: compareIds[0],
+                  signalType: 'comparison_open',
+                  groupKey: `compare:${compareIds.join(',')}`,
+                });
+              }}
               className="px-4 py-1.5 bg-brand text-white text-[13px] font-bold rounded-full hover:bg-brand-dark transition disabled:opacity-40 disabled:cursor-not-allowed"
             >
               비교하기

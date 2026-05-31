@@ -37,6 +37,13 @@ interface BlogPost {
   travel_packages: { title: string; destination: string } | { title: string; destination: string }[] | null;
 }
 
+interface SearchStatus {
+  indexedLabel: string;
+  indexedClass: string;
+  exposureLabel: string;
+  exposureClass: string;
+}
+
 export default async function BlogDataFetcher({
   status,
   page,
@@ -79,6 +86,60 @@ export default async function BlogDataFetcher({
   const total = count ?? 0;
   const totalPages = Math.ceil(total / PAGE_SIZE);
   const statusQS = status !== 'all' ? `&status=${status}` : '';
+  const typedPosts = (posts || []) as BlogPost[];
+  const slugs = typedPosts.map((post) => post.slug).filter((slug): slug is string => Boolean(slug));
+  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+
+  const searchStatusBySlug = new Map<string, SearchStatus>();
+  if (slugs.length > 0) {
+    const [indexRes, rankRes] = await Promise.all([
+      supabaseAdmin
+        .from('indexing_reports')
+        .select('url, google_status, google_error, indexnow_status, reported_at')
+        .order('reported_at', { ascending: false })
+        .limit(500),
+      supabaseAdmin
+        .from('rank_history')
+        .select('slug, impressions, clicks, position, date')
+        .in('slug', slugs)
+        .gte('date', new Date(Date.now() - 30 * 86400_000).toISOString().split('T')[0]),
+    ]);
+
+    const latestIndexBySlug = new Map<string, { google_status: string | null; indexnow_status: string | null; google_error: string | null }>();
+    for (const row of indexRes.data || []) {
+      const report = row as { url: string | null; google_status: string | null; google_error: string | null; indexnow_status: string | null };
+      const slug = slugs.find((s) =>
+        report.url === `${baseUrl}/blog/${s}` ||
+        report.url?.endsWith(`/blog/${s}`),
+      );
+      if (slug && !latestIndexBySlug.has(slug)) latestIndexBySlug.set(slug, report);
+    }
+
+    const exposureBySlug = new Map<string, { impressions: number; clicks: number; bestPosition: number | null }>();
+    for (const row of rankRes.data || []) {
+      const rank = row as { slug: string; impressions: number | null; clicks: number | null; position: number | null };
+      const prev = exposureBySlug.get(rank.slug) || { impressions: 0, clicks: 0, bestPosition: null };
+      prev.impressions += rank.impressions || 0;
+      prev.clicks += rank.clicks || 0;
+      if (rank.position) prev.bestPosition = prev.bestPosition === null ? rank.position : Math.min(prev.bestPosition, rank.position);
+      exposureBySlug.set(rank.slug, prev);
+    }
+
+    for (const slug of slugs) {
+      const index = latestIndexBySlug.get(slug);
+      const exposure = exposureBySlug.get(slug);
+      const indexedOk = index?.google_status === 'success' || index?.indexnow_status === 'success';
+      const indexFailed = index?.google_status === 'failed' || index?.indexnow_status === 'failed';
+      const impressions = exposure?.impressions || 0;
+      const clicks = exposure?.clicks || 0;
+      searchStatusBySlug.set(slug, {
+        indexedLabel: indexedOk ? '요청됨' : indexFailed ? '실패' : '대기',
+        indexedClass: indexedOk ? 'bg-emerald-50 text-emerald-700' : indexFailed ? 'bg-rose-50 text-rose-700' : 'bg-admin-surface-2 text-admin-muted',
+        exposureLabel: impressions > 0 ? `${impressions.toLocaleString()} 노출${clicks > 0 ? `/${clicks.toLocaleString()} 클릭` : ''}` : '미노출',
+        exposureClass: impressions > 0 ? 'bg-blue-50 text-blue-700' : 'bg-admin-surface-2 text-admin-muted',
+      });
+    }
+  }
 
   if (!posts || posts.length === 0) {
     return (
@@ -106,12 +167,15 @@ export default async function BlogDataFetcher({
               <th style={{ width: 80 }}>카테고리</th>
               <th className="text-right" style={{ width: 64 }}>조회</th>
               <th style={{ width: 64 }}>상태</th>
+              <th style={{ width: 120 }}>검색 상태</th>
               <th style={{ width: 96 }}>날짜</th>
               <th style={{ width: 64 }}></th>
             </tr>
           </thead>
           <tbody>
-            {(posts as BlogPost[]).map(post => (
+            {typedPosts.map(post => {
+              const searchStatus = post.slug ? searchStatusBySlug.get(post.slug) : null;
+              return (
               <tr key={post.id}>
                 <td>
                   <p className="text-admin-sm font-medium text-admin-text truncate max-w-md">
@@ -148,6 +212,16 @@ export default async function BlogDataFetcher({
                     {post.status === 'published' ? '발행' : post.status === 'draft' ? '초안' : post.status}
                   </span>
                 </td>
+                <td>
+                  <div className="flex flex-col gap-1">
+                    <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.indexedClass || 'bg-admin-surface-2 text-admin-muted'}`}>
+                      색인 {searchStatus?.indexedLabel || '대기'}
+                    </span>
+                    <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.exposureClass || 'bg-admin-surface-2 text-admin-muted'}`}>
+                      {searchStatus?.exposureLabel || '미노출'}
+                    </span>
+                  </div>
+                </td>
                 <td className="text-admin-xs text-admin-muted-2 admin-num">
                   {timeAgo(post.published_at || post.created_at)}
                 </td>
@@ -170,7 +244,8 @@ export default async function BlogDataFetcher({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

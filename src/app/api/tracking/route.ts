@@ -29,6 +29,7 @@ type TrackingPayload =
       n_keyword?: string;
       current_cpc?: number;
       landing_page?: string;
+      ad_landing_mapping_id?: string;
       content_creative_id?: string;
       visitor_uid?: string;
       is_returning?: boolean;
@@ -66,10 +67,12 @@ type TrackingPayload =
       /** 콘텐츠 어트리뷰션: 카드뉴스·블로그 방문/클릭 이벤트 */
       content_id?: string;
       content_type?: 'card_news' | 'blog' | 'email';
+      ad_landing_mapping_id?: string;
       tenant_id?: string;
       utm_source?: string;
       utm_medium?: string;
       utm_campaign?: string;
+      utm_term?: string;
     }
   | {
       type: 'conversion';
@@ -84,6 +87,60 @@ type TrackingPayload =
       session_id: string;
       user_id: string;
     };
+
+async function resolveAdLandingMappingId(input: {
+  explicitId?: string | null;
+  contentCreativeId?: string | null;
+  utmSource?: string | null;
+  utmCampaign?: string | null;
+  utmTerm?: string | null;
+}): Promise<string | null> {
+  if (input.explicitId) return input.explicitId;
+  if (!input.contentCreativeId || !input.utmCampaign) return null;
+
+  let query = supabaseAdmin
+    .from('ad_landing_mappings')
+    .select('id')
+    .eq('content_creative_id', input.contentCreativeId)
+    .eq('utm_campaign', input.utmCampaign)
+    .limit(1);
+
+  if (input.utmSource) query = query.eq('utm_source', input.utmSource);
+  if (input.utmTerm) query = query.eq('utm_term', input.utmTerm);
+
+  const { data } = await query;
+  return data?.[0]?.id ?? null;
+}
+
+async function incrementMappingMetric(
+  id: string | null,
+  metric: 'clicks' | 'cta_clicks' | 'conversions',
+  value = 0,
+) {
+  if (!id) return;
+  const metricColumns = {
+    clicks: 'last_click_at',
+    cta_clicks: 'last_cta_click_at',
+    conversions: 'last_conversion_at',
+  } as const;
+  const selectColumns = metric === 'conversions' ? `${metric}, conversion_value_krw` : metric;
+  const { data } = await supabaseAdmin
+    .from('ad_landing_mappings')
+    .select(selectColumns)
+    .eq('id', id)
+    .maybeSingle();
+  if (!data) return;
+  const row = data as unknown as Record<string, number | null>;
+
+  const patch: Record<string, unknown> = {
+    [metric]: Number(row[metric] || 0) + 1,
+    [metricColumns[metric]]: new Date().toISOString(),
+  };
+  if (metric === 'conversions') {
+    patch.conversion_value_krw = Number(row.conversion_value_krw || 0) + Math.max(0, Math.round(value));
+  }
+  await supabaseAdmin.from('ad_landing_mappings').update(patch).eq('id', id);
+}
 
 // ── POST /api/tracking ────────────────────────────────────────
 
@@ -108,6 +165,13 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // ── traffic ──────────────────────────────────────────────
     case 'traffic': {
       const consent = body.consent_agreed === true;
+      const adLandingMappingId = await resolveAdLandingMappingId({
+        explicitId: body.ad_landing_mapping_id ?? null,
+        contentCreativeId: body.content_creative_id ?? null,
+        utmSource: body.source ?? null,
+        utmCampaign: body.campaign_name ?? null,
+        utmTerm: body.keyword ?? null,
+      });
       // PIPA: 동의 없으면 개인식별 클릭 ID NULL 처리
       void insertTrafficLog({
         session_id: body.session_id,
@@ -122,6 +186,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         current_cpc: body.current_cpc ?? null,
         consent_agreed: consent,
         landing_page: body.landing_page ?? null,
+        ad_landing_mapping_id: adLandingMappingId,
         content_creative_id: body.content_creative_id ?? null,
         visitor_uid: body.visitor_uid ?? null,
         is_returning: body.is_returning ?? null,
@@ -131,6 +196,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         viewport_w: body.viewport_w ?? null,
         viewport_h: body.viewport_h ?? null,
       });
+      void incrementMappingMetric(adLandingMappingId, 'clicks');
       // 내부 조회수 원자적 증가 (어드민 대시보드 용)
       if (body.content_creative_id) {
         const creativeId = body.content_creative_id as string;
@@ -194,16 +260,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         const attrEventType =
           body.event_type === 'inquiry' ? 'inquiry' :
           body.event_type === 'click' ? 'click' : 'view';
+        const adLandingMappingId = await resolveAdLandingMappingId({
+          explicitId: body.ad_landing_mapping_id ?? null,
+          contentCreativeId: body.content_id,
+          utmSource: body.utm_source ?? null,
+          utmCampaign: body.utm_campaign ?? null,
+          utmTerm: body.utm_term ?? null,
+        });
         void supabaseAdmin.from('content_attribution_events').insert({
           tenant_id: body.tenant_id ?? null,
           content_id: body.content_id,
           content_type: body.content_type,
+          ad_landing_mapping_id: adLandingMappingId,
           session_id: body.session_id,
           utm_source: body.utm_source ?? null,
           utm_medium: body.utm_medium ?? null,
           utm_campaign: body.utm_campaign ?? null,
           event_type: attrEventType,
         });
+        if (attrEventType === 'click') void incrementMappingMetric(adLandingMappingId, 'cta_clicks');
       }
       return NextResponse.json({ ok: true }, { status: 202 });
     }
@@ -245,6 +320,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const first_touch_at = firstTraffic?.created_at || null;
       // Last-touch 콘텐츠 귀속
       const content_creative_id = traffic?.content_creative_id || null;
+      const ad_landing_mapping_id = traffic?.ad_landing_mapping_id || null;
 
       // net_profit는 DB GENERATED ALWAYS 컬럼 — insertConversionLog에서 제외됨
       void insertConversionLog({
@@ -263,7 +339,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         first_touch_creative_id,
         first_touch_at,
         content_creative_id,
+        ad_landing_mapping_id,
       });
+      void incrementMappingMetric(ad_landing_mapping_id, 'conversions', final_sales_price);
 
       // ── Postback (fire-and-forget) ──────────────────────
       // 외부 광고 플랫폼 전환 통보. await 차단으로 응답 지연 방지 — 실패해도 Conversion DB 기록은 이미 적재됨.
@@ -311,6 +389,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         void supabaseAdmin.from('content_attribution_events').insert({
           content_id: content_creative_id,
           content_type: 'blog',
+          ad_landing_mapping_id,
           session_id,
           event_type: 'booking',
           utm_source: attributed_source,

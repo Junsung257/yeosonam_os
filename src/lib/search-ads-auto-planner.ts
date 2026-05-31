@@ -5,6 +5,7 @@ import {
   type ExtractedKeyword,
   type Platform,
 } from '@/lib/keyword-brain';
+import { getAdOsLearningContextForPackage, type AdOsLearningContext } from '@/lib/ad-os-learning-context';
 import { generateGoogleHistoricalMetrics } from '@/lib/search-ads-api';
 import { getSecret } from '@/lib/secret-registry';
 import { applyUtmToUrl, buildUtm, normalizeUtmValue } from '@/lib/utm-builder';
@@ -20,6 +21,10 @@ export interface TravelPackageForSearchAds {
   duration?: number | null;
   nights?: number | null;
   price?: number | null;
+  departure_airport?: string | null;
+  airline?: string | null;
+  product_type?: string | null;
+  display_name?: string | null;
   price_tiers?: unknown;
   inclusions?: string[] | null;
   itinerary?: string[] | null;
@@ -133,6 +138,10 @@ function normalizePackage(pkg: TravelPackageForSearchAds): TravelPackageForSearc
     destination: pkg.destination ?? String(parsed.destination ?? ''),
     duration: pkg.duration ?? (Number(parsed.duration ?? 0) || null),
     price: pkg.price ?? (Number(parsed.price ?? 0) || null),
+    departure_airport: pkg.departure_airport ?? String(parsed.departure_airport ?? ''),
+    airline: pkg.airline ?? String(parsed.airline ?? ''),
+    product_type: pkg.product_type ?? String(parsed.product_type ?? ''),
+    display_name: pkg.display_name ?? String(parsed.display_name ?? parsed.title ?? ''),
     inclusions: pkg.inclusions ?? parsedInclusions.filter((v): v is string => typeof v === 'string'),
     itinerary: pkg.itinerary ?? parsedItinerary.filter((v): v is string => typeof v === 'string'),
   };
@@ -159,6 +168,36 @@ function qualityFlags(keyword: ExtractedKeyword): Record<string, unknown> {
     blocked_live_publish: blockedWords.length > 0,
     blocked_words: blockedWords,
     needs_human_review: blockedWords.length > 0 || keyword.keyword.length < 2,
+  };
+}
+
+function learningKeywordsToExtracted(learning: AdOsLearningContext): ExtractedKeyword[] {
+  return [
+    ...learning.winningKeywords.map((keyword): ExtractedKeyword => ({
+      keyword,
+      matchType: 'exact',
+      tier: 'longtail',
+      suggestedBid: 250,
+      category: 'ad_os_learning_winner',
+    })),
+    ...learning.negativeTerms.map((keyword): ExtractedKeyword => ({
+      keyword,
+      matchType: 'exact',
+      tier: 'negative',
+      suggestedBid: 0,
+      category: 'ad_os_learning_negative',
+    })),
+  ];
+}
+
+function qualityFlagsWithLearning(keyword: ExtractedKeyword, learning: AdOsLearningContext): Record<string, unknown> {
+  return {
+    ...qualityFlags(keyword),
+    learning_applied: learning.applied,
+    learning_source: keyword.category.startsWith('ad_os_learning') ? keyword.category : null,
+    learning_summary: learning.summary || null,
+    cta_lessons: learning.ctaLessons,
+    landing_lessons: learning.landingLessons,
   };
 }
 
@@ -234,12 +273,17 @@ export async function buildSearchAdPackagePlan(
   const maxDailyBudgetKrw = envNumber('SEARCH_ADS_MAX_DAILY_BUDGET_KRW', DEFAULT_MAX_DAILY_BUDGET_KRW);
   const cappedBudget = Math.min(dailyBudgetKrw, maxDailyBudgetKrw);
   const publishMode = options.publishMode ?? (envFlag('SEARCH_ADS_AUTO_PUBLISH_NAVER') ? 'live' : 'draft');
+  const learning = await getAdOsLearningContextForPackage(pkg);
 
   const baseKeywords = dedupeKeywords([
     ...extractKeywords({
       title: pkg.title ?? undefined,
       destination: pkg.destination ?? undefined,
       duration: pkg.duration ?? undefined,
+      airline: pkg.airline ?? undefined,
+      departure_airport: pkg.departure_airport ?? undefined,
+      product_type: pkg.product_type ?? undefined,
+      display_name: pkg.display_name ?? undefined,
       price: pkg.price ?? undefined,
       inclusions: pkg.inclusions ?? undefined,
       price_tiers: Array.isArray(pkg.price_tiers) ? pkg.price_tiers as { adult_price?: number }[] : undefined,
@@ -248,8 +292,12 @@ export async function buildSearchAdPackagePlan(
       title: pkg.title ?? undefined,
       destination: pkg.destination ?? undefined,
       duration: pkg.duration ?? undefined,
+      departure_airport: pkg.departure_airport ?? undefined,
+      product_type: pkg.product_type ?? undefined,
+      display_name: pkg.display_name ?? undefined,
       inclusions: pkg.inclusions ?? undefined,
     }),
+    ...learningKeywordsToExtracted(learning),
   ]);
 
   const filtered = baseKeywords.filter(kw => !shouldExcludeFromPositive(kw));
@@ -299,8 +347,11 @@ export async function buildSearchAdPackagePlan(
         competition_level: kw.competitionLevel ?? null,
         landing_url: landingUrl,
         utm_url: utmUrl,
-        rationale: `${pkg.destination || '상품'} ${kw.tier}/${kw.matchType} 키워드. 상품 승인 후 검색광고 draft로 생성됨.`,
-        quality_flags: qualityFlags(kw),
+        rationale: [
+          `${pkg.destination || '상품'} ${kw.tier}/${kw.matchType} 키워드. 상품 승인 후 검색광고 draft로 생성됨.`,
+          learning.summary ? `Ad OS learning: ${learning.summary}` : '',
+        ].filter(Boolean).join(' '),
+        quality_flags: qualityFlagsWithLearning(kw, learning),
       });
     }
   }
@@ -397,7 +448,7 @@ export async function buildAndSaveSearchAdPackagePlan(packageId: string): Promis
 
   const { data: pkg, error } = await db
     .from('travel_packages')
-    .select('id,title,destination,country,duration,nights,price,price_tiers,inclusions,itinerary,parsed_data,short_code')
+    .select('id,title,destination,country,duration,nights,price,departure_airport,airline,product_type,price_tiers,inclusions,itinerary,parsed_data,short_code')
     .eq('id', packageId)
     .single();
 
@@ -480,6 +531,23 @@ export async function updateSearchAdKeywordPlanStatus(
 
   const patch = {
     plan_status: status,
+    autopilot_status:
+      status === 'approved'
+        ? 'approved'
+        : status === 'published'
+          ? 'active'
+          : status === 'archived'
+            ? 'paused'
+            : status === 'failed'
+              ? 'rejected'
+              : 'candidate',
+    last_decision_at: new Date().toISOString(),
+    decision_reason:
+      status === 'approved'
+        ? 'Approved from Ad OS keyword queue.'
+        : status === 'archived'
+          ? 'Paused from Ad OS keyword queue.'
+          : 'Updated from Ad OS keyword queue.',
     updated_at: new Date().toISOString(),
     ...(status === 'published' ? { published_at: new Date().toISOString() } : {}),
   };

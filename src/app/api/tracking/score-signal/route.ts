@@ -3,18 +3,27 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-const VALID_TYPES = new Set(['view', 'click', 'booking']);
+const VALID_TYPES = new Set([
+  'view',
+  'click',
+  'booking',
+  'recommend_badge_view',
+  'recommend_reason_open',
+  'comparison_open',
+  'intent_chip_select',
+  'lead_sheet_open',
+]);
 
 /**
  * 패키지 시그널 수집 (LTR 학습 데이터).
- * Body: { package_id, signal_type, group_key?, rank?, score? }
+ * Body: { package_id, signal_type, group_key?, rank?, score?, session_id? }
  * 클라이언트 fetch — abuse 방지는 추후 rate limit 적용.
  */
 export async function POST(req: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: false }, { status: 200 }); // silent
   let body: {
     package_id?: string; signal_type?: string;
-    group_key?: string; rank?: number; score?: number;
+    group_key?: string; rank?: number; score?: number; session_id?: string;
   };
   try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
 
@@ -25,7 +34,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `signal_type 허용: ${[...VALID_TYPES].join(',')}` }, { status: 400 });
   }
 
-  const sessionId = req.cookies.get('ys_session_id')?.value ?? null;
+  const sessionId = body.session_id ?? req.cookies.get('ys_session_id')?.value ?? null;
 
   const { error } = await supabaseAdmin
     .from('package_score_signals')

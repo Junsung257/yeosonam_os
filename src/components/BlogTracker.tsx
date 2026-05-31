@@ -50,6 +50,7 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
     } catch { /* private mode 등 */ }
 
     const startedAt = Date.now();
+    const params = new URLSearchParams(window.location.search);
     let maxScrollPct = 0;
     let ctaClicked = false;
     let sent = false;
@@ -99,6 +100,11 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
         time_on_page_seconds: timeOnPage,
         max_scroll_depth_pct: maxScrollPct,
         cta_clicked: ctaClicked,
+        ad_landing_mapping_id: params.get('ad_mapping_id') || params.get('ad_landing_mapping_id') || params.get('admid'),
+        utm_source: params.get('utm_source'),
+        utm_medium: params.get('utm_medium'),
+        utm_campaign: params.get('utm_campaign'),
+        utm_term: params.get('utm_term'),
       });
 
       // sendBeacon이 가능하면 사용 (이탈 시에도 전송 보장)
