@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 
@@ -130,11 +131,17 @@ export default function MarketingCommandCenterPage() {
     setError(null);
     try {
       const [assetRes, snapshotRes] = await Promise.all([
-        fetch('/api/admin/marketing/asset-groups?limit=40', { cache: 'no-store' }),
-        fetch('/api/admin/marketing/snapshots?days=14', { cache: 'no-store' }),
+        fetchWithSessionRefresh('/api/admin/marketing/asset-groups?limit=40', { cache: 'no-store' }),
+        fetchWithSessionRefresh('/api/admin/marketing/snapshots?days=14', { cache: 'no-store' }),
       ]);
-      if (!assetRes.ok) throw new Error(`Asset groups HTTP ${assetRes.status}`);
-      if (!snapshotRes.ok) throw new Error(`Snapshots HTTP ${snapshotRes.status}`);
+      if (!assetRes.ok) {
+        const payload = await assetRes.json().catch(() => ({}));
+        throw new Error((payload as { error?: string }).error ?? `Asset groups HTTP ${assetRes.status}`);
+      }
+      if (!snapshotRes.ok) {
+        const payload = await snapshotRes.json().catch(() => ({}));
+        throw new Error((payload as { error?: string }).error ?? `Snapshots HTTP ${snapshotRes.status}`);
+      }
       setData(await assetRes.json());
       setSnapshots(await snapshotRes.json());
     } catch (err) {
@@ -153,7 +160,7 @@ export default function MarketingCommandCenterPage() {
     setApplyMessage(null);
     setError(null);
     try {
-      const res = await fetch('/api/admin/marketing/actions/apply', {
+      const res = await fetchWithSessionRefresh('/api/admin/marketing/actions/apply', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action_id: action.id, dry_run: false }),
@@ -179,7 +186,7 @@ export default function MarketingCommandCenterPage() {
     setApplyMessage(null);
     setError(null);
     try {
-      const res = await fetch('/api/admin/marketing/actions/dismiss', {
+      const res = await fetchWithSessionRefresh('/api/admin/marketing/actions/dismiss', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action_id: action.id, reason: 'dismissed_from_command_center' }),
