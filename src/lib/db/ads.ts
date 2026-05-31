@@ -206,6 +206,7 @@ export interface AdTrafficLog {
   current_cpc?: number | null;
   consent_agreed: boolean;
   landing_page?: string | null;
+  ad_landing_mapping_id?: string | null;
   content_creative_id?: string | null;
   // 2026-05-19: 비로그인 재방문 식별 + 디바이스 신호
   visitor_uid?: string | null;
@@ -276,6 +277,7 @@ export interface AdConversionLog {
   first_touch_creative_id?: string | null;
   first_touch_at?: string | null;
   content_creative_id?: string | null;
+  ad_landing_mapping_id?: string | null;
   created_at: string;
 }
 

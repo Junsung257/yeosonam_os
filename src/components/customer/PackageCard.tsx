@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import { getAirlineName } from '@/lib/render-contract';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { getSessionId } from '@/lib/tracker';
 
 export interface PackageCardData {
   id: string;
@@ -330,7 +331,11 @@ function CardImage({
               fetch('/api/tracking/score-signal', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ package_id: packageId, signal_type: 'recommend_reason_open' }),
+                body: JSON.stringify({
+                  package_id: packageId,
+                  signal_type: 'recommend_reason_open',
+                  session_id: getSessionId(),
+                }),
               }).catch(() => {});
               onToggleReason?.();
             }}

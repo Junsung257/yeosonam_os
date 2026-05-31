@@ -27,6 +27,7 @@ interface UtmData {
   medium?: string;
   campaign_name?: string;
   keyword?: string;
+  ad_landing_mapping_id?: string;
   gclid?: string;
   fbclid?: string;
   n_keyword?: string;
@@ -145,6 +146,7 @@ export function initTracker(): void {
   const utmMedium = params.get('utm_medium') ?? undefined;
   const utmCampaign = params.get('utm_campaign') ?? undefined;
   const utmTerm = params.get('utm_term') ?? undefined;
+  const adLandingMappingId = params.get('ad_mapping_id') ?? params.get('ad_landing_mapping_id') ?? params.get('admid') ?? undefined;
   const rawGclid = params.get('gclid') ?? undefined;
   const rawFbclid = params.get('fbclid') ?? undefined;
   const rawNKeyword = params.get('n_keyword') ?? undefined;
@@ -160,6 +162,7 @@ export function initTracker(): void {
       medium: utmMedium,
       campaign_name: utmCampaign,
       keyword: utmTerm,
+      ad_landing_mapping_id: adLandingMappingId,
       // PIPA: consent=false이면 개인식별 클릭 ID 저장 안 함
       gclid: consent ? rawGclid : undefined,
       fbclid: consent ? rawFbclid : undefined,
@@ -218,6 +221,13 @@ export function initTracker(): void {
  */
 export function trackContentView(contentCreativeId: string): void {
   if (typeof window === 'undefined') return;
+  const params = new URLSearchParams(window.location.search);
+  const utmSource = params.get('utm_source') ?? undefined;
+  const utmMedium = params.get('utm_medium') ?? undefined;
+  const utmCampaign = params.get('utm_campaign') ?? undefined;
+  const utmTerm = params.get('utm_term') ?? undefined;
+  const adLandingMappingId = params.get('ad_mapping_id') ?? params.get('ad_landing_mapping_id') ?? params.get('admid') ?? undefined;
+
   post({
     type: 'traffic',
     session_id: getSessionId(),
@@ -225,8 +235,11 @@ export function trackContentView(contentCreativeId: string): void {
     consent_agreed: isConsentAgreed(),
     landing_page: window.location.pathname + window.location.search,
     content_creative_id: contentCreativeId,
-    source: document.referrer ? new URL(document.referrer).hostname : undefined,
-    medium: 'content',
+    source: utmSource || (document.referrer ? new URL(document.referrer).hostname : undefined),
+    medium: utmMedium || 'content',
+    campaign_name: utmCampaign,
+    keyword: utmTerm,
+    ad_landing_mapping_id: adLandingMappingId,
   });
 }
 

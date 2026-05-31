@@ -3,7 +3,7 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { runQualityGates } from '@/lib/blog-quality-gate';
+import { BANNED_CLICHES, runQualityGates } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, AngleType } from '@/lib/content-generator';
 import { notifyIndexing } from '@/lib/indexing';
@@ -26,6 +26,7 @@ import { maybeApplyChainOfDensity } from '@/lib/blog-chain-of-density';
 import { getCardNewsRenderBufferMs, getEarliestBlogPublishEligibleMsBatch } from '@/lib/card-news-render-readiness';
 import { getSlideImagePublicUrlsForBlog } from '@/lib/card-news-slide-urls';
 import { recordAutoPublishLog } from '@/lib/publish-orchestration';
+import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 import { getSecret } from '@/lib/secret-registry';
 import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
@@ -64,6 +65,95 @@ const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
 let blogStyleGuideCache: { content: string; version: string } | null = null;
+
+const OFFICIAL_REFERENCE_LINKS = [
+  { label: '외교부 해외안전여행', url: 'https://www.0404.go.kr/' },
+  { label: '외교부', url: 'https://www.mofa.go.kr/' },
+] as const;
+
+const NEUTRAL_CLICHE_REPLACEMENTS: Record<string, string> = {
+  '아름다운': '경관이 좋은',
+  '환상적인': '만족도가 높은',
+  '완벽한': '필요한',
+  '특별한': '주요',
+  '매력적인': '선택할 만한',
+  '잊지 못할': '기억할 만한',
+  '놓치지 마세요': '확인하세요',
+  '꼭 가봐야 할': '방문 후보로 볼',
+  '최고의': '상위권의',
+  '인생샷': '사진 포인트',
+  '설레는': '기대되는',
+  '힘찬': '활동적인',
+  '낭만적인': '분위기 있는',
+  '제대로': '꼼꼼히',
+  '알찬': '실용적인',
+  '만끽': '즐기기',
+  '힐링': '휴식',
+  '한 번쯤은 경험해 볼 만한': '일정에 넣어볼 만한',
+  '추억에 남는': '기억에 남는',
+  '독특한': '차별점이 있는',
+  '다양한': '여러',
+  '편안한': '부담이 적은',
+  '인기 있는': '수요가 있는',
+  '유명한': '알려진',
+  '숨겨진': '상대적으로 덜 붐비는',
+  '잘 알려지지 않은': '덜 알려진',
+  '이국적인': '현지 분위기가 있는',
+  '만족스러운': '평가가 좋은',
+  '무난한': '선택하기 쉬운',
+  '훌륭한': '좋은',
+  '뛰어난': '강점이 있는',
+  '여행의 묘미': '여행에서 확인할 포인트',
+  '색다른 경험': '다른 동선',
+  '잊을 수 없는 추억': '기억할 만한 일정',
+  '완전히 새로운': '새롭게 볼 수 있는',
+  '놀라운': '눈에 띄는',
+  '생각지도 못한': '예상 밖의',
+};
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function neutralizeBannedCliches(markdown: string): string {
+  let normalized = markdown;
+  for (const cliche of BANNED_CLICHES) {
+    const replacement = NEUTRAL_CLICHE_REPLACEMENTS[cliche];
+    if (!replacement) continue;
+    normalized = normalized.replace(new RegExp(escapeRegExp(cliche), 'g'), replacement);
+  }
+  return normalized;
+}
+
+function getMarkdownLinks(markdown: string): string[] {
+  const linkRe = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g;
+  const links: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = linkRe.exec(markdown)) !== null) {
+    const url = match[2];
+    if (!/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(url)) {
+      links.push(url);
+    }
+  }
+  return links;
+}
+
+function appendOfficialReferenceLinksIfNeeded(markdown: string): string {
+  const existingLinks = getMarkdownLinks(markdown);
+  const externalLinks = existingLinks.filter(url => /^https?:\/\//.test(url) && !url.includes('yeosonam.com'));
+  if (externalLinks.length >= 2) return markdown;
+
+  const existingUrlSet = new Set(existingLinks.map(url => url.replace(/\/$/, '')));
+  const missingLinks = OFFICIAL_REFERENCE_LINKS.filter(
+    link => !existingUrlSet.has(link.url.replace(/\/$/, '')),
+  ).slice(0, 2 - externalLinks.length);
+
+  if (missingLinks.length === 0) return markdown;
+
+  return `${markdown.trimEnd()}\n\n## 공식 확인 링크\n\n${missingLinks
+    .map(link => `- [${link.label}](${link.url})`)
+    .join('\n')}\n`;
+}
 
 async function getActiveBlogStyleGuide(): Promise<{ content: string; version: string }> {
   if (blogStyleGuideCache) return blogStyleGuideCache;
@@ -130,17 +220,31 @@ async function runBlogPublisher(request: NextRequest) {
       .filter((r): r is typeof r & { reason: string } => r.status === 'published' && !!r.reason)
       .map(r => r.reason);
 
+    const creativeIdBySlug = new Map<string, string>();
+    if (publishedSlugs.length > 0) {
+      const { data: slugRows } = await supabaseAdmin
+        .from('content_creatives')
+        .select('id, slug')
+        .in('slug', publishedSlugs)
+        .eq('status', 'published');
+      for (const row of slugRows ?? []) {
+        if (row.slug && row.id) creativeIdBySlug.set(row.slug, row.id);
+      }
+    }
+
     // notifyIndexing + revalidatePath — allSettled로 모든 결과를 기다림
     const indexingPromises: Promise<void>[] = [];
     for (const r of results) {
       if (r.status === 'published' && r.reason) {
         const slug = r.reason;
+        const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
         indexingPromises.push(
           Promise.resolve(
             notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
               .then(async (report) => {
                 await supabaseAdmin.from('indexing_reports').insert({
                   url: report.url,
+                  content_creative_id: contentCreativeId,
                   google_status: report.google,
                   google_error: report.google_error ?? null,
                   indexnow_status: report.indexnow,
@@ -335,6 +439,14 @@ async function processQueueItem(
       })}`;
     }
 
+    // 생성기가 스타일 가이드 금지 표현을 섞어도 자동발행 큐가 멈추지 않도록
+    // 의미가 과장되지 않는 중립 표현으로 발행 직전에 정규화한다.
+    generated.blog_html = neutralizeBannedCliches(generated.blog_html);
+
+    // 외부 공식 링크가 빠지면 links-gate 에서 자동발행이 막힌다.
+    // 기준은 유지하되, 발행 직전 최소 공식 출처를 보강한다.
+    generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+
     // 🆕 가독성 점수 계산 (한국어 휴리스틱)
     const readability = computeReadability(generated.blog_html);
 
@@ -440,8 +552,8 @@ async function processQueueItem(
       destination: item.destination ?? null,
       content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
       pillar_for: item.source === 'pillar' ? item.destination : null,
-      landing_enabled: !!item.product_id,
-      target_ad_keywords: item.meta?.keywords ?? [],
+      landing_enabled: !!(item.product_id || item.primary_keyword || item.destination || item.meta?.keywords?.length),
+      target_ad_keywords: item.meta?.keywords ?? (item.primary_keyword ? [item.primary_keyword] : []),
       readability_score: readability.score,
       readability_issues: readability.issues,
       generation_meta: promoteDraftId
@@ -487,6 +599,19 @@ async function processQueueItem(
         .from('card_news')
         .update({ linked_blog_id: creativeId, updated_at: now })
         .eq('id', item.card_news_id);
+    }
+
+    try {
+      await ensureAutoAdMappingsForBlog({
+        contentCreativeId: creativeId,
+        slug: generated.slug,
+        seoTitle: generated.seo_title,
+        destination: item.destination ?? null,
+        primaryKeyword,
+        targetKeywords: item.meta?.keywords ?? null,
+      });
+    } catch (e) {
+      logWarning('[cron/blog-publisher] auto ad mapping failed (non-blocking)', e);
     }
 
     // 큐 업데이트

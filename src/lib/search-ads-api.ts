@@ -160,6 +160,38 @@ export interface NaverKeywordToolItem {
   highPrice: number;
 }
 
+export interface NaverCreatedKeyword {
+  nccKeywordId: string;
+  nccAdgroupId: string;
+  keyword: string;
+  userLock?: boolean;
+}
+
+export interface NaverAdgroupSummary {
+  nccAdgroupId: string;
+  nccCampaignId?: string;
+  name: string;
+  userLock?: boolean;
+  inspectStatus?: string;
+  adgroupAttrJson?: unknown;
+}
+
+export interface NaverCampaignSummary {
+  nccCampaignId: string;
+  name: string;
+  campaignTp?: string;
+  userLock?: boolean;
+  status?: string;
+}
+
+export interface NaverBusinessChannelSummary {
+  nccBusinessChannelId: string;
+  name?: string;
+  channelTp?: string;
+  inspectStatus?: string;
+  url?: string;
+}
+
 /** 네이버 키워드 검색 도구 (KeywordTool) API 호출 */
 export async function fetchNaverKeywordTool(
   hintKeywords: string[],
@@ -190,6 +222,231 @@ export async function fetchNaverKeywordTool(
   } catch (err) {
     console.error('[search-ads] Naver KeywordTool 실패:', err);
     return [];
+  }
+}
+
+export async function createNaverPausedKeywords(input: {
+  nccAdgroupId: string;
+  keywords: Array<{ keyword: string; bidAmt?: number }>;
+}): Promise<{ ok: boolean; created: NaverCreatedKeyword[]; error?: string }> {
+  if (!isNaverAdsConfigured()) {
+    return { ok: false, created: [], error: 'NAVER_ADS_API_KEY/NAVER_ADS_SECRET_KEY/NAVER_ADS_CUSTOMER_ID 미설정' };
+  }
+
+  const nccAdgroupId = input.nccAdgroupId.trim();
+  if (!nccAdgroupId) {
+    return { ok: false, created: [], error: 'NAVER_ADS_ADGROUP_ID 미설정' };
+  }
+
+  const keywords = input.keywords
+    .map((row) => ({
+      customerId: Number(getSecret('NAVER_ADS_CUSTOMER_ID')),
+      nccAdgroupId,
+      keyword: row.keyword.trim(),
+      bidAmt: Math.max(70, Math.round(Number(row.bidAmt || 70))),
+      useGroupBidAmt: false,
+      userLock: true,
+    }))
+    .filter((row) => row.keyword.length > 0);
+
+  if (!keywords.length) return { ok: true, created: [] };
+
+  try {
+    const path = '/ncc/keywords';
+    const headers = await buildNaverAuthHeaders('POST', path);
+    const params = new URLSearchParams({ nccAdgroupId });
+    const res = await fetch(`${NAVER_API_BASE}${path}?${params.toString()}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(keywords),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      return { ok: false, created: [], error: `Naver keyword create failed (${res.status}): ${errorText.slice(0, 300)}` };
+    }
+
+    const json = await res.json() as NaverCreatedKeyword[] | { data?: NaverCreatedKeyword[] };
+    const created = Array.isArray(json) ? json : json.data || [];
+    return { ok: true, created };
+  } catch (err) {
+    return { ok: false, created: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function fetchNaverAdgroups(input: {
+  nccCampaignId?: string;
+  recordSize?: number;
+} = {}): Promise<{ ok: boolean; adgroups: NaverAdgroupSummary[]; error?: string }> {
+  if (!isNaverAdsConfigured()) {
+    return { ok: false, adgroups: [], error: 'NAVER_ADS_API_KEY/NAVER_ADS_SECRET_KEY/NAVER_ADS_CUSTOMER_ID 미설정' };
+  }
+
+  try {
+    const path = '/ncc/adgroups';
+    const headers = await buildNaverAuthHeaders('GET', path);
+    const params = new URLSearchParams({
+      recordSize: String(Math.min(Math.max(Number(input.recordSize || 100), 1), 1000)),
+    });
+    if (input.nccCampaignId) params.set('nccCampaignId', input.nccCampaignId);
+
+    const res = await fetch(`${NAVER_API_BASE}${path}?${params.toString()}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      return { ok: false, adgroups: [], error: `Naver adgroup list failed (${res.status}): ${errorText.slice(0, 300)}` };
+    }
+
+    const json = await res.json() as NaverAdgroupSummary[] | { data?: NaverAdgroupSummary[] };
+    const rows = Array.isArray(json) ? json : json.data || [];
+    return {
+      ok: true,
+      adgroups: rows
+        .filter((row) => row.nccAdgroupId && row.name)
+        .map((row) => ({
+          nccAdgroupId: row.nccAdgroupId,
+          nccCampaignId: row.nccCampaignId,
+          name: row.name,
+          userLock: row.userLock,
+          inspectStatus: row.inspectStatus,
+          adgroupAttrJson: row.adgroupAttrJson,
+        })),
+    };
+  } catch (err) {
+    return { ok: false, adgroups: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function fetchNaverAdgroupById(
+  nccAdgroupId: string,
+): Promise<{ ok: boolean; adgroup: NaverAdgroupSummary | null; error?: string }> {
+  if (!isNaverAdsConfigured()) {
+    return { ok: false, adgroup: null, error: 'NAVER_ADS_API_KEY/NAVER_ADS_SECRET_KEY/NAVER_ADS_CUSTOMER_ID 미설정' };
+  }
+
+  const id = nccAdgroupId.trim();
+  if (!id) return { ok: false, adgroup: null, error: 'nccAdgroupId 미입력' };
+
+  try {
+    const path = `/ncc/adgroups/${encodeURIComponent(id)}`;
+    const headers = await buildNaverAuthHeaders('GET', path);
+    const res = await fetch(`${NAVER_API_BASE}${path}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      return { ok: false, adgroup: null, error: `Naver adgroup lookup failed (${res.status}): ${errorText.slice(0, 300)}` };
+    }
+
+    const row = await res.json() as NaverAdgroupSummary;
+    if (!row?.nccAdgroupId) {
+      return { ok: false, adgroup: null, error: '네이버 광고그룹 응답에 nccAdgroupId가 없습니다.' };
+    }
+
+    return {
+      ok: true,
+      adgroup: {
+        nccAdgroupId: row.nccAdgroupId,
+        nccCampaignId: row.nccCampaignId,
+        name: row.name,
+        userLock: row.userLock,
+        inspectStatus: row.inspectStatus,
+        adgroupAttrJson: row.adgroupAttrJson,
+      },
+    };
+  } catch (err) {
+    return { ok: false, adgroup: null, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function fetchNaverCampaigns(input: {
+  recordSize?: number;
+} = {}): Promise<{ ok: boolean; campaigns: NaverCampaignSummary[]; error?: string }> {
+  if (!isNaverAdsConfigured()) {
+    return { ok: false, campaigns: [], error: 'NAVER_ADS_API_KEY/NAVER_ADS_SECRET_KEY/NAVER_ADS_CUSTOMER_ID 미설정' };
+  }
+
+  try {
+    const path = '/ncc/campaigns';
+    const headers = await buildNaverAuthHeaders('GET', path);
+    const params = new URLSearchParams({
+      recordSize: String(Math.min(Math.max(Number(input.recordSize || 100), 1), 1000)),
+    });
+
+    const res = await fetch(`${NAVER_API_BASE}${path}?${params.toString()}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      return { ok: false, campaigns: [], error: `Naver campaign list failed (${res.status}): ${errorText.slice(0, 300)}` };
+    }
+
+    const json = await res.json() as NaverCampaignSummary[] | { data?: NaverCampaignSummary[] };
+    const rows = Array.isArray(json) ? json : json.data || [];
+    return {
+      ok: true,
+      campaigns: rows
+        .filter((row) => row.nccCampaignId && row.name)
+        .map((row) => ({
+          nccCampaignId: row.nccCampaignId,
+          name: row.name,
+          campaignTp: row.campaignTp,
+          userLock: row.userLock,
+          status: row.status,
+        })),
+    };
+  } catch (err) {
+    return { ok: false, campaigns: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+export async function fetchNaverBusinessChannels(input: {
+  recordSize?: number;
+} = {}): Promise<{ ok: boolean; channels: NaverBusinessChannelSummary[]; error?: string }> {
+  if (!isNaverAdsConfigured()) {
+    return { ok: false, channels: [], error: 'NAVER_ADS_API_KEY/NAVER_ADS_SECRET_KEY/NAVER_ADS_CUSTOMER_ID 미설정' };
+  }
+
+  try {
+    const path = '/ncc/channels';
+    const headers = await buildNaverAuthHeaders('GET', path);
+    const params = new URLSearchParams({
+      recordSize: String(Math.min(Math.max(Number(input.recordSize || 100), 1), 1000)),
+    });
+
+    const res = await fetch(`${NAVER_API_BASE}${path}?${params.toString()}`, {
+      method: 'GET',
+      headers,
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      return { ok: false, channels: [], error: `Naver channel list failed (${res.status}): ${errorText.slice(0, 300)}` };
+    }
+
+    const json = await res.json() as NaverBusinessChannelSummary[] | { data?: NaverBusinessChannelSummary[] };
+    const rows = Array.isArray(json) ? json : json.data || [];
+    return {
+      ok: true,
+      channels: rows
+        .filter((row) => row.nccBusinessChannelId)
+        .map((row) => ({
+          nccBusinessChannelId: row.nccBusinessChannelId,
+          name: row.name,
+          channelTp: row.channelTp,
+          inspectStatus: row.inspectStatus,
+          url: row.url,
+        })),
+    };
+  } catch (err) {
+    return { ok: false, channels: [], error: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -656,7 +913,7 @@ export async function generateGoogleHistoricalMetrics(
     }
 
     const res = await fetch(
-      `${GOOGLE_ADS_API_BASE}/customers/${customerId}/keywords:generateHistoricalMetrics`,
+      `${GOOGLE_ADS_API_BASE}/customers/${customerId}:generateKeywordHistoricalMetrics`,
       {
         method: 'POST',
         headers: {

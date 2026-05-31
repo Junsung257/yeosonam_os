@@ -61,8 +61,13 @@ export default function BlogRankingsPage() {
   const triggerCron = async () => {
     setRunning(true);
     try {
-      const res = await fetch('/api/cron/rank-tracking');
+      const res = await fetch('/api/admin/cron-trigger', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: '/api/cron/rank-tracking' }),
+      });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       alert('순위 추적 실행 완료\n\n' + JSON.stringify(data, null, 2).slice(0, 500));
       fetchAll();
     } catch (e) {

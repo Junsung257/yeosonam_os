@@ -1,0 +1,510 @@
+import { NextResponse } from 'next/server';
+import { buildAdOsReadinessAudit } from '@/lib/ad-os-readiness';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { getSecret } from '@/lib/secret-registry';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+
+export const dynamic = 'force-dynamic';
+
+const PLATFORMS = ['naver', 'google', 'meta', 'kakao'] as const;
+
+function sum<T>(rows: T[], pick: (row: T) => number | null | undefined): number {
+  return rows.reduce((acc, row) => acc + Number(pick(row) || 0), 0);
+}
+
+function byKey<T>(rows: T[], pick: (row: T) => string | null | undefined): Record<string, number> {
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    const key = pick(row) || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function hasAllSecrets(names: string[]): boolean {
+  return names.every((name) => Boolean(getSecret(name as never)));
+}
+
+function hasAnySecret(names: string[]): boolean {
+  return names.some((name) => Boolean(getSecret(name as never)));
+}
+
+function buildExternalLaunchStatus(input: {
+  integrationStatus: Record<string, boolean>;
+  channelBudgets: Array<{
+    platform: string;
+    monthly_budget_krw: number;
+    daily_budget_cap_krw: number;
+    status: string;
+    external_ad_group_id?: string | null;
+  }>;
+  keywordStatusCounts: Record<string, number>;
+  draftCampaigns: number;
+}) {
+  const approvedOrTestingKeywords =
+    Number(input.keywordStatusCounts.approved || 0) +
+    Number(input.keywordStatusCounts.testing || 0) +
+    Number(input.keywordStatusCounts.active || 0);
+  const naverBudget = input.channelBudgets.find((budget) => budget.platform === 'naver');
+  const googleBudget = input.channelBudgets.find((budget) => budget.platform === 'google');
+  const hasNaverBudget = Boolean(
+    naverBudget &&
+      naverBudget.status === 'active' &&
+      Number(naverBudget.monthly_budget_krw || 0) > 0 &&
+      Number(naverBudget.daily_budget_cap_krw || 0) > 0,
+  );
+  const hasGoogleBudget = Boolean(
+    googleBudget &&
+      googleBudget.status === 'active' &&
+      Number(googleBudget.monthly_budget_krw || 0) > 0 &&
+      Number(googleBudget.daily_budget_cap_krw || 0) > 0,
+  );
+  const naverChecks = [
+    { id: 'api', label: 'API 키', done: Boolean(input.integrationStatus.naver), next: 'NAVER_ADS_API_KEY/SECRET/CUSTOMER_ID 설정' },
+    { id: 'budget', label: '예산', done: hasNaverBudget, next: '네이버 월예산/일상한/Max CPC 활성화' },
+    { id: 'adgroup', label: '광고그룹 ID', done: Boolean(naverBudget?.external_ad_group_id), next: '네이버 광고센터에서 캠페인/비즈채널/광고그룹 생성 후 자산 자동저장' },
+    { id: 'keywords', label: '승인 키워드', done: approvedOrTestingKeywords > 0, next: '네이버 후보 승인 또는 1단계 시범 세팅' },
+    { id: 'drafts', label: '내부 드래프트', done: input.draftCampaigns > 0, next: '캠페인 드래프트 생성' },
+  ];
+  const googleChecks = [
+    { id: 'api', label: 'API/OAuth', done: Boolean(input.integrationStatus.google), next: 'Google Ads OAuth 권한 확인' },
+    { id: 'permission', label: '권한 감사', done: false, next: '외부 계정 테스트에서 Google Ads PERMISSION_DENIED 해소' },
+    { id: 'budget', label: '예산', done: hasGoogleBudget, next: '구글 월예산/일상한/Max CPC 활성화' },
+    { id: 'keywords', label: '승인 키워드', done: approvedOrTestingKeywords > 0, next: '구글 후보 승인' },
+    { id: 'drafts', label: '내부 드래프트', done: input.draftCampaigns > 0, next: '캠페인 드래프트 생성' },
+  ];
+  const naverMissing = naverChecks.filter((check) => !check.done);
+  const googleMissing = googleChecks.filter((check) => !check.done);
+
+  return {
+    naver: {
+      ready: naverMissing.length === 0,
+      pass: naverChecks.length - naverMissing.length,
+      total: naverChecks.length,
+      checks: naverChecks,
+      next_action: naverMissing[0]?.next || '네이버 정지 키워드 점검 후 guarded publisher 실행',
+    },
+    google: {
+      ready: googleMissing.length === 0,
+      pass: googleChecks.length - googleMissing.length,
+      total: googleChecks.length,
+      checks: googleChecks,
+      next_action: googleMissing[0]?.next || 'Google Ads 권한 감사 후 guarded publisher 실행',
+    },
+    approved_or_testing_keywords: approvedOrTestingKeywords,
+  };
+}
+
+function buildLaunchActionQueue(input: {
+  externalLaunchStatus: ReturnType<typeof buildExternalLaunchStatus>;
+  keywordCandidates: number;
+  approvedOrTestingKeywords: number;
+  draftCampaigns: number;
+  activeSearchBudgetChannels: number;
+  learningEventCount: number;
+}) {
+  const actions: Array<{
+    id: string;
+    priority: number;
+    label: string;
+    description: string;
+    button_label: string;
+    ui_action: string;
+    tone: 'good' | 'warn' | 'bad' | 'neutral';
+  }> = [];
+
+  if (input.activeSearchBudgetChannels === 0 || input.approvedOrTestingKeywords === 0 || input.draftCampaigns === 0) {
+    actions.push({
+      id: 'pilot_setup',
+      priority: 1,
+      label: '1단계 시범 세팅',
+      description: '네이버/구글 소액 예산, 승인 키워드, 내부 캠페인 드래프트를 한 번에 준비합니다. 외부 광고비는 쓰지 않습니다.',
+      button_label: '1단계 시범 세팅',
+      ui_action: 'runPilotSetup',
+      tone: 'good',
+    });
+  }
+
+  if (!input.externalLaunchStatus.naver.ready) {
+    actions.push({
+      id: 'naver_setup_packet',
+      priority: input.externalLaunchStatus.naver.pass >= 4 ? 2 : 4,
+      label: '네이버 세팅 패킷',
+      description: '네이버 광고센터에서 만들 캠페인/광고그룹/예산/키워드 샘플을 먼저 뽑습니다.',
+      button_label: '세팅 패킷 생성',
+      ui_action: 'generateNaverSetupPacket',
+      tone: input.externalLaunchStatus.naver.pass >= 4 ? 'warn' : 'neutral',
+    });
+    actions.push({
+      id: 'naver_assets',
+      priority: input.externalLaunchStatus.naver.pass >= 4 ? 3 : 5,
+      label: '네이버 외부 자산 연결',
+      description: input.externalLaunchStatus.naver.next_action,
+      button_label: '네이버 자산 자동저장',
+      ui_action: 'syncNaverAssets',
+      tone: input.externalLaunchStatus.naver.pass >= 4 ? 'warn' : 'neutral',
+    });
+  }
+
+  if (!input.externalLaunchStatus.google.ready) {
+    actions.push({
+      id: 'google_permission',
+      priority: input.externalLaunchStatus.google.pass >= 4 ? 4 : 6,
+      label: '구글 권한 감사',
+      description: input.externalLaunchStatus.google.next_action,
+      button_label: '외부 계정 테스트',
+      ui_action: 'probePublisher',
+      tone: 'warn',
+    });
+  }
+
+  if (input.keywordCandidates === 0) {
+    actions.push({
+      id: 'generate_candidates',
+      priority: 6,
+      label: '상품 후보 생성',
+      description: '상품별 초세부 키워드 후보가 없으므로 먼저 후보를 생성해야 합니다.',
+      button_label: '상품 후보 생성',
+      ui_action: 'generateCandidates',
+      tone: 'neutral',
+    });
+  }
+
+  if (input.learningEventCount > 0) {
+    actions.push({
+      id: 'learning_harvest',
+      priority: 7,
+      label: '성과 학습 반영',
+      description: '누적된 학습 신호를 다음 키워드/랜딩 후보에 반영합니다.',
+      button_label: '성과 학습 수확',
+      ui_action: 'harvestLearning',
+      tone: 'neutral',
+    });
+  }
+
+  actions.push({
+    id: 'launch_audit',
+    priority: 8,
+    label: '오늘 집행 감사',
+    description: '실제 외부 광고를 켜기 전에 API, 예산, 승인 키워드, 드래프트, 외부 자산을 다시 점검합니다.',
+    button_label: '오늘 집행 감사',
+    ui_action: 'runLaunchAudit',
+    tone: 'neutral',
+  });
+
+  actions.push({
+    id: 'kill_switch',
+    priority: 9,
+    label: '전체 정지 점검',
+    description: '자동화가 멈춰야 할 때 어떤 예산/키워드/랜딩이 정지 대상인지 확인합니다. 기본은 드라이런입니다.',
+    button_label: '전체 정지 점검',
+    ui_action: 'runKillSwitchDryRun',
+    tone: 'bad',
+  });
+
+  return actions
+    .sort((a, b) => a.priority - b.priority)
+    .slice(0, 5);
+}
+
+export const GET = withAdminGuard(async () => {
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+  }
+
+  const [
+    mappingRes,
+    keywordPlanRes,
+    budgetRes,
+    decisionRes,
+    expiringPackageRes,
+    contentRes,
+    campaignRes,
+    learningRes,
+    searchTermCandidateRes,
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('ad_landing_mappings')
+      .select('id, platform, keyword, operational_status, active, clicks, cta_clicks, conversions, conversion_value_krw, created_at, content_creative_id')
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from('search_ad_keyword_plans')
+      .select('id, platform, keyword_text, tier, match_type, autopilot_status, plan_status, suggested_bid_krw, monthly_search_volume, competition_level, package_id, created_at')
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from('ad_os_channel_budgets')
+      .select('*')
+      .order('platform', { ascending: true }),
+    supabaseAdmin
+      .from('ad_os_decision_logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(25),
+    supabaseAdmin
+      .from('travel_packages')
+      .select('id, title, destination, ticketing_deadline, status, price, commission_fixed_amount, commission_rate')
+      .not('ticketing_deadline', 'is', null)
+      .gte('ticketing_deadline', new Date().toISOString().slice(0, 10))
+      .lte('ticketing_deadline', new Date(Date.now() + 7 * 86400_000).toISOString().slice(0, 10))
+      .order('ticketing_deadline', { ascending: true })
+      .limit(20),
+    supabaseAdmin
+      .from('content_creatives')
+      .select('id, status, landing_enabled, destination, published_at')
+      .eq('channel', 'naver_blog')
+      .order('published_at', { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from('ad_campaigns')
+      .select('id, channel, status, daily_budget_krw, created_at')
+      .in('channel', ['naver', 'google', 'meta'])
+      .order('created_at', { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from('ad_os_learning_events')
+      .select('id, signal_type, status, score, recommendation, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_search_term_candidates')
+      .select('id, platform, search_term, action, priority, score, status, reason, created_at')
+      .order('score', { ascending: false })
+      .limit(100),
+  ]);
+
+  const firstError =
+    mappingRes.error ||
+    keywordPlanRes.error ||
+    budgetRes.error ||
+    decisionRes.error ||
+    expiringPackageRes.error ||
+    contentRes.error ||
+    campaignRes.error ||
+    learningRes.error ||
+    searchTermCandidateRes.error;
+  if (firstError) {
+    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+  }
+
+  const mappings = (mappingRes.data || []) as Array<{
+    platform: string;
+    operational_status: string | null;
+    active: boolean | null;
+    clicks: number | null;
+    cta_clicks: number | null;
+    conversions: number | null;
+    conversion_value_krw: number | null;
+  }>;
+  const keywordPlans = (keywordPlanRes.data || []) as Array<{
+    platform: string;
+    autopilot_status: string | null;
+    tier: string | null;
+    suggested_bid_krw: number | null;
+  }>;
+  const budgets = (budgetRes.data || []) as Array<{
+    platform: string;
+    monthly_budget_krw: number;
+    daily_budget_cap_krw: number;
+    max_cpc_krw: number;
+    max_test_loss_krw: number;
+    automation_level: number;
+    status: string;
+    external_account_id?: string | null;
+    external_campaign_id?: string | null;
+    external_ad_group_id?: string | null;
+    external_config_note?: string | null;
+  }>;
+  const contents = (contentRes.data || []) as Array<{
+    status: string;
+    landing_enabled: boolean | null;
+    destination: string | null;
+  }>;
+  const campaigns = (campaignRes.data || []) as Array<{
+    channel: string | null;
+    status: string | null;
+    daily_budget_krw: number | null;
+  }>;
+  const learningEvents = (learningRes.data || []) as Array<{
+    signal_type: string | null;
+    status: string | null;
+  }>;
+  const searchTermCandidates = (searchTermCandidateRes.data || []) as Array<{
+    action: string | null;
+    status: string | null;
+  }>;
+
+  const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
+  const channelBudgets = PLATFORMS.map((platform) => ({
+    platform,
+    configured: budgetByPlatform.has(platform),
+    monthly_budget_krw: budgetByPlatform.get(platform)?.monthly_budget_krw ?? 0,
+    daily_budget_cap_krw: budgetByPlatform.get(platform)?.daily_budget_cap_krw ?? 0,
+    max_cpc_krw: budgetByPlatform.get(platform)?.max_cpc_krw ?? 0,
+    max_test_loss_krw: budgetByPlatform.get(platform)?.max_test_loss_krw ?? 0,
+    automation_level: budgetByPlatform.get(platform)?.automation_level ?? 1,
+    status: budgetByPlatform.get(platform)?.status ?? 'paused',
+    external_account_id: budgetByPlatform.get(platform)?.external_account_id ?? null,
+    external_campaign_id: budgetByPlatform.get(platform)?.external_campaign_id ?? null,
+    external_ad_group_id: budgetByPlatform.get(platform)?.external_ad_group_id ?? null,
+    external_config_note: budgetByPlatform.get(platform)?.external_config_note ?? null,
+  }));
+
+  const integrationStatus = {
+    naver: hasAllSecrets(['NAVER_ADS_API_KEY', 'NAVER_ADS_SECRET_KEY', 'NAVER_ADS_CUSTOMER_ID']),
+    google: hasAllSecrets(['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET']),
+    meta: hasAnySecret(['META_ACCESS_TOKEN', 'META_ADS_ACCESS_TOKEN']) && hasAllSecrets(['META_AD_ACCOUNT_ID']),
+    kakao: false,
+  };
+  const integrationDetails = {
+    naver: {
+      label: 'Naver Search Ads',
+      configured: integrationStatus.naver,
+      required: {
+        NAVER_ADS_API_KEY: Boolean(getSecret('NAVER_ADS_API_KEY')),
+        NAVER_ADS_SECRET_KEY: Boolean(getSecret('NAVER_ADS_SECRET_KEY')),
+        NAVER_ADS_CUSTOMER_ID: Boolean(getSecret('NAVER_ADS_CUSTOMER_ID')),
+      },
+      note: integrationStatus.naver ? 'KeywordTool/검색광고 API 호출 가능' : '네이버 검색광고 서버 키 필요',
+    },
+    google: {
+      label: 'Google Ads',
+      configured: integrationStatus.google,
+      required: {
+        GOOGLE_ADS_DEVELOPER_TOKEN: Boolean(getSecret('GOOGLE_ADS_DEVELOPER_TOKEN')),
+        GOOGLE_ADS_CUSTOMER_ID: Boolean(getSecret('GOOGLE_ADS_CUSTOMER_ID')),
+        GOOGLE_ADS_CLIENT_ID: Boolean(getSecret('GOOGLE_ADS_CLIENT_ID')),
+        GOOGLE_ADS_CLIENT_SECRET: Boolean(getSecret('GOOGLE_ADS_CLIENT_SECRET')),
+      },
+      note: integrationStatus.google ? 'OAuth 토큰 상태까지 별도 확인 필요' : 'Developer token/OAuth/Customer ID 필요',
+    },
+    meta: {
+      label: 'Meta Ads',
+      configured: integrationStatus.meta,
+      required: {
+        META_AD_ACCOUNT_ID: Boolean(getSecret('META_AD_ACCOUNT_ID')),
+        META_ACCESS_TOKEN: hasAnySecret(['META_ACCESS_TOKEN', 'META_ADS_ACCESS_TOKEN']),
+      },
+      note: integrationStatus.meta ? '광고 계정과 액세스 토큰 존재' : 'Meta 광고 계정/토큰 필요',
+    },
+    kakao: {
+      label: 'Kakao Moment',
+      configured: false,
+      required: {
+        KAKAO_MOMENT_ACCESS_TOKEN: false,
+      },
+      note: '현재는 픽셀/채널/알림톡 중심입니다. 카카오모먼트 광고 집행 API는 별도 연결 필요',
+    },
+  };
+
+  const mappingCandidates = mappings.filter((m) => (m.operational_status || 'candidate') === 'candidate').length;
+  const keywordCandidates = keywordPlans.filter((p) => (p.autopilot_status || 'candidate') === 'candidate').length;
+  const liveMappings = mappings.filter((m) => ['active', 'winning', 'scaled'].includes(m.operational_status || '')).length;
+  const publishedBlogs = contents.filter((c) => c.status === 'published').length;
+  const landingBlogs = contents.filter((c) => c.status === 'published' && c.landing_enabled).length;
+  const trackedClicks = sum(mappings, (m) => m.clicks);
+  const trackedCtaClicks = sum(mappings, (m) => m.cta_clicks);
+  const trackedConversions = sum(mappings, (m) => m.conversions);
+  const trackedConversionValueKrw = sum(mappings, (m) => m.conversion_value_krw);
+  const configuredMonthlyBudgetKrw = sum(channelBudgets, (b) => b.monthly_budget_krw);
+  const keywordPlansByTier = byKey(keywordPlans, (p) => p.tier);
+  const keywordPlansByPlatform = byKey(keywordPlans, (p) => p.platform);
+  const mappingsByStatus = byKey(mappings, (m) => m.operational_status || (m.active ? 'legacy_active' : 'legacy_paused'));
+  const expiringPackages7d = expiringPackageRes.data?.length ?? 0;
+  const readinessAudit = buildAdOsReadinessAudit({
+    mappingCandidates,
+    keywordCandidates,
+    liveMappings,
+    landingBlogs,
+    publishedBlogs,
+    trackedClicks,
+    trackedCtaClicks,
+    trackedConversions,
+    trackedConversionValueKrw,
+    expiringPackages7d,
+    configuredMonthlyBudgetKrw,
+    activeBudgetChannels: channelBudgets.filter((b) => b.status === 'active' && b.monthly_budget_krw > 0).length,
+    integrationStatus,
+    decisionCount: decisionRes.data?.length ?? 0,
+    learningEventCount: learningEvents.length,
+    searchTermCandidateCount: searchTermCandidates.length,
+    keywordTiers: keywordPlansByTier,
+    keywordPlatforms: keywordPlansByPlatform,
+    mappingStatuses: mappingsByStatus,
+  });
+  const campaignCountsByStatus = byKey(campaigns, (c) => c.status || 'unknown');
+  const campaignCountsByChannel = byKey(campaigns, (c) => c.channel || 'unknown');
+  const keywordStatusCounts = byKey(keywordPlans, (p) => p.autopilot_status || 'candidate');
+  const draftCampaigns = Number(campaignCountsByStatus.DRAFT || 0);
+  const activeCampaigns = Number(campaignCountsByStatus.ACTIVE || 0);
+  const externalLaunchStatus = buildExternalLaunchStatus({
+    integrationStatus,
+    channelBudgets,
+    keywordStatusCounts,
+    draftCampaigns,
+  });
+  const launchActionQueue = buildLaunchActionQueue({
+    externalLaunchStatus,
+    keywordCandidates,
+    approvedOrTestingKeywords: Number(externalLaunchStatus.approved_or_testing_keywords || 0),
+    draftCampaigns,
+    activeSearchBudgetChannels: channelBudgets.filter((budget) => ['naver', 'google'].includes(budget.platform) && budget.status === 'active' && budget.monthly_budget_krw > 0).length,
+    learningEventCount: learningEvents.length,
+  });
+
+  return NextResponse.json({
+    ok: true,
+    generated_at: new Date().toISOString(),
+    kpis: {
+      mapping_candidates: mappingCandidates,
+      keyword_candidates: keywordCandidates,
+      live_mappings: liveMappings,
+      landing_blogs: landingBlogs,
+      published_blogs: publishedBlogs,
+      expiring_packages_7d: expiringPackages7d,
+      tracked_clicks: trackedClicks,
+      tracked_cta_clicks: trackedCtaClicks,
+      tracked_conversions: trackedConversions,
+      tracked_conversion_value_krw: trackedConversionValueKrw,
+      configured_monthly_budget_krw: configuredMonthlyBudgetKrw,
+      draft_campaigns: draftCampaigns,
+      active_campaigns: activeCampaigns,
+      learning_events: learningEvents.length,
+      search_term_candidates: searchTermCandidates.length,
+      negative_candidates: searchTermCandidates.filter((row) => row.action === 'add_negative' && row.status === 'candidate').length,
+    },
+    counts: {
+      mappings_by_status: mappingsByStatus,
+      mappings_by_platform: byKey(mappings, (m) => m.platform),
+      keyword_plans_by_status: keywordStatusCounts,
+      keyword_plans_by_tier: keywordPlansByTier,
+      keyword_plans_by_platform: keywordPlansByPlatform,
+      campaigns_by_status: campaignCountsByStatus,
+      campaigns_by_channel: campaignCountsByChannel,
+      learning_events_by_type: byKey(learningEvents, (row) => row.signal_type || 'unknown'),
+      search_term_candidates_by_action: byKey(searchTermCandidates, (row) => row.action || 'unknown'),
+    },
+    readiness_audit: readinessAudit,
+    channel_budgets: channelBudgets,
+    integration_status: integrationStatus,
+    integration_details: integrationDetails,
+    external_launch_status: externalLaunchStatus,
+    launch_action_queue: launchActionQueue,
+    recent_decisions: decisionRes.data || [],
+    expiring_packages: expiringPackageRes.data || [],
+    samples: {
+      mappings: mappingRes.data?.slice(0, 12) || [],
+      keyword_plans: keywordPlanRes.data?.slice(0, 12) || [],
+      learning_events: learningRes.data?.slice(0, 12) || [],
+      search_term_candidates: searchTermCandidateRes.data?.slice(0, 12) || [],
+    },
+    automation_ladder: [
+      { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },
+      { level: 1, label: '후보 생성', description: '키워드/랜딩/소재 후보를 자동 생성' },
+      { level: 2, label: '승인형 집행', description: '승인된 후보만 외부 광고 계정에 배포' },
+      { level: 3, label: '소액 자동 테스트', description: '채널 예산 캡 안에서 자동 테스트 시작' },
+      { level: 4, label: '자동 최적화', description: '입찰/중지/제외/랜딩 교체를 자동 적용' },
+      { level: 5, label: '완전자율', description: '목표 CPA/ROAS와 예산 안에서 생성-집행-연장-중지 자동' },
+    ],
+  });
+});

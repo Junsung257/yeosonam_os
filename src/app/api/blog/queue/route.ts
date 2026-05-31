@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const action = body.action;
 
     if (action === 'run_scheduler') {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/blog-scheduler`);
+      const res = await fetchCronEndpoint('/api/cron/blog-scheduler');
       const data = await res.json();
       return NextResponse.json({ triggered: 'scheduler', result: data });
     }
@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'run_lifecycle') {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/cron/blog-lifecycle`);
+      const res = await fetchCronEndpoint('/api/cron/blog-lifecycle');
       const data = await res.json();
       return NextResponse.json({ triggered: 'lifecycle', result: data });
     }
@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
         priority: 85,
         product_id: cn[0].package_id ?? null,
         card_news_id: card_news_id,
-        target_publish_at: target_publish_at ?? null,
+        target_publish_at: target_publish_at ?? new Date().toISOString(),
         meta: { slide_count: (cn[0].slide_image_urls as string[]).length },
       }).select();
 
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
       const resolvedPublishAt =
         target_publish_at ??
         computeSeasonalTargetPublishAt(seasonal_month) ??
-        null;
+        new Date().toISOString();
 
       const { data, error } = await supabaseAdmin.from('blog_topic_queue').insert({
         topic,

@@ -12,6 +12,7 @@ import {
 import { useTracking } from '@/hooks/useTracking';
 import { submitLeadPipeline } from '@/lib/submitPipeline';
 import { useChatStore } from '@/lib/chat-store';
+import { getSessionId } from '@/lib/tracker';
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { trackKakaoViewContent } from '@/lib/kakao-moment-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
@@ -465,7 +466,11 @@ export function LandingClient({
               fetch('/api/tracking/score-signal', {
                 method: 'POST',
                 headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ package_id: data.id, signal_type: 'lead_sheet_open' }),
+                body: JSON.stringify({
+                  package_id: data.id,
+                  signal_type: 'lead_sheet_open',
+                  session_id: getSessionId(),
+                }),
               }).catch(() => {});
             }}
             className={`w-full py-4 rounded-2xl font-extrabold text-base flex items-center justify-center gap-2 transition-all duration-200

@@ -49,9 +49,12 @@
 | **/register 변경 이력 (P0~P1·결정)** | **`docs/register-changelog.md`** |
 | 미설정 트래커 | `docs/pending-settings-tracker.md` |
 | 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
+| 상품 등록 정확도·토큰 절감 플랜 | `docs/product-registration-accuracy-plan.md` |
+| 추천·비교 V1 개발 실행서 | `docs/recommendation-comparison-v1-plan.md` |
 | 게이미피케이션 운영 런북 | `docs/gamification-runbook.md` |
 | 마일리지 시스템 개요 | `docs/mileage-system-overview.md` |
 | 검색광고 자동화 리서치 | `docs/search-ads-automation-research.md` |
+| Ad OS 완전자동화 마스터플랜 | `docs/ad-os-autopilot-master-plan.md` |
 | 일회성 페이지 감사 로그 | `docs/audits/` |
 
 *새 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로.*

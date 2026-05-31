@@ -19,6 +19,7 @@ interface Mapping {
   dki_headline: string | null;
   landing_url: string;
   active: boolean;
+  operational_status?: string | null;
   clicks: number;
   conversions: number;
   created_at: string;
@@ -48,11 +49,36 @@ const PLATFORM_COLOR: Record<string, string> = {
   kakao: 'bg-yellow-100 text-yellow-700',
 };
 
+const STATUS_LABEL: Record<string, string> = {
+  candidate: '후보',
+  approved: '승인',
+  testing: '테스트',
+  active: '집행',
+  winning: '승자',
+  scaled: '확대',
+  paused: '중지',
+  rejected: '폐기',
+  expired: '만료',
+};
+
+const STATUS_COLOR: Record<string, string> = {
+  candidate: 'bg-admin-surface-2 text-admin-muted',
+  approved: 'bg-blue-50 text-blue-700',
+  testing: 'bg-amber-50 text-amber-700',
+  active: 'bg-emerald-50 text-emerald-700',
+  winning: 'bg-emerald-50 text-emerald-700',
+  scaled: 'bg-purple-50 text-purple-700',
+  paused: 'bg-admin-surface-2 text-admin-muted',
+  rejected: 'bg-rose-50 text-rose-700',
+  expired: 'bg-rose-50 text-rose-700',
+};
+
 export default function BlogAdsPage() {
   const [mappings, setMappings] = useState<Mapping[]>([]);
   const [blogs, setBlogs] = useState<BlogOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [filterPlatform, setFilterPlatform] = useState<string>('all');
+  const [autoGenerating, setAutoGenerating] = useState(false);
 
   // 신규 매핑 폼
   const [formOpen, setFormOpen] = useState(false);
@@ -78,6 +104,18 @@ export default function BlogAdsPage() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  useEffect(() => {
+    if (loading || autoGenerating || filterPlatform !== 'all' || mappings.length > 0 || blogs.length === 0) return;
+    setAutoGenerating(true);
+    fetch('/api/blog/ad-mapping', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'auto_generate', limit: 50 }),
+    })
+      .then(() => fetchData())
+      .finally(() => setAutoGenerating(false));
+  }, [autoGenerating, blogs.length, fetchData, filterPlatform, loading, mappings.length]);
+
   const createMapping = async () => {
     if (!fBlog || !fKeyword.trim()) { alert('블로그와 키워드 필수'); return; }
     const res = await fetch('/api/blog/ad-mapping', {
@@ -102,11 +140,12 @@ export default function BlogAdsPage() {
     fetchData();
   };
 
-  const toggleActive = async (id: string, active: boolean) => {
+  const toggleActive = async (id: string, status?: string | null) => {
+    const nextStatus = ['active', 'winning', 'scaled'].includes(status || '') ? 'paused' : 'approved';
     await fetch('/api/blog/ad-mapping', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id, active: !active }),
+      body: JSON.stringify({ id, operational_status: nextStatus }),
     });
     fetchData();
   };
@@ -211,7 +250,7 @@ export default function BlogAdsPage() {
         <div className="text-center py-12 text-admin-muted text-admin-sm">로딩…</div>
       ) : mappings.length === 0 ? (
         <div className="text-center py-12 text-admin-muted text-admin-sm admin-card">
-          매핑이 없습니다. "매핑 추가" 버튼으로 광고 키워드를 블로그에 연결하세요.
+          {autoGenerating ? '광고 매핑을 자동 생성하는 중입니다.' : '자동 생성할 매핑 후보가 아직 없습니다.'}
         </div>
       ) : (
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
@@ -223,12 +262,14 @@ export default function BlogAdsPage() {
                 <th style={{ width: 192 }}>DKI 헤드라인</th>
                 <th className="text-right" style={{ width: 64 }}>클릭</th>
                 <th className="text-right" style={{ width: 64 }}>전환</th>
-                <th className="text-center" style={{ width: 80 }}>활성</th>
+                <th className="text-center" style={{ width: 88 }}>운영상태</th>
                 <th style={{ width: 112 }}></th>
               </tr>
             </thead>
             <tbody>
-              {mappings.map(m => (
+              {mappings.map(m => {
+                const status = m.operational_status || (m.active ? 'active' : 'candidate');
+                return (
                 <tr key={m.id}>
                   <td>
                     <span className={`px-2 py-0.5 text-admin-2xs rounded-admin-xs font-bold ${PLATFORM_COLOR[m.platform]}`}>
@@ -254,12 +295,12 @@ export default function BlogAdsPage() {
                   <td className="text-right text-admin-xs admin-num font-semibold text-success">{m.conversions.toLocaleString()}</td>
                   <td className="text-center">
                     <button
-                      onClick={() => toggleActive(m.id, m.active)}
+                      onClick={() => toggleActive(m.id, status)}
                       className={`px-2 py-0.5 text-admin-2xs rounded-admin-xs font-semibold transition-colors ${
-                        m.active ? 'bg-status-successBg text-status-successFg hover:opacity-80' : 'bg-admin-surface-2 text-admin-muted hover:bg-admin-border-mid'
+                        STATUS_COLOR[status] || 'bg-admin-surface-2 text-admin-muted'
                       }`}
                     >
-                      {m.active ? '활성' : '비활성'}
+                      {STATUS_LABEL[status] || status}
                     </button>
                   </td>
                   <td className="text-right space-x-2">
@@ -271,7 +312,8 @@ export default function BlogAdsPage() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

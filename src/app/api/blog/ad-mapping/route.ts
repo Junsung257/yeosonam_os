@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { buildUtm, applyUtmToUrl } from '@/lib/utm-builder';
+import { ensureAutoAdMappingsForBlog } from '@/lib/blog-ad-mapping-auto';
 
 /**
  * 블로그 ↔ 광고 캠페인 매핑 관리
@@ -13,6 +14,7 @@ import { buildUtm, applyUtmToUrl } from '@/lib/utm-builder';
  */
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const LIVE_MAPPING_STATUSES = ['active', 'winning', 'scaled'];
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
@@ -37,7 +39,14 @@ export async function GET(request: NextRequest) {
     const { data, error } = await q;
     if (error) throw error;
 
-    return NextResponse.json({ items: data || [] });
+    const items = (data || []).map((item) => {
+      const status = typeof item.operational_status === 'string' ? item.operational_status : null;
+      return status
+        ? { ...item, active: LIVE_MAPPING_STATUSES.includes(status) }
+        : item;
+    });
+
+    return NextResponse.json({ items });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }
@@ -48,6 +57,42 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+    if (body.action === 'auto_generate') {
+      const limit = Math.min(100, Number(body.limit || 50));
+      const { data: blogs, error: blogErr } = await supabaseAdmin
+        .from('content_creatives')
+        .select('id, slug, seo_title, destination, target_ad_keywords, landing_enabled')
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .not('slug', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(limit);
+      if (blogErr) throw blogErr;
+
+      let inserted = 0;
+      const results: Array<Record<string, unknown>> = [];
+      for (const blog of blogs || []) {
+        const row = blog as {
+          id: string;
+          slug: string;
+          seo_title: string | null;
+          destination: string | null;
+          target_ad_keywords: string[] | null;
+        };
+        const result = await ensureAutoAdMappingsForBlog({
+          contentCreativeId: row.id,
+          slug: row.slug,
+          seoTitle: row.seo_title,
+          destination: row.destination,
+          targetKeywords: row.target_ad_keywords,
+        });
+        inserted += result.inserted;
+        results.push({ id: row.id, slug: row.slug, inserted: result.inserted, keywords: result.keywords });
+      }
+
+      return NextResponse.json({ ok: true, scanned: blogs?.length ?? 0, inserted, results });
+    }
+
     const {
       content_creative_id, campaign_id, platform, keyword,
       match_type, dki_headline, dki_subtitle, creative_variant, campaign_slug,
@@ -93,7 +138,13 @@ export async function POST(request: NextRequest) {
         dki_headline: dki_headline ?? null,
         dki_subtitle: dki_subtitle ?? null,
         landing_url: landingUrl,
-        active: true,
+        active: false,
+        operational_status: 'approved',
+        automation_level: 2,
+        intent_cluster: keyword,
+        scenario_type: 'manual_mapping',
+        funnel_stage: 'consideration',
+        decision_reason: 'Manual mapping created. External ad delivery still requires deployment.',
       })
       .select();
 
@@ -109,11 +160,17 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { id, active, dki_headline, dki_subtitle, keyword, match_type } = body;
+    const { id, active, operational_status, dki_headline, dki_subtitle, keyword, match_type } = body;
     if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
 
     const update: Record<string, unknown> = {};
     if (active !== undefined) update.active = active;
+    if (operational_status !== undefined) {
+      update.operational_status = operational_status;
+      update.active = LIVE_MAPPING_STATUSES.includes(operational_status);
+      update.last_decision_at = new Date().toISOString();
+      update.decision_reason = 'Updated from blog ad mapping admin.';
+    }
     if (dki_headline !== undefined) update.dki_headline = dki_headline;
     if (dki_subtitle !== undefined) update.dki_subtitle = dki_subtitle;
     if (keyword !== undefined) update.keyword = keyword;
