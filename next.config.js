@@ -218,6 +218,7 @@ const nextConfig = {
       { source: '/tour/:id', destination: '/packages/:id', permanent: true },
       { source: '/products', destination: '/packages', permanent: true },
       { source: '/products/:id', destination: '/packages/:id', permanent: true },
+      { source: '/admin/products/review', destination: '/admin/packages?status=pending', permanent: false },
       {
         source: '/:path*',
         has: [{ type: 'host', value: 'yeosonam.com' }],

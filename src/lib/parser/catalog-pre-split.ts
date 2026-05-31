@@ -1,3 +1,58 @@
+const VARIANT_LABEL_RE =
+  /^(?:세이브|실속|스탠다드|품격(?:\s*노노)?|프리미엄(?:\s*노노노)?|크라운|노노노\+?|노노\+?)\s*$/;
+const VARIANT_COMPACT_LABEL_RE =
+  /^(?:프리미엄|크라운|스탠다드|세이브).{0,12}$/;
+const VARIANT_TITLE_RE = /\d+\s*박\s*\d+\s*일/;
+const VARIANT_ITINERARY_RE = /(?:^|\n)\s*(?:일\s*자|제\s*1\s*일|제1일)\s*(?:\n|$)/;
+
+function hasVariantProductTitleLine(lines: string[]): boolean {
+  return lines.some(line => {
+    const compact = line.trim().replace(/\s+/g, '');
+    if (!VARIANT_TITLE_RE.test(compact)) return false;
+    const withoutDuration = compact.replace(/\d+박\d+일/g, '');
+    return withoutDuration.length >= 4;
+  });
+}
+
+export function collectVariantCatalogBlockStarts(raw: string): number[] {
+  const text = raw.replace(/\r\n/g, '\n');
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const starts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const label = lines[i].trim().replace(/\s+/g, ' ');
+    if (!label) continue;
+    const isVariantLabel = VARIANT_LABEL_RE.test(label) || VARIANT_COMPACT_LABEL_RE.test(label);
+    if (!isVariantLabel) continue;
+
+    const titleWindow = lines.slice(i, Math.min(lines.length, i + 7));
+    if (!hasVariantProductTitleLine(titleWindow)) continue;
+
+    const itineraryWindow = lines.slice(i, Math.min(lines.length, i + 120)).join('\n');
+    if (!VARIANT_ITINERARY_RE.test(itineraryWindow)) continue;
+
+    starts.push(offsets[i]);
+  }
+
+  const sorted = [...new Set(starts)].sort((a, b) => a - b);
+  if (sorted.length <= 1) return sorted;
+
+  const deduped: number[] = [sorted[0]];
+  const MIN_VARIANT_GAP = 80;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] >= MIN_VARIANT_GAP) {
+      deduped.push(sorted[i]);
+    }
+  }
+  return deduped;
+}
+
 /**
  * 카탈로그형 원문을 일정표 헤더 기준으로 분할 (Lost-in-the-middle 완화).
  * 각 섹션 = 한 상품의 `[코드]…일정표`부터 다음 동일 헤더 직전까지.
@@ -100,7 +155,10 @@ export function collectItineraryHeaderStarts(raw: string): number[] {
 }
 
 export function countCatalogItineraryHeaders(raw: string): number {
-  return collectItineraryHeaderStarts(raw).length;
+  return Math.max(
+    collectItineraryHeaderStarts(raw).length,
+    collectVariantCatalogBlockStarts(raw).length,
+  );
 }
 
 /**
@@ -238,7 +296,8 @@ export function extractProductRawTextSection(
 
 export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult {
   const text = raw.replace(/\r\n/g, '\n');
-  const starts = collectItineraryHeaderStarts(text);
+  const variantStarts = collectVariantCatalogBlockStarts(text);
+  const starts = variantStarts.length >= 2 ? variantStarts : collectItineraryHeaderStarts(text);
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };

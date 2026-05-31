@@ -58,11 +58,16 @@ const getHandler = async (_req: NextRequest) => {
     computed_at?: string;
   };
 
+  const { count: productReviewCount } = await supabaseAdmin
+    .from('products')
+    .select('internal_code', { count: 'exact', head: true })
+    .in('status', ['DRAFT', 'REVIEW_NEEDED', 'draft']);
+
   return NextResponse.json(
     {
       pendingActions:   counts.pending_actions   ?? 0,
       unmatchedPending: counts.unmatched_pending ?? 0,
-      pendingPackages:  counts.pending_packages  ?? 0,
+      pendingPackages:  productReviewCount ?? counts.pending_packages ?? 0,
       // 무거운 RPC(reconcile)·blog_queue 는 별도 lazy fetch — 통합 RPC 에서 제외.
       ledgerDrift: 0,
       blogQueue:   0,
