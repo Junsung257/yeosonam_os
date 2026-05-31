@@ -91,7 +91,7 @@ export async function GET() {
     const { data, error } = await supabaseAdmin
       .from('products')
       .select(`
-        internal_code, display_name, departure_region, departure_region_code,
+        internal_code, display_name, departure_region,
         supplier_name, supplier_code, destination, destination_code,
         duration_days, net_price, margin_rate, discount_amount,
         ai_tags, theme_tags, status, source_filename,

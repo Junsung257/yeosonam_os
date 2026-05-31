@@ -550,7 +550,7 @@ const postHandler = async (request: NextRequest) => {
             .from('products')
             .select('internal_code, status')
             .in('internal_code', productIds)
-            .not('status', 'in', '("archived","inactive","deleted")');
+            .not('status', 'in', '("archived","inactive","INACTIVE","deleted","expired","cancelled")');
           const aliveSet = new Set((aliveProducts ?? []).map((p: { internal_code: string }) => p.internal_code));
           blocked = (existingHashes as Array<{ file_hash: string; product_id: string | null; file_name: string }>)
             .find(h => h.product_id && aliveSet.has(h.product_id)) ?? null;
@@ -589,7 +589,7 @@ const postHandler = async (request: NextRequest) => {
               .from('products')
               .select('internal_code, status')
               .in('internal_code', normPids)
-              .not('status', 'in', '("archived","inactive","deleted")');
+              .not('status', 'in', '("archived","inactive","INACTIVE","deleted","expired","cancelled")');
             const aliveNormSet = new Set((aliveNorm ?? []).map((p: { internal_code: string }) => p.internal_code));
             blockedNorm = (existingNormRows as Array<{ file_hash: string; product_id: string | null; file_name: string; normalized_hash: string }>)
               .find(h => h.product_id && aliveNormSet.has(h.product_id)) ?? null;
@@ -745,6 +745,17 @@ const postHandler = async (request: NextRequest) => {
         .maybeSingle();
 
       if (existingNormFile) {
+        const existingProductId = (existingNormFile as { product_id?: string | null }).product_id;
+        if (existingProductId) {
+          const { data: existingProduct } = await supabaseAdmin
+            .from('products')
+            .select('status')
+            .eq('internal_code', existingProductId)
+            .maybeSingle();
+          const status = (existingProduct as { status?: string } | null)?.status ?? '';
+          if (['archived', 'inactive', 'INACTIVE', 'deleted', 'expired', 'cancelled'].includes(status)) {
+            console.log('[Upload API] 파일 모드 정규화 해시 중복이지만 비활성 상품이라 재처리 허용:', existingProductId);
+          } else {
         console.log('[Upload API] 파일 모드 정규화 해시 중복 — 저장 스킵:', normalizedCatalogHash.slice(0, 12));
         return NextResponse.json({
           success:               true,
@@ -755,6 +766,8 @@ const postHandler = async (request: NextRequest) => {
           internal_code:         existingNormFile.product_id ?? null,
           message:               `이미 처리된 카탈로그입니다(추출 본문 정규화 기준). 원본: ${existingNormFile.file_name}`,
         });
+          }
+        }
       }
     }
 
