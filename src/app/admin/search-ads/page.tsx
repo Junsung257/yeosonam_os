@@ -15,8 +15,34 @@ import SubNav from '@/components/admin/SubNav';
 // ── 탭/필터 상수 ─────────────────────────────────────────
 const TIER_LABELS: Record<KeywordTier, string> = { core: '핵심', mid: '중위', longtail: '세부', negative: '제외' };
 const TIER_COLORS: Record<KeywordTier, string> = { core: 'bg-blue-50 text-blue-700', mid: 'bg-amber-50 text-amber-700', longtail: 'bg-emerald-50 text-emerald-700', negative: 'bg-red-50 text-red-600' };
+const isMutableExternalKeywordId = (platform: Platform, id: string) =>
+  platform === 'naver' ? /^nkw-[a-z0-9-]+$/i.test(id) : id.startsWith('customers/');
 
 interface Package { id: string; title: string; destination?: string; duration?: number; airline?: string; departure_airport?: string; product_type?: string; price?: number; inclusions?: string[]; price_tiers?: { adult_price?: number }[]; display_name?: string; }
+interface SearchAdPerformanceResponse {
+  keywordId: string;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  cpc: number;
+  conversions: number;
+  spend: number;
+}
+interface SearchAdPlanRow {
+  id: string;
+  package_id: string;
+  platform: Platform;
+  plan_status: 'draft' | 'approved' | 'published' | 'failed' | 'archived';
+  campaign_name: string;
+  ad_group_name: string;
+  tier: KeywordTier;
+  match_type: 'exact' | 'phrase' | 'broad';
+  keyword_text: string;
+  suggested_bid_krw: number;
+  monthly_search_volume: number | null;
+  competition_level: 'low' | 'medium' | 'high' | null;
+  travel_packages?: { title?: string | null; destination?: string | null; short_code?: string | null } | null;
+}
 
 export default function SearchAdsPage() {
   return (
@@ -39,6 +65,8 @@ function SearchAdsContent() {
   const [editingBid, setEditingBid] = useState<string | null>(null);
   const [editBidValue, setEditBidValue] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [planning, setPlanning] = useState(false);
+  const [plansLoading, setPlansLoading] = useState(false);
   const [lastSync, setLastSync] = useState<string | null>(null);
 
   // 패널
@@ -49,19 +77,36 @@ function SearchAdsContent() {
   const [extractedPreview, setExtractedPreview] = useState<ReturnType<typeof extractKeywords>>([]);
   const [recommendations, setRecommendations] = useState<BidRecommendation[]>([]);
   const [keywords, setKeywords] = useState<SearchAdKeyword[]>([]);
+  const [planRows, setPlanRows] = useState<SearchAdPlanRow[]>([]);
+  const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set());
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info'),
     [_t],
   );
 
+  const refreshPlans = useCallback(async () => {
+    setPlansLoading(true);
+    try {
+      const res = await fetch('/api/admin/search-ads/auto-plan?limit=80');
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setPlanRows(data.plans ?? []);
+    } catch {
+      showToast('광고 플랜 조회 실패');
+    } finally {
+      setPlansLoading(false);
+    }
+  }, [showToast]);
+
   // 로드
   useEffect(() => {
     setKeywords(loadKeywords());
+    refreshPlans();
     fetch('/api/packages?limit=200')
       .then(r => r.json())
       .then(d => setPackages((d.data ?? d.packages ?? []).filter((p: Package) => p.destination)));
-  }, []);
+  }, [refreshPlans]);
 
   // 필터링
   const filtered = useMemo(() => {
@@ -89,8 +134,14 @@ function SearchAdsContent() {
   const handleSync = useCallback(async () => {
     setSyncing(true);
     try {
-      const { fetchAllPerformance } = await import('@/lib/search-ads-api');
-      const perf = await fetchAllPerformance(keywords);
+      const res = await fetch('/api/admin/search-ads/sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ keywords }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const perf = (data.performance ?? []) as SearchAdPerformanceResponse[];
       const syncPromises: Promise<unknown>[] = [];
       const updated = keywords.map(k => {
         const p = perf.find(pp => pp.keywordId === k.id);
@@ -139,22 +190,96 @@ function SearchAdsContent() {
     showToast(`${newKws.length}개 키워드 등록`);
   }, [keywords, platform, selectedPkg, showToast]);
 
+  const handleAutoPlan = useCallback(async () => {
+    if (!selectedPkg) {
+      showToast('상품을 먼저 선택하세요');
+      return;
+    }
+    setPlanning(true);
+    try {
+      const res = await fetch('/api/admin/search-ads/auto-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ package_id: selectedPkg.id }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      showToast(`검색광고 draft 생성 완료 (${data.saved ?? 0}개 저장)`);
+      await refreshPlans();
+    } catch {
+      showToast('검색광고 draft 생성 실패');
+    } finally {
+      setPlanning(false);
+    }
+  }, [refreshPlans, selectedPkg, showToast]);
+
+  const handlePlanStatus = useCallback(async (action: 'approve' | 'archive') => {
+    const ids = [...selectedPlanIds];
+    if (ids.length === 0) {
+      showToast('광고 플랜을 먼저 선택하세요');
+      return;
+    }
+    try {
+      const res = await fetch('/api/admin/search-ads/auto-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action, ids }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setSelectedPlanIds(new Set());
+      await refreshPlans();
+      showToast(action === 'approve' ? '발행 준비 완료' : '보관 완료');
+    } catch {
+      showToast('광고 플랜 상태 변경 실패');
+    }
+  }, [refreshPlans, selectedPlanIds, showToast]);
+
   // ── 입찰가 수정 ────────────────────────────────────────
-  const handleBidSave = useCallback((kwId: string) => {
+  const handleBidSave = useCallback(async (kwId: string) => {
     const newBid = parseInt(editBidValue);
     if (isNaN(newBid) || newBid < 0) return;
+    const target = keywords.find(k => k.id === kwId);
+    if (target && isMutableExternalKeywordId(target.platform, target.id)) {
+      const res = await fetch('/api/admin/search-ads/mutate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_bid', keyword: target, bid: newBid }),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (!res.ok || !data.ok) {
+        showToast('외부 광고 입찰가 변경 실패');
+        return;
+      }
+    }
     const updated = keywords.map(k => k.id === kwId ? { ...k, bid: newBid } : k);
     setKeywords(updated);
     saveKeywords(updated);
     setEditingBid(null);
-  }, [keywords, editBidValue]);
+    showToast('입찰가 적용 완료');
+  }, [keywords, editBidValue, showToast]);
 
   // ── 상태 토글 ──────────────────────────────────────────
-  const toggleStatus = useCallback((kwId: string) => {
-    const updated = keywords.map(k => k.id === kwId ? { ...k, status: k.status === 'active' ? 'paused' as const : 'active' as const } : k);
+  const toggleStatus = useCallback(async (kwId: string) => {
+    const target = keywords.find(k => k.id === kwId);
+    if (!target) return;
+    const nextStatus = target.status === 'active' ? 'paused' as const : 'active' as const;
+    if (nextStatus === 'paused' && isMutableExternalKeywordId(target.platform, target.id)) {
+      const res = await fetch('/api/admin/search-ads/mutate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'pause', keyword: target }),
+      });
+      const data = await res.json().catch(() => ({ ok: false }));
+      if (!res.ok || !data.ok) {
+        showToast('외부 광고 키워드 정지 실패');
+        return;
+      }
+    }
+    const updated = keywords.map(k => k.id === kwId ? { ...k, status: nextStatus } : k);
     setKeywords(updated);
     saveKeywords(updated);
-  }, [keywords]);
+  }, [keywords, showToast]);
 
   // ── 일괄 조작 ──────────────────────────────────────────
   const bulkAdjust = useCallback((pct: number) => {
@@ -215,6 +340,97 @@ function SearchAdsContent() {
           <button onClick={handleSync} disabled={syncing} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {syncing ? '동기화 중...' : '성과 동기화'}
           </button>
+        </div>
+      </div>
+
+      {/* ── 상품 광고 런치센터 ─────────────────────────── */}
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+        <div className="px-3 py-2 border-b border-admin-border-mid flex items-center justify-between gap-3">
+          <div>
+            <p className="text-admin-sm font-semibold text-admin-text-2">상품 광고 런치센터</p>
+            <p className="text-[11px] text-admin-muted">상품 → 네이버/구글 키워드 draft → 발행 준비</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <select value={selectedPkg?.id || ''} onChange={e => {
+              const pkg = packages.find(p => p.id === e.target.value) ?? null;
+              setSelectedPkg(pkg);
+              if (pkg) handleExtract(pkg);
+            }} className="w-64 border border-admin-border-mid rounded px-2 py-1.5 text-admin-xs focus:ring-1 focus:ring-[#005d90]">
+              <option value="">상품 선택...</option>
+              {packages.map(p => <option key={p.id} value={p.id}>{p.title || p.display_name} ({p.destination})</option>)}
+            </select>
+            <button onClick={handleAutoPlan} disabled={!selectedPkg || planning}
+              className="px-3 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:opacity-50 transition font-medium">
+              {planning ? '생성 중...' : '자동 광고 준비'}
+            </button>
+          </div>
+        </div>
+        <div className="grid grid-cols-4 border-b border-admin-border-mid">
+          {[
+            { label: 'Draft', value: planRows.filter(p => p.plan_status === 'draft').length },
+            { label: '발행 준비', value: planRows.filter(p => p.plan_status === 'approved').length },
+            { label: '네이버', value: planRows.filter(p => p.platform === 'naver').length },
+            { label: '구글', value: planRows.filter(p => p.platform === 'google').length },
+          ].map(kpi => (
+            <div key={kpi.label} className="px-3 py-2 border-r last:border-r-0 border-admin-border-mid">
+              <p className="text-[10px] text-admin-muted-2">{kpi.label}</p>
+              <p className="text-admin-lg font-bold text-admin-text-2">{kpi.value}</p>
+            </div>
+          ))}
+        </div>
+        <div className="px-3 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button onClick={() => handlePlanStatus('approve')} disabled={selectedPlanIds.size === 0}
+              className="px-2.5 py-1 text-[11px] bg-blue-600 text-white rounded disabled:opacity-50">
+              발행 준비
+            </button>
+            <button onClick={() => handlePlanStatus('archive')} disabled={selectedPlanIds.size === 0}
+              className="px-2.5 py-1 text-[11px] bg-white border border-admin-border-strong text-admin-text-2 rounded disabled:opacity-50">
+              보관
+            </button>
+            {selectedPlanIds.size > 0 && <span className="text-[11px] text-admin-muted">{selectedPlanIds.size}개 선택</span>}
+          </div>
+          <button onClick={refreshPlans} disabled={plansLoading}
+            className="px-2.5 py-1 text-[11px] bg-white border border-admin-border-mid text-admin-muted rounded disabled:opacity-50">
+            {plansLoading ? '불러오는 중...' : '새로고침'}
+          </button>
+        </div>
+        <div className="max-h-72 overflow-y-auto">
+          <table className="w-full">
+            <thead className="sticky top-0 bg-admin-bg border-y border-admin-border-mid">
+              <tr>
+                <th className="w-8 py-1.5 px-2"><input type="checkbox" onChange={e => {
+                  if (e.target.checked) setSelectedPlanIds(new Set(planRows.filter(p => p.plan_status === 'draft').map(p => p.id)));
+                  else setSelectedPlanIds(new Set());
+                }} className="rounded border-admin-border-strong" /></th>
+                <th className="text-[11px] font-semibold text-admin-muted py-1.5 px-2 text-left">상품</th>
+                <th className="text-[11px] font-semibold text-admin-muted py-1.5 px-2 text-left">키워드</th>
+                <th className="text-[11px] font-semibold text-admin-muted py-1.5 px-2 text-center">플랫폼</th>
+                <th className="text-[11px] font-semibold text-admin-muted py-1.5 px-2 text-center">등급</th>
+                <th className="text-[11px] font-semibold text-admin-muted py-1.5 px-2 text-right">입찰</th>
+                <th className="text-[11px] font-semibold text-admin-muted py-1.5 px-2 text-center">상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {planRows.length === 0 ? (
+                <tr><td colSpan={7} className="py-8 text-center text-admin-muted-2 text-admin-sm">생성된 광고 플랜이 없습니다.</td></tr>
+              ) : planRows.slice(0, 80).map(row => (
+                <tr key={row.id} className="border-b border-admin-border hover:bg-admin-bg">
+                  <td className="py-1.5 px-2"><input type="checkbox" checked={selectedPlanIds.has(row.id)} onChange={e => {
+                    const next = new Set(selectedPlanIds);
+                    e.target.checked ? next.add(row.id) : next.delete(row.id);
+                    setSelectedPlanIds(next);
+                  }} className="rounded border-admin-border-strong" /></td>
+                  <td className="text-[11px] text-admin-muted py-1.5 px-2">{row.travel_packages?.short_code || row.travel_packages?.destination || row.package_id.slice(0, 8)}</td>
+                  <td className="text-admin-xs text-admin-text-2 py-1.5 px-2 font-medium">{row.keyword_text}</td>
+                  <td className="text-[10px] text-admin-muted py-1.5 px-2 text-center">{row.platform === 'naver' ? '네이버' : '구글'}</td>
+                  <td className="py-1.5 px-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${TIER_COLORS[row.tier]}`}>{TIER_LABELS[row.tier]}</span></td>
+                  <td className="text-admin-xs text-admin-text-2 py-1.5 px-2 text-right">₩{row.suggested_bid_krw.toLocaleString()}</td>
+                  <td className="text-[10px] text-admin-muted py-1.5 px-2 text-center">{row.plan_status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -399,6 +615,10 @@ function SearchAdsContent() {
                     <button onClick={() => handleAddExtracted(extractedPreview.filter(k => k.tier !== 'negative'))}
                       className="flex-1 py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                       키워드 등록 ({extractedPreview.filter(k => k.tier !== 'negative').length}개)
+                    </button>
+                    <button onClick={handleAutoPlan} disabled={planning}
+                      className="px-4 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:opacity-50 transition">
+                      {planning ? 'Draft 생성 중...' : '광고 Draft'}
                     </button>
                     <button onClick={() => handleAddExtracted(extractedPreview)}
                       className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">

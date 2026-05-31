@@ -1,0 +1,35 @@
+{\rtf1\ansi\deff0
+{\fonttbl{\f0 Arial;}}
+\fs24
+\b Google Ads API Tool Design Document - Yeosonam OS\b0\par
+\par
+\b 1. Company and product overview\b0\par
+Yeosonam OS is a B2B2C travel SaaS platform operated for Korea-based travel commerce. The platform connects local land operators, travel agencies, and end customers. It manages travel product registration, package approval workflows, partner distribution, reservations, settlement, and marketing operations.\par
+\par
+\b 2. Google Ads API use case\b0\par
+The Google Ads API is used to create, manage, and optimize search advertising for travel products listed in Yeosonam OS. Approved products can generate keyword plans and ad drafts automatically. Authorized administrators review the generated plan before campaign launch. The system focuses on search campaign operations, keyword discovery, bid management, budget control, ad copy generation, status synchronization, and performance reporting.\par
+\par
+\b 3. Users and access model\b0\par
+The tool is used by internal Yeosonam administrators and authorized operations staff. External customers do not directly access the Google Ads API token or API screens. Product suppliers and travel partners may provide product information, but campaign publishing and API-connected actions remain under internal administrator control.\par
+\par
+\b 4. Authentication and credential handling\b0\par
+Google OAuth is used to authorize access to Google Ads resources. Refresh tokens are encrypted before storage in Supabase. API keys, developer tokens, client secrets, and refresh tokens are stored only in server-side environment variables or encrypted database rows. Secrets are not exposed to the browser or public client bundles. Access is limited through server-side API routes and administrator authentication.\par
+\par
+\b 5. Campaign and keyword workflow\b0\par
+When a travel product is approved, Yeosonam OS can generate a structured advertising plan. The planner extracts destinations, product names, travel themes, seasonal phrases, intent terms, and long-tail search keywords. The system groups keywords into campaign and ad group drafts, estimates relevance, applies negative keyword rules, and prepares ad copy. Administrators can review, approve, pause, or reject planned changes before live publishing.\par
+\par
+\b 6. Automation and optimization\b0\par
+The platform synchronizes campaign, ad group, keyword, and performance data from Google Ads. Performance metrics such as impressions, clicks, cost, conversions, CTR, CPC, and ROAS are stored for reporting and optimization. Automated recommendations may adjust bids, pause weak keywords, expand strong keyword clusters, and identify negative keywords. Budget and bid changes are guarded by daily limits, minimum data thresholds, and administrator-controlled settings.\par
+\par
+\b 7. Policy and safety controls\b0\par
+The system is designed to comply with Google Ads policies. It does not attempt to evade review or policy enforcement. It does not create misleading ads or prohibited travel claims. Landing pages are Yeosonam product pages or approved service pages. The system keeps human review available for campaign launch and sensitive changes. It logs publish actions, sync operations, and mutation results for auditability.\par
+\par
+\b 8. Data storage and retention\b0\par
+Campaign identifiers, keyword identifiers, ad group identifiers, performance metrics, and planning metadata are stored in Supabase. OAuth tokens are encrypted. The system stores only data needed for campaign management, reporting, audit, and optimization. Access to advertising data is limited to internal administrative roles.\par
+\par
+\b 9. Error handling and monitoring\b0\par
+API responses are handled by server-side services. Failures are logged with status codes and non-sensitive error details. The system avoids exposing secret values in logs. Sync and mutation endpoints return structured responses so administrators can identify configuration, permission, quota, or policy issues.\par
+\par
+\b 10. Current implementation scope\b0\par
+The current implementation includes Google Ads OAuth token storage, encrypted refresh handling, keyword plan generation, server-side configuration checks, admin review UI, API sync endpoints, mutation endpoints, and product approval integration. Production campaign execution is enabled only after the Google Ads developer token has sufficient access level for production accounts.\par
+}

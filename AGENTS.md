@@ -51,6 +51,7 @@
 | 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
 | 게이미피케이션 운영 런북 | `docs/gamification-runbook.md` |
 | 마일리지 시스템 개요 | `docs/mileage-system-overview.md` |
+| 검색광고 자동화 리서치 | `docs/search-ads-automation-research.md` |
 | 일회성 페이지 감사 로그 | `docs/audits/` |
 
 *새 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로.*

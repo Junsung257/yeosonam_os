@@ -25,7 +25,7 @@
 
 | 항목 | 상태 |
 |------|------|
-| Google Ads Developer Token | `w9V0igFzMb_7KRjgW6ynOQ` (Test Access → Basic 신청 중) |
+| Google Ads Developer Token | `.env.local` 서버 전용 저장 완료 (Test Access → Basic 신청 중) |
 | Google Ads Manager Account | `313-217-4750` ✅ |
 | Google Ads OAuth2 Client | 구성 완료 ✅ |
 | Meta 앱 (Facebook/Instagram) | 등록 완료 ✅ |

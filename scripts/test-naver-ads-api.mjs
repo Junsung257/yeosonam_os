@@ -4,9 +4,9 @@
  * 실행: node scripts/test-naver-ads-api.mjs
  *
  * 필요한 환경 변수 (.env.local):
- *   NEXT_PUBLIC_NAVER_ADS_API_KEY
- *   NEXT_PUBLIC_NAVER_ADS_SECRET_KEY
- *   NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID
+ *   NAVER_ADS_API_KEY
+ *   NAVER_ADS_SECRET_KEY
+ *   NAVER_ADS_CUSTOMER_ID
  */
 import { createHmac } from 'crypto';
 
@@ -34,9 +34,9 @@ for (const line of envContent.split('\n')) {
   env[key] = value;
 }
 
-const API_KEY = env['NEXT_PUBLIC_NAVER_ADS_API_KEY'];
-const SECRET_KEY = env['NEXT_PUBLIC_NAVER_ADS_SECRET_KEY'];
-const CUSTOMER_ID = env['NEXT_PUBLIC_NAVER_ADS_CUSTOMER_ID'];
+const API_KEY = env['NAVER_ADS_API_KEY'];
+const SECRET_KEY = env['NAVER_ADS_SECRET_KEY'];
+const CUSTOMER_ID = env['NAVER_ADS_CUSTOMER_ID'];
 
 console.log('=== 네이버 검색광고 API 테스트 ===');
 console.log('');
@@ -162,7 +162,7 @@ async function testStats() {
 
   const campaignId = campaigns[0].nccCampaignId;
   const method = 'GET';
-  const path = `/ncc/customers/${CUSTOMER_ID}/stat`;
+  const path = `/stats`;
   const timestamp = Date.now().toString();
   const signature = createHmac('sha256', SECRET_KEY)
     .update(`${timestamp}.${method}.${path}`)
@@ -177,9 +177,9 @@ async function testStats() {
   };
 
   const params = new URLSearchParams({
-    ids: campaignId,
-    datePreset: 'LAST_30_DAYS',
-    metrics: 'impressions,clicks,ctr,avgCpc,cost,conversions',
+    ids: JSON.stringify([campaignId]),
+    fields: JSON.stringify(['impCnt', 'clkCnt', 'ctr', 'cpc', 'salesAmt', 'ccnt']),
+    datePreset: 'last30days',
   });
 
   const url = `https://api.searchad.naver.com${path}?${params.toString()}`;

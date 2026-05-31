@@ -184,6 +184,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     let dripInfo: { queued: number; angles: string[] } | null = null;
     let cardNewsInfo: { triggered: boolean; reason?: string } | null = null;
     let orchestratorInfo: { triggered: boolean; reason?: string } | null = null;
+    let searchAdsInfo: { triggered: boolean; saved?: number; keywords?: number; reason?: string } | null = null;
 
     // 정책 조회
     const { getBlogPublishingPolicy } = await import('@/lib/blog-scheduler');
@@ -271,6 +272,16 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       orchestratorInfo = { triggered: false, reason: 'policy disabled — /admin/blog/policy에서 활성' };
     }
 
+    // 4) 검색광고 키워드 플랜 자동 생성 (draft-first, 실제 집행은 별도 publish 플래그 필요)
+    try {
+      const { buildAndSaveSearchAdPackagePlan } = await import('@/lib/search-ads-auto-planner');
+      const plan = await buildAndSaveSearchAdPackagePlan(id);
+      searchAdsInfo = { triggered: true, saved: plan.saved, keywords: plan.summary.total };
+    } catch (e) {
+      searchAdsInfo = { triggered: false, reason: e instanceof Error ? e.message : 'unknown' };
+      await alertWarn('search-ads-auto-plan', e);
+    }
+
     // VA 이메일 알림 — fire-and-forget (비중단)
     const vaNotification = await sendVaContentPackage(id).catch(e => {
       console.warn('[Approve] VA email failed (non-blocking):', e instanceof Error ? e.message : e);
@@ -286,6 +297,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       drip: dripInfo,
       card_news: cardNewsInfo,
       orchestrator: orchestratorInfo,
+      search_ads: searchAdsInfo,
       va_notification: vaNotification,
       // 2026-05-18 박제: post-approve fail-soft 단계 실패 가시화 (admin_alerts 와 일치)
       warnings: postApproveWarnings.length > 0 ? postApproveWarnings : undefined,
