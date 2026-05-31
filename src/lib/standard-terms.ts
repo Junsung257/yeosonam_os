@@ -139,6 +139,26 @@ function normalizeProductNotices(raw: unknown): NoticeBlock[] {
   return result;
 }
 
+function rewriteCustomerFacingB2BTerms(text: string): string {
+  return text
+    .replace(/파이널\s*\(\s*Final\s*\)\s*확정/g, '최종 확정')
+    .replace(/파이널\s*확정/g, '최종 확정')
+    .replace(/파이널\s*조건/g, '최종 확정 조건')
+    .replace(/파이널\s*패널티/g, '확정 후 취소 위약금')
+    .replace(/\bFinal\b/g, '최종')
+    .replace(/파이널/g, '최종')
+    .replace(/실명단/g, '여행자 정보')
+    .replace(/투어비/g, '여행 요금');
+}
+
+function sanitizeNoticeForCustomer(notice: NoticeBlock): NoticeBlock {
+  return {
+    ...notice,
+    title: rewriteCustomerFacingB2BTerms(notice.title ?? ''),
+    text: rewriteCustomerFacingB2BTerms(notice.text ?? ''),
+  };
+}
+
 // ── 메인: 4-level 머지 ───────────────────────────────────────
 export async function resolveTermsForPackage(
   pkg: PackageForTerms,
@@ -220,7 +240,7 @@ export function filterNoticesForSurface(
     filtered = filtered.filter(n => n.type !== 'RESERVATION');
   }
 
-  return filtered;
+  return filtered.map(sanitizeNoticeForCustomer);
 }
 
 // ── 스냅샷: 예약 시점 약관 freeze ────────────────────────────

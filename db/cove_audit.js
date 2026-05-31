@@ -30,8 +30,27 @@
  * pkg 에서 "원문에 존재해야 하는" 구체적 claim 들을 추출.
  * 각 claim은 자연어 문장 + DB 위치 정보를 함께 반환.
  */
+function normalizeForExactEvidence(text) {
+  return String(text || '')
+    .replace(/^[\s*•·\-]+/gm, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function noticeLinesHaveExactRawEvidence(noticeText, rawText) {
+  const raw = normalizeForExactEvidence(rawText);
+  if (!raw) return false;
+  const lines = String(noticeText || '')
+    .split(/\n/)
+    .map(normalizeForExactEvidence)
+    .filter(line => line.length >= 6);
+  if (lines.length === 0) return false;
+  return lines.every(line => raw.includes(line));
+}
+
 function extractClaims(pkg) {
   const claims = [];
+  const rawText = pkg.raw_text || pkg.rawText || pkg.raw_extracted_text || '';
 
   // 1. min_participants 숫자 — 원문에 "N명 이상"이 있어야 함
   if (typeof pkg.min_participants === 'number' && pkg.min_participants > 0) {
@@ -90,9 +109,13 @@ function extractClaims(pkg) {
       if (n.type !== 'PAYMENT') continue;
       const excerpt = String(n.text || n.title || '').slice(0, 100);
       if (!excerpt) continue;
+      // Deterministic/raw supplier notices often contain 발권마감 or 불포함 cost bullets
+      // copied verbatim from raw_text. Exact source coverage already proves those claims;
+      // sending them to CoVe as "결제/취소 특약" creates false positives and wastes tokens.
+      if (noticeLinesHaveExactRawEvidence(n.text || n.title || '', rawText)) continue;
       claims.push({
         id: `notices:PAYMENT:${claims.length}`,
-        text: `결제/취소 특약: "${excerpt}"`,
+        text: `추가비용/결제 안내: "${excerpt}"`,
         field: 'notices_parsed',
         severity: 'CRITICAL',
       });

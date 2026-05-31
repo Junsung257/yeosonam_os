@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
+import { STANDARD_PRODUCT_MARKDOWN_TEMPLATE } from '@/lib/standard-product-markdown';
 
 interface VerifyCheck {
   id: string;
@@ -154,7 +155,7 @@ export default function UploadPage() {
     return {
       dbId: data.dbId,
       title: data.productCount > 1 ? `${data.productCount}개 상품` : (ed?.title || file.name),
-      confidence: data.data?.confidence,
+      confidence: data.finalConfidence ?? data.data?.confidence,
       landOperator: match ? match[1] : ed?.land_operator,
       commissionRate: match ? parseFloat(match[2]) : undefined,
       productCount: data.productCount,
@@ -243,7 +244,7 @@ export default function UploadPage() {
         productCount: count,
         titles,
         dbId,
-        confidence: data.data?.confidence,
+        confidence: data.finalConfidence ?? data.data?.confidence,
         landOperator: ed?.land_operator,
         tokenUsage: data.tokenUsage ?? null,
         gate: data.gate ?? null,
@@ -430,6 +431,22 @@ export default function UploadPage() {
                 <span>✓</span> 큐에 추가됨 — 다음 상품 붙여넣기 가능
               </div>
             )}
+            <div className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-admin-border-mid bg-admin-bg px-3 py-2">
+              <div>
+                <p className="text-admin-xs font-semibold text-admin-text-2">YSN 표준 마크다운</p>
+                <p className="text-[11px] text-admin-muted-2">이 형식은 AI 파싱을 건너뛰고 고객 랜딩용 구조로 바로 처리합니다.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setTextInput(prev => prev.trim() ? `${prev.trim()}\n\n===\n\n${STANDARD_PRODUCT_MARKDOWN_TEMPLATE}` : STANDARD_PRODUCT_MARKDOWN_TEMPLATE);
+                  requestAnimationFrame(() => textareaRef.current?.focus());
+                }}
+                className="flex-shrink-0 px-3 py-1.5 bg-admin-surface-2 text-admin-text-2 text-xs rounded-lg hover:bg-slate-200"
+              >
+                템플릿 넣기
+              </button>
+            </div>
             <textarea
               ref={textareaRef}
               value={textInput}

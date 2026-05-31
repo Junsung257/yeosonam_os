@@ -87,6 +87,17 @@ export async function runCoVeInBackground(packageId: string): Promise<void> {
           failed_checks:     [...existingChecks, ...coveAsChecks],
         })
         .eq('id', latestLog.id);
+
+      const hasCritical = coveAsChecks.some(c => c.severity === 'critical');
+      if (coveAsChecks.length > 0) {
+        await supabaseAdmin
+          .from('travel_packages')
+          .update({
+            audit_status: hasCritical ? 'blocked' : 'warnings',
+            audit_checked_at: new Date().toISOString(),
+          })
+          .eq('id', packageId);
+      }
     }
 
     if ((result.warnings?.length ?? 0) > 0) {

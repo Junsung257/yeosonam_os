@@ -17,6 +17,13 @@ async function fetchLpPackageUncached(id: string): Promise<LandingProductData | 
 
   if (error || !pkg) return null;
 
+  const { data: scores } = await supabaseAdmin
+    .from('package_scores')
+    .select('package_id, group_key, departure_date, list_price, effective_price, topsis_score, rank_in_group, group_size, breakdown, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, duration_days')
+    .eq('package_id', pkg.id)
+    .order('group_size', { ascending: false })
+    .order('rank_in_group', { ascending: true });
+
   let lpHero: string | null = null;
   try {
     lpHero = await resolveLpHeroPhotoUrl(supabaseAdmin, pkg);
@@ -24,7 +31,10 @@ async function fetchLpPackageUncached(id: string): Promise<LandingProductData | 
     // 히어로 실패 시 그라디언트만
   }
 
-  return mapTravelPackageToLandingData(pkg as Record<string, unknown>, lpHero);
+  return mapTravelPackageToLandingData(
+    { ...(pkg as Record<string, unknown>), _packageScores: scores ?? [] },
+    lpHero,
+  );
 }
 
 /** LP RSC용 — 300초 ISR, 패키지별 인자는 캐시 키에 포함됨 */

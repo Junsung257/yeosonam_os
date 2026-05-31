@@ -207,7 +207,7 @@ export default async function PackageDetailPage({
       }
     }
   }
-  if (matchedNames.size > 0 || idsFromItinerary.size > 0) {
+  if (idsFromItinerary.size > 0) {
     type DetailRow = { id: string; name: string; short_desc: string | null; long_desc: string | null; photos: unknown; country: string | null; region: string | null; badge_type: string | null; emoji: string | null; aliases: unknown; category: string | null };
     const SELECT = 'id, name, short_desc, long_desc, photos, country, region, badge_type, emoji, aliases, category';
     const merged = new Map<string, DetailRow>();
@@ -218,14 +218,14 @@ export default async function PackageDetailPage({
       const { data } = await sb.from('attractions').select(SELECT).in('id', Array.from(idsFromItinerary));
       for (const a of ((data ?? []) as DetailRow[])) merged.set(a.id, a);
     }
-    if (matchedNames.size > 0) {
+    if (false && matchedNames.size > 0) {
       const { data } = await sb.from('attractions').select(SELECT).in('name', Array.from(matchedNames));
       for (const a of ((data ?? []) as DetailRow[])) if (!merged.has(a.id)) merged.set(a.id, a);
     }
     relevantAttractions = (Array.from(merged.values()) as unknown) as AttractionData[];
   }
   // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
-  const attrResult = { data: relevantAttractions.length > 0 ? relevantAttractions : lightAttractions };
+  const attrResult = { data: relevantAttractions };
 
   // raw_text — 고객 응답에는 포함하지 않고 서버에서만 주의사항·추가요금 enrichment
   let rawTextForEnrichment = '';

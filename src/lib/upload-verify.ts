@@ -48,6 +48,27 @@ type PackageRow = {
   surcharges?: Array<{ amount?: number | string | null; currency?: string | null } | string | null> | null;
 };
 
+type QualityFailedCheck = {
+  id?: string;
+  severity?: string;
+  message?: string;
+  passed?: boolean;
+};
+
+function qualityStatusFromFailedChecks(checks: QualityFailedCheck[]): VerifyResult['status'] | null {
+  const failed = checks.filter(c => c && c.passed === false);
+  if (failed.length === 0) return null;
+  if (failed.some(c => c.severity === 'critical')) return 'blocked';
+  return 'warnings';
+}
+
+function mergeAuditStatus(a: VerifyResult['status'], b: VerifyResult['status'] | null): VerifyResult['status'] {
+  if (a === 'blocked' || b === 'blocked') return 'blocked';
+  if (a === 'warnings' || b === 'warnings') return 'warnings';
+  if (a === 'skipped') return b ?? a;
+  return a;
+}
+
 export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   const checks: VerifyCheck[] = [];
   const rawText: string = typeof pkg.raw_text === 'string' ? pkg.raw_text : '';
@@ -72,10 +93,17 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
 
   // C2: 선택관광 개수
   if (hasRaw) {
-    const optSection = rawText.match(/선택\s*관광[^\n]*\n([\s\S]*?)(?=\n{2,}|\[|$)/);
-    const rawOptCount = optSection
-      ? (optSection[1].match(/\n\s*[-•·▶◆○●]/g) ?? []).length
-      : 0;
+    const standardOptSection = rawText.includes('YSN-PRODUCT-MD')
+      ? rawText.match(/^##\s*선택관광\s*\n([\s\S]*?)(?=^##\s+)/m)
+      : null;
+    const optSection = standardOptSection ?? rawText.match(/선택\s*관광[^\n]*\n([\s\S]*?)(?=\n{2,}|\[|$)/);
+    const optLines = optSection ? optSection[1].split(/\r?\n/) : [];
+    const rawOptCount = standardOptSection
+      ? optLines
+          .map(line => line.replace(/^\s*[-•·▶◆○●]\s*/, '').trim())
+          .filter(line => line && !/^#+/.test(line) && !/^없음$/i.test(line))
+          .length
+      : optLines.filter(line => /^\s*[-•·▶◆○●]/.test(line)).length;
     const dbOptCount: number = Array.isArray(pkg.optional_tours) ? pkg.optional_tours.length : 0;
 
     if (rawOptCount === 0) {
@@ -331,11 +359,32 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
 
     const result = evaluateVerifyChecks(rows[0] as PackageRow);
 
+    const { data: latestQualityLog } = await supabaseAdmin
+      .from('ai_quality_log')
+      .select('id, confidence, failed_checks')
+      .eq('package_id', packageId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const existingQualityChecks = Array.isArray((latestQualityLog as { failed_checks?: unknown[] } | null)?.failed_checks)
+      ? ((latestQualityLog as { failed_checks: QualityFailedCheck[] }).failed_checks)
+      : [];
+    const qualityStatus = qualityStatusFromFailedChecks(existingQualityChecks);
+    const mergedStatus = mergeAuditStatus(result.status, qualityStatus);
+
     await supabaseAdmin
       .from('travel_packages')
       .update({
-        audit_status: result.status,
-        audit_report: { checks: result.checks, fixable: result.fixable, source: 'auto-upload-verify', version: 1 },
+        audit_status: mergedStatus,
+        audit_report: {
+          checks: result.checks,
+          fixable: result.fixable,
+          source: 'auto-upload-verify',
+          version: 2,
+          quality_status: qualityStatus,
+          quality_failed_checks: existingQualityChecks.filter(c => c && c.passed === false).slice(0, 20),
+        },
         audit_checked_at: new Date().toISOString(),
       })
       .eq('id', packageId);
@@ -352,13 +401,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
         }));
 
       if (failedFromVerify.length > 0) {
-        const { data: latestLog } = await supabaseAdmin
-          .from('ai_quality_log')
-          .select('id, confidence, failed_checks')
-          .eq('package_id', packageId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const latestLog = latestQualityLog;
 
         if (latestLog?.id) {
           const existing = Array.isArray((latestLog as { failed_checks?: unknown[] }).failed_checks)
@@ -406,8 +449,11 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
       }
     }
 
-    console.log(`[upload-verify] ${packageId}: ${result.status} (pass=${result.passCount} warn=${result.warnCount} fail=${result.failCount})`);
-    return result;
+    if (mergedStatus !== result.status) {
+      console.warn(`[upload-verify] ${packageId}: quality log escalated audit ${result.status} -> ${mergedStatus}`);
+    }
+    console.log(`[upload-verify] ${packageId}: ${mergedStatus} (pass=${result.passCount} warn=${result.warnCount} fail=${result.failCount})`);
+    return { ...result, status: mergedStatus };
   } catch (e) {
     console.warn('[upload-verify] 실패(무시):', (e as Error).message);
     return null;

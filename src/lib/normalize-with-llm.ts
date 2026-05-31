@@ -101,6 +101,8 @@ export interface NormalizerInput {
   commissionRate: number;
   hintRegion?: string;
   hintCountry?: string;
+  formatFingerprint?: string;
+  sectionFingerprints?: Array<{ label: string; hash: string; exactHash?: string; charLength: number }>;
 }
 
 export interface NormalizerResult {
@@ -203,6 +205,10 @@ export async function normalizeWithLlm(
     `## 마진율: ${input.commissionRate}%`,
     input.hintRegion ? `## 지역 힌트: ${input.hintRegion}` : '',
     input.hintCountry ? `## 국가 힌트: ${input.hintCountry}` : '',
+    input.formatFingerprint ? `## 원문 양식 fingerprint: ${input.formatFingerprint}` : '',
+    input.sectionFingerprints?.length
+      ? `## 섹션 fingerprint (hash=양식 참고용, exact=동일 섹션 캐시 키)\n${input.sectionFingerprints.map(s => `- ${s.label}: hash=${s.hash}${'exactHash' in s && s.exactHash ? ` exact=${s.exactHash}` : ''} (${s.charLength} chars)`).join('\n')}`
+      : '',
     '',
     '## 원문',
     input.rawText,

@@ -7,6 +7,7 @@ import { getEffectivePriceDates } from '@/lib/price-dates';
 import { getKakaoChannelChatUrl } from '@/lib/kakaoChannel';
 import { renderPackage } from '@/lib/render-contract';
 import { extractLegalNoticeLinesFromPkg } from '@/lib/legal-notice';
+import { buildRecommendationDisplay, type PackageScoreDisplayRow, type RecommendationDisplay } from '@/lib/scoring/recommendation-display';
 
 export type ChannelSource = 'insta' | 'kakao' | 'default';
 
@@ -56,6 +57,11 @@ export interface LandingProductData {
   reviewCount: number;
   reviewScore: number;
   departureGuaranteed: boolean;
+  recommendation?: RecommendationDisplay | null;
+  flightSummary?: {
+    outbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null } | null;
+    inbound?: { code?: string | null; depTime?: string | null; arrTime?: string | null; depCity?: string | null; arrCity?: string | null } | null;
+  };
   itinerary: {
     days: ItineraryDay[];
     highlights: string[];
@@ -130,6 +136,14 @@ export function mapTravelPackageToLandingData(
 
   const durationNum = pkg.duration as number | undefined;
   const duration = durationNum ? `${durationNum - 1}박 ${durationNum}일` : '기간 미정';
+  const scoreRows = Array.isArray(pkg._packageScores)
+    ? (pkg._packageScores as PackageScoreDisplayRow[])
+    : [];
+  const scoreRow =
+    scoreRows.find(s => s.departure_date === departureFullDate && (s.group_size ?? 0) >= 2)
+    ?? scoreRows.find(s => (s.group_size ?? 0) >= 2)
+    ?? scoreRows[0]
+    ?? null;
 
   // A4·모바일 상세·LP 동일 규칙: 문자열 JSON·day_list·순수 배열 등
   const dayRows = normalizeDays(
@@ -181,6 +195,23 @@ export function mapTravelPackageToLandingData(
     reviewCount: rc,
     reviewScore: rs,
     departureGuaranteed: eff.some(d => d.confirmed),
+    recommendation: buildRecommendationDisplay(scoreRow),
+    flightSummary: {
+      outbound: view.flightHeader.outbound ? {
+        code: view.flightHeader.outbound.code,
+        depTime: view.flightHeader.outbound.depTime,
+        arrTime: view.flightHeader.outbound.arrTime,
+        depCity: view.flightHeader.outbound.depCity,
+        arrCity: view.flightHeader.outbound.arrCity,
+      } : null,
+      inbound: view.flightHeader.inbound ? {
+        code: view.flightHeader.inbound.code,
+        depTime: view.flightHeader.inbound.depTime,
+        arrTime: view.flightHeader.inbound.arrTime,
+        depCity: view.flightHeader.inbound.depCity,
+        arrCity: view.flightHeader.inbound.arrCity,
+      } : null,
+    },
     itinerary: {
       highlights: (pkg.product_highlights as string[]) || [],
       includes: view.inclusions.flat.length > 0

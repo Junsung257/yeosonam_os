@@ -82,6 +82,20 @@ interface SearchResponse {
   imageByPkgId: Record<string, string | null>;
   recommendedIds: string[];
   recommendedReasonMap: Record<string, string[]>;
+  scoreByPkgId?: Record<string, {
+    label: string;
+    reasons: string[];
+    comparisonSummary: string;
+    hotelGradeLabel: string | null;
+    groupSize: number;
+    rankInGroup: number | null;
+    effectivePrice: number | null;
+    listPrice: number | null;
+    hasComparison: boolean;
+  } | null>;
+  scoreReasonMap?: Record<string, string[]>;
+  rankByPkgId?: Record<string, number>;
+  comparisonGroupSizeMap?: Record<string, number>;
   hub: DepartureHubId;
   filterForClient: string;
 }
@@ -90,6 +104,7 @@ const EMPTY_PACKAGES: Package[] = [];
 const EMPTY_IMAGE_BY_PKG_ID: Record<string, string | null> = {};
 const EMPTY_RECOMMENDED_IDS: string[] = [];
 const EMPTY_RECOMMENDED_REASON_MAP: Record<string, string[]> = {};
+const EMPTY_SCORE_BY_PKG_ID: NonNullable<SearchResponse['scoreByPkgId']> = {};
 
 export default function PackagesClient() {
   const router = useRouter();
@@ -120,6 +135,7 @@ export default function PackagesClient() {
   const imageByPkgIdProp = data?.imageByPkgId ?? EMPTY_IMAGE_BY_PKG_ID;
   const recommendedIds = data?.recommendedIds ?? EMPTY_RECOMMENDED_IDS;
   const recommendedReasonMap = data?.recommendedReasonMap ?? EMPTY_RECOMMENDED_REASON_MAP;
+  const scoreByPkgId = data?.scoreByPkgId ?? EMPTY_SCORE_BY_PKG_ID;
   const hub = data?.hub ?? hubFromParam;
   const filter = data?.filterForClient ?? filterForClientInitial;
   const recommendedSet = useMemo(() => new Set(recommendedIds), [recommendedIds]);
@@ -363,7 +379,13 @@ export default function PackagesClient() {
         </div>
       ) : (
         <div className="px-4 py-4 space-y-3 w-full max-w-full min-w-0 md:max-w-7xl md:mx-auto md:px-8 md:py-6 md:space-y-0 md:grid md:grid-cols-2 lg:grid-cols-3 md:gap-6">
-          {visiblePackages.map(pkg => (
+          {visiblePackages.map(pkg => {
+            const score = scoreByPkgId[pkg.id] ?? null;
+            const rankBadge =
+              score?.hasComparison && score.rankInGroup != null && score.rankInGroup <= 3
+                ? `비교 ${score.rankInGroup}위`
+                : undefined;
+            return (
             <div key={pkg.id} className="relative">
               <button
                 type="button"
@@ -387,14 +409,23 @@ export default function PackagesClient() {
                 image={imageByPkgIdProp[pkg.id] ?? null}
                 precomputedMinPrice={minPriceByPkgId.get(pkg.id) ?? 0}
                 isRecommended={recommendedSet.has(pkg.id)}
-                recommendedReasons={recommendedReasonMap[pkg.id] ?? []}
+                recommendedReasons={recommendedReasonMap[pkg.id] ?? score?.reasons ?? []}
                 isReasonOpen={activeReasonId === pkg.id}
                 onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
                 onClick={trackClick}
+                rankBadge={rankBadge}
+                primaryReason={score?.hasComparison && score.rankInGroup === 1 ? score.label : undefined}
+                comparisonLabel={score?.label}
+                comparisonSummary={score?.comparisonSummary}
+                comparisonReasons={score?.reasons}
+                comparisonRank={score?.rankInGroup}
+                comparisonGroupSize={score?.groupSize}
+                hotelGradeLabel={score?.hotelGradeLabel}
                 catalogGroupCount={pkg.catalog_id ? catalogGroupSizeMap.get(pkg.catalog_id) : undefined}
               />
             </div>
-          ))}
+          );
+          })}
         </div>
       )}
       {filteredPackages.length > visiblePackages.length && (

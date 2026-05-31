@@ -61,8 +61,13 @@ function timeToMinutes(t: string): number {
 function classifyActivity(activity: string | null | undefined): 'depart' | 'arrive' | 'other' {
   if (!activity) return 'other';
   if (/출발/.test(activity)) return 'depart';
-  if (/도착/.test(activity)) return 'arrive';
+  if (/도착|입국/.test(activity)) return 'arrive';
   return 'other';
+}
+
+function hasAirportSignal(activity: string | null | undefined): boolean {
+  if (!activity) return false;
+  return /공항|국제공항|airport/i.test(activity);
 }
 
 /** activity 안의 도시명 추출 (e.g. "부산 국제공항 출발" → "부산")
@@ -100,9 +105,31 @@ function extractCity(activity: string | null | undefined): string | null {
 export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefined): ItineraryDataLike | null | undefined {
   if (!itin || !Array.isArray(itin.days) || itin.days.length === 0) return itin;
 
+  const metaFlightOut = typeof itin.meta?.flight_out === 'string' ? itin.meta.flight_out.trim() : '';
+  const metaFlightIn = typeof itin.meta?.flight_in === 'string' ? itin.meta.flight_in.trim() : '';
+  const hasMetaFlight = Boolean(metaFlightOut || metaFlightIn);
+  const days = itin.days.map((day, di) => ({
+    ...day,
+    schedule: (day.schedule ?? []).map((s) => {
+      if (s.type === 'flight') return s;
+      const kind = classifyActivity(s.activity);
+      if (kind === 'other' || !s.time || (!hasMetaFlight && !hasAirportSignal(s.activity))) return s;
+      const inferredFlightNo = kind === 'depart'
+        ? (metaFlightOut || s.transport || null)
+        : (metaFlightIn || s.transport || null);
+      if (!inferredFlightNo && !hasAirportSignal(s.activity)) return s;
+      return {
+        ...s,
+        type: 'flight',
+        transport: s.transport ?? inferredFlightNo,
+        note: s.note ?? (di === itin.days!.length - 1 ? 'flight inferred from source meta' : null),
+      };
+    }),
+  }));
+
   // 모든 flight item을 (day_index, item) 으로 수집
   const flightItems: Array<{ dayIdx: number; item: ScheduleItem; kind: 'depart' | 'arrive' | 'other'; city: string | null }> = [];
-  itin.days.forEach((day, di) => {
+  days.forEach((day, di) => {
     (day.schedule ?? []).forEach(s => {
       if (s.type === 'flight') {
         flightItems.push({
@@ -115,7 +142,7 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
     });
   });
 
-  if (flightItems.length === 0) return itin;
+  if (flightItems.length === 0) return { ...itin, days };
 
   // 페어링: 시간 순서로 depart→arrive 짝짓기
   const segments: FlightSegment[] = [];
@@ -198,5 +225,5 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
     else if (idx === segments.length - 1) seg.leg = 'inbound';
   });
 
-  return { ...itin, flight_segments: segments };
+  return { ...itin, days, flight_segments: segments };
 }

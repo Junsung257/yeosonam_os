@@ -76,6 +76,31 @@ describe('normalizeFlightSegments — flight pair 정규화 (FIX-3)', () => {
       expect(seg.dep_time).toBe('23:55');
       expect(seg.arr_time).toBe('06:40');
     });
+
+    it('귀국 도착 줄이 normal이어도 meta.flight_in 기반으로 flight로 보정한다', () => {
+      const itin = {
+        meta: { flight_out: 'LJ115', flight_in: 'LJ116' },
+        days: [
+          {
+            day: 4,
+            schedule: [
+              { type: 'flight', activity: '나트랑 국제공항 출발', time: '23:55', transport: 'LJ116' },
+            ],
+          },
+          {
+            day: 5,
+            schedule: [
+              { type: 'normal', activity: '부산 도착 후 해산', time: '06:40' },
+            ],
+          },
+        ],
+      };
+      const r = normalizeFlightSegments(itin);
+      expect(r?.days?.[1]?.schedule?.[0]?.type).toBe('flight');
+      expect(r?.days?.[1]?.schedule?.[0]?.transport).toBe('LJ116');
+      expect(r?.flight_segments?.[0]?.arr_time).toBe('06:40');
+      expect(r?.flight_segments?.[0]?.arr_day_offset).toBe(1);
+    });
   });
 
   describe('왕복 (outbound + inbound)', () => {

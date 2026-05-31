@@ -117,6 +117,15 @@ export const NoticeBlockSchema = z.object({
   text: z.string(),
 });
 
+export const SourceEvidenceSpanSchema = z.object({
+  rawTextHash: z.string(),
+  start: z.number(),
+  end: z.number(),
+  quote: z.string(),
+  confidence: z.number(),
+  source: z.enum(['raw', 'deterministic', 'standard_terms', 'manual']),
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  Price Groups — dateRange·dayOfWeek·departureDates 3가지 생성 방식
 // ═══════════════════════════════════════════════════════════════════════════
@@ -194,6 +203,16 @@ export const NormalizedIntakeSchema = z.object({
 
   rawText: z.string().describe('원문 원본 (Rule Zero — 불변 보존)'),
   rawTextHash: z.string().describe('sha256(rawText) — 사후 변조 탐지'),
+  sourceEvidence: z.record(z.array(SourceEvidenceSpanSchema)).default({}).describe('필드별 원문 근거 span. 모바일/A4 고객 노출 claims 의 proof map'),
+  sourceMeta: z.object({
+    formatFingerprint: z.string().optional(),
+    sectionFingerprints: z.array(z.object({
+      label: z.string(),
+      hash: z.string(),
+      exactHash: z.string().optional(),
+      charLength: z.number(),
+    })).optional(),
+  }).optional().describe('원문 양식 식별용 메타. 사실값 증거로 사용 금지.'),
   normalizerVersion: z.string().describe('예: ir-normalizer-v1.0-sonnet-4.6'),
   extractedAt: z.string().describe('ISO timestamp'),
 });
@@ -204,6 +223,7 @@ export type IntakePriceGroup = z.infer<typeof PriceGroupSchema>;
 export type IntakeSurcharge = z.infer<typeof SurchargeSchema>;
 export type IntakeNoticeBlock = z.infer<typeof NoticeBlockSchema>;
 export type IntakeFlightSegment = z.infer<typeof FlightSegmentSchema>;
+export type IntakeSourceEvidenceSpan = z.infer<typeof SourceEvidenceSpanSchema>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  검증 헬퍼

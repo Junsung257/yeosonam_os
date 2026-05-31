@@ -17,6 +17,11 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getRegistrationPolicy, invalidateRegistrationPolicyCache, type RegistrationPolicy } from '@/lib/registration-policy';
 import { refreshConformalPolicy } from '@/lib/conformal-calibration';
+import { evaluateSectionCacheCanary, type SectionCacheCanaryResult } from '@/lib/section-cache-canary';
+import {
+  evaluateProductRegistrationCorpus,
+  type ProductRegistrationCorpusEval,
+} from '@/lib/product-registration-evaluator';
 
 interface TriggerCondition {
   id: 'reject_rate' | 'weekly_leak' | 'cove_pass_rate' | 'reflexion_count';
@@ -43,6 +48,10 @@ interface MonitorResponse {
     verify_deterministic_incidents: number;
     cove_incidents: number;
     confidence_mismatch_incidents: number;
+    section_cache_hit_count: number;
+    section_cache_reduce_ready_count: number;
+    section_cache_reduced_chars: number;
+    section_cache_hit_rate: number;
   };
   triggerEval: {
     conditions: TriggerCondition[];
@@ -61,6 +70,10 @@ interface MonitorResponse {
     auto_gate: string;
     failed_checks_count: number;
     leak_incidents_count: number;
+    section_cache_hit_count: number;
+    section_cache_reduced_chars: number;
+    section_cache_reduce_ready: boolean;
+    section_cache_replaced_labels: string[];
     created_at: string;
   }>;
   dailyTrend: Array<{
@@ -69,6 +82,8 @@ interface MonitorResponse {
     avg_confidence: number;
     rejected: number;
   }>;
+  sectionCacheCanary: SectionCacheCanaryResult;
+  productRegistrationCorpus: ProductRegistrationCorpusEval;
 }
 
 const getHandler = async () => {
@@ -86,7 +101,7 @@ const getHandler = async () => {
     // 1) ai_quality_log 30일 통계
     const { data: logs } = await supabaseAdmin
       .from('ai_quality_log')
-      .select('confidence, auto_gate, leak_score, cove_warnings, created_at, failed_checks, leak_incidents')
+      .select('confidence, auto_gate, leak_score, cove_warnings, created_at, failed_checks, leak_incidents, section_cache_hit_count, section_cache_reduced_chars, section_cache_reduce_ready, section_cache_replaced_labels')
       .gte('created_at', since30d)
       .order('created_at', { ascending: false });
 
@@ -94,6 +109,10 @@ const getHandler = async () => {
       confidence: number; auto_gate: string; leak_score: number; cove_warnings?: unknown[];
       created_at: string;
       failed_checks?: unknown[]; leak_incidents?: unknown[];
+      section_cache_hit_count?: number;
+      section_cache_reduced_chars?: number;
+      section_cache_reduce_ready?: boolean;
+      section_cache_replaced_labels?: string[];
     }>;
 
     const total = rows.length;
@@ -102,6 +121,10 @@ const getHandler = async () => {
     const autoPub      = rows.filter(r => r.auto_gate === 'auto_publish').length;
     const avgConf      = total > 0 ? rows.reduce((s, r) => s + Number(r.confidence ?? 0), 0) / total : 0;
     const rejectRate   = total > 0 ? rejected / total : 0;
+    const sectionCacheHitCount = rows.reduce((s, r) => s + Number(r.section_cache_hit_count ?? 0), 0);
+    const sectionCacheReadyCount = rows.filter(r => Boolean(r.section_cache_reduce_ready)).length;
+    const sectionCacheReducedChars = rows.reduce((s, r) => s + Number(r.section_cache_reduced_chars ?? 0), 0);
+    const sectionCacheHitRate = total > 0 ? rows.filter(r => Number(r.section_cache_hit_count ?? 0) > 0).length / total : 0;
 
     // R3-C 박제 (2026-05-22) — failed_checks incident 분류 (prefix 기반)
     // mobile_*  = 자동 모바일 QA, verify_*  = 결정적 룰 (C1~C10),
@@ -128,6 +151,13 @@ const getHandler = async () => {
     const covePassRate = coveDone.length > 0
       ? coveDone.filter(r => (r.cove_warnings?.length ?? 0) === 0).length / coveDone.length
       : 1;
+    const sectionCacheCanary = evaluateSectionCacheCanary({
+      totalRegistrations: total,
+      reduceReadyCount: sectionCacheReadyCount,
+      reducedChars: sectionCacheReducedChars,
+      qualityIncidentCount: mobileQaCount + verifyDeterministicCount + coveCount + confidenceMismatchCount,
+    });
+    const productRegistrationCorpus = evaluateProductRegistrationCorpus();
 
     // 2) extractions_corrections 누적
     const { count: reflexionCount } = await supabaseAdmin
@@ -235,6 +265,12 @@ const getHandler = async () => {
         auto_gate: String(full.auto_gate ?? ''),
         failed_checks_count: Array.isArray(r.failed_checks) ? r.failed_checks.length : 0,
         leak_incidents_count: Array.isArray(r.leak_incidents) ? r.leak_incidents.length : 0,
+        section_cache_hit_count: Number(full.section_cache_hit_count ?? 0),
+        section_cache_reduced_chars: Number(full.section_cache_reduced_chars ?? 0),
+        section_cache_reduce_ready: Boolean(full.section_cache_reduce_ready),
+        section_cache_replaced_labels: Array.isArray(full.section_cache_replaced_labels)
+          ? full.section_cache_replaced_labels.map(String)
+          : [],
         created_at: r.created_at,
       };
     });
@@ -289,10 +325,16 @@ const getHandler = async () => {
         verify_deterministic_incidents: verifyDeterministicCount,
         cove_incidents: coveCount,
         confidence_mismatch_incidents: confidenceMismatchCount,
+        section_cache_hit_count: sectionCacheHitCount,
+        section_cache_reduce_ready_count: sectionCacheReadyCount,
+        section_cache_reduced_chars: sectionCacheReducedChars,
+        section_cache_hit_rate: Math.round(sectionCacheHitRate * 1000) / 1000,
       },
       triggerEval: { conditions, all_passed: allPassed, recommendation, summary },
       recentLog: recent,
       dailyTrend,
+      sectionCacheCanary,
+      productRegistrationCorpus,
     };
 
     return NextResponse.json(response);

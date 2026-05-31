@@ -58,6 +58,20 @@ describe('evaluateVerifyChecks — clean baseline (3박 5일 정상 케이스)',
   it('C2 선택관광 pass (원문 2건 vs DB 2건)', () => {
     expect(findCheck(result, 'C2')?.status).toBe('pass');
   });
+  it('C2 표준 마크다운 빈 선택관광 섹션은 skip', () => {
+    const r = evaluateVerifyChecks({
+      id: 'pkg-standard-empty-options',
+      raw_text: `YSN-PRODUCT-MD v1
+
+## 선택관광
+
+## 일정
+### DAY 1 | 부산 | 호텔명(5성) | 조:X / 중:X / 석:X
+- 09:00 | 호텔 휴식 | hotel`,
+      optional_tours: [],
+    });
+    expect(findCheck(r, 'C2')?.status).toBe('skip');
+  });
   it('C3 특식 포함 pass', () => {
     expect(findCheck(result, 'C3')?.status).toBe('pass');
   });

@@ -57,6 +57,8 @@
     "audit:migration-prefix:ci": "node db/audit_migration_prefix_collisions.js --fail-on-collision",
     "os:inbox": "node scripts/os-improvement-inbox.mjs",
     "eval:concierge": "node scripts/eval-concierge.mjs",
+    "eval:product-registration": "npx tsx scripts/eval-product-registration-corpus.ts",
+    "eval:product-registration:ci": "npx tsx scripts/eval-product-registration-corpus.ts --strict",
     "ai:switch": "node scripts/ai-provider-switch.mjs",
     "audit:api-keys": "node scripts/audit-api-keys.mjs",
     "lint:secrets": "node scripts/check-no-direct-env.mjs",

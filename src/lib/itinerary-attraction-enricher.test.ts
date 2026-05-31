@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { enrichItineraryWithAttractionReferences } from './itinerary-attraction-enricher';
+import { enrichItineraryWithAttractionReferences, shouldAttemptAttractionMatch } from './itinerary-attraction-enricher';
 
 describe('enrichItineraryWithAttractionReferences', () => {
   it('일정 항목에 attraction_ids/names를 주입한다', () => {
@@ -35,5 +35,45 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(item.attraction_names).toEqual(['도이인타논 산']);
     expect(typeof item.attraction_note).toBe('string');
     expect(res.unmatchedCandidates.length).toBe(0);
+    expect(res.matchedScheduleItemCount).toBe(1);
+  });
+
+  it('preserves valid manual attraction ids and skips meal rows from matching', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              { activity: '죽림선원 관광', type: 'normal', attraction_ids: ['a-1'] },
+              { activity: '달랏 시내 자유시간', type: 'meal' },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'a-1',
+          name: '죽림선원',
+          short_desc: '달랏 사원',
+          country: '베트남',
+          region: '달랏',
+          aliases: ['죽림선원'],
+        },
+      ],
+      '달랏',
+    );
+
+    const item = res.itineraryData?.days?.[0]?.schedule?.[0] as Record<string, unknown>;
+    expect(item.attraction_ids).toEqual(['a-1']);
+    expect(item.attraction_names).toEqual(['죽림선원']);
+    expect(res.matchedScheduleItemCount).toBe(1);
+    expect(res.unmatchedCandidates).toHaveLength(0);
+  });
+
+  it('skips generic free-time and transit rows from the attraction denominator', () => {
+    expect(shouldAttemptAttractionMatch({ activity: '달랏 시내 자유시간', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '공항 이동', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '죽림선원 관광', type: 'normal' })).toBe(true);
   });
 });
