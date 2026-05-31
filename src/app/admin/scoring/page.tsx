@@ -85,7 +85,7 @@ export default function ScoringAdminPage() {
     package_id: string; title: string; departure_date: string | null;
     list_price: number; effective_price: number; topsis_score: number; rank: number;
     breakdown: { why: string[]; deductions: { free_options: number; hotel_premium: number; flight_premium: number; shopping_avoidance: number } };
-    features: { shopping_count: number; hotel_avg_grade: number | null; meal_count: number; free_option_count: number; is_direct_flight: boolean };
+    features: { shopping_count: number | null; hotel_avg_grade: number | null; meal_count: number | null; free_option_count: number | null; is_direct_flight: boolean | null };
   };
   const [previewResult, setPreviewResult] = useState<{ group_key: string; group_size: number; ranked: PreviewItem[] } | null>(null);
 
@@ -246,6 +246,16 @@ export default function ScoringAdminPage() {
     } finally {
       setPreviewLoading(false);
     }
+  };
+
+  const getPreviewDiagnostics = (item: PreviewItem): string[] => {
+    const diagnostics: string[] = [];
+    if (item.features.hotel_avg_grade == null) diagnostics.push('호텔 등급 없음');
+    if (item.features.shopping_count == null) diagnostics.push('쇼핑횟수 없음');
+    if (item.features.free_option_count == null) diagnostics.push('옵션 포함 수 없음');
+    if (!item.breakdown?.why?.length) diagnostics.push('추천 사유 없음');
+    if ((previewResult?.group_size ?? 0) < 2) diagnostics.push('비교군 단독');
+    return diagnostics;
   };
 
   const handleDeleteRate = async (id: string) => {
@@ -588,11 +598,14 @@ export default function ScoringAdminPage() {
                   <th className="px-2 py-2 text-right">표시가</th>
                   <th className="px-2 py-2 text-right">실효가</th>
                   <th className="px-2 py-2 text-right">점수</th>
+                  <th className="px-2 py-2 text-left">진단</th>
                   <th className="px-2 py-2 text-left">사유</th>
                 </tr>
               </thead>
               <tbody>
-                {previewResult.ranked.map(item => (
+                {previewResult.ranked.map(item => {
+                  const diagnostics = getPreviewDiagnostics(item);
+                  return (
                   <tr key={item.package_id} className={`border-t border-admin-border ${item.rank === 1 ? 'bg-amber-50' : ''}`}>
                     <td className="px-2 py-2 text-center font-bold">
                       {item.rank === 1 ? '🥇' : item.rank === 2 ? '🥈' : item.rank === 3 ? '🥉' : item.rank}
@@ -614,11 +627,27 @@ export default function ScoringAdminPage() {
                     <td className="px-2 py-2 text-right font-mono text-violet-700">
                       {item.topsis_score.toFixed(3)}
                     </td>
+                    <td className="px-2 py-2 text-[10px]">
+                      {diagnostics.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {diagnostics.map(d => (
+                            <span key={d} className="rounded-full bg-amber-100 px-1.5 py-0.5 font-semibold text-amber-800">
+                              {d}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 font-semibold text-emerald-700">
+                          필수값 OK
+                        </span>
+                      )}
+                    </td>
                     <td className="px-2 py-2 text-[10px] text-admin-muted">
                       {item.breakdown.why.slice(0, 3).join(' · ')}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

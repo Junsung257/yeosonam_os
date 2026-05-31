@@ -236,31 +236,39 @@ export default function PackagesClient() {
     groupKey?: string;
     rank?: number | null;
     score?: number | null;
+    intent?: IntentId | null;
   }) => {
     const packageId = input.packageId ?? recommendedIds[0] ?? initialPackages[0]?.id;
     if (!packageId) return;
+    const intentKey = input.intent ?? selectedIntent;
     fetch('/api/tracking/score-signal', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         package_id: packageId,
         signal_type: input.signalType,
-        group_key: input.groupKey ?? null,
+        group_key: input.groupKey ?? (intentKey ? `intent:${intentKey}` : null),
         rank: input.rank ?? null,
         score: input.score ?? null,
         session_id: getSessionId(),
       }),
     }).catch(() => {});
-  }, [initialPackages, recommendedIds]);
+  }, [initialPackages, recommendedIds, selectedIntent]);
 
   const handleIntentSelect = useCallback((intent: IntentId) => {
-    setSelectedIntent(prev => (prev === intent ? null : intent));
-    trackScoreSignal({ signalType: 'intent_chip_select', groupKey: `intent:${intent}` });
+    const nextIntent = selectedIntent === intent ? null : intent;
+    setSelectedIntent(nextIntent);
+    trackScoreSignal({
+      signalType: 'intent_chip_select',
+      groupKey: `intent:${intent}:${nextIntent ? 'on' : 'off'}`,
+      intent: nextIntent ?? intent,
+    });
     if (intent === 'budget') setSortBy('price_asc');
+    if (selectedIntent === 'budget' && intent === 'budget') setSortBy('recommended');
     if (intent === 'consult') {
       window.open('https://pf.kakao.com/_xcFxkBG/chat', '_blank', 'noopener,noreferrer');
     }
-  }, [trackScoreSignal]);
+  }, [selectedIntent, trackScoreSignal]);
 
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
@@ -299,10 +307,11 @@ export default function PackagesClient() {
       trackScoreSignal({
         packageId: pkg.id,
         signalType: 'recommend_badge_view',
+        groupKey: selectedIntent ? `intent:${selectedIntent}` : undefined,
         rank: score.rankInGroup,
       });
     }
-  }, [scoreByPkgId, trackScoreSignal, visiblePackages]);
+  }, [scoreByPkgId, selectedIntent, trackScoreSignal, visiblePackages]);
 
   const minPriceByPkgId = useMemo(() => {
     const map = new Map<string, number>();
@@ -424,6 +433,9 @@ export default function PackagesClient() {
 
       <div className="px-4 pt-3 pb-1 md:max-w-7xl md:mx-auto md:px-8">
         <p className="mb-2 text-[13px] font-bold text-text-primary">어떤 여행을 찾고 계세요?</p>
+        <p className="mb-2 text-[12px] font-medium text-text-secondary">
+          하나만 눌러도 상품 순서가 바로 바뀌어요. 그냥 둘러봐도 괜찮아요.
+        </p>
         <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
           {INTENT_OPTIONS.map(opt => (
             <button
@@ -535,6 +547,7 @@ export default function PackagesClient() {
                 comparisonRank={score?.rankInGroup}
                 comparisonGroupSize={score?.groupSize}
                 hotelGradeLabel={score?.hotelGradeLabel}
+                trackingIntent={selectedIntent}
                 catalogGroupCount={pkg.catalog_id ? catalogGroupSizeMap.get(pkg.catalog_id) : undefined}
               />
             </div>
@@ -595,7 +608,9 @@ export default function PackagesClient() {
                 trackScoreSignal({
                   packageId: compareIds[0],
                   signalType: 'comparison_open',
-                  groupKey: `compare:${compareIds.join(',')}`,
+                  groupKey: selectedIntent
+                    ? `intent:${selectedIntent};compare:${compareIds.join(',')}`
+                    : `compare:${compareIds.join(',')}`,
                 });
               }}
               className="px-4 py-1.5 bg-brand text-white text-[13px] font-bold rounded-full hover:bg-brand-dark transition disabled:opacity-40 disabled:cursor-not-allowed"

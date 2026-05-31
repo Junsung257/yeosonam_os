@@ -919,6 +919,15 @@ const postHandler = async (request: NextRequest) => {
       }
     }
 
+    if (catalogSplitWarning) {
+      return NextResponse.json({
+        success: false,
+        code: 'CATALOG_SPLIT_REQUIRED',
+        error: '다중 상품 원문으로 감지됐지만 1개 상품으로만 분리되었습니다. 고객용 모바일 랜딩/A4 생성 전에 상품별 분리를 먼저 완료해야 합니다.',
+        details: catalogSplitWarning,
+      }, { status: 422 });
+    }
+
     const savedIds: string[]           = [];
     const savedTitles: string[]        = [];
     const savedInternalCodes: string[] = [];
@@ -1415,6 +1424,43 @@ JSON 배열로 응답:
         }
 
         console.log(`[Upload API] 가격 행 ${priceRows.length}개 변환됨 (product_prices)`);
+
+        const projectedPriceDates = tiersToDatePrices(ed.price_tiers ?? [], { packageDepartureDays: ed.departure_days });
+        const preGateDays = (
+          product.itineraryData as { days?: Array<{ day?: number; dayNumber?: number; day_number?: number }> } | null | undefined
+        )?.days ?? [];
+        const preGateDayNumbers = preGateDays
+          .map(d => d.day ?? d.dayNumber ?? d.day_number)
+          .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
+        const hasDuplicateDayNumbers = preGateDayNumbers.length > new Set(preGateDayNumbers).size;
+        const hasTooManyDaysForDuration =
+          typeof ed.duration === 'number'
+          && ed.duration > 0
+          && preGateDays.length > ed.duration + 1;
+        const customerDeliverableBlockers = [
+          priceRows.length === 0 ? '가격 행 없음' : null,
+          projectedPriceDates.length === 0 ? '출발일별 가격(price_dates) 없음' : null,
+          hasDuplicateDayNumbers ? '같은 상품 안에 일차 번호 중복' : null,
+          hasTooManyDaysForDuration ? `상품 기간 ${ed.duration}일 대비 일정 ${preGateDays.length}일` : null,
+        ].filter((v): v is string => !!v);
+
+        if (customerDeliverableBlockers.length > 0) {
+          const errorReason = `고객용 랜딩/A4 생성 불가: ${customerDeliverableBlockers.join(' | ')}`;
+          saveErrors.push({ title, error: errorReason });
+          scheduleUploadReviewInsert({
+            severity: 'critical',
+            error_reason: errorReason,
+            source_filename: fileName,
+            file_hash: fileHash,
+            normalized_content_hash: normalizedCatalogHash,
+            raw_text_chunk: safeRawTextExcerpt(productRawText, 12000),
+            parsed_draft_json: ed as unknown as Record<string, unknown>,
+            product_title: title,
+            land_operator_id: effectiveLandOperatorId,
+          });
+          console.warn(`[Upload API] customer deliverable guard blocked insert: ${errorReason}`);
+          continue;
+        }
 
         // ── G3-B. 4단계 업로드 게이트 분류 ───────────────────────────────────
 
@@ -2410,8 +2456,6 @@ JSON 배열로 응답:
       attractionStats,
       // X3 박제 (2026-05-15): SKILL.md Step 7-C 표준 한 화면 리포트
       registerReport,
-      // 2026-05-19 박제: catalog 분리 실패 silent fallback 가시화
-      ...(catalogSplitWarning && { catalogSplitWarning }),
       ...(saveErrors.length > 0 && { errors: saveErrors }),
       message: productCount > 1
         ? `PDF에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 행 ${totalPriceRowsSaved}개 저장됨.${attractionLine}`

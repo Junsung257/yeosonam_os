@@ -55,6 +55,7 @@ interface Props {
   comparisonRank?: number | null;
   comparisonGroupSize?: number | null;
   hotelGradeLabel?: string | null;
+  trackingIntent?: string | null;
   /** 랭킹 오버레이 숫자 (RankingSection 전용) */
   rankNumber?: number;
   /** 2026-05-19 박제 (P2-A / A2): 같은 catalog_id 그룹 안의 패키지 수 (≥2 면 "분기 선택 가능" 배지) */
@@ -162,6 +163,7 @@ export default function PackageCard({
   comparisonRank,
   comparisonGroupSize,
   hotelGradeLabel,
+  trackingIntent,
   rankNumber,
   catalogGroupCount,
 }: Props) {
@@ -178,7 +180,14 @@ export default function PackageCard({
       fetch('/api/tracking/recommendation', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ package_id: pkg.id, source: 'list_badge', outcome: 'click' }),
+        body: JSON.stringify({
+          package_id: pkg.id,
+          source: 'list_badge',
+          outcome: 'click',
+          recommended_rank: comparisonRank ?? null,
+          intent: trackingIntent ?? null,
+          session_id: getSessionId(),
+        }),
       }).catch(() => {});
     }
   };
@@ -199,6 +208,7 @@ export default function PackageCard({
             isRecommended={isRecommended}
             isReasonOpen={isReasonOpen}
             recommendedReasons={recommendedReasons}
+            trackingIntent={trackingIntent}
             onToggleReason={onToggleReason ? () => onToggleReason(pkg.id) : undefined}
             sizeClass="w-[128px] h-[104px] md:w-full md:aspect-[4/3] md:h-auto rounded-[12px] md:rounded-none"
             sizes="(max-width: 768px) 128px, (max-width: 1024px) 50vw, 33vw"
@@ -235,6 +245,7 @@ export default function PackageCard({
         isRecommended={isRecommended}
         isReasonOpen={isReasonOpen}
         recommendedReasons={recommendedReasons}
+        trackingIntent={trackingIntent}
         onToggleReason={onToggleReason ? () => onToggleReason(pkg.id) : undefined}
         sizeClass="w-full aspect-[4/3]"
         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
@@ -260,10 +271,11 @@ export default function PackageCard({
 
 function CardImage({
   img, packageId, title, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
-  isYeosonamPick, rankNumber,
+  trackingIntent, isYeosonamPick, rankNumber,
 }: {
   img: string | null; packageId: string; title: string; airlineName: string | null;
   isRecommended: boolean; isReasonOpen: boolean; recommendedReasons: string[];
+  trackingIntent?: string | null;
   onToggleReason?: () => void;
   sizeClass: string; sizes: string;
   isYeosonamPick?: boolean;
@@ -334,6 +346,7 @@ function CardImage({
                 body: JSON.stringify({
                   package_id: packageId,
                   signal_type: 'recommend_reason_open',
+                  group_key: trackingIntent ? `intent:${trackingIntent}` : null,
                   session_id: getSessionId(),
                 }),
               }).catch(() => {});

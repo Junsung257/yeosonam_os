@@ -1,6 +1,6 @@
 # Analytics Event Taxonomy
 
-Last updated: 2026-05-30
+Last updated: 2026-06-01
 
 This document is the canonical event dictionary for customer UX, recommendation quality, and guidebook behavior analytics. Keep event names stable; add a new row here before shipping a new tracking event.
 
@@ -36,6 +36,18 @@ Recommendation tracking is stored as outcomes rather than a separate `event_type
 | `recommendation_click` | AI/Product | `package_id`, `source`, `session_id`, `outcome=click` | `recommended_rank`, `policy_id`, `intent` | Which recommendations earn action? |
 | `recommendation_inquiry` | Sales | `package_id`, `source`, `session_id`, `outcome=inquiry` | `outcome_value` | Which recommendations produce leads? |
 | `recommendation_booking` | Finance | `package_id`, `source`, `session_id`, `outcome=booking` | `outcome_value` | Which recommendations create revenue? |
+
+## Package Score Signal Events
+
+Package score signals are stored in `package_score_signals`. They are lightweight learning signals for reviewless package comparison UX. Insert failures must not block the customer flow.
+
+| Event | Owner | Required properties | Optional properties | Answers |
+| --- | --- | --- | --- | --- |
+| `recommend_badge_view` | AI/Product | `package_id`, `signal_type`, `session_id` | `group_key=intent:*`, `rank_at_signal`, `topsis_score_at_signal` | Which scored packages are actually seen in list UX? |
+| `recommend_reason_open` | AI/Product | `package_id`, `signal_type`, `session_id` | `group_key=intent:*` | Do customers trust and inspect the recommendation reason? |
+| `comparison_open` | Product | `package_id`, `signal_type`, `session_id` | `group_key=intent:*;compare:*` | Which shortlist comparisons lead to stronger intent? |
+| `intent_chip_select` | Growth/Product | `package_id`, `signal_type`, `session_id` | `group_key=intent:*:on/off` | Which simple travel intent filters are customers using? |
+| `lead_sheet_open` | Sales | `package_id`, `signal_type`, `session_id` | `group_key`, `rank_at_signal` | Which scored packages create consultation intent? |
 
 ## Mobile Guidebook Events
 
