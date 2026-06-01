@@ -588,6 +588,7 @@ export function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
  * 회색지대 통과를 대비한 렌더 시점 2중 가드.
  */
 const INTERNAL_KEYWORDS = /커미션|commission_rate|정산|LAND_OPERATOR|스키마\s*제약|랜드사\s*메모|랜드사\s*커미션/i;
+const SHOPPING_HINT_RE = /쇼핑|면세|노쇼핑|마트|센터\s*\d+회|방문\s*\d+회/i;
 
 /**
  * 쇼핑 섹션 출처 우선순위:
@@ -632,6 +633,20 @@ export function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
   }
   const fallback = pkg.customer_notes?.trim();
   if (!fallback) {
+    return {
+      text: null,
+      displayLine: null,
+      count: null,
+      items: [],
+      remainder: null,
+      policyNote: null,
+      source: null,
+      blocked: false,
+    };
+  }
+  // customer_notes fallback은 쇼핑 단서가 있을 때만 허용
+  // (표준 notice/customer 문구가 쇼핑 섹션으로 오인 노출되는 누출 방지)
+  if (!SHOPPING_HINT_RE.test(fallback)) {
     return {
       text: null,
       displayLine: null,
