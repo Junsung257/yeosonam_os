@@ -914,7 +914,7 @@ export default function AdOsPage() {
     }
   };
 
-  const updateChangeRequest = async (id: string, status: 'approved' | 'rejected') => {
+  const updateChangeRequest = async (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => {
     setChangeRequestActionId(id);
     setError(null);
     try {
@@ -929,6 +929,10 @@ export default function AdOsPage() {
       setAutomationMessage(
         status === 'approved'
           ? 'AI 변경 요청을 승인했습니다. 제한 자동집행 단계에서 예산/권한 조건을 다시 확인한 뒤 적용됩니다.'
+          : status === 'applied'
+            ? '승인된 AI 변경 요청을 내부 운영 테이블에 적용했습니다. 외부 광고 계정 반영은 채널 권한 게이트를 다시 통과해야 합니다.'
+            : status === 'rolled_back'
+              ? 'AI 변경 요청을 롤백했습니다. 이전 상태로 되돌린 내용을 감사 로그에서 확인할 수 있습니다.'
           : 'AI 변경 요청을 거절했습니다. 같은 조건은 이후 학습 로그에 반영되어 추천 우선순위가 낮아집니다.',
       );
     } catch (err) {
@@ -2021,6 +2025,28 @@ export default function AdOsPage() {
                           >
                             <X size={13} />
                             거절
+                          </Button>
+                        </div>
+                      )}
+                      {String(row.status || '') === 'approved' && String(row.id || '') && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => updateChangeRequest(String(row.id), 'applied')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <PlayCircle size={13} />
+                            적용
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateChangeRequest(String(row.id), 'rolled_back')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <X size={13} />
+                            롤백
                           </Button>
                         </div>
                       )}
