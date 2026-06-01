@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { withCronLogging } from '@/lib/cron-observability';
 
 export const maxDuration = 60;
 
@@ -24,9 +25,9 @@ interface KeywordStat {
   destinations: Set<string>;
 }
 
-export async function GET(request: NextRequest) {
+async function runContentDriftDetect(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
+  if (!isSupabaseConfigured) return { skipped: true };
 
   try {
     const now = new Date();
@@ -42,7 +43,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
     if (!rows?.length) {
-      return NextResponse.json({ message: '트렌드 데이터 없음', drifts: 0 });
+      return { message: '트렌드 데이터 없음', drifts: 0 };
     }
 
     // 이번 주 / 지난주 분리
@@ -105,7 +106,7 @@ export async function GET(request: NextRequest) {
     const topDrifts = drifts.slice(0, 8);
 
     if (topDrifts.length === 0) {
-      return NextResponse.json({ thisWeek: thisStats.size, drifts: 0 });
+      return { thisWeek: thisStats.size, drifts: 0 };
     }
 
     // Slack 역제안
@@ -124,15 +125,17 @@ export async function GET(request: NextRequest) {
       },
     );
 
-    return NextResponse.json({
+    return {
       thisWeek: thisStats.size,
       lastWeek: lastStats.size,
       drifts: topDrifts.length,
       topDrifts,
-    });
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     await sendSlackAlert(`[content-drift-detect] 크론 실패: ${msg}`);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return { errors: [msg] };
   }
 }
+
+export const GET = withCronLogging('content-drift-detect', runContentDriftDetect);
