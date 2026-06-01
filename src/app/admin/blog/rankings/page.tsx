@@ -38,23 +38,31 @@ interface Alert {
   detected_at: string;
 }
 
+const RANK_SOURCES = [
+  { id: 'gsc-page', label: 'Google', description: 'Search Console' },
+  { id: 'naver_blog', label: 'Naver Blog', description: 'SERP/Advisor' },
+  { id: 'naver_web', label: 'Naver Web', description: 'SERP/Advisor' },
+  { id: 'all', label: '전체', description: '통합' },
+] as const;
+
 export default function BlogRankingsPage() {
   const [days, setDays] = useState(14);
-  const [summary, setSummary] = useState<{ totals: any; top: TopRow[] } | null>(null);
+  const [source, setSource] = useState<(typeof RANK_SOURCES)[number]['id']>('gsc-page');
+  const [summary, setSummary] = useState<{ totals: any; top: TopRow[]; source?: string; source_counts?: Record<string, number> } | null>(null);
   const [movers, setMovers] = useState<{ ups: Mover[]; downs: Mover[] } | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [running, setRunning] = useState(false);
 
   const fetchAll = useCallback(async () => {
     const [sumRes, movRes, alertRes] = await Promise.all([
-      fetch(`/api/admin/rank-dashboard?days=${days}`).then(r => r.json()),
-      fetch(`/api/admin/rank-dashboard?view=top_movers&days=${days}`).then(r => r.json()),
+      fetch(`/api/admin/rank-dashboard?days=${days}&source=${source}`).then(r => r.json()),
+      fetch(`/api/admin/rank-dashboard?view=top_movers&days=${days}&source=${source}`).then(r => r.json()),
       fetch(`/api/admin/rank-dashboard?view=alerts`).then(r => r.json()),
     ]);
     setSummary(sumRes);
     setMovers(movRes);
     setAlerts(alertRes.alerts || []);
-  }, [days]);
+  }, [days, source]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -99,6 +107,40 @@ export default function BlogRankingsPage() {
       />
 
       {/* 기간 탭 */}
+      <section className="admin-card p-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">현재 데이터 범위</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              이 화면은 Google Search Console 기반의 구글 노출, 클릭, 평균 순위입니다.
+            </p>
+          </div>
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">네이버 순위</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              네이버는 별도 서치어드바이저/검색 결과 수집 파이프라인이 필요하며, 아직 GSC 숫자와 섞어 표시하지 않습니다.
+            </p>
+          </div>
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">광고 OS 연결</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              클릭, CTA, 예약, CPA, ROAS는 Ad OS 학습 루프에서 블로그/키워드/상품 단위로 합쳐 판단합니다.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex flex-wrap gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
+        {RANK_SOURCES.map(item => (
+          <button key={item.id}
+            onClick={() => setSource(item.id)}
+            className={`min-w-24 px-3 py-1.5 text-left rounded-admin-xs transition-colors ${source === item.id ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}>
+            <span className="block text-admin-sm font-semibold">{item.label}</span>
+            <span className="block text-admin-2xs">{item.description}</span>
+          </button>
+        ))}
+      </div>
+
       <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
         {[7, 14, 30].map(d => (
           <button key={d}
@@ -111,10 +153,11 @@ export default function BlogRankingsPage() {
 
       {/* 누적 요약 */}
       {summary && (
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <KpiCard label="총 클릭" value={(summary.totals?.total_clicks || 0).toLocaleString()} icon={MousePointerClick} tone="positive" />
           <KpiCard label="총 노출" value={(summary.totals?.total_impressions || 0).toLocaleString()} icon={Eye} />
           <KpiCard label="추적 중인 글" value={(summary.totals?.tracked_slugs || 0).toLocaleString()} icon={FileText} />
+          <KpiCard label="데이터 소스" value={RANK_SOURCES.find(item => item.id === source)?.label || 'Google'} icon={Search} />
         </div>
       )}
 

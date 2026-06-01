@@ -10,6 +10,7 @@ import ConversionFunnel from '@/components/admin/marketing/ConversionFunnel';
 import BlendedTrendChart from '@/components/admin/marketing/BlendedTrendChart';
 import JarvisQuickAsk from '@/components/admin/JarvisQuickAsk';
 import type { AdCampaign } from '@/types/meta-ads';
+import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { getRoasGrade } from '@/lib/roas-calculator';
 
 const CampaignLinkBuilder = dynamic(() => import('@/components/admin/CampaignLinkBuilder'), { ssr: false });
@@ -24,12 +25,51 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 type MainTab = 'dashboard' | 'meta' | 'links' | 'optimize';
+type AdOsMode = 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
+
+interface AdOsMainSummary {
+  ok?: boolean;
+  channel_execution_states?: Record<string, {
+    label: string;
+    tone: 'good' | 'warn' | 'bad' | 'neutral';
+    canSpend: boolean;
+    summary: string;
+    nextAction: string;
+  }>;
+  active_automation_modes?: Array<{
+    platform: string;
+    level: number;
+    mode: AdOsMode;
+    status: string;
+  }>;
+  tenant_policy?: {
+    configured: boolean;
+    max_automation_level: number;
+    monthly_budget_cap_krw: number;
+    risk_status: string;
+    full_auto_enabled: boolean;
+  };
+}
 
 function formatWon(v: number): string {
   if (v >= 1_000_000_000) return `${(v / 100_000_000).toFixed(1)}억`;
   if (v >= 100_000_000) return `${(v / 100_000_000).toFixed(1)}억`;
   if (v >= 10_000) return `${(v / 10000).toFixed(0)}만`;
   return v.toLocaleString('ko-KR');
+}
+
+function adOsModeLabel(mode?: AdOsMode): string {
+  if (mode === 'full_auto') return '완전자동';
+  if (mode === 'limited_auto') return '제한 예산 자동집행';
+  if (mode === 'approval') return '승인';
+  return '추천';
+}
+
+function adOsToneClass(tone: 'good' | 'warn' | 'bad' | 'neutral'): string {
+  if (tone === 'good') return 'bg-emerald-50 text-emerald-700';
+  if (tone === 'warn') return 'bg-amber-50 text-amber-700';
+  if (tone === 'bad') return 'bg-red-50 text-red-700';
+  return 'bg-slate-100 text-slate-600';
 }
 
 export default function MarketingDashboardPage() {
@@ -40,6 +80,8 @@ export default function MarketingDashboardPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeResult, setOptimizeResult] = useState<string | null>(null);
   const [campaignLoading, setCampaignLoading] = useState(true);
+  const [adOsSummary, setAdOsSummary] = useState<AdOsMainSummary | null>(null);
+  const [adOsError, setAdOsError] = useState<string | null>(null);
 
   // 통합 대시보드 데이터 — useMarketingGap 훅이 mock/real 모두 커버
   const { dashboardData, loading: dashLoading, refresh: refreshDash } = useMarketingGap(true);
@@ -57,6 +99,30 @@ export default function MarketingDashboardPage() {
   }, []);
 
   useEffect(() => { fetchCampaigns(); }, [fetchCampaigns]);
+
+  useEffect(() => {
+    let alive = true;
+    fetchWithSessionRefresh('/api/admin/ad-os/summary', { cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!alive) return;
+        if (!res.ok || !json.ok) {
+          setAdOsSummary(null);
+          setAdOsError(json.error || `HTTP ${res.status}`);
+          return;
+        }
+        setAdOsSummary(json);
+        setAdOsError(null);
+      })
+      .catch((err) => {
+        if (!alive) return;
+        setAdOsSummary(null);
+        setAdOsError(err instanceof Error ? err.message : 'Ad OS 상태 조회 실패');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const handleOptimize = async () => {
     setOptimizing(true);
@@ -89,6 +155,8 @@ export default function MarketingDashboardPage() {
       .sort((a, b) => (b.latest_roas ?? 0) - (a.latest_roas ?? 0))
       .slice(0, 3),
   [campaigns]);
+  const adOsModes = new Map((adOsSummary?.active_automation_modes || []).map((mode) => [mode.platform, mode]));
+  const adOsStates = Object.entries(adOsSummary?.channel_execution_states || {}).filter(([platform]) => ['naver', 'google'].includes(platform));
 
   return (
     <div className="space-y-6">
@@ -170,6 +238,56 @@ export default function MarketingDashboardPage() {
          ════════════════════════════════════════════════════════════════════ */}
       {mainTab === 'dashboard' && (
         <div className="space-y-6">
+          <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">Ad OS V1 집행 상태</h2>
+                <p className="mt-1 text-admin-xs text-admin-muted">
+                  마케팅 대시보드는 성과를 보고, Ad OS는 네이버/구글 집행 가능 여부와 자동화 권한을 통제합니다.
+                </p>
+              </div>
+              <Link href="/admin/ad-os" className="rounded-lg border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg">
+                Ad OS 열기
+              </Link>
+            </div>
+            {adOsError ? (
+              <div className="mt-3 rounded-admin-sm border border-amber-200 bg-amber-50 p-3 text-admin-sm text-amber-800">
+                Ad OS 상태를 불러오지 못했습니다: {adOsError}
+              </div>
+            ) : (
+              <div className="mt-3 grid grid-cols-1 gap-3 lg:grid-cols-3">
+                {adOsStates.map(([platform, state]) => {
+                  const mode = adOsModes.get(platform);
+                  return (
+                    <div key={platform} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="text-admin-sm font-semibold text-admin-text-2">{platform === 'naver' ? '네이버 검색광고' : '구글 광고'}</p>
+                          <p className="mt-1 text-admin-xs text-admin-muted">{state.summary}</p>
+                        </div>
+                        <span className={`rounded-full px-2 py-0.5 text-admin-xs font-semibold ${adOsToneClass(state.tone)}`}>{state.label}</span>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2 text-admin-xs">
+                        <span className="rounded-admin-xs bg-admin-surface-2 px-2 py-1 text-admin-muted">모드 {adOsModeLabel(mode?.mode)}</span>
+                        <span className="rounded-admin-xs bg-admin-surface-2 px-2 py-1 text-admin-muted">L{mode?.level ?? 1}</span>
+                        <span className="rounded-admin-xs bg-admin-surface-2 px-2 py-1 text-admin-muted">{state.canSpend ? '집행 가능' : '집행 차단'}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                  <p className="text-admin-sm font-semibold text-admin-text-2">테넌트 가드레일</p>
+                  <p className="mt-1 text-admin-xs text-admin-muted">
+                    월 한도 {formatWon(adOsSummary?.tenant_policy?.monthly_budget_cap_krw || 0)}, 최대 L{adOsSummary?.tenant_policy?.max_automation_level ?? 2},
+                    완전자동 {adOsSummary?.tenant_policy?.full_auto_enabled ? '허용' : '차단'}
+                  </p>
+                  <span className={`mt-3 inline-flex rounded-full px-2 py-0.5 text-admin-xs font-semibold ${adOsToneClass(adOsSummary?.tenant_policy?.configured ? 'good' : 'warn')}`}>
+                    {adOsSummary?.tenant_policy?.configured ? '정책 설정됨' : '기본 정책'}
+                  </span>
+                </div>
+              </div>
+            )}
+          </section>
           {/* Executive Summary Strip (상단 KPI 바) */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <MetricsCard

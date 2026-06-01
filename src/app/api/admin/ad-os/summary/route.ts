@@ -1,5 +1,11 @@
 import { NextResponse } from 'next/server';
 import { buildAdOsReadinessAudit } from '@/lib/ad-os-readiness';
+import {
+  AD_OS_AUTOMATION_MODES,
+  automationLevelToMode,
+  buildTenantRiskGuardrails,
+  classifyChannelExecutionState,
+} from '@/lib/ad-os-governance';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -35,6 +41,7 @@ function buildExternalLaunchStatus(input: {
     monthly_budget_krw: number;
     daily_budget_cap_krw: number;
     status: string;
+    external_campaign_id?: string | null;
     external_ad_group_id?: string | null;
   }>;
   keywordStatusCounts: Record<string, number>;
@@ -221,6 +228,8 @@ export const GET = withAdminGuard(async () => {
     campaignRes,
     learningRes,
     searchTermCandidateRes,
+    blogEngagementRes,
+    tenantGovernanceRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -257,7 +266,7 @@ export const GET = withAdminGuard(async () => {
       .limit(500),
     supabaseAdmin
       .from('ad_campaigns')
-      .select('id, channel, status, daily_budget_krw, created_at')
+      .select('id, channel, status, daily_budget_krw, total_spend_krw, created_at')
       .in('channel', ['naver', 'google', 'meta'])
       .order('created_at', { ascending: false })
       .limit(500),
@@ -271,6 +280,17 @@ export const GET = withAdminGuard(async () => {
       .select('id, platform, search_term, action, priority, score, status, reason, created_at')
       .order('score', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('blog_engagement_logs')
+      .select('content_creative_id, time_on_page_seconds, max_scroll_depth_pct, cta_clicked, created_at')
+      .gte('created_at', new Date(Date.now() - 30 * 86400_000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1000),
+    supabaseAdmin
+      .from('ad_os_tenant_governance')
+      .select('*')
+      .order('created_at', { ascending: true })
+      .limit(1),
   ]);
 
   const firstError =
@@ -324,6 +344,7 @@ export const GET = withAdminGuard(async () => {
     channel: string | null;
     status: string | null;
     daily_budget_krw: number | null;
+    total_spend_krw?: number | null;
   }>;
   const learningEvents = (learningRes.data || []) as Array<{
     signal_type: string | null;
@@ -333,6 +354,25 @@ export const GET = withAdminGuard(async () => {
     action: string | null;
     status: string | null;
   }>;
+  const blogEngagementLogs = (!blogEngagementRes.error ? blogEngagementRes.data || [] : []) as Array<{
+    content_creative_id: string | null;
+    time_on_page_seconds: number | null;
+    max_scroll_depth_pct: number | null;
+    cta_clicked: boolean | null;
+    created_at: string | null;
+  }>;
+  const tenantGovernance = (!tenantGovernanceRes.error && tenantGovernanceRes.data?.[0] ? tenantGovernanceRes.data[0] : null) as {
+    tenant_id?: string | null;
+    allowed_platforms?: string[] | null;
+    monthly_budget_cap_krw?: number | null;
+    daily_budget_cap_krw?: number | null;
+    max_cpc_krw?: number | null;
+    max_test_loss_krw?: number | null;
+    max_automation_level?: number | null;
+    require_human_approval?: boolean | null;
+    full_auto_enabled?: boolean | null;
+    risk_status?: string | null;
+  } | null;
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
   const channelBudgets = PLATFORMS.map((platform) => ({
@@ -406,6 +446,24 @@ export const GET = withAdminGuard(async () => {
   const trackedCtaClicks = sum(mappings, (m) => m.cta_clicks);
   const trackedConversions = sum(mappings, (m) => m.conversions);
   const trackedConversionValueKrw = sum(mappings, (m) => m.conversion_value_krw);
+  const trackedSpendKrw = sum(campaigns, (c) => c.total_spend_krw);
+  const trackedCpaKrw = trackedConversions > 0 ? Math.round(trackedSpendKrw / trackedConversions) : 0;
+  const trackedRoasPct = trackedSpendKrw > 0 ? Math.round((trackedConversionValueKrw / trackedSpendKrw) * 100) : 0;
+  const trackedCtaRatePct = trackedClicks > 0 ? Math.round((trackedCtaClicks / trackedClicks) * 1000) / 10 : 0;
+  const trackedConversionRatePct = trackedClicks > 0 ? Math.round((trackedConversions / trackedClicks) * 1000) / 10 : 0;
+  const engagementSessions = blogEngagementLogs.length;
+  const bounceSessions = blogEngagementLogs.filter((row) => {
+    const timeOnPage = Number(row.time_on_page_seconds || 0);
+    const scrollDepth = Number(row.max_scroll_depth_pct || 0);
+    return !row.cta_clicked && timeOnPage < 15 && scrollDepth < 35;
+  }).length;
+  const trackedBounceRatePct = engagementSessions > 0 ? Math.round((bounceSessions / engagementSessions) * 1000) / 10 : null;
+  const avgTimeOnPageSeconds = engagementSessions > 0
+    ? Math.round(sum(blogEngagementLogs, (row) => row.time_on_page_seconds) / engagementSessions)
+    : 0;
+  const avgScrollDepthPct = engagementSessions > 0
+    ? Math.round((sum(blogEngagementLogs, (row) => row.max_scroll_depth_pct) / engagementSessions) * 10) / 10
+    : 0;
   const configuredMonthlyBudgetKrw = sum(channelBudgets, (b) => b.monthly_budget_krw);
   const keywordPlansByTier = byKey(keywordPlans, (p) => p.tier);
   const keywordPlansByPlatform = byKey(keywordPlans, (p) => p.platform);
@@ -451,6 +509,74 @@ export const GET = withAdminGuard(async () => {
     activeSearchBudgetChannels: channelBudgets.filter((budget) => ['naver', 'google'].includes(budget.platform) && budget.status === 'active' && budget.monthly_budget_krw > 0).length,
     learningEventCount: learningEvents.length,
   });
+  const approvedOrTestingKeywords = Number(externalLaunchStatus.approved_or_testing_keywords || 0);
+  const channelExecutionStates = Object.fromEntries(
+    ['naver', 'google'].map((platform) => {
+      const budget = channelBudgets.find((row) => row.platform === platform);
+      const permissionOk = platform === 'google'
+        ? false
+        : Boolean(integrationStatus[platform as keyof typeof integrationStatus]);
+
+      return [
+        platform,
+        classifyChannelExecutionState({
+          integrationReady: Boolean(integrationStatus[platform as keyof typeof integrationStatus]),
+          permissionOk,
+          hasCampaign: Boolean(budget?.external_campaign_id),
+          hasAdGroup: Boolean(budget?.external_ad_group_id),
+          budgetReady: Boolean(
+            budget &&
+              budget.status === 'active' &&
+              Number(budget.monthly_budget_krw || 0) > 0 &&
+              Number(budget.daily_budget_cap_krw || 0) > 0,
+          ),
+          approvedKeywords: approvedOrTestingKeywords,
+          internalDrafts: draftCampaigns,
+          platformLabel: platform === 'naver' ? '네이버' : '구글',
+        }),
+      ];
+    }),
+  );
+  const activeAutomationModes = channelBudgets.map((budget) => ({
+    platform: budget.platform,
+    level: budget.automation_level,
+    mode: automationLevelToMode(budget.automation_level),
+    status: budget.status,
+  }));
+  const tenantGuardrails = buildTenantRiskGuardrails({
+    tenantScopedTables: 3,
+    monthlyBudgetKrw: tenantGovernance?.monthly_budget_cap_krw || configuredMonthlyBudgetKrw,
+    activeBudgetChannels: channelBudgets.filter((budget) => budget.status === 'active' && budget.monthly_budget_krw > 0).length,
+    maxAutomationLevel: tenantGovernance?.max_automation_level ?? Math.max(...channelBudgets.map((budget) => Number(budget.automation_level || 0)), 0),
+  });
+  const tenantPolicy = tenantGovernance
+    ? {
+        configured: true,
+        tenant_id: tenantGovernance.tenant_id ?? null,
+        allowed_platforms: tenantGovernance.allowed_platforms || ['naver', 'google'],
+        monthly_budget_cap_krw: tenantGovernance.monthly_budget_cap_krw || 0,
+        daily_budget_cap_krw: tenantGovernance.daily_budget_cap_krw || 0,
+        max_cpc_krw: tenantGovernance.max_cpc_krw || 0,
+        max_test_loss_krw: tenantGovernance.max_test_loss_krw || 0,
+        max_automation_level: tenantGovernance.max_automation_level ?? 2,
+        require_human_approval: tenantGovernance.require_human_approval ?? true,
+        full_auto_enabled: tenantGovernance.full_auto_enabled ?? false,
+        risk_status: tenantGovernance.risk_status || 'normal',
+      }
+    : {
+        configured: false,
+        error: tenantGovernanceRes.error?.message || null,
+        tenant_id: null,
+        allowed_platforms: ['naver', 'google'],
+        monthly_budget_cap_krw: configuredMonthlyBudgetKrw,
+        daily_budget_cap_krw: 0,
+        max_cpc_krw: 0,
+        max_test_loss_krw: 0,
+        max_automation_level: 2,
+        require_human_approval: true,
+        full_auto_enabled: false,
+        risk_status: 'watch',
+      };
 
   return NextResponse.json({
     ok: true,
@@ -466,6 +592,15 @@ export const GET = withAdminGuard(async () => {
       tracked_cta_clicks: trackedCtaClicks,
       tracked_conversions: trackedConversions,
       tracked_conversion_value_krw: trackedConversionValueKrw,
+      tracked_spend_krw: trackedSpendKrw,
+      tracked_cpa_krw: trackedCpaKrw,
+      tracked_roas_pct: trackedRoasPct,
+      tracked_cta_rate_pct: trackedCtaRatePct,
+      tracked_conversion_rate_pct: trackedConversionRatePct,
+      tracked_bounce_rate_pct: trackedBounceRatePct ?? 0,
+      engagement_sessions_30d: engagementSessions,
+      avg_time_on_page_seconds: avgTimeOnPageSeconds,
+      avg_scroll_depth_pct: avgScrollDepthPct,
       configured_monthly_budget_krw: configuredMonthlyBudgetKrw,
       draft_campaigns: draftCampaigns,
       active_campaigns: activeCampaigns,
@@ -485,10 +620,43 @@ export const GET = withAdminGuard(async () => {
       search_term_candidates_by_action: byKey(searchTermCandidates, (row) => row.action || 'unknown'),
     },
     readiness_audit: readinessAudit,
+    learning_loop: {
+      scope: ['blog_landing', 'keyword', 'product', 'tenant'],
+      metrics: {
+        clicks: trackedClicks,
+        cta_clicks: trackedCtaClicks,
+        conversions: trackedConversions,
+        spend_krw: trackedSpendKrw,
+        conversion_value_krw: trackedConversionValueKrw,
+        cpa_krw: trackedCpaKrw,
+        roas_pct: trackedRoasPct,
+        cta_rate_pct: trackedCtaRatePct,
+        conversion_rate_pct: trackedConversionRatePct,
+        bounce_rate_pct: trackedBounceRatePct,
+        engagement_sessions_30d: engagementSessions,
+        avg_time_on_page_seconds: avgTimeOnPageSeconds,
+        avg_scroll_depth_pct: avgScrollDepthPct,
+      },
+      status: {
+        has_click_signal: trackedClicks > 0,
+        has_cta_signal: trackedCtaClicks > 0,
+        has_booking_signal: trackedConversions > 0,
+        has_cost_signal: trackedSpendKrw > 0,
+        bounce_tracking_ready: engagementSessions > 0,
+      },
+      next_action: trackedSpendKrw > 0
+        ? 'CPA/ROAS 기준으로 키워드 증액, 정지, 제외어 후보를 학습합니다.'
+        : '외부 광고비 또는 검색어 성과 수집이 들어오면 CPA/ROAS 학습이 활성화됩니다.',
+    },
     channel_budgets: channelBudgets,
     integration_status: integrationStatus,
     integration_details: integrationDetails,
     external_launch_status: externalLaunchStatus,
+    channel_execution_states: channelExecutionStates,
+    active_automation_modes: activeAutomationModes,
+    automation_modes: AD_OS_AUTOMATION_MODES,
+    tenant_guardrails: tenantGuardrails,
+    tenant_policy: tenantPolicy,
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
     expiring_packages: expiringPackageRes.data || [],
