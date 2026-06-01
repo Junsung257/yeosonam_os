@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { createHash } from 'crypto';
-import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
+import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type MultiProductResult, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { postProcessCatalogFields, postProcessItineraryData } from '@/lib/package-post-process';
 import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
@@ -61,6 +61,7 @@ import {
   canUseSupplierRawDeterministicPreflight,
   extractSupplierRawDeterministicFacts,
 } from '@/lib/supplier-raw-deterministic-facts';
+import { planProductRegistrationV2, runProductRegistrationV2 } from '@/lib/product-registration-v2';
 
 function minPriceFromTiers(tiers: Array<{ adult_price?: number | null }> | null | undefined): number | null {
   const prices = (tiers ?? [])
@@ -793,6 +794,60 @@ const postHandler = async (request: NextRequest) => {
     if (!directRawText && isStandardProductMarkdown(parsedDocument.rawText ?? '')) {
       parsedDocument = parseStandardProductMarkdown(parsedDocument.rawText, fileName);
     }
+    let productRegistrationV2GateFailures: string[] = [];
+    if (
+      process.env.PRODUCT_REGISTRATION_V2_ENABLED !== '0'
+      && !isStandardProductMarkdown(parsedDocument.rawText ?? '')
+      && (parsedDocument.rawText ?? '').trim().length >= 1000
+    ) {
+      const v2Plan = planProductRegistrationV2(parsedDocument.rawText ?? '');
+      const shouldUseV2 =
+        v2Plan.document_type === 'multi_variant_catalog'
+        && v2Plan.price_mapping_strategy === 'vertical_grade_columns'
+        && v2Plan.expected_products >= 2
+        && v2Plan.unresolved_parts.length === 0;
+      if (shouldUseV2) {
+        try {
+          const v2 = await runProductRegistrationV2(parsedDocument.rawText ?? '');
+          if (v2.gate.customer_publishable && v2.products.length === v2.plan.expected_products) {
+            const v2MultiProducts: MultiProductResult[] = v2.products.map(product => ({
+              extractedData: {
+                ...product.extractedData,
+                parser_version: 'product-registration-v2',
+                _v2_gate_status: v2.gate.status,
+              } as typeof product.extractedData,
+              itineraryData: product.itineraryData as unknown as MultiProductResult['itineraryData'],
+              sectionRawText: product.section_raw_text,
+            }));
+            parsedDocument.multiProducts = v2MultiProducts;
+            parsedDocument.extractedData = v2MultiProducts[0].extractedData;
+            parsedDocument.itineraryData = v2MultiProducts[0].itineraryData;
+            parsedDocument.confidence = Math.min(parsedDocument.confidence || 1, v2.plan.confidence);
+            console.log(
+              '[Upload API] Product Registration V2 적용:',
+              `products=${v2.products.length}`,
+              `gate=${v2.gate.status}`,
+            );
+          } else {
+            productRegistrationV2GateFailures = v2.gate.checks
+              .filter(c => c.status === 'fail')
+              .map(c => c.message);
+            if (productRegistrationV2GateFailures.length === 0) {
+              productRegistrationV2GateFailures = [`V2 gate=${v2.gate.status}`];
+            }
+            console.warn(
+              '[Upload API] Product Registration V2 gate failed — legacy parsed result 유지:',
+              v2.gate.checks.filter(c => c.status === 'fail').slice(0, 3).map(c => c.message).join(' | '),
+            );
+          }
+        } catch (e) {
+          productRegistrationV2GateFailures = [
+            `Product Registration V2 exception: ${e instanceof Error ? e.message : String(e)}`,
+          ];
+          console.warn('[Upload API] Product Registration V2 실패 — legacy parsed result 유지:', e instanceof Error ? e.message : e);
+        }
+      }
+    }
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
     const normalizedCatalogHash = computeNormalizedContentHash(parsedDocument.rawText ?? '');
 
@@ -1516,6 +1571,7 @@ JSON 배열로 응답:
           projectedPriceDates.length === 0 ? '출발일별 가격(price_dates) 없음' : null,
           hasDuplicateDayNumbers ? '같은 상품 안에 일차 번호 중복' : null,
           hasTooManyDaysForDuration ? `상품 기간 ${ed.duration}일 대비 일정 ${preGateDays.length}일` : null,
+          ...productRegistrationV2GateFailures.map(reason => `Product Registration V2 gate failed: ${reason}`),
         ].filter((v): v is string => !!v);
 
         if (customerDeliverableBlockers.length > 0) {
