@@ -56,6 +56,7 @@ const STATUS_LABEL: Record<string, string> = {
   active: '집행',
   winning: '승자',
   scaled: '확대',
+  legacy_active: '기존 활성',
   paused: '중지',
   rejected: '폐기',
   expired: '만료',
@@ -68,6 +69,7 @@ const STATUS_COLOR: Record<string, string> = {
   active: 'bg-emerald-50 text-emerald-700',
   winning: 'bg-emerald-50 text-emerald-700',
   scaled: 'bg-purple-50 text-purple-700',
+  legacy_active: 'bg-amber-50 text-amber-700',
   paused: 'bg-admin-surface-2 text-admin-muted',
   rejected: 'bg-rose-50 text-rose-700',
   expired: 'bg-rose-50 text-rose-700',
@@ -312,7 +314,7 @@ export default function BlogAdsPage() {
             </thead>
             <tbody>
               {mappings.map(m => {
-                const status = m.operational_status || (m.active ? 'active' : 'candidate');
+                const status = m.operational_status || (m.active ? 'legacy_active' : 'candidate');
                 return (
                 <tr key={m.id}>
                   <td>
