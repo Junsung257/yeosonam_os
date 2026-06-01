@@ -77,7 +77,9 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
       </div>
       <div className="flex flex-col items-center gap-1">
         <Award className="w-6 h-6 text-amber-500" />
-        <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight whitespace-pre-line">직판\n최저가</span>
+        <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
+          직판<br />최저가
+        </span>
       </div>
       {hasReviewStats ? (
         <div className="flex flex-col items-center gap-1">
@@ -90,12 +92,16 @@ function TrustBadges({ reviewScore, reviewCount, guaranteed, hasReviewStats }: {
       ) : (
         <div className="flex flex-col items-center gap-1">
           <Clock className="w-6 h-6 text-[var(--brand)]" />
-          <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight whitespace-pre-line">빠른\n상담 응답</span>
+          <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
+            빠른<br />상담 응답
+          </span>
         </div>
       )}
       <div className="flex flex-col items-center gap-1">
         <Phone className="w-6 h-6 text-[var(--success)]" />
-        <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight whitespace-pre-line">24시간\n현지 지원</span>
+        <span className="text-sm font-semibold text-[var(--text-body)] text-center leading-tight">
+          24시간<br />현지 지원
+        </span>
       </div>
     </div>
   );
