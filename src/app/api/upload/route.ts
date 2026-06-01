@@ -26,7 +26,7 @@ import {
   applyDeterministicExtractedDataFixes,
   type UploadGate,
 } from '@/lib/upload-validator';
-import { extractProductRawTextSection } from '@/lib/parser/catalog-pre-split';
+import { countCatalogItineraryHeaders, extractProductRawTextSection } from '@/lib/parser/catalog-pre-split';
 import { repairExtractedDataWithGemini } from '@/lib/parser/extracted-field-repair';
 import { tiersToDatePrices } from '@/lib/price-dates';
 import { hydratePriceTiers } from '@/lib/period-label-dates';
@@ -714,9 +714,13 @@ const postHandler = async (request: NextRequest) => {
     // ── [E-1] PDF/HWP 텍스트 추출 (바이너리 → 텍스트) ──────────────────────
     // 중요: PDF는 바이너리이므로 buffer.toString('utf-8')은 깨진 문자열을 반환함
     // 반드시 pdf-parse로 먼저 텍스트를 추출한 후 분류기에 넘겨야 함
+    const directRawTextLooksLikeCatalog = directRawText
+      ? countCatalogItineraryHeaders(directRawText) >= 2
+      : false;
     const shouldBypassLegacyParserForRawText =
       Boolean(directRawText)
       && !isStandardProductMarkdown(directRawText ?? '')
+      && !directRawTextLooksLikeCatalog
       && process.env.RAW_UPLOAD_NORMALIZER_ENABLED !== '0';
     let parsedDocument = directRawText && isStandardProductMarkdown(directRawText)
       ? parseStandardProductMarkdown(directRawText, fileName)
