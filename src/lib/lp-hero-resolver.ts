@@ -42,11 +42,34 @@ export async function resolveLpHeroPhotoUrl(
 
   const destIsoSet = destinationToIsoSet(pkg.destination);
   // 첫 번째로 photos가 있는 attraction 선택
-  const hero = matched.find(
-    a => a.photos && a.photos.length > 0 && a.country && destIsoSet.has(a.country),
-  );
+  const hero = matched
+    .filter(a => a.photos && a.photos.length > 0 && a.country && destIsoSet.has(a.country))
+    .sort((a, b) => scoreHeroCandidate(b, pkg.destination) - scoreHeroCandidate(a, pkg.destination))[0];
   const p = hero?.photos?.[0];
   return p?.src_large || p?.src_medium || null;
+}
+
+function scoreHeroCandidate(attraction: AttractionData, destination?: string | null): number {
+  const name = attraction.name ?? '';
+  const region = attraction.region ?? '';
+  const photo = attraction.photos?.[0] as { alt?: string } | undefined;
+  const photoAlt = photo?.alt ?? '';
+  const haystack = `${name} ${region} ${photoAlt}`.toLowerCase();
+  const destinationTokens = String(destination ?? '')
+    .split(/[\/,\s]+/)
+    .map(v => v.trim())
+    .filter(v => v.length >= 2);
+
+  let score = 0;
+  for (const token of destinationTokens) {
+    if (name.includes(token)) score += 60;
+    if (region.includes(token)) score += 25;
+  }
+
+  if (/천지|백두산|장백|heaven lake|changbai|mountain|lake/i.test(haystack)) score += 40;
+  if (/luggage|smartphone|esim|phone|traveler activating/i.test(photoAlt)) score -= 80;
+
+  return score;
 }
 
 function collectAttractionIds(itineraryData: unknown): string[] {
