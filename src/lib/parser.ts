@@ -224,6 +224,7 @@ export interface ExtractedData {
   trip_style?: string;             // 3박5일 | 4박6일
   destination?: string;
   duration?: number;
+  nights?: number;
   departure_days?: string;         // 매주 화요일 | 매주 금요일
   departure_airport?: string;
   airline?: string;
@@ -1328,6 +1329,7 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
     trip_style: (item.trip_style as string) || undefined,
     destination: (item.destination as string) || undefined,
     duration: typeof item.duration === 'number' ? item.duration : undefined,
+    nights: typeof item.nights === 'number' ? item.nights : undefined,
     departure_days: formatDepartureDays(item.departure_days) || undefined,
     departure_airport: (item.departure_airport as string) || undefined,
     airline: (item.airline as string) || undefined,
@@ -1531,12 +1533,44 @@ function extractCatalogShoppingText(section: string): string | null {
   return raw || null;
 }
 
+function parseCatalogOptionalTours(optionalText: string): Array<{ name: string; price: string; price_usd: number; note: string }> {
+  const tours: Array<{ name: string; price: string; price_usd: number; note: string }> = [];
+  const lines = optionalText
+    .split(/\r?\n/)
+    .map(v => v.replace(/^[∎▶\-•\s]+/, '').replace(/\s+/g, ' ').trim())
+    .filter(v => v && !/^노옵션$/.test(v));
+
+  for (const line of lines) {
+    const category = line.includes(':') ? line.split(':')[0].trim() : '';
+    const body = line.includes(':') ? line.slice(line.indexOf(':') + 1).trim() : line;
+    const matches = [...body.matchAll(/([^,$]+?)\s*\$(\d+)(?:\/인)?/g)];
+    if (matches.length === 0) continue;
+    for (const match of matches) {
+      const itemName = match[1]
+        .replace(/\([^)]*$/, '')
+        .replace(/[,，]\s*$/, '')
+        .trim();
+      const name = [category, itemName].filter(Boolean).join(' : ');
+      const priceUsd = Number(match[2]);
+      tours.push({
+        name: name || line,
+        price: `$${priceUsd}`,
+        price_usd: priceUsd,
+        note: line,
+      });
+    }
+  }
+
+  return tours;
+}
+
 function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]): Record<string, unknown>[] {
   return sections.map(section => {
     const grade = CATALOG_GRADE_ORDER.find(g => section.includes(g)) ?? '세이브';
     const title = section.match(/([^\n]*백두산[^\n]*\d+\s*박\s*\d+\s*일)/)?.[1]?.replace(/\s+/g, ' ').trim()
       ?? `${grade} 백두산 상품`;
     const duration = Number(title.match(/(\d+)\s*박\s*(\d+)\s*일/)?.[2] ?? 0) || undefined;
+    const nights = Number(title.match(/(\d+)\s*박\s*(\d+)\s*일/)?.[1] ?? 0) || undefined;
     const minParticipants = Number(section.match(/성인\s*(\d+)\s*명\s*이상/)?.[1] ?? 0) || undefined;
     const inclusionsText = section.match(/포\s*함\s*내\s*역\s*\n([\s\S]*?)(?=불포함\s*내역|선택관광|쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
     const excludesText = section.match(/불포함\s*내역\s*\n([\s\S]*?)(?=선택관광|쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
@@ -1555,6 +1589,7 @@ function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]
       trip_style: title.includes('북+서파') ? '북+서파' : '북파',
       destination: '연길/백두산',
       duration,
+      nights,
       departure_airport: '김해',
       airline: 'BX',
       min_participants: minParticipants,
@@ -1562,16 +1597,7 @@ function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]
       price_tiers,
       inclusions: inclusionsText.split(/\s*,\s*/).map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean),
       excludes: excludesText.split(/\s*,\s*/).map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean),
-      optional_tours: optionalText
-        .split(/\r?\n/)
-        .map(v => v.replace(/^[∎▶\-•\s]+/, '').replace(/\s+/g, ' ').trim())
-        .filter(v => v && !/^노옵션$/.test(v))
-        .map(v => ({
-          name: v.replace(/\$\d+.*$/, '').replace(/[:：]\s*$/, '').trim() || v,
-          price: v.match(/\$\d+(?:\/인)?/)?.[0],
-          price_usd: Number(v.match(/\$(\d+)/)?.[1] ?? 0) || undefined,
-          note: v,
-        })),
+      optional_tours: parseCatalogOptionalTours(optionalText),
       accommodations,
       specialNotes: specialText.split(/\r?\n/).map(v => v.trim()).filter(Boolean).join('\n'),
       customer_notes: shoppingText ? `쇼핑센터 ${shoppingText}` : undefined,

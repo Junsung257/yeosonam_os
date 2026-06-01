@@ -1810,6 +1810,7 @@ JSON 배열로 응답:
               title,
               destination:           ed.destination,
               duration:              ed.duration,
+              nights:                (ed as { nights?: number | null }).nights ?? (ed.duration ? Math.max(0, ed.duration - 1) : null),
               price:                 ed.price,
               filename:              fileName,
               file_type:             parsedDocument.fileType,

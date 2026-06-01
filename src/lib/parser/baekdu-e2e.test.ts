@@ -9,14 +9,14 @@ import { renderPackage, type RenderPackageInput } from '../render-contract';
 const raw = readFileSync(join(__dirname, 'fixtures', 'baekdu-e2e-input.txt'), 'utf8');
 
 const expected = [
-  { type: '세이브 실속', title: '연길/백두산(북파) 2박3일', duration: 3, min: 2, price: 749000, p0601: 999000, p0615: 929000, p0829: 749000, hotels: ['금수학', '풋볼'], include: ['여행자보험'], exclude: ['$30'], optionalCount: 4, shopping: '2회+농산물' },
-  { type: '스탠다드 품격 노노', title: '연길/백두산 (북파) 2박3일', duration: 3, min: 2, price: 989000, p0601: 1229000, p0615: 1149000, p0829: 999000, hotels: ['왕조성지', '연길 국제'], include: ['특식2회'], exclude: ['매너팁'], optionalCount: 0, shopping: '2회+농산물' },
-  { type: '프리미엄 노노노', title: '연길/백두산 (북파) 2박3일', duration: 3, min: 8, price: 1159000, p0601: 1359000, p0615: 1279000, p0829: 1159000, hotels: ['왕조성지', '연길 국제'], include: ['리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑' },
-  { type: '크라운 노노노+', title: '연길/백두산 (북파) 2박3일', duration: 3, min: 10, price: 1189000, p0601: 1439000, p0615: 1359000, p0829: 1199000, hotels: ['퓨어랜드', '카이로스'], include: ['리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑', dayText: '5D비행체험' },
-  { type: '세이브 실속', title: '연길/백두산(북+서파) 3박4일', duration: 4, min: 2, price: 749000, p0601: 999000, p0615: 929000, p0829: 749000, hotels: ['금수학', '풋볼'], include: ['2억원여행자보험'], exclude: ['$40'], optionalCount: 4, shopping: '2회+농산물' },
-  { type: '스탠다드 품격 노노', title: '연길/백두산(북+서파) 3박4일', duration: 4, min: 2, price: 989000, p0601: 1229000, p0615: 1149000, p0829: 999000, hotels: ['왕조성지', '연길 국제'], include: ['특식3회'], exclude: ['매너팁'], optionalCount: 0, shopping: '2회+농산물' },
-  { type: '프리미엄 노노노', title: '연길/백두산(북+서파) 3박4일', duration: 4, min: 8, price: 1159000, p0601: 1359000, p0615: 1279000, p0829: 1159000, hotels: ['왕조성지', '연길 국제'], include: ['특식6회', '리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑' },
-  { type: '크라운 노노노+', title: '연길/백두산(북+서파) 3박4일', duration: 4, min: 10, price: 1189000, p0601: 1439000, p0615: 1359000, p0829: 1199000, hotels: ['퓨어랜드', '카이로스'], include: ['특식6회', '리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑' },
+  { type: '세이브 실속', title: '연길/백두산(북파) 2박3일', duration: 3, nights: 2, min: 2, price: 749000, p0601: 999000, p0615: 929000, p0829: 749000, hotels: ['금수학', '풋볼'], include: ['여행자보험'], exclude: ['$30'], optionalCount: 7, shopping: '2회+농산물' },
+  { type: '스탠다드 품격 노노', title: '연길/백두산 (북파) 2박3일', duration: 3, nights: 2, min: 2, price: 989000, p0601: 1229000, p0615: 1149000, p0829: 999000, hotels: ['왕조성지', '연길 국제'], include: ['특식2회'], exclude: ['매너팁'], optionalCount: 0, shopping: '2회+농산물' },
+  { type: '프리미엄 노노노', title: '연길/백두산 (북파) 2박3일', duration: 3, nights: 2, min: 8, price: 1159000, p0601: 1359000, p0615: 1279000, p0829: 1159000, hotels: ['왕조성지', '연길 국제'], include: ['리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑' },
+  { type: '크라운 노노노+', title: '연길/백두산 (북파) 2박3일', duration: 3, nights: 2, min: 10, price: 1189000, p0601: 1439000, p0615: 1359000, p0829: 1199000, hotels: ['퓨어랜드', '카이로스'], include: ['리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑', dayText: '5D비행체험' },
+  { type: '세이브 실속', title: '연길/백두산(북+서파) 3박4일', duration: 4, nights: 3, min: 2, price: 749000, p0601: 999000, p0615: 929000, p0829: 749000, hotels: ['금수학', '풋볼'], include: ['2억원여행자보험'], exclude: ['$40'], optionalCount: 7, shopping: '2회+농산물' },
+  { type: '스탠다드 품격 노노', title: '연길/백두산(북+서파) 3박4일', duration: 4, nights: 3, min: 2, price: 989000, p0601: 1229000, p0615: 1149000, p0829: 999000, hotels: ['왕조성지', '연길 국제'], include: ['특식3회'], exclude: ['매너팁'], optionalCount: 0, shopping: '2회+농산물' },
+  { type: '프리미엄 노노노', title: '연길/백두산(북+서파) 3박4일', duration: 4, nights: 3, min: 8, price: 1159000, p0601: 1359000, p0615: 1279000, p0829: 1159000, hotels: ['왕조성지', '연길 국제'], include: ['특식6회', '리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑' },
+  { type: '크라운 노노노+', title: '연길/백두산(북+서파) 3박4일', duration: 4, nights: 3, min: 10, price: 1189000, p0601: 1439000, p0615: 1359000, p0829: 1199000, hotels: ['퓨어랜드', '카이로스'], include: ['특식6회', '리무진차량'], exclude: ['매너팁'], optionalCount: 0, shopping: '노쇼핑' },
 ] as const;
 
 function sectionText(index: number): string {
@@ -59,6 +59,7 @@ describe('Baekdu supplier catalog E2E', () => {
       expect(ed.title).toBe(exp.title);
       expect(ed.product_type).toBe(exp.type);
       expect(ed.duration).toBe(exp.duration);
+      expect(ed.nights).toBe(exp.nights);
       expect(ed.min_participants).toBe(exp.min);
       expect(ed.price).toBe(exp.price);
       expect(priceOn(ed, '2026-06-01')).toBe(exp.p0601);
@@ -66,6 +67,12 @@ describe('Baekdu supplier catalog E2E', () => {
       expect(priceOn(ed, '2026-08-29')).toBe(exp.p0829);
       expect(tiersToDatePrices(ed.price_tiers ?? []).some(d => d.price > 0 && d.price < 100000)).toBe(false);
       expect(ed.optional_tours ?? []).toHaveLength(exp.optionalCount);
+      if (exp.optionalCount > 0) {
+        const optionPayload = JSON.stringify(ed.optional_tours);
+        ['발+전신마사지', '5D비행체험', '북파 VIP', '온천욕', '무제한소불고기', '무제한양꼬치', '송이구이']
+          .forEach(option => expect(optionPayload).toContain(option));
+        ['$50', '$40', '$65'].forEach(price => expect(optionPayload).toContain(price));
+      }
 
       const payload = JSON.stringify(ed);
       exp.hotels.forEach(hotel => expect(payload).toContain(hotel));
