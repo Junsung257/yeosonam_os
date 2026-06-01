@@ -88,6 +88,12 @@ type Summary = {
     status: 'pass' | 'warn' | 'fail';
     detail: string;
   }>;
+  tenant_ad_readiness?: Array<{
+    id: string;
+    label: string;
+    status: 'pass' | 'warn' | 'fail';
+    detail: string;
+  }>;
   tenant_policy?: {
     configured: boolean;
     error?: string | null;
@@ -156,6 +162,7 @@ type Summary = {
     product_scenarios: Array<Record<string, unknown>>;
     landing_evolution_queue: Array<Record<string, unknown>>;
     budget_pacing: Array<Record<string, unknown>>;
+    tenant_ad_accounts: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -1148,6 +1155,21 @@ export default function AdOsPage() {
                 ))}
               </div>
             )}
+            {summary.tenant_ad_readiness && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+                {summary.tenant_ad_readiness.map((item) => (
+                  <div key={item.id} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-admin-xs font-semibold text-admin-text">{item.label}</p>
+                      <StatusPill tone={item.status === 'pass' ? 'good' : item.status === 'warn' ? 'warn' : 'bad'}>
+                        {item.status === 'pass' ? '통과' : item.status === 'warn' ? '주의' : '차단'}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-2 text-admin-2xs leading-5 text-admin-muted">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {summary.tenant_policy && (
               <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1339,6 +1361,7 @@ export default function AdOsPage() {
             <KpiCard label="상품 시나리오" value={(summary.kpis.product_scenarios || 0).toLocaleString('ko-KR')} icon={Bot} />
             <KpiCard label="랜딩 진화 후보" value={(summary.kpis.landing_evolution_candidates || 0).toLocaleString('ko-KR')} icon={Layers} />
             <KpiCard label="예산 페이싱 경고" value={(summary.kpis.budget_pacing_alerts || 0).toLocaleString('ko-KR')} icon={AlertTriangle} tone={(summary.kpis.budget_pacing_alerts || 0) > 0 ? 'negative' : 'neutral'} />
+            <KpiCard label="테넌트 광고계정" value={(summary.kpis.tenant_ad_accounts_ready || 0).toLocaleString('ko-KR')} icon={KeyRound} tone={(summary.kpis.tenant_ad_accounts_ready || 0) > 0 ? 'positive' : 'neutral'} />
             <KpiCard label="월 예산 설정" value={fmtWon(summary.kpis.configured_monthly_budget_krw)} icon={Wallet} />
           </div>
 

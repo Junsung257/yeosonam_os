@@ -6,6 +6,7 @@ import {
   buildTenantRiskGuardrails,
   classifyChannelExecutionState,
 } from '@/lib/ad-os-governance';
+import { buildTenantAdReadiness } from '@/lib/ad-os-tenant-readiness';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -259,6 +260,7 @@ export const GET = withAdminGuard(async () => {
     productScenarioRes,
     landingEvolutionRes,
     budgetPacingRes,
+    tenantAdAccountRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -335,6 +337,11 @@ export const GET = withAdminGuard(async () => {
       .select('id, platform, status, recommended_action, pace_ratio, actual_spend_krw, expected_spend_krw, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_tenant_ad_accounts')
+      .select('id, platform, account_mode, connection_status, monthly_budget_cap_krw, daily_budget_cap_krw, can_publish_keywords, can_change_bids, can_pause_assets, risk_status')
+      .order('platform', { ascending: true })
+      .limit(100),
   ]);
 
   const firstError =
@@ -349,7 +356,8 @@ export const GET = withAdminGuard(async () => {
     searchTermCandidateRes.error ||
     productScenarioRes.error ||
     landingEvolutionRes.error ||
-    budgetPacingRes.error;
+    budgetPacingRes.error ||
+    tenantAdAccountRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -436,6 +444,28 @@ export const GET = withAdminGuard(async () => {
     status: string | null;
     recommended_action: string | null;
   }>;
+  const tenantAdAccounts = (tenantAdAccountRes.data || []) as Array<{
+    platform: string | null;
+    account_mode: string | null;
+    connection_status: string | null;
+    monthly_budget_cap_krw: number | null;
+    daily_budget_cap_krw: number | null;
+    can_publish_keywords: boolean | null;
+    can_change_bids: boolean | null;
+    can_pause_assets: boolean | null;
+    risk_status: string | null;
+  }>;
+  const tenantAdReadiness = buildTenantAdReadiness(tenantAdAccounts.map((account) => ({
+    platform: account.platform || 'unknown',
+    accountMode: account.account_mode || 'agency_managed',
+    connectionStatus: account.connection_status || 'not_connected',
+    monthlyBudgetCapKrw: Number(account.monthly_budget_cap_krw || 0),
+    dailyBudgetCapKrw: Number(account.daily_budget_cap_krw || 0),
+    canPublishKeywords: Boolean(account.can_publish_keywords),
+    canChangeBids: Boolean(account.can_change_bids),
+    canPauseAssets: Boolean(account.can_pause_assets),
+    riskStatus: account.risk_status || 'watch',
+  })));
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
   const channelBudgets = PLATFORMS.map((platform) => ({
@@ -676,6 +706,8 @@ export const GET = withAdminGuard(async () => {
       landing_evolution_candidates: landingEvolutionQueue.filter((row) => row.status === 'candidate').length,
       budget_pacing_snapshots: budgetPacingSnapshots.length,
       budget_pacing_alerts: budgetPacingSnapshots.filter((row) => ['overspend', 'exhausted', 'blocked'].includes(row.status || '')).length,
+      tenant_ad_accounts: tenantAdAccounts.length,
+      tenant_ad_accounts_ready: tenantAdAccounts.filter((row) => row.connection_status === 'ready').length,
     },
     counts: {
       mappings_by_status: mappingsByStatus,
@@ -691,6 +723,7 @@ export const GET = withAdminGuard(async () => {
       product_scenarios_by_status: byKey(productScenarios, (row) => row.status || 'unknown'),
       landing_evolution_by_action: byKey(landingEvolutionQueue, (row) => row.action || 'unknown'),
       budget_pacing_by_status: byKey(budgetPacingSnapshots, (row) => row.status || 'unknown'),
+      tenant_ad_accounts_by_status: byKey(tenantAdAccounts, (row) => row.connection_status || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -730,6 +763,7 @@ export const GET = withAdminGuard(async () => {
     automation_modes: AD_OS_AUTOMATION_MODES,
     tenant_guardrails: tenantGuardrails,
     tenant_policy: tenantPolicy,
+    tenant_ad_readiness: tenantAdReadiness,
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
     expiring_packages: expiringPackageRes.data || [],
@@ -741,6 +775,7 @@ export const GET = withAdminGuard(async () => {
       product_scenarios: productScenarioRes.data?.slice(0, 12) || [],
       landing_evolution_queue: landingEvolutionRes.data?.slice(0, 12) || [],
       budget_pacing: budgetPacingRes.data?.slice(0, 12) || [],
+      tenant_ad_accounts: tenantAdAccountRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },
