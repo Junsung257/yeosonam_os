@@ -829,6 +829,7 @@ const postHandler = async (request: NextRequest) => {
       && isSupabaseConfigured
       && Boolean(irLandOperatorName)
       && !canUseDeterministicRawPreflight
+      && !parsedDocument.multiProducts?.length
       && (
         rawUploadNormalizerEnabled
         || shouldSampleToIrCanary(normalizedCatalogHash)

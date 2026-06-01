@@ -1,4 +1,4 @@
-import { deriveAdOsProductScenarios, type AdOsProductScenario } from '@/lib/ad-os-scenario-engine';
+﻿import { deriveAdOsProductScenarios, type AdOsProductScenario } from '@/lib/ad-os-scenario-engine';
 import { getAdOsLearningContextForPackage } from '@/lib/ad-os-learning-context';
 import {
   buildSearchAdPackagePlan,

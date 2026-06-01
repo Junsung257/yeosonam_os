@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { decideAdOsBudgetPacing } from '@/lib/ad-os-budget-pacing';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';

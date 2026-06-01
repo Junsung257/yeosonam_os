@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+﻿import { NextResponse } from 'next/server';
 import { buildAdOsReadinessAudit } from '@/lib/ad-os-readiness';
 import {
   AD_OS_AUTOMATION_MODES,
