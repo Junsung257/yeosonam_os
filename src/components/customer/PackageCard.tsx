@@ -173,6 +173,37 @@ export default function PackageCard({
   const airlineName = getAirlineName(pkg.airline ?? undefined) ?? pkg.airline ?? null;
   const duration = formatDuration(pkg);
   const nextDate = findNextDeparture(pkg);
+  const hasComparisonSignal = Boolean(comparisonLabel || comparisonSummary);
+
+  useEffect(() => {
+    if (!isRecommended && !hasComparisonSignal) return;
+    const session_id = getSessionId();
+    fetch('/api/tracking/score-signal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        package_id: pkg.id,
+        signal_type: 'recommend_badge_view',
+        group_key: trackingIntent ? `intent:${trackingIntent}` : null,
+        rank: comparisonRank ?? null,
+        session_id,
+      }),
+    }).catch(() => {});
+    if (isRecommended) {
+      fetch('/api/tracking/recommendation', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          package_id: pkg.id,
+          source: 'mobile_card',
+          outcome: null,
+          recommended_rank: comparisonRank ?? null,
+          intent: trackingIntent ?? null,
+          session_id,
+        }),
+      }).catch(() => {});
+    }
+  }, [comparisonRank, hasComparisonSignal, isRecommended, pkg.id, trackingIntent]);
 
   const handleClick = () => {
     onClick?.(pkg.id);
