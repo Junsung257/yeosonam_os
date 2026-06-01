@@ -1506,6 +1506,24 @@ function splitCatalogSectionList(sharedPrefix: string, sections: string[]): stri
   return sections.map(section => (sharedPrefix ? `${sharedPrefix}\n\n---\n\n${section}` : section));
 }
 
+function buildCatalogProductType(grade: string, section: string): string {
+  const rawQualifier = section.match(/품격\s*노노|프리미엄\s*노노노|노노노\+|실속/)?.[0]
+    ?.replace(/\s+/g, ' ')
+    .trim();
+  if (!rawQualifier) return grade;
+  const qualifier = grade === '프리미엄'
+    ? rawQualifier.replace(/^프리미엄\s*/, '').trim()
+    : rawQualifier;
+  return [grade, qualifier].filter(Boolean).join(' ');
+}
+
+function extractCatalogShoppingText(section: string): string | null {
+  const raw = section.match(/쇼핑센터\s*\n([\s\S]*?)(?=비\s*고|일\s*자)/)?.[1]
+    ?.replace(/\s+/g, ' ')
+    .trim();
+  return raw || null;
+}
+
 function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]): Record<string, unknown>[] {
   return sections.map(section => {
     const grade = CATALOG_GRADE_ORDER.find(g => section.includes(g)) ?? '세이브';
@@ -1516,6 +1534,7 @@ function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]
     const inclusionsText = section.match(/포\s*함\s*내\s*역\s*\n([\s\S]*?)(?=불포함\s*내역|선택관광|쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
     const excludesText = section.match(/불포함\s*내역\s*\n([\s\S]*?)(?=선택관광|쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
     const optionalText = section.match(/선택관광\s*\n([\s\S]*?)(?=쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
+    const shoppingText = extractCatalogShoppingText(section);
     const specialText = section.match(/비\s*고\s*\n([\s\S]*?)(?=일\s*자)/)?.[1] ?? '';
     const accommodations = [...section.matchAll(/󰆹\s*([^\n]+)/g)].map(m => m[1].trim()).filter(Boolean);
     const price_tiers = extractVerticalGradePriceTiers(sharedPrefix, grade);
@@ -1525,7 +1544,7 @@ function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]
       title,
       display_title: title,
       category: 'package',
-      product_type: [grade, section.match(/품격\s*노노|프리미엄\s*노노노|노노노\+|실속/)?.[0]].filter(Boolean).join(' '),
+      product_type: buildCatalogProductType(grade, section),
       trip_style: title.includes('북+서파') ? '북+서파' : '북파',
       destination: '연길/백두산',
       duration,
@@ -1548,6 +1567,7 @@ function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]
         })),
       accommodations,
       specialNotes: specialText.split(/\r?\n/).map(v => v.trim()).filter(Boolean).join('\n'),
+      customer_notes: shoppingText ? `쇼핑센터 ${shoppingText}` : undefined,
       product_summary: title,
       product_highlights: [title.includes('북+서파') ? '백두산 북파+서파 일정' : '백두산 북파 일정', grade],
     };

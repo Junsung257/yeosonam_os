@@ -62,6 +62,34 @@ import {
   extractSupplierRawDeterministicFacts,
 } from '@/lib/supplier-raw-deterministic-facts';
 
+function minPriceFromTiers(tiers: Array<{ adult_price?: number | null }> | null | undefined): number | null {
+  const prices = (tiers ?? [])
+    .map(t => t.adult_price)
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0);
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+function extractCatalogShoppingForRender(rawText: string | null | undefined): string | null {
+  const raw = rawText?.match(/쇼핑센터\s*\n([\s\S]*?)(?=비\s*고|일\s*자)/)?.[1]
+    ?.replace(/\s+/g, ' ')
+    .trim();
+  return raw ? `쇼핑센터 ${raw}` : null;
+}
+
+function attachShoppingHighlight<T extends ItineraryDataLike | null>(itineraryData: T, shoppingText: string | null): T {
+  if (!itineraryData || !shoppingText) return itineraryData;
+  const obj = itineraryData as ItineraryDataLike & { highlights?: Record<string, unknown> };
+  const highlights = obj.highlights && typeof obj.highlights === 'object' ? obj.highlights : {};
+  if (typeof highlights.shopping === 'string' && highlights.shopping.trim()) return itineraryData;
+  return {
+    ...obj,
+    highlights: {
+      ...highlights,
+      shopping: shoppingText,
+    },
+  } as unknown as T;
+}
+
 const ATTRACTION_EXTRACT_FALLBACK = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
 
 ★ name 규칙 (가장 중요):
@@ -1181,6 +1209,10 @@ const postHandler = async (request: NextRequest) => {
           ed.price_tiers = hydratePriceTiers(ed.price_tiers, {
             packageDepartureDays: ed.departure_days,
           });
+          const tierMinPrice = minPriceFromTiers(ed.price_tiers);
+          if (tierMinPrice != null) {
+            ed.price = tierMinPrice;
+          }
         }
 
         // 3) ▶ 불릿 inclusions/excludes 결정적 추출 — LLM 0건·콤마-split 깨짐 시 정규식으로 채움.
@@ -1313,11 +1345,12 @@ const postHandler = async (request: NextRequest) => {
         // net_price CHECK (net_price > 0) 제약조건 방어
         // AI가 가격을 파싱 못했으면 price_tiers에서 최저가 추출, 그래도 없으면 1
         let netPrice = ed.price ?? 0;
-        if (netPrice <= 0 && ed.price_tiers?.length) {
-          const prices = ed.price_tiers
-            .map(t => t.adult_price)
-            .filter((p): p is number => typeof p === 'number' && p > 0);
-          if (prices.length > 0) netPrice = Math.min(...prices);
+        if (ed.price_tiers?.length) {
+          const tierMinPrice = minPriceFromTiers(ed.price_tiers);
+          if (tierMinPrice != null) {
+            netPrice = tierMinPrice;
+            ed.price = tierMinPrice;
+          }
         }
         if (netPrice <= 0) netPrice = 1; // 최소 1원 — DB CHECK 통과, 상품관리에서 수동 수정
 
@@ -1551,10 +1584,10 @@ JSON 배열로 응답:
         //   G5(products)·G8(travel_packages) INSERT 전에 status·draftRow SSOT 확정.
 
         let itineraryInput = (product.itineraryData ?? null) as ItineraryDataLike | null;
-        if (!itineraryInput?.days?.length && parsedDocument.rawText) {
+        if (!itineraryInput?.days?.length && productRawText) {
           try {
             const { parseDayTable } = await import('@/lib/parser/deterministic/day-table');
-            const detResult = parseDayTable(parsedDocument.rawText);
+            const detResult = parseDayTable(productRawText);
             if (detResult.days.length > 0 && detResult.confidence >= 0.4) {
               console.log(`[Upload API] Phase 2 LLM 실패 → day-table deterministic fallback: ${detResult.days.length} days (conf=${detResult.confidence.toFixed(2)})`);
               itineraryInput = detResult as unknown as ItineraryDataLike;
@@ -1603,11 +1636,11 @@ JSON 배열로 응답:
               }]
             : []),
         ];
-        const itineraryDataToSave = postProcessItineraryData(
+        const itineraryDataToSave = attachShoppingHighlight((postProcessItineraryData(
           (enrichment.itineraryData ?? product.itineraryData ?? null) as Parameters<
             typeof postProcessItineraryData
           >[0],
-        );
+        ) ?? null) as ItineraryDataLike | null, extractCatalogShoppingForRender(productRawText));
         enrichment.matchedCanonicalNames.forEach(name => matchedCanonicalNames.add(name));
         for (const day of itineraryDataToSave?.days ?? []) {
           for (const s of day.schedule ?? []) {
