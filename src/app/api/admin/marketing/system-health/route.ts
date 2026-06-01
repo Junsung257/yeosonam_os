@@ -3,8 +3,10 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { getSecret, type SecretKey } from '@/lib/secret-registry';
 import { runMarketingIntegrationProbes } from '@/lib/marketing/integration-probes';
+import { withTimeout } from '@/lib/promise-timeout';
 
 export const dynamic = 'force-dynamic';
+const SYSTEM_HEALTH_TIMEOUT_MS = 8000;
 
 type Status = 'ok' | 'warn' | 'fail';
 
@@ -124,11 +126,27 @@ async function cronChecks(): Promise<Check[]> {
 }
 
 async function getHandler(_request: NextRequest) {
-  const [db, cron, probes] = await Promise.all([
-    dbChecks(),
-    cronChecks(),
-    runMarketingIntegrationProbes(),
-  ]);
+  const baseChecks = SECRET_GROUPS.map(secretCheck);
+  let db: Check[] = [];
+  let cron: Check[] = [];
+  let probes: Awaited<ReturnType<typeof runMarketingIntegrationProbes>> = [];
+
+  try {
+    [db, cron, probes] = await withTimeout(
+      Promise.all([
+        dbChecks(),
+        cronChecks(),
+        runMarketingIntegrationProbes(),
+      ]),
+      SYSTEM_HEALTH_TIMEOUT_MS,
+      'marketing system health',
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Marketing system health unavailable';
+    db = [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message }];
+    cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Skipped because Supabase health check timed out.' }];
+    probes = [];
+  }
 
   const probeChecks: Check[] = probes.map((probe) => ({
     key: `probe.${probe.key}`,
@@ -138,7 +156,7 @@ async function getHandler(_request: NextRequest) {
     detail: { probe_status: probe.status, ...(probe.detail ?? {}) },
   }));
 
-  const checks = [...SECRET_GROUPS.map(secretCheck), ...db, ...cron, ...probeChecks];
+  const checks = [...baseChecks, ...db, ...cron, ...probeChecks];
   const score = Math.round((checks.filter((check) => check.status === 'ok').length / Math.max(checks.length, 1)) * 100);
 
   return NextResponse.json({
