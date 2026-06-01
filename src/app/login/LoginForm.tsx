@@ -2,6 +2,9 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { PromiseTimeoutError, withTimeout } from '@/lib/promise-timeout';
+
+const LOGIN_TIMEOUT_MS = 12000;
 
 function LoginFormInner() {
   const router = useRouter();
@@ -24,21 +27,29 @@ function LoginFormInner() {
     try {
       const { getSupabaseClient } = await import('@/lib/supabase');
       const supabase = getSupabaseClient();
-      const { data, error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: authError } = await withTimeout(
+        supabase.auth.signInWithPassword({ email, password }),
+        LOGIN_TIMEOUT_MS,
+        'admin login',
+      );
 
       if (authError || !data.session) {
         setError('이메일 또는 비밀번호가 올바르지 않습니다.');
         return;
       }
 
-      const res = await fetch('/api/auth/session', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
+      const res = await withTimeout(
+        fetch('/api/auth/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            access_token: data.session.access_token,
+            refresh_token: data.session.refresh_token,
+          }),
         }),
-      });
+        LOGIN_TIMEOUT_MS,
+        'admin session',
+      );
 
       if (!res.ok) {
         setError('로그인 처리 중 오류가 발생했습니다.');
@@ -47,8 +58,12 @@ function LoginFormInner() {
 
       const redirect = searchParams.get('redirect') || '/admin';
       window.location.href = redirect;
-    } catch {
-      setError('로그인 중 오류가 발생했습니다.');
+    } catch (err) {
+      if (err instanceof PromiseTimeoutError) {
+        setError('로그인 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
+      } else {
+        setError('로그인 중 오류가 발생했습니다.');
+      }
     } finally {
       setLoading(false);
     }

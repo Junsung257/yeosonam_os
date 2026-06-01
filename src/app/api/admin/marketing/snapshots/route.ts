@@ -1,8 +1,10 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { withTimeout } from '@/lib/promise-timeout';
 
 export const dynamic = 'force-dynamic';
+const SNAPSHOT_TIMEOUT_MS = 8000;
 
 interface SnapshotRow {
   captured_date: string;
@@ -33,22 +35,32 @@ async function getHandler(request: NextRequest) {
     return NextResponse.json({ snapshots: [], trend: [], skipped: 'Supabase is not configured' });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from('marketing_asset_group_snapshots')
-    .select('captured_date, readiness_score, gsc_health_score, critical_actions, high_actions, active_campaigns, total_spend_krw')
-    .gte('captured_date', sinceDate)
-    .order('captured_date', { ascending: true });
+  const { data, error } = await withTimeout(
+    Promise.resolve(
+      supabaseAdmin
+        .from('marketing_asset_group_snapshots')
+        .select('captured_date, readiness_score, gsc_health_score, critical_actions, high_actions, active_campaigns, total_spend_krw')
+        .gte('captured_date', sinceDate)
+        .order('captured_date', { ascending: true }),
+    ),
+    SNAPSHOT_TIMEOUT_MS,
+    'marketing snapshots',
+  ).catch((error) => ({
+    data: [],
+    error,
+  }));
 
   if (error) {
     const missing = error.code === '42P01' || error.message.includes('marketing_asset_group_snapshots');
-    return NextResponse.json(
-      {
-        snapshots: [],
-        trend: [],
-        error: missing ? 'marketing_asset_group_snapshots migration is not applied yet' : error.message,
-      },
-      { status: missing ? 200 : 500 },
-    );
+    return NextResponse.json({
+      checked_at: new Date().toISOString(),
+      days,
+      snapshots: [],
+      trend: [],
+      summary: null,
+      degraded: true,
+      error: missing ? 'marketing_asset_group_snapshots migration is not applied yet' : error.message,
+    });
   }
 
   const rows = (data ?? []) as SnapshotRow[];
