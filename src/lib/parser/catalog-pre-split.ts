@@ -1,19 +1,19 @@
 const VARIANT_LABEL_RE =
-  /^(?:세이브|실속|스탠다드|품격(?:\s*노노)?|프리미엄(?:\s*노노노)?|크라운|노노노\+?|노노\+?)\s*$/;
+  /^(?:\uC138\uC774\uBE0C(?:\s*\uC2E4\uC18D)?|\uC2E4\uC18D|\uC2A4\uD0E0\uB2E4\uB4DC|\uD488\uACA9(?:\s*\uB178\uB178)?|\uD504\uB9AC\uBBF8\uC5C4(?:\s*\uB178\uB178\uB178|\uB178\uB178\uB178)?|\uD06C\uB77C\uC6B4(?:\s*\uB178\uB178\uB178\+?)?)\s*$/;
 const VARIANT_COMPACT_LABEL_RE =
-  /^(?:프리미엄|크라운|스탠다드|세이브).{0,12}$/;
-const VARIANT_TITLE_RE = /\d+\s*박\s*\d+\s*일/;
-const VARIANT_ITINERARY_RE = /(?:^|\n)\s*(?:일\s*자|제\s*1\s*일|제1일)\s*(?:\n|$)/;
+  /^(?:\uD504\uB9AC\uBBF8\uC5C4\uB178\uB178\uB178|\uD06C\uB77C\uC6B4\uB178\uB178\uB178\+?|\uC138\uC774\uBE0C\uC2E4\uC18D|\uC2E4\uC18D|\uD488\uACA9\uB178\uB178|\uC2A4\uD0E0\uB2E4\uB4DC)$/;
+const VARIANT_TITLE_RE = /\d+\s*\uBC15\s*\d+\s*\uC77C/;
+const VARIANT_TITLE_GLOBAL_RE = /\d+\s*\uBC15\s*\d+\s*\uC77C/g;
+const VARIANT_ITINERARY_RE = /(?:^|\n)\s*(?:\uC77C\s*\uC790|\uC81C\s*1\s*\uC77C)\s*(?:\n|$)/;
 
 function hasVariantProductTitleLine(lines: string[]): boolean {
   return lines.some(line => {
     const compact = line.trim().replace(/\s+/g, '');
     if (!VARIANT_TITLE_RE.test(compact)) return false;
-    const withoutDuration = compact.replace(/\d+박\d+일/g, '');
+    const withoutDuration = compact.replace(VARIANT_TITLE_GLOBAL_RE, '');
     return withoutDuration.length >= 4;
   });
 }
-
 export function collectVariantCatalogBlockStarts(raw: string): number[] {
   const text = raw.replace(/\r\n/g, '\n');
   const lines = text.split('\n');
