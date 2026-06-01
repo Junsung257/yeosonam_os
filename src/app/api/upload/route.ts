@@ -62,6 +62,7 @@ import {
   extractSupplierRawDeterministicFacts,
 } from '@/lib/supplier-raw-deterministic-facts';
 import { planProductRegistrationV2, runProductRegistrationV2 } from '@/lib/product-registration-v2';
+import { persistProductRegistrationDraftV3, runProductRegistrationV3 } from '@/lib/product-registration-v3';
 
 function safeAfter(task: () => Promise<void> | void): void {
   try {
@@ -2033,6 +2034,30 @@ JSON 배열로 응답:
             const intakeRawText = productRawText ?? parsedDocument.rawText ?? '';
             const intakeRawHash = createHash('sha256').update(intakeRawText).digest('hex');
             const auditBaseUrl = request.nextUrl.origin;
+            safeAfter(async () => {
+              try {
+                const v3 = await runProductRegistrationV3(intakeRawText, {
+                  attractions: activeAttractions,
+                  supplierHint: ed.destination ?? intakeLandOperatorName,
+                  sourceType: parsedDocument.fileType,
+                });
+                const persisted = await persistProductRegistrationDraftV3(supabaseAdmin, {
+                  packageId: pkgIdForAudit,
+                  rawText: intakeRawText,
+                  sourceType: parsedDocument.fileType,
+                  supplierHint: intakeLandOperatorName,
+                  documentType: v3.structure_plan.document_type,
+                  result: v3,
+                });
+                if (persisted.error) {
+                  console.warn('[upload-after] product_registration_drafts V3 저장 실패:', persisted.error);
+                } else {
+                  console.log('[upload-after] product_registration_drafts V3:', persisted.id, v3.gate_result.status);
+                }
+              } catch (e) {
+                console.warn('[upload-after] product-registration-v3 sidecar 실패:', e instanceof Error ? e.message : e);
+              }
+            });
             safeAfter(async () => {
               try {
                 await Promise.allSettled([

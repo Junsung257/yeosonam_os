@@ -105,6 +105,7 @@ const navGroups: NavGroup[] = [
       { href: '/admin/packages',                      label: '상품 관리',          icon: Package },
       { href: '/admin/packages?status=pending',         label: '상품 검수',          icon: ClipboardCheck },
       { href: '/admin/upload',                        label: '상품 업로드',        icon: Upload },
+      { href: '/admin/product-registration-drafts',   label: 'V3 Draft Ledger',      icon: FileSearch },
       { href: '/admin/land-operators',                label: '랜드사 관리',        icon: Building2, minRole: 'tenant_admin' },
       { href: '/admin/attractions',                   label: '여행지/관광지',       icon: Mountain },
       { href: '/admin/destinations',                  label: '목적지 관리',        icon: MapPinned },
