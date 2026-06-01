@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import SensitiveRawText from '@/components/admin/SensitiveRawText';
+import { buildStandardNoticeCustomerSavePayload } from '@/lib/product-registration-v3/admin-review';
 import {
   buildStandardNoticeDraft,
   extractStandardNoticesFromRemarkLines,
@@ -408,36 +409,24 @@ export default function PackageReviewPage() {
 
   const saveStandardNotices = async (rows: Array<StandardNoticeDraft & { review_key: string; values_valid: boolean }>) => {
     if (!pkg) return;
-    const invalid = rows.find(row => !row.values_valid);
-    if (invalid) {
-      setNoticeMessage(`추출값 JSON을 확인하세요: ${invalid.category}`);
+    const built = buildStandardNoticeCustomerSavePayload(pkg.id, rows);
+    if (!built.ok) {
+      setNoticeMessage(built.error);
       return;
     }
-    const customerRows = rows.filter(row => row.visibility === 'customer_visible' && row.review_status !== 'rejected');
     setNoticeSaving(true);
     try {
-      const notices_parsed = customerRows.map(row => ({
-        type: row.risk_level === 'high' ? 'CRITICAL' : row.risk_level === 'medium' ? 'POLICY' : 'INFO',
-        title: '유의사항',
-        text: `• ${row.standard_text}`,
-        category: row.category,
-        values: row.values,
-        template_key: row.template_key,
-        review_status: row.review_status,
-        source_line: row.evidence[0]?.line_start ?? null,
-      }));
-      const customer_notes = customerRows.map(row => row.standard_text).join('\n');
       const res = await fetch('/api/packages', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId: pkg.id, notices_parsed, customer_notes }),
+        body: JSON.stringify(built.payload),
       });
       const json = await res.json();
       if (!res.ok) {
         setNoticeMessage(json.error || '표준 유의사항 저장에 실패했습니다.');
         return;
       }
-      setNoticeMessage(`표준 유의사항 ${customerRows.length}건을 고객 노출 필드에 저장했습니다.`);
+      setNoticeMessage(`표준 유의사항 ${built.payload.saved_count}건을 고객 노출 필드에 저장했습니다. 검수 필요/숨김 ${built.payload.skipped_count}건은 제외했습니다.`);
       setNoticeEdits({});
       load();
     } finally {

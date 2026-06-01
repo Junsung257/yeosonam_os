@@ -34,7 +34,6 @@ import { getRelevantReflections } from '@/lib/reflection-memory';
 import { getRegionCacheContext } from '@/lib/region-cache-context';
 import { getLandOperatorProfile, accumulateLandOperatorProfile } from '@/lib/land-operator-profile';
 import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
-import { canCreateAttractionRecord } from '@/lib/attraction-policy';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 import {
@@ -2292,148 +2291,28 @@ JSON 배열로 응답:
               .then(undefined, () => {});
           }
 
-          // ── P11-3: Wikibase reconcile 블록 (SSOT: docs/product-registration-v3-standard-language.md) ──
-          //   정책: "관광지 자동 신규 INSERT 금지".
-          //   기존 DB/alias 매칭 우선, 실패분은 unmatched review 큐로만 보낸다.
-          const allowAutoAttractionInsert = canCreateAttractionRecord('upload', {
-            nodeEnv: process.env.NODE_ENV,
-            allowAutoAttractionInsertEnv: process.env.ALLOW_AUTO_ATTRACTION_INSERT,
-          });
-          if (allowAutoAttractionInsert && newActivities.length > 0) {
+          // 신규 관광지는 업로드 파이프라인에서 절대 생성하지 않는다.
+          // 기존 DB/alias 매칭 실패분은 사장님 검수용 unmatched 큐에만 남긴다.
+          if (newActivities.length > 0) {
             const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
             const { inferCountryFromDestination } = await import('@/lib/destination-iso');
             const firstSeedCountry = inferCountryFromDestination(firstSeedDest);
             const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 30);
 
-            const { reconcilePlaceName } = await import('@/lib/wikidata-reconcile');
-            const { inferCategory } = await import('@/lib/parser/attraction-category');
-
-            let autoInserted = 0;
-            const reconcileFailed: string[] = [];
-
             for (const kw of uniqueNew) {
-              const reconciled = await reconcilePlaceName(kw, {
-                country: firstSeedCountry || undefined,
-                typeId: 'Q570',
-                topRes: 3,
-              });
-
-              if (reconciled.length > 0) {
-                const top = reconciled[0];
-                // qid 기반 중복 체크
-                const { data: existing } = await supabaseAdmin
-                  .from('attractions')
-                  .select('id, aliases')
-                  .eq('qid', top.qid)
-                  .maybeSingle();
-
-                if (existing) {
-                  // 기존 attraction 에 alias 만 추가 (원래 activity 명칭을 alias 로)
-                  const existingAliases: string[] = (existing.aliases as string[] | null) ?? [];
-                  if (!existingAliases.includes(kw) && kw !== top.label_ko && kw !== top.label_en) {
-                    await supabaseAdmin
-                      .from('attractions')
-                      .update({
-                        aliases: [...new Set([...existingAliases, kw])],
-                        updated_at: new Date().toISOString(),
-                      })
-                      .eq('id', existing.id);
-                    console.log(`[Upload P11-3] 기존 ${top.qid} 에 alias 추가: "${kw}"`);
-                  }
-                  // unmatched 큐 제거 (status='added')
-                  await supabaseAdmin
-                    .from('unmatched_activities')
-                    .update({ status: 'added', note: `auto-matched: ${top.qid}` })
-                    .eq('activity', kw);
-                } else {
-                  // 신규 관광지 생성 경로 (기본 비활성; 테스트 환경 opt-in 전용)
-                  const category = inferCategory(kw, top.type_qid || undefined);
-                  const aliasSet = new Set<string>([kw]);
-                  if (top.label_ko) aliasSet.add(top.label_ko);
-                  if (top.label_en && top.label_en !== top.label_ko) aliasSet.add(top.label_en);
-                  for (const a of top.aliases) {
-                    if (a !== top.label_ko && a !== top.label_en) aliasSet.add(a);
-                  }
-
-                  const { data: inserted } = await supabaseAdmin
-                    .from('attractions')
-                    .insert({
-                      name: top.label_ko || top.label_en || kw,
-                      qid: top.qid,
-                      aliases: [...aliasSet].filter(Boolean),
-                      short_desc: top.description?.slice(0, 30) || null,
-                      long_desc: top.description || null,
-                      country: firstSeedCountry,
-                      region: firstSeedDest,
-                      category,
-                      photos: top.image_url
-                        ? [{ src_medium: top.image_url, src_large: top.image_url, photographer: 'Wikimedia Commons', source: 'wikimedia' }]
-                        : [],
-                      mention_count: 1,
-                      is_active: true,
-                    })
-                    .select('id')
-                    .single();
-
-                  if (inserted) {
-                    autoInserted++;
-                    console.log(`[Upload P11-3] 신규 관광지 생성(테스트 opt-in): "${top.label_ko || top.label_en || kw}" (${top.qid})`);
-                    // unmatched 큐 제거
-                    await supabaseAdmin
-                      .from('unmatched_activities')
-                      .update({ status: 'added', note: `test-optin-created: ${top.qid} (conf=${top.confidence.toFixed(2)})` })
-                      .eq('activity', kw);
-
-                    // fire-and-forget: 사진 + 설명 백그라운드 생성
-                    const newId = inserted.id;
-                    safeAfter(async () => {
-                      try {
-                        // 설명 생성
-                        const { generateAttractionDescription } = await import('@/lib/attraction-desc-gen');
-                        const desc = await generateAttractionDescription(top.label_ko || top.label_en || kw, {
-                          qid: top.qid,
-                          wdDescription: top.description,
-                          destination: firstSeedDest,
-                        });
-                        await supabaseAdmin
-                          .from('attractions')
-                          .update({ short_desc: desc.short_desc, updated_at: new Date().toISOString() })
-                          .eq('id', newId);
-                        console.log(`[Upload P11-3] 설명 생성 완료: ${newId.slice(0, 8)}`);
-
-                        // 사진 검색 (기존 photos 비어있을 때만)
-                        const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
-                        await runAttractionPhotoMatch(newId, {
-                          keywords: [top.label_ko || '', top.label_en || '', kw, ...top.aliases].filter(Boolean),
-                          qid: top.qid,
-                          maxPhotos: 5,
-                        });
-                      } catch (e2) {
-                        console.warn(`[Upload P11-3] 백그라운드 처리 실패: ${newId.slice(0, 8)}:`, e2 instanceof Error ? e2.message : e2);
-                      }
-                    });
-                  }
-                }
-              } else {
-                // Reconcile 실패 → 기존처럼 unmatched 큐 적재
-                reconcileFailed.push(kw);
-                await supabaseAdmin.from('unmatched_activities').upsert({
-                  activity: kw,
-                  package_id: savedIds[0] ?? '',
-                  package_title: savedTitles[0] ?? '',
-                  day_number: 0,
-                  country: firstSeedCountry,
-                  region: firstSeedDest,
-                  occurrence_count: 1,
-                  status: 'pending',
-                }, { onConflict: 'activity' });
-              }
-
-              // rate limit 100ms
-              await new Promise(r => setTimeout(r, 100));
+              await supabaseAdmin.from('unmatched_activities').upsert({
+                activity: kw,
+                package_id: savedIds[0] ?? '',
+                package_title: savedTitles[0] ?? '',
+                day_number: 0,
+                country: firstSeedCountry,
+                region: firstSeedDest,
+                occurrence_count: 1,
+                status: 'pending',
+              }, { onConflict: 'activity' });
             }
 
-            console.log(`[Upload API] P11-3(test opt-in): ${autoInserted}건 생성, ${reconcileFailed.length}건 unmatched fallback`);
+            console.log(`[Upload API] 신규 관광지 후보 ${uniqueNew.length}건 unmatched 큐 적재 (auto insert 금지)`);
           }
         }
       } catch (attrError) {

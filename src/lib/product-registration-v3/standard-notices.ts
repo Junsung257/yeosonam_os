@@ -34,13 +34,22 @@ type TemplateDef = {
   render: (values: Record<string, string | number | boolean | null>) => string;
 };
 
+function formatNoticeMoney(amount: string | number | boolean | null | undefined, currency: string | number | boolean | null | undefined): string {
+  const currencyText = typeof currency === 'string' ? currency : '';
+  if (typeof amount !== 'number' || !Number.isFinite(amount)) return `${amount ?? ''}${currencyText}`;
+  if (currencyText === '원' && amount >= 10000 && amount % 10000 === 0) {
+    return `${amount / 10000}만 원`;
+  }
+  return `${amount.toLocaleString('ko-KR')}${currencyText}`;
+}
+
 export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
   'single_room_surcharge.full_trip': {
     category: 'single_room_surcharge',
     risk: 'high',
     visibility: 'customer_visible',
     required: ['amount', 'currency'],
-    render: ({ amount, currency }) => `1인실 사용 시 전 일정 기준 1인 ${amount}${currency}의 추가 요금이 발생합니다.`,
+    render: ({ amount, currency }) => `1인실 사용 시 전 일정 기준 1인 ${formatNoticeMoney(amount, currency)}의 추가 요금이 발생합니다.`,
   },
   'passport.validity_months': {
     category: 'passport_validity',
@@ -54,7 +63,9 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     risk: 'high',
     visibility: 'customer_visible',
     required: ['country', 'item'],
-    render: ({ country, item }) => `${country}은(는) ${item} 반입이 금지되어 있습니다.`,
+    render: ({ country, item }) => country
+      ? `${country}은(는) ${item} 반입이 금지되어 있습니다.`
+      : `현지에서는 ${item ?? '해당 품목'} 반입이 금지되어 있습니다.`,
   },
   'room.assignment_not_guaranteed': {
     category: 'room_assignment',
@@ -89,7 +100,7 @@ export const STANDARD_NOTICE_TEMPLATES: Record<string, TemplateDef> = {
     risk: 'high',
     visibility: 'customer_visible',
     required: ['amount', 'currency', 'unit'],
-    render: ({ amount, currency, unit }) => `단체 일정에 참여하지 않고 개별 일정을 진행하는 경우 현지 규정에 따라 ${unit} ${amount}${currency}의 추가 비용이 발생할 수 있습니다.`,
+    render: ({ amount, currency, unit }) => `단체 일정에 참여하지 않고 개별 일정을 진행하는 경우 현지 규정에 따라 ${unit} ${formatNoticeMoney(amount, currency)}의 추가 비용이 발생할 수 있습니다.`,
   },
   'restaurant.short_walk_possible': {
     category: 'restaurant_access',
@@ -108,8 +119,9 @@ function reviewStatusFor(
   category: StandardNoticeCategory,
   risk: StandardNoticeDraft['risk_level'],
   missingRequired: boolean,
+  missingEvidence: boolean,
 ): StandardNoticeReviewStatus {
-  return missingRequired || (risk === 'high' && (
+  return missingRequired || missingEvidence || (risk === 'high' && (
     category === 'single_room_surcharge' ||
     category === 'tip_guideline' ||
     category === 'group_schedule_penalty' ||
@@ -132,15 +144,17 @@ export function buildStandardNoticeDraft(input: {
   const template = STANDARD_NOTICE_TEMPLATES[template_key];
   if (!template) return null;
   const missingRequired = template.required.some(key => input.values[key] == null || input.values[key] === '');
+  const visibility = input.visibility ?? template.visibility;
+  const missingEvidence = visibility === 'customer_visible' && input.evidence.length === 0;
   return {
     source_text: input.source_text,
     category: input.category,
     template_key,
     values: input.values,
     evidence: input.evidence,
-    visibility: input.visibility ?? template.visibility,
+    visibility,
     risk_level: template.risk,
-    review_status: input.review_status ?? reviewStatusFor(input.category, template.risk, missingRequired),
+    review_status: input.review_status ?? reviewStatusFor(input.category, template.risk, missingRequired, missingEvidence),
     standard_text: template.render(input.values),
   };
 }
@@ -181,11 +195,11 @@ export function detectStandardNoticeFromLine(
   } else if (/공항미팅|관광지\s*방문\s*불가|차량에서\s*대체|현지\s*가이드/.test(source)) {
     category = 'local_guide_operation';
     template_key = 'guide.operation_limited_area';
-  } else if (/전자담배|반입\s*불가|금지/.test(source) && /(베트남|태국|일본|국가|현지)/.test(source)) {
+  } else if (/전자담배|아이코스|히츠/.test(source) && /반입|불가|금지/.test(source)) {
     category = 'local_law_restriction';
     template_key = 'local_law.prohibited_item';
-    values.country = source.match(/(베트남|태국|일본|중국|필리핀)/)?.[1] ?? '현지 국가';
-    values.item = /전자담배/.test(source) ? '전자담배' : '해당 품목';
+    values.country = source.match(/(베트남|태국|일본|중국|필리핀)/)?.[1] ?? null;
+    values.item = /전자담배|아이코스|히츠/.test(source) ? '전자담배' : '해당 품목';
   } else if (/룸배정|개런티\s*불가|베드\s*타입|옆방|같은\s*층/.test(source)) {
     category = 'room_assignment';
     template_key = 'room.assignment_not_guaranteed';

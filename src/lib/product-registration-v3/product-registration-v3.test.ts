@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseV3AiStructurePlan, persistProductRegistrationDraftV3, runProductRegistrationV3 } from '.';
+import { buildStandardNoticeDraft } from './standard-notices';
 import { mapTravelPackageToLandingData } from '../map-travel-package-to-lp';
 import { renderPackage } from '../render-contract';
 
@@ -322,6 +323,7 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     const localLaw = notices.find(n => n.category === 'local_law_restriction');
     const penalty = notices.find(n => n.category === 'group_schedule_penalty');
     expect(single?.values.amount).toBe(180000);
+    expect(single?.standard_text).toContain('18만 원');
     expect(passport?.values.months).toBe(6);
     expect(localLaw?.values.item).toBeTruthy();
     expect(penalty?.values.amount).toBe(100);
@@ -374,5 +376,38 @@ DAY 3 KE124 출발 13:00 도착 15:00
     const result = await runProductRegistrationV3(raw);
     expect(result.gate_result.status).toBe('blocked');
     expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
+  });
+
+  it('extracts prohibited e-cigarette notice even when supplier omits country name', async () => {
+    const raw = `
+상품: 전자담배 고위험 검증
+가격 499,000원 / 최소출발 4명
+DAY 1 KE123 출발 10:00 도착 12:00
+REMARK
+전자담배 반입금지입니다.
+DAY 3 KE124 출발 13:00 도착 15:00
+`.trim();
+    const result = await runProductRegistrationV3(raw);
+    const notice = result.ledger.variants[0].standard_notices.find(n => n.category === 'local_law_restriction');
+    expect(notice?.values.item).toBe('전자담배');
+    expect(notice?.values.country).toBeNull();
+    expect(notice?.review_status).toBe('review_needed');
+    expect(notice?.standard_text).toBe('현지에서는 전자담배 반입이 금지되어 있습니다.');
+    expect(notice?.source_text).toBe('전자담배 반입금지입니다.');
+    expect(result.gate_result.status).toBe('blocked');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
+  });
+
+  it('marks customer-visible high-risk notices review_needed when evidence is missing', () => {
+    const notice = buildStandardNoticeDraft({
+      source_text: '싱글차지 전 일정 기준 인당 18만 원 추가됩니다.',
+      category: 'single_room_surcharge',
+      values: { amount: 180000, currency: '원' },
+      evidence: [],
+    });
+
+    expect(notice?.risk_level).toBe('high');
+    expect(notice?.visibility).toBe('customer_visible');
+    expect(notice?.review_status).toBe('review_needed');
   });
 });
