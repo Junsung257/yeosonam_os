@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
+import { withCronLogging } from '@/lib/cron-observability';
 
 /**
  * Programmatic SEO Generator — destination × angle × month 매트릭스 promote 크론
@@ -222,7 +223,7 @@ async function runGenerator(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return { skipped: true, reason: 'Supabase 미설정' };
   }
 
   const startedAt = Date.now();
@@ -235,11 +236,11 @@ async function runGenerator(request: NextRequest) {
     .eq('scope', 'global')
     .limit(1);
   if (policyRow && policyRow[0] && policyRow[0].enabled === false) {
-    return NextResponse.json({
+    return {
       skipped: true,
       reason: 'publishing_policies.global.enabled=false',
       processed: 0,
-    });
+    };
   }
 
   const { data: topics, error: selectErr } = await supabaseAdmin
@@ -251,14 +252,14 @@ async function runGenerator(request: NextRequest) {
     .limit(limit);
 
   if (selectErr) {
-    return NextResponse.json({ error: `select failed: ${selectErr.message}` }, { status: 500 });
+    return { processed: 0, errors: [`select failed: ${selectErr.message}`] };
   }
   if (!topics || topics.length === 0) {
-    return NextResponse.json({
+    return {
       processed: 0,
       message: 'pending pseo topic 없음',
       elapsed_ms: Date.now() - startedAt,
-    });
+    };
   }
 
   // 슬롯 분산 — 30분 간격 (publisher 가 다음 회차에 분배 발행하도록)
@@ -286,20 +287,17 @@ async function runGenerator(request: NextRequest) {
   const dropped = results.filter((r) => r.status === 'dropped').length;
   const failed = results.filter((r) => r.status === 'failed').length;
 
-  return NextResponse.json({
+  return {
     processed: results.length,
     queued,
     dropped,
     failed,
+    errors: results.filter((r) => r.status === 'failed').map((r) => r.reason ?? `${r.id} failed`),
     elapsed_ms: Date.now() - startedAt,
     results,
-  });
+  };
 }
 
-export async function GET(request: NextRequest) {
-  return runGenerator(request);
-}
+export const GET = withCronLogging('programmatic-seo-generator', runGenerator);
 
-export async function POST(request: NextRequest) {
-  return runGenerator(request);
-}
+export const POST = withCronLogging('programmatic-seo-generator', runGenerator);
