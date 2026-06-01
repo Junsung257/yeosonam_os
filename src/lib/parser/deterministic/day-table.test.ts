@@ -189,3 +189,70 @@ describe('parseDayTable (보홀 슬림팩 DAY1 항공 시간)', () => {
     expect(arr).toMatchObject({ time: '00:30', type: 'flight', transport: '7C2157' });
   });
 });
+
+describe('parseDayTable (백두산 BX 항공 시간)', () => {
+  const BAEKDU = `제1일
+부  산
+
+연  길
+도  문
+
+용  정
+
+
+이도백하
+
+BX337
+전용차량
+06:30
+09:40
+11:30
+ 김해 국제공항 미팅
+ 부산 출발
+ 연길 도착 후 가이드 미팅
+ 중식 후 도문으로 이동 (1시간 소요)
+ 호텔 투숙 및 휴식
+
+제2일
+이도백하
+북  파
+전용차량
+전일
+ 호텔 조식 후 백두산 북파로 이동
+
+제3일
+연  길
+
+
+부  산
+전용차량
+
+BX338
+
+12:30
+16:25
+ 호텔 조식 후 ▶진달래광장
+ 공항으로 이동 (20분 소요)
+ 연길 출발
+ 부산 도착
+`;
+
+  it('미팅 06:30은 항공 시간이 아니고 BX337/BX338 출도착 시간을 보존한다', () => {
+    const r = parseDayTable(BAEKDU);
+    const day1 = r.days[0].schedule;
+    const last = r.days[r.days.length - 1].schedule;
+    const meeting = day1.find(x => x.activity.includes('김해 국제공항 미팅'));
+    const outboundDep = day1.find(x => x.activity === '부산 출발');
+    const outboundArr = day1.find(x => x.activity.includes('연길 도착'));
+    const inboundDep = last.find(x => x.activity === '연길 출발');
+    const inboundArr = last.find(x => x.activity === '부산 도착');
+
+    expect(meeting?.time).toBeUndefined();
+    expect(outboundDep).toMatchObject({ time: '09:40', type: 'flight', transport: 'BX337' });
+    expect(outboundArr).toMatchObject({ time: '11:30', type: 'flight', transport: 'BX337' });
+    expect(inboundDep).toMatchObject({ time: '12:30', type: 'flight', transport: 'BX338' });
+    expect(inboundArr).toMatchObject({ time: '16:25', type: 'flight', transport: 'BX338' });
+    expect(r.meta.flight_out_time).toBe('09:40');
+    expect(r.meta.flight_in_time).toBe('12:30');
+  });
+});

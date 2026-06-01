@@ -87,6 +87,20 @@ describe('Baekdu supplier catalog E2E', () => {
       const view = renderPackage(buildRenderInput(ed, idx));
       const viewPayload = JSON.stringify(view);
       const activities = flatActivities(view);
+      expect(view.flightHeader.outbound).toMatchObject({
+        code: 'BX337',
+        depCity: '부산',
+        arrCity: '연길',
+        depTime: '09:40',
+        arrTime: '11:30',
+      });
+      expect(view.flightHeader.inbound).toMatchObject({
+        code: 'BX338',
+        depCity: '연길',
+        arrCity: '부산',
+        depTime: '12:30',
+        arrTime: '16:25',
+      });
       expect(viewPayload).toContain(exp.shopping);
       exp.hotels.forEach(hotel => expect(viewPayload).toContain(hotel));
       ['부  산', '연  길', '북  파', '서  파', '꿔바로우', '무제한', '매운탕']
