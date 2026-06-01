@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { normalizeTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { buildTenantAdReadiness } from '@/lib/ad-os-tenant-readiness';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -74,24 +75,44 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     ? String(body.risk_status)
     : 'watch';
 
+  const normalized = normalizeTenantAdAccountProbe({
+    tenantId: cleanString(body.tenant_id),
+    platform: platform as 'naver' | 'google' | 'meta' | 'kakao',
+    accountMode: accountMode as 'agency_managed' | 'tenant_owned' | 'hybrid',
+    externalAccountId: cleanString(body.external_account_id),
+    externalCustomerId: cleanString(body.external_customer_id),
+    externalCampaignId: cleanString(body.external_campaign_id),
+    externalAdGroupId: cleanString(body.external_ad_group_id),
+    connectionStatus: connectionStatus as 'not_connected' | 'credentials_ready' | 'permission_denied' | 'no_campaign' | 'ready' | 'suspended',
+    permissionScope: Array.isArray(body.permission_scope) ? body.permission_scope.map(String).slice(0, 20) : [],
+    monthlyBudgetCapKrw: nonNegativeInt(body.monthly_budget_cap_krw),
+    dailyBudgetCapKrw: nonNegativeInt(body.daily_budget_cap_krw),
+    canPublishKeywords: Boolean(body.can_publish_keywords),
+    canChangeBids: Boolean(body.can_change_bids),
+    canPauseAssets: Boolean(body.can_pause_assets),
+    riskStatus: riskStatus as 'normal' | 'watch' | 'restricted' | 'blocked',
+    lastProbeResult: body.last_probe_result && typeof body.last_probe_result === 'object' ? body.last_probe_result : {},
+    notes: cleanString(body.notes),
+  });
+
   const row = {
-    tenant_id: body.tenant_id || null,
+    tenant_id: normalized.tenantId || null,
     platform,
     account_mode: accountMode,
-    external_account_id: cleanString(body.external_account_id),
-    external_customer_id: cleanString(body.external_customer_id),
-    external_campaign_id: cleanString(body.external_campaign_id),
-    external_ad_group_id: cleanString(body.external_ad_group_id),
-    connection_status: connectionStatus,
-    permission_scope: Array.isArray(body.permission_scope) ? body.permission_scope.map(String).slice(0, 20) : [],
-    monthly_budget_cap_krw: nonNegativeInt(body.monthly_budget_cap_krw),
-    daily_budget_cap_krw: nonNegativeInt(body.daily_budget_cap_krw),
-    can_publish_keywords: Boolean(body.can_publish_keywords),
-    can_change_bids: Boolean(body.can_change_bids),
-    can_pause_assets: Boolean(body.can_pause_assets),
-    last_probe_result: body.last_probe_result && typeof body.last_probe_result === 'object' ? body.last_probe_result : {},
-    risk_status: riskStatus,
-    notes: cleanString(body.notes),
+    external_account_id: cleanString(normalized.externalAccountId),
+    external_customer_id: cleanString(normalized.externalCustomerId),
+    external_campaign_id: cleanString(normalized.externalCampaignId),
+    external_ad_group_id: cleanString(normalized.externalAdGroupId),
+    connection_status: normalized.connectionStatus,
+    permission_scope: normalized.permissionScope || [],
+    monthly_budget_cap_krw: normalized.monthlyBudgetCapKrw || 0,
+    daily_budget_cap_krw: normalized.dailyBudgetCapKrw || 0,
+    can_publish_keywords: Boolean(normalized.canPublishKeywords),
+    can_change_bids: Boolean(normalized.canChangeBids),
+    can_pause_assets: Boolean(normalized.canPauseAssets),
+    last_probe_result: normalized.lastProbeResult || {},
+    risk_status: normalized.riskStatus || 'watch',
+    notes: cleanString(normalized.notes),
     updated_at: new Date().toISOString(),
   };
 

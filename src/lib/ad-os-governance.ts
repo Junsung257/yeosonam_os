@@ -4,12 +4,12 @@ export const AD_OS_AUTOMATION_MODES = [
     label: '추천',
     levelMin: 0,
     levelMax: 1,
-    description: 'AI가 키워드, 랜딩, 예산, DKI 후보를 추천만 합니다. 외부 광고 계정은 변경하지 않습니다.',
+    description: 'AI가 키워드, 랜딩, 예산, DKI 후보만 추천합니다. 외부 광고 계정은 변경하지 않습니다.',
     allowedActions: ['candidate_generation', 'readiness_audit', 'learning_summary'],
   },
   {
     id: 'approval',
-    label: '승인',
+    label: '승인형 집행',
     levelMin: 2,
     levelMax: 2,
     description: '운영자가 승인한 후보만 내부 드래프트 또는 정지 키워드 배포 대상으로 이동합니다.',
@@ -20,7 +20,7 @@ export const AD_OS_AUTOMATION_MODES = [
     label: '제한 예산 자동집행',
     levelMin: 3,
     levelMax: 3,
-    description: '테넌트 채널/상품 예산 한도 안에서 소액 테스트, 자동 정지, 제외어 제안을 실행합니다.',
+    description: '테넌트, 채널, 상품 예산 캡 안에서 소액 테스트, 자동 정지, 제외어 제안을 실행합니다.',
     allowedActions: ['start_small_tests', 'pause_losers', 'negative_keyword_suggestions', 'budget_pacing'],
   },
   {
@@ -90,7 +90,7 @@ export function classifyChannelExecutionState(input: {
       label: '권한 없음',
       tone: 'bad',
       canSpend: false,
-      summary: `${input.platformLabel} 계정 접근은 시도됐지만 광고 계정 권한 검증이 통과하지 못했습니다.`,
+      summary: `${input.platformLabel} 계정 접근은 시도됐지만 광고 계정 권한 검증을 통과하지 못했습니다.`,
       nextAction: `${input.platformLabel} 광고 계정 권한, customer/account id, OAuth scope를 확인하세요.`,
     };
   }
@@ -101,7 +101,7 @@ export function classifyChannelExecutionState(input: {
       label: '캠페인 없음',
       tone: 'warn',
       canSpend: false,
-      summary: `${input.platformLabel} 연동은 준비됐지만 내부 캠페인 또는 광고그룹이 확인되지 않았습니다.`,
+      summary: `${input.platformLabel} 연동은 준비됐지만 캠페인 또는 광고그룹이 확인되지 않았습니다.`,
       nextAction: `${input.platformLabel} 캠페인과 광고그룹을 만들거나 기존 ID를 예산 설정에 저장하세요.`,
     };
   }
@@ -122,7 +122,7 @@ export function classifyChannelExecutionState(input: {
     label: '연동 준비됨',
     tone: 'neutral',
     canSpend: false,
-    summary: `${input.platformLabel} 계정 연동과 기본 자산은 준비됐지만 예산, 승인 키워드, 드래프트가 아직 부족합니다.`,
+    summary: `${input.platformLabel} 계정 연동은 준비됐지만 예산, 승인 키워드, 내부 드래프트가 아직 부족합니다.`,
     nextAction: '추천 후보를 승인하고 예산 가드레일과 내부 드래프트를 준비하세요.',
   };
 }
@@ -140,7 +140,7 @@ export function buildTenantRiskGuardrails(input: {
     label: '테넌트 데이터 분리',
     status: input.tenantScopedTables > 0 ? 'warn' : 'fail',
     detail: input.tenantScopedTables > 0
-      ? '일부 마케팅 콘텐츠 테이블은 tenant_id 기반 확장 여지가 있습니다. 광고 OS 전용 테이블까지 정규화해야 합니다.'
+      ? '일부 마케팅/콘텐츠 테이블은 tenant_id 기반 확장 여지가 있습니다. 광고 OS 전용 테이블까지 더 정규화해야 합니다.'
       : '광고 OS 전용 테넌트 스코프 증거가 부족합니다.',
   });
   risks.push({
