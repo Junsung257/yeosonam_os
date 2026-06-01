@@ -348,7 +348,7 @@ export async function runAdOsProductAutopilot(options: ProductAutopilotOptions):
     const searchPlan = apply
       ? await buildAndSaveSearchAdPackagePlan(options.packageId)
       : await buildSearchAdPackagePlan(pkg);
-    result.search_ads.saved = apply ? ('saved' in searchPlan ? searchPlan.saved : 0) : 0;
+    result.search_ads.saved = apply ? Number((searchPlan as { saved?: number }).saved || 0) : 0;
     result.search_ads.keywords = searchPlan.summary.total;
   } catch (error) {
     result.ok = false;
