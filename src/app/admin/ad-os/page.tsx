@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -88,6 +88,12 @@ type Summary = {
     status: 'pass' | 'warn' | 'fail';
     detail: string;
   }>;
+  tenant_ad_readiness?: Array<{
+    id: string;
+    label: string;
+    status: 'pass' | 'warn' | 'fail';
+    detail: string;
+  }>;
   tenant_policy?: {
     configured: boolean;
     error?: string | null;
@@ -156,6 +162,8 @@ type Summary = {
     product_scenarios: Array<Record<string, unknown>>;
     landing_evolution_queue: Array<Record<string, unknown>>;
     budget_pacing: Array<Record<string, unknown>>;
+    tenant_ad_accounts: Array<Record<string, unknown>>;
+    change_requests: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -296,6 +304,7 @@ export default function AdOsPage() {
   const [runningKillSwitch, setRunningKillSwitch] = useState(false);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
+  const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [launchAudit, setLaunchAudit] = useState<LaunchAudit | null>(null);
   const [naverSetupPacket, setNaverSetupPacket] = useState<NaverSetupPacket | null>(null);
@@ -905,6 +914,34 @@ export default function AdOsPage() {
     }
   };
 
+  const updateChangeRequest = async (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => {
+    setChangeRequestActionId(id);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/change-requests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '변경 요청 처리 실패');
+      await refresh();
+      setAutomationMessage(
+        status === 'approved'
+          ? 'AI 변경 요청을 승인했습니다. 제한 자동집행 단계에서 예산/권한 조건을 다시 확인한 뒤 적용됩니다.'
+          : status === 'applied'
+            ? '승인된 AI 변경 요청을 내부 운영 테이블에 적용했습니다. 외부 광고 계정 반영은 채널 권한 게이트를 다시 통과해야 합니다.'
+            : status === 'rolled_back'
+              ? 'AI 변경 요청을 롤백했습니다. 이전 상태로 되돌린 내용을 감사 로그에서 확인할 수 있습니다.'
+          : 'AI 변경 요청을 거절했습니다. 같은 조건은 이후 학습 로그에 반영되어 추천 우선순위가 낮아집니다.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '변경 요청 처리 실패');
+    } finally {
+      setChangeRequestActionId(null);
+    }
+  };
+
   const readyScore = useMemo(() => {
     if (!summary) return 0;
     let score = 0;
@@ -1148,6 +1185,21 @@ export default function AdOsPage() {
                 ))}
               </div>
             )}
+            {summary.tenant_ad_readiness && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+                {summary.tenant_ad_readiness.map((item) => (
+                  <div key={item.id} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-admin-xs font-semibold text-admin-text">{item.label}</p>
+                      <StatusPill tone={item.status === 'pass' ? 'good' : item.status === 'warn' ? 'warn' : 'bad'}>
+                        {item.status === 'pass' ? '통과' : item.status === 'warn' ? '주의' : '차단'}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-2 text-admin-2xs leading-5 text-admin-muted">{item.detail}</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {summary.tenant_policy && (
               <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1339,6 +1391,8 @@ export default function AdOsPage() {
             <KpiCard label="상품 시나리오" value={(summary.kpis.product_scenarios || 0).toLocaleString('ko-KR')} icon={Bot} />
             <KpiCard label="랜딩 진화 후보" value={(summary.kpis.landing_evolution_candidates || 0).toLocaleString('ko-KR')} icon={Layers} />
             <KpiCard label="예산 페이싱 경고" value={(summary.kpis.budget_pacing_alerts || 0).toLocaleString('ko-KR')} icon={AlertTriangle} tone={(summary.kpis.budget_pacing_alerts || 0) > 0 ? 'negative' : 'neutral'} />
+            <KpiCard label="테넌트 광고계정" value={(summary.kpis.tenant_ad_accounts_ready || 0).toLocaleString('ko-KR')} icon={KeyRound} tone={(summary.kpis.tenant_ad_accounts_ready || 0) > 0 ? 'positive' : 'neutral'} />
+            <KpiCard label="승인 대기 변경" value={(summary.kpis.change_requests_proposed || 0).toLocaleString('ko-KR')} icon={ShieldCheck} tone={(summary.kpis.change_requests_high_risk || 0) > 0 ? 'negative' : 'neutral'} />
             <KpiCard label="월 예산 설정" value={fmtWon(summary.kpis.configured_monthly_budget_krw)} icon={Wallet} />
           </div>
 
@@ -1924,6 +1978,78 @@ export default function AdOsPage() {
                         <StatusPill tone={row.status === 'candidate' ? 'warn' : 'good'}>{String(row.status || '-')}</StatusPill>
                       </div>
                       <p className="mt-1 text-admin-2xs text-admin-muted">{String(row.reason || '').slice(0, 90)}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="admin-card p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-admin-base font-semibold text-admin-text-2">AI 변경 승인 큐</h2>
+                <StatusPill tone={(summary.kpis.change_requests_proposed || 0) > 0 ? 'warn' : 'neutral'}>{summary.kpis.change_requests_proposed || 0}개</StatusPill>
+              </div>
+              <div className="mt-3 space-y-2">
+                {(summary.samples.change_requests || []).length === 0 ? (
+                  <div className="rounded-admin-sm bg-admin-surface-2 p-4 text-admin-xs text-admin-muted">
+                    아직 승인 대기 변경이 없습니다. 성과 최적화나 예산 페이싱이 정지/증액/교체 후보를 만들면 여기에 쌓입니다.
+                  </div>
+                ) : (
+                  summary.samples.change_requests.slice(0, 6).map((row, idx) => (
+                    <div key={String(row.id || idx)} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-admin-xs font-semibold text-admin-text">{String(row.title || row.request_type || '-')}</p>
+                        <StatusPill tone={['high', 'critical'].includes(String(row.risk_level || '')) ? 'bad' : row.status === 'proposed' ? 'warn' : 'good'}>
+                          {String(row.status || '-')}
+                        </StatusPill>
+                      </div>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">
+                        {String(row.platform || 'internal')} · {String(row.risk_level || 'medium')} · {String(row.reason || '').slice(0, 70)}
+                      </p>
+                      {String(row.status || '') === 'proposed' && String(row.id || '') && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => updateChangeRequest(String(row.id), 'approved')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <Check size={13} />
+                            승인
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateChangeRequest(String(row.id), 'rejected')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <X size={13} />
+                            거절
+                          </Button>
+                        </div>
+                      )}
+                      {String(row.status || '') === 'approved' && String(row.id || '') && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => updateChangeRequest(String(row.id), 'applied')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <PlayCircle size={13} />
+                            적용
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateChangeRequest(String(row.id), 'rolled_back')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <X size={13} />
+                            롤백
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}

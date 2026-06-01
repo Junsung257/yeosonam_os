@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+﻿import { NextRequest, NextResponse } from 'next/server';
 import { decideAdOsBudgetPacing } from '@/lib/ad-os-budget-pacing';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -149,6 +149,43 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       blocked_reason: pacing.canApplyInternally ? null : 'automation_level_or_budget_not_ready',
     }));
     await supabaseAdmin.from('ad_os_decision_logs').insert(decisionRows);
+
+    const changeRequests = decisions
+      .filter(({ pacing }) => pacing.recommendedAction !== 'no_change')
+      .map(({ budget, pacing }) => ({
+        run_id: run.id,
+        tenant_id: budget.tenant_id,
+        platform: budget.platform,
+        automation_level: Number(budget.automation_level || 0),
+        request_type: pacing.recommendedAction === 'pause_channel' ? 'pause_channel' : 'budget_change',
+        target_table: 'ad_os_channel_budgets',
+        target_id: budget.id,
+        status: 'proposed',
+        title: pacing.recommendedAction === 'pause_channel' ? '월 예산 소진 채널 정지' : '예산 페이싱 일상한 조정',
+        reason: pacing.reason,
+        risk_level: pacing.recommendedAction === 'pause_channel' ? 'high' : 'medium',
+        expected_impact: json(pacing),
+        proposed_change: json({
+          status: pacing.recommendedAction === 'pause_channel' ? 'paused' : budget.status,
+          daily_budget_cap_krw: pacing.nextDailyBudgetCapKrw,
+        }),
+        rollback_payload: json({
+          status: budget.status,
+          daily_budget_cap_krw: budget.daily_budget_cap_krw,
+        }),
+        approval_required: true,
+      }));
+    if (changeRequests.length > 0) {
+      const { error: requestError } = await supabaseAdmin.from('ad_os_change_requests').insert(changeRequests);
+      if (requestError) {
+        await supabaseAdmin.from('ad_os_automation_runs').update({
+          status: 'failed',
+          finished_at: new Date().toISOString(),
+          errors: [{ message: requestError.message }],
+        }).eq('id', run.id);
+        return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
+      }
+    }
   }
 
   let appliedCount = 0;

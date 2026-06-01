@@ -161,6 +161,7 @@ export default function MarketingCommandCenterPage() {
   const [adOsError, setAdOsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [assetGroupWarning, setAssetGroupWarning] = useState<string | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [applyMessage, setApplyMessage] = useState<string | null>(null);
@@ -169,6 +170,7 @@ export default function MarketingCommandCenterPage() {
     setLoading(true);
     setError(null);
     setAdOsError(null);
+    setAssetGroupWarning(null);
     try {
       const [assetRes, snapshotRes, adOsRes] = await Promise.all([
         fetchWithSessionRefresh('/api/admin/marketing/asset-groups?limit=40', { cache: 'no-store' }),
@@ -177,7 +179,10 @@ export default function MarketingCommandCenterPage() {
       ]);
       if (!assetRes.ok) {
         const payload = await assetRes.json().catch(() => ({}));
-        throw new Error((payload as { error?: string }).error ?? `Asset groups HTTP ${assetRes.status}`);
+        setData({ checked_at: new Date().toISOString(), groups: [], actions: [] });
+        setAssetGroupWarning((payload as { error?: string }).error ?? `Asset groups HTTP ${assetRes.status}`);
+      } else {
+        setData(await assetRes.json());
       }
       if (!snapshotRes.ok) {
         const payload = await snapshotRes.json().catch(() => ({}));
@@ -190,7 +195,6 @@ export default function MarketingCommandCenterPage() {
       } else {
         setAdOs(await adOsRes.json());
       }
-      setData(await assetRes.json());
       setSnapshots(await snapshotRes.json());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
@@ -307,6 +311,11 @@ export default function MarketingCommandCenterPage() {
       {error && (
         <div className="rounded-admin-md border border-red-200 bg-red-50 p-4 text-admin-sm text-red-700">
           Command Center failed: {error}
+        </div>
+      )}
+      {assetGroupWarning && (
+        <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4 text-admin-sm text-amber-800">
+          Product asset groups unavailable: {assetGroupWarning}. Search ad readiness and automation trend remain visible below.
         </div>
       )}
       {applyMessage && (

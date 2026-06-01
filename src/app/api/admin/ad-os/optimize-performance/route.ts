@@ -162,6 +162,35 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .eq('id', run.id);
       return NextResponse.json({ ok: false, error: decisionError.message }, { status: 500 });
     }
+
+    const changeRequests = decisions
+      .filter((row) => row.decision_type === 'pause' || row.decision_type === 'scale')
+      .map((decision) => ({
+        run_id: run.id,
+        platform: decision.platform,
+        automation_level: decision.decision_type === 'scale' ? 3 : 2,
+        request_type: decision.decision_type === 'pause' ? 'replace_landing' : 'create_keyword',
+        target_table: decision.target_table,
+        target_id: decision.target_id,
+        status: 'proposed',
+        title: decision.decision_type === 'pause' ? '저성과 랜딩 정지/교체 검토' : '성과 좋은 랜딩 확장 검토',
+        reason: decision.reason,
+        risk_level: decision.decision_type === 'scale' ? 'high' : 'medium',
+        expected_impact: decision.expected_impact,
+        proposed_change: decision.after_state,
+        rollback_payload: decision.before_state,
+        approval_required: true,
+      }));
+    if (changeRequests.length > 0) {
+      const { error: requestError } = await supabaseAdmin.from('ad_os_change_requests').insert(changeRequests);
+      if (requestError) {
+        await supabaseAdmin
+          .from('ad_os_automation_runs')
+          .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: requestError.message }] })
+          .eq('id', run.id);
+        return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
+      }
+    }
   }
 
   let appliedCount = 0;

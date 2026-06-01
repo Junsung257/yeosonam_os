@@ -92,7 +92,8 @@ describe('standard product markdown', () => {
 ## 일정
 ### DAY 5 | 나트랑, 부산 | 기내박(기내) | 조:X / 중:X / 석:X
 - 10:00 | 죽림선원 관광 | normal | 관광지ID: 5728e681-636b-42fa-87b5-a2f0b7b0379c`);
-    const last = parsed.itineraryData?.days.at(-1);
+    const days = parsed.itineraryData?.days || [];
+    const last = days[days.length - 1];
 
     expect(last?.hotel?.grade).toBeNull();
     expect(last?.schedule[0].attraction_ids).toEqual(['5728e681-636b-42fa-87b5-a2f0b7b0379c']);

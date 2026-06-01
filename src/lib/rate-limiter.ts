@@ -86,12 +86,14 @@ const MEMORY_MAX_KEYS = 50_000;
 const memoryStore = new Map<string, BucketEntry>();
 
 if (typeof setInterval !== 'undefined') {
-  setInterval(() => {
+  const cleanupTimer = setInterval(() => {
     const now = Date.now();
     for (const [key, entry] of memoryStore.entries()) {
       if (entry.resetAt < now) memoryStore.delete(key);
     }
-  }, 60_000).unref?.();
+  }, 60_000);
+
+  (cleanupTimer as unknown as { unref?: () => void }).unref?.();
 }
 
 function memoryCheck(
