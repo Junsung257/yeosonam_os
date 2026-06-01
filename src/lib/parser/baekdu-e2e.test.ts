@@ -48,6 +48,10 @@ function buildRenderInput(ed: ExtractedData, idx: number): RenderPackageInput {
   } as unknown as RenderPackageInput;
 }
 
+function flatActivities(view: ReturnType<typeof renderPackage>): string {
+  return JSON.stringify(view.days.flatMap(day => day.schedule.map(item => item.activity)));
+}
+
 describe('Baekdu supplier catalog E2E', () => {
   it('parses one supplier raw text into 8 customer-ready package variants', async () => {
     const parsed = await parseDocument(Buffer.from(raw, 'utf8'), 'baekdu.txt');
@@ -82,8 +86,11 @@ describe('Baekdu supplier catalog E2E', () => {
 
       const view = renderPackage(buildRenderInput(ed, idx));
       const viewPayload = JSON.stringify(view);
+      const activities = flatActivities(view);
       expect(viewPayload).toContain(exp.shopping);
       exp.hotels.forEach(hotel => expect(viewPayload).toContain(hotel));
+      ['부  산', '연  길', '북  파', '서  파', '꿔바로우', '무제한', '매운탕']
+        .forEach(noise => expect(activities).not.toContain(noise));
       expect(view.days).toHaveLength(exp.duration);
     });
   });

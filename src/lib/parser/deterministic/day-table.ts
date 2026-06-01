@@ -59,6 +59,8 @@ const FLIGHT_CODE_RE = /\b([A-Z0-9]{2})\s*(\d{3,4})\b/;
 const MEAL_RE = /(조|중|석)\s*:\s*([^\n]+?)(?=$|\s{2,})/g;
 const HOTEL_RE = /([가-힣A-Za-z0-9\s·]+?)\s*(?:호텔|리조트|레지던스)\s*(?:또는\s*동급)?(?:\s*\(([^)]+)\))?/;
 const HOTEL_GRADE_RE = /\((\d성|준\d성)\)/;
+const REGION_ONLY_KO = new Set(['부산', '연길', '도문', '용정', '이도백하', '북파', '서파', '이도백하서파']);
+const MEAL_FRAGMENT_RE = /^(냉면\+?|꿔바로우|삼겹살|샤브샤브|산천어회\+?|매운탕|양꼬치|비빔밥\+?|오리구이|동북요리|현지식|호텔식|김\s*밥|무제한|\(4인1마리\)|\$30\/인)$/;
 const REGION_KEYWORDS = new Set([
   '인천','김포','부산','제주',
   '청도','칭다오','대만','타이베이','상해','북경','계림','양삭','서안','장가계',
@@ -161,8 +163,15 @@ function extractSchedule(body: string, dayFlightCode: string | null, dayTimes: s
   const lines = body.split('\n').map(l => l.trim()).filter(l => l.length >= 2);
   const depTime = dayTimes[0] ?? null;
   const arrTime = dayTimes[1] ?? null;
+  const shouldSkipNoiseLine = (line: string): boolean => {
+    const normalizedKoLine = line.replace(/\s+/g, '');
+    return REGION_ONLY_KO.has(normalizedKoLine)
+      || MEAL_FRAGMENT_RE.test(line.replace(/\s+/g, ' ').trim())
+      || /(호텔|리조트|레지던스).*(또는\s*동급)/.test(line);
+  };
 
   for (const line of lines) {
+    if (shouldSkipNoiseLine(line)) continue;
     if (/^제\s*\d+\s*일/.test(line)) continue; // 헤더 자체 skip
     if (HOTEL_RE.test(line) && /또는\s*동급/.test(line)) continue; // 호텔 라인은 별도 처리
     if (/^HOTEL\s*:/i.test(line)) continue; // HOTEL: 마커 (별도 extractHotel)
