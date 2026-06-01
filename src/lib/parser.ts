@@ -1618,6 +1618,7 @@ export async function extractMultipleProducts(
     let phase1Parsed: Record<string, unknown>[] | null = null;
     let phase1Usage: { provider: 'deepseek' | 'gemini'; input: number; output: number; cache_hit: number; elapsed_ms?: number } | undefined;
     let phase1Raw = '';
+    let usedDeterministicCatalogSeeds = false;
 
     // ── Map-Reduce: 블록별 Phase 1 (카탈로그·복수 일정표) ─────────────────
     if (mapReduceOn) {
@@ -1752,6 +1753,7 @@ export async function extractMultipleProducts(
           ? buildDeterministicCatalogSeeds(sharedPrefix, sections)
           : null;
         if (phase1Parsed) {
+          usedDeterministicCatalogSeeds = true;
           console.warn('[Parser] Map-Reduce Phase 1 — deterministic catalog seed fallback 적용:', phase1Parsed.length);
           phase1Usage = { provider: 'deepseek', input: aggIn, output: aggOut, cache_hit: aggCache };
         }
@@ -1883,7 +1885,9 @@ export async function extractMultipleProducts(
       ),
     );
 
-    const phase2Promises = phase1Parsed.map(async (item, idx) => {
+    const phase2Promises = usedDeterministicCatalogSeeds
+      ? phase1Parsed.map(async () => null)
+      : phase1Parsed.map(async (item, idx) => {
       const title = (item.title as string) || '상품명 미상';
       const sectionText = productSectionTexts[idx].slice(0, 30000);
       const prompt = injectToday(MULTI_PRODUCT_PHASE2_PROMPT.replace(/\{\{PRODUCT_TITLE\}\}/g, title));
