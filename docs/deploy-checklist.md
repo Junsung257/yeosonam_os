@@ -90,7 +90,7 @@ Vercel Dashboard > Project > Settings > Crons 에서 전부 ENABLED 확인.
 
 - [ ] `SUPABASE_SERVICE_ROLE_KEY` 는 **서버 환경변수만** (NEXT_PUBLIC_ 접두사 X)
 - [ ] 어드민 라우트 (`/admin/*`) 는 미들웨어에서 인증 체크
-- [ ] `ad_landing_mappings` RLS 정책 활성 (`allow_all_alm`)
+- [ ] `ad_landing_mappings` RLS 정책 확인 (anon/auth 직접 접근 금지, server API/service_role only)
 - [ ] 리뷰 API `/api/reviews` POST 는 `booking_id` 검증
 
 ---
