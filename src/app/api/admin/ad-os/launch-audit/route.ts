@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
   fetchNaverAdgroupById,
@@ -172,6 +174,46 @@ export const POST = withAdminGuard(async () => {
   const fail = items.filter((row) => row.status === 'fail').length;
   const warn = items.filter((row) => row.status === 'warn').length;
   const nextAction = items.find((row) => row.status === 'fail')?.next_action || items.find((row) => row.status === 'warn')?.next_action || 'L2 시범 집행 준비가 완료됐습니다.';
+
+  await Promise.all([
+    upsertTenantAdAccountProbe(supabaseAdmin, {
+      platform: 'naver',
+      connectionStatus: !naverConfig.configured
+        ? 'not_connected'
+        : hasVerifiedNaverAdgroup
+          ? 'ready'
+          : naverCampaigns.campaigns.length > 0 || naverChannels.channels.length > 0 || storedNaverAdgroupId
+            ? 'no_campaign'
+            : 'credentials_ready',
+      externalCustomerId: getSecret('NAVER_ADS_CUSTOMER_ID') || null,
+      externalAccountId: naverChannels.channels[0]?.nccBusinessChannelId || null,
+      externalCampaignId: naverCampaigns.campaigns[0]?.nccCampaignId || null,
+      externalAdGroupId: storedNaverAdgroup?.nccAdgroupId || naverAdgroups.adgroups[0]?.nccAdgroupId || null,
+      permissionScope: naverConfig.configured ? ['keyword_tool', 'asset_read', ...(hasVerifiedNaverAdgroup ? ['keyword_publish', 'keyword_pause'] : [])] : [],
+      canPublishKeywords: hasVerifiedNaverAdgroup,
+      canChangeBids: hasVerifiedNaverAdgroup,
+      canPauseAssets: hasVerifiedNaverAdgroup,
+      riskStatus: hasVerifiedNaverAdgroup ? 'normal' : 'watch',
+      lastProbeResult: { audit_items: items.filter((row) => row.id.startsWith('naver-')), readiness: { pass, warn, fail } },
+      notes: items.find((row) => row.id.startsWith('naver-') && row.status !== 'pass')?.next_action || 'Naver launch audit passed.',
+    }),
+    upsertTenantAdAccountProbe(supabaseAdmin, {
+      platform: 'google',
+      connectionStatus: !googleConfig.configured
+        ? 'not_connected'
+        : googleToken?.accessToken
+          ? 'credentials_ready'
+          : 'permission_denied',
+      externalCustomerId: getSecret('GOOGLE_ADS_CUSTOMER_ID') || null,
+      permissionScope: googleToken?.accessToken ? ['keyword_planning', 'performance_read'] : [],
+      canPublishKeywords: false,
+      canChangeBids: false,
+      canPauseAssets: false,
+      riskStatus: googleToken?.accessToken ? 'watch' : 'restricted',
+      lastProbeResult: { audit_items: items.filter((row) => row.id.startsWith('google-')), readiness: { pass, warn, fail } },
+      notes: items.find((row) => row.id.startsWith('google-') && row.status !== 'pass')?.next_action || 'Google launch audit needs campaign permission verification.',
+    }),
+  ]);
 
   return NextResponse.json({
     ok: true,
