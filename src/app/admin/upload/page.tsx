@@ -16,6 +16,7 @@ interface QueueItem {
   id: string;
   file: File;
   rawText?: string;
+  sourceLabel?: string;
   status: 'waiting' | 'processing' | 'done' | 'error';
   dbId?: string;
   title?: string;
@@ -81,6 +82,61 @@ async function safeResJson(res: Response): Promise<any> {
 }
 
 const MAX_CONCURRENT = 5;
+
+const DESTINATION_HINTS = [
+  '백두산', '연길', '장가계', '몽골', '다낭', '나트랑', '푸꾸옥', '보홀', '세부',
+  '오사카', '도쿄', '후쿠오카', '대만', '타이페이', '방콕', '파타야', '발리',
+  '홍콩', '마카오', '하노이', '호치민', '싱가포르', '코타키나발루',
+];
+
+function compactText(value: string | null | undefined): string {
+  return (value ?? '').replace(/\s+/g, ' ').trim();
+}
+
+function inferTextLabel(rawText: string, fallback: string): string {
+  const head = rawText.slice(0, 5000);
+  const supplier =
+    head.match(/\[([^\]_\n]{2,20})(?:_\d+(?:\.\d+)?%?)?\]/)?.[1] ??
+    head.match(/(?:랜드사|공급사|거래처)\s*[:：]\s*([^\n]{2,20})/)?.[1] ??
+    null;
+  const destination =
+    DESTINATION_HINTS.find(dest => head.includes(dest)) ??
+    head.match(/(?:여행지|지역|목적지)\s*[:：]\s*([^\n]{2,20})/)?.[1] ??
+    null;
+  const duration =
+    head.match(/(\d+\s*박\s*\d+\s*일)/)?.[1] ??
+    head.match(/(\d+\s*일)/)?.[1] ??
+    null;
+  const airline =
+    head.match(/(에어부산|대한항공|아시아나|제주항공|진에어|티웨이|BX\s*\d{3,4}|KE\s*\d{3,4}|OZ\s*\d{3,4}|7C\s*\d{3,4})/)?.[1] ??
+    null;
+  const parts = [supplier, destination, duration, airline].map(compactText).filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : fallback;
+}
+
+function reportLabel(report: QueueItem['registerReport']): string | null {
+  if (!report || report.length === 0) return null;
+  const first = report[0];
+  const title = compactText(first.title);
+  const code = compactText(first.short_code);
+  const suffix = report.length > 1 ? ` 외 ${report.length - 1}개` : '';
+  return [title, code].filter(Boolean).join(' · ') + suffix;
+}
+
+function itemLabel(item: QueueItem): string {
+  return (
+    reportLabel(item.registerReport) ??
+    compactText(item.title) ??
+    compactText(item.sourceLabel) ??
+    compactText(item.file.name) ??
+    '상품'
+  );
+}
+
+function isPublicPackageStatus(status: string | null | undefined): boolean {
+  const normalized = (status ?? '').toLowerCase();
+  return normalized === 'approved' || normalized === 'active' || normalized === 'published';
+}
 
 export default function UploadPage() {
   const router = useRouter();
@@ -236,11 +292,13 @@ export default function UploadPage() {
       const count = data.productCount || 1;
       const titles = data.titles || [ed?.title || '상품'];
       const dbId: string | undefined = data.dbId;
+      const registerReport = data.registerReport ?? null;
+      const labelFromReport = reportLabel(registerReport);
 
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
         status: 'done',
-        title: count > 1 ? `${count}개 상품` : (titles[0] || '상품'),
+        title: labelFromReport ?? (count > 1 ? `${count}개 상품 · ${it.sourceLabel ?? titles[0] ?? '상품'}` : (titles[0] || it.sourceLabel || '상품')),
         productCount: count,
         titles,
         dbId,
@@ -249,7 +307,7 @@ export default function UploadPage() {
         tokenUsage: data.tokenUsage ?? null,
         gate: data.gate ?? null,
         attractionStats: data.attractionStats ?? null,
-        registerReport: data.registerReport ?? null,
+        registerReport,
         catalogSplitWarning: data.catalogSplitWarning ?? null,
       } : it));
 
@@ -278,12 +336,15 @@ export default function UploadPage() {
     const now = Date.now();
     const newItems: QueueItem[] = chunks.map((chunk, i) => {
       itemSeqRef.current++;
+      const fallback = `텍스트 #${itemSeqRef.current}`;
+      const sourceLabel = inferTextLabel(chunk, fallback);
       return {
         id: `text-${now}-${i}`,
-        file: new File([], `텍스트 #${itemSeqRef.current}`),
+        file: new File([], sourceLabel),
         rawText: chunk,
+        sourceLabel,
         status: 'waiting',
-        title: '대기 중...',
+        title: sourceLabel,
       };
     });
 
@@ -331,7 +392,7 @@ export default function UploadPage() {
   const progressPct = queue.length > 0 ? Math.round((doneCount + errorCount) / queue.length * 100) : 0;
 
   const statusIcon = (status: QueueItem['status']) => {
-    if (status === 'done') return <span className="text-green-600 text-admin-sm font-medium">완료</span>;
+    if (status === 'done') return <span className="text-green-600 text-admin-sm font-medium">업로드됨</span>;
     if (status === 'error') return <span className="text-red-600 text-admin-sm font-medium">오류</span>;
     if (status === 'processing') return <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />;
     return <span className="text-admin-muted text-admin-sm">대기</span>;
@@ -620,7 +681,7 @@ export default function UploadPage() {
                   <div className="mt-0.5 flex-shrink-0">{statusIcon(item.status)}</div>
                   <div className="flex-1 min-w-0">
                     <p className="text-admin-sm font-medium text-admin-text-2 truncate">
-                      {item.status === 'done' ? (item.title || item.file.name) : item.file.name}
+                      {item.status === 'done' ? itemLabel(item) : (item.sourceLabel || item.file.name)}
                     </p>
                     {item.status === 'done' && (
                       <div className="mt-0.5">
@@ -691,8 +752,14 @@ export default function UploadPage() {
                                 {r.price != null && <span className="text-admin-muted">₩{r.price.toLocaleString()}</span>}
                                 {r.airline && <span className="text-blue-600">{r.airline}</span>}
                                 {r.departure_days && <span className="text-admin-muted-2">{r.departure_days}</span>}
-                                <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium ml-auto">📱 상세</a>
-                                <a href={r.lp_url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline font-medium">🔗 LP</a>
+                                {isPublicPackageStatus(r.status) ? (
+                                  <>
+                                    <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium ml-auto">📱 상세</a>
+                                    <a href={r.lp_url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline font-medium">🔗 LP</a>
+                                  </>
+                                ) : (
+                                  <span className="text-orange-600 font-medium ml-auto" title="검토 상태라 고객 공개 URL은 NOT_FOUND가 정상입니다.">📱 고객 비공개</span>
+                                )}
                                 <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
                               </div>
                             ))}

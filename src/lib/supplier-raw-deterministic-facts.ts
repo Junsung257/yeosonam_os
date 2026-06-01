@@ -38,26 +38,60 @@ function extractPrices(rawText: string): { adult: number | null; child: number |
   return { adult, child };
 }
 
+function toOptionalTour(line: string) {
+  const normalized = line
+    .replace(/^[※⚫●■□\-*\s]+/, '')
+    .replace(/[※⚫●■□\s]+$/, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!normalized) return null;
+
+  const priceMatch = normalized.match(/\$\s*(\d{1,3})|\b(\d{1,3})\s*(?:USD|달러)\b/i);
+  const price = priceMatch?.[1] ?? priceMatch?.[2] ?? null;
+  const name = normalized
+    .replace(/\$\s*\d{1,3}\s*(?:\/\s*인)?/ig, '')
+    .replace(/\b\d{1,3}\s*(?:USD|달러)\b/ig, '')
+    .trim();
+
+  if (!name || name.length < 2) return null;
+  return {
+    name,
+    region: '',
+    priceLabel: price ? `$${Number(price)}/인` : '',
+    note: null,
+  };
+}
+
+function extractFreeformOptionalTours(rawText: string) {
+  const optionLines = rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => {
+      if (!line) return false;
+      if (/선택관광/.test(line)) return false;
+      return /(현지\s*지불\s*옵션|강력\s*추천\s*옵션|식\s*사\s*:|관광지\s*:|마사지\s*:)/.test(line)
+        && /(?:\$\s*\d{1,3}|\b\d{1,3}\s*(?:USD|달러)\b)/i.test(line);
+    });
+
+  const tours = optionLines
+    .map(toOptionalTour)
+    .filter((tour): tour is { name: string; region: string; priceLabel: string; note: null } => Boolean(tour));
+
+  return tours.filter((tour, index, arr) => (
+    arr.findIndex(other => other.name === tour.name && other.priceLabel === tour.priceLabel) === index
+  ));
+}
+
 function extractOptionalTours(rawText: string) {
   const section = rawText.match(/선택관광\s*\n([\s\S]*?)(?=^\s*(?:\d+\s*일차|DAY\s*\d+|공지|비고|안내사항|주의사항))/m)?.[1] ?? '';
-  return section
+  const sectionTours = section
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^[-•]\s*/, ''))
     .filter(Boolean)
-    .map(line => {
-      const price = line.match(/\$?\s*(\d{1,3})\s*(?:\/\s*인|불|USD|\$)?/i)?.[1] ?? null;
-      const name = line
-        .replace(/\$?\s*\d{1,3}\s*(?:\/\s*인|불|USD|\$)?/ig, '')
-        .trim();
-      if (!name) return null;
-      return {
-        name,
-        region: '',
-        priceLabel: price ? `$${Number(price)}/인` : '',
-        note: null,
-      };
-    })
+    .map(toOptionalTour)
     .filter((tour): tour is { name: string; region: string; priceLabel: string; note: null } => Boolean(tour));
+
+  return sectionTours.length > 0 ? sectionTours : extractFreeformOptionalTours(rawText);
 }
 
 function extractRegion(rawText: string): string | null {

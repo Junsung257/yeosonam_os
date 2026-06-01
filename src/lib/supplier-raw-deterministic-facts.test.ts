@@ -106,6 +106,33 @@ describe('applySupplierRawDeterministicFacts', () => {
     expect(fixed.priceGroups[0].adultPrice).toBe(719000);
   });
 
+  it('recovers freeform local-pay option blocks without a standard optional-tour section', () => {
+    const raw = `2026.05.29기준
+※현지지불옵션 $50/인※
+식  사: 양꼬치특식 $30, 샤브샤브특식 $30
+관광지: 맥주박물관+찌모루시장+잔교 $50, 운상해천대하전망대+5.4광장야경 $50
+마사지: 전신(1시간) $30, 발+전신(90분) $50
+⚫강력추천옵션 택1 $50/인⚫`;
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.optionalTours).toHaveLength(5);
+    expect(facts.optionalTours.map(tour => tour.name)).toEqual([
+      '현지지불옵션',
+      '식 사: 양꼬치특식 , 샤브샤브특식',
+      '관광지: 맥주박물관+찌모루시장+잔교 , 운상해천대하전망대+5.4광장야경',
+      '마사지: 전신(1시간) , 발+전신(90분)',
+      '강력추천옵션 택1',
+    ]);
+    expect(facts.optionalTours.map(tour => tour.priceLabel)).toEqual([
+      '$50/인',
+      '$30/인',
+      '$50/인',
+      '$30/인',
+      '$50/인',
+    ]);
+  });
+
   it('builds a complete itinerary and marks the supplier format as LLM-skippable', () => {
     const raw = `투어코코넛 나트랑/달랏 5성 3박5일 상품 안내
 상품명: [RAW-GOLDEN] 나트랑/달랏 5성 3박5일

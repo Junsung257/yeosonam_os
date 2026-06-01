@@ -1124,6 +1124,16 @@ const postHandler = async (request: NextRequest) => {
       }
       if ((!ed.inclusions?.length) && rawFacts.inclusions.length) ed.inclusions = rawFacts.inclusions;
       if ((!ed.excludes?.length) && rawFacts.excludes.length) ed.excludes = rawFacts.excludes;
+      if ((!ed.optional_tours?.length) && rawFacts.optionalTours.length) {
+        ed.optional_tours = rawFacts.optionalTours.map(tour => ({
+          name: tour.name,
+          region: tour.region || undefined,
+          price: tour.priceLabel || undefined,
+          price_usd: Number(tour.priceLabel.match(/\$(\d+)/)?.[1] ?? 0) || undefined,
+          price_krw: undefined,
+          note: tour.note,
+        }));
+      }
       if ((!ed.notices_parsed?.length) && rawFacts.notices.length) ed.notices_parsed = rawFacts.notices;
       if ((!ed.flight_info?.flight_no) && rawFacts.outbound?.code) {
         ed.flight_info = {
