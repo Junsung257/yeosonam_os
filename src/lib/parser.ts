@@ -1603,6 +1603,21 @@ export async function extractMultipleProducts(
         console.log('[Parser] LLM split fallback → 헤더 ' + sections.length + '개 감지 (regex miss)');
       }
     }
+    const canSeedVerticalGradeCatalog =
+      !base64Image
+      && sections.length >= 2
+      && CATALOG_GRADE_ORDER.every(g => sharedPrefix.includes(g))
+      && sections.filter(s => /백두산|최\s*소\s*출\s*발|포\s*함\s*내\s*역/.test(s)).length >= 2;
+    if (canSeedVerticalGradeCatalog) {
+      const seeds = buildDeterministicCatalogSeeds(sharedPrefix, sections);
+      const sectionTexts = splitCatalogSectionList(sharedPrefix, sections);
+      console.warn('[Parser] vertical grade catalog deterministic seed shortcut:', seeds.length);
+      return seeds.map((item, idx) => ({
+        extractedData: phase1ItemToExtractedData(item, sectionTexts[idx] ?? rawText),
+        itineraryData: null,
+        sectionRawText: sectionTexts[idx] ?? rawText,
+      }));
+    }
     // 2026-05-14 박제: tier 무관, 헤더가 2개 이상이면 무조건 Map-Reduce.
     //   - DeepSeek system prompt 가 같아 prefix cache 90% 적중 → 비용 절감
     //   - 청크별 maxTokens 6000 으로 응답 잘림 위험 ↓ → 정확도 ↑
