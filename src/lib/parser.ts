@@ -1535,9 +1535,6 @@ export async function extractMultipleProducts(
   mimeType?: string,
   options?: ParseOptions,
 ): Promise<MultiProductResult[]> {
-  const apiKey = getSecret('GOOGLE_AI_API_KEY');
-  if (!apiKey) return [];
-
   // ── P1-4 (2026-05-24): 중요도 기반 텍스트 선택 ──
   // 앞 30000자 + 가격 키워드 밀집 구간 포함 (가격 정보가 뒤쪽에 있을 때)
   const truncatedText = smartTruncateWithPricePriority(rawText, 30000);
@@ -1545,6 +1542,22 @@ export async function extractMultipleProducts(
   // often place the itinerary/grade blocks after large price tables; truncating
   // before splitting can collapse an 8-product catalog into one blocked upload.
   const splitSourceText = rawText;
+
+  const apiKey = getSecret('GOOGLE_AI_API_KEY');
+  if (!apiKey) {
+    const r = splitCatalogByItineraryHeaders(splitSourceText);
+    if (r.sections.length >= 2) {
+      const seeds = buildDeterministicCatalogSeeds(r.sharedPrefix, r.sections);
+      const sectionTexts = splitCatalogSectionList(r.sharedPrefix, r.sections);
+      console.warn('[Parser] GOOGLE_AI_API_KEY 없음 — deterministic catalog seed fallback:', seeds.length);
+      return seeds.map((item, idx) => ({
+        extractedData: phase1ItemToExtractedData(item, sectionTexts[idx] ?? rawText),
+        itineraryData: null,
+        sectionRawText: sectionTexts[idx] ?? rawText,
+      }));
+    }
+    return [];
+  }
 
 
   // Reflexion + 지역 컨텍스트 prefix
