@@ -7,7 +7,7 @@ if (SENTRY_DSN) {
     dsn: SENTRY_DSN,
     environment: process.env.NODE_ENV,
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-    beforeSend(event: Sentry.Event) {
+    beforeSend(event: Sentry.ErrorEvent) {
       if (process.env.NODE_ENV === 'development') {
         console.error('[Sentry server]', event);
         return null;
