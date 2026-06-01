@@ -83,6 +83,46 @@ function toLpActivityType(type?: string | null): DayActivity['type'] {
   return 'sightseeing';
 }
 
+function compactKorean(value: string): string {
+  return value.replace(/\s+/g, '').trim();
+}
+
+function isSupplierTableFragment(label: string, type: DayActivity['type'], attractionNames?: string[]): boolean {
+  const text = label.replace(/\s+/g, ' ').trim();
+  const compact = compactKorean(text);
+  if (!compact) return true;
+  if ((attractionNames?.length ?? 0) > 0) return false;
+  if (type === 'hotel' || type === 'optional' || type === 'shopping') return false;
+
+  if (/^\d{1,2}:\d{2}$/.test(text)) return true;
+  if (/^[A-Z0-9]{2}\d{3,4}$/i.test(compact)) return true;
+  if (/^\$?\d+/.test(text)) return true;
+  if (/^(?:\uC870|\uC911|\uC11D)\s*:/.test(text)) return true;
+  if (/^(?:\uBD80\uC0B0|\uC5F0\uAE38|\uB3C4\uBB38|\uC6A9\uC815|\uC774\uB3C4\uBC31\uD558|\uBD81\uD30C|\uC11C\uD30C)$/.test(compact)) return true;
+  if (/^(?:\uC804\uC6A9\uCC28\uB7C9|\uC804\uC77C)$/.test(compact)) return true;
+  if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compact)) return true;
+
+  return false;
+}
+
+function toLpActivities(
+  schedule: { activity?: string | null; type?: string | null; note?: string | null; attraction_ids?: string[]; attraction_names?: string[] }[],
+): DayActivity[] {
+  return schedule
+    .map((s): DayActivity => {
+      const type = toLpActivityType(s.type);
+      const attractionNames = Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined;
+      return {
+        type,
+        label: s.activity ?? '',
+        detail: s.note ?? undefined,
+        attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
+        attractionNames,
+      };
+    })
+    .filter((activity) => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames));
+}
+
 /** 서버에서만 호출 — 채팅 URL 은 env 채널 ID 기준 */
 export function mapTravelPackageToLandingData(
   pkg: Record<string, unknown>,
@@ -232,13 +272,7 @@ export function mapTravelPackageToLandingData(
               dinner: !!d.meals?.dinner,
             },
             activities: [
-              ...d.schedule.map(s => ({
-                type: toLpActivityType(s.type),
-                label: s.activity ?? '',
-                detail: s.note ?? undefined,
-                attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
-                attractionNames: Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined,
-              })),
+              ...toLpActivities(d.schedule),
               ...(d.hotelCard?.name
                 ? [{
                     type: 'hotel' as const,
@@ -260,15 +294,7 @@ export function mapTravelPackageToLandingData(
                 lunch: false,
                 dinner: false,
               },
-              activities: ((d.schedule as { activity: string; type?: string; note?: string; attraction_ids?: string[]; attraction_names?: string[] }[]) || []).map(
-                s => ({
-                  type: toLpActivityType(s.type),
-                  label: s.activity,
-                  detail: s.note,
-                  attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
-                  attractionNames: Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined,
-                }),
-              ),
+              activities: toLpActivities((d.schedule as { activity: string; type?: string; note?: string; attraction_ids?: string[]; attraction_names?: string[] }[]) || []),
               hotel: (d.hotel as { name?: string } | null)?.name,
             };
           })),
