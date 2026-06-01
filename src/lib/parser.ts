@@ -1415,8 +1415,21 @@ function extractVerticalGradePriceTiers(sharedPrefix: string, grade: string): Pr
 
   const lines = sharedPrefix.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   const groups = new Map<string, { label: string; dates: string[]; price: number }>();
+  const overrideDates = new Set<string>();
   let currentMonth: number | null = null;
   let currentRange: { start: number; end: number } | null = null;
+
+  const addPrice = (label: string, date: string, price: number | null, override = false) => {
+    if (override) {
+      overrideDates.add(date);
+      for (const g of groups.values()) {
+        g.dates = g.dates.filter(d => d !== date);
+      }
+    } else if (overrideDates.has(date)) {
+      return;
+    }
+    addCatalogPriceTier(groups, label, date, price);
+  };
 
   const readFourPrices = (start: number): { prices: Array<number | null>; next: number } | null => {
     const prices: Array<number | null> = [];
@@ -1449,7 +1462,7 @@ function extractVerticalGradePriceTiers(sharedPrefix: string, grade: string): Pr
       const pack = readFourPrices(i + 1);
       const iso = toCatalogIso(Number(explicit[1]), Number(explicit[2]));
       if (pack && iso) {
-        addCatalogPriceTier(groups, `${explicit[1]}/${explicit[2]} ${explicit[3]}박`, iso, pack.prices[gradeIndex]);
+        addPrice(`${explicit[1]}/${explicit[2]} ${explicit[3]}박`, iso, pack.prices[gradeIndex], true);
         i = pack.next - 1;
       }
       continue;
@@ -1462,19 +1475,19 @@ function extractVerticalGradePriceTiers(sharedPrefix: string, grade: string): Pr
       const pack = readFourPrices(priceStart);
       if (pack) {
         for (const iso of expandCatalogDowDates(currentMonth, currentRange.start, currentRange.end, dow)) {
-          addCatalogPriceTier(groups, `${currentMonth}월 ${currentRange.start}~${currentRange.end} ${dow}`, iso, pack.prices[gradeIndex]);
+          addPrice(`${currentMonth}월 ${currentRange.start}~${currentRange.end} ${dow}`, iso, pack.prices[gradeIndex]);
         }
         i = pack.next - 1;
       }
       continue;
     }
 
-    const special829 = lines[i] === '8/29' && lines[i + 1] === '(토)' && /^2박3일$/.test(lines[i + 2] ?? '');
-    if (special829) {
+    const standaloneDate = lines[i].match(/^(\d{1,2})\/(\d{1,2})$/);
+    if (standaloneDate && /^\([월화수목금토일]\)$/.test(lines[i + 1] ?? '') && /^\d+박\d+일$/.test(lines[i + 2] ?? '')) {
       const pack = readFourPrices(i + 3);
-      const iso = toCatalogIso(8, 29);
+      const iso = toCatalogIso(Number(standaloneDate[1]), Number(standaloneDate[2]));
       if (pack && iso) {
-        addCatalogPriceTier(groups, '8/29 토 2박3일', iso, pack.prices[gradeIndex]);
+        addPrice(`${standaloneDate[1]}/${standaloneDate[2]} ${lines[i + 2]}`, iso, pack.prices[gradeIndex], true);
         i = pack.next - 1;
       }
     }
