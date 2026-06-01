@@ -70,7 +70,7 @@ export async function collectWeeklyMetrics(): Promise<{
   // 1) 발행된 모든 글 조회
   const { data: posts, error: fetchErr } = await supabaseAdmin
     .from('content_creatives')
-    .select('id, slug, seo_title, destination, angle_type, blog_type, published_at, readability_score, featured, product_id, quality_gate, blog_html')
+    .select('id, slug, seo_title, destination, angle_type, published_at, readability_score, featured, product_id, quality_gate, blog_html')
     .eq('channel', 'naver_blog')
     .eq('status', 'published');
 
@@ -85,7 +85,6 @@ export async function collectWeeklyMetrics(): Promise<{
     seo_title: string | null;
     destination: string | null;
     angle_type: string | null;
-    blog_type: string | null;
     published_at: string | null;
     readability_score: number | null;
     featured: boolean | null;
@@ -205,7 +204,7 @@ export async function analyzePerformancePatterns(
 
   const { data: rows } = await supabaseAdmin
     .from('content_creatives')
-    .select('slug, seo_title, destination, angle_type, blog_type, published_at, readability_score, featured, product_id, metrics, quality_gate')
+    .select('slug, seo_title, destination, angle_type, published_at, readability_score, featured, product_id, metrics, quality_gate')
     .eq('status', 'published')
     .eq('channel', 'naver_blog')
     .not('slug', 'is', null)
@@ -226,7 +225,6 @@ export async function analyzePerformancePatterns(
     seo_title: string | null;
     destination: string | null;
     angle_type: string | null;
-    blog_type: string | null;
     published_at: string | null;
     readability_score: number | null;
     featured: boolean | null;
@@ -243,7 +241,7 @@ export async function analyzePerformancePatterns(
       title: r.seo_title ?? '',
       destination: r.destination,
       angleType: r.angle_type ?? '',
-      blogType: (r.blog_type as 'product' | 'info') ?? 'info',
+      blogType: r.product_id ? 'product' : 'info',
       publishedAt: r.published_at ?? '',
       age: (m?.age_days as number) ?? 0,
       impressions7d: imp,

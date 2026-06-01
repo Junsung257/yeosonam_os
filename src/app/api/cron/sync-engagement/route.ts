@@ -72,7 +72,6 @@ interface CardNewsPublishedRow {
   hook_type?: string | null;
   design_archetype_id?: string | null;
   palette_category?: string | null;
-  posting_hour_kst?: number | null;
 }
 
 /**
@@ -279,7 +278,7 @@ async function runSyncEngagement(request: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin
       .from('card_news')
-      .select('id, title, ig_post_id, ig_published_at, ig_caption, hook_type, design_archetype_id, palette_category, posting_hour_kst')
+      .select('id, title, ig_post_id, ig_published_at, ig_caption, hook_type, design_archetype_id, palette_category')
       .eq('ig_publish_status', 'published')
       .not('ig_post_id', 'is', null)
       .gte('ig_published_at', thirtyDaysAgo)
@@ -306,7 +305,7 @@ async function runSyncEngagement(request: NextRequest) {
         if (!metrics) continue;
         try {
           const trendScore = await computeTrendScoreForCard(row.id, row.ig_post_id, score);
-          const postingHour = row.posting_hour_kst ?? postingHourKstFromIso(row.ig_published_at);
+          const postingHour = postingHourKstFromIso(row.ig_published_at);
 
           const { error: snapErr } = await supabaseAdmin
             .from('post_engagement_snapshots')
