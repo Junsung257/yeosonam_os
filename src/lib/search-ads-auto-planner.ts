@@ -1,4 +1,4 @@
-﻿import {
+import {
   enrichKeywordsWithNaverVolume,
   extractKeywords,
   generateMicroKeywords,
@@ -351,9 +351,9 @@ export async function buildSearchAdPackagePlan(
         landing_url: landingUrl,
         utm_url: utmUrl,
         rationale: [
-          `${pkg.destination || '?곹뭹'} ${kw.tier}/${kw.matchType} ?ㅼ썙?? ?곹뭹 ?뱀씤 ??寃?됯킅怨?draft濡??앹꽦??`,
+          `${pkg.destination || '상품'} ${kw.tier}/${kw.matchType} 키워드. 상품 승인 후 검색광고 draft로 생성됨.`,
           kw.category.startsWith('ad_os_scenario:')
-            ? 'Scenario-driven keyword: ?곹뭹蹂?怨좉컼 ?섎룄/?쒕뵫 ?꾨왂?먯꽌 ?앹꽦??'
+            ? 'Scenario-driven keyword: 상품별 고객 의도와 랜딩 전략에서 생성됨.'
             : '',
           learning.summary ? `Ad OS learning: ${learning.summary}` : '',
         ].filter(Boolean).join(' '),
@@ -444,7 +444,7 @@ export async function saveSearchAdPackagePlan(plan: SearchAdPackagePlan): Promis
     .upsert(plan.items, { onConflict: 'package_id,platform,keyword_text,match_type' })
     .select('id');
 
-  if (error) throw new Error(`寃?됯킅怨??ㅼ썙???뚮옖 ????ㅽ뙣: ${error.message}`);
+  if (error) throw new Error(`검색광고 키워드 플랜 저장 실패: ${error.message}`);
   return { saved: Array.isArray(data) ? data.length : 0 };
 }
 
@@ -464,7 +464,7 @@ export async function buildAndSaveSearchAdPackagePlan(packageId: string): Promis
     .single();
 
   if (error || !pkg) {
-    throw new Error(error?.message ?? '?곹뭹??李얠쓣 ???놁뒿?덈떎.');
+    throw new Error(error?.message ?? '상품을 찾을 수 없습니다.');
   }
 
   const plan = await buildSearchAdPackagePlan(pkg);
@@ -528,7 +528,7 @@ export async function listSearchAdKeywordPlans(filters: {
     error = result.error;
   }
 
-  if (error) throw new Error(`寃?됯킅怨??ㅼ썙???뚮옖 議고쉶 ?ㅽ뙣: ${error.message}`);
+  if (error) throw new Error(`검색광고 키워드 플랜 조회 실패: ${error.message}`);
   return (data ?? []) as SearchAdKeywordPlanRow[];
 }
 
@@ -568,6 +568,6 @@ export async function updateSearchAdKeywordPlanStatus(
     .in('id', cleanIds)
     .select('id');
 
-  if (error) throw new Error(`寃?됯킅怨??ㅼ썙???뚮옖 ?곹깭 蹂寃??ㅽ뙣: ${error.message}`);
+  if (error) throw new Error(`검색광고 키워드 플랜 상태 변경 실패: ${error.message}`);
   return { updated: Array.isArray(data) ? data.length : 0 };
 }

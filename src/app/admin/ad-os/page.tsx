@@ -155,6 +155,7 @@ type Summary = {
     search_term_candidates: Array<Record<string, unknown>>;
     product_scenarios: Array<Record<string, unknown>>;
     landing_evolution_queue: Array<Record<string, unknown>>;
+    budget_pacing: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -283,6 +284,7 @@ export default function AdOsPage() {
   const [publishingNaverKeywords, setPublishingNaverKeywords] = useState(false);
   const [harvestingLearning, setHarvestingLearning] = useState(false);
   const [optimizingPerformance, setOptimizingPerformance] = useState(false);
+  const [runningBudgetPacing, setRunningBudgetPacing] = useState(false);
   const [probingPublisher, setProbingPublisher] = useState(false);
   const [runningLaunchAudit, setRunningLaunchAudit] = useState(false);
   const [probingNaverAdgroups, setProbingNaverAdgroups] = useState(false);
@@ -735,6 +737,29 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '성과 최적화 실패');
     } finally {
       setOptimizingPerformance(false);
+    }
+  };
+
+  const runBudgetPacing = async () => {
+    setRunningBudgetPacing(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/budget-pacing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'dry_run' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '예산 페이싱 실패');
+      await refresh();
+      setAutomationMessage(
+        `예산 페이싱 완료: 채널 ${json.summary.checked_channels.toLocaleString('ko-KR')}개, 과소진 ${json.summary.overspend.toLocaleString('ko-KR')}개, 저소진 ${json.summary.underspend.toLocaleString('ko-KR')}개, 소진완료 ${json.summary.exhausted.toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '예산 페이싱 실패');
+    } finally {
+      setRunningBudgetPacing(false);
     }
   };
 
@@ -1313,6 +1338,7 @@ export default function AdOsPage() {
             <KpiCard label="학습 신호" value={(summary.kpis.learning_events || 0).toLocaleString('ko-KR')} icon={Gauge} />
             <KpiCard label="상품 시나리오" value={(summary.kpis.product_scenarios || 0).toLocaleString('ko-KR')} icon={Bot} />
             <KpiCard label="랜딩 진화 후보" value={(summary.kpis.landing_evolution_candidates || 0).toLocaleString('ko-KR')} icon={Layers} />
+            <KpiCard label="예산 페이싱 경고" value={(summary.kpis.budget_pacing_alerts || 0).toLocaleString('ko-KR')} icon={AlertTriangle} tone={(summary.kpis.budget_pacing_alerts || 0) > 0 ? 'negative' : 'neutral'} />
             <KpiCard label="월 예산 설정" value={fmtWon(summary.kpis.configured_monthly_budget_krw)} icon={Wallet} />
           </div>
 
@@ -1765,15 +1791,19 @@ export default function AdOsPage() {
                   <ShieldCheck size={14} />
                   성과 최적화 드라이런
                 </Button>
+                <Button size="sm" variant="secondary" onClick={runBudgetPacing} loading={runningBudgetPacing}>
+                  <Wallet size={14} />
+                  예산 페이싱 점검
+                </Button>
                 <Button size="sm" variant="secondary" onClick={runExpiryCleanup} loading={runningExpiryCleanup}>
                   <CalendarX size={14} />
                   만료 정리 점검
                 </Button>
-              </div>
                 <Button size="sm" variant="secondary" onClick={runKillSwitchDryRun} loading={runningKillSwitch}>
                   <PauseCircle size={14} />
                   전체 정지 점검
                 </Button>
+              </div>
               <p className="mt-2 text-admin-2xs text-admin-muted">
                 예산 행이 없으면 외부 자동 집행은 막혀야 합니다. 후보 생성과 분석은 계속 가능합니다.
               </p>
