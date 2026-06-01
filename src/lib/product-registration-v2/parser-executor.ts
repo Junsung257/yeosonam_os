@@ -58,6 +58,15 @@ function withFlightSegments(
   }
   return {
     ...itinerary,
+    meta: {
+      ...(itinerary.meta ?? {}),
+      airline: itinerary.meta?.airline ?? outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
+      flight_out: outbound?.code ?? itinerary.meta?.flight_out ?? null,
+      flight_in: inbound?.code ?? itinerary.meta?.flight_in ?? null,
+      flight_out_time: outbound?.dep ?? itinerary.meta?.flight_out_time ?? null,
+      flight_in_time: inbound?.dep ?? itinerary.meta?.flight_in_time ?? null,
+      departure_airport: outbound?.depAirport ?? null,
+    },
     highlights: {
       inclusions: [],
       excludes: [],

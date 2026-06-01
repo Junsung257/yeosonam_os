@@ -63,6 +63,20 @@ import {
 } from '@/lib/supplier-raw-deterministic-facts';
 import { planProductRegistrationV2, runProductRegistrationV2 } from '@/lib/product-registration-v2';
 
+function safeAfter(task: () => Promise<void> | void): void {
+  try {
+    nextAfter(task);
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('outside a request scope')) {
+      void Promise.resolve()
+        .then(task)
+        .catch(err => console.warn('[Upload API] deferred task failed:', err instanceof Error ? err.message : err));
+      return;
+    }
+    throw e;
+  }
+}
+
 function minPriceFromTiers(tiers: Array<{ adult_price?: number | null }> | null | undefined): number | null {
   const prices = (tiers ?? [])
     .map(t => t.adult_price)
@@ -2009,7 +2023,7 @@ JSON 배열로 응답:
             const intakeRawText = productRawText ?? parsedDocument.rawText ?? '';
             const intakeRawHash = createHash('sha256').update(intakeRawText).digest('hex');
             const auditBaseUrl = request.nextUrl.origin;
-            nextAfter(async () => {
+            safeAfter(async () => {
               try {
                 await Promise.allSettled([
                   runCoVeInBackground(pkgIdForAudit),
@@ -2024,7 +2038,7 @@ JSON 배열로 응답:
             // P1 — upload → normalized_intakes 역변환 SSOT + IR canary shadow (샘플만 forward LLM)
             if (isSupabaseConfigured) {
               const intakePkgRow = pkgResult as unknown as Record<string, unknown>;
-              nextAfter(async () => {
+              safeAfter(async () => {
                 try {
                   const snap = await persistIntakeSnapshot(supabaseAdmin, {
                     packageId: pkgIdForAudit,
@@ -2068,7 +2082,7 @@ JSON 배열로 응답:
                   .filter(i => i.severity !== 'medium')
                   .map(i => i.matched),
               };
-              nextAfter(async () => {
+              safeAfter(async () => {
                 try { await accumulateLandOperatorProfile(profileArgs); }
                 catch (e) { console.warn('[upload-after] land-operator profile 실패:', e instanceof Error ? e.message : e); }
               });
@@ -2084,7 +2098,7 @@ JSON 배열로 응답:
                 title,
               };
               const photoPkgId = pkgResult?.id ?? null;
-              nextAfter(async () => {
+              safeAfter(async () => {
                 try { await runAutoPhotoMatch(photoArgs); }
                 catch (e) {
                   const msg = e instanceof Error ? e.message : String(e);
@@ -2337,7 +2351,7 @@ JSON 배열로 응답:
 
                     // fire-and-forget: 사진 + 설명 백그라운드 생성
                     const newId = inserted.id;
-                    nextAfter(async () => {
+                    safeAfter(async () => {
                       try {
                         // 설명 생성
                         const { generateAttractionDescription } = await import('@/lib/attraction-desc-gen');
@@ -2404,7 +2418,7 @@ JSON 배열로 응답:
     //   추가: 실패 시 admin_alerts 적재로 silent fail 영구 차단.
     if (savedIds.length > 0) {
       for (const pkgId of savedIds) {
-        nextAfter(async () => {
+        safeAfter(async () => {
           try {
             const { backfillPackageAttractionsL3 } = await import('@/lib/itinerary-llm-extractor');
             const r = await backfillPackageAttractionsL3(pkgId, { skipIfMatchRateAbove: 0.9 });

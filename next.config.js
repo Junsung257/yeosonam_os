@@ -43,6 +43,11 @@ const nextConfig = {
     if (isServer && config.output) {
       config.output.chunkFilename = 'chunks/[name].js';
     }
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      '@supabase/phoenix': require.resolve('@supabase/phoenix'),
+    };
     return config;
   },
   images: {

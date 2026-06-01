@@ -31,7 +31,7 @@ async function loadPackage(id: string) {
   if (!sb) return null;
   const { data } = await sb
     .from('travel_packages')
-    .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions')
+    .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions, min_participants')
     .eq('id', id)
     .single();
   return data as {
@@ -64,6 +64,7 @@ async function loadPackage(id: string) {
     customer_notes: string | null;
     internal_notes: string | null;
     inclusions: string[] | null;
+    min_participants: number | null;
   } | null;
 }
 
@@ -162,7 +163,12 @@ export default async function PrintPage(
     meta: {
       ...itinerary.meta,
       airline: view.airlineHeader.airlineLabel ?? itinerary.meta.airline,
-    },
+      min_participants: itinerary.meta.min_participants ?? pkg.min_participants ?? 0,
+      flight_out_time: view.flightHeader.outbound?.depTime ?? (itinerary.meta as { flight_out_time?: string | null }).flight_out_time ?? null,
+      flight_in_time: view.flightHeader.inbound?.depTime ?? (itinerary.meta as { flight_in_time?: string | null }).flight_in_time ?? null,
+      flight_out_arrive_time: view.flightHeader.outbound?.arrTime ?? null,
+      flight_in_arrive_time: view.flightHeader.inbound?.arrTime ?? null,
+    } as TravelItinerary['meta'],
     highlights: {
       ...itinerary.highlights,
       inclusions: view.inclusions.flat.length > 0 ? view.inclusions.flat : itinerary.highlights.inclusions,

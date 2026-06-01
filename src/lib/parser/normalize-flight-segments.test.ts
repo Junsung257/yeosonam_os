@@ -2,6 +2,46 @@ import { describe, expect, it } from 'vitest';
 import { normalizeFlightSegments, type FlightSegment } from './normalize-flight-segments';
 import { enrichItineraryForDisplay } from '../itinerary-normalizer';
 
+describe('normalizeFlightSegments explicit segment preservation', () => {
+  it('keeps explicit flight_segments as the source of truth when times are already resolved', () => {
+    const itin = {
+      meta: { flight_out: 'BX337', flight_in: 'BX338' },
+      flight_segments: [
+        {
+          leg: 'outbound' as const,
+          flight_no: 'BX337',
+          dep_airport: '부산',
+          dep_time: '09:40',
+          arr_airport: '연길',
+          arr_time: '11:30',
+          arr_day_offset: 0 as const,
+          day_pair: [0, 0] as [number, number],
+        },
+        {
+          leg: 'inbound' as const,
+          flight_no: 'BX338',
+          dep_airport: '연길',
+          dep_time: '12:30',
+          arr_airport: '부산',
+          arr_time: '16:25',
+          arr_day_offset: 0 as const,
+          day_pair: [2, 2] as [number, number],
+        },
+      ],
+      days: [{
+        day: 1,
+        schedule: [
+          { activity: '김해 국제공항 06:30 미팅', time: '06:30' },
+        ],
+      }],
+    };
+
+    const r = normalizeFlightSegments(itin);
+    expect(r?.flight_segments?.[0]?.dep_time).toBe('09:40');
+    expect(r?.flight_segments?.[1]?.dep_time).toBe('12:30');
+  });
+});
+
 /**
  * 2026-05-19 박제 (FIX-3): normalize-flight-segments 회귀 fixture.
  *
