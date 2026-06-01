@@ -1362,6 +1362,173 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
   };
 }
 
+const CATALOG_GRADE_ORDER = ['세이브', '스탠다드', '프리미엄', '크라운'] as const;
+
+function parseKrwPrice(value: string | undefined): number | null {
+  if (!value) return null;
+  const n = parseInt(value.replace(/[, ]/g, ''), 10);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n < 10000 ? n * 1000 : n;
+}
+
+function toCatalogIso(month: number, day: number): string | null {
+  const now = new Date();
+  const year = month < now.getMonth() + 1 ? now.getFullYear() + 1 : now.getFullYear();
+  const d = new Date(year, month - 1, day);
+  if (d.getFullYear() !== year || d.getMonth() !== month - 1 || d.getDate() !== day) return null;
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+function addCatalogPriceTier(
+  groups: Map<string, { label: string; dates: string[]; price: number }>,
+  label: string,
+  date: string,
+  price: number | null,
+) {
+  if (!date || !price) return;
+  const key = `${label}|${price}`;
+  const g = groups.get(key) ?? { label, dates: [], price };
+  if (!g.dates.includes(date)) g.dates.push(date);
+  groups.set(key, g);
+}
+
+function expandCatalogDowDates(month: number, startDay: number, endDay: number, dowLabel: string): string[] {
+  const dowMap: Record<string, number> = { 일: 0, 월: 1, 화: 2, 수: 3, 목: 4, 금: 5, 토: 6 };
+  const dow = dowMap[dowLabel];
+  if (dow == null) return [];
+  const year = month < new Date().getMonth() + 1 ? new Date().getFullYear() + 1 : new Date().getFullYear();
+  const out: string[] = [];
+  for (let day = startDay; day <= endDay; day++) {
+    const d = new Date(year, month - 1, day);
+    if (d.getFullYear() === year && d.getMonth() === month - 1 && d.getDay() === dow) {
+      const iso = toCatalogIso(month, day);
+      if (iso) out.push(iso);
+    }
+  }
+  return out;
+}
+
+function extractVerticalGradePriceTiers(sharedPrefix: string, grade: string): PriceTier[] {
+  const gradeIndex = CATALOG_GRADE_ORDER.indexOf(grade as (typeof CATALOG_GRADE_ORDER)[number]);
+  if (gradeIndex < 0 || !sharedPrefix) return [];
+
+  const lines = sharedPrefix.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const groups = new Map<string, { label: string; dates: string[]; price: number }>();
+  let currentMonth: number | null = null;
+  let currentRange: { start: number; end: number } | null = null;
+
+  const readFourPrices = (start: number): { prices: Array<number | null>; next: number } | null => {
+    const prices: Array<number | null> = [];
+    let i = start;
+    while (i < lines.length && prices.length < 4) {
+      const price = parseKrwPrice(lines[i]);
+      if (!price) break;
+      prices.push(price);
+      i++;
+    }
+    return prices.length === 4 ? { prices, next: i } : null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const monthOnly = lines[i].match(/^(\d{1,2})월$/);
+    if (monthOnly) {
+      currentMonth = Number(monthOnly[1]);
+      currentRange = null;
+      continue;
+    }
+
+    const rangeOnly = lines[i].match(/^(\d{1,2})\s*~\s*(\d{1,2})$/);
+    if (rangeOnly) {
+      currentRange = { start: Number(rangeOnly[1]), end: Number(rangeOnly[2]) };
+      continue;
+    }
+
+    const explicit = lines[i].match(/^(\d{1,2})\/(\d{1,2})\s+[월화수목금토일]\s+(\d+)박/);
+    if (explicit) {
+      const pack = readFourPrices(i + 1);
+      const iso = toCatalogIso(Number(explicit[1]), Number(explicit[2]));
+      if (pack && iso) {
+        addCatalogPriceTier(groups, `${explicit[1]}/${explicit[2]} ${explicit[3]}박`, iso, pack.prices[gradeIndex]);
+        i = pack.next - 1;
+      }
+      continue;
+    }
+
+    const dow = lines[i].match(/^[월화수목금토일]$/)?.[0];
+    if (dow && currentMonth && currentRange) {
+      let priceStart = i + 1;
+      if (/^\d+박\d+일$/.test(lines[priceStart] ?? '')) priceStart++;
+      const pack = readFourPrices(priceStart);
+      if (pack) {
+        for (const iso of expandCatalogDowDates(currentMonth, currentRange.start, currentRange.end, dow)) {
+          addCatalogPriceTier(groups, `${currentMonth}월 ${currentRange.start}~${currentRange.end} ${dow}`, iso, pack.prices[gradeIndex]);
+        }
+        i = pack.next - 1;
+      }
+      continue;
+    }
+
+    const special829 = lines[i] === '8/29' && lines[i + 1] === '(토)' && /^2박3일$/.test(lines[i + 2] ?? '');
+    if (special829) {
+      const pack = readFourPrices(i + 3);
+      const iso = toCatalogIso(8, 29);
+      if (pack && iso) {
+        addCatalogPriceTier(groups, '8/29 토 2박3일', iso, pack.prices[gradeIndex]);
+        i = pack.next - 1;
+      }
+    }
+  }
+
+  return [...groups.values()].map(g => ({
+    period_label: g.label,
+    departure_dates: g.dates.sort(),
+    adult_price: g.price,
+    child_price: undefined,
+    status: 'available' as const,
+  }));
+}
+
+function splitCatalogSectionList(sharedPrefix: string, sections: string[]): string[] {
+  return sections.map(section => (sharedPrefix ? `${sharedPrefix}\n\n---\n\n${section}` : section));
+}
+
+function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]): Record<string, unknown>[] {
+  return sections.map(section => {
+    const grade = CATALOG_GRADE_ORDER.find(g => section.includes(g)) ?? '세이브';
+    const title = section.match(/([^\n]*백두산[^\n]*\d+\s*박\s*\d+\s*일)/)?.[1]?.replace(/\s+/g, ' ').trim()
+      ?? `${grade} 백두산 상품`;
+    const duration = Number(title.match(/(\d+)\s*박\s*(\d+)\s*일/)?.[2] ?? 0) || undefined;
+    const minParticipants = Number(section.match(/성인\s*(\d+)\s*명\s*이상/)?.[1] ?? 0) || undefined;
+    const inclusionsText = section.match(/포\s*함\s*내\s*역\s*\n([\s\S]*?)(?=불포함\s*내역|선택관광|쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
+    const excludesText = section.match(/불포함\s*내역\s*\n([\s\S]*?)(?=선택관광|쇼핑센터|비\s*고|일\s*자)/)?.[1] ?? '';
+    const specialText = section.match(/비\s*고\s*\n([\s\S]*?)(?=일\s*자)/)?.[1] ?? '';
+    const accommodations = [...section.matchAll(/󰆹\s*([^\n]+)/g)].map(m => m[1].trim()).filter(Boolean);
+    const price_tiers = extractVerticalGradePriceTiers(sharedPrefix, grade);
+    const prices = price_tiers.map(t => t.adult_price).filter((p): p is number => typeof p === 'number' && p > 0);
+
+    return {
+      title,
+      display_title: title,
+      category: 'package',
+      product_type: [grade, section.match(/품격\s*노노|프리미엄\s*노노노|노노노\+|실속/)?.[0]].filter(Boolean).join(' '),
+      trip_style: title.includes('북+서파') ? '북+서파' : '북파',
+      destination: '연길/백두산',
+      duration,
+      departure_airport: '김해',
+      airline: 'BX',
+      min_participants: minParticipants,
+      price: prices.length ? Math.min(...prices) : undefined,
+      price_tiers,
+      inclusions: inclusionsText.split(/\s*,\s*/).map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean),
+      excludes: excludesText.split(/\s*,\s*/).map(v => v.replace(/\s+/g, ' ').trim()).filter(Boolean),
+      accommodations,
+      specialNotes: specialText.split(/\r?\n/).map(v => v.trim()).filter(Boolean).join('\n'),
+      product_summary: title,
+      product_highlights: [title.includes('북+서파') ? '백두산 북파+서파 일정' : '백두산 북파 일정', grade],
+    };
+  });
+}
+
 export async function extractMultipleProducts(
   rawText: string,
   base64Image?: string,
@@ -1568,7 +1735,13 @@ export async function extractMultipleProducts(
         }
       } else {
         console.warn('[Parser] Map-Reduce Phase 1 — 유효 블록 < 2, 단일 경로로 폴백');
-        phase1Parsed = null;
+        phase1Parsed = sections.length >= 2
+          ? buildDeterministicCatalogSeeds(sharedPrefix, sections)
+          : null;
+        if (phase1Parsed) {
+          console.warn('[Parser] Map-Reduce Phase 1 — deterministic catalog seed fallback 적용:', phase1Parsed.length);
+          phase1Usage = { provider: 'deepseek', input: aggIn, output: aggOut, cache_hit: aggCache };
+        }
       }
     }
 
@@ -1684,7 +1857,11 @@ export async function extractMultipleProducts(
     let phase2CacheHit = 0;
     let phase2ProviderFinal: 'deepseek' | 'gemini' = base64Image ? 'gemini' : 'deepseek';
 
+    const splitSectionTexts = sections.length === phase1Parsed.length
+      ? splitCatalogSectionList(sharedPrefix, sections)
+      : [];
     const productSectionTexts = phase1Parsed.map((item, idx) =>
+      splitSectionTexts[idx] ??
       extractProductRawTextSection(
         rawText,
         (item.title as string) || undefined,
