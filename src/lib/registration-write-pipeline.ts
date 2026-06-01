@@ -41,6 +41,12 @@ export type RegistrationWriteResult = {
   productsStatus: 'approved' | 'REVIEW_NEEDED' | 'draft';
 };
 
+export function mapTravelPackageUploadStatus(
+  status: RegistrationWriteResult['travelPackageStatus'],
+): 'approved' | 'pending' {
+  return status === 'pending_review' ? 'pending' : status;
+}
+
 export function mapProductsStatusFromL1(
   l1: L1GateResult,
   travelPackageStatus: 'approved' | 'pending_review',

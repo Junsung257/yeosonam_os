@@ -4,7 +4,7 @@ import { createHash } from 'crypto';
 import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type MultiProductResult, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { postProcessCatalogFields, postProcessItineraryData } from '@/lib/package-post-process';
-import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
+import { mapTravelPackageUploadStatus, prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
 import { persistIntakeSnapshot } from '@/lib/persist-intake-snapshot';
 import { runUploadIrShadowIfSampled } from '@/lib/upload-ir-shadow';
 import { tryExtractUploadViaIr } from '@/lib/upload-ir-extract';
@@ -1790,7 +1790,7 @@ JSON 배열로 응답:
         const draftRow = regWrite.row;
         const l1Gate = regWrite.l1;
         let productStatus = regWrite.productsStatus;
-        let pkgStatus: string = regWrite.travelPackageStatus;
+        let pkgStatus: string = mapTravelPackageUploadStatus(regWrite.travelPackageStatus);
         if (uploadGate === 'BLOCKED') {
           productStatus = 'REVIEW_NEEDED';
           pkgStatus = 'pending';

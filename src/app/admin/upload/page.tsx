@@ -135,7 +135,16 @@ function itemLabel(item: QueueItem): string {
 
 function isPublicPackageStatus(status: string | null | undefined): boolean {
   const normalized = (status ?? '').toLowerCase();
-  return normalized === 'approved' || normalized === 'active' || normalized === 'published';
+  return ['active', 'approved', 'selling', 'available', 'published'].includes(normalized);
+}
+
+function uploadFailureMessage(data: any): string {
+  const errors = Array.isArray(data?.errors)
+    ? data.errors
+        .map((e: any) => [e?.title, e?.error].filter(Boolean).join(': '))
+        .filter(Boolean)
+    : [];
+  return data?.error || errors.join(' / ') || data?.message || '상품 등록에 실패했습니다.';
 }
 
 export default function UploadPage() {
@@ -205,6 +214,7 @@ export default function UploadPage() {
     const res = await fetchWithSessionRefresh(uploadUrl, { method: 'POST', body: formData });
     const data = await safeResJson(res);
     if (!res.ok) throw new Error(data.error || '업로드 실패');
+    if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
     const ed = data.data?.extractedData;
     const match = file.name.match(/^\[([^_\]]+)_(\d+(?:\.\d+)?)%?\]/);
@@ -287,6 +297,7 @@ export default function UploadPage() {
       });
       const data = await safeResJson(res);
       if (!res.ok) throw new Error((data.error as string) || '처리 실패');
+      if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
       const ed = data.data?.extractedData;
       const count = data.productCount || 1;
