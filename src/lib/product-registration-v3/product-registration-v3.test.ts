@@ -315,13 +315,18 @@ describe('product-registration-v3 draft ledger pipeline', () => {
       'tip_guideline',
       'group_schedule_penalty',
       'restaurant_access',
+      'local_guide_operation',
     ]));
     const single = notices.find(n => n.category === 'single_room_surcharge');
     const passport = notices.find(n => n.category === 'passport_validity');
+    const localLaw = notices.find(n => n.category === 'local_law_restriction');
     const penalty = notices.find(n => n.category === 'group_schedule_penalty');
     expect(single?.values.amount).toBe(180000);
     expect(passport?.values.months).toBe(6);
+    expect(localLaw?.values.item).toBeTruthy();
     expect(penalty?.values.amount).toBe(100);
+    expect(notices.every(n => n.standard_text && n.standard_text !== n.source_text)).toBe(true);
+    expect(notices.every(n => n.evidence.length > 0 && n.evidence[0].quote === n.source_text)).toBe(true);
   });
 
   it('renders customer notices with Yeosonam standard text only (no supplier remark leakage)', async () => {

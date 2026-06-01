@@ -27,7 +27,7 @@ const OPTION_RE = /option|optional|\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const FREE_TIME_RE = /free\s*time|\uc790\uc720\s*\uc2dc\uac04|\ud734\uc2dd/i;
 const NOTICE_RE = /include|exclude|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ucd5c\uc18c|\uc8fc\uc758|\uc548\ub0b4|notice/i;
-const REMARK_RE = /비고|주의사항|remark|안내|공지|싱글\s*차지|여권|전자담배|룸배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동/i;
+const REMARK_RE = /비고|주의사항|remark|안내|공지|싱글\s*차지|여권|전자담배|룸배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동|공항미팅|관광지\s*방문|현지\s*가이드|차량에서\s*대체/i;
 const ATTRACTION_DECOY_RE = PRODUCT_HEADER_RE;
 
 function normalizePrice(token: string): number {

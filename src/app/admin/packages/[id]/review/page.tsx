@@ -780,6 +780,8 @@ export default function PackageReviewPage() {
                 <th className="border border-admin-border-mid p-2 text-left">카테고리</th>
                 <th className="border border-admin-border-mid p-2 text-left">추출값</th>
                 <th className="border border-admin-border-mid p-2 text-left">여소남 표준문구</th>
+                <th className="border border-admin-border-mid p-2 text-left">증거</th>
+                <th className="border border-admin-border-mid p-2 text-left">위험도</th>
                 <th className="border border-admin-border-mid p-2 text-left">노출</th>
                 <th className="border border-admin-border-mid p-2 text-left">검수상태</th>
               </tr>
@@ -807,6 +809,30 @@ export default function PackageReviewPage() {
                     />
                   </td>
                   <td className="border border-admin-border-mid p-2 align-top">{row.standard_text}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <div className="min-w-32 space-y-1">
+                      <div className="font-mono text-[11px] text-admin-muted">
+                        L{row.evidence[0]?.line_start ?? '-'}
+                        {row.evidence[0]?.line_end && row.evidence[0]?.line_end !== row.evidence[0]?.line_start
+                          ? `-L${row.evidence[0].line_end}`
+                          : ''}
+                      </div>
+                      <div className="max-w-56 truncate text-admin-text-2" title={row.evidence[0]?.quote ?? row.source_text}>
+                        {row.evidence[0]?.quote ?? row.source_text}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <span className={`inline-flex rounded px-2 py-0.5 text-[11px] font-bold ${
+                      row.risk_level === 'high'
+                        ? 'bg-red-50 text-red-700'
+                        : row.risk_level === 'medium'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-emerald-50 text-emerald-700'
+                    }`}>
+                      {row.risk_level}
+                    </span>
+                  </td>
                   <td className="border border-admin-border-mid p-2 align-top">
                     <select
                       value={row.visibility}

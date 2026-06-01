@@ -178,6 +178,9 @@ export function detectStandardNoticeFromLine(
     template_key = 'passport.validity_months';
     const m = source.match(/(\d+)\s*개월/);
     values.months = m ? Number(m[1]) : null;
+  } else if (/공항미팅|관광지\s*방문\s*불가|차량에서\s*대체|현지\s*가이드/.test(source)) {
+    category = 'local_guide_operation';
+    template_key = 'guide.operation_limited_area';
   } else if (/전자담배|반입\s*불가|금지/.test(source) && /(베트남|태국|일본|국가|현지)/.test(source)) {
     category = 'local_law_restriction';
     template_key = 'local_law.prohibited_item';

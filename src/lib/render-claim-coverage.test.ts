@@ -46,6 +46,25 @@ describe('render-claim-coverage', () => {
     expect(result.unsupported.some(c => c.value === '멜리아 빈펄')).toBe(true);
   });
 
+  it('extracts price date and amount claims from price_dates', () => {
+    const claims = extractRenderClaims({
+      price_dates: [{ date: '2027-02-04', price: 619000, confirmed: true }],
+      itinerary_data: { days: [] },
+    });
+    expect(claims.some(c => c.id === 'priceDates[0].date' && c.value === '2027-02-04')).toBe(true);
+    expect(claims.some(c => c.id === 'priceDates[0].price' && c.value === '619000')).toBe(true);
+  });
+
+  it('accepts price_dates when raw has display-form date and comma price', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '출발일 2/4 요금 619,000원',
+      price_dates: [{ date: '2027-02-04', price: 619000, confirmed: true }],
+      itinerary_data: { days: [] },
+    });
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].date')).toBe(false);
+    expect(result.unsupported.some(c => c.id === 'priceDates[0].price')).toBe(false);
+  });
+
   it('accepts sourceEvidence support even when raw text exact match is absent', () => {
     const result = evaluateRenderClaimCoverage({
       ...pkg,
@@ -101,5 +120,125 @@ describe('render-claim-coverage', () => {
     });
 
     expect(result.unsupported.some(c => c.value.includes('개인경비'))).toBe(false);
+  });
+
+  it('treats "개인경비 · 불포함" as supported when raw has "개인경비"', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '불포함: 개인경비',
+      excludes: ['개인경비'],
+      itinerary_data: { days: [] },
+    });
+    expect(result.unsupported.some(c => c.value === '개인경비 · 불포함')).toBe(false);
+  });
+
+  it('accepts optional tour display name with region suffix stripped', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '선택관광: 전신 마사지',
+      optional_tours: [{ name: '전신 마사지', region: '베트남' }],
+      itinerary_data: { days: [] },
+    });
+    expect(result.unsupported.some(c => c.value === '전신 마사지')).toBe(false);
+  });
+
+  it('accepts optional tour price token USD4 when raw has $4', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '마사지 팁 $4',
+      optional_tours: [{ name: '마사지 팁', price: 'USD4', region: '베트남' }],
+      itinerary_data: { days: [] },
+    });
+    expect(result.unsupported.some(c => c.value === 'USD4')).toBe(false);
+  });
+
+  it('accepts date-like price token 2027-02-04 when raw has 2월 4일', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '특전가 적용일 2월 4일',
+      optional_tours: [{ name: '스페셜 옵션', price: '2027-02-04', region: '베트남' }],
+      itinerary_data: { days: [] },
+    });
+    expect(result.unsupported.some(c => c.value === '2027-02-04')).toBe(false);
+  });
+
+  it('accepts date-like price token 2027-02-11 when raw has 2/11', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '추가요금 적용: 2/11',
+      optional_tours: [{ name: '스페셜 옵션', price: '2027-02-11', region: '베트남' }],
+      itinerary_data: { days: [] },
+    });
+    expect(result.unsupported.some(c => c.value === '2027-02-11')).toBe(false);
+  });
+
+  it('accepts hotel grade token 5성 when raw has 5성급', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '호텔: 멜리아 빈펄 (5성급)',
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            hotel: { name: '멜리아 빈펄', grade: '5성' },
+            schedule: [{ type: 'normal', activity: '호텔 체크인 및 휴식' }],
+          },
+        ],
+      },
+    });
+    expect(result.unsupported.some(c => c.value === '5성')).toBe(false);
+  });
+
+  it('accepts hotel grade token 준5성 when raw has 준 5성급', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '호텔 등급: 준 5성급',
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            hotel: { name: '시그니처 호텔', grade: '준5성' },
+            schedule: [{ type: 'normal', activity: '호텔 체크인 및 휴식' }],
+          },
+        ],
+      },
+    });
+    expect(result.unsupported.some(c => c.value === '준5성')).toBe(false);
+  });
+
+  it('accepts flight city token 부산(김해) when raw has 부산 김해', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '출발: 부산 김해 / 도착: 나트랑',
+      itinerary_data: {
+        flight_segments: [
+          {
+            leg: 'outbound',
+            flight_no: 'LJ115',
+            dep_airport: '부산(김해)',
+            dep_time: '21:35',
+            arr_airport: '나트랑',
+            arr_time: '00:25',
+            arr_day_offset: 0,
+          },
+        ],
+        days: [],
+      },
+    });
+    expect(result.unsupported.some(c => c.value === '부산(김해)')).toBe(false);
+  });
+
+  it('accepts flight city token 김해국제공항 when raw has 김해', () => {
+    const result = evaluateRenderClaimCoverage({
+      raw_text: '김해 출발 / 인천 도착',
+      itinerary_data: {
+        flight_segments: [
+          {
+            leg: 'outbound',
+            flight_no: 'KE123',
+            dep_airport: '김해국제공항',
+            dep_time: '10:00',
+            arr_airport: '인천국제공항',
+            arr_time: '11:10',
+            arr_day_offset: 0,
+          },
+        ],
+        days: [],
+      },
+    });
+    expect(result.unsupported.some(c => c.value === '김해국제공항')).toBe(false);
+    expect(result.unsupported.some(c => c.value === '인천국제공항')).toBe(false);
   });
 });

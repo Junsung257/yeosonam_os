@@ -5,7 +5,7 @@ import { getUnmatchedBootstrapEnvDefaults } from '@/lib/unmatched-bootstrap-conf
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { rateLimitMutation } from '@/lib/rate-limiter';
-import { canCreateAttractionRecord } from '@/lib/attraction-policy';
+import { canCreateAttractionViaReconcileAction } from '@/lib/unmatched-policy';
 
 // ── Internal interfaces for type safety (no `as any`) ──
 interface AttractionBase {
@@ -555,7 +555,7 @@ export async function PATCH(request: NextRequest) {
       }
 
       // 신규 INSERT (관리자 명시 reconcile 액션)
-      if (!canCreateAttractionRecord('admin_manual')) {
+      if (!canCreateAttractionViaReconcileAction()) {
         return NextResponse.json({ error: '정책상 신규 관광지 생성이 허용되지 않습니다.' }, { status: 403 });
       }
       const aliasSet = new Set<string>([unmatched.activity, top.label_ko || '', top.label_en || ''].filter(Boolean));
