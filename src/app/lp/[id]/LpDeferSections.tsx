@@ -81,6 +81,27 @@ function MealRow({ meals }: { meals: ItineraryDay['meals'] }) {
   );
 }
 
+function CleanMealRow({ meals }: { meals: ItineraryDay['meals'] }) {
+  const rows = [
+    { label: '조식', active: meals.breakfast },
+    { label: '중식', active: meals.lunch },
+    { label: '석식', active: meals.dinner },
+  ];
+
+  return (
+    <div className="flex gap-3 mt-1">
+      {rows.map(row => (
+        <span
+          key={row.label}
+          className={`flex items-center gap-0.5 text-xs ${row.active ? 'text-orange-500' : 'text-gray-300'}`}
+        >
+          <Utensils className="w-3 h-3" /> {row.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -101,7 +122,9 @@ function DayAccordion({ dayData, defaultOpen = false }: { dayData: ItineraryDay;
               <MapPin className="w-3 h-3 text-gray-400" />
               <span className="text-sm text-gray-400">{dayData.regions}</span>
             </div>
-            <MealRow meals={dayData.meals} />
+            {(dayData.meals.breakfast || dayData.meals.lunch || dayData.meals.dinner) && (
+              <CleanMealRow meals={dayData.meals} />
+            )}
           </div>
         </div>
         <div className="mt-1 shrink-0 ml-2 text-gray-400">
