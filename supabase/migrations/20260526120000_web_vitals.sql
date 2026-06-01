@@ -28,12 +28,13 @@ CREATE TABLE IF NOT EXISTS web_vital_alerts (
   value numeric NOT NULL,
   path text NOT NULL,
   rating text NOT NULL,
+  alert_hour timestamptz NOT NULL DEFAULT date_trunc('hour', now()),
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 -- 동일 메트릭 + 동일 경로는 1시간 내 재알림 금지
 CREATE UNIQUE INDEX IF NOT EXISTS idx_web_vital_alerts_dedup
-  ON web_vital_alerts (name, path, (date_trunc('hour', created_at)));
+  ON web_vital_alerts (name, path, alert_hour);
 
 -- 관리자 RLS: authenticated만 읽기/쓰기
 ALTER TABLE web_vitals ENABLE ROW LEVEL SECURITY;
