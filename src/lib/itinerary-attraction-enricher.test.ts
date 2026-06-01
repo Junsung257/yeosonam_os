@@ -76,4 +76,13 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(shouldAttemptAttractionMatch({ activity: '공항 이동', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '죽림선원 관광', type: 'normal' })).toBe(true);
   });
+  it('skips supplier table fragments from unmatched attraction collection', () => {
+    expect(shouldAttemptAttractionMatch({ activity: '\uBD80  \uC0B0', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '\uC804\uC6A9\uCC28\uB7C9', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '\uC804\uC77C', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '\uC911:\uAE40  \uBC25', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '\uC11D:\uC0BC\uACB9\uC0B4', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '$30/\uC778 \uBC1C\uC81C\uC678/\uD301\uBCC4\uB3C4', type: 'normal' })).toBe(false);
+    expect(shouldAttemptAttractionMatch({ activity: '\uC9C4\uB2EC\uB798\uAD11\uC7A5', type: 'normal' })).toBe(true);
+  });
 });
