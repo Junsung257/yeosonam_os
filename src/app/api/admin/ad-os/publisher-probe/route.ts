@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { classifyProbeMessageStatus, upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import {
@@ -7,6 +8,7 @@ import {
   getNaverAdsConfigStatus,
 } from '@/lib/search-ads-api';
 import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -146,10 +148,40 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     probeGoogle(hint),
   ]);
 
+  const persistedAccounts = [];
+  if (isSupabaseConfigured) {
+    for (const probe of [naver, google]) {
+      const platform = probe.platform as 'naver' | 'google';
+      const connectionStatus = classifyProbeMessageStatus({
+        platform,
+        probeStatus: probe.status,
+        message: probe.message,
+      });
+      const saveRes = await upsertTenantAdAccountProbe(supabaseAdmin, {
+        platform,
+        connectionStatus,
+        externalCustomerId: platform === 'google'
+          ? getSecret('GOOGLE_ADS_CUSTOMER_ID') || null
+          : getSecret('NAVER_ADS_CUSTOMER_ID') || null,
+        permissionScope: platform === 'google'
+          ? ['keyword_planning', 'performance_read']
+          : ['keyword_tool', 'asset_read'],
+        canPublishKeywords: connectionStatus === 'ready',
+        canChangeBids: connectionStatus === 'ready',
+        canPauseAssets: connectionStatus === 'ready',
+        riskStatus: connectionStatus === 'permission_denied' ? 'restricted' : 'watch',
+        lastProbeResult: JSON.parse(JSON.stringify(probe)),
+        notes: probe.message,
+      });
+      if (!saveRes.error && saveRes.data) persistedAccounts.push(saveRes.data);
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     hint,
     probes: { naver, google },
+    persisted_accounts: persistedAccounts,
     ready_platforms: [naver, google].filter((probe) => probe.status === 'ready').map((probe) => probe.platform),
   });
 });

@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
+import { upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { getSecret } from '@/lib/secret-registry';
 import {
   fetchNaverAdgroups,
   fetchNaverBusinessChannels,
@@ -66,6 +68,21 @@ export const POST = withAdminGuard(async () => {
         ? 'Register and approve a Naver business channel, then create an ad group.'
         : 'Create a Naver ad group under the campaign/business channel, then run sync again.';
 
+    await upsertTenantAdAccountProbe(supabaseAdmin, {
+      platform: 'naver',
+      connectionStatus: 'no_campaign',
+      externalAccountId: firstChannel?.nccBusinessChannelId || null,
+      externalCustomerId: getSecret('NAVER_ADS_CUSTOMER_ID') || null,
+      externalCampaignId: firstCampaign?.nccCampaignId || null,
+      permissionScope: ['keyword_tool', 'asset_read'],
+      canPublishKeywords: false,
+      canChangeBids: false,
+      canPauseAssets: false,
+      riskStatus: 'watch',
+      lastProbeResult: { summary, first_campaign: firstCampaign, first_channel: firstChannel },
+      notes: nextAction,
+    });
+
     return NextResponse.json({
       ok: true,
       saved: false,
@@ -121,11 +138,31 @@ export const POST = withAdminGuard(async () => {
     return NextResponse.json({ ok: false, error: error.message, saved: false }, { status: 500 });
   }
 
+  const accountSaveRes = await upsertTenantAdAccountProbe(supabaseAdmin, {
+    platform: 'naver',
+    connectionStatus: 'ready',
+    externalAccountId: firstChannel?.nccBusinessChannelId || null,
+    externalCustomerId: getSecret('NAVER_ADS_CUSTOMER_ID') || null,
+    externalCampaignId: row.external_campaign_id,
+    externalAdGroupId: row.external_ad_group_id,
+    permissionScope: ['keyword_tool', 'asset_read', 'keyword_publish', 'keyword_pause'],
+    monthlyBudgetCapKrw: Number(data.monthly_budget_krw || 0),
+    dailyBudgetCapKrw: Number(data.daily_budget_cap_krw || 0),
+    canPublishKeywords: true,
+    canChangeBids: true,
+    canPauseAssets: true,
+    riskStatus: 'normal',
+    lastProbeResult: { summary, saved_budget_id: data.id },
+    notes: row.external_config_note,
+  });
+
   return NextResponse.json({
     ok: true,
     saved: true,
     summary,
     saved_budget: data,
+    saved_account: accountSaveRes.data || null,
+    account_error: accountSaveRes.error?.message || null,
     next_action: 'Naver ad group ID was saved. Run launch audit, then run the paused keyword publisher dry-run.',
   });
 });

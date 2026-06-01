@@ -45,6 +45,13 @@ function buildExternalLaunchStatus(input: {
     external_campaign_id?: string | null;
     external_ad_group_id?: string | null;
   }>;
+  tenantAdAccounts: Array<{
+    platform: string | null;
+    connection_status: string | null;
+    external_campaign_id?: string | null;
+    external_ad_group_id?: string | null;
+    can_publish_keywords?: boolean | null;
+  }>;
   keywordStatusCounts: Record<string, number>;
   draftCampaigns: number;
 }) {
@@ -54,6 +61,12 @@ function buildExternalLaunchStatus(input: {
     Number(input.keywordStatusCounts.active || 0);
   const naverBudget = input.channelBudgets.find((budget) => budget.platform === 'naver');
   const googleBudget = input.channelBudgets.find((budget) => budget.platform === 'google');
+  const naverAccount = input.tenantAdAccounts.find((account) => account.platform === 'naver');
+  const googleAccount = input.tenantAdAccounts.find((account) => account.platform === 'google');
+  const naverPermissionReady = ['credentials_ready', 'no_campaign', 'ready'].includes(naverAccount?.connection_status || '');
+  const googlePermissionReady = ['credentials_ready', 'no_campaign', 'ready'].includes(googleAccount?.connection_status || '');
+  const naverCampaignId = naverBudget?.external_campaign_id || naverAccount?.external_campaign_id;
+  const naverAdGroupId = naverBudget?.external_ad_group_id || naverAccount?.external_ad_group_id;
   const hasNaverBudget = Boolean(
     naverBudget &&
       naverBudget.status === 'active' &&
@@ -68,14 +81,15 @@ function buildExternalLaunchStatus(input: {
   );
   const naverChecks = [
     { id: 'api', label: 'API 키', done: Boolean(input.integrationStatus.naver), next: 'NAVER_ADS_API_KEY/SECRET/CUSTOMER_ID 설정' },
+    { id: 'permission', label: '권한 감사', done: naverPermissionReady, next: '외부 계정 테스트 또는 네이버 자산 자동저장 실행' },
     { id: 'budget', label: '예산', done: hasNaverBudget, next: '네이버 월예산/일상한/Max CPC 활성화' },
-    { id: 'adgroup', label: '광고그룹 ID', done: Boolean(naverBudget?.external_ad_group_id), next: '네이버 광고센터에서 캠페인/비즈채널/광고그룹 생성 후 자산 자동저장' },
+    { id: 'adgroup', label: '광고그룹 ID', done: Boolean(naverCampaignId && naverAdGroupId), next: '네이버 광고센터에서 캠페인/비즈채널/광고그룹 생성 후 자산 자동저장' },
     { id: 'keywords', label: '승인 키워드', done: approvedOrTestingKeywords > 0, next: '네이버 후보 승인 또는 1단계 시범 세팅' },
     { id: 'drafts', label: '내부 드래프트', done: input.draftCampaigns > 0, next: '캠페인 드래프트 생성' },
   ];
   const googleChecks = [
     { id: 'api', label: 'API/OAuth', done: Boolean(input.integrationStatus.google), next: 'Google Ads OAuth 권한 확인' },
-    { id: 'permission', label: '권한 감사', done: false, next: '외부 계정 테스트에서 Google Ads PERMISSION_DENIED 해소' },
+    { id: 'permission', label: '권한 감사', done: googlePermissionReady, next: '외부 계정 테스트에서 Google Ads PERMISSION_DENIED 해소' },
     { id: 'budget', label: '예산', done: hasGoogleBudget, next: '구글 월예산/일상한/Max CPC 활성화' },
     { id: 'keywords', label: '승인 키워드', done: approvedOrTestingKeywords > 0, next: '구글 후보 승인' },
     { id: 'drafts', label: '내부 드래프트', done: input.draftCampaigns > 0, next: '캠페인 드래프트 생성' },
@@ -340,7 +354,7 @@ export const GET = withAdminGuard(async () => {
       .limit(100),
     supabaseAdmin
       .from('ad_os_tenant_ad_accounts')
-      .select('id, platform, account_mode, connection_status, monthly_budget_cap_krw, daily_budget_cap_krw, can_publish_keywords, can_change_bids, can_pause_assets, risk_status')
+      .select('id, platform, account_mode, connection_status, external_account_id, external_customer_id, external_campaign_id, external_ad_group_id, monthly_budget_cap_krw, daily_budget_cap_krw, can_publish_keywords, can_change_bids, can_pause_assets, risk_status')
       .order('platform', { ascending: true })
       .limit(100),
     supabaseAdmin
@@ -455,6 +469,10 @@ export const GET = withAdminGuard(async () => {
     platform: string | null;
     account_mode: string | null;
     connection_status: string | null;
+    external_account_id: string | null;
+    external_customer_id: string | null;
+    external_campaign_id: string | null;
+    external_ad_group_id: string | null;
     monthly_budget_cap_krw: number | null;
     daily_budget_cap_krw: number | null;
     can_publish_keywords: boolean | null;
@@ -603,6 +621,7 @@ export const GET = withAdminGuard(async () => {
   const externalLaunchStatus = buildExternalLaunchStatus({
     integrationStatus,
     channelBudgets,
+    tenantAdAccounts,
     keywordStatusCounts,
     draftCampaigns,
   });
@@ -617,20 +636,27 @@ export const GET = withAdminGuard(async () => {
     landingEvolutionCandidates: landingEvolutionQueue.filter((row) => row.status === 'candidate').length,
   });
   const approvedOrTestingKeywords = Number(externalLaunchStatus.approved_or_testing_keywords || 0);
+  const tenantAccountByPlatform = new Map(tenantAdAccounts.map((account) => [account.platform, account]));
   const channelExecutionStates = Object.fromEntries(
     ['naver', 'google'].map((platform) => {
       const budget = channelBudgets.find((row) => row.platform === platform);
-      const permissionOk = platform === 'google'
-        ? false
-        : Boolean(integrationStatus[platform as keyof typeof integrationStatus]);
+      const tenantAccount = tenantAccountByPlatform.get(platform);
+      const connectionStatus = tenantAccount?.connection_status || null;
+      const permissionOk = connectionStatus
+        ? ['credentials_ready', 'no_campaign', 'ready'].includes(connectionStatus)
+        : platform === 'naver' && Boolean(integrationStatus[platform as keyof typeof integrationStatus]);
+      const integrationReady = Boolean(integrationStatus[platform as keyof typeof integrationStatus]) ||
+        ['credentials_ready', 'no_campaign', 'ready', 'permission_denied'].includes(connectionStatus || '');
+      const externalCampaignId = budget?.external_campaign_id || tenantAccount?.external_campaign_id;
+      const externalAdGroupId = budget?.external_ad_group_id || tenantAccount?.external_ad_group_id;
 
       return [
         platform,
         classifyChannelExecutionState({
-          integrationReady: Boolean(integrationStatus[platform as keyof typeof integrationStatus]),
+          integrationReady,
           permissionOk,
-          hasCampaign: Boolean(budget?.external_campaign_id),
-          hasAdGroup: Boolean(budget?.external_ad_group_id),
+          hasCampaign: Boolean(externalCampaignId),
+          hasAdGroup: Boolean(externalAdGroupId),
           budgetReady: Boolean(
             budget &&
               budget.status === 'active' &&
