@@ -2038,7 +2038,8 @@ JSON 배열로 응답:
               try {
                 const v3 = await runProductRegistrationV3(intakeRawText, {
                   attractions: activeAttractions,
-                  supplierHint: ed.destination ?? intakeLandOperatorName,
+                  destination: ed.destination ?? null,
+                  supplierHint: intakeLandOperatorName,
                   sourceType: parsedDocument.fileType,
                 });
                 const persisted = await persistProductRegistrationDraftV3(supabaseAdmin, {

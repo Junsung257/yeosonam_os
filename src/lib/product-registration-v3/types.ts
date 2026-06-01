@@ -167,6 +167,7 @@ export interface V3PipelineResult {
 
 export interface V3RunOptions {
   attractions?: AttractionData[];
+  destination?: string | null;
   supplierHint?: string | null;
   sourceType?: string | null;
 }

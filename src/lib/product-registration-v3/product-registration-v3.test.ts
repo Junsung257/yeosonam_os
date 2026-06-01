@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { runProductRegistrationV3 } from '.';
+import { parseV3AiStructurePlan, runProductRegistrationV3 } from '.';
 
 const fixtures = [
   {
@@ -112,9 +112,47 @@ describe('product-registration-v3 draft ledger pipeline', () => {
   it('matches only existing attractions and queues the rest', async () => {
     const result = await runProductRegistrationV3(fixtures[2].raw, {
       attractions: [{ id: 'museum-1', name: 'Museum', region: 'City' }],
-      supplierHint: 'City',
+      destination: 'City',
     });
     expect(result.match_summary.attraction_matched_count).toBeGreaterThanOrEqual(1);
     expect(result.match_summary.attraction_unmatched_count).toBeGreaterThanOrEqual(0);
+  });
+
+  it('accepts only strict AI structure-plan schema, not extracted customer values', () => {
+    const plan = parseV3AiStructurePlan({
+      document_type: 'single_package',
+      planner_source: 'deterministic',
+      expected_products: 1,
+      shared_sections: [],
+      product_boundaries: [{ index: 0, line_start: 1, line_end: 3, title_hint: 'sample' }],
+      variant_axes: [],
+      price_table_location: null,
+      price_mapping_strategy: 'unknown',
+      flight_pattern: { outbound_codes: [], inbound_codes: [], meeting_times: [] },
+      itinerary_boundary_pattern: null,
+      option_section_locations: [],
+      shopping_section_locations: [],
+      confidence: 0.5,
+      unresolved_parts: [],
+    });
+    expect(plan.planner_source).toBe('ai_schema');
+
+    expect(() => parseV3AiStructurePlan({
+      document_type: 'single_package',
+      planner_source: 'ai_schema',
+      expected_products: 1,
+      shared_sections: [],
+      product_boundaries: [],
+      variant_axes: [],
+      price_table_location: null,
+      price_mapping_strategy: 'unknown',
+      flight_pattern: { outbound_codes: [], inbound_codes: [], meeting_times: [] },
+      itinerary_boundary_pattern: null,
+      option_section_locations: [],
+      shopping_section_locations: [],
+      confidence: 0.5,
+      unresolved_parts: [],
+      final_price: 999000,
+    })).toThrow();
   });
 });

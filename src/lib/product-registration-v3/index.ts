@@ -17,7 +17,7 @@ export async function runProductRegistrationV3(
   const { ledger, matchSummary } = applyProductRegistrationV3Matching(
     initialLedger,
     options.attractions ?? [],
-    options.supplierHint ?? undefined,
+    options.destination ?? options.supplierHint ?? undefined,
   );
   const gateResult = evaluateProductRegistrationV3Gate(structurePlan, ledger);
   return {
@@ -33,6 +33,7 @@ export async function runProductRegistrationV3(
 
 export { createSourceLineIndex } from './source-line-index';
 export { planProductRegistrationV3 } from './structure-planner';
+export { V3StructurePlanSchema, parseV3AiStructurePlan } from './plan-schema';
 export { buildProductRegistrationV3Ledger } from './ledger-builder';
 export { applyProductRegistrationV3Matching } from './matcher';
 export { evaluateProductRegistrationV3Gate } from './gate';

@@ -1,4 +1,5 @@
 import type { V3SourceLine, V3StructurePlan } from './types';
+import { V3StructurePlanSchema } from './plan-schema';
 
 const FLIGHT_CODE_RE = /\b[A-Z0-9]{2}\s*\d{3,4}\b/g;
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -58,7 +59,7 @@ export function planProductRegistrationV3(lines: V3SourceLine[]): V3StructurePla
       ? 'single_package'
       : 'unknown';
 
-  return {
+  return V3StructurePlanSchema.parse({
     document_type,
     planner_source: 'deterministic',
     expected_products: product_boundaries.length,
@@ -81,5 +82,5 @@ export function planProductRegistrationV3(lines: V3SourceLine[]): V3StructurePla
     shopping_section_locations: shoppingSections,
     confidence: Math.max(0.25, 1 - unresolved_parts.length * 0.2),
     unresolved_parts,
-  };
+  });
 }

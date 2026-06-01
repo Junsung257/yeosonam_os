@@ -1,17 +1,53 @@
-import type { RenderPackageInput } from '@/lib/render-contract';
+import type { DayInput, HotelInfo, MealInfo, RenderPackageInput } from '@/lib/render-contract';
 import type { V3DraftLedger } from './types';
+
+function renderMeal(value: Record<string, unknown>): { enabled: boolean; note: string | null } {
+  const raw = typeof value.raw_text === 'string' ? value.raw_text : null;
+  return { enabled: Boolean(raw), note: raw };
+}
+
+function renderHotel(value: Record<string, unknown>): HotelInfo {
+  const raw = typeof value.raw_text === 'string' ? value.raw_text : null;
+  return {
+    name: raw,
+    grade: null,
+    note: raw,
+  };
+}
 
 export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackageInput[] {
   return ledger.variants.map(variant => {
     const title = variant.title_parts[0] || variant.variant_key;
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
+    const days: DayInput[] = variant.days.map(day => {
+      const breakfast = renderMeal(day.meals.breakfast);
+      const lunch = renderMeal(day.meals.lunch);
+      const dinner = renderMeal(day.meals.dinner);
+      const meals: MealInfo = {
+        breakfast: breakfast.enabled,
+        lunch: lunch.enabled,
+        dinner: dinner.enabled,
+        breakfast_note: breakfast.note,
+        lunch_note: lunch.note,
+        dinner_note: dinner.note,
+      };
+      return {
+        day: day.day,
+        regions: day.route,
+        schedule: day.events.map(event => ({
+          type: event.type === 'meeting' ? 'normal' : event.type,
+          time: event.time,
+          activity: event.raw_text,
+          attraction_ids: event.canonical_id ? [event.canonical_id] : undefined,
+        })),
+        meals,
+        hotel: renderHotel(day.hotel),
+      };
+    });
     return {
       title,
       product_type: 'package',
-      duration: variant.duration_days ?? undefined,
-      nights: variant.nights ?? undefined,
-      price: variant.price_calendar[0]?.amount ?? undefined,
       price_dates: variant.price_calendar.map(price => ({
         date: price.date ?? price.label,
         price: price.amount,
@@ -38,19 +74,8 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
           inclusions: variant.inclusions.map(item => item.value),
           excludes: variant.exclusions.map(item => item.value),
         },
-        days: variant.days.map(day => ({
-          day: day.day,
-          regions: day.route,
-          schedule: day.events.map(event => ({
-            type: event.type === 'meeting' ? 'normal' : event.type,
-            time: event.time,
-            activity: event.raw_text,
-            attraction_ids: event.canonical_id ? [event.canonical_id] : undefined,
-          })),
-          meals: day.meals,
-          hotel: day.hotel,
-        })),
+        days,
       },
-    } as RenderPackageInput;
+    };
   });
 }
