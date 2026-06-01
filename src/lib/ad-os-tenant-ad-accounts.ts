@@ -45,6 +45,30 @@ type TenantAccountRow = {
   updated_at: string;
 };
 
+export function normalizeTenantAdAccountProbe(input: TenantAdAccountProbeInput): TenantAdAccountProbeInput {
+  const externalCampaignId = cleanString(input.externalCampaignId);
+  const externalAdGroupId = cleanString(input.externalAdGroupId);
+  const hasLaunchAsset = Boolean(externalCampaignId && externalAdGroupId);
+  const risky = input.riskStatus === 'restricted' || input.riskStatus === 'blocked';
+  let connectionStatus = input.connectionStatus;
+
+  if (connectionStatus === 'ready' && (!hasLaunchAsset || risky)) {
+    connectionStatus = hasLaunchAsset ? 'permission_denied' : 'no_campaign';
+  }
+
+  const canMutateExternal = connectionStatus === 'ready' && hasLaunchAsset && !risky;
+
+  return {
+    ...input,
+    externalCampaignId,
+    externalAdGroupId,
+    connectionStatus,
+    canPublishKeywords: canMutateExternal && Boolean(input.canPublishKeywords),
+    canChangeBids: canMutateExternal && Boolean(input.canChangeBids),
+    canPauseAssets: canMutateExternal && Boolean(input.canPauseAssets),
+  };
+}
+
 function nonNegativeInt(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
@@ -85,6 +109,7 @@ export async function upsertTenantAdAccountProbe(
   supabase: SupabaseClient,
   input: TenantAdAccountProbeInput,
 ) {
+  const normalized = normalizeTenantAdAccountProbe(input);
   const accountMode = input.accountMode || 'agency_managed';
   const now = new Date().toISOString();
   const existingQuery = supabase
@@ -101,24 +126,24 @@ export async function upsertTenantAdAccountProbe(
   const existing = (existingRes.data?.[0] || null) as Partial<TenantAccountRow> | null;
 
   const row: TenantAccountRow = {
-    tenant_id: input.tenantId || null,
-    platform: input.platform,
+    tenant_id: normalized.tenantId || null,
+    platform: normalized.platform,
     account_mode: accountMode,
-    external_account_id: cleanString(input.externalAccountId) ?? existing?.external_account_id ?? null,
-    external_customer_id: cleanString(input.externalCustomerId) ?? existing?.external_customer_id ?? null,
-    external_campaign_id: cleanString(input.externalCampaignId) ?? existing?.external_campaign_id ?? null,
-    external_ad_group_id: cleanString(input.externalAdGroupId) ?? existing?.external_ad_group_id ?? null,
-    connection_status: input.connectionStatus,
-    permission_scope: (input.permissionScope?.length ? input.permissionScope : existing?.permission_scope || []).slice(0, 20),
-    monthly_budget_cap_krw: nonNegativeInt(input.monthlyBudgetCapKrw ?? existing?.monthly_budget_cap_krw),
-    daily_budget_cap_krw: nonNegativeInt(input.dailyBudgetCapKrw ?? existing?.daily_budget_cap_krw),
-    can_publish_keywords: Boolean(input.canPublishKeywords ?? existing?.can_publish_keywords ?? false),
-    can_change_bids: Boolean(input.canChangeBids ?? existing?.can_change_bids ?? false),
-    can_pause_assets: Boolean(input.canPauseAssets ?? existing?.can_pause_assets ?? false),
+    external_account_id: cleanString(normalized.externalAccountId) ?? existing?.external_account_id ?? null,
+    external_customer_id: cleanString(normalized.externalCustomerId) ?? existing?.external_customer_id ?? null,
+    external_campaign_id: cleanString(normalized.externalCampaignId) ?? existing?.external_campaign_id ?? null,
+    external_ad_group_id: cleanString(normalized.externalAdGroupId) ?? existing?.external_ad_group_id ?? null,
+    connection_status: normalized.connectionStatus,
+    permission_scope: (normalized.permissionScope?.length ? normalized.permissionScope : existing?.permission_scope || []).slice(0, 20),
+    monthly_budget_cap_krw: nonNegativeInt(normalized.monthlyBudgetCapKrw ?? existing?.monthly_budget_cap_krw),
+    daily_budget_cap_krw: nonNegativeInt(normalized.dailyBudgetCapKrw ?? existing?.daily_budget_cap_krw),
+    can_publish_keywords: Boolean(normalized.canPublishKeywords),
+    can_change_bids: Boolean(normalized.canChangeBids),
+    can_pause_assets: Boolean(normalized.canPauseAssets),
     last_probe_at: now,
-    last_probe_result: input.lastProbeResult || {},
-    risk_status: input.riskStatus || (existing?.risk_status as TenantAdAccountProbeInput['riskStatus']) || 'watch',
-    notes: cleanString(input.notes) ?? existing?.notes ?? null,
+    last_probe_result: normalized.lastProbeResult || {},
+    risk_status: normalized.riskStatus || (existing?.risk_status as TenantAdAccountProbeInput['riskStatus']) || 'watch',
+    notes: cleanString(normalized.notes) ?? existing?.notes ?? null,
     updated_at: now,
   };
 

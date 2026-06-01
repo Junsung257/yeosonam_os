@@ -51,8 +51,8 @@ async function probeNaver(hint: string) {
     configured: true,
     missing: [],
     message: sample.length > 0
-      ? `네이버 KeywordTool 실호출 성공: ${sample.length.toLocaleString('ko-KR')}개 키워드 확인`
-      : '네이버 키는 있으나 KeywordTool 응답이 비어 있거나 실패했습니다.',
+      ? `네이버 KeywordTool 호출 성공: ${sample.length.toLocaleString('ko-KR')}개 키워드 확인`
+      : '네이버 키는 있으나 KeywordTool 응답이 비어 있거나 호출에 실패했습니다.',
     sample_count: sample.length,
     samples: sample.slice(0, 5).map((row) => ({
       keyword: row.relKeyword,
@@ -90,7 +90,7 @@ async function probeGoogle(hint: string) {
       status: 'missing_oauth' as ProbeStatus,
       configured: true,
       missing: ['google_ads_oauth_token'],
-      message: 'Google Ads OAuth 토큰이 없어 실제 계정 호출은 아직 불가합니다.',
+      message: 'Google Ads OAuth 토큰이 없어 실제 계정 호출은 아직 불가능합니다.',
       sample_count: 0,
     };
   }
@@ -118,7 +118,7 @@ async function probeGoogle(hint: string) {
       status: 'failed' as ProbeStatus,
       configured: true,
       missing: [],
-      message: `Google Ads 실호출 실패 (${res.status}): ${body.slice(0, 160)}`,
+      message: `Google Ads 호출 실패 (${res.status}): ${body.slice(0, 160)}`,
       sample_count: 0,
     };
   }
@@ -129,7 +129,7 @@ async function probeGoogle(hint: string) {
     status: 'ready' as ProbeStatus,
     configured: true,
     missing: [],
-    message: `Google Ads historical metrics 실호출 성공: ${(json.results || []).length.toLocaleString('ko-KR')}개 결과`,
+    message: `Google Ads historical metrics 호출 성공: ${(json.results || []).length.toLocaleString('ko-KR')}개 결과`,
     sample_count: json.results?.length || 0,
     samples: (json.results || []).slice(0, 5).map((row) => ({
       keyword: row.keyword,
@@ -166,9 +166,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         permissionScope: platform === 'google'
           ? ['keyword_planning', 'performance_read']
           : ['keyword_tool', 'asset_read'],
-        canPublishKeywords: connectionStatus === 'ready',
-        canChangeBids: connectionStatus === 'ready',
-        canPauseAssets: connectionStatus === 'ready',
+        canPublishKeywords: false,
+        canChangeBids: false,
+        canPauseAssets: false,
         riskStatus: connectionStatus === 'permission_denied' ? 'restricted' : 'watch',
         lastProbeResult: JSON.parse(JSON.stringify(probe)),
         notes: probe.message,
