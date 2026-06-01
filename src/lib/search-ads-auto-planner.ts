@@ -6,6 +6,7 @@ import {
   type Platform,
 } from '@/lib/keyword-brain';
 import { getAdOsLearningContextForPackage, type AdOsLearningContext } from '@/lib/ad-os-learning-context';
+import { deriveAdOsProductScenarios, scenariosToExtractedKeywords } from '@/lib/ad-os-scenario-engine';
 import { generateGoogleHistoricalMetrics } from '@/lib/search-ads-api';
 import { getSecret } from '@/lib/secret-registry';
 import { applyUtmToUrl, buildUtm, normalizeUtmValue } from '@/lib/utm-builder';
@@ -98,7 +99,7 @@ const BLOCKED_LIVE_WORDS = [
   '비자 발급',
   '하나투어',
   '모두투어',
-  '노랑풍선',
+  '클락골프',
   '참좋은여행',
 ];
 
@@ -274,6 +275,7 @@ export async function buildSearchAdPackagePlan(
   const cappedBudget = Math.min(dailyBudgetKrw, maxDailyBudgetKrw);
   const publishMode = options.publishMode ?? (envFlag('SEARCH_ADS_AUTO_PUBLISH_NAVER') ? 'live' : 'draft');
   const learning = await getAdOsLearningContextForPackage(pkg);
+  const scenarios = deriveAdOsProductScenarios(pkg);
 
   const baseKeywords = dedupeKeywords([
     ...extractKeywords({
@@ -297,6 +299,7 @@ export async function buildSearchAdPackagePlan(
       display_name: pkg.display_name ?? undefined,
       inclusions: pkg.inclusions ?? undefined,
     }),
+    ...scenariosToExtractedKeywords(scenarios),
     ...learningKeywordsToExtracted(learning),
   ]);
 
@@ -349,9 +352,17 @@ export async function buildSearchAdPackagePlan(
         utm_url: utmUrl,
         rationale: [
           `${pkg.destination || '상품'} ${kw.tier}/${kw.matchType} 키워드. 상품 승인 후 검색광고 draft로 생성됨.`,
+          kw.category.startsWith('ad_os_scenario:')
+            ? 'Scenario-driven keyword: 상품별 고객 의도와 랜딩 전략에서 생성됨.'
+            : '',
           learning.summary ? `Ad OS learning: ${learning.summary}` : '',
         ].filter(Boolean).join(' '),
-        quality_flags: qualityFlagsWithLearning(kw, learning),
+        quality_flags: {
+          ...qualityFlagsWithLearning(kw, learning),
+          scenario_driven: kw.category.startsWith('ad_os_scenario:'),
+          scenario_type: kw.category.startsWith('ad_os_scenario:') ? kw.category.replace('ad_os_scenario:', '') : null,
+          scenario_count: scenarios.length,
+        },
       });
     }
   }
