@@ -345,11 +345,15 @@ export async function runAdOsProductAutopilot(options: ProductAutopilotOptions):
       await logScenarioDecisions({ runId, scenarios: scenarioRows, apply, tenantId });
     }
 
-    const searchPlan = apply
-      ? await buildAndSaveSearchAdPackagePlan(options.packageId)
-      : await buildSearchAdPackagePlan(pkg);
-    result.search_ads.saved = apply ? ('saved' in searchPlan ? searchPlan.saved : 0) : 0;
-    result.search_ads.keywords = searchPlan.summary.total;
+    if (apply) {
+      const searchPlan = await buildAndSaveSearchAdPackagePlan(options.packageId);
+      result.search_ads.saved = searchPlan.saved;
+      result.search_ads.keywords = searchPlan.summary.total;
+    } else {
+      const searchPlan = await buildSearchAdPackagePlan(pkg);
+      result.search_ads.saved = 0;
+      result.search_ads.keywords = searchPlan.summary.total;
+    }
   } catch (error) {
     result.ok = false;
     warnings.push(error instanceof Error ? error.message : 'unknown error');
