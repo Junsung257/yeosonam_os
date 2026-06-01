@@ -80,4 +80,51 @@ describe('mapTravelPackageToLandingData', () => {
     expect(day1.activities.some((a) => a.type === 'hotel' && a.label.includes('하카타 호텔'))).toBe(true);
     expect(day1.activities.some((a) => a.type === 'flight')).toBe(true);
   });
+  it('filters supplier table fragments from mobile landing activities', () => {
+    const pkg = {
+      id: 'pkg-baekdu',
+      title: '\uC5F0\uAE38/\uBC31\uB450\uC0B0(\uBD81\uD30C) 2\uBC153\uC77C',
+      destination: '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+      duration: 3,
+      price: 749000,
+      price_dates: [{ date: '2026-06-01', price: 999000, confirmed: true }],
+      inclusions: [],
+      excludes: [],
+      itinerary_data: {
+        meta: { title: '\uC5F0\uAE38/\uBC31\uB450\uC0B0(\uBD81\uD30C) 2\uBC153\uC77C', destination: '\uC5F0\uAE38/\uBC31\uB450\uC0B0', days: 3 },
+        highlights: { inclusions: [], excludes: [], remarks: [] },
+        days: [
+          {
+            day: 1,
+            regions: ['\uBD80\uC0B0'],
+            meals: { breakfast: false, lunch: true, dinner: true },
+            schedule: [
+              { activity: '\uC5F0  \uAE38', type: 'normal' },
+              { activity: 'BX337', type: 'flight' },
+              { activity: '\uC804\uC6A9\uCC28\uB7C9', type: 'normal' },
+              { activity: '06:30', type: 'normal' },
+              { activity: '\uC911:\uB0C9\uBA74', type: 'normal' },
+              { activity: '\uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uBBF8\uD305', type: 'normal' },
+              {
+                activity: '\uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11',
+                type: 'normal',
+                attraction_names: ['\uBC31\uB450\uC0B0 \uCC9C\uC9C0'],
+              },
+            ],
+          },
+        ],
+      },
+    };
+
+    const mapped = mapTravelPackageToLandingData(pkg as unknown as Record<string, unknown>, null);
+    const labels = mapped.itinerary.days[0].activities.map(a => a.label);
+
+    expect(labels).not.toContain('\uC5F0  \uAE38');
+    expect(labels).not.toContain('BX337');
+    expect(labels).not.toContain('\uC804\uC6A9\uCC28\uB7C9');
+    expect(labels).not.toContain('06:30');
+    expect(labels).not.toContain('\uC911:\uB0C9\uBA74');
+    expect(labels).toContain('\uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uBBF8\uD305');
+    expect(labels).toContain('\uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11');
+  });
 });
