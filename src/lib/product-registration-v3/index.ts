@@ -19,7 +19,7 @@ export async function runProductRegistrationV3(
     options.attractions ?? [],
     options.destination ?? options.supplierHint ?? undefined,
   );
-  const gateResult = evaluateProductRegistrationV3Gate(structurePlan, ledger);
+  const gateResult = evaluateProductRegistrationV3Gate(structurePlan, ledger, matchSummary);
   return {
     raw_text_hash: hashRawText(rawText),
     source_index: sourceIndex,

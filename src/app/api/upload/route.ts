@@ -2044,16 +2044,18 @@ JSON 배열로 응답:
                 });
                 const persisted = await persistProductRegistrationDraftV3(supabaseAdmin, {
                   packageId: pkgIdForAudit,
+                  packageTitle: title,
                   rawText: intakeRawText,
                   sourceType: parsedDocument.fileType,
                   supplierHint: intakeLandOperatorName,
+                  destination: ed.destination ?? null,
                   documentType: v3.structure_plan.document_type,
                   result: v3,
                 });
                 if (persisted.error) {
                   console.warn('[upload-after] product_registration_drafts V3 저장 실패:', persisted.error);
                 } else {
-                  console.log('[upload-after] product_registration_drafts V3:', persisted.id, v3.gate_result.status);
+                  console.log('[upload-after] product_registration_drafts V3:', persisted.id, v3.gate_result.status, `queued=${persisted.queuedUnmatched}`);
                 }
               } catch (e) {
                 console.warn('[upload-after] product-registration-v3 sidecar 실패:', e instanceof Error ? e.message : e);
