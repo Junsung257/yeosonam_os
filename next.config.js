@@ -32,6 +32,10 @@ const nextConfig = {
     '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
     'satori',          // yoga-wasm 번들 포함 — external 권장
     'pdf-parse',
+    'exceljs',
+    'unzipper',
+    'binary',
+    'bluebird',
     'googleapis',
   ],
   experimental: {

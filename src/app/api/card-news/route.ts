@@ -293,7 +293,7 @@ export async function POST(request: NextRequest) {
 
     const { data: pkgFull } = await supabaseAdmin
       .from('travel_packages')
-      .select('product_summary, special_notes, product_type, airline, departure_airport')
+      .select('product_summary, product_type, airline, departure_airport')
       .eq('id', package_id)
       .single();
 
@@ -331,7 +331,7 @@ async function buildAutoSlides(
 
   // ── Step 0: 상품 정보에서 핵심 셀링포인트 자동 추출 ────────
   const sellingPoints: string[] = [];
-  const summaryText = [pkg.product_summary, pkg.special_notes, pkg.title].filter(Boolean).join(' ');
+  const summaryText = [pkg.product_summary, pkg.title].filter(Boolean).join(' ');
   const inclusionsList = pkg.inclusions ?? [];
   const highlightsList = pkg.product_highlights ?? [];
 

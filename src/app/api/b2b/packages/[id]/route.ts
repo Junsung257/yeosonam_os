@@ -89,7 +89,7 @@ export async function GET(
          status, product_summary, product_highlights,
          display_title, hero_tagline,
          price_dates, price_tiers,
-         itinerary_data, special_notes,
+         itinerary_data,
          created_at, updated_at`,
       )
       .eq('id', id)

@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
   // 1) 상품 로드 (실 스키마: price, photos/photo_urls — base_price/hero_image_url 없음)
   const { data: pkg, error: pkgErr } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, product_highlights, special_notes, inclusions, photos, photo_urls, itinerary_data')
+    .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, product_highlights, inclusions, photos, photo_urls, itinerary_data')
     .eq('id', body.product_id)
     .limit(1);
 
@@ -124,7 +124,6 @@ export async function POST(request: NextRequest) {
     departure_airport: product.departure_airport ?? undefined,
     product_summary: product.product_summary ?? undefined,
     product_highlights: (product.product_highlights as string[]) ?? undefined,
-    special_notes: product.special_notes ?? undefined,
     inclusions: (product.inclusions as string[]) ?? undefined,
   };
 

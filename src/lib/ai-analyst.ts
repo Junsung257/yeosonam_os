@@ -11,6 +11,7 @@ export interface TravelPackage {
   inclusions: string[];
   excludes: string[];
   accommodations: string[];
+  /** @deprecated Supplier remarks are raw evidence only and must not seed customer-facing advice. */
   special_notes?: string;
   confidence: number;
 }
@@ -35,7 +36,7 @@ function extractPackageFeatures(pkg: TravelPackage): string {
 기간: ${pkg.duration}일
 가격: ${pkg.price.toLocaleString()}원
 포함사항: ${pkg.inclusions.slice(0, 3).join(', ')}
-특징: ${pkg.special_notes || '일반 패키지'}
+특징: ${pkg.inclusions.slice(0, 3).join(', ') || pkg.destination}
 `;
 }
 
