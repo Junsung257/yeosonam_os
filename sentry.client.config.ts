@@ -15,7 +15,7 @@ if (SENTRY_DSN) {
         blockAllMedia: true,
       }),
     ],
-    beforeSend(event) {
+    beforeSend(event: Sentry.Event) {
       // 로컬 개발 환경에서는 콘솔 출력만
       if (process.env.NODE_ENV === 'development') {
         console.error('[Sentry client]', event);
