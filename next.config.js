@@ -32,6 +32,10 @@ const nextConfig = {
     '@resvg/resvg-js', // .node native binding — webpack 처리 불가, 런타임 require()
     'satori',          // yoga-wasm 번들 포함 — external 권장
     'pdf-parse',
+    'exceljs',
+    'unzipper',
+    'binary',
+    'bluebird',
     'googleapis',
   ],
   experimental: {
@@ -43,6 +47,11 @@ const nextConfig = {
     if (isServer && config.output) {
       config.output.chunkFilename = 'chunks/[name].js';
     }
+    config.resolve = config.resolve || {};
+    config.resolve.alias = {
+      ...(config.resolve.alias || {}),
+      '@supabase/phoenix': require.resolve('@supabase/phoenix'),
+    };
     return config;
   },
   images: {

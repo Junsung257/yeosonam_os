@@ -78,7 +78,7 @@ export async function POST(request: NextRequest) {
     // 1. Product 조회
     const { data: pkg, error: pkgErr } = await supabaseAdmin
       .from('travel_packages')
-      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, product_highlights, inclusions, itinerary, special_notes')
+      .select('id, title, destination, duration, nights, price, airline, departure_airport, product_summary, product_highlights, inclusions, itinerary')
       .eq('id', body.product_id)
       .single();
     if (pkgErr || !pkg) {

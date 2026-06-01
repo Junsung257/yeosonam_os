@@ -57,7 +57,11 @@
     "@serwist/next",
     "@sentry/nextjs",
     "@testing-library/jest-dom",
-    "bundlemon"
+    "bundlemon",
+    "@reduxjs/toolkit",
+    "binary",
+    "bluebird",
+    "@vitejs/plugin-react"
   ],
   "ignoreBinaries": [
     "powershell"

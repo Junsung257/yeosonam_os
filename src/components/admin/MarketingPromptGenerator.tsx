@@ -28,6 +28,7 @@ interface PromptPkg {
   excludes?: string[];
   product_highlights?: string[];
   product_summary?: string;
+  /** @deprecated Supplier remarks are raw evidence only and must not seed customer copy. */
   special_notes?: string;
   itinerary?: string[];
 }
@@ -102,7 +103,6 @@ ${buildInclusionsSummary(pkg.excludes)}
 
 ${pkg.product_highlights?.length ? `### 상품 하이라이트\n${pkg.product_highlights.map(h => `- ${h}`).join('\n')}` : ''}
 ${pkg.product_summary ? `### 상품 요약\n${pkg.product_summary}` : ''}
-${pkg.special_notes ? `### 유의사항\n${pkg.special_notes}` : ''}
 
 ---
 

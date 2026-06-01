@@ -908,8 +908,8 @@ function getNoteEmoji(text: string): string {
   return '📍';
 }
 
-// special_notes 원문을 문장 단위로 분리하는 폴백 파서
-function splitSpecialNotes(raw: string): string[] {
+// customer_notes 표준문구를 문장 단위로 분리하는 폴백 파서
+function splitCustomerNotes(raw: string): string[] {
   // 1단계: PDF 구분자 정리 → 문장 분리 마커로 치환
   const cleaned = raw
     .replace(/\*\s*[.,!]{0,5}\s*\*+/g, '|||')   // *..*  *...*  *,!!)* 등
@@ -1049,7 +1049,7 @@ function NoticesPage({ noticesParsed, customerNotes }: {
       legacyNotes = noticesParsed as string[];
     }
   } else if (customerNotes) {
-    legacyNotes = splitSpecialNotes(customerNotes);
+    legacyNotes = splitCustomerNotes(customerNotes);
   }
 
   const TYPE_ORDER: Record<string, number> = { CRITICAL: 0, PAYMENT: 1, POLICY: 2, INFO: 3 };

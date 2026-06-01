@@ -5,6 +5,7 @@ import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/
 // P11-3: suggestFromWikidata → reconcilePlaceName 로 대체됨
 import { cleanActivity } from '@/lib/unmatched-suggest';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
+import { canCreateAttractionRecord } from '@/lib/attraction-policy';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,14 +13,12 @@ export const dynamic = 'force-dynamic';
  * 고신뢰 미매칭 자동해결 크론
  * - 1차: 내부 attractions 매칭 (score >= UNMATCHED_AUTO_RESOLVE_MIN_SCORE, 기본 75)
  * - 2차: 내부 매칭 실패 → Wikidata reconcile
- *   - confidence >= 0.85 + tourist attraction type → attractions auto INSERT (P11-3)
- *   - confidence < 0.85 → note 에 Wikidata 정보만 저장 (어드민 수동 확인)
- * - 3차: photo + description fire-and-forget (auto-insert 후 백그라운드)
+ *   - 기존 qid가 있으면 alias 자동 연결
+ *   - 신규 qid는 자동 INSERT 하지 않고 note 제안만 저장 (어드민 수동 확인)
  *
- * P11-3 변경 (2026-05-24):
- *   - STRICT SSOT 정책 완화: high-confidence Wikidata POI 는 자동 INSERT
- *   - Wikibase Reconcile API (wbsearchentities + type/country filter)
- *   - 동일 qid 중복 방지 (qid UNIQUE 인덱스)
+ * SSOT: docs/product-registration-v3-standard-language.md
+ *   - 자동 신규 attraction INSERT 금지
+ *   - match/alias/unmatched review 흐름만 자동화
  */
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ ok: true, scanned: 0, resolved: 0 });
@@ -106,8 +105,8 @@ export async function GET(request: NextRequest) {
       }
 
       // 2차: 내부 매칭 실패 → Wikidata reconcile
-      //   P11-3: confidence >= 0.85 + tourist attraction type → auto INSERT
-      //          confidence < 0.85 → note 에만 저장 (기존 동작 유지)
+      //   confidence >= 0.85 이면 기존 qid alias 연결 시도
+      //   신규 qid는 note 제안만 저장 (자동 INSERT 금지)
       if (wikidataEnabled) {
         try {
           const cleaned = cleanActivity(u.activity);
@@ -124,7 +123,8 @@ export async function GET(request: NextRequest) {
               const now = new Date().toISOString();
 
               if (top.confidence >= 0.85) {
-                // ── high-confidence: auto INSERT ──
+                // SSOT: docs/product-registration-v3-standard-language.md
+                // 자동 신규 INSERT 금지. 기존 attraction 매칭/alias 연결까지만 자동 처리.
                 const { data: existing } = await supabaseAdmin
                   .from('attractions')
                   .select('id, aliases')
@@ -150,59 +150,27 @@ export async function GET(request: NextRequest) {
                   }).eq('id', u.id);
                   affectedAttractionIds.add(existing.id);
                 } else {
-                  // 신규 auto INSERT
-                  const aliasSet = new Set<string>([u.activity, top.label_ko || '', top.label_en || ''].filter(Boolean));
-                  for (const a of top.aliases) {
-                    if (a !== top.label_ko && a !== top.label_en) aliasSet.add(a);
+                  if (canCreateAttractionRecord('cron')) {
+                    errors.push('policy violation: cron attraction auto-create must be disabled');
+                    continue;
                   }
-                  const { inferCategory } = await import('@/lib/parser/attraction-category');
-                  const category = inferCategory(u.activity, top.type_qid || undefined);
-                  const photos = top.image_url
-                    ? [{ src_medium: top.image_url, src_large: top.image_url, photographer: 'Wikimedia Commons', source: 'wikimedia' }]
-                    : [];
-
-                  const { data: created } = await supabaseAdmin.from('attractions').insert({
-                    name: top.label_ko || top.label_en || u.activity,
+                  // 신규 후보는 unmatched 큐 유지 + 제안 정보만 note에 저장
+                  const wdInfo = JSON.stringify({
+                    wikidata_suggested_at: now,
                     qid: top.qid,
-                    aliases: [...aliasSet].filter(Boolean),
-                    short_desc: top.description?.slice(0, 30) || null,
-                    country: u.country,
-                    region: u.region,
-                    category,
-                    photos,
-                    mention_count: 1,
-                    is_active: true,
-                  }).select('id, name').single();
-
-                  if (created) {
-                    await supabaseAdmin.from('unmatched_activities').update({
-                      status: 'added',
-                      note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})`,
-                      resolved_at: now,
-                      resolved_kind: 'auto_cron_wikidata_insert',
-                      resolved_attraction_id: created.id,
-                      resolved_by: 'cron_unmatched_auto_resolve',
-                    }).eq('id', u.id);
-                    affectedAttractionIds.add(created.id);
-                    resolved++;
-
-                    // fire-and-forget: photo + description
-                    void (async () => {
-                      try {
-                        const { generateAttractionDescription } = await import('@/lib/attraction-desc-gen');
-                        const desc = await generateAttractionDescription(top.label_ko || top.label_en || u.activity, {
-                          qid: top.qid, wdDescription: top.description, destination: u.region,
-                        });
-                        await supabaseAdmin.from('attractions').update({ short_desc: desc.short_desc, updated_at: now }).eq('id', created.id);
-
-                        const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
-                        await runAttractionPhotoMatch(created.id, {
-                          keywords: [top.label_ko || '', top.label_en || '', u.activity, ...top.aliases].filter(Boolean),
-                          qid: top.qid, maxPhotos: 5,
-                        });
-                      } catch {}
-                    })();
-                  }
+                    label: top.label_ko,
+                    description: top.description,
+                    image_url: top.image_url,
+                    confidence: top.confidence,
+                  });
+                  const existingNote = (row as { note?: string | null }).note || '';
+                  const newNote = existingNote
+                    ? `${existingNote}\n[WIKIDATA_SUGGEST] ${wdInfo}`
+                    : `[WIKIDATA_SUGGEST] ${wdInfo}`;
+                  await supabaseAdmin.from('unmatched_activities').update({
+                    note: newNote,
+                    status: 'pending',
+                  }).eq('id', u.id);
                 }
               } else {
                 // ── low confidence: note 에만 저장 ──

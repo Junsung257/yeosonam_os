@@ -163,6 +163,22 @@ describe('resolveShopping', () => {
   it('아무 입력 없음 — 빈 form 반환 (throw X)', () => {
     expect(() => resolveShopping({})).not.toThrow();
   });
+
+  it('customer_notes가 쇼핑 단서 없으면 쇼핑 섹션으로 승격하지 않음', () => {
+    const r = resolveShopping({
+      customer_notes: '여권 만료일은 입국일 기준 6개월 이상 남아 있어야 합니다.',
+    });
+    expect(r.source).toBeNull();
+    expect(r.text).toBeNull();
+  });
+
+  it('customer_notes가 쇼핑 단서 있으면 fallback 허용', () => {
+    const r = resolveShopping({
+      customer_notes: '쇼핑 2회 방문이 포함됩니다.',
+    });
+    expect(r.source).toBe('customer_notes');
+    expect(r.text).toContain('쇼핑');
+  });
 });
 
 describe('resolveOptionalTours', () => {

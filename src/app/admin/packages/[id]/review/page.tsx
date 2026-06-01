@@ -17,6 +17,14 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import SensitiveRawText from '@/components/admin/SensitiveRawText';
+import { buildStandardNoticeCustomerSavePayload } from '@/lib/product-registration-v3/admin-review';
+import {
+  buildStandardNoticeDraft,
+  extractStandardNoticesFromRemarkLines,
+  type StandardNoticeCategory,
+  type StandardNoticeDraft,
+  type StandardNoticeReviewStatus,
+} from '@/lib/product-registration-v3/standard-notices';
 
 interface FieldConfidence {
   score: number;
@@ -209,6 +217,43 @@ interface HotelSearchResult {
   aliases: string[];
 }
 
+const STANDARD_NOTICE_CATEGORIES: StandardNoticeCategory[] = [
+  'single_room_surcharge',
+  'passport_validity',
+  'local_law_restriction',
+  'room_assignment',
+  'itinerary_change',
+  'tip_guideline',
+  'group_schedule_penalty',
+  'restaurant_access',
+  'local_guide_operation',
+];
+
+const STANDARD_NOTICE_VISIBILITIES: StandardNoticeDraft['visibility'][] = [
+  'customer_visible',
+  'internal_only',
+  'hidden_by_default',
+];
+
+const STANDARD_NOTICE_REVIEW_STATUSES: StandardNoticeReviewStatus[] = [
+  'auto_clean',
+  'review_needed',
+  'manual_approved',
+  'rejected',
+];
+
+function noticeReviewKey(row: StandardNoticeDraft, index: number): string {
+  const line = row.evidence[0]?.line_start ?? index;
+  return `${line}:${row.category}:${row.source_text.slice(0, 80)}`;
+}
+
+type NoticeEdit = {
+  category?: StandardNoticeCategory;
+  valuesText?: string;
+  visibility?: StandardNoticeDraft['visibility'];
+  review_status?: StandardNoticeReviewStatus;
+};
+
 export default function PackageReviewPage() {
   const params = useParams();
   const packageId = String(params?.id || '');
@@ -218,6 +263,9 @@ export default function PackageReviewPage() {
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editValue, setEditValue] = useState<string>('');
   const [saving, setSaving] = useState(false);
+  const [noticeEdits, setNoticeEdits] = useState<Record<string, NoticeEdit>>({});
+  const [noticeSaving, setNoticeSaving] = useState(false);
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
   // N4 박제 (2026-05-16 트립박스 표준): 호텔 마스터 검색 inline
   const [hotelSearchQ, setHotelSearchQ] = useState<string>('');
   const [hotelResults, setHotelResults] = useState<HotelSearchResult[]>([]);
@@ -351,6 +399,41 @@ export default function PackageReviewPage() {
     }
   };
 
+  const updateNoticeEdit = (key: string, patch: NoticeEdit) => {
+    setNoticeEdits(prev => ({
+      ...prev,
+      [key]: { ...(prev[key] ?? {}), ...patch },
+    }));
+    setNoticeMessage(null);
+  };
+
+  const saveStandardNotices = async (rows: Array<StandardNoticeDraft & { review_key: string; values_valid: boolean }>) => {
+    if (!pkg) return;
+    const built = buildStandardNoticeCustomerSavePayload(pkg.id, rows);
+    if (!built.ok) {
+      setNoticeMessage(built.error);
+      return;
+    }
+    setNoticeSaving(true);
+    try {
+      const res = await fetch('/api/packages', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(built.payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setNoticeMessage(json.error || '표준 유의사항 저장에 실패했습니다.');
+        return;
+      }
+      setNoticeMessage(`표준 유의사항 ${built.payload.saved_count}건을 고객 노출 필드에 저장했습니다. 검수 필요/숨김 ${built.payload.skipped_count}건은 제외했습니다.`);
+      setNoticeEdits({});
+      load();
+    } finally {
+      setNoticeSaving(false);
+    }
+  };
+
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
@@ -397,6 +480,49 @@ export default function PackageReviewPage() {
     : overallConf >= 0.85 ? 'text-emerald-600'
     : overallConf >= 0.7 ? 'text-amber-600'
     : 'text-red-600';
+  const detectedNoticeRows = extractStandardNoticesFromRemarkLines(
+    (pkg.raw_text ?? '')
+      .split(/\r?\n/)
+      .map((line, idx) => ({
+        text: String(line || '').trim(),
+        evidence: {
+          line_start: idx + 1,
+          line_end: idx + 1,
+          char_start: 0,
+          char_end: String(line || '').length,
+          quote: String(line || '').trim(),
+        },
+      }))
+      .filter(item => item.text.length > 4),
+  );
+  const noticeRows = detectedNoticeRows.map((row, idx) => {
+    const review_key = noticeReviewKey(row, idx);
+    const edit = noticeEdits[review_key] ?? {};
+    const valuesText = edit.valuesText ?? JSON.stringify(row.values, null, 2);
+    let values = row.values;
+    let values_valid = true;
+    try {
+      values = JSON.parse(valuesText) as Record<string, string | number | boolean | null>;
+    } catch {
+      values_valid = false;
+    }
+    const rebuilt = values_valid
+      ? buildStandardNoticeDraft({
+        source_text: row.source_text,
+        category: edit.category ?? row.category,
+        values,
+        evidence: row.evidence,
+        visibility: edit.visibility ?? row.visibility,
+        review_status: edit.review_status ?? row.review_status,
+      })
+      : null;
+    return {
+      ...(rebuilt ?? row),
+      review_key,
+      values_text: valuesText,
+      values_valid,
+    };
+  });
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -618,6 +744,112 @@ export default function PackageReviewPage() {
       )}
 
       {/* 원문 발췌 (참고용) */}
+      {noticeRows.length > 0 && (
+        <div className="mt-6 bg-admin-bg border border-admin-border-mid rounded-admin-md p-4 overflow-x-auto">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <h3 className="text-sm font-bold text-admin-text-2">REMARK 표준언어 검수 테이블</h3>
+            <button
+              type="button"
+              onClick={() => saveStandardNotices(noticeRows)}
+              disabled={noticeSaving}
+              className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              {noticeSaving ? '저장 중...' : '고객 유의사항 저장'}
+            </button>
+          </div>
+          {noticeMessage && (
+            <div className="mb-2 rounded-admin-sm border border-admin-border-mid bg-white px-3 py-2 text-xs text-admin-text-2">
+              {noticeMessage}
+            </div>
+          )}
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-admin-surface-2">
+                <th className="border border-admin-border-mid p-2 text-left">원문</th>
+                <th className="border border-admin-border-mid p-2 text-left">카테고리</th>
+                <th className="border border-admin-border-mid p-2 text-left">추출값</th>
+                <th className="border border-admin-border-mid p-2 text-left">여소남 표준문구</th>
+                <th className="border border-admin-border-mid p-2 text-left">증거</th>
+                <th className="border border-admin-border-mid p-2 text-left">위험도</th>
+                <th className="border border-admin-border-mid p-2 text-left">노출</th>
+                <th className="border border-admin-border-mid p-2 text-left">검수상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {noticeRows.map((row) => (
+                <tr key={row.review_key}>
+                  <td className="border border-admin-border-mid p-2 align-top">{row.source_text}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <select
+                      value={row.category}
+                      onChange={e => updateNoticeEdit(row.review_key, { category: e.target.value as StandardNoticeCategory })}
+                      className="w-full min-w-40 rounded border border-admin-border-mid bg-white px-2 py-1"
+                    >
+                      {STANDARD_NOTICE_CATEGORIES.map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <textarea
+                      value={row.values_text}
+                      onChange={e => updateNoticeEdit(row.review_key, { valuesText: e.target.value })}
+                      className={`min-h-20 w-52 rounded border px-2 py-1 font-mono ${row.values_valid ? 'border-admin-border-mid' : 'border-red-400 bg-red-50'}`}
+                    />
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">{row.standard_text}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <div className="min-w-32 space-y-1">
+                      <div className="font-mono text-[11px] text-admin-muted">
+                        L{row.evidence[0]?.line_start ?? '-'}
+                        {row.evidence[0]?.line_end && row.evidence[0]?.line_end !== row.evidence[0]?.line_start
+                          ? `-L${row.evidence[0].line_end}`
+                          : ''}
+                      </div>
+                      <div className="max-w-56 truncate text-admin-text-2" title={row.evidence[0]?.quote ?? row.source_text}>
+                        {row.evidence[0]?.quote ?? row.source_text}
+                      </div>
+                    </div>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <span className={`inline-flex rounded px-2 py-0.5 text-[11px] font-bold ${
+                      row.risk_level === 'high'
+                        ? 'bg-red-50 text-red-700'
+                        : row.risk_level === 'medium'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-emerald-50 text-emerald-700'
+                    }`}>
+                      {row.risk_level}
+                    </span>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <select
+                      value={row.visibility}
+                      onChange={e => updateNoticeEdit(row.review_key, { visibility: e.target.value as StandardNoticeDraft['visibility'] })}
+                      className="w-full min-w-36 rounded border border-admin-border-mid bg-white px-2 py-1"
+                    >
+                      {STANDARD_NOTICE_VISIBILITIES.map(visibility => (
+                        <option key={visibility} value={visibility}>{visibility}</option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <select
+                      value={row.review_status}
+                      onChange={e => updateNoticeEdit(row.review_key, { review_status: e.target.value as StandardNoticeReviewStatus })}
+                      className="w-full min-w-36 rounded border border-admin-border-mid bg-white px-2 py-1"
+                    >
+                      {STANDARD_NOTICE_REVIEW_STATUSES.map(status => (
+                        <option key={status} value={status}>{status}</option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <div className="mt-6 bg-admin-bg border border-admin-border-mid rounded-admin-md p-4">
         <h3 className="text-sm font-bold text-admin-text-2 mb-2">검수 원문 참고</h3>
         <SensitiveRawText value={pkg.raw_text} title="검수 원문" />

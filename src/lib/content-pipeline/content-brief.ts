@@ -55,6 +55,20 @@ export interface BriefInput {
 const TEMPLATE_LIST = TEMPLATE_IDS.map(id => `  - ${id}: ${TEMPLATE_META[id].label} (${TEMPLATE_META[id].bestFor})`).join('\n');
 
 /**
+ * Customer-facing marketing surfaces must not receive supplier REMARK/raw notes.
+ * V3 standard notices are rendered from classified values elsewhere; card-news/blog
+ * brief generation may only use product facts that are safe to rewrite publicly.
+ */
+export function prepareCustomerMarketingBriefInput(input: BriefInput): BriefInput {
+  if (input.mode !== 'product' || !input.product) return input;
+  const { special_notes: _supplierRemark, ...safeProduct } = input.product;
+  return {
+    ...input,
+    product: safeProduct,
+  };
+}
+
+/**
  * 2-stage 파이프라인:
  *   Stage 1 — Structure Designer: 뼈대 (role, hook_type, h2, template_family 등)
  *   Stage 2 — Card News Copywriter: 확정된 구조에 슬라이드 카피 채움
@@ -64,16 +78,17 @@ const TEMPLATE_LIST = TEMPLATE_IDS.map(id => `  - ${id}: ${TEMPLATE_META[id].lab
  * 단일 mega-prompt 한계 돌파 + 각 에이전트 집중도 ↑.
  */
 export async function generateContentBrief(input: BriefInput): Promise<ContentBrief> {
-  const slideCount = input.slideCount ?? 6;
+  const safeInput = prepareCustomerMarketingBriefInput(input);
+  const slideCount = safeInput.slideCount ?? 6;
   const structureInput: StructureInput = {
-    mode: input.mode,
+    mode: safeInput.mode,
     slideCount,
-    tone: input.tone,
-    extraPrompt: input.extraPrompt,
-    product: input.product,
-    angle: input.angle,
-    topic: input.topic,
-    category: input.category,
+    tone: safeInput.tone,
+    extraPrompt: safeInput.extraPrompt,
+    product: safeInput.product,
+    angle: safeInput.angle,
+    topic: safeInput.topic,
+    category: safeInput.category,
   };
 
   // Stage 1: Structure
@@ -82,7 +97,7 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
     structure = await designBriefStructure(structureInput);
   } catch (err) {
     console.warn('[content-brief] structure-designer 실패 → mono fallback:', err instanceof Error ? err.message : err);
-    return fallbackBrief(input);
+    return fallbackBrief(safeInput);
   }
 
   // Stage 2: Copy
@@ -91,7 +106,7 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
     copy = await writeCardCopy(structure, structureInput);
   } catch (err) {
     console.warn('[content-brief] card-news-copywriter 실패 → mono fallback:', err instanceof Error ? err.message : err);
-    return fallbackBrief(input);
+    return fallbackBrief(safeInput);
   }
 
   // Merge structure + copy → ContentBrief
@@ -133,7 +148,7 @@ export async function generateContentBrief(input: BriefInput): Promise<ContentBr
   };
 
   // Stage 3: 결정론적 enricher
-  return enrichBriefWithV2Slots(merged, input);
+  return enrichBriefWithV2Slots(merged, safeInput);
 }
 
 /**
@@ -395,7 +410,6 @@ function deriveHookType(p: BriefInput['product'], angle?: string): HookType {
   const text = [
     p.title,
     p.product_summary,
-    p.special_notes,
     ...(p.product_highlights ?? []),
   ].filter(Boolean).join(' ');
 
@@ -511,7 +525,6 @@ function extractTrustSignals(p: BriefInput['product']): string[] {
   const haystack = [
     p.title,
     p.product_summary,
-    p.special_notes,
     ...(p.inclusions ?? []),
     ...(p.product_highlights ?? []),
   ].filter(Boolean).join(' ');
@@ -609,8 +622,7 @@ function buildBriefPrompt(input: BriefInput): string {
 - 포함사항: ${(p.inclusions ?? []).slice(0, 6).join(', ')}
 - 하이라이트: ${(p.product_highlights ?? []).slice(0, 5).join(', ')}
 - 주요 일정: ${(p.itinerary ?? []).slice(0, 4).join(' / ')}
-- 요약: ${p.product_summary ?? ''}
-- 특이사항: ${p.special_notes ?? ''}`;
+- 요약: ${p.product_summary ?? ''}`;
 
     if (input.angle && ANGLE_PRESETS[input.angle as keyof typeof ANGLE_PRESETS]) {
       const a = ANGLE_PRESETS[input.angle as keyof typeof ANGLE_PRESETS];

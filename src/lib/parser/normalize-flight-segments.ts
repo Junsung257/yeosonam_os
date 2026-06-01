@@ -128,6 +128,13 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
   }));
 
   // 모든 flight item을 (day_index, item) 으로 수집
+  if (Array.isArray(itin.flight_segments) && itin.flight_segments.length > 0) {
+    const hasResolvedTime = itin.flight_segments.some(seg => Boolean(seg.dep_time || seg.arr_time));
+    if (hasResolvedTime) {
+      return { ...itin, days, flight_segments: itin.flight_segments };
+    }
+  }
+
   const flightItems: Array<{ dayIdx: number; item: ScheduleItem; kind: 'depart' | 'arrive' | 'other'; city: string | null }> = [];
   days.forEach((day, di) => {
     (day.schedule ?? []).forEach(s => {

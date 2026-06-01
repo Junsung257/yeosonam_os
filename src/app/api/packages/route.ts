@@ -39,6 +39,11 @@ function collectAttractionIds(itineraryData: unknown): string[] {
   return [...ids];
 }
 
+function stripSupplierRemarkFields<T extends Record<string, unknown>>(row: T): Omit<T, 'special_notes'> {
+  const { special_notes: _supplierRemark, ...safe } = row;
+  return safe;
+}
+
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
 const DEPARTURE_CODES: Record<string, string> = {
   '김해공항': 'PUS', '김해': 'PUS', '부산': 'PUS', '부산국제여객터미널': 'PUS',
@@ -237,7 +242,7 @@ export async function GET(request: NextRequest) {
       const attraction_ids = collectAttractionIds(pkg.itinerary_data);
       return successResponse(
         {
-          package: pkg,
+          package: stripSupplierRemarkFields(pkg as Record<string, unknown>),
           lp_hero_image_url,
           attraction_ids,
           attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
@@ -308,7 +313,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const enrichedData = (data ?? []).map((row: any) => ({
-      ...row,
+      ...stripSupplierRemarkFields(row),
       has_itinerary_data:
         !!row.itinerary_data?.days?.length ||
         (Array.isArray(row.itinerary) && row.itinerary.length > 0),
@@ -732,7 +737,7 @@ export async function PATCH(request: NextRequest) {
       'guide_tip', 'single_supplement', 'small_group_surcharge',
       'price_tiers', 'price_dates', 'price_list', 'surcharges', 'excluded_dates',
       'optional_tours', 'cancellation_policy', 'category_attrs',
-      'inclusions', 'excludes', 'special_notes', 'notices_parsed',
+      'inclusions', 'excludes', 'special_notes', 'customer_notes', 'notices_parsed',
       'itinerary', 'itinerary_data', 'raw_text',
       'land_operator', 'land_operator_id', 'commission_rate', 'affiliate_commission_rate',
       'product_tags', 'product_highlights', 'product_summary',

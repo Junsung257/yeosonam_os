@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { prepareRegistrationWrite, mapProductsStatusFromL1 } from './registration-write-pipeline';
+import {
+  prepareRegistrationWrite,
+  mapProductsStatusFromL1,
+  mapTravelPackageUploadStatus,
+} from './registration-write-pipeline';
 
 describe('mapProductsStatusFromL1', () => {
   it('L1 BLOCK → REVIEW_NEEDED', () => {
@@ -18,6 +22,16 @@ describe('mapProductsStatusFromL1', () => {
     expect(mapProductsStatusFromL1({ reasons: [], warnings: [], codes: [] }, 'approved')).toBe(
       'approved',
     );
+  });
+});
+
+describe('mapTravelPackageUploadStatus', () => {
+  it('등록 직후 pending_review는 어드민 검토 목록에 보이는 pending으로 저장한다', () => {
+    expect(mapTravelPackageUploadStatus('pending_review')).toBe('pending');
+  });
+
+  it('approved는 고객 공개 후보 상태로 유지한다', () => {
+    expect(mapTravelPackageUploadStatus('approved')).toBe('approved');
   });
 });
 

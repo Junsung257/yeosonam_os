@@ -305,7 +305,7 @@ function fallbackCopy(structure: StructureOutput, input: StructureInput): CardCo
 
 function extractTrustSignalsSimple(p: StructureInput['product']): string[] {
   if (!p) return [];
-  const haystack = [p.title, p.product_summary, p.special_notes, ...(p.inclusions ?? []), ...(p.product_highlights ?? [])].filter(Boolean).join(' ');
+  const haystack = [p.title, p.product_summary, ...(p.inclusions ?? []), ...(p.product_highlights ?? [])].filter(Boolean).join(' ');
   const signals: string[] = [];
   const rules: Array<[RegExp, string]> = [
     [/노\s*팁/i, '노팁'],

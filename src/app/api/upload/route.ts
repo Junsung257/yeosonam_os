@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse, after as nextAfter } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { createHash } from 'crypto';
-import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type ParseOptions } from '@/lib/parser';
+import { parseDocument, calculateConfidence, calculateConfidenceV2, classifyDocument, type MultiProductResult, type ParseOptions } from '@/lib/parser';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { postProcessCatalogFields, postProcessItineraryData } from '@/lib/package-post-process';
-import { prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
+import { mapTravelPackageUploadStatus, prepareRegistrationWrite } from '@/lib/registration-write-pipeline';
 import { persistIntakeSnapshot } from '@/lib/persist-intake-snapshot';
 import { runUploadIrShadowIfSampled } from '@/lib/upload-ir-shadow';
 import { tryExtractUploadViaIr } from '@/lib/upload-ir-extract';
@@ -61,6 +61,22 @@ import {
   canUseSupplierRawDeterministicPreflight,
   extractSupplierRawDeterministicFacts,
 } from '@/lib/supplier-raw-deterministic-facts';
+import { planProductRegistrationV2, runProductRegistrationV2 } from '@/lib/product-registration-v2';
+import { persistProductRegistrationDraftV3, runProductRegistrationV3 } from '@/lib/product-registration-v3';
+
+function safeAfter(task: () => Promise<void> | void): void {
+  try {
+    nextAfter(task);
+  } catch (e) {
+    if (e instanceof Error && e.message.includes('outside a request scope')) {
+      void Promise.resolve()
+        .then(task)
+        .catch(err => console.warn('[Upload API] deferred task failed:', err instanceof Error ? err.message : err));
+      return;
+    }
+    throw e;
+  }
+}
 
 function minPriceFromTiers(tiers: Array<{ adult_price?: number | null }> | null | undefined): number | null {
   const prices = (tiers ?? [])
@@ -793,6 +809,60 @@ const postHandler = async (request: NextRequest) => {
     if (!directRawText && isStandardProductMarkdown(parsedDocument.rawText ?? '')) {
       parsedDocument = parseStandardProductMarkdown(parsedDocument.rawText, fileName);
     }
+    let productRegistrationV2GateFailures: string[] = [];
+    if (
+      process.env.PRODUCT_REGISTRATION_V2_ENABLED !== '0'
+      && !isStandardProductMarkdown(parsedDocument.rawText ?? '')
+      && (parsedDocument.rawText ?? '').trim().length >= 1000
+    ) {
+      const v2Plan = planProductRegistrationV2(parsedDocument.rawText ?? '');
+      const shouldUseV2 =
+        v2Plan.document_type === 'multi_variant_catalog'
+        && v2Plan.price_mapping_strategy === 'vertical_grade_columns'
+        && v2Plan.expected_products >= 2
+        && v2Plan.unresolved_parts.length === 0;
+      if (shouldUseV2) {
+        try {
+          const v2 = await runProductRegistrationV2(parsedDocument.rawText ?? '');
+          if (v2.gate.customer_publishable && v2.products.length === v2.plan.expected_products) {
+            const v2MultiProducts: MultiProductResult[] = v2.products.map(product => ({
+              extractedData: {
+                ...product.extractedData,
+                parser_version: 'product-registration-v2',
+                _v2_gate_status: v2.gate.status,
+              } as typeof product.extractedData,
+              itineraryData: product.itineraryData as unknown as MultiProductResult['itineraryData'],
+              sectionRawText: product.section_raw_text,
+            }));
+            parsedDocument.multiProducts = v2MultiProducts;
+            parsedDocument.extractedData = v2MultiProducts[0].extractedData;
+            parsedDocument.itineraryData = v2MultiProducts[0].itineraryData;
+            parsedDocument.confidence = Math.min(parsedDocument.confidence || 1, v2.plan.confidence);
+            console.log(
+              '[Upload API] Product Registration V2 적용:',
+              `products=${v2.products.length}`,
+              `gate=${v2.gate.status}`,
+            );
+          } else {
+            productRegistrationV2GateFailures = v2.gate.checks
+              .filter(c => c.status === 'fail')
+              .map(c => c.message);
+            if (productRegistrationV2GateFailures.length === 0) {
+              productRegistrationV2GateFailures = [`V2 gate=${v2.gate.status}`];
+            }
+            console.warn(
+              '[Upload API] Product Registration V2 gate failed — legacy parsed result 유지:',
+              v2.gate.checks.filter(c => c.status === 'fail').slice(0, 3).map(c => c.message).join(' | '),
+            );
+          }
+        } catch (e) {
+          productRegistrationV2GateFailures = [
+            `Product Registration V2 exception: ${e instanceof Error ? e.message : String(e)}`,
+          ];
+          console.warn('[Upload API] Product Registration V2 실패 — legacy parsed result 유지:', e instanceof Error ? e.message : e);
+        }
+      }
+    }
     const rawTextForClassify = (parsedDocument.rawText || '').slice(0, 3000);
     const normalizedCatalogHash = computeNormalizedContentHash(parsedDocument.rawText ?? '');
 
@@ -1055,6 +1125,16 @@ const postHandler = async (request: NextRequest) => {
       }
       if ((!ed.inclusions?.length) && rawFacts.inclusions.length) ed.inclusions = rawFacts.inclusions;
       if ((!ed.excludes?.length) && rawFacts.excludes.length) ed.excludes = rawFacts.excludes;
+      if ((!ed.optional_tours?.length) && rawFacts.optionalTours.length) {
+        ed.optional_tours = rawFacts.optionalTours.map(tour => ({
+          name: tour.name,
+          region: tour.region || undefined,
+          price: tour.priceLabel || undefined,
+          price_usd: Number(tour.priceLabel.match(/\$(\d+)/)?.[1] ?? 0) || undefined,
+          price_krw: undefined,
+          note: tour.note,
+        }));
+      }
       if ((!ed.notices_parsed?.length) && rawFacts.notices.length) ed.notices_parsed = rawFacts.notices;
       if ((!ed.flight_info?.flight_no) && rawFacts.outbound?.code) {
         ed.flight_info = {
@@ -1516,6 +1596,7 @@ JSON 배열로 응답:
           projectedPriceDates.length === 0 ? '출발일별 가격(price_dates) 없음' : null,
           hasDuplicateDayNumbers ? '같은 상품 안에 일차 번호 중복' : null,
           hasTooManyDaysForDuration ? `상품 기간 ${ed.duration}일 대비 일정 ${preGateDays.length}일` : null,
+          ...productRegistrationV2GateFailures.map(reason => `Product Registration V2 gate failed: ${reason}`),
         ].filter((v): v is string => !!v);
 
         if (customerDeliverableBlockers.length > 0) {
@@ -1710,7 +1791,7 @@ JSON 배열로 응답:
         const draftRow = regWrite.row;
         const l1Gate = regWrite.l1;
         let productStatus = regWrite.productsStatus;
-        let pkgStatus: string = regWrite.travelPackageStatus;
+        let pkgStatus: string = mapTravelPackageUploadStatus(regWrite.travelPackageStatus);
         if (uploadGate === 'BLOCKED') {
           productStatus = 'REVIEW_NEEDED';
           pkgStatus = 'pending';
@@ -1953,7 +2034,34 @@ JSON 배열로 응답:
             const intakeRawText = productRawText ?? parsedDocument.rawText ?? '';
             const intakeRawHash = createHash('sha256').update(intakeRawText).digest('hex');
             const auditBaseUrl = request.nextUrl.origin;
-            nextAfter(async () => {
+            safeAfter(async () => {
+              try {
+                const v3 = await runProductRegistrationV3(intakeRawText, {
+                  attractions: activeAttractions,
+                  destination: ed.destination ?? null,
+                  supplierHint: intakeLandOperatorName,
+                  sourceType: parsedDocument.fileType,
+                });
+                const persisted = await persistProductRegistrationDraftV3(supabaseAdmin, {
+                  packageId: pkgIdForAudit,
+                  packageTitle: title,
+                  rawText: intakeRawText,
+                  sourceType: parsedDocument.fileType,
+                  supplierHint: intakeLandOperatorName,
+                  destination: ed.destination ?? null,
+                  documentType: v3.structure_plan.document_type,
+                  result: v3,
+                });
+                if (persisted.error) {
+                  console.warn('[upload-after] product_registration_drafts V3 저장 실패:', persisted.error);
+                } else {
+                  console.log('[upload-after] product_registration_drafts V3:', persisted.id, v3.gate_result.status, `queued=${persisted.queuedUnmatched}`);
+                }
+              } catch (e) {
+                console.warn('[upload-after] product-registration-v3 sidecar 실패:', e instanceof Error ? e.message : e);
+              }
+            });
+            safeAfter(async () => {
               try {
                 await Promise.allSettled([
                   runCoVeInBackground(pkgIdForAudit),
@@ -1968,7 +2076,7 @@ JSON 배열로 응답:
             // P1 — upload → normalized_intakes 역변환 SSOT + IR canary shadow (샘플만 forward LLM)
             if (isSupabaseConfigured) {
               const intakePkgRow = pkgResult as unknown as Record<string, unknown>;
-              nextAfter(async () => {
+              safeAfter(async () => {
                 try {
                   const snap = await persistIntakeSnapshot(supabaseAdmin, {
                     packageId: pkgIdForAudit,
@@ -2012,7 +2120,7 @@ JSON 배열로 응답:
                   .filter(i => i.severity !== 'medium')
                   .map(i => i.matched),
               };
-              nextAfter(async () => {
+              safeAfter(async () => {
                 try { await accumulateLandOperatorProfile(profileArgs); }
                 catch (e) { console.warn('[upload-after] land-operator profile 실패:', e instanceof Error ? e.message : e); }
               });
@@ -2028,7 +2136,7 @@ JSON 배열로 응답:
                 title,
               };
               const photoPkgId = pkgResult?.id ?? null;
-              nextAfter(async () => {
+              safeAfter(async () => {
                 try { await runAutoPhotoMatch(photoArgs); }
                 catch (e) {
                   const msg = e instanceof Error ? e.message : String(e);
@@ -2183,152 +2291,28 @@ JSON 배열로 응답:
               .then(undefined, () => {});
           }
 
-          // ── P11-3: Wikibase Reconcile 기반 신규 관광지 자동 등록 (2026-05-24) ──────
-          //   STRICT SSOT 정책 → "완전 자동 등록" (사장님 결정):
-          //   외부 POI 명칭을 Wikibase Reconciliation API 로 QID 정규화 → attractions 자동 INSERT.
-          //   동일명칭 | alias 정규화로 "바나산테마파크" = "바나산공원" = 동일 QID 매핑.
-          //   📌 정책 변경 근거: 사장님 "손 안 대도 되는 수준" 요청.
-          //
-          //   1) reconcilePlaceName 으로 QID 조회
-          //   2) 성공 → qid 중복 체크 → attractions INSERT (aliases+photos+descriptions)
-          //   3) 실패 → 기존처럼 unmatched 큐 적재 (fallback)
-          //   4) fire-and-forget: photo + description 백그라운드 생성
-          const allowAutoAttractionInsert = false;
-          if (allowAutoAttractionInsert && newActivities.length > 0) {
+          // 신규 관광지는 업로드 파이프라인에서 절대 생성하지 않는다.
+          // 기존 DB/alias 매칭 실패분은 사장님 검수용 unmatched 큐에만 남긴다.
+          if (newActivities.length > 0) {
             const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
             const { inferCountryFromDestination } = await import('@/lib/destination-iso');
             const firstSeedCountry = inferCountryFromDestination(firstSeedDest);
             const uniqueNew = [...new Set(newActivities.map(a => a.activity))].slice(0, 30);
 
-            const { reconcilePlaceName } = await import('@/lib/wikidata-reconcile');
-            const { inferCategory } = await import('@/lib/parser/attraction-category');
-
-            let autoInserted = 0;
-            const reconcileFailed: string[] = [];
-
             for (const kw of uniqueNew) {
-              const reconciled = await reconcilePlaceName(kw, {
-                country: firstSeedCountry || undefined,
-                typeId: 'Q570',
-                topRes: 3,
-              });
-
-              if (reconciled.length > 0) {
-                const top = reconciled[0];
-                // qid 기반 중복 체크
-                const { data: existing } = await supabaseAdmin
-                  .from('attractions')
-                  .select('id, aliases')
-                  .eq('qid', top.qid)
-                  .maybeSingle();
-
-                if (existing) {
-                  // 기존 attraction 에 alias 만 추가 (원래 activity 명칭을 alias 로)
-                  const existingAliases: string[] = (existing.aliases as string[] | null) ?? [];
-                  if (!existingAliases.includes(kw) && kw !== top.label_ko && kw !== top.label_en) {
-                    await supabaseAdmin
-                      .from('attractions')
-                      .update({
-                        aliases: [...new Set([...existingAliases, kw])],
-                        updated_at: new Date().toISOString(),
-                      })
-                      .eq('id', existing.id);
-                    console.log(`[Upload P11-3] 기존 ${top.qid} 에 alias 추가: "${kw}"`);
-                  }
-                  // unmatched 큐 제거 (status='added')
-                  await supabaseAdmin
-                    .from('unmatched_activities')
-                    .update({ status: 'added', note: `auto-matched: ${top.qid}` })
-                    .eq('activity', kw);
-                } else {
-                  // 신규 관광지 auto INSERT
-                  const category = inferCategory(kw, top.type_qid || undefined);
-                  const aliasSet = new Set<string>([kw]);
-                  if (top.label_ko) aliasSet.add(top.label_ko);
-                  if (top.label_en && top.label_en !== top.label_ko) aliasSet.add(top.label_en);
-                  for (const a of top.aliases) {
-                    if (a !== top.label_ko && a !== top.label_en) aliasSet.add(a);
-                  }
-
-                  const { data: inserted } = await supabaseAdmin
-                    .from('attractions')
-                    .insert({
-                      name: top.label_ko || top.label_en || kw,
-                      qid: top.qid,
-                      aliases: [...aliasSet].filter(Boolean),
-                      short_desc: top.description?.slice(0, 30) || null,
-                      long_desc: top.description || null,
-                      country: firstSeedCountry,
-                      region: firstSeedDest,
-                      category,
-                      photos: top.image_url
-                        ? [{ src_medium: top.image_url, src_large: top.image_url, photographer: 'Wikimedia Commons', source: 'wikimedia' }]
-                        : [],
-                      mention_count: 1,
-                      is_active: true,
-                    })
-                    .select('id')
-                    .single();
-
-                  if (inserted) {
-                    autoInserted++;
-                    console.log(`[Upload P11-3] 신규 관광지 자동 등록: "${top.label_ko || top.label_en || kw}" (${top.qid})`);
-                    // unmatched 큐 제거
-                    await supabaseAdmin
-                      .from('unmatched_activities')
-                      .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})` })
-                      .eq('activity', kw);
-
-                    // fire-and-forget: 사진 + 설명 백그라운드 생성
-                    const newId = inserted.id;
-                    nextAfter(async () => {
-                      try {
-                        // 설명 생성
-                        const { generateAttractionDescription } = await import('@/lib/attraction-desc-gen');
-                        const desc = await generateAttractionDescription(top.label_ko || top.label_en || kw, {
-                          qid: top.qid,
-                          wdDescription: top.description,
-                          destination: firstSeedDest,
-                        });
-                        await supabaseAdmin
-                          .from('attractions')
-                          .update({ short_desc: desc.short_desc, updated_at: new Date().toISOString() })
-                          .eq('id', newId);
-                        console.log(`[Upload P11-3] 설명 생성 완료: ${newId.slice(0, 8)}`);
-
-                        // 사진 검색 (기존 photos 비어있을 때만)
-                        const { runAttractionPhotoMatch } = await import('@/lib/attraction-photo-match');
-                        await runAttractionPhotoMatch(newId, {
-                          keywords: [top.label_ko || '', top.label_en || '', kw, ...top.aliases].filter(Boolean),
-                          qid: top.qid,
-                          maxPhotos: 5,
-                        });
-                      } catch (e2) {
-                        console.warn(`[Upload P11-3] 백그라운드 처리 실패: ${newId.slice(0, 8)}:`, e2 instanceof Error ? e2.message : e2);
-                      }
-                    });
-                  }
-                }
-              } else {
-                // Reconcile 실패 → 기존처럼 unmatched 큐 적재
-                reconcileFailed.push(kw);
-                await supabaseAdmin.from('unmatched_activities').upsert({
-                  activity: kw,
-                  package_id: savedIds[0] ?? '',
-                  package_title: savedTitles[0] ?? '',
-                  day_number: 0,
-                  country: firstSeedCountry,
-                  region: firstSeedDest,
-                  occurrence_count: 1,
-                  status: 'pending',
-                }, { onConflict: 'activity' });
-              }
-
-              // rate limit 100ms
-              await new Promise(r => setTimeout(r, 100));
+              await supabaseAdmin.from('unmatched_activities').upsert({
+                activity: kw,
+                package_id: savedIds[0] ?? '',
+                package_title: savedTitles[0] ?? '',
+                day_number: 0,
+                country: firstSeedCountry,
+                region: firstSeedDest,
+                occurrence_count: 1,
+                status: 'pending',
+              }, { onConflict: 'activity' });
             }
 
-            console.log(`[Upload API] P11-3: ${autoInserted}건 자동 등록, ${reconcileFailed.length}건 unmatched fallback`);
+            console.log(`[Upload API] 신규 관광지 후보 ${uniqueNew.length}건 unmatched 큐 적재 (auto insert 금지)`);
           }
         }
       } catch (attrError) {
@@ -2348,7 +2332,7 @@ JSON 배열로 응답:
     //   추가: 실패 시 admin_alerts 적재로 silent fail 영구 차단.
     if (savedIds.length > 0) {
       for (const pkgId of savedIds) {
-        nextAfter(async () => {
+        safeAfter(async () => {
           try {
             const { backfillPackageAttractionsL3 } = await import('@/lib/itinerary-llm-extractor');
             const r = await backfillPackageAttractionsL3(pkgId, { skipIfMatchRateAbove: 0.9 });

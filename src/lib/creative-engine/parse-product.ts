@@ -121,7 +121,7 @@ export async function parseProduct(productId: string): Promise<ParsedProductData
   // 상품 조회
   const { data: pkg, error } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, price, duration, itinerary, inclusions, excludes, product_highlights, product_summary, special_notes, product_type, airline, departure_airport, parsed_data, parsed_at, raw_text_hash')
+    .select('id, title, destination, price, duration, itinerary, inclusions, excludes, product_highlights, product_summary, product_type, airline, departure_airport, parsed_data, parsed_at, raw_text_hash')
     .eq('id', productId)
     .single();
 
@@ -187,7 +187,6 @@ function buildRawText(pkg: any): string {
   if (pkg.departure_airport) parts.push(`출발공항: ${pkg.departure_airport}`);
   if (pkg.product_type) parts.push(`상품유형: ${pkg.product_type}`);
   if (pkg.product_summary) parts.push(`요약: ${pkg.product_summary}`);
-  if (pkg.special_notes) parts.push(`특이사항: ${pkg.special_notes}`);
 
   if (Array.isArray(pkg.inclusions) && pkg.inclusions.length > 0) {
     parts.push(`포함사항: ${pkg.inclusions.join(', ')}`);
@@ -212,7 +211,7 @@ function buildFallbackParsed(pkg: any): ParsedProductData {
   const price = pkg.price || 0;
   const duration = pkg.duration || 0;
   const nights = duration > 0 ? duration - 1 : 0;
-  const summary = [pkg.product_summary, pkg.special_notes, pkg.title].filter(Boolean).join(' ');
+  const summary = [pkg.product_summary, pkg.title].filter(Boolean).join(' ');
   const inclusions: string[] = pkg.inclusions || [];
 
   return {

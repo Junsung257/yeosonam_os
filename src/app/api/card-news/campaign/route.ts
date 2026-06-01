@@ -92,11 +92,11 @@ export async function POST(request: NextRequest) {
     type PkgRow = {
       title: string; destination?: string; price?: number; duration?: string | number;
       itinerary?: string[]; inclusions?: string[]; product_highlights?: string[];
-      product_summary?: string; special_notes?: string; airline?: string; departure_airport?: string;
+      product_summary?: string; airline?: string; departure_airport?: string;
     };
     const { data: pkg } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, destination, price, duration, itinerary, inclusions, product_highlights, product_summary, special_notes, airline, departure_airport')
+      .select('title, destination, price, duration, itinerary, inclusions, product_highlights, product_summary, airline, departure_airport')
       .eq('id', body.package_id)
       .maybeSingle();
     if (!pkg) {
@@ -115,7 +115,6 @@ export async function POST(request: NextRequest) {
         product_highlights: pkgRow.product_highlights,
         itinerary: pkgRow.itinerary,
         product_summary: pkgRow.product_summary,
-        special_notes: pkgRow.special_notes,
         airline: pkgRow.airline,
         departure_airport: pkgRow.departure_airport,
       },

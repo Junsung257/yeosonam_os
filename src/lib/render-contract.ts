@@ -113,6 +113,7 @@ export interface RenderPackageInput {
   product_type?: string | null;
   departure_airport?: string | null;
   destination?: string | null;
+  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[] | null;
   excludes?: string[] | null;
   surcharges?: SurchargeObject[] | null;
   optional_tours?: OptionalTourInput[] | null;
@@ -122,6 +123,7 @@ export interface RenderPackageInput {
   customer_notes?: string | null;
   /** 운영 전용 메모. 고객 노출 차단 (어드민 전용). */
   internal_notes?: string | null;
+  notices_parsed?: Array<{ type?: string; title?: string; text?: string }> | null;
   inclusions?: string[] | null;
   itinerary_data?: {
     meta?: {
@@ -130,6 +132,15 @@ export interface RenderPackageInput {
       airline?: string | null;
       departure_airport?: string | null;
     } | null;
+    flight_segments?: Array<{
+      leg: 'outbound' | 'inbound';
+      flight_no: string | null;
+      dep_airport: string | null;
+      dep_time: string | null;
+      arr_airport: string | null;
+      arr_time: string | null;
+      arr_day_offset: 0 | 1;
+    }> | null;
     highlights?: {
       shopping?: string | null;
       excludes?: string[] | null;
@@ -577,6 +588,7 @@ export function resolveSurchargesAndExcludes(pkg: RenderPackageInput): {
  * 회색지대 통과를 대비한 렌더 시점 2중 가드.
  */
 const INTERNAL_KEYWORDS = /커미션|commission_rate|정산|LAND_OPERATOR|스키마\s*제약|랜드사\s*메모|랜드사\s*커미션/i;
+const SHOPPING_HINT_RE = /쇼핑|면세|노쇼핑|마트|센터\s*\d+회|방문\s*\d+회/i;
 
 /**
  * 쇼핑 섹션 출처 우선순위:
@@ -621,6 +633,20 @@ export function resolveShopping(pkg: RenderPackageInput): CanonicalShopping {
   }
   const fallback = pkg.customer_notes?.trim();
   if (!fallback) {
+    return {
+      text: null,
+      displayLine: null,
+      count: null,
+      items: [],
+      remainder: null,
+      policyNote: null,
+      source: null,
+      blocked: false,
+    };
+  }
+  // customer_notes fallback은 쇼핑 단서가 있을 때만 허용
+  // (표준 notice/customer 문구가 쇼핑 섹션으로 오인 노출되는 누출 방지)
+  if (!SHOPPING_HINT_RE.test(fallback)) {
     return {
       text: null,
       displayLine: null,

@@ -87,32 +87,6 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       requireCompletedAudit: true,
     });
     const publishGate = delivery.publishGate;
-    /*
-    if (!sourceEvidence || Object.keys(sourceEvidence).length === 0) {
-      const fallback = pkgToIntake(pkg as Parameters<typeof pkgToIntake>[0], {
-        landOperatorName: (pkg as { land_operator?: string | null }).land_operator ?? undefined,
-      });
-      sourceEvidence = fallback.ir.sourceEvidence;
-    }
-    const renderCoverage = evaluateRenderClaimCoverage(pkg as Parameters<typeof evaluateRenderClaimCoverage>[0], sourceEvidence);
-    const finalRenderFailedChecks = renderCoverage.unsupported.map((claim) => ({
-      id: `final_render_unsupported:${claim.id}`,
-      severity: 'critical',
-      passed: false,
-      message: `고객 노출 문구 원문 근거 없음: ${claim.value}`,
-    }));
-
-    const publishGate = evaluateProductPublishGate({
-      auditStatus: (pkg as { audit_status?: string | null }).audit_status ?? null,
-      auditReport: (pkg as { audit_report?: unknown }).audit_report ?? null,
-      failedChecks: [...failedChecks, ...finalRenderFailedChecks],
-      sourceEvidence,
-      requiredEvidenceFields: [...REQUIRED_PACKAGE_EVIDENCE_FIELDS],
-      minEvidenceCoverage: MIN_PACKAGE_EVIDENCE_COVERAGE,
-      requireCompletedAudit: true,
-    });
-
-    */
     if (publishGate.decision === 'block') {
       return NextResponse.json(
         {

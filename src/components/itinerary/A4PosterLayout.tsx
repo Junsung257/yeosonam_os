@@ -136,6 +136,31 @@ export function calcPage1DayCount(
    ═══════════════════════════════════════════════════════ */
 
 export function PosterHeader({ meta }: { meta: TravelItinerary['meta'] }) {
+  const flightMeta = meta as TravelItinerary['meta'] & {
+    flight_out_time?: string | null;
+    flight_in_time?: string | null;
+    flight_out_arrive_time?: string | null;
+    flight_in_arrive_time?: string | null;
+  };
+  const flightOutLabel = meta.flight_out
+    ? [
+        meta.flight_out,
+        flightMeta.flight_out_time && flightMeta.flight_out_arrive_time
+          ? `${flightMeta.flight_out_time}-${flightMeta.flight_out_arrive_time}`
+          : flightMeta.flight_out_time,
+      ].filter(Boolean).join(' ')
+    : null;
+  const flightInLabel = meta.flight_in
+    ? [
+        meta.flight_in,
+        flightMeta.flight_in_time && flightMeta.flight_in_arrive_time
+          ? `${flightMeta.flight_in_time}-${flightMeta.flight_in_arrive_time}`
+          : flightMeta.flight_in_time,
+      ].filter(Boolean).join(' ')
+    : null;
+  const flightPairLabel =
+    flightOutLabel && flightInLabel ? `${flightOutLabel} / ${flightInLabel}` : flightOutLabel ?? flightInLabel;
+
   return (
     <div style={{ marginBottom: '6px' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
@@ -171,7 +196,7 @@ export function PosterHeader({ meta }: { meta: TravelItinerary['meta'] }) {
         <p style={{ fontSize: '10px', color: '#6b7280', margin: '2px 0 0' }}>
           {[
             meta.airline,
-            meta.flight_out && meta.flight_in ? `${meta.flight_out}/${meta.flight_in}` : null,
+            flightPairLabel,
             `최소 ${meta.min_participants}명`,
             meta.room_type,
           ].filter(Boolean).join(' · ')}

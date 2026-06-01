@@ -6,7 +6,7 @@ export type RenderClaimSeverity = 'critical' | 'high' | 'medium';
 export type RenderClaim = {
   id: string;
   value: string;
-  surface: 'flight' | 'itinerary' | 'hotel' | 'terms' | 'optional';
+  surface: 'flight' | 'itinerary' | 'hotel' | 'terms' | 'optional' | 'price';
   severity: RenderClaimSeverity;
 };
 
@@ -29,6 +29,11 @@ function addClaim(claims: RenderClaim[], claim: RenderClaim): void {
 export function extractRenderClaims(pkg: RenderPackageInput): RenderClaim[] {
   const view = renderPackage(pkg);
   const claims: RenderClaim[] = [];
+
+  (pkg.price_dates ?? []).forEach((priceDate, idx) => {
+    addClaim(claims, { id: `priceDates[${idx}].date`, value: priceDate.date ?? '', surface: 'price', severity: 'critical' });
+    addClaim(claims, { id: `priceDates[${idx}].price`, value: String(priceDate.price ?? ''), surface: 'price', severity: 'critical' });
+  });
 
   for (const [leg, flight] of [
     ['outbound', view.flightHeader.outbound],
@@ -106,6 +111,123 @@ function rawSupports(rawText: string, value: string): boolean {
   return false;
 }
 
+function normalizeTermClaim(value: string): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const variants = new Set<string>([compact]);
+  // render-contract excludes 표시 포맷: "개인경비 · 불포함"
+  variants.add(compact.replace(/\s*[·ㆍ•]\s*불포함$/i, '').trim());
+  // 흔한 연결어 정규화
+  variants.add(compact.replace(/\s*및\s*/g, ' ').trim());
+  return [...variants].filter(v => v.length >= 2);
+}
+
+function rawSupportsTermLabel(rawText: string, value: string): boolean {
+  const variants = normalizeTermClaim(value);
+  return variants.some(variant => rawSupports(rawText, variant));
+}
+
+function normalizeOptionalClaim(value: string): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const variants = new Set<string>([compact]);
+  // displayName 형태: "마사지 (베트남)" -> "마사지"
+  variants.add(compact.replace(/\s*\([^)]*\)\s*$/, '').trim());
+  // 통화 포맷 차이: USD4 <-> $4
+  const usd = compact.match(/^USD\s*(\d+(?:\.\d+)?)$/i);
+  if (usd) variants.add(`$${usd[1]}`);
+  const dollar = compact.match(/^\$\s*(\d+(?:\.\d+)?)$/);
+  if (dollar) variants.add(`USD${dollar[1]}`);
+  // 날짜형 가격/라벨 토큰(예: 2027-02-04)도 raw의 2/4, 2월 4일과 매칭 허용
+  normalizeDateClaim(compact).forEach(v => variants.add(v));
+  return [...variants].filter(v => v.length >= 2);
+}
+
+function rawSupportsOptionalLabel(rawText: string, value: string): boolean {
+  const variants = normalizeOptionalClaim(value);
+  return variants.some(variant => rawSupports(rawText, variant));
+}
+
+function normalizeHotelClaim(value: string): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const variants = new Set<string>([compact]);
+  // 5성 <-> 5성급, 준5성 <-> 준 5성급
+  variants.add(compact.replace(/성급$/g, '성').trim());
+  variants.add(compact.replace(/성$/g, '성급').trim());
+  variants.add(compact.replace(/^준\s*(\d)성$/g, '준$1성급').trim());
+  variants.add(compact.replace(/^준\s*(\d)성급$/g, '준$1성').trim());
+  return [...variants].filter(v => v.length >= 2);
+}
+
+function rawSupportsHotelLabel(rawText: string, value: string): boolean {
+  const variants = normalizeHotelClaim(value);
+  return variants.some(variant => rawSupports(rawText, variant));
+}
+
+function normalizeFlightClaim(value: string): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const variants = new Set<string>([compact]);
+  // 부산 김해 <-> 부산(김해)
+  variants.add(compact.replace(/부산\s*김해/g, '부산(김해)'));
+  variants.add(compact.replace(/부산\s*\(\s*김해\s*\)/g, '부산 김해'));
+  // 김해국제공항 -> 김해공항 -> 김해
+  variants.add(compact.replace(/김해\s*국제?\s*공항/g, '김해'));
+  variants.add(compact.replace(/김해/g, '김해국제공항'));
+  // 인천국제공항 -> 인천
+  variants.add(compact.replace(/인천\s*국제?\s*공항/g, '인천'));
+  variants.add(compact.replace(/인천/g, '인천국제공항'));
+  return [...variants].filter(v => v.length >= 2);
+}
+
+function rawSupportsFlightLabel(rawText: string, value: string): boolean {
+  const variants = normalizeFlightClaim(value);
+  return variants.some(variant => rawSupports(rawText, variant));
+}
+
+function normalizeDateClaim(value: string): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const variants = new Set<string>([compact]);
+  const iso = compact.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
+  if (iso) {
+    const y = iso[1];
+    const m = String(Number(iso[2]));
+    const d = String(Number(iso[3]));
+    variants.add(`${m}/${d}`);
+    variants.add(`${m}월 ${d}일`);
+    variants.add(`${y}.${m}.${d}`);
+  }
+  const slash = compact.match(/\b(\d{1,2})\/(\d{1,2})\b/);
+  if (slash) {
+    const m = String(Number(slash[1]));
+    const d = String(Number(slash[2]));
+    variants.add(`${m}월 ${d}일`);
+  }
+  return [...variants].filter(v => v.length >= 3);
+}
+
+function rawSupportsDateLabel(rawText: string, value: string): boolean {
+  const variants = normalizeDateClaim(value);
+  return variants.some(variant => rawSupports(rawText, variant));
+}
+
+function normalizePriceClaim(value: string): string[] {
+  const compact = value.replace(/\s+/g, ' ').trim();
+  const variants = new Set<string>([compact]);
+  const numeric = compact.match(/^\d{5,}$/);
+  if (numeric) {
+    const n = Number(compact);
+    if (Number.isFinite(n)) {
+      variants.add(n.toLocaleString('ko-KR'));
+      variants.add(`${n.toLocaleString('ko-KR')}??`);
+      variants.add(`${n}??`);
+    }
+  }
+  return [...variants].filter(v => v.length >= 2);
+}
+
+function rawSupportsPriceLabel(rawText: string, value: string): boolean {
+  const variants = normalizePriceClaim(value);
+  return variants.some(variant => rawSupports(rawText, variant));
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
@@ -129,6 +251,18 @@ function rawSupportsMergedFlightLabel(rawText: string, value: string): boolean {
   return hasRoute && hasTime;
 }
 
+function rawSupportsClaim(rawText: string, claim: RenderClaim): boolean {
+  if (claim.surface === 'terms') return rawSupportsTermLabel(rawText, claim.value);
+  if (claim.surface === 'optional') return rawSupportsOptionalLabel(rawText, claim.value);
+  if (claim.surface === 'hotel') return rawSupportsHotelLabel(rawText, claim.value);
+  if (claim.surface === 'flight') return rawSupportsFlightLabel(rawText, claim.value);
+  if (claim.surface === 'price') return rawSupportsDateLabel(rawText, claim.value) || rawSupportsPriceLabel(rawText, claim.value);
+  if (claim.id.includes('price') || claim.id.includes('date')) {
+    return rawSupportsDateLabel(rawText, claim.value) || rawSupportsPriceLabel(rawText, claim.value) || rawSupports(rawText, claim.value);
+  }
+  return rawSupports(rawText, claim.value);
+}
+
 export function evaluateRenderClaimCoverage(
   pkg: RenderPackageInput & { raw_text?: string | null },
   sourceEvidence?: SourceEvidenceMap | null,
@@ -136,7 +270,7 @@ export function evaluateRenderClaimCoverage(
   const claims = extractRenderClaims(pkg);
   const rawText = pkg.raw_text ?? '';
   const unsupported = claims.filter(claim =>
-    !rawSupports(rawText, claim.value)
+    !rawSupportsClaim(rawText, claim)
     && !rawSupportsMergedFlightLabel(rawText, claim.value)
     && !evidenceSupports(sourceEvidence, claim.value)
   );
