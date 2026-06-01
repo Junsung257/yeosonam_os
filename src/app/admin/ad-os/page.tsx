@@ -304,6 +304,7 @@ export default function AdOsPage() {
   const [runningKillSwitch, setRunningKillSwitch] = useState(false);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
+  const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [launchAudit, setLaunchAudit] = useState<LaunchAudit | null>(null);
   const [naverSetupPacket, setNaverSetupPacket] = useState<NaverSetupPacket | null>(null);
@@ -910,6 +911,30 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '키워드 상태 변경 실패');
     } finally {
       setKeywordActionId(null);
+    }
+  };
+
+  const updateChangeRequest = async (id: string, status: 'approved' | 'rejected') => {
+    setChangeRequestActionId(id);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/change-requests', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, status }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '변경 요청 처리 실패');
+      await refresh();
+      setAutomationMessage(
+        status === 'approved'
+          ? 'AI 변경 요청을 승인했습니다. 제한 자동집행 단계에서 예산/권한 조건을 다시 확인한 뒤 적용됩니다.'
+          : 'AI 변경 요청을 거절했습니다. 같은 조건은 이후 학습 로그에 반영되어 추천 우선순위가 낮아집니다.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '변경 요청 처리 실패');
+    } finally {
+      setChangeRequestActionId(null);
     }
   };
 
@@ -1977,6 +2002,28 @@ export default function AdOsPage() {
                       <p className="mt-1 text-admin-2xs text-admin-muted">
                         {String(row.platform || 'internal')} · {String(row.risk_level || 'medium')} · {String(row.reason || '').slice(0, 70)}
                       </p>
+                      {String(row.status || '') === 'proposed' && String(row.id || '') && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => updateChangeRequest(String(row.id), 'approved')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <Check size={13} />
+                            승인
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => updateChangeRequest(String(row.id), 'rejected')}
+                            loading={changeRequestActionId === String(row.id)}
+                          >
+                            <X size={13} />
+                            거절
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   ))
                 )}
