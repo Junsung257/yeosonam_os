@@ -247,7 +247,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     let dripInfo: { queued: number; angles: string[] } | null = null;
     let cardNewsInfo: { triggered: boolean; reason?: string } | null = null;
     let orchestratorInfo: { triggered: boolean; reason?: string } | null = null;
-    let searchAdsInfo: { triggered: boolean; saved?: number; keywords?: number; reason?: string } | null = null;
+    let searchAdsInfo: {
+      triggered: boolean;
+      saved?: number;
+      keywords?: number;
+      scenarios?: number;
+      blog_actions?: number;
+      reason?: string;
+    } | null = null;
 
     // 정책 조회
     const { getBlogPublishingPolicy } = await import('@/lib/blog-scheduler');
@@ -335,14 +342,26 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       orchestratorInfo = { triggered: false, reason: 'policy disabled — /admin/blog/policy에서 활성' };
     }
 
-    // 4) 검색광고 키워드 플랜 자동 생성 (draft-first, 실제 집행은 별도 publish 플래그 필요)
+    // 4) Ad OS product autopilot: 시나리오, 블로그 진화 큐, 검색광고 키워드 플랜 자동 생성.
+    //    guarded+apply는 내부 DB 후보만 만들고 외부 광고비를 쓰지 않는다.
     try {
-      const { buildAndSaveSearchAdPackagePlan } = await import('@/lib/search-ads-auto-planner');
-      const plan = await buildAndSaveSearchAdPackagePlan(id);
-      searchAdsInfo = { triggered: true, saved: plan.saved, keywords: plan.summary.total };
+      const { runAdOsProductAutopilot } = await import('@/lib/ad-os-product-autopilot');
+      const plan = await runAdOsProductAutopilot({
+        packageId: id,
+        mode: 'guarded',
+        apply: true,
+        source: 'package_approve_detail',
+      });
+      searchAdsInfo = {
+        triggered: true,
+        saved: plan.search_ads.saved,
+        keywords: plan.search_ads.keywords,
+        scenarios: plan.scenarios.saved,
+        blog_actions: plan.scenarios.queued_blog_actions,
+      };
     } catch (e) {
       searchAdsInfo = { triggered: false, reason: e instanceof Error ? e.message : 'unknown' };
-      await alertWarn('search-ads-auto-plan', e);
+      await alertWarn('ad-os-product-autopilot', e);
     }
 
     // VA 이메일 알림 — fire-and-forget (비중단)

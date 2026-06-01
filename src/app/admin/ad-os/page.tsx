@@ -153,6 +153,8 @@ type Summary = {
     keyword_plans: Array<Record<string, unknown>>;
     learning_events: Array<Record<string, unknown>>;
     search_term_candidates: Array<Record<string, unknown>>;
+    product_scenarios: Array<Record<string, unknown>>;
+    landing_evolution_queue: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -1309,6 +1311,8 @@ export default function AdOsPage() {
             <KpiCard label="7일 내 발권기한" value={summary.kpis.expiring_packages_7d.toLocaleString('ko-KR')} icon={AlertTriangle} tone={summary.kpis.expiring_packages_7d > 0 ? 'negative' : 'neutral'} />
             <KpiCard label="캠페인 드래프트" value={(summary.kpis.draft_campaigns || 0).toLocaleString('ko-KR')} icon={Rocket} />
             <KpiCard label="학습 신호" value={(summary.kpis.learning_events || 0).toLocaleString('ko-KR')} icon={Gauge} />
+            <KpiCard label="상품 시나리오" value={(summary.kpis.product_scenarios || 0).toLocaleString('ko-KR')} icon={Bot} />
+            <KpiCard label="랜딩 진화 후보" value={(summary.kpis.landing_evolution_candidates || 0).toLocaleString('ko-KR')} icon={Layers} />
             <KpiCard label="월 예산 설정" value={fmtWon(summary.kpis.configured_monthly_budget_krw)} icon={Wallet} />
           </div>
 
@@ -1840,6 +1844,56 @@ export default function AdOsPage() {
                         <StatusPill tone={row.status === 'candidate' ? 'warn' : 'good'}>{String(row.status || '-')}</StatusPill>
                       </div>
                       <p className="mt-1 text-admin-2xs text-admin-muted">{String(row.recommendation || '').slice(0, 90)}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="admin-card p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-admin-base font-semibold text-admin-text-2">상품별 광고 시나리오</h2>
+                <StatusPill tone={(summary.kpis.product_scenarios || 0) > 0 ? 'good' : 'neutral'}>{summary.kpis.product_scenarios || 0}개</StatusPill>
+              </div>
+              <div className="mt-3 space-y-2">
+                {(summary.samples.product_scenarios || []).length === 0 ? (
+                  <div className="rounded-admin-sm bg-admin-surface-2 p-4 text-admin-xs text-admin-muted">
+                    상품 승인 또는 후보 생성을 실행하면 출발지, 부모님/가족, 가격 비교, 마감 임박 같은 시나리오가 쌓입니다.
+                  </div>
+                ) : (
+                  summary.samples.product_scenarios.slice(0, 6).map((row, idx) => (
+                    <div key={String(row.id || idx)} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-admin-xs font-semibold text-admin-text">{String(row.scenario_type || '-')}</p>
+                        <StatusPill>{String(row.status || 'candidate')}</StatusPill>
+                      </div>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">
+                        {String(row.funnel_stage || '-')} · {String(row.landing_strategy || '-')} · {String(row.recommended_channel || '-')}
+                      </p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="admin-card p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-admin-base font-semibold text-admin-text-2">블로그 진화 큐</h2>
+                <StatusPill tone={(summary.kpis.landing_evolution_candidates || 0) > 0 ? 'warn' : 'neutral'}>{summary.kpis.landing_evolution_candidates || 0}개</StatusPill>
+              </div>
+              <div className="mt-3 space-y-2">
+                {(summary.samples.landing_evolution_queue || []).length === 0 ? (
+                  <div className="rounded-admin-sm bg-admin-surface-2 p-4 text-admin-xs text-admin-muted">
+                    아직 CTA 교체, 기존 글 업데이트, 신규 글 생성 후보가 없습니다. 성과 학습 또는 상품 승인 후 자동 생성됩니다.
+                  </div>
+                ) : (
+                  summary.samples.landing_evolution_queue.slice(0, 6).map((row, idx) => (
+                    <div key={String(row.id || idx)} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-admin-xs font-semibold text-admin-text">{String(row.action || '-')}</p>
+                        <StatusPill tone={row.status === 'candidate' ? 'warn' : 'good'}>{String(row.status || '-')}</StatusPill>
+                      </div>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">{String(row.reason || '').slice(0, 90)}</p>
                     </div>
                   ))
                 )}

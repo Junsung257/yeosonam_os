@@ -676,13 +676,23 @@ export async function PATCH(request: NextRequest) {
     // 단건 상태 변경
     if (action === 'approve') {
       const result = await approvePackage(packageId);
-      let searchAds: { saved: number; keywords: number } | null = null;
+      let searchAds: { saved: number; keywords: number; scenarios?: number; blog_actions?: number } | null = null;
       try {
-        const { buildAndSaveSearchAdPackagePlan } = await import('@/lib/search-ads-auto-planner');
-        const plan = await buildAndSaveSearchAdPackagePlan(packageId);
-        searchAds = { saved: plan.saved, keywords: plan.summary.total };
+        const { runAdOsProductAutopilot } = await import('@/lib/ad-os-product-autopilot');
+        const plan = await runAdOsProductAutopilot({
+          packageId,
+          mode: 'guarded',
+          apply: true,
+          source: 'package_approve',
+        });
+        searchAds = {
+          saved: plan.search_ads.saved,
+          keywords: plan.search_ads.keywords,
+          scenarios: plan.scenarios.saved,
+          blog_actions: plan.scenarios.queued_blog_actions,
+        };
       } catch (e) {
-        logWarning('[api/packages] PATCH search ads auto-plan failed', e);
+        logWarning('[api/packages] PATCH Ad OS product autopilot failed', e);
       }
       revalidatePath(`/packages/${packageId}`);
       revalidatePath('/packages');
