@@ -1311,6 +1311,13 @@ function safeParseJsonObject(raw: string): Record<string, unknown> | null {
   return null;
 }
 
+function minAdultPriceFromTiers(tiers: PriceTier[]): number | undefined {
+  const prices = tiers
+    .map(t => t.adult_price)
+    .filter((p): p is number => typeof p === 'number' && Number.isFinite(p) && p > 0);
+  return prices.length > 0 ? Math.min(...prices) : undefined;
+}
+
 // Phase 1 결과 → ExtractedData 변환
 function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: string): ExtractedData {
   return {
@@ -1330,7 +1337,7 @@ function phase1ItemToExtractedData(item: Record<string, unknown>, rawText: strin
     single_supplement: (item.single_supplement as string) || undefined,
     small_group_surcharge: (item.small_group_surcharge as string) || undefined,
     price: Array.isArray(item.price_tiers) && (item.price_tiers as PriceTier[]).length > 0
-      ? ((item.price_tiers as PriceTier[]).find(t => t.adult_price)?.adult_price ?? undefined)
+      ? minAdultPriceFromTiers(item.price_tiers as PriceTier[])
       : undefined,
     price_tiers: Array.isArray(item.price_tiers)
       ? filterTiersByDepartureDays(

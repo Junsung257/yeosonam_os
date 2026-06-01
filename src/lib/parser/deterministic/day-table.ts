@@ -134,6 +134,15 @@ function extractHotel(body: string): DayTableDay['hotel'] {
   // " 󰆹 " 마커 또는 "호텔 또는 동급" 패턴 라인
   const lines = body.split('\n');
   for (const line of lines) {
+    if (!/또는\s*동급/.test(line) || !/(호텔|리조트|레스)/.test(line)) continue;
+    const cleaned = line
+      .replace(/^[^가-힣A-Za-z0-9]+/, '')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const name = cleaned.split(/또는\s*동급/)[0]?.trim();
+    if (name) return { name, grade: HOTEL_GRADE_RE.exec(line)?.[1] ?? null };
+  }
+  for (const line of lines) {
     if (!/(호텔|리조트|레지던스).*(또는\s*동급)?/.test(line)) continue;
     const cleaned = line.replace(/[\s󰆹·]+/g, ' ').trim();
     const m = HOTEL_RE.exec(cleaned);
