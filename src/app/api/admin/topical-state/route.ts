@@ -45,12 +45,36 @@ const getHandler = async () => {
       const status = (r as Record<string, unknown>).status as string;
       matrixStats[status] = (matrixStats[status] || 0) + 1;
     }
+    const clusterByDestination = Array.from(byDest.entries()).map(([destination, count]) => ({ destination, count }));
+    const weakDestinations = clusterByDestination
+      .filter((row) => row.count < 3)
+      .sort((a, b) => a.count - b.count)
+      .slice(0, 10);
+    const averageClustersPerPillar = (pillarRes.count || 0) > 0 ? clusters.length / (pillarRes.count || 1) : 0;
+    const authorityScore = Math.min(
+      100,
+      Math.round(
+        Math.min(40, (pillarRes.count || 0) * 8) +
+        Math.min(35, averageClustersPerPillar * 7) +
+        Math.min(15, (matrixStats.queued || 0) * 1.5) +
+        Math.min(10, (matrixStats.published || 0) * 0.5),
+      ),
+    );
+    const nextActions = [
+      (pillarRes.count || 0) === 0 ? '대표 여행지별 Pillar 페이지를 먼저 생성하세요.' : null,
+      weakDestinations.length > 0 ? `${weakDestinations[0].destination} 등 Cluster 3개 미만 여행지부터 보강하세요.` : null,
+      (matrixStats.pending || 0) > 0 ? '대기 중 매트릭스 토픽을 큐로 승격해 장기 검색 수요를 채우세요.' : null,
+      clusters.length === 0 ? 'Cluster 재구성을 실행해 Pillar와 하위 글을 내부링크로 묶으세요.' : null,
+    ].filter(Boolean);
 
     return NextResponse.json({
       pillars: pillarRes.data || [],
       pillar_count: pillarRes.count || 0,
       cluster_total: clusters.length,
-      cluster_by_destination: Array.from(byDest.entries()).map(([destination, count]) => ({ destination, count })),
+      cluster_by_destination: clusterByDestination,
+      authority_score: authorityScore,
+      weak_destinations: weakDestinations,
+      next_actions: nextActions,
       matrix: matrixStats,
       matrix_pending_sample: matrixSampleRes.data || [],
     });
@@ -60,6 +84,9 @@ const getHandler = async () => {
       pillar_count: 0,
       cluster_total: 0,
       cluster_by_destination: [],
+      authority_score: 0,
+      weak_destinations: [],
+      next_actions: ['토픽 권위 상태 조회 오류를 먼저 해결하세요.'],
       matrix: { pending: 0, queued: 0, skipped: 0, failed: 0, dropped: 0, published: 0 },
       matrix_pending_sample: [],
       error: err instanceof Error ? err.message : '토픽 권위 상태 조회 실패',

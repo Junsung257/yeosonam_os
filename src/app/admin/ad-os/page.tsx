@@ -60,6 +60,67 @@ type Summary = {
     next_action: string;
     checks: Array<{ id: string; label: string; done: boolean; next: string }>;
   }> & { approved_or_testing_keywords?: number };
+  channel_execution_states?: Record<string, {
+    state: 'missing_credentials' | 'integration_ready' | 'permission_denied' | 'no_campaign' | 'executable';
+    label: string;
+    tone: 'good' | 'warn' | 'bad' | 'neutral';
+    canSpend: boolean;
+    summary: string;
+    nextAction: string;
+  }>;
+  automation_modes?: Array<{
+    id: 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
+    label: string;
+    levelMin: number;
+    levelMax: number;
+    description: string;
+    allowedActions: string[];
+  }>;
+  active_automation_modes?: Array<{
+    platform: string;
+    level: number;
+    mode: 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
+    status: string;
+  }>;
+  tenant_guardrails?: Array<{
+    id: string;
+    label: string;
+    status: 'pass' | 'warn' | 'fail';
+    detail: string;
+  }>;
+  tenant_policy?: {
+    configured: boolean;
+    error?: string | null;
+    allowed_platforms: string[];
+    monthly_budget_cap_krw: number;
+    daily_budget_cap_krw: number;
+    max_cpc_krw: number;
+    max_test_loss_krw: number;
+    max_automation_level: number;
+    require_human_approval: boolean;
+    full_auto_enabled: boolean;
+    risk_status: string;
+  };
+  learning_loop?: {
+    scope: string[];
+    metrics: {
+      clicks: number;
+      cta_clicks: number;
+      conversions: number;
+      spend_krw: number;
+      conversion_value_krw: number;
+      cpa_krw: number;
+      roas_pct: number;
+      cta_rate_pct: number;
+      conversion_rate_pct: number;
+      bounce_rate_pct: number | null;
+      engagement_sessions_30d: number;
+      avg_time_on_page_seconds: number;
+      avg_scroll_depth_pct: number;
+    };
+    status: Record<string, boolean>;
+    next_action: string;
+  };
   launch_action_queue: Array<{
     id: string;
     priority: number;
@@ -97,6 +158,7 @@ type Summary = {
 };
 
 type BudgetDraft = Summary['channel_budgets'][number];
+type TenantPolicyDraft = NonNullable<Summary['tenant_policy']>;
 type LaunchAudit = {
   readiness: {
     pass: number;
@@ -210,6 +272,8 @@ export default function AdOsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [savingBudget, setSavingBudget] = useState(false);
+  const [savingTenantPolicy, setSavingTenantPolicy] = useState(false);
+  const [tenantPolicyDraft, setTenantPolicyDraft] = useState<TenantPolicyDraft | null>(null);
   const [runningAutomation, setRunningAutomation] = useState(false);
   const [runningGuardedApply, setRunningGuardedApply] = useState(false);
   const [runningPilotSetup, setRunningPilotSetup] = useState(false);
@@ -240,6 +304,7 @@ export default function AdOsPage() {
         if (alive) {
           setSummary(json);
           setBudgetDrafts(json.channel_budgets);
+          setTenantPolicyDraft(json.tenant_policy || null);
         }
       })
       .catch((err) => {
@@ -257,6 +322,7 @@ export default function AdOsPage() {
     const next = await fetchSummary();
     setSummary(next);
     setBudgetDrafts(next.channel_budgets);
+    setTenantPolicyDraft(next.tenant_policy || null);
   };
 
   const updateBudgetDraft = (platform: string, key: keyof BudgetDraft, value: string | number) => {
@@ -276,6 +342,57 @@ export default function AdOsPage() {
         };
       }),
     );
+  };
+
+  const updateTenantPolicyDraft = (key: keyof TenantPolicyDraft, value: unknown) => {
+    setTenantPolicyDraft((prev) => {
+      if (!prev) return prev;
+      const numericKeys: Array<keyof TenantPolicyDraft> = [
+        'monthly_budget_cap_krw',
+        'daily_budget_cap_krw',
+        'max_cpc_krw',
+        'max_test_loss_krw',
+        'max_automation_level',
+      ];
+      return {
+        ...prev,
+        [key]: numericKeys.includes(key) ? Number(value || 0) : value,
+      };
+    });
+  };
+
+  const toggleTenantPlatform = (platform: string) => {
+    setTenantPolicyDraft((prev) => {
+      if (!prev) return prev;
+      const current = new Set(prev.allowed_platforms || []);
+      if (current.has(platform)) current.delete(platform);
+      else current.add(platform);
+      return {
+        ...prev,
+        allowed_platforms: current.size > 0 ? Array.from(current) : ['naver'],
+      };
+    });
+  };
+
+  const saveTenantPolicy = async () => {
+    if (!tenantPolicyDraft) return;
+    setSavingTenantPolicy(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/tenant-policy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tenantPolicyDraft),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '테넌트 정책 저장 실패');
+      await refresh();
+      setAutomationMessage('테넌트 광고 정책을 저장했습니다. 이 정책 밖에서는 자동 집행하지 않습니다.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '테넌트 정책 저장 실패');
+    } finally {
+      setSavingTenantPolicy(false);
+    }
   };
 
   const saveBudgets = async () => {
@@ -867,6 +984,10 @@ export default function AdOsPage() {
     runKillSwitchDryRun: runningKillSwitch,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
+  const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
+    ['naver', 'google'].includes(platform),
+  );
+  const activeModeByPlatform = new Map((summary?.active_automation_modes || []).map((mode) => [mode.platform, mode]));
 
   return (
     <div className="space-y-5">
@@ -906,6 +1027,278 @@ export default function AdOsPage() {
 
       {summary && (
         <>
+          <section className="admin-card p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">채널 집행 상태</h2>
+                <p className="mt-1 text-admin-xs text-admin-muted">
+                  네이버와 구글을 각각 연동 준비됨, 권한 없음, 캠페인 없음, 집행 가능 상태로 분리해서 표시합니다.
+                </p>
+              </div>
+              <StatusPill tone={executionStateEntries.some(([, state]) => state.canSpend) ? 'good' : 'warn'}>
+                외부 집행은 가드레일 통과 시에만 가능
+              </StatusPill>
+            </div>
+            <div className="mt-3 grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {executionStateEntries.map(([platform, state]) => {
+                const activeMode = activeModeByPlatform.get(platform);
+                return (
+                  <div key={platform} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-admin-sm font-semibold text-admin-text">
+                          {platform === 'naver' ? '네이버 검색광고' : '구글 광고'}
+                        </p>
+                        <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">{state.summary}</p>
+                      </div>
+                      <StatusPill tone={state.tone}>{state.label}</StatusPill>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                        <p className="text-admin-2xs text-admin-muted">현재 모드</p>
+                        <p className="mt-1 text-admin-xs font-semibold text-admin-text">
+                          {activeMode?.mode === 'full_auto'
+                            ? '완전자동'
+                            : activeMode?.mode === 'limited_auto'
+                              ? '제한 예산 자동집행'
+                              : activeMode?.mode === 'approval'
+                                ? '승인'
+                                : '추천'}
+                        </p>
+                      </div>
+                      <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                        <p className="text-admin-2xs text-admin-muted">레벨</p>
+                        <p className="mt-1 text-admin-xs font-semibold text-admin-text">L{activeMode?.level ?? 1}</p>
+                      </div>
+                      <div className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                        <p className="text-admin-2xs text-admin-muted">예산 집행</p>
+                        <p className="mt-1 text-admin-xs font-semibold text-admin-text">{state.canSpend ? '가능' : '차단'}</p>
+                      </div>
+                    </div>
+                    <p className="mt-3 text-admin-2xs leading-5 text-admin-muted">다음 조치: {state.nextAction}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+
+          <section className="admin-card p-4">
+            <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">자동화 모드 고정</h2>
+                <p className="mt-1 text-admin-xs text-admin-muted">
+                  완전자동은 바로 켜지 않고 추천 → 승인 → 제한 예산 자동집행 → 완전자동 4단계로만 승급합니다.
+                </p>
+              </div>
+              <StatusPill tone="warn">기본 운영 권장: 추천/승인</StatusPill>
+            </div>
+            <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+              {(summary.automation_modes || []).map((mode, index) => (
+                <div key={mode.id} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="admin-num text-admin-2xs font-bold text-admin-muted">{index + 1}단계</span>
+                    <StatusPill tone={index < 2 ? 'good' : index === 2 ? 'warn' : 'neutral'}>{mode.label}</StatusPill>
+                  </div>
+                  <p className="mt-2 text-admin-xs leading-5 text-admin-muted">{mode.description}</p>
+                  <p className="mt-2 text-admin-2xs text-admin-muted">
+                    L{mode.levelMin}{mode.levelMin !== mode.levelMax ? `-L${mode.levelMax}` : ''}
+                  </p>
+                </div>
+              ))}
+            </div>
+            {summary.tenant_guardrails && (
+              <div className="mt-3 grid grid-cols-1 md:grid-cols-4 gap-2">
+                {summary.tenant_guardrails.map((guardrail) => (
+                  <div key={guardrail.id} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-admin-xs font-semibold text-admin-text">{guardrail.label}</p>
+                      <StatusPill tone={guardrail.status === 'pass' ? 'good' : guardrail.status === 'warn' ? 'warn' : 'bad'}>
+                        {guardrail.status === 'pass' ? '통과' : guardrail.status === 'warn' ? '주의' : '차단'}
+                      </StatusPill>
+                    </div>
+                    <p className="mt-2 text-admin-2xs leading-5 text-admin-muted">{guardrail.detail}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+            {summary.tenant_policy && (
+              <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <p className="text-admin-sm font-semibold text-admin-text">테넌트 광고 정책</p>
+                    <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">
+                      허용 채널, 월/일 예산, CPC, 테스트 손실, 최대 자동화 레벨을 테넌트별로 제한합니다.
+                      {summary.tenant_policy.error ? ` 정책 테이블 확인 필요: ${summary.tenant_policy.error}` : ''}
+                    </p>
+                  </div>
+                  <StatusPill tone={summary.tenant_policy.configured ? 'good' : 'warn'}>
+                    {summary.tenant_policy.configured ? '정책 설정됨' : '기본 정책'}
+                  </StatusPill>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
+                  {[
+                    ['허용채널', summary.tenant_policy.allowed_platforms.join(', ')],
+                    ['월한도', fmtWon(summary.tenant_policy.monthly_budget_cap_krw)],
+                    ['일한도', fmtWon(summary.tenant_policy.daily_budget_cap_krw)],
+                    ['Max CPC', fmtWon(summary.tenant_policy.max_cpc_krw)],
+                    ['손실한도', fmtWon(summary.tenant_policy.max_test_loss_krw)],
+                    ['최대레벨', `L${summary.tenant_policy.max_automation_level}`],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                      <p className="text-admin-2xs text-admin-muted">{label}</p>
+                      <p className="mt-1 text-admin-xs font-semibold text-admin-text">{value}</p>
+                    </div>
+                  ))}
+                </div>
+                {tenantPolicyDraft && (
+                  <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-admin-sm font-semibold text-admin-text">정책 편집</p>
+                        <p className="mt-1 text-admin-2xs text-admin-muted">저장 후 Ad OS 자동화와 채널 집행 판단에 즉시 반영됩니다.</p>
+                      </div>
+                      <Button size="sm" onClick={saveTenantPolicy} loading={savingTenantPolicy}>
+                        <ShieldCheck size={14} />
+                        정책 저장
+                      </Button>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-6">
+                      <label className="text-admin-2xs font-semibold text-admin-muted">
+                        월한도
+                        <input
+                          type="number"
+                          min={0}
+                          value={tenantPolicyDraft.monthly_budget_cap_krw}
+                          onChange={(e) => updateTenantPolicyDraft('monthly_budget_cap_krw', e.target.value)}
+                          className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
+                        />
+                      </label>
+                      <label className="text-admin-2xs font-semibold text-admin-muted">
+                        일한도
+                        <input
+                          type="number"
+                          min={0}
+                          value={tenantPolicyDraft.daily_budget_cap_krw}
+                          onChange={(e) => updateTenantPolicyDraft('daily_budget_cap_krw', e.target.value)}
+                          className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
+                        />
+                      </label>
+                      <label className="text-admin-2xs font-semibold text-admin-muted">
+                        Max CPC
+                        <input
+                          type="number"
+                          min={0}
+                          value={tenantPolicyDraft.max_cpc_krw}
+                          onChange={(e) => updateTenantPolicyDraft('max_cpc_krw', e.target.value)}
+                          className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
+                        />
+                      </label>
+                      <label className="text-admin-2xs font-semibold text-admin-muted">
+                        손실한도
+                        <input
+                          type="number"
+                          min={0}
+                          value={tenantPolicyDraft.max_test_loss_krw}
+                          onChange={(e) => updateTenantPolicyDraft('max_test_loss_krw', e.target.value)}
+                          className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
+                        />
+                      </label>
+                      <label className="text-admin-2xs font-semibold text-admin-muted">
+                        최대레벨
+                        <input
+                          type="number"
+                          min={0}
+                          max={5}
+                          value={tenantPolicyDraft.max_automation_level}
+                          onChange={(e) => updateTenantPolicyDraft('max_automation_level', e.target.value)}
+                          className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
+                        />
+                      </label>
+                      <label className="text-admin-2xs font-semibold text-admin-muted">
+                        리스크
+                        <select
+                          value={tenantPolicyDraft.risk_status}
+                          onChange={(e) => updateTenantPolicyDraft('risk_status', e.target.value)}
+                          className="mt-1 h-9 w-full rounded-admin-xs border border-admin-border bg-admin-surface px-2 text-admin-xs text-admin-text"
+                        >
+                          <option value="normal">normal</option>
+                          <option value="watch">watch</option>
+                          <option value="restricted">restricted</option>
+                          <option value="blocked">blocked</option>
+                        </select>
+                      </label>
+                    </div>
+                    <div className="mt-3 flex flex-wrap gap-3">
+                      {(['naver', 'google', 'meta', 'kakao'] as const).map((platform) => (
+                        <label key={platform} className="inline-flex items-center gap-1.5 text-admin-xs font-semibold text-admin-text">
+                          <input
+                            type="checkbox"
+                            checked={(tenantPolicyDraft.allowed_platforms || []).includes(platform)}
+                            onChange={() => toggleTenantPlatform(platform)}
+                          />
+                          {PLATFORM_LABEL[platform] || platform}
+                        </label>
+                      ))}
+                      <label className="inline-flex items-center gap-1.5 text-admin-xs font-semibold text-admin-text">
+                        <input
+                          type="checkbox"
+                          checked={tenantPolicyDraft.require_human_approval}
+                          onChange={(e) => updateTenantPolicyDraft('require_human_approval', e.target.checked)}
+                        />
+                        승인 필수
+                      </label>
+                      <label className="inline-flex items-center gap-1.5 text-admin-xs font-semibold text-admin-text">
+                        <input
+                          type="checkbox"
+                          checked={tenantPolicyDraft.full_auto_enabled}
+                          onChange={(e) => updateTenantPolicyDraft('full_auto_enabled', e.target.checked)}
+                        />
+                        완전자동 허용
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </section>
+
+          {summary.learning_loop && (
+            <section className="admin-card p-4">
+              <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h2 className="text-admin-base font-semibold text-admin-text-2">성과 학습 루프</h2>
+                  <p className="mt-1 text-admin-xs text-admin-muted">
+                    클릭, CTA, 예약, CPA, ROAS를 블로그 랜딩, 키워드, 상품, 테넌트 단위로 묶어서 다음 광고 추천에 반영합니다.
+                  </p>
+                </div>
+                <StatusPill tone={summary.learning_loop.status.has_booking_signal ? 'good' : summary.learning_loop.status.has_click_signal ? 'warn' : 'neutral'}>
+                  {summary.learning_loop.status.has_booking_signal ? '예약 학습 가능' : summary.learning_loop.status.has_click_signal ? '클릭 학습 중' : '데이터 대기'}
+                </StatusPill>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4 xl:grid-cols-9">
+                {[
+                  ['클릭', summary.learning_loop.metrics.clicks.toLocaleString('ko-KR')],
+                  ['CTA율', `${summary.learning_loop.metrics.cta_rate_pct}%`],
+                  ['예약전환율', `${summary.learning_loop.metrics.conversion_rate_pct}%`],
+                  ['CPA', summary.learning_loop.metrics.cpa_krw ? fmtWon(summary.learning_loop.metrics.cpa_krw) : '-'],
+                  ['ROAS', summary.learning_loop.metrics.roas_pct ? `${summary.learning_loop.metrics.roas_pct}%` : '-'],
+                  ['30일 행동', summary.learning_loop.metrics.engagement_sessions_30d.toLocaleString('ko-KR')],
+                  ['이탈률', summary.learning_loop.metrics.bounce_rate_pct === null ? '-' : `${summary.learning_loop.metrics.bounce_rate_pct}%`],
+                  ['체류', `${summary.learning_loop.metrics.avg_time_on_page_seconds}s`],
+                  ['스크롤', `${summary.learning_loop.metrics.avg_scroll_depth_pct}%`],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-admin-sm bg-admin-surface-2 p-3">
+                    <p className="text-admin-2xs font-semibold text-admin-muted">{label}</p>
+                    <p className="mt-1 text-admin-lg font-bold text-admin-text-2">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface p-3 text-admin-xs leading-5 text-admin-muted">
+                {summary.learning_loop.next_action} 최근 30일 페이지 체류, 스크롤, CTA 신호까지 함께 묶어 이탈이 높은 랜딩과 확장할 키워드를 분리합니다.
+              </div>
+            </section>
+          )}
+
           <div className="grid grid-cols-2 xl:grid-cols-10 gap-3">
             <KpiCard label="자동화 준비도" value={`${readyScore}`} unit="/100" icon={Gauge} tone={readyScore >= 70 ? 'positive' : 'neutral'} />
             <KpiCard label="매핑 후보" value={summary.kpis.mapping_candidates.toLocaleString('ko-KR')} icon={Layers} />

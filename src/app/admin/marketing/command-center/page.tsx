@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
+type AdOsMode = 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
 
 interface MarketingNextAction {
   id: string;
@@ -83,12 +84,48 @@ interface SnapshotResponse {
   skipped?: string;
 }
 
+interface AdOsSummary {
+  channel_execution_states?: Record<string, {
+    label: string;
+    tone: 'good' | 'warn' | 'bad' | 'neutral';
+    canSpend: boolean;
+    summary: string;
+    nextAction: string;
+  }>;
+  active_automation_modes?: Array<{
+    platform: string;
+    level: number;
+    mode: AdOsMode;
+    status: string;
+  }>;
+  tenant_guardrails?: Array<{
+    id: string;
+    label: string;
+    status: 'pass' | 'warn' | 'fail';
+    detail: string;
+  }>;
+}
+
 const SEVERITY_CLASS: Record<Severity, string> = {
   critical: 'border-red-200 bg-red-50 text-red-700',
   high: 'border-orange-200 bg-orange-50 text-orange-700',
   medium: 'border-amber-200 bg-amber-50 text-amber-700',
   low: 'border-slate-200 bg-slate-50 text-slate-600',
 };
+
+const STATUS_CLASS: Record<'good' | 'warn' | 'bad' | 'neutral', string> = {
+  good: 'bg-emerald-50 text-emerald-700',
+  warn: 'bg-amber-50 text-amber-700',
+  bad: 'bg-red-50 text-red-700',
+  neutral: 'bg-slate-100 text-slate-600',
+};
+
+function modeLabel(mode: AdOsMode | undefined) {
+  if (mode === 'full_auto') return '완전자동';
+  if (mode === 'limited_auto') return '제한 예산 자동집행';
+  if (mode === 'approval') return '승인';
+  return '추천';
+}
 
 function formatWon(value: number | null | undefined) {
   if (!value) return '-';
@@ -120,6 +157,8 @@ function canCreateDraft(action: MarketingNextAction) {
 export default function MarketingCommandCenterPage() {
   const [data, setData] = useState<ResponseShape | null>(null);
   const [snapshots, setSnapshots] = useState<SnapshotResponse | null>(null);
+  const [adOs, setAdOs] = useState<AdOsSummary | null>(null);
+  const [adOsError, setAdOsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [applyingId, setApplyingId] = useState<string | null>(null);
@@ -129,10 +168,12 @@ export default function MarketingCommandCenterPage() {
   async function load() {
     setLoading(true);
     setError(null);
+    setAdOsError(null);
     try {
-      const [assetRes, snapshotRes] = await Promise.all([
+      const [assetRes, snapshotRes, adOsRes] = await Promise.all([
         fetchWithSessionRefresh('/api/admin/marketing/asset-groups?limit=40', { cache: 'no-store' }),
         fetchWithSessionRefresh('/api/admin/marketing/snapshots?days=14', { cache: 'no-store' }),
+        fetchWithSessionRefresh('/api/admin/ad-os/summary', { cache: 'no-store' }),
       ]);
       if (!assetRes.ok) {
         const payload = await assetRes.json().catch(() => ({}));
@@ -141,6 +182,13 @@ export default function MarketingCommandCenterPage() {
       if (!snapshotRes.ok) {
         const payload = await snapshotRes.json().catch(() => ({}));
         throw new Error((payload as { error?: string }).error ?? `Snapshots HTTP ${snapshotRes.status}`);
+      }
+      if (!adOsRes.ok) {
+        const payload = await adOsRes.json().catch(() => ({}));
+        setAdOs(null);
+        setAdOsError((payload as { error?: string }).error ?? `Ad OS HTTP ${adOsRes.status}`);
+      } else {
+        setAdOs(await adOsRes.json());
       }
       setData(await assetRes.json());
       setSnapshots(await snapshotRes.json());
@@ -217,6 +265,17 @@ export default function MarketingCommandCenterPage() {
   const topActions = (data?.actions ?? []).slice(0, 8);
   const groups = (data?.groups ?? []).slice().sort((a, b) => a.readiness_score - b.readiness_score);
   const snapshotSummary = snapshots?.summary;
+  const adOsExecutionStates = Object.entries(adOs?.channel_execution_states ?? {}).filter(([platform]) =>
+    ['naver', 'google'].includes(platform),
+  );
+  const adOsModeByPlatform = new Map((adOs?.active_automation_modes ?? []).map((mode) => [mode.platform, mode]));
+  const guardrailStatus = adOsError || !adOs
+    ? 'warn'
+    : adOs.tenant_guardrails?.some((guardrail) => guardrail.status === 'fail')
+    ? 'bad'
+    : adOs.tenant_guardrails?.some((guardrail) => guardrail.status === 'warn')
+      ? 'warn'
+      : 'good';
 
   return (
     <div className="space-y-6">
@@ -278,6 +337,65 @@ export default function MarketingCommandCenterPage() {
           <p className="mt-2 text-2xl font-bold text-orange-700">{summary.high}</p>
         </div>
       </div>
+
+      <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-admin-base font-semibold text-admin-text-2">Search Ad Execution Readiness</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">
+              Product readiness and ad account execution are checked separately so drafts do not look live before budget, permission, and campaign checks pass.
+            </p>
+          </div>
+          <span className={`rounded-full px-2 py-1 text-admin-xs font-semibold ${STATUS_CLASS[guardrailStatus]}`}>
+            SaaS guardrails {guardrailStatus === 'good' ? 'ready' : guardrailStatus}
+          </span>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2">
+          {adOsError && (
+            <div className="rounded-admin-sm border border-amber-200 bg-amber-50 p-3 text-admin-sm text-amber-800 md:col-span-2">
+              Search Ad readiness unavailable: {adOsError}
+            </div>
+          )}
+          {!adOsError && adOsExecutionStates.length === 0 && (
+            <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 text-admin-sm text-admin-muted md:col-span-2">
+              Search ad readiness has no channel data yet.
+            </div>
+          )}
+          {!adOsError && adOsExecutionStates.map(([platform, state]) => {
+            const mode = adOsModeByPlatform.get(platform);
+            return (
+              <div key={platform} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-admin-sm font-semibold text-admin-text-2">
+                      {platform === 'naver' ? 'Naver Search Ads' : 'Google Ads'}
+                    </p>
+                    <p className="mt-1 text-admin-xs text-admin-muted">{state.summary}</p>
+                  </div>
+                  <span className={`rounded-full px-2 py-1 text-admin-xs font-semibold ${STATUS_CLASS[state.tone]}`}>
+                    {state.label}
+                  </span>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-admin-xs">
+                  <div className="rounded-admin-xs bg-admin-surface-2 p-2">
+                    <p className="font-semibold text-admin-muted">Mode</p>
+                    <p className="mt-1 font-bold text-admin-text-2">{modeLabel(mode?.mode)}</p>
+                  </div>
+                  <div className="rounded-admin-xs bg-admin-surface-2 p-2">
+                    <p className="font-semibold text-admin-muted">Level</p>
+                    <p className="mt-1 font-bold text-admin-text-2">L{mode?.level ?? 1}</p>
+                  </div>
+                  <div className="rounded-admin-xs bg-admin-surface-2 p-2">
+                    <p className="font-semibold text-admin-muted">Spend</p>
+                    <p className="mt-1 font-bold text-admin-text-2">{state.canSpend ? 'Allowed' : 'Blocked'}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-admin-xs text-admin-muted">Next: {state.nextAction}</p>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

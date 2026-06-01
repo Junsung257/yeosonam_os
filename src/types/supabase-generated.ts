@@ -9187,7 +9187,13 @@ export type Database = {
         Row: {
           content_creative_id: string | null
           duration_ms: number | null
+          google_canonical: string | null
+          google_coverage_state: string | null
           google_error: string | null
+          google_index_verdict: string | null
+          google_indexing_state: string | null
+          google_last_crawl_time: string | null
+          google_page_fetch_state: string | null
           google_status: string
           id: string
           indexnow_error: string | null
@@ -9195,11 +9201,18 @@ export type Database = {
           reported_at: string
           sitemap_pings: Json | null
           url: string
+          user_canonical: string | null
         }
         Insert: {
           content_creative_id?: string | null
           duration_ms?: number | null
+          google_canonical?: string | null
+          google_coverage_state?: string | null
           google_error?: string | null
+          google_index_verdict?: string | null
+          google_indexing_state?: string | null
+          google_last_crawl_time?: string | null
+          google_page_fetch_state?: string | null
           google_status: string
           id?: string
           indexnow_error?: string | null
@@ -9207,11 +9220,18 @@ export type Database = {
           reported_at?: string
           sitemap_pings?: Json | null
           url: string
+          user_canonical?: string | null
         }
         Update: {
           content_creative_id?: string | null
           duration_ms?: number | null
+          google_canonical?: string | null
+          google_coverage_state?: string | null
           google_error?: string | null
+          google_index_verdict?: string | null
+          google_indexing_state?: string | null
+          google_last_crawl_time?: string | null
+          google_page_fetch_state?: string | null
           google_status?: string
           id?: string
           indexnow_error?: string | null
@@ -9219,6 +9239,7 @@ export type Database = {
           reported_at?: string
           sitemap_pings?: Json | null
           url?: string
+          user_canonical?: string | null
         }
         Relationships: []
       }

@@ -38,10 +38,28 @@ interface BlogPost {
 }
 
 interface SearchStatus {
-  indexedLabel: string;
-  indexedClass: string;
+  googleIndexLabel: string;
+  googleIndexClass: string;
+  naverIndexLabel: string;
+  naverIndexClass: string;
   exposureLabel: string;
   exposureClass: string;
+}
+
+function statusBadge(tone: 'good' | 'warn' | 'bad' | 'neutral'): string {
+  if (tone === 'good') return 'bg-emerald-50 text-emerald-700';
+  if (tone === 'warn') return 'bg-amber-50 text-amber-700';
+  if (tone === 'bad') return 'bg-rose-50 text-rose-700';
+  return 'bg-admin-surface-2 text-admin-muted';
+}
+
+function isGoogleIndexed(index: {
+  google_status?: string | null;
+  google_index_verdict?: string | null;
+  google_coverage_state?: string | null;
+} | undefined): boolean {
+  const coverage = (index?.google_coverage_state || '').toLowerCase();
+  return index?.google_status === 'indexed' || (index?.google_index_verdict === 'PASS' && coverage.includes('index'));
 }
 
 export default async function BlogDataFetcher({
@@ -95,19 +113,37 @@ export default async function BlogDataFetcher({
     const [indexRes, rankRes] = await Promise.all([
       supabaseAdmin
         .from('indexing_reports')
-        .select('url, google_status, google_error, indexnow_status, reported_at')
+        .select('url, google_status, google_error, google_index_verdict, google_coverage_state, google_indexing_state, google_last_crawl_time, indexnow_status, reported_at')
         .order('reported_at', { ascending: false })
         .limit(500),
       supabaseAdmin
         .from('rank_history')
         .select('slug, impressions, clicks, position, date')
         .in('slug', slugs)
+        .eq('source', 'gsc-page')
         .gte('date', new Date(Date.now() - 30 * 86400_000).toISOString().split('T')[0]),
     ]);
 
-    const latestIndexBySlug = new Map<string, { google_status: string | null; indexnow_status: string | null; google_error: string | null }>();
+    const latestIndexBySlug = new Map<string, {
+      google_status: string | null;
+      indexnow_status: string | null;
+      google_error: string | null;
+      google_index_verdict?: string | null;
+      google_coverage_state?: string | null;
+      google_indexing_state?: string | null;
+      google_last_crawl_time?: string | null;
+    }>();
     for (const row of indexRes.data || []) {
-      const report = row as { url: string | null; google_status: string | null; google_error: string | null; indexnow_status: string | null };
+      const report = row as {
+        url: string | null;
+        google_status: string | null;
+        google_error: string | null;
+        indexnow_status: string | null;
+        google_index_verdict?: string | null;
+        google_coverage_state?: string | null;
+        google_indexing_state?: string | null;
+        google_last_crawl_time?: string | null;
+      };
       const slug = slugs.find((s) =>
         report.url === `${baseUrl}/blog/${s}` ||
         report.url?.endsWith(`/blog/${s}`),
@@ -128,14 +164,20 @@ export default async function BlogDataFetcher({
     for (const slug of slugs) {
       const index = latestIndexBySlug.get(slug);
       const exposure = exposureBySlug.get(slug);
-      const indexedOk = index?.google_status === 'success' || index?.indexnow_status === 'success';
-      const indexFailed = index?.google_status === 'failed' || index?.indexnow_status === 'failed';
       const impressions = exposure?.impressions || 0;
       const clicks = exposure?.clicks || 0;
+      const googleRequested = index?.google_status === 'success';
+      const googleFailed = index?.google_status === 'failed';
+      const googleIndexed = isGoogleIndexed(index);
+      const googleInspected = Boolean(index?.google_index_verdict || index?.google_coverage_state || ['indexed', 'not_indexed'].includes(index?.google_status || ''));
+      const naverRequested = index?.indexnow_status === 'success';
+      const naverFailed = index?.indexnow_status === 'failed';
       searchStatusBySlug.set(slug, {
-        indexedLabel: indexedOk ? '요청됨' : indexFailed ? '실패' : '대기',
-        indexedClass: indexedOk ? 'bg-emerald-50 text-emerald-700' : indexFailed ? 'bg-rose-50 text-rose-700' : 'bg-admin-surface-2 text-admin-muted',
-        exposureLabel: impressions > 0 ? `${impressions.toLocaleString()} 노출${clicks > 0 ? `/${clicks.toLocaleString()} 클릭` : ''}` : '미노출',
+        googleIndexLabel: googleIndexed ? '구글 색인처리됨' : googleInspected ? '구글 색인미확인' : googleRequested ? '구글 요청됨' : googleFailed ? '구글 실패' : '구글 대기',
+        googleIndexClass: googleIndexed ? statusBadge('good') : googleInspected || googleRequested ? statusBadge('warn') : googleFailed ? statusBadge('bad') : statusBadge('neutral'),
+        naverIndexLabel: naverRequested ? '네이버 요청됨' : naverFailed ? '네이버 실패' : '네이버 대기',
+        naverIndexClass: naverRequested ? statusBadge('warn') : naverFailed ? statusBadge('bad') : statusBadge('neutral'),
+        exposureLabel: impressions > 0 ? `${impressions.toLocaleString()} 노출${clicks > 0 ? `/${clicks.toLocaleString()} 클릭` : ''}` : '구글 미노출',
         exposureClass: impressions > 0 ? 'bg-blue-50 text-blue-700' : 'bg-admin-surface-2 text-admin-muted',
       });
     }
@@ -167,7 +209,7 @@ export default async function BlogDataFetcher({
               <th style={{ width: 80 }}>카테고리</th>
               <th className="text-right" style={{ width: 64 }}>조회</th>
               <th style={{ width: 64 }}>상태</th>
-              <th style={{ width: 120 }}>검색 상태</th>
+              <th style={{ width: 150 }}>검색 상태</th>
               <th style={{ width: 96 }}>날짜</th>
               <th style={{ width: 64 }}></th>
             </tr>
@@ -214,11 +256,14 @@ export default async function BlogDataFetcher({
                 </td>
                 <td>
                   <div className="flex flex-col gap-1">
-                    <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.indexedClass || 'bg-admin-surface-2 text-admin-muted'}`}>
-                      색인 {searchStatus?.indexedLabel || '대기'}
+                    <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.googleIndexClass || 'bg-admin-surface-2 text-admin-muted'}`}>
+                      {searchStatus?.googleIndexLabel || '구글 대기'}
+                    </span>
+                    <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.naverIndexClass || 'bg-admin-surface-2 text-admin-muted'}`}>
+                      {searchStatus?.naverIndexLabel || '네이버 대기'}
                     </span>
                     <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.exposureClass || 'bg-admin-surface-2 text-admin-muted'}`}>
-                      {searchStatus?.exposureLabel || '미노출'}
+                      {searchStatus?.exposureLabel || '구글 미노출'}
                     </span>
                   </div>
                 </td>

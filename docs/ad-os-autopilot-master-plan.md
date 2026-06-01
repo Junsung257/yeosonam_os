@@ -547,3 +547,19 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - 검증 결과:
   - `/api/blog/ad-mapping` 첫 후보 샘플들이 `active:false`, `operational_status:candidate`로 반환됨을 확인했다.
   - Ad OS 관련 API 및 블로그 광고 매핑 API targeted ESLint 통과.
+
+## 33. 2026-06-01 Ad OS tenant governance and search indexing signals
+
+- Added a tenant governance table and admin policy endpoint for allowed platforms, monthly/daily caps, max CPC, test-loss cap, automation level, approval requirement, full-auto flag, and risk status.
+- `/api/admin/ad-os/summary` now separates channel execution readiness from internal recommendation readiness: missing credentials, permission blocked, campaign/ad group missing, integration ready, and executable.
+- `/admin/ad-os`, `/admin/marketing`, and `/admin/marketing/command-center` now show spend readiness and guardrails before an operator assumes a draft is live.
+- Added a deterministic four-step automation model: recommendation, approval, limited-auto, full-auto.
+- Added Google URL Inspection fields to `indexing_reports` so blog admin can distinguish request submitted, inspected but not indexed, indexed, and exposed in Search Console.
+- Blog ranking dashboard now supports `gsc-page`, `naver_blog`, `naver_web`, and `all` source filters instead of mixing search engines.
+- Topical authority now returns an authority score, weak destinations, and next actions for pillar/cluster coverage.
+- Verification:
+  - `npm.cmd exec vitest run src/lib/ad-os-governance.test.ts`
+  - `npm.cmd run type-check`
+  - `npm.cmd run lint`
+  - `npm.cmd run audit:event-taxonomy`
+  - `npm.cmd run build`

@@ -16,6 +16,10 @@ const getHandler = async (request: NextRequest) => {
   const sp = request.nextUrl.searchParams;
   const view = sp.get('view') || 'summary';
   const days = Math.min(60, parseInt(sp.get('days') || '14'));
+  const requestedSource = sp.get('source') || 'gsc-page';
+  const source = ['all', 'gsc-page', 'naver_blog', 'naver_web'].includes(requestedSource)
+    ? requestedSource
+    : 'gsc-page';
 
   const since = new Date();
   since.setDate(since.getDate() - days);
@@ -34,22 +38,26 @@ const getHandler = async (request: NextRequest) => {
 
     if (sp.get('slug')) {
       const slug = sp.get('slug')!;
-      const { data } = await supabaseAdmin
+      let historyQuery = supabaseAdmin
         .from('rank_history')
         .select('*')
         .eq('slug', slug)
         .gte('date', sinceStr)
         .order('date', { ascending: true });
-      return NextResponse.json({ slug, history: data || [] });
+      if (source !== 'all') historyQuery = historyQuery.eq('source', source);
+      const { data } = await historyQuery;
+      return NextResponse.json({ slug, source, history: data || [] });
     }
 
     if (view === 'top_movers') {
       // 최근 14일 데이터 → slug+query 별 첫/끝 position 비교
-      const { data } = await supabaseAdmin
+      let moversQuery = supabaseAdmin
         .from('rank_history')
         .select('slug, query, date, position, clicks, impressions')
         .gte('date', sinceStr)
         .order('date', { ascending: true });
+      if (source !== 'all') moversQuery = moversQuery.eq('source', source);
+      const { data } = await moversQuery;
 
       const groups = new Map<string, Array<{ date: string; position: number; clicks: number; impressions: number }>>();
       const historyRows = (data ?? []) as unknown as Array<{ slug: string; query: string; date: string; position: number; clicks: number; impressions: number }>;
@@ -89,18 +97,23 @@ const getHandler = async (request: NextRequest) => {
       const ups = movers.filter(m => m.delta < -1).sort((a, b) => a.delta - b.delta).slice(0, 20);
       const downs = movers.filter(m => m.delta > 1).sort((a, b) => b.delta - a.delta).slice(0, 20);
 
-      return NextResponse.json({ ups, downs, total_tracked: movers.length });
+      return NextResponse.json({ source, ups, downs, total_tracked: movers.length });
     }
 
     // summary view: 최근 N일 누적 + Top performers
-    const { data: history } = await supabaseAdmin
+    let summaryQuery = supabaseAdmin
       .from('rank_history')
-      .select('slug, query, position, clicks, impressions, date')
+      .select('slug, query, position, clicks, impressions, date, source')
       .gte('date', sinceStr);
+    if (source !== 'all') summaryQuery = summaryQuery.eq('source', source);
+    const { data: history } = await summaryQuery;
 
     const slugMap = new Map<string, { clicks: number; impressions: number; positions: number[]; queries: Set<string> }>();
+    const sourceCounts: Record<string, number> = {};
     for (const row of history || []) {
-      const r = row as { slug: string; clicks: number; impressions: number; position: number; query: string };
+      const r = row as { slug: string; clicks: number; impressions: number; position: number; query: string; source: string | null };
+      const rowSource = r.source || 'unknown';
+      sourceCounts[rowSource] = (sourceCounts[rowSource] || 0) + 1;
       const ex = slugMap.get(r.slug) || { clicks: 0, impressions: 0, positions: [], queries: new Set() };
       ex.clicks += r.clicks || 0;
       ex.impressions += r.impressions || 0;
@@ -126,7 +139,7 @@ const getHandler = async (request: NextRequest) => {
       tracked_slugs: slugMap.size,
     };
 
-    return NextResponse.json({ days, since: sinceStr, totals, top });
+    return NextResponse.json({ days, since: sinceStr, source, source_counts: sourceCounts, totals, top });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }
