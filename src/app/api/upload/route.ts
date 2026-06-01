@@ -90,6 +90,34 @@ function attachShoppingHighlight<T extends ItineraryDataLike | null>(itineraryDa
   } as unknown as T;
 }
 
+const UPLOAD_ATTRACTION_SELECT = 'id, name, short_desc, long_desc, aliases, country, region, category, emoji';
+const UPLOAD_ATTRACTION_PAGE_SIZE = 1000;
+const UPLOAD_ATTRACTION_MAX_ROWS = 8000;
+
+async function loadActiveAttractionsForUpload(): Promise<AttractionData[]> {
+  const rows: AttractionData[] = [];
+
+  for (let from = 0; from < UPLOAD_ATTRACTION_MAX_ROWS; from += UPLOAD_ATTRACTION_PAGE_SIZE) {
+    const to = from + UPLOAD_ATTRACTION_PAGE_SIZE - 1;
+    const { data, error } = await supabaseAdmin
+      .from('attractions')
+      .select(UPLOAD_ATTRACTION_SELECT)
+      .eq('is_active', true)
+      .range(from, to);
+
+    if (error) {
+      console.warn('[Upload API] active attractions load failed:', error.message);
+      break;
+    }
+
+    const page = (data || []) as AttractionData[];
+    rows.push(...page);
+    if (page.length < UPLOAD_ATTRACTION_PAGE_SIZE) break;
+  }
+
+  return rows;
+}
+
 const ATTRACTION_EXTRACT_FALLBACK = `아래 여행 일정 텍스트에서 핵심 관광지/활동명을 추출하고, 1줄 설명과 이모지를 반환하세요.
 
 ★ name 규칙 (가장 중요):
@@ -996,12 +1024,7 @@ const postHandler = async (request: NextRequest) => {
 
     let activeAttractions: AttractionData[] = [];
     if (isSupabaseConfigured && !bulkMode) {
-      const { data: attrRows } = await supabaseAdmin
-        .from('attractions')
-        .select('id, name, short_desc, long_desc, aliases, country, region, category, emoji')
-        .eq('is_active', true)
-        .limit(500);
-      activeAttractions = (attrRows || []) as AttractionData[];
+      activeAttractions = await loadActiveAttractionsForUpload();
     }
 
     for (let productIndex = 0; productIndex < productsToSave.length; productIndex++) {
