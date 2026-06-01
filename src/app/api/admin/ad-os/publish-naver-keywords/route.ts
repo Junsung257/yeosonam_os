@@ -54,11 +54,18 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     return NextResponse.json({ ok: false, error: runError?.message || '네이버 publisher 실행 로그 생성 실패' }, { status: 500 });
   }
 
-  const [budgetRes, keywordRes] = await Promise.all([
+  const [budgetRes, tenantAccountRes, keywordRes] = await Promise.all([
     supabaseAdmin
       .from('ad_os_channel_budgets')
       .select('platform,status,monthly_budget_krw,daily_budget_cap_krw,max_cpc_krw,external_ad_group_id')
       .eq('platform', 'naver')
+      .maybeSingle(),
+    supabaseAdmin
+      .from('ad_os_tenant_ad_accounts')
+      .select('connection_status, external_ad_group_id, can_publish_keywords, can_change_bids, can_pause_assets, risk_status')
+      .is('tenant_id', null)
+      .eq('platform', 'naver')
+      .eq('account_mode', 'agency_managed')
       .maybeSingle(),
     supabaseAdmin
       .from('search_ad_keyword_plans')
@@ -72,7 +79,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .limit(limit),
   ]);
 
-  const firstError = budgetRes.error || keywordRes.error;
+  const firstError = budgetRes.error || tenantAccountRes.error || keywordRes.error;
   if (firstError) {
     await supabaseAdmin
       .from('ad_os_automation_runs')
@@ -82,11 +89,23 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   }
 
   const budget = budgetRes.data as { status?: string; monthly_budget_krw?: number; daily_budget_cap_krw?: number; max_cpc_krw?: number; external_ad_group_id?: string | null } | null;
-  const nccAdgroupId = String(body.nccAdgroupId || budget?.external_ad_group_id || getNaverAdgroupId()).trim();
+  const tenantAccount = tenantAccountRes.data as {
+    connection_status?: string | null;
+    external_ad_group_id?: string | null;
+    can_publish_keywords?: boolean | null;
+    risk_status?: string | null;
+  } | null;
+  const nccAdgroupId = String(body.nccAdgroupId || budget?.external_ad_group_id || tenantAccount?.external_ad_group_id || getNaverAdgroupId()).trim();
   const adgroupVerification = nccAdgroupId ? await fetchNaverAdgroupById(nccAdgroupId) : null;
   const budgetReady = Boolean(budget && budget.status === 'active' && Number(budget.monthly_budget_krw) > 0 && Number(budget.daily_budget_cap_krw) > 0);
+  const accountPublishAllowed = Boolean(
+    tenantAccount &&
+      tenantAccount.connection_status === 'ready' &&
+      tenantAccount.can_publish_keywords &&
+      !['restricted', 'blocked'].includes(tenantAccount.risk_status || ''),
+  );
   const adgroupReady = Boolean(adgroupVerification?.ok && adgroupVerification.adgroup);
-  const ready = naverConfig.configured && Boolean(nccAdgroupId) && adgroupReady;
+  const ready = naverConfig.configured && accountPublishAllowed && Boolean(nccAdgroupId) && adgroupReady;
   const rows = (keywordRes.data || []) as KeywordRow[];
   const maxCpc = Number(budget?.max_cpc_krw || 0);
   const allowedRows = rows.filter((row) => maxCpc <= 0 || Number(row.suggested_bid_krw || 0) <= maxCpc);
@@ -119,7 +138,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       confidence: eligible ? 0.82 : 0.64,
       expected_impact: jsonState({ user_lock: true, bid_krw: bid, max_cpc_krw: maxCpc }),
       applied: false,
-      blocked_reason: eligible ? null : 'guardrail',
+      blocked_reason: eligible ? null : !accountPublishAllowed ? 'tenant_account_not_publishable' : 'guardrail',
     };
   });
 
@@ -181,6 +200,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     ncc_adgroup_id_configured: Boolean(nccAdgroupId),
     ncc_adgroup_id_verified: adgroupReady,
     ncc_adgroup_lookup_error: adgroupVerification?.ok === false ? adgroupVerification.error : null,
+    tenant_account_ready: accountPublishAllowed,
+    tenant_account_status: tenantAccount?.connection_status || 'not_connected',
     budget_ready: budgetReady,
     created_keywords: created,
     applied: created > 0,
