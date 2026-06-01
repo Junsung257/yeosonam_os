@@ -56,6 +56,15 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
       airline: outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
       inclusions: variant.inclusions.map(item => item.value),
       excludes: variant.exclusions.map(item => item.value),
+      notices_parsed: variant.standard_notices.map(notice => ({
+        type: notice.risk_level === 'high' ? 'CRITICAL' : notice.risk_level === 'medium' ? 'POLICY' : 'INFO',
+        title: '유의사항',
+        text: `• ${notice.standard_text}`,
+      })),
+      customer_notes: variant.standard_notices
+        .filter(notice => notice.visibility === 'customer_visible')
+        .map(notice => notice.standard_text)
+        .join('\n'),
       optional_tours: variant.options.map(option => ({
         name: option.normalized_name,
         price: option.price_amount ? `${option.currency ?? ''}${option.price_amount}` : null,
@@ -69,6 +78,15 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
           airline: outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
           departure_airport: null,
         },
+        flight_segments: variant.flight_segments.map(segment => ({
+          leg: segment.leg === 'inbound' ? 'inbound' as const : 'outbound' as const,
+          flight_no: segment.code,
+          dep_airport: null,
+          dep_time: segment.dep_time,
+          arr_airport: null,
+          arr_time: segment.arr_time,
+          arr_day_offset: 0 as const,
+        })),
         highlights: {
           shopping: variant.shopping[0]?.value ?? null,
           inclusions: variant.inclusions.map(item => item.value),

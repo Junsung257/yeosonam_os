@@ -34,6 +34,7 @@ import { getRelevantReflections } from '@/lib/reflection-memory';
 import { getRegionCacheContext } from '@/lib/region-cache-context';
 import { getLandOperatorProfile, accumulateLandOperatorProfile } from '@/lib/land-operator-profile';
 import { computeNormalizedContentHash } from '@/lib/parser/upload-text-hash';
+import { canCreateAttractionRecord } from '@/lib/attraction-policy';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 import {
@@ -2291,17 +2292,13 @@ JSON 배열로 응답:
               .then(undefined, () => {});
           }
 
-          // ── P11-3: Wikibase Reconcile 기반 신규 관광지 자동 등록 (2026-05-24) ──────
-          //   STRICT SSOT 정책 → "완전 자동 등록" (사장님 결정):
-          //   외부 POI 명칭을 Wikibase Reconciliation API 로 QID 정규화 → attractions 자동 INSERT.
-          //   동일명칭 | alias 정규화로 "바나산테마파크" = "바나산공원" = 동일 QID 매핑.
-          //   📌 정책 변경 근거: 사장님 "손 안 대도 되는 수준" 요청.
-          //
-          //   1) reconcilePlaceName 으로 QID 조회
-          //   2) 성공 → qid 중복 체크 → attractions INSERT (aliases+photos+descriptions)
-          //   3) 실패 → 기존처럼 unmatched 큐 적재 (fallback)
-          //   4) fire-and-forget: photo + description 백그라운드 생성
-          const allowAutoAttractionInsert = false;
+          // ── P11-3: Wikibase reconcile 블록 (SSOT: docs/product-registration-v3-standard-language.md) ──
+          //   정책: "관광지 자동 신규 INSERT 금지".
+          //   기존 DB/alias 매칭 우선, 실패분은 unmatched review 큐로만 보낸다.
+          const allowAutoAttractionInsert = canCreateAttractionRecord('upload', {
+            nodeEnv: process.env.NODE_ENV,
+            allowAutoAttractionInsertEnv: process.env.ALLOW_AUTO_ATTRACTION_INSERT,
+          });
           if (allowAutoAttractionInsert && newActivities.length > 0) {
             const firstSeedDest = newActivities.find(a => a.destination)?.destination ?? null;
             const { inferCountryFromDestination } = await import('@/lib/destination-iso');
@@ -2349,7 +2346,7 @@ JSON 배열로 응답:
                     .update({ status: 'added', note: `auto-matched: ${top.qid}` })
                     .eq('activity', kw);
                 } else {
-                  // 신규 관광지 auto INSERT
+                  // 신규 관광지 생성 경로 (기본 비활성; 테스트 환경 opt-in 전용)
                   const category = inferCategory(kw, top.type_qid || undefined);
                   const aliasSet = new Set<string>([kw]);
                   if (top.label_ko) aliasSet.add(top.label_ko);
@@ -2380,11 +2377,11 @@ JSON 배열로 응답:
 
                   if (inserted) {
                     autoInserted++;
-                    console.log(`[Upload P11-3] 신규 관광지 자동 등록: "${top.label_ko || top.label_en || kw}" (${top.qid})`);
+                    console.log(`[Upload P11-3] 신규 관광지 생성(테스트 opt-in): "${top.label_ko || top.label_en || kw}" (${top.qid})`);
                     // unmatched 큐 제거
                     await supabaseAdmin
                       .from('unmatched_activities')
-                      .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})` })
+                      .update({ status: 'added', note: `test-optin-created: ${top.qid} (conf=${top.confidence.toFixed(2)})` })
                       .eq('activity', kw);
 
                     // fire-and-forget: 사진 + 설명 백그라운드 생성
@@ -2436,7 +2433,7 @@ JSON 배열로 응답:
               await new Promise(r => setTimeout(r, 100));
             }
 
-            console.log(`[Upload API] P11-3: ${autoInserted}건 자동 등록, ${reconcileFailed.length}건 unmatched fallback`);
+            console.log(`[Upload API] P11-3(test opt-in): ${autoInserted}건 생성, ${reconcileFailed.length}건 unmatched fallback`);
           }
         }
       } catch (attrError) {

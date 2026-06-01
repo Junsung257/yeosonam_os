@@ -39,6 +39,7 @@ export { applyProductRegistrationV3Matching } from './matcher';
 export { evaluateProductRegistrationV3Gate } from './gate';
 export { ledgerToRenderPackageInputs } from './render-contract-adapter';
 export { persistProductRegistrationDraftV3 } from './persist';
+export { STANDARD_NOTICE_TEMPLATES, extractStandardNoticesFromRemarkLines } from './standard-notices';
 export type {
   V3DraftLedger,
   V3Evidence,

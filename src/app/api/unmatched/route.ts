@@ -5,6 +5,7 @@ import { getUnmatchedBootstrapEnvDefaults } from '@/lib/unmatched-bootstrap-conf
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { rateLimitMutation } from '@/lib/rate-limiter';
+import { canCreateAttractionRecord } from '@/lib/attraction-policy';
 
 // ── Internal interfaces for type safety (no `as any`) ──
 interface AttractionBase {
@@ -493,9 +494,9 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    // P11-3: 1-click reconcile (Wikidata 자동 검색 -> auto INSERT)
-    //   upload route.ts 의 P11-3 로직과 동일,
-    //   어드민 UI에서 "🪄 1-click reconcile" 버튼으로 호출
+    // 1-click reconcile (관리자 명시 액션)
+    //   Wikidata 후보를 참고하되, 이 엔드포인트는 "관리자 트리거"일 때만 신규 생성 가능.
+    //   자동 배치/업로드 경로에서의 신규 INSERT는 SSOT 상 금지.
     if (body.action === 'reconcile_auto_insert') {
       const { data: unmatched } = await supabaseAdmin
         .from('unmatched_activities')
@@ -553,7 +554,10 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json({ success: true, message: `기존 "${top.label_ko || top.label_en || top.qid}" 에 alias 연결 완료` });
       }
 
-      // 신규 INSERT
+      // 신규 INSERT (관리자 명시 reconcile 액션)
+      if (!canCreateAttractionRecord('admin_manual')) {
+        return NextResponse.json({ error: '정책상 신규 관광지 생성이 허용되지 않습니다.' }, { status: 403 });
+      }
       const aliasSet = new Set<string>([unmatched.activity, top.label_ko || '', top.label_en || ''].filter(Boolean));
       for (const a of top.aliases) {
         if (a !== top.label_ko && a !== top.label_en) aliasSet.add(a);
@@ -584,7 +588,7 @@ export async function PATCH(request: NextRequest) {
 
       await supabaseAdmin
         .from('unmatched_activities')
-        .update({ status: 'added', note: `auto-inserted: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: created.id, resolved_by: 'admin_api' })
+        .update({ status: 'added', note: `manual-reconcile-created: ${top.qid} (conf=${top.confidence.toFixed(2)})`, resolved_at: now, resolved_kind: 'manual_reconcile', resolved_attraction_id: created.id, resolved_by: 'admin_api' })
         .eq('id', id);
 
       // fire-and-forget: photo + description 백그라운드

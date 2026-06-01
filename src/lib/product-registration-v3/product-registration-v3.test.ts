@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseV3AiStructurePlan, persistProductRegistrationDraftV3, runProductRegistrationV3 } from '.';
+import { mapTravelPackageToLandingData } from '../map-travel-package-to-lp';
+import { renderPackage } from '../render-contract';
 
 function buildBaekduEightVariantFixture(): string {
   const grades = ['Standard', 'Premium', 'Lilac', 'VIP'];
@@ -84,10 +86,32 @@ DAY 5 7C778 출발 14:00 도착 17:00
 불포함 기타차지
 `.trim(),
   },
+  {
+    name: 'nha-trang-dalat-remark-standardization',
+    raw: `
+상품: 나트랑 달랏 3박5일
+가격 619,000원 / 최소출발 4명
+DAY 1 LJ115 부산 출발 21:35 도착 00:25
+DAY 2 포나가르 사원 관광
+REMARK
+싱글차지 전일정 기준 인당 18만 원 추가됩니다.
+여권만료일은 입국일 기준 6개월 이상 남아있어야 출국 가능합니다.
+베트남 자국민 보호법으로 공항미팅/관광지 방문 불가하므로 설명은 차량에서 대체하며 현지 가이드와 동행합니다.
+호텔 룸배정(일행과 같은 층, 옆방 배정, 베드 타입) 등은 개런티 불가합니다.
+전체 일정 & 식사 순서는 현지 사정에 의해 다소 변경될 수 있습니다.
+마사지 팁 기준(나트랑: 60분-$4, 90분-$5, 120분-$6 / 달랏: 60분-$4, 90분-$5, 120분-$7)입니다.
+패키지 일정 미참여 시 패널티 1인/1박/$100 청구됩니다.
+나트랑 식당들은 주차장 구비된 곳이 많지가 않고 차량 진입이 어려워 도보 이동이 있을 수 있습니다.
+베트남 전자담배 반입 불가합니다.
+DAY 5 LJ116 출발 01:00 도착 06:40
+포함 호텔
+불포함 개인경비
+`.trim(),
+  },
 ];
 
 describe('product-registration-v3 draft ledger pipeline', () => {
-  it.each(fixtures)('builds a gated draft ledger for $name', async ({ raw }) => {
+  it.each(fixtures)('builds a gated draft ledger for $name', async ({ raw, name }) => {
     const result = await runProductRegistrationV3(raw);
 
     expect(result.source_index.length).toBeGreaterThan(0);
@@ -96,7 +120,9 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.ledger.variants[0].price_calendar.length).toBeGreaterThan(0);
     expect(result.ledger.variants[0].flight_segments.length).toBeGreaterThan(0);
     expect(result.ledger.variants[0].days.length).toBeGreaterThan(0);
-    expect(result.gate_result.status).not.toBe('blocked');
+    if (name !== 'nha-trang-dalat-remark-standardization') {
+      expect(result.gate_result.status).not.toBe('blocked');
+    }
     expect(result.render_contract_preview).toHaveLength(1);
   });
 
@@ -201,6 +227,32 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(rpcCalls[0]).toMatchObject({ name: 'upsert_unmatched_activity' });
   });
 
+  it('feeds the same V3 render contract into mobile LP and A4 canonical rendering', async () => {
+    const result = await runProductRegistrationV3(buildBaekduEightVariantFixture());
+    const renderInput = result.render_contract_preview[0];
+    const canonicalView = renderPackage(renderInput);
+    const landingData = mapTravelPackageToLandingData({
+      id: 'v3-draft-preview',
+      destination: '백두산',
+      duration: renderInput.itinerary_data?.days?.length ?? 0,
+      price_dates: renderInput.price_dates,
+      inclusions: renderInput.inclusions,
+      excludes: renderInput.excludes,
+      itinerary_data: renderInput.itinerary_data,
+      optional_tours: renderInput.optional_tours,
+      title: renderInput.title,
+      product_type: renderInput.product_type,
+    }, null);
+
+    expect(canonicalView.days.length).toBeGreaterThan(0);
+    expect(landingData.itinerary.days).toHaveLength(canonicalView.days.length);
+    expect(landingData.flightSummary?.outbound?.code).toBe('BX337');
+    expect(landingData.flightSummary?.outbound?.depTime).toBe('09:40');
+    expect(landingData.flightSummary?.outbound?.depTime).not.toBe('06:30');
+    expect(landingData.itinerary.includes.length).toBeGreaterThan(0);
+    expect(landingData.itinerary.excludes.length).toBeGreaterThan(0);
+  });
+
   it('does not classify hotel, transfer, meal, shopping, or option lines as attractions', async () => {
     const result = await runProductRegistrationV3(fixtures[3].raw);
     const events = result.ledger.variants[0].days.flatMap(day => day.events);
@@ -247,5 +299,75 @@ describe('product-registration-v3 draft ledger pipeline', () => {
       unresolved_parts: [],
       final_price: 999000,
     })).toThrow();
+  });
+
+  it('extracts nha-trang/dalat REMARK into standard categories with template values', async () => {
+    const raw = fixtures.find(f => f.name === 'nha-trang-dalat-remark-standardization')!.raw;
+    const result = await runProductRegistrationV3(raw);
+    const notices = result.ledger.variants[0].standard_notices;
+    const categories = notices.map(n => n.category);
+    expect(categories).toEqual(expect.arrayContaining([
+      'single_room_surcharge',
+      'passport_validity',
+      'local_law_restriction',
+      'room_assignment',
+      'itinerary_change',
+      'tip_guideline',
+      'group_schedule_penalty',
+      'restaurant_access',
+    ]));
+    const single = notices.find(n => n.category === 'single_room_surcharge');
+    const passport = notices.find(n => n.category === 'passport_validity');
+    const penalty = notices.find(n => n.category === 'group_schedule_penalty');
+    expect(single?.values.amount).toBe(180000);
+    expect(passport?.values.months).toBe(6);
+    expect(penalty?.values.amount).toBe(100);
+  });
+
+  it('renders customer notices with Yeosonam standard text only (no supplier remark leakage)', async () => {
+    const raw = fixtures.find(f => f.name === 'nha-trang-dalat-remark-standardization')!.raw;
+    const result = await runProductRegistrationV3(raw);
+    const preview = result.render_contract_preview[0];
+    const customerNotes = String(preview.customer_notes ?? '');
+    expect(customerNotes).toContain('여권 만료일은 입국일 기준 6개월 이상 남아 있어야 합니다.');
+    expect(customerNotes).not.toContain('전체 일정 & 식사 순서는 현지 사정에 의해 다소 변경될 수 있습니다.');
+    expect(customerNotes).not.toContain('나트랑 식당들은 주차장 구비된 곳이 많지가 않고');
+    expect(JSON.stringify(preview.notices_parsed ?? [])).not.toContain('나트랑 식당들은 주차장 구비된 곳이 많지가 않고');
+  });
+
+  it('does not leak supplier remark raw text into mobile LP/A4 render surfaces', async () => {
+    const raw = fixtures.find(f => f.name === 'nha-trang-dalat-remark-standardization')!.raw;
+    const result = await runProductRegistrationV3(raw);
+    const preview = result.render_contract_preview[0];
+    const canonicalView = renderPackage(preview);
+    const landingData = mapTravelPackageToLandingData({
+      id: 'nha-v3',
+      destination: '나트랑/달랏',
+      duration: preview.itinerary_data?.days?.length ?? 0,
+      price_dates: preview.price_dates,
+      inclusions: preview.inclusions,
+      excludes: preview.excludes,
+      itinerary_data: preview.itinerary_data,
+      optional_tours: preview.optional_tours,
+      title: preview.title,
+      product_type: preview.product_type,
+    }, null);
+    const blob = JSON.stringify({ canonicalView, landingData, customerNotes: preview.customer_notes, notices: preview.notices_parsed });
+    expect(blob).not.toContain('전체 일정 & 식사 순서는 현지 사정에 의해 다소 변경될 수 있습니다.');
+    expect(blob).not.toContain('나트랑 식당들은 주차장 구비된 곳이 많지가 않고');
+  });
+
+  it('blocks publish when high-risk notice value is missing', async () => {
+    const raw = `
+상품: 하이리스크 검증
+가격 499,000원 / 최소출발 4명
+DAY 1 KE123 출발 10:00 도착 12:00
+REMARK
+싱글차지 발생합니다.
+DAY 3 KE124 출발 13:00 도착 15:00
+`.trim();
+    const result = await runProductRegistrationV3(raw);
+    expect(result.gate_result.status).toBe('blocked');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
   });
 });

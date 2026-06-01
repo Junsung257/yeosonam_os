@@ -68,6 +68,14 @@ export function evaluateProductRegistrationV3Gate(
       'high',
       'source shopping section is reflected in ledger',
     );
+    const highRiskNotices = variant.standard_notices.filter(n => n.risk_level === 'high');
+    check(
+      checks,
+      `${variant.variant_key}.high_risk_notice_values`,
+      highRiskNotices.every(n => n.review_status !== 'review_needed'),
+      'critical',
+      'high-risk standard notices must have required values and review status',
+    );
   }
 
   if (matchSummary) {

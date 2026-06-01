@@ -113,6 +113,7 @@ export interface RenderPackageInput {
   product_type?: string | null;
   departure_airport?: string | null;
   destination?: string | null;
+  price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[] | null;
   excludes?: string[] | null;
   surcharges?: SurchargeObject[] | null;
   optional_tours?: OptionalTourInput[] | null;
@@ -122,6 +123,7 @@ export interface RenderPackageInput {
   customer_notes?: string | null;
   /** 운영 전용 메모. 고객 노출 차단 (어드민 전용). */
   internal_notes?: string | null;
+  notices_parsed?: Array<{ type?: string; title?: string; text?: string }> | null;
   inclusions?: string[] | null;
   itinerary_data?: {
     meta?: {
@@ -130,6 +132,15 @@ export interface RenderPackageInput {
       airline?: string | null;
       departure_airport?: string | null;
     } | null;
+    flight_segments?: Array<{
+      leg: 'outbound' | 'inbound';
+      flight_no: string | null;
+      dep_airport: string | null;
+      dep_time: string | null;
+      arr_airport: string | null;
+      arr_time: string | null;
+      arr_day_offset: 0 | 1;
+    }> | null;
     highlights?: {
       shopping?: string | null;
       excludes?: string[] | null;

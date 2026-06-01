@@ -8,6 +8,7 @@ import type {
   V3StructurePlan,
 } from './types';
 import { evidenceFromLines } from './source-line-index';
+import { extractStandardNoticesFromRemarkLines } from './standard-notices';
 
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -26,6 +27,7 @@ const OPTION_RE = /option|optional|\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const FREE_TIME_RE = /free\s*time|\uc790\uc720\s*\uc2dc\uac04|\ud734\uc2dd/i;
 const NOTICE_RE = /include|exclude|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ucd5c\uc18c|\uc8fc\uc758|\uc548\ub0b4|notice/i;
+const REMARK_RE = /비고|주의사항|remark|안내|공지|싱글\s*차지|여권|전자담배|룸배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동/i;
 const ATTRACTION_DECOY_RE = PRODUCT_HEADER_RE;
 
 function normalizePrice(token: string): number {
@@ -125,11 +127,17 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
 
   const days: V3LedgerVariant['days'] = [];
   let currentDay: V3LedgerVariant['days'][number] | null = null;
+  let inRemarkSection = false;
   for (const line of sectionLines) {
     const trimmed = line.quote.trim();
+    if (/^(REMARK|비고|주의사항|공지사항)\s*$/i.test(trimmed)) {
+      inRemarkSection = true;
+      continue;
+    }
     const dayMatch = trimmed.match(DAY_HEADER_RE);
     let eventText = line.quote;
     if (dayMatch) {
+      inRemarkSection = false;
       currentDay = {
         day: Number(dayMatch[1]),
         route: [],
@@ -141,6 +149,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       eventText = trimmed.replace(DAY_HEADER_RE, '').trim();
       if (!eventText) continue;
     }
+    if (inRemarkSection) continue;
     const type = eventTypeForLine(eventText);
     if (!type) continue;
     if (!currentDay) {
@@ -187,6 +196,10 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   const shopping = sectionLines
     .filter(line => eventTypeForLine(line.quote) === 'shopping')
     .map(line => ({ value: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
+  const remarkLines = sectionLines
+    .filter(line => REMARK_RE.test(line.quote))
+    .map(line => ({ text: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
+  const standard_notices = extractStandardNoticesFromRemarkLines(remarkLines);
   const minDepartureLine = sectionLines.find(line => /minimum|min\.?|\ucd5c\uc18c/i.test(line.quote) && /\d+/.test(line.quote));
   const minimum_departure = minDepartureLine
     ? {
@@ -215,6 +228,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     exclusions,
     options,
     shopping,
+    standard_notices,
     minimum_departure,
     evidence_coverage: {
       price: prices.length > 0,

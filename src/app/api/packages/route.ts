@@ -732,7 +732,7 @@ export async function PATCH(request: NextRequest) {
       'guide_tip', 'single_supplement', 'small_group_surcharge',
       'price_tiers', 'price_dates', 'price_list', 'surcharges', 'excluded_dates',
       'optional_tours', 'cancellation_policy', 'category_attrs',
-      'inclusions', 'excludes', 'special_notes', 'notices_parsed',
+      'inclusions', 'excludes', 'special_notes', 'customer_notes', 'notices_parsed',
       'itinerary', 'itinerary_data', 'raw_text',
       'land_operator', 'land_operator_id', 'commission_rate', 'affiliate_commission_rate',
       'product_tags', 'product_highlights', 'product_summary',

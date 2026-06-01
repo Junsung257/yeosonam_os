@@ -1,5 +1,6 @@
 import type { AttractionData } from '@/lib/attraction-matcher';
 import type { RenderPackageInput } from '@/lib/render-contract';
+import type { StandardNoticeDraft } from './standard-notices';
 
 export type V3DocumentType = 'catalog' | 'single_package' | 'mixed' | 'unknown';
 export type V3PlannerSource = 'deterministic' | 'ai_schema';
@@ -121,6 +122,7 @@ export interface V3LedgerVariant {
   exclusions: Array<{ value: string; evidence: V3Evidence }>;
   options: V3OptionCandidate[];
   shopping: Array<{ value: string; evidence: V3Evidence }>;
+  standard_notices: StandardNoticeDraft[];
   minimum_departure: { value: number; evidence: V3Evidence } | null;
   evidence_coverage: Record<string, boolean>;
 }
