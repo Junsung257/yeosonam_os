@@ -33,6 +33,59 @@ interface MarketRate {
   notes: string | null;
 }
 
+interface ScoringAudit {
+  configured: boolean;
+  sampled?: {
+    packageLimit: number;
+    scoreLimit: number;
+    packageSampled: boolean;
+    scoreSampled: boolean;
+  };
+  totals?: {
+    packages: number;
+    scoreRows: number;
+    sampledPackages: number;
+    sampledActiveLikePackages: number;
+    sampledScoreRows: number;
+  };
+  coverage?: {
+    scoredActivePackages: number;
+    scoredActivePackageRate: number;
+    comparisonReadyRows: number;
+    comparisonReadyRate: number;
+    singleGroupRows: number;
+    singleGroupRate: number;
+    hotelMissingRows: number;
+    hotelMissingRate: number;
+    shoppingMissingRows: number;
+    shoppingMissingRate: number;
+    optionMissingRows: number;
+    optionMissingRate: number;
+    directFlightMissingRows: number;
+    directFlightMissingRate: number;
+    hotelIntelSeenPackages: number;
+    hotelIntelSeenRate: number;
+    hotelIntelMatchedPackages: number;
+    hotelIntelMatchedRate: number;
+  };
+  topDestinations?: Array<{ label: string; count: number }>;
+  topScoreGroups?: Array<{ label: string; count: number }>;
+  examples?: {
+    missingScore: Array<{ id: string; title: string | null; destination: string | null; status: string | null; hasPriceDates: boolean }>;
+    weakScore: Array<{
+      package_id: string;
+      group_key: string | null;
+      group_size: number | null;
+      rank_in_group: number | null;
+      hotel_avg_grade: number | null;
+      shopping_count: number | null;
+      free_option_count: number | null;
+    }>;
+  };
+  warnings?: string[];
+  generatedAt?: string;
+}
+
 const WEIGHT_LABELS: Record<string, string> = {
   // base 6 (v1.0)
   price: '가격',
@@ -81,6 +134,7 @@ export default function ScoringAdminPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewPolicyId, setPreviewPolicyId] = useState<string>('');
   const [allPolicies, setAllPolicies] = useState<Array<{ id: string; version: string; is_active: boolean; notes: string | null }>>([]);
+  const [audit, setAudit] = useState<ScoringAudit | null>(null);
   type PreviewItem = {
     package_id: string; title: string; departure_date: string | null;
     list_price: number; effective_price: number; topsis_score: number; rank: number;
@@ -130,6 +184,19 @@ export default function ScoringAdminPage() {
   }, []);
 
   useEffect(() => { loadAll(); }, [loadAll]);
+
+  const loadAudit = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/scoring/audit');
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? '추천 데이터 감사 실패');
+      setAudit(json as ScoringAudit);
+    } catch {
+      setAudit(null);
+    }
+  }, []);
+
+  useEffect(() => { loadAudit(); }, [loadAudit]);
 
   const weightSum = Object.values(weights).reduce((a, b) => a + b, 0);
 
@@ -265,6 +332,18 @@ export default function ScoringAdminPage() {
     else showToast('error', '삭제 실패');
   };
 
+  const auditTone = (rate: number, goodAtLeast = 80) => {
+    if (rate >= goodAtLeast) return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+    if (rate >= Math.max(40, goodAtLeast - 30)) return 'text-amber-800 bg-amber-50 border-amber-200';
+    return 'text-red-700 bg-red-50 border-red-200';
+  };
+
+  const inverseAuditTone = (rate: number, warnAtLeast = 20) => {
+    if (rate >= warnAtLeast) return 'text-red-700 bg-red-50 border-red-200';
+    if (rate >= warnAtLeast / 2) return 'text-amber-800 bg-amber-50 border-amber-200';
+    return 'text-emerald-700 bg-emerald-50 border-emerald-200';
+  };
+
   if (loading) return (
     <div className="p-6 space-y-4 max-w-3xl">
       <div className="h-5 bg-admin-surface-2 rounded animate-pulse w-36" />
@@ -292,6 +371,126 @@ export default function ScoringAdminPage() {
           toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
         }`}>{toast.msg}</div>
       )}
+
+      <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-admin-text-2">추천 데이터 감사</h2>
+            <p className="text-xs text-admin-muted mt-0.5">
+              현재 노출 상품이 실제로 비교 가능한 상태인지 확인합니다. 이 숫자가 낮으면 고객 UX보다 데이터 보강이 먼저입니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={loadAudit}
+            className="shrink-0 rounded border border-admin-border-strong px-3 py-1.5 text-xs font-semibold text-admin-text-2 hover:bg-admin-bg"
+          >
+            새로고침
+          </button>
+        </div>
+
+        {!audit?.configured ? (
+          <div className="rounded-lg border border-admin-border-mid bg-admin-bg p-4 text-xs text-admin-muted">
+            Supabase 미설정 환경이라 감사 데이터를 불러오지 않았습니다.
+          </div>
+        ) : audit.coverage && audit.totals ? (
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className={`rounded-lg border p-3 ${auditTone(audit.coverage.scoredActivePackageRate, 75)}`}>
+                <p className="text-[11px] font-semibold opacity-80">점수 보유 상품</p>
+                <p className="mt-1 text-xl font-black">{audit.coverage.scoredActivePackageRate.toFixed(1)}%</p>
+                <p className="mt-1 text-[11px] opacity-80">{audit.coverage.scoredActivePackages}/{audit.totals.sampledActiveLikePackages}개</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${auditTone(audit.coverage.comparisonReadyRate, 70)}`}>
+                <p className="text-[11px] font-semibold opacity-80">비교군 형성</p>
+                <p className="mt-1 text-xl font-black">{audit.coverage.comparisonReadyRate.toFixed(1)}%</p>
+                <p className="mt-1 text-[11px] opacity-80">group_size ≥ 2</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${inverseAuditTone(audit.coverage.hotelMissingRate, 25)}`}>
+                <p className="text-[11px] font-semibold opacity-80">호텔 등급 누락</p>
+                <p className="mt-1 text-xl font-black">{audit.coverage.hotelMissingRate.toFixed(1)}%</p>
+                <p className="mt-1 text-[11px] opacity-80">{audit.coverage.hotelMissingRows}개 row</p>
+              </div>
+              <div className={`rounded-lg border p-3 ${auditTone(audit.coverage.hotelIntelMatchedRate, 40)}`}>
+                <p className="text-[11px] font-semibold opacity-80">호텔 매칭</p>
+                <p className="mt-1 text-xl font-black">{audit.coverage.hotelIntelMatchedRate.toFixed(1)}%</p>
+                <p className="mt-1 text-[11px] opacity-80">MRT intel matched</p>
+              </div>
+            </div>
+
+            {(audit.warnings ?? []).length > 0 && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <p className="text-xs font-bold text-amber-900">먼저 볼 이슈</p>
+                <ul className="mt-2 space-y-1 text-xs text-amber-900">
+                  {(audit.warnings ?? []).slice(0, 5).map((warning) => (
+                    <li key={warning}>• {warning}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div className="grid md:grid-cols-2 gap-4">
+              <div className="rounded-lg border border-admin-border-mid p-3">
+                <p className="text-xs font-bold text-admin-text-2">우선 보강할 누락</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                  <div className="rounded bg-admin-bg p-2">쇼핑횟수 누락 <b>{audit.coverage.shoppingMissingRate.toFixed(1)}%</b></div>
+                  <div className="rounded bg-admin-bg p-2">옵션 수 누락 <b>{audit.coverage.optionMissingRate.toFixed(1)}%</b></div>
+                  <div className="rounded bg-admin-bg p-2">직항 여부 누락 <b>{audit.coverage.directFlightMissingRate.toFixed(1)}%</b></div>
+                  <div className="rounded bg-admin-bg p-2">단독 비교군 <b>{audit.coverage.singleGroupRate.toFixed(1)}%</b></div>
+                </div>
+              </div>
+              <div className="rounded-lg border border-admin-border-mid p-3">
+                <p className="text-xs font-bold text-admin-text-2">목적지별 표본</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {(audit.topDestinations ?? []).map((d) => (
+                    <span key={d.label} className="rounded-full bg-admin-bg px-2 py-1 text-[11px] font-semibold text-admin-text-2">
+                      {d.label} {d.count}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {audit.examples && (audit.examples.missingScore.length > 0 || audit.examples.weakScore.length > 0) && (
+              <details className="rounded-lg border border-admin-border-mid p-3">
+                <summary className="cursor-pointer text-xs font-bold text-admin-text-2">샘플 문제 상품 보기</summary>
+                <div className="mt-3 grid md:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <p className="font-semibold text-red-700">점수 없음</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {audit.examples.missingScore.slice(0, 8).map((p) => (
+                        <li key={p.id} className="rounded bg-red-50 px-2 py-1 text-red-800">
+                          {p.destination ?? '미지정'} · {p.title ?? p.id.slice(0, 8)} {p.hasPriceDates ? '' : '· 가격일 없음'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="font-semibold text-amber-800">점수 인풋 약함</p>
+                    <ul className="mt-2 space-y-1.5">
+                      {audit.examples.weakScore.slice(0, 8).map((s) => (
+                        <li key={`${s.package_id}:${s.group_key}`} className="rounded bg-amber-50 px-2 py-1 text-amber-900">
+                          {s.group_key ?? s.package_id.slice(0, 8)} · 그룹 {s.group_size ?? '—'} · 호텔 {s.hotel_avg_grade ?? '—'} · 쇼핑 {s.shopping_count ?? '—'} · 옵션 {s.free_option_count ?? '—'}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              </details>
+            )}
+
+            {audit.sampled && (audit.sampled.packageSampled || audit.sampled.scoreSampled) && (
+              <p className="text-[11px] text-admin-muted">
+                표본 상한 {audit.sampled.packageLimit.toLocaleString()}건 기준입니다. 전체 정확 감사는 배치 리포트로 확장하세요.
+              </p>
+            )}
+          </>
+        ) : (
+          <div className="rounded-lg border border-admin-border-mid bg-admin-bg p-4 text-xs text-admin-muted">
+            감사 데이터를 불러오는 중입니다.
+          </div>
+        )}
+      </section>
 
       {/* 가중치 */}
       <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">

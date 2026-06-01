@@ -14,22 +14,24 @@ describe('buildRecommendationDisplay', () => {
       list_price: 1000000,
       effective_price: 820000,
       breakdown: {
+        mrt_hotel_quality_score: 82,
         why: ['호텔 위치가 좋아요', '실효가 820000 KRW', '무료 옵션 2개 보너스'],
       },
     });
 
     expect(display).not.toBeNull();
     expect(display?.hasComparison).toBe(true);
-    expect(display?.label).toBe('편하게 가기 좋은 구성 ✨');
+    expect(display?.label).toBe('편하게 가기 좋은 구성');
     expect(display?.comparisonSummary).toContain('같은 날짜 상품 3개');
     expect(display?.hotelGradeLabel).toBe('호텔 우수');
+    expect(display?.hotelQualityConfidence).toBe('medium');
     expect(display?.reasons).toEqual([
       '같은 날짜 상품 3개를 비교했어요',
       '쇼핑 일정 부담이 적어요',
       '호텔 조건이 좋은 편이에요',
       '직항 조건을 확인했어요',
     ]);
-    expect(display?.reasons.join(' ')).not.toMatch(/실효|KRW|보너스|환산|차감/);
+    expect(display?.reasons.join(' ')).not.toMatch(/실효|KRW|보너스|예산|차감/);
   });
 
   it('falls back to a condition check when there is no comparison group yet', () => {
@@ -50,8 +52,9 @@ describe('buildRecommendationDisplay', () => {
 });
 
 describe('hotelGradeLabel', () => {
-  it('maps hotel grades to customer-safe labels', () => {
-    expect(hotelGradeLabel(4.8)).toBe('호텔 우수');
+  it('maps hotel evidence to customer-safe labels', () => {
+    expect(hotelGradeLabel(4.8)).toBe('호텔 무난');
+    expect(hotelGradeLabel(4.8, 80)).toBe('호텔 우수');
     expect(hotelGradeLabel(4.0)).toBe('호텔 무난');
     expect(hotelGradeLabel(3.2)).toBe('호텔 확인 필요');
     expect(hotelGradeLabel(null)).toBe('호텔 확인 필요');

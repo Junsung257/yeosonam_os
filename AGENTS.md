@@ -51,6 +51,7 @@
 | 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
 | 상품 등록 정확도·토큰 절감 플랜 | `docs/product-registration-accuracy-plan.md` |
 | 추천·비교 V1 개발 실행서 | `docs/recommendation-comparison-v1-plan.md` |
+| 호텔 점수 V1.5 운영 런북 | `docs/hotel-scoring-v1-5-runbook.md` |
 | 게이미피케이션 운영 런북 | `docs/gamification-runbook.md` |
 | 마일리지 시스템 개요 | `docs/mileage-system-overview.md` |
 | 검색광고 자동화 리서치 | `docs/search-ads-automation-research.md` |

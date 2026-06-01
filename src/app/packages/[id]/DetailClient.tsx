@@ -20,6 +20,7 @@ import { hasSpecialTermsBanner, shouldSuppressStandardCancelTable } from '@/lib/
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
+import { getSessionId } from '@/lib/tracker';
 import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -286,6 +287,28 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const openInquiryForm = useCallback((source: string) => {
+    fetch('/api/tracking/score-signal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        package_id: id,
+        signal_type: 'lead_sheet_open',
+        group_key: source,
+        session_id: getSessionId(),
+      }),
+    }).catch(() => {});
+    fetch('/api/tracking/recommendation', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        package_id: id,
+        outcome: 'inquiry',
+        session_id: getSessionId(),
+      }),
+    }).catch(() => {});
+    setShowForm(true);
+  }, [id]);
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -853,7 +876,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <div className="px-4 mt-3 mb-1">
         <button
           type="button"
-          onClick={() => setShowForm(true)}
+          onClick={() => openInquiryForm('detail_price_card')}
           className="w-full h-11 rounded-2xl bg-brand text-white font-bold text-sm shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
           <span>예약 문의하기</span>
@@ -1137,7 +1160,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {selectedDate ? (
             <button
               type="button"
-              onClick={() => setShowForm(true)}
+              onClick={() => openInquiryForm('detail_recommendation')}
               className="w-full h-12 rounded-2xl bg-brand text-white font-bold text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <span>
@@ -1152,7 +1175,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           ) : (
             <button
               type="button"
-              onClick={() => setShowForm(true)}
+              onClick={() => openInquiryForm('detail_recommendation_secondary')}
               className="w-full h-10 rounded-2xl border-2 border-brand text-brand font-semibold text-sm active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
             >
               <span>💬</span>
@@ -1844,7 +1867,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {/* 예약 문의 — primary, 폼 열기 (상태형: 날짜 선택 여부에 따라 텍스트 변경) */}
           <button
             type="button"
-            onClick={() => setShowForm(true)}
+            onClick={() => openInquiryForm('detail_sticky_cta')}
             className="h-11 px-4 sm:px-5 rounded-full bg-brand text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
             aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
           >
