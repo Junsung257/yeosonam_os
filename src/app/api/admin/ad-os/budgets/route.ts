@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { syncTenantAdAccountBudgetCaps } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -112,6 +113,15 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
       const { data, error } = await query;
       if (error) throw new Error(error.message);
+
+      if (['naver', 'google'].includes(row.platform)) {
+        await syncTenantAdAccountBudgetCaps(supabaseAdmin, {
+          platform: row.platform,
+          monthlyBudgetCapKrw: row.monthly_budget_krw,
+          dailyBudgetCapKrw: row.daily_budget_cap_krw,
+        });
+      }
+
       saved.push(data);
     }
 

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { syncTenantAdAccountBudgetCaps } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -54,7 +55,7 @@ function buildHeadline(row: KeywordPlanRow): string {
 function buildDescription(rows: KeywordPlanRow[]): string {
   const first = rows[0];
   const price = first.travel_packages?.price ? `${Number(first.travel_packages.price).toLocaleString('ko-KR')}원` : '상담 문의';
-  return `${first.travel_packages?.title || first.keyword_text} ${price} 여소남에서 확인하세요`.slice(0, 120);
+  return `${first.travel_packages?.title || first.keyword_text} ${price} 여소남에서 확인하세요.`.slice(0, 120);
 }
 
 async function upsertPilotBudget(platform: Platform, monthlyBudgetKrw: number, dailyBudgetKrw: number, maxCpcKrw: number) {
@@ -82,11 +83,45 @@ async function upsertPilotBudget(platform: Platform, monthlyBudgetKrw: number, d
   if (existing.data?.id) {
     const { error } = await supabaseAdmin.from('ad_os_channel_budgets').update(row).eq('id', existing.data.id);
     if (error) throw new Error(error.message);
-    return;
+  } else {
+    const { error } = await supabaseAdmin.from('ad_os_channel_budgets').insert(row);
+    if (error) throw new Error(error.message);
   }
 
-  const { error } = await supabaseAdmin.from('ad_os_channel_budgets').insert(row);
-  if (error) throw new Error(error.message);
+  await syncTenantAdAccountBudgetCaps(supabaseAdmin, {
+    platform,
+    monthlyBudgetCapKrw: monthlyBudgetKrw,
+    dailyBudgetCapKrw: dailyBudgetKrw,
+  });
+}
+
+async function upsertGlobalTenantGovernance(monthlyBudgetKrw: number, dailyBudgetKrw: number, maxCpcKrw: number) {
+  const row = {
+    tenant_id: null,
+    allowed_platforms: ['naver', 'google'],
+    monthly_budget_cap_krw: monthlyBudgetKrw,
+    daily_budget_cap_krw: dailyBudgetKrw,
+    max_cpc_krw: maxCpcKrw,
+    max_test_loss_krw: Math.min(dailyBudgetKrw, 10000),
+    max_automation_level: 2,
+    require_human_approval: true,
+    full_auto_enabled: false,
+    risk_status: 'watch',
+    notes: 'Ad OS pilot guardrail. External spend remains blocked until channel account readiness is executable.',
+    updated_at: new Date().toISOString(),
+  };
+
+  const existing = await supabaseAdmin
+    .from('ad_os_tenant_governance')
+    .select('id')
+    .is('tenant_id', null)
+    .maybeSingle();
+  if (existing.error) throw new Error(existing.error.message);
+
+  const save = existing.data?.id
+    ? await supabaseAdmin.from('ad_os_tenant_governance').update(row).eq('id', existing.data.id)
+    : await supabaseAdmin.from('ad_os_tenant_governance').insert(row);
+  if (save.error) throw new Error(save.error.message);
 }
 
 async function approveNaverCandidates(runId: string, maxCpcKrw: number, limit: number, apply: boolean) {
@@ -306,7 +341,7 @@ async function createInternalDrafts(runId: string, maxCpcKrw: number, dailyBudge
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -331,12 +366,15 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || 'Failed to create pilot setup run' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: runError?.message || '파일럿 실행 생성 실패' }, { status: 500 });
   }
 
   try {
     if (apply) {
-      await Promise.all(SEARCH_PLATFORMS.map((platform) => upsertPilotBudget(platform, monthlyBudgetKrw, dailyBudgetKrw, maxCpcKrw)));
+      await Promise.all([
+        ...SEARCH_PLATFORMS.map((platform) => upsertPilotBudget(platform, monthlyBudgetKrw, dailyBudgetKrw, maxCpcKrw)),
+        upsertGlobalTenantGovernance(monthlyBudgetKrw, dailyBudgetKrw, maxCpcKrw),
+      ]);
     }
 
     const naverApproval = await approveNaverCandidates(run.id, maxCpcKrw, keywordLimit, apply);
@@ -379,6 +417,6 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         errors: [{ message: error instanceof Error ? error.message : String(error) }],
       })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'Pilot setup failed' }, { status: 500 });
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : '파일럿 설정 실패' }, { status: 500 });
   }
 });
