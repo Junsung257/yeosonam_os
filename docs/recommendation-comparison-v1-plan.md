@@ -383,3 +383,13 @@ V1 성공 기준:
 1. 호텔 마스터 테이블 분리: `hotel_aliases`, `package_hotels`, `hotel_score_snapshots`, `unmatched_hotels`
 2. 상담원 피드백 루프: 추천 적절/부적절, 고객 선택 상품, 상담 전환 사유 저장
 3. 비교 문장 고도화: 가격 차이와 호텔/쇼핑/옵션 차이를 한 문장으로 요약
+## 2026-06-01 상담 피드백 루프 추가
+
+추천/비교 V1의 정확도는 최초 설계만으로 고정하지 않고 상담 결과로 보정한다.
+
+- `/api/admin/scoring/feedback`: 최근 `recommendation_outcomes`를 조회하고 상담원 피드백을 `notes`와 `outcome`에 반영한다.
+- `/admin/scoring/funnel`: 최근 추천 노출/클릭 row를 상담원이 `선택`, `거절`, `호텔`로 표시할 수 있다.
+- `선택`은 `outcome=inquiry`, `거절`은 `outcome=cancelled`로 반영해 `v_ltr_signals` 학습 라벨에 가까워지게 한다.
+- 호텔 재확인은 outcome을 조작하지 않고 notes에만 남겨 호텔 alias/매칭 보강 큐로 활용한다.
+
+이 단계의 목적은 “완벽한 추천 알고리즘”이 아니라, 상담원이 보는 실제 고객 반응을 다음 추천 가중치와 호텔 매칭 보강에 연결하는 폐쇄 루프를 만드는 것이다.

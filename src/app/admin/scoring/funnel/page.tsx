@@ -56,11 +56,36 @@ interface AdminAlert {
   ref_id: string | null;
 }
 
+interface FeedbackRow {
+  id: number;
+  package_id: string;
+  package_title: string | null;
+  destination: string | null;
+  source: string;
+  intent: string | null;
+  recommended_rank: number | null;
+  outcome: string | null;
+  notes: string | null;
+  recommended_at: string;
+  has_feedback: boolean;
+}
+
+interface FeedbackSummary {
+  total: number;
+  feedbackRows: number;
+  selectedRows: number;
+  rejectedRows: number;
+  hotelCheckRows: number;
+}
+
 export default function ScoringFunnelPage() {
   const [funnel, setFunnel] = useState<FunnelRow[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [abResults, setAbResults] = useState<AbResult[]>([]);
   const [alerts, setAlerts] = useState<AdminAlert[]>([]);
+  const [feedbackRows, setFeedbackRows] = useState<FeedbackRow[]>([]);
+  const [feedbackSummary, setFeedbackSummary] = useState<FeedbackSummary | null>(null);
+  const [feedbackSavingId, setFeedbackSavingId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [filterSource, setFilterSource] = useState<string>('');
   const [filterIntent, setFilterIntent] = useState<string>('');
@@ -68,14 +93,18 @@ export default function ScoringFunnelPage() {
   useEffect(() => {
     let aborted = false;
     setLoading(true);
-    fetch('/api/admin/scoring/funnel')
-      .then(r => r.json())
-      .then(d => {
+    Promise.all([
+      fetch('/api/admin/scoring/funnel').then(r => r.json()),
+      fetch('/api/admin/scoring/feedback').then(r => r.json()).catch(() => null),
+    ])
+      .then(([d, feedback]) => {
         if (aborted) return;
         setFunnel(d.funnel ?? []);
         setSummary(d.summary ?? null);
         setAbResults(d.ab_results ?? []);
         setAlerts(d.alerts ?? []);
+        setFeedbackRows(feedback?.rows ?? []);
+        setFeedbackSummary(feedback?.summary ?? null);
       })
       .catch(() => {})
       .finally(() => !aborted && setLoading(false));
@@ -85,6 +114,25 @@ export default function ScoringFunnelPage() {
   const ackAlert = async (id: number) => {
     await fetch(`/api/admin/alerts/${id}/ack`, { method: 'POST' }).catch(() => {});
     setAlerts(prev => prev.filter(a => a.id !== id));
+  };
+
+  const saveFeedback = async (id: number, feedback: string) => {
+    setFeedbackSavingId(id);
+    try {
+      const res = await fetch('/api/admin/scoring/feedback', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ id, feedback }),
+      });
+      if (!res.ok) throw new Error('feedback failed');
+      const refreshed = await fetch('/api/admin/scoring/feedback').then(r => r.json());
+      setFeedbackRows(refreshed.rows ?? []);
+      setFeedbackSummary(refreshed.summary ?? null);
+    } catch {
+      // 피드백 저장 실패가 funnel 화면 자체를 막지 않게 둔다.
+    } finally {
+      setFeedbackSavingId(null);
+    }
   };
 
   const sources = Array.from(new Set(funnel.map(f => f.source)));
@@ -164,6 +212,97 @@ export default function ScoringFunnelPage() {
       )}
 
       {/* 필터 */}
+      <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-admin-text-2">상담 피드백 루프</h2>
+            <p className="text-xs text-admin-muted mt-0.5">
+              상담원이 추천 결과를 선택/거절/호텔확인으로 표시해 LTR 학습용 신호를 남깁니다.
+            </p>
+          </div>
+          {feedbackSummary && (
+            <div className="flex flex-wrap gap-1.5 text-[11px]">
+              <span className="rounded-full bg-admin-bg px-2 py-1 font-semibold text-admin-text-2">최근 {feedbackSummary.total}건</span>
+              <span className="rounded-full bg-emerald-50 px-2 py-1 font-semibold text-emerald-700">선택 {feedbackSummary.selectedRows}</span>
+              <span className="rounded-full bg-red-50 px-2 py-1 font-semibold text-red-700">거절 {feedbackSummary.rejectedRows}</span>
+              <span className="rounded-full bg-amber-50 px-2 py-1 font-semibold text-amber-700">호텔확인 {feedbackSummary.hotelCheckRows}</span>
+            </div>
+          )}
+        </div>
+
+        {feedbackRows.length === 0 ? (
+          <div className="rounded-admin-sm bg-admin-bg p-4 text-xs text-admin-muted">
+            아직 추천 노출/클릭 데이터가 없습니다. 상품 카드나 자비스 추천이 노출되면 여기에 쌓입니다.
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-admin-sm border border-admin-border">
+            <table className="w-full text-xs">
+              <thead className="bg-admin-bg text-admin-muted">
+                <tr>
+                  <th className="px-3 py-2 text-left">상품</th>
+                  <th className="px-3 py-2 text-left">신호</th>
+                  <th className="px-3 py-2 text-left">결과</th>
+                  <th className="px-3 py-2 text-right">피드백</th>
+                </tr>
+              </thead>
+              <tbody>
+                {feedbackRows.slice(0, 12).map((row) => (
+                  <tr key={row.id} className="border-t border-admin-border">
+                    <td className="px-3 py-2">
+                      <p className="font-semibold text-admin-text line-clamp-1">{row.package_title ?? row.package_id.slice(0, 8)}</p>
+                      <p className="mt-0.5 text-[11px] text-admin-muted">{row.destination ?? '목적지 없음'} · {new Date(row.recommended_at).toLocaleString('ko-KR')}</p>
+                    </td>
+                    <td className="px-3 py-2 text-admin-muted">
+                      {row.source} · {row.intent ?? 'intent 없음'} · rank {row.recommended_rank ?? '—'}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                        row.outcome === 'booking' || row.outcome === 'inquiry'
+                          ? 'bg-emerald-50 text-emerald-700'
+                          : row.outcome === 'cancelled'
+                            ? 'bg-red-50 text-red-700'
+                            : 'bg-admin-bg text-admin-muted'
+                      }`}>
+                        {row.outcome ?? '미확정'}
+                      </span>
+                      {row.has_feedback && <span className="ml-1.5 text-[11px] font-semibold text-violet-700">피드백 있음</span>}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div className="flex justify-end gap-1">
+                        <button
+                          type="button"
+                          disabled={feedbackSavingId === row.id}
+                          onClick={() => saveFeedback(row.id, 'customer_selected')}
+                          className="rounded border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 disabled:opacity-50"
+                        >
+                          선택
+                        </button>
+                        <button
+                          type="button"
+                          disabled={feedbackSavingId === row.id}
+                          onClick={() => saveFeedback(row.id, 'customer_rejected')}
+                          className="rounded border border-red-200 bg-red-50 px-2 py-1 text-[11px] font-semibold text-red-700 disabled:opacity-50"
+                        >
+                          거절
+                        </button>
+                        <button
+                          type="button"
+                          disabled={feedbackSavingId === row.id}
+                          onClick={() => saveFeedback(row.id, 'needs_hotel_check')}
+                          className="rounded border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:opacity-50"
+                        >
+                          호텔
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 flex flex-wrap items-center gap-3">
         <span className="text-xs font-semibold text-admin-text-2">필터:</span>
         <select
