@@ -261,6 +261,7 @@ export const GET = withAdminGuard(async () => {
     landingEvolutionRes,
     budgetPacingRes,
     tenantAdAccountRes,
+    changeRequestRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -342,6 +343,11 @@ export const GET = withAdminGuard(async () => {
       .select('id, platform, account_mode, connection_status, monthly_budget_cap_krw, daily_budget_cap_krw, can_publish_keywords, can_change_bids, can_pause_assets, risk_status')
       .order('platform', { ascending: true })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_change_requests')
+      .select('id, request_type, status, risk_level, platform, title, reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
   const firstError =
@@ -357,7 +363,8 @@ export const GET = withAdminGuard(async () => {
     productScenarioRes.error ||
     landingEvolutionRes.error ||
     budgetPacingRes.error ||
-    tenantAdAccountRes.error;
+    tenantAdAccountRes.error ||
+    changeRequestRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -466,6 +473,11 @@ export const GET = withAdminGuard(async () => {
     canPauseAssets: Boolean(account.can_pause_assets),
     riskStatus: account.risk_status || 'watch',
   })));
+  const changeRequests = (changeRequestRes.data || []) as Array<{
+    request_type: string | null;
+    status: string | null;
+    risk_level: string | null;
+  }>;
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
   const channelBudgets = PLATFORMS.map((platform) => ({
@@ -708,6 +720,8 @@ export const GET = withAdminGuard(async () => {
       budget_pacing_alerts: budgetPacingSnapshots.filter((row) => ['overspend', 'exhausted', 'blocked'].includes(row.status || '')).length,
       tenant_ad_accounts: tenantAdAccounts.length,
       tenant_ad_accounts_ready: tenantAdAccounts.filter((row) => row.connection_status === 'ready').length,
+      change_requests_proposed: changeRequests.filter((row) => row.status === 'proposed').length,
+      change_requests_high_risk: changeRequests.filter((row) => ['high', 'critical'].includes(row.risk_level || '')).length,
     },
     counts: {
       mappings_by_status: mappingsByStatus,
@@ -724,6 +738,8 @@ export const GET = withAdminGuard(async () => {
       landing_evolution_by_action: byKey(landingEvolutionQueue, (row) => row.action || 'unknown'),
       budget_pacing_by_status: byKey(budgetPacingSnapshots, (row) => row.status || 'unknown'),
       tenant_ad_accounts_by_status: byKey(tenantAdAccounts, (row) => row.connection_status || 'unknown'),
+      change_requests_by_status: byKey(changeRequests, (row) => row.status || 'unknown'),
+      change_requests_by_type: byKey(changeRequests, (row) => row.request_type || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -776,6 +792,7 @@ export const GET = withAdminGuard(async () => {
       landing_evolution_queue: landingEvolutionRes.data?.slice(0, 12) || [],
       budget_pacing: budgetPacingRes.data?.slice(0, 12) || [],
       tenant_ad_accounts: tenantAdAccountRes.data?.slice(0, 12) || [],
+      change_requests: changeRequestRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

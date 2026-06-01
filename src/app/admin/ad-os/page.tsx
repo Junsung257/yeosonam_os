@@ -163,6 +163,7 @@ type Summary = {
     landing_evolution_queue: Array<Record<string, unknown>>;
     budget_pacing: Array<Record<string, unknown>>;
     tenant_ad_accounts: Array<Record<string, unknown>>;
+    change_requests: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -1362,6 +1363,7 @@ export default function AdOsPage() {
             <KpiCard label="랜딩 진화 후보" value={(summary.kpis.landing_evolution_candidates || 0).toLocaleString('ko-KR')} icon={Layers} />
             <KpiCard label="예산 페이싱 경고" value={(summary.kpis.budget_pacing_alerts || 0).toLocaleString('ko-KR')} icon={AlertTriangle} tone={(summary.kpis.budget_pacing_alerts || 0) > 0 ? 'negative' : 'neutral'} />
             <KpiCard label="테넌트 광고계정" value={(summary.kpis.tenant_ad_accounts_ready || 0).toLocaleString('ko-KR')} icon={KeyRound} tone={(summary.kpis.tenant_ad_accounts_ready || 0) > 0 ? 'positive' : 'neutral'} />
+            <KpiCard label="승인 대기 변경" value={(summary.kpis.change_requests_proposed || 0).toLocaleString('ko-KR')} icon={ShieldCheck} tone={(summary.kpis.change_requests_high_risk || 0) > 0 ? 'negative' : 'neutral'} />
             <KpiCard label="월 예산 설정" value={fmtWon(summary.kpis.configured_monthly_budget_krw)} icon={Wallet} />
           </div>
 
@@ -1947,6 +1949,34 @@ export default function AdOsPage() {
                         <StatusPill tone={row.status === 'candidate' ? 'warn' : 'good'}>{String(row.status || '-')}</StatusPill>
                       </div>
                       <p className="mt-1 text-admin-2xs text-admin-muted">{String(row.reason || '').slice(0, 90)}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="admin-card p-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-admin-base font-semibold text-admin-text-2">AI 변경 승인 큐</h2>
+                <StatusPill tone={(summary.kpis.change_requests_proposed || 0) > 0 ? 'warn' : 'neutral'}>{summary.kpis.change_requests_proposed || 0}개</StatusPill>
+              </div>
+              <div className="mt-3 space-y-2">
+                {(summary.samples.change_requests || []).length === 0 ? (
+                  <div className="rounded-admin-sm bg-admin-surface-2 p-4 text-admin-xs text-admin-muted">
+                    아직 승인 대기 변경이 없습니다. 성과 최적화나 예산 페이싱이 정지/증액/교체 후보를 만들면 여기에 쌓입니다.
+                  </div>
+                ) : (
+                  summary.samples.change_requests.slice(0, 6).map((row, idx) => (
+                    <div key={String(row.id || idx)} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-admin-xs font-semibold text-admin-text">{String(row.title || row.request_type || '-')}</p>
+                        <StatusPill tone={['high', 'critical'].includes(String(row.risk_level || '')) ? 'bad' : row.status === 'proposed' ? 'warn' : 'good'}>
+                          {String(row.status || '-')}
+                        </StatusPill>
+                      </div>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">
+                        {String(row.platform || 'internal')} · {String(row.risk_level || 'medium')} · {String(row.reason || '').slice(0, 70)}
+                      </p>
                     </div>
                   ))
                 )}
