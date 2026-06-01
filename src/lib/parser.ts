@@ -1374,6 +1374,10 @@ export async function extractMultipleProducts(
   // ── P1-4 (2026-05-24): 중요도 기반 텍스트 선택 ──
   // 앞 30000자 + 가격 키워드 밀집 구간 포함 (가격 정보가 뒤쪽에 있을 때)
   const truncatedText = smartTruncateWithPricePriority(rawText, 30000);
+  // Product-boundary detection must use the full raw text. Long supplier catalogs
+  // often place the itinerary/grade blocks after large price tables; truncating
+  // before splitting can collapse an 8-product catalog into one blocked upload.
+  const splitSourceText = rawText;
 
 
   // Reflexion + 지역 컨텍스트 prefix
@@ -1406,12 +1410,12 @@ export async function extractMultipleProducts(
     let sections: string[] = [];
     let splitSource: 'regex' | 'llm-fallback' | 'single' = 'single';
     if (base64Image) {
-      const r = splitCatalogByItineraryHeaders(truncatedText);
+      const r = splitCatalogByItineraryHeaders(splitSourceText);
       sharedPrefix = r.sharedPrefix;
       sections = r.sections;
       splitSource = sections.length >= 2 ? 'regex' : 'single';
     } else {
-      const r = await splitCatalogSmart(truncatedText);
+      const r = await splitCatalogSmart(splitSourceText);
       sharedPrefix = r.sharedPrefix;
       sections = r.sections;
       splitSource = r.source;
