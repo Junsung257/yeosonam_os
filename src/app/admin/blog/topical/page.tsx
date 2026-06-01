@@ -14,6 +14,9 @@ interface State {
   pillar_count: number;
   cluster_total: number;
   cluster_by_destination: Array<{ destination: string; count: number }>;
+  authority_score?: number;
+  weak_destinations?: Array<{ destination: string; count: number }>;
+  next_actions?: string[];
   matrix: Record<string, number>;
   matrix_pending_sample: Array<any>;
 }
@@ -69,12 +72,47 @@ export default function TopicalPage() {
       />
 
       {/* 통계 */}
-      <div className="grid grid-cols-4 gap-3">
+      <section className="admin-card p-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">이 화면의 목적</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              같은 여행지 상품이 계속 들어와도 중복 글을 무한 생성하지 않고, 여행지 허브와 세부 관점 글을 구조화합니다.
+            </p>
+          </div>
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">Pillar / Cluster</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              Pillar는 다낭 같은 여행지 허브, Cluster는 부모님 여행, 부산 출발, 비교, 일정 같은 세부 의도 글입니다.
+            </p>
+          </div>
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">광고 활용</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              초세부 키워드별 랜딩 후보를 만들고, 색인/순위/예약 성과를 보고 광고 OS가 다음 키워드와 글 각도를 추천합니다.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <KpiCard label="Authority Score" value={`${state.authority_score ?? 0}`} unit="/100" icon={GitBranch} tone={(state.authority_score ?? 0) >= 70 ? 'positive' : 'neutral'} />
         <KpiCard label="Pillar 페이지" value={state.pillar_count.toLocaleString()} icon={Layers} />
         <KpiCard label="Cluster 매핑" value={state.cluster_total.toLocaleString()} icon={Network} />
         <KpiCard label="매트릭스 대기" value={(state.matrix.pending || 0).toLocaleString()} icon={Clock} tone={state.matrix.pending > 0 ? 'negative' : 'neutral'} />
         <KpiCard label="매트릭스 큐잉됨" value={(state.matrix.queued || 0).toLocaleString()} icon={Send} tone="positive" />
       </div>
+
+      {(state.next_actions?.length || 0) > 0 && (
+        <section className="admin-card p-3">
+          <p className="text-admin-xs font-semibold text-admin-text-2">다음 보강 액션</p>
+          <div className="mt-2 space-y-1">
+            {state.next_actions?.slice(0, 4).map((action) => (
+              <p key={action} className="text-admin-xs leading-5 text-admin-muted">- {action}</p>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* 컨트롤 */}
       <div className="grid grid-cols-3 gap-2">

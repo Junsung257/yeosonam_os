@@ -161,6 +161,16 @@ export default function BlogAdsPage() {
     alert('복사됨:\n' + text);
   };
 
+  const mappingStats = mappings.reduce(
+    (acc, mapping) => {
+      const status = mapping.operational_status || (mapping.active ? 'legacy_active' : 'candidate');
+      acc[status] = (acc[status] || 0) + 1;
+      return acc;
+    },
+    {} as Record<string, number>,
+  );
+  const activeLikeCount = ['active', 'winning', 'scaled', 'legacy_active'].reduce((sum, status) => sum + (mappingStats[status] || 0), 0);
+
   return (
     <div className="space-y-5">
       <PageHeader
@@ -183,6 +193,40 @@ export default function BlogAdsPage() {
       />
 
       {/* 신규 매핑 폼 */}
+      <section className="admin-card p-4">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-admin-base font-semibold text-admin-text-2">AI 매핑 운영 방식</h2>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              이 화면의 매핑은 광고를 즉시 켜는 버튼이 아니라 블로그 랜딩, 광고 키워드, UTM, DKI 문구를 묶는 승인 큐입니다.
+              추천 → 승인 → 제한 예산 테스트 → 성과 학습 순서로만 외부 집행에 연결합니다.
+            </p>
+          </div>
+          <Link href="/admin/ad-os" className="rounded-admin-sm border border-admin-border-strong px-3 py-2 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
+            Ad OS에서 집행 상태 보기
+          </Link>
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+          {[
+            ['추천', mappingStats.candidate || 0],
+            ['승인', mappingStats.approved || 0],
+            ['테스트', mappingStats.testing || 0],
+            ['활성/확장', activeLikeCount],
+            ['정지/제외', (mappingStats.paused || 0) + (mappingStats.negative || 0) + (mappingStats.rejected || 0)],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-admin-sm bg-admin-surface-2 p-3">
+              <p className="text-admin-2xs font-semibold text-admin-muted">{label}</p>
+              <p className="mt-1 text-admin-lg font-bold text-admin-text-2">{Number(value).toLocaleString('ko-KR')}</p>
+            </div>
+          ))}
+        </div>
+        {activeLikeCount > 0 && (
+          <div className="mt-3 rounded-admin-sm border border-amber-200 bg-amber-50 p-3 text-admin-xs leading-5 text-amber-800">
+            활성으로 보이는 매핑은 외부 광고가 실제 집행 중이라는 뜻이 아닙니다. 네이버/구글 API 권한, 캠페인 ID, 예산 가드레일이 통과해야 실제 집행 가능 상태로 표시됩니다.
+          </div>
+        )}
+      </section>
+
       {formOpen && (
         <div className="admin-card border-brand/20 p-4 space-y-2">
           <div className="grid grid-cols-2 gap-2">

@@ -117,7 +117,7 @@ async function runGscIndexRank(request: NextRequest) {
 
   const { data: published, error: pErr } = await supabaseAdmin
     .from('content_creatives')
-    .select('slug, published_at')
+    .select('id, slug, published_at')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .not('slug', 'is', null)
@@ -128,10 +128,9 @@ async function runGscIndexRank(request: NextRequest) {
     errors.push(`content_creatives 조회 실패: ${pErr.message}`);
   }
 
-  const candidates = ((published || []) as Array<{ slug: string | null }>)
-    .map((r) => r.slug)
-    .filter((s): s is string => !!s)
-    .filter((s) => !seenSlugs.has(s))
+  const candidates = ((published || []) as Array<{ id: string; slug: string | null }>)
+    .filter((r): r is { id: string; slug: string } => Boolean(r.slug))
+    .filter((r) => !seenSlugs.has(r.slug))
     .slice(0, MAX_INSPECT_PER_RUN);
 
   const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/+$/, '');
@@ -139,7 +138,10 @@ async function runGscIndexRank(request: NextRequest) {
   let notIndexed = 0;
   const inspectionResults: Array<Record<string, unknown>> = [];
 
-  for (const slug of candidates) {
+  const inspectionReportRows: Array<Record<string, unknown>> = [];
+
+  for (const candidate of candidates) {
+    const slug = candidate.slug;
     const url = `${baseUrl}/blog/${slug}`;
     const r = await inspectUrlIndexState(siteUrl, url);
     inspected += 1;
@@ -149,6 +151,22 @@ async function runGscIndexRank(request: NextRequest) {
     }
     const isIndexed = r.verdict === 'PASS' && r.coverageState?.toLowerCase().includes('index');
     if (!isIndexed) notIndexed += 1;
+    inspectionReportRows.push({
+      url,
+      content_creative_id: candidate.id,
+      google_status: isIndexed ? 'indexed' : 'not_indexed',
+      google_error: null,
+      indexnow_status: 'skipped',
+      indexnow_error: null,
+      sitemap_pings: [],
+      google_index_verdict: r.verdict,
+      google_coverage_state: r.coverageState,
+      google_indexing_state: r.indexingState,
+      google_last_crawl_time: r.lastCrawlTime,
+      google_page_fetch_state: r.pageFetchState,
+      google_canonical: r.googleCanonical,
+      user_canonical: r.userCanonical,
+    });
     inspectionResults.push({
       slug,
       verdict: r.verdict,
@@ -159,6 +177,13 @@ async function runGscIndexRank(request: NextRequest) {
       google_canonical: r.googleCanonical,
       user_canonical: r.userCanonical,
     });
+  }
+
+  if (inspectionReportRows.length > 0) {
+    const { error: reportErr } = await supabaseAdmin
+      .from('indexing_reports')
+      .insert(inspectionReportRows);
+    if (reportErr) errors.push(`indexing_reports inspection insert 실패: ${reportErr.message}`);
   }
 
   return {
