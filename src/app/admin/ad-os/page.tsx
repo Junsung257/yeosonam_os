@@ -310,12 +310,14 @@ export default function AdOsPage() {
   const [planningExperiments, setPlanningExperiments] = useState(false);
   const [probingGooglePublisher, setProbingGooglePublisher] = useState(false);
   const [loadingTenantReport, setLoadingTenantReport] = useState(false);
+  const [buildingOpsPlan, setBuildingOpsPlan] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [launchAudit, setLaunchAudit] = useState<LaunchAudit | null>(null);
   const [naverSetupPacket, setNaverSetupPacket] = useState<NaverSetupPacket | null>(null);
   const [tenantReport, setTenantReport] = useState<Record<string, unknown> | null>(null);
+  const [opsPlan, setOpsPlan] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -1080,6 +1082,30 @@ export default function AdOsPage() {
     }
   };
 
+  const buildOpsPlan = async () => {
+    setBuildingOpsPlan(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/ops-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'V13-V18 운영 계획 생성 실패');
+      setOpsPlan(json);
+      await refresh();
+      setAutomationMessage(
+        `V13-V18 운영 계획 생성 완료: 변경요청 ${Number(json.inserted_change_requests || 0).toLocaleString('ko-KR')}개, 키워드 후보 ${Number(json.keyword_mining?.candidates?.length || 0).toLocaleString('ko-KR')}개, 소재 draft ${Number(json.creative_factory?.drafts?.length || 0).toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'V13-V18 운영 계획 생성 실패');
+    } finally {
+      setBuildingOpsPlan(false);
+    }
+  };
+
   const updateChangeRequest = async (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => {
     setChangeRequestActionId(id);
     setError(null);
@@ -1228,6 +1254,10 @@ export default function AdOsPage() {
   const activeModeByPlatform = new Map((summary?.active_automation_modes || []).map((mode) => [mode.platform, mode]));
   const tenantReportBody = tenantReport?.report as Record<string, number> & { next_actions?: string[] } | undefined;
   const tenantReportPeriod = tenantReport?.period as { from?: string; to?: string } | undefined;
+  const opsPublisher = opsPlan?.publisher as Record<string, { state?: string; canActivate?: boolean; defaultMutationMode?: string }> | undefined;
+  const opsMeasurement = opsPlan?.measurement as Record<string, number | string> | undefined;
+  const opsKeywordMining = opsPlan?.keyword_mining as { candidates?: Array<Record<string, unknown>>; duplicate_content_action?: Record<string, unknown> } | undefined;
+  const opsTenantPackaging = opsPlan?.tenant_packaging as { productReadinessLabel?: string; missing?: string[] } | undefined;
 
   return (
     <div className="space-y-5">
@@ -2053,6 +2083,10 @@ export default function AdOsPage() {
                   <Download size={14} />
                   테넌트 리포트
                 </Button>
+                <Button size="sm" variant="secondary" onClick={buildOpsPlan} loading={buildingOpsPlan}>
+                  <Bot size={14} />
+                  V13-V18 운영 계획
+                </Button>
                 <Button size="sm" variant="secondary" onClick={runExpiryCleanup} loading={runningExpiryCleanup}>
                   <CalendarX size={14} />
                   만료 정리 점검
@@ -2069,6 +2103,49 @@ export default function AdOsPage() {
                 <p className="mt-2 rounded-admin-sm bg-emerald-50 px-3 py-2 text-admin-xs text-emerald-700">
                   {automationMessage}
                 </p>
+              )}
+              {opsPlan && (
+                <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-admin-sm font-semibold text-admin-text">V13-V18 실전 운영 계획</p>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">
+                        Publisher, measurement, keyword mining, pacing, creative draft, SaaS packaging을 한 번에 점검하고 승인형 변경요청으로 남깁니다.
+                      </p>
+                    </div>
+                    <StatusPill tone={Number(opsPlan.inserted_change_requests || 0) > 0 ? 'warn' : 'neutral'}>
+                      CR {Number(opsPlan.inserted_change_requests || 0).toLocaleString('ko-KR')}
+                    </StatusPill>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
+                    {[
+                      ['네이버', String(opsPublisher?.naver?.state || '-')],
+                      ['구글', String(opsPublisher?.google?.state || '-')],
+                      ['Mutation', String(opsPublisher?.naver?.defaultMutationMode || 'dry_run')],
+                      ['마진 ROAS', `${Number(opsMeasurement?.margin_roas_pct || 0)}%`],
+                      ['키워드 후보', Number(opsKeywordMining?.candidates?.length || 0).toLocaleString('ko-KR')],
+                      ['상품 준비', String(opsTenantPackaging?.productReadinessLabel || '-')],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-admin-xs bg-admin-surface px-3 py-2">
+                        <p className="text-admin-2xs text-admin-muted">{label}</p>
+                        <p className="mt-1 break-words text-admin-xs font-semibold text-admin-text">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {(opsKeywordMining?.candidates || []).slice(0, 6).map((candidate) => (
+                      <div key={String(candidate.keyword)} className="rounded-admin-xs border border-admin-border bg-admin-surface px-3 py-2">
+                        <p className="text-admin-xs font-semibold text-admin-text">{String(candidate.keyword || '-')}</p>
+                        <p className="mt-1 text-admin-2xs text-admin-muted">
+                          {String(candidate.intent || 'intent')} · {fmtWon(Number(candidate.bidKrw || 0))}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-admin-2xs text-admin-muted">
+                    중복 콘텐츠 처리: {String(opsKeywordMining?.duplicate_content_action?.action || '-')} · {String(opsKeywordMining?.duplicate_content_action?.reason || '-')}
+                  </p>
+                </div>
               )}
               {tenantReportBody && (
                 <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">

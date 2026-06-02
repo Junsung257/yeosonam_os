@@ -10,9 +10,36 @@ export type AdOsChangeRequestType =
   | 'create_campaign'
   | 'sync_external_asset'
   | 'update_blog_cta'
-  | 'create_card_news';
+  | 'create_card_news'
+  | 'create_negative_keyword'
+  | 'create_experiment'
+  | 'publish_paused_keyword'
+  | 'upload_conversion_signal'
+  | 'activate_paused_keyword'
+  | 'sync_performance'
+  | 'create_creative_draft'
+  | 'update_tenant_policy';
 
 export type AdOsChangeRisk = 'low' | 'medium' | 'high' | 'critical';
+
+const HIGH_RISK_TYPES = new Set<AdOsChangeRequestType>([
+  'create_keyword',
+  'increase_bid',
+  'budget_change',
+  'create_campaign',
+  'publish_paused_keyword',
+  'activate_paused_keyword',
+]);
+
+const MEDIUM_RISK_TYPES = new Set<AdOsChangeRequestType>([
+  'pause_keyword',
+  'decrease_bid',
+  'replace_landing',
+  'update_blog_cta',
+  'create_negative_keyword',
+  'sync_performance',
+  'upload_conversion_signal',
+]);
 
 export function riskForChangeRequest(input: {
   requestType: AdOsChangeRequestType;
@@ -23,8 +50,8 @@ export function riskForChangeRequest(input: {
   if (input.changesExternalAccount && input.automationLevel >= 4) return 'critical';
   if (input.requestType === 'pause_channel') return 'high';
   if (input.requestType === 'budget_change' && Number(input.externalSpendKrw || 0) > 0) return 'high';
-  if (['increase_bid', 'create_campaign', 'create_keyword'].includes(input.requestType)) return 'high';
-  if (['pause_keyword', 'decrease_bid', 'replace_landing', 'update_blog_cta'].includes(input.requestType)) return 'medium';
+  if (HIGH_RISK_TYPES.has(input.requestType)) return 'high';
+  if (MEDIUM_RISK_TYPES.has(input.requestType)) return 'medium';
   return 'low';
 }
 
@@ -44,18 +71,26 @@ export function approvalRequiredForChange(input: {
 
 export function titleForChangeRequest(type: AdOsChangeRequestType): string {
   const labels: Record<AdOsChangeRequestType, string> = {
-    create_keyword: '키워드 생성',
-    pause_keyword: '키워드 정지',
-    increase_bid: '입찰 증액',
-    decrease_bid: '입찰 감액',
-    budget_change: '예산 변경',
-    pause_channel: '채널 정지',
-    replace_landing: '랜딩 교체',
-    create_landing: '랜딩 생성',
-    create_campaign: '캠페인 생성',
-    sync_external_asset: '외부 자산 연결',
-    update_blog_cta: '블로그 CTA 개선',
-    create_card_news: '카드뉴스 생성',
+    create_keyword: 'Create keyword',
+    pause_keyword: 'Pause keyword',
+    increase_bid: 'Increase bid',
+    decrease_bid: 'Decrease bid',
+    budget_change: 'Budget change',
+    pause_channel: 'Pause channel',
+    replace_landing: 'Replace landing',
+    create_landing: 'Create landing',
+    create_campaign: 'Create campaign',
+    sync_external_asset: 'Sync external asset',
+    update_blog_cta: 'Update blog CTA',
+    create_card_news: 'Create card news',
+    create_negative_keyword: 'Create negative keyword',
+    create_experiment: 'Create experiment',
+    publish_paused_keyword: 'Publish paused keyword',
+    upload_conversion_signal: 'Upload conversion signal',
+    activate_paused_keyword: 'Activate paused keyword',
+    sync_performance: 'Sync performance',
+    create_creative_draft: 'Create creative draft',
+    update_tenant_policy: 'Update tenant policy',
   };
   return labels[type];
 }
