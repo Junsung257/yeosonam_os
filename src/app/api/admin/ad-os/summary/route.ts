@@ -902,7 +902,7 @@ async function buildSummaryResponse() {
       product_scenarios: productScenarios.length,
       landing_evolution_candidates: landingEvolutionQueue.filter((row) => row.status === 'candidate').length,
       budget_pacing_snapshots: budgetPacingSnapshots.length,
-      budget_pacing_alerts: budgetPacingSnapshots.filter((row) => ['overspend', 'exhausted', 'blocked'].includes(row.status || '')).length,
+      budget_pacing_alerts: budgetPacingSnapshots.filter((row) => ['over_pacing', 'overspend', 'loss_limit_near', 'exhausted', 'blocked'].includes(row.status || '')).length,
       tenant_ad_accounts: tenantAdAccounts.length,
       tenant_ad_accounts_ready: tenantAdAccounts.filter((row) => row.connection_status === 'ready').length,
       change_requests_proposed: changeRequests.filter((row) => row.status === 'proposed').length,

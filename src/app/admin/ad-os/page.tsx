@@ -306,11 +306,16 @@ export default function AdOsPage() {
   const [syncingPerformance, setSyncingPerformance] = useState(false);
   const [applyingLearning, setApplyingLearning] = useState(false);
   const [publishingExternal, setPublishingExternal] = useState(false);
+  const [harvestingSearchTerms, setHarvestingSearchTerms] = useState(false);
+  const [planningExperiments, setPlanningExperiments] = useState(false);
+  const [probingGooglePublisher, setProbingGooglePublisher] = useState(false);
+  const [loadingTenantReport, setLoadingTenantReport] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [launchAudit, setLaunchAudit] = useState<LaunchAudit | null>(null);
   const [naverSetupPacket, setNaverSetupPacket] = useState<NaverSetupPacket | null>(null);
+  const [tenantReport, setTenantReport] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -835,7 +840,7 @@ export default function AdOsPage() {
       if (!res.ok || !json.ok) throw new Error(json.error || '예산 페이싱 실패');
       await refresh();
       setAutomationMessage(
-        `예산 페이싱 완료: 채널 ${json.summary.checked_channels.toLocaleString('ko-KR')}개, 과소진 ${json.summary.overspend.toLocaleString('ko-KR')}개, 저소진 ${json.summary.underspend.toLocaleString('ko-KR')}개, 소진완료 ${json.summary.exhausted.toLocaleString('ko-KR')}개`,
+        `예산 페이싱 완료: 채널 ${json.summary.checked_channels.toLocaleString('ko-KR')}개, 과속 ${Number(json.summary.over_pacing || 0).toLocaleString('ko-KR')}개, 저속 ${Number(json.summary.under_pacing || 0).toLocaleString('ko-KR')}개, 손실한도 근접 ${Number(json.summary.loss_limit_near || 0).toLocaleString('ko-KR')}개, 차단 ${Number(json.summary.blocked || 0).toLocaleString('ko-KR')}개`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : '예산 페이싱 실패');
@@ -986,6 +991,95 @@ export default function AdOsPage() {
     }
   };
 
+  const harvestSearchTerms = async () => {
+    setHarvestingSearchTerms(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/search-term-harvest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'dry_run' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '검색어 수확 실패');
+      await refresh();
+      setAutomationMessage(
+        `검색어 수확 완료: 검색어 ${json.summary.fetched_terms.toLocaleString('ko-KR')}개, 키워드 추가 ${json.summary.add_keyword.toLocaleString('ko-KR')}개, 제외어 ${json.summary.add_negative.toLocaleString('ko-KR')}개, 검토 ${json.summary.review.toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '검색어 수확 실패');
+    } finally {
+      setHarvestingSearchTerms(false);
+    }
+  };
+
+  const planExperiments = async () => {
+    setPlanningExperiments(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/experiment-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '실험 후보 생성 실패');
+      await refresh();
+      setAutomationMessage(
+        `실험 후보 생성 완료: 성과팩트 ${json.summary.facts_checked.toLocaleString('ko-KR')}개 기준, 실험 후보 ${json.summary.experiments_created.toLocaleString('ko-KR')}개. Bandit은 기본 비활성입니다.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '실험 후보 생성 실패');
+    } finally {
+      setPlanningExperiments(false);
+    }
+  };
+
+  const probeGooglePublisher = async () => {
+    setProbingGooglePublisher(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/publisher/google/probe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hint: '다낭 패키지' }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Google 권한 진단 실패');
+      await refresh();
+      setAutomationMessage(
+        `Google 권한 진단: ${json.probe.status} — ${json.probe.message} 다음 조치: ${json.probe.next_action}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google 권한 진단 실패');
+    } finally {
+      setProbingGooglePublisher(false);
+    }
+  };
+
+  const loadTenantReport = async () => {
+    setLoadingTenantReport(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/tenant-report');
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '테넌트 리포트 생성 실패');
+      setTenantReport(json);
+      const report = json.report || {};
+      setAutomationMessage(
+        `테넌트 리포트: 예산 사용률 ${Number(report.budget_usage_pct || 0)}%, 매출 ROAS ${Number(report.revenue_roas_pct || 0)}%, 마진 ROAS ${Number(report.margin_roas_pct || 0)}%, 신규 저가 키워드 ${Number(report.discovered_cheap_keywords || 0).toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '테넌트 리포트 생성 실패');
+    } finally {
+      setLoadingTenantReport(false);
+    }
+  };
+
   const updateChangeRequest = async (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => {
     setChangeRequestActionId(id);
     setError(null);
@@ -1108,6 +1202,10 @@ export default function AdOsPage() {
     harvestLearning,
     runLaunchAudit,
     runKillSwitchDryRun,
+    harvestSearchTerms,
+    planExperiments,
+    probeGooglePublisher,
+    loadTenantReport,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -1118,12 +1216,18 @@ export default function AdOsPage() {
     harvestLearning: harvestingLearning,
     runLaunchAudit: runningLaunchAudit,
     runKillSwitchDryRun: runningKillSwitch,
+    harvestSearchTerms: harvestingSearchTerms,
+    planExperiments: planningExperiments,
+    probeGooglePublisher: probingGooglePublisher,
+    loadTenantReport: loadingTenantReport,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
     ['naver', 'google'].includes(platform),
   );
   const activeModeByPlatform = new Map((summary?.active_automation_modes || []).map((mode) => [mode.platform, mode]));
+  const tenantReportBody = tenantReport?.report as Record<string, number> & { next_actions?: string[] } | undefined;
+  const tenantReportPeriod = tenantReport?.period as { from?: string; to?: string } | undefined;
 
   return (
     <div className="space-y-5">
@@ -1913,6 +2017,10 @@ export default function AdOsPage() {
                   <Gauge size={14} />
                   성과 학습 수확
                 </Button>
+                <Button size="sm" variant="secondary" onClick={harvestSearchTerms} loading={harvestingSearchTerms}>
+                  <Search size={14} />
+                  검색어 수확 V11
+                </Button>
                 <Button size="sm" variant="secondary" onClick={syncPerformanceFacts} loading={syncingPerformance}>
                   <MousePointerClick size={14} />
                   성과 팩트 동기화
@@ -1920,6 +2028,10 @@ export default function AdOsPage() {
                 <Button size="sm" variant="secondary" onClick={applyLearningRules} loading={applyingLearning}>
                   <ShieldCheck size={14} />
                   학습 적용 후보
+                </Button>
+                <Button size="sm" variant="secondary" onClick={planExperiments} loading={planningExperiments}>
+                  <Bot size={14} />
+                  실험 후보 생성
                 </Button>
                 <Button size="sm" variant="secondary" onClick={optimizePerformance} loading={optimizingPerformance}>
                   <ShieldCheck size={14} />
@@ -1929,9 +2041,17 @@ export default function AdOsPage() {
                   <Rocket size={14} />
                   외부 발행 드라이런
                 </Button>
+                <Button size="sm" variant="secondary" onClick={probeGooglePublisher} loading={probingGooglePublisher}>
+                  <KeyRound size={14} />
+                  Google 권한 진단
+                </Button>
                 <Button size="sm" variant="secondary" onClick={runBudgetPacing} loading={runningBudgetPacing}>
                   <Wallet size={14} />
                   예산 페이싱 점검
+                </Button>
+                <Button size="sm" variant="secondary" onClick={loadTenantReport} loading={loadingTenantReport}>
+                  <Download size={14} />
+                  테넌트 리포트
                 </Button>
                 <Button size="sm" variant="secondary" onClick={runExpiryCleanup} loading={runningExpiryCleanup}>
                   <CalendarX size={14} />
@@ -1949,6 +2069,43 @@ export default function AdOsPage() {
                 <p className="mt-2 rounded-admin-sm bg-emerald-50 px-3 py-2 text-admin-xs text-emerald-700">
                   {automationMessage}
                 </p>
+              )}
+              {tenantReportBody && (
+                <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-admin-sm font-semibold text-admin-text">광고대행 월간 리포트 미리보기</p>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">매출 ROAS와 마진 ROAS를 분리해 테넌트 판매용 리포트로 보여줍니다.</p>
+                    </div>
+                    <StatusPill tone="neutral">
+                      {String(tenantReportPeriod?.from || '')}
+                      {' ~ '}
+                      {String(tenantReportPeriod?.to || '')}
+                    </StatusPill>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
+                    {[
+                      ['예산 사용률', `${Number(tenantReportBody.budget_usage_pct || 0)}%`],
+                      ['매출 ROAS', `${Number(tenantReportBody.revenue_roas_pct || 0)}%`],
+                      ['마진 ROAS', `${Number(tenantReportBody.margin_roas_pct || 0)}%`],
+                      ['CPA', fmtWon(Number(tenantReportBody.cpa_krw || 0))],
+                      ['낭비 키워드', Number(tenantReportBody.paused_waste_keywords || 0).toLocaleString('ko-KR')],
+                      ['저가 키워드', Number(tenantReportBody.discovered_cheap_keywords || 0).toLocaleString('ko-KR')],
+                    ].map(([label, value]) => (
+                      <div key={label} className="rounded-admin-xs bg-admin-surface px-3 py-2">
+                        <p className="text-admin-2xs text-admin-muted">{label}</p>
+                        <p className="mt-1 text-admin-xs font-semibold text-admin-text">{value}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {(tenantReportBody.next_actions || []).map((action) => (
+                      <div key={action} className="rounded-admin-xs border border-admin-border bg-admin-surface px-3 py-2 text-admin-2xs leading-5 text-admin-muted">
+                        {action}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
               {launchAudit && (
                 <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface p-3">

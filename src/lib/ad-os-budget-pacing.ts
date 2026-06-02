@@ -1,4 +1,4 @@
-export type AdOsPacingStatus = 'no_budget' | 'on_track' | 'underspend' | 'overspend' | 'exhausted' | 'blocked';
+export type AdOsPacingStatus = 'under_pacing' | 'on_track' | 'over_pacing' | 'loss_limit_near' | 'blocked';
 export type AdOsPacingAction =
   | 'no_change'
   | 'increase_tests'
@@ -61,6 +61,8 @@ export function decideAdOsBudgetPacing(input: AdOsBudgetPacingInput): AdOsBudget
   const paceRatio = expectedSpend > 0 ? Math.round((actualSpend / expectedSpend) * 1000) / 1000 : 0;
   const currentDailyCap = Math.max(0, Math.round(input.dailyBudgetCapKrw || 0));
   const automationLevel = Math.max(0, Math.min(5, Math.round(input.automationLevel || 0)));
+  const remainingBudget = Math.max(0, monthlyBudget - actualSpend);
+  const lossLimitNear = monthlyBudget > 0 && remainingBudget <= Math.max(currentDailyCap, Math.round(monthlyBudget * 0.1));
   const canApplyInternally = input.status === 'active' && automationLevel >= 3 && monthlyBudget > 0;
 
   if (monthlyBudget <= 0 || input.status !== 'active') {
@@ -74,7 +76,7 @@ export function decideAdOsBudgetPacing(input: AdOsBudgetPacingInput): AdOsBudget
       expectedSpendKrw: expectedSpend,
       actualSpendKrw: actualSpend,
       paceRatio,
-      status: monthlyBudget <= 0 ? 'no_budget' : 'blocked',
+      status: 'blocked',
       recommendedAction: 'no_change',
       reason: monthlyBudget <= 0
         ? '월 예산이 없어 집행과 자동 페이싱을 차단합니다.'
@@ -84,7 +86,7 @@ export function decideAdOsBudgetPacing(input: AdOsBudgetPacingInput): AdOsBudget
     };
   }
 
-  if (actualSpend >= monthlyBudget) {
+  if (actualSpend >= monthlyBudget || lossLimitNear) {
     return {
       platform: input.platform,
       periodStart: toDateOnly(start),
@@ -95,9 +97,11 @@ export function decideAdOsBudgetPacing(input: AdOsBudgetPacingInput): AdOsBudget
       expectedSpendKrw: expectedSpend,
       actualSpendKrw: actualSpend,
       paceRatio,
-      status: 'exhausted',
+      status: actualSpend >= monthlyBudget ? 'blocked' : 'loss_limit_near',
       recommendedAction: 'pause_channel',
-      reason: '월 예산이 이미 소진되었으므로 해당 채널 예산을 정지해야 합니다.',
+      reason: actualSpend >= monthlyBudget
+        ? '월 예산이 이미 소진되었으므로 해당 채널 예산을 정지해야 합니다.'
+        : '월 잔여 예산이 손실 한도에 근접했습니다. 새 외부 집행을 막고 채널 정지를 검토합니다.',
       canApplyInternally,
       nextDailyBudgetCapKrw: 0,
     };
@@ -115,7 +119,7 @@ export function decideAdOsBudgetPacing(input: AdOsBudgetPacingInput): AdOsBudget
       expectedSpendKrw: expectedSpend,
       actualSpendKrw: actualSpend,
       paceRatio,
-      status: 'overspend',
+      status: 'over_pacing',
       recommendedAction: 'decrease_daily_cap',
       reason: '현재 소진 속도가 계획보다 빠릅니다. 일 예산 상한을 낮춰 월 예산 초과를 막습니다.',
       canApplyInternally,
@@ -136,7 +140,7 @@ export function decideAdOsBudgetPacing(input: AdOsBudgetPacingInput): AdOsBudget
       expectedSpendKrw: expectedSpend,
       actualSpendKrw: actualSpend,
       paceRatio,
-      status: 'underspend',
+      status: 'under_pacing',
       recommendedAction: automationLevel >= 3 ? 'increase_tests' : 'require_budget_review',
       reason: '예산 소진이 계획보다 느립니다. 승인 후보가 있으면 소액 테스트를 늘릴 수 있습니다.',
       canApplyInternally,
