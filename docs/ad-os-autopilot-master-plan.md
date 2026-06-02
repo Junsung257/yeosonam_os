@@ -769,3 +769,12 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Operating principle remains:
   - Legacy routes are now inspection/delegation routes, not external writers.
   - Real writes must go through a future audited executor that records packet, gate, rollback drill, policy, idempotency key, and mutation result in one chain.
+
+## 43. 2026-06-03 Ad OS V141-V160 conversion PII storage hardening
+
+- Added `sanitizeAdOsConversionPayload` for the conversion-event ingest path.
+- `/api/admin/ad-os/conversion-events` now removes raw email, phone, customer name, passport, resident id, and nested PII-like fields before writing `ad_os_conversion_events.raw_payload`.
+- The sanitizer keeps only SHA-256 first-party identifiers under `raw_payload.first_party_hashes`, plus a small `pii_redaction` evidence object.
+- `quality_flags` now records whether raw PII was removed and whether first-party hashes are present, so data-quality dashboards can distinguish safe hashed signal from missing signal.
+- Google/Meta conversion export packet builders now read `first_party_hashes` and can prepare upload candidates without requiring raw email or phone in `raw_payload`.
+- Unit coverage proves raw PII is absent from sanitized payloads, Google upload packets can use hashed email, Meta upload packets can use hashed phone, and no raw PII appears in generated conversion export packets.
