@@ -312,6 +312,7 @@ export default function AdOsPage() {
   const [probingGooglePublisher, setProbingGooglePublisher] = useState(false);
   const [loadingTenantReport, setLoadingTenantReport] = useState(false);
   const [buildingOpsPlan, setBuildingOpsPlan] = useState(false);
+  const [creatingCreativeDrafts, setCreatingCreativeDrafts] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -780,6 +781,29 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '네이버 정지 키워드 활성화 실패');
     } finally {
       setActivatingNaverKeywords(false);
+    }
+  };
+
+  const createCreativeDrafts = async () => {
+    setCreatingCreativeDrafts(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/creative-factory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 6 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Creative Factory draft 생성 실패');
+      await refresh();
+      setAutomationMessage(
+        `Creative Factory draft 생성 완료: 준비 ${Number(json.prepared_drafts || 0).toLocaleString('ko-KR')}개, 저장 ${Number(json.inserted_drafts || 0).toLocaleString('ko-KR')}개. 자동 게시 없이 draft로만 저장됐습니다.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Creative Factory draft 생성 실패');
+    } finally {
+      setCreatingCreativeDrafts(false);
     }
   };
 
@@ -2114,6 +2138,10 @@ export default function AdOsPage() {
                 <Button size="sm" variant="secondary" onClick={buildOpsPlan} loading={buildingOpsPlan}>
                   <Bot size={14} />
                   V13-V18 운영 계획
+                </Button>
+                <Button size="sm" variant="secondary" onClick={createCreativeDrafts} loading={creatingCreativeDrafts}>
+                  <Layers size={14} />
+                  Creative draft 생성
                 </Button>
                 <Button size="sm" variant="secondary" onClick={runExpiryCleanup} loading={runningExpiryCleanup}>
                   <CalendarX size={14} />
