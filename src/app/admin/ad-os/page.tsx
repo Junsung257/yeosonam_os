@@ -1226,6 +1226,8 @@ export default function AdOsPage() {
     ['naver', 'google'].includes(platform),
   );
   const activeModeByPlatform = new Map((summary?.active_automation_modes || []).map((mode) => [mode.platform, mode]));
+  const tenantReportBody = tenantReport?.report as Record<string, number> & { next_actions?: string[] } | undefined;
+  const tenantReportPeriod = tenantReport?.period as { from?: string; to?: string } | undefined;
 
   return (
     <div className="space-y-5">
@@ -2068,7 +2070,7 @@ export default function AdOsPage() {
                   {automationMessage}
                 </p>
               )}
-              {tenantReport?.report && (
+              {tenantReportBody && (
                 <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
                     <div>
@@ -2076,19 +2078,19 @@ export default function AdOsPage() {
                       <p className="mt-1 text-admin-2xs text-admin-muted">매출 ROAS와 마진 ROAS를 분리해 테넌트 판매용 리포트로 보여줍니다.</p>
                     </div>
                     <StatusPill tone="neutral">
-                      {String((tenantReport.period as { from?: string; to?: string } | undefined)?.from || '')}
+                      {String(tenantReportPeriod?.from || '')}
                       {' ~ '}
-                      {String((tenantReport.period as { from?: string; to?: string } | undefined)?.to || '')}
+                      {String(tenantReportPeriod?.to || '')}
                     </StatusPill>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-6">
                     {[
-                      ['예산 사용률', `${Number((tenantReport.report as Record<string, number>).budget_usage_pct || 0)}%`],
-                      ['매출 ROAS', `${Number((tenantReport.report as Record<string, number>).revenue_roas_pct || 0)}%`],
-                      ['마진 ROAS', `${Number((tenantReport.report as Record<string, number>).margin_roas_pct || 0)}%`],
-                      ['CPA', fmtWon(Number((tenantReport.report as Record<string, number>).cpa_krw || 0))],
-                      ['낭비 키워드', Number((tenantReport.report as Record<string, number>).paused_waste_keywords || 0).toLocaleString('ko-KR')],
-                      ['저가 키워드', Number((tenantReport.report as Record<string, number>).discovered_cheap_keywords || 0).toLocaleString('ko-KR')],
+                      ['예산 사용률', `${Number(tenantReportBody.budget_usage_pct || 0)}%`],
+                      ['매출 ROAS', `${Number(tenantReportBody.revenue_roas_pct || 0)}%`],
+                      ['마진 ROAS', `${Number(tenantReportBody.margin_roas_pct || 0)}%`],
+                      ['CPA', fmtWon(Number(tenantReportBody.cpa_krw || 0))],
+                      ['낭비 키워드', Number(tenantReportBody.paused_waste_keywords || 0).toLocaleString('ko-KR')],
+                      ['저가 키워드', Number(tenantReportBody.discovered_cheap_keywords || 0).toLocaleString('ko-KR')],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-admin-xs bg-admin-surface px-3 py-2">
                         <p className="text-admin-2xs text-admin-muted">{label}</p>
@@ -2097,7 +2099,7 @@ export default function AdOsPage() {
                     ))}
                   </div>
                   <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
-                    {(((tenantReport.report as { next_actions?: string[] }).next_actions || []) as string[]).map((action) => (
+                    {(tenantReportBody.next_actions || []).map((action) => (
                       <div key={action} className="rounded-admin-xs border border-admin-border bg-admin-surface px-3 py-2 text-admin-2xs leading-5 text-admin-muted">
                         {action}
                       </div>
