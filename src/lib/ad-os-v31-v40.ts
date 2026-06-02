@@ -135,12 +135,23 @@ function rawText(event: ConversionExportEvent, key: string): string {
   return text(raw[key]);
 }
 
+function firstPartyHash(event: ConversionExportEvent, key: 'email_sha256' | 'phone_sha256'): string {
+  const raw = event.raw_payload || {};
+  const hashes = raw.first_party_hashes;
+  if (!hashes || typeof hashes !== 'object' || Array.isArray(hashes)) return '';
+  return text((hashes as Record<string, unknown>)[key]);
+}
+
 function firstPartyIdentifiers(event: ConversionExportEvent): Record<string, string> {
   const identifiers: Record<string, string> = {};
   const email = rawText(event, 'email');
   const phone = rawText(event, 'phone');
-  if (email) identifiers.email_sha256 = sha256(email);
-  if (phone) identifiers.phone_sha256 = sha256(phone.replace(/[^\d+]/g, ''));
+  const emailHash = firstPartyHash(event, 'email_sha256');
+  const phoneHash = firstPartyHash(event, 'phone_sha256');
+  if (emailHash) identifiers.email_sha256 = emailHash;
+  if (phoneHash) identifiers.phone_sha256 = phoneHash;
+  if (!identifiers.email_sha256 && email) identifiers.email_sha256 = sha256(email);
+  if (!identifiers.phone_sha256 && phone) identifiers.phone_sha256 = sha256(phone.replace(/[^\d+]/g, ''));
   if (event.visitor_id) identifiers.visitor_id = event.visitor_id;
   if (event.session_id) identifiers.session_id = event.session_id;
   return identifiers;

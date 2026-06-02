@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { sanitizeAdOsConversionPayload } from '@/lib/ad-os-v141-v160';
 import { classifyAdOsConversionSignal } from '@/lib/ad-os-v8-v12';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -15,6 +16,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   }
 
   const body = await request.json().catch(() => ({}));
+  const sanitized = sanitizeAdOsConversionPayload(body);
   const eventType = String(body.event_type || body.eventType || 'click');
   const classification = classifyAdOsConversionSignal({
     eventType,
@@ -25,8 +27,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     revenueKrw: Number(body.revenue_krw || 0),
     marginKrw: Number(body.margin_krw || 0),
     costKrw: Number(body.cost_krw || 0),
-    rawPayload: body,
+    rawPayload: sanitized.rawPayload,
   });
+  const qualityFlags = {
+    ...classification.qualityFlags,
+    ...sanitized.qualityFlags,
+  };
 
   const { data, error } = await supabaseAdmin
     .from('ad_os_conversion_events')
@@ -65,8 +71,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       is_admin: body.is_admin === true,
       is_bot: body.is_bot === true,
       quarantine_status: classification.quarantineStatus,
-      quality_flags: json(classification.qualityFlags),
-      raw_payload: json(body),
+      quality_flags: json(qualityFlags),
+      raw_payload: json(sanitized.rawPayload),
     })
     .select('id, tenant_id, quarantine_status')
     .single();
@@ -85,9 +91,21 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       severity: classification.quarantineStatus === 'quarantined' ? 'high' : 'medium',
       excluded_from_learning: classification.excludedFromLearning,
       excluded_from_platform_upload: classification.excludedFromPlatformUpload,
-      evidence: json({ reasons: classification.reasons, quality_flags: classification.qualityFlags }),
+      evidence: json({ reasons: classification.reasons, quality_flags: qualityFlags }),
     });
   }
 
-  return NextResponse.json({ ok: true, event: data, classification });
+  return NextResponse.json({
+    ok: true,
+    event: data,
+    classification: {
+      ...classification,
+      qualityFlags,
+    },
+    pii_redaction: {
+      raw_pii_removed: sanitized.redactedKeys.length > 0,
+      redacted_key_count: sanitized.redactedKeys.length,
+      first_party_hashes_present: Object.keys(sanitized.firstPartyHashes).length > 0,
+    },
+  });
 });
