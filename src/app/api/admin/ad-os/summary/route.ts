@@ -105,7 +105,7 @@ function buildExternalLaunchStatus(input: {
       pass: naverChecks.length - naverMissing.length,
       total: naverChecks.length,
       checks: naverChecks,
-      next_action: naverMissing[0]?.next || '네이버 정지 키워드 점검 후 guarded publisher 실행',
+      next_action: naverMissing[0]?.next || '네이버 limited pilot 점검 후 감사된 executor만 사용',
     },
     google: {
       ready: googleMissing.length === 0,

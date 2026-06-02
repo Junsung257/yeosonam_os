@@ -118,9 +118,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         gate_allowed: gate.allowed,
         reason: gate.reason,
         existing_specialized_publishers: [
-          '/api/admin/ad-os/publish-naver-keywords',
-          '/api/admin/ad-os/publisher/naver/activate-paused',
+          '/api/admin/ad-os/channel-adapters/naver/limited-pilot',
+          '/api/admin/ad-os/publish-naver-keywords (legacy interlocked)',
+          '/api/admin/ad-os/publisher/naver/activate-paused (legacy interlocked)',
         ],
+        v121_safety_note: 'Legacy Naver publishers are now interlocked and do not call external APIs directly.',
         external_api_write: false,
       }),
       error_message: gate.allowed ? null : gate.reason,
