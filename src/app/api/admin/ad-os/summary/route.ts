@@ -481,6 +481,14 @@ async function buildSummaryResponse() {
     performanceFactRes,
     experimentRes,
     blogVersionRes,
+    platformJobRes,
+    conversionUploadJobRes,
+    dataQualitySnapshotRes,
+    portfolioPlanRes,
+    creativeAssetVariantRes,
+    travelIntentSignalRes,
+    tenantWorkspaceRes,
+    tenantBillingProfileRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -604,6 +612,46 @@ async function buildSummaryResponse() {
       .select('id, slug, change_type, status, reason, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_platform_jobs')
+      .select('id, platform, job_type, status, guardrail_status, blocked_reason, automation_level, external_api_write, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_conversion_upload_jobs')
+      .select('id, platform, event_name, status, signal_quality_score, blocked_reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_data_quality_snapshots')
+      .select('id, tenant_id, period_start, period_end, status, events_total, clean_events, upload_ready_events, blocked_upload_events, attribution_coverage_pct, margin_coverage_pct, created_at')
+      .order('created_at', { ascending: false })
+      .limit(30),
+    supabaseAdmin
+      .from('ad_os_portfolio_budget_plans')
+      .select('id, platform, plan_type, status, confidence, expected_spend_delta_krw, expected_margin_delta_krw, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_creative_asset_variants')
+      .select('id, platform, asset_type, lifecycle_status, angle, audience, fatigue_score, ctr_decay_pct, cpa_trend_pct, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_travel_intent_signals')
+      .select('id, destination, intent_key, intent_type, status, keyword_text, suggested_budget_cap_krw, cannibalization_risk, duplicate_content_risk, score, created_at')
+      .order('score', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('tenant_ad_workspaces')
+      .select('id, tenant_id, workspace_name, monthly_budget_cap_krw, daily_budget_cap_krw, max_cpc_krw, automation_level, require_human_approval, full_auto_enabled, risk_status, billing_plan, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_tenant_billing_profiles')
+      .select('id, tenant_id, workspace_id, billing_plan, invoice_status, base_subscription_krw, managed_spend_fee_pct, performance_fee_pct, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
   const firstError =
@@ -627,7 +675,15 @@ async function buildSummaryResponse() {
     conversionEventRes.error ||
     performanceFactRes.error ||
     experimentRes.error ||
-    blogVersionRes.error;
+    blogVersionRes.error ||
+    platformJobRes.error ||
+    conversionUploadJobRes.error ||
+    dataQualitySnapshotRes.error ||
+    portfolioPlanRes.error ||
+    creativeAssetVariantRes.error ||
+    travelIntentSignalRes.error ||
+    tenantWorkspaceRes.error ||
+    tenantBillingProfileRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -786,6 +842,69 @@ async function buildSummaryResponse() {
     slug: string | null;
     change_type: string | null;
     status: string | null;
+  }>;
+  const platformJobs = (platformJobRes.data || []) as Array<{
+    platform: string | null;
+    job_type: string | null;
+    status: string | null;
+    guardrail_status: string | null;
+    external_api_write: boolean | null;
+  }>;
+  const conversionUploadJobs = (conversionUploadJobRes.data || []) as Array<{
+    platform: string | null;
+    event_name: string | null;
+    status: string | null;
+    signal_quality_score: number | null;
+  }>;
+  const dataQualitySnapshots = (dataQualitySnapshotRes.data || []) as Array<{
+    status: string | null;
+    events_total: number | null;
+    clean_events: number | null;
+    upload_ready_events: number | null;
+    blocked_upload_events: number | null;
+    attribution_coverage_pct: number | null;
+    margin_coverage_pct: number | null;
+  }>;
+  const portfolioPlans = (portfolioPlanRes.data || []) as Array<{
+    platform: string | null;
+    plan_type: string | null;
+    status: string | null;
+    confidence: number | null;
+    expected_spend_delta_krw: number | null;
+    expected_margin_delta_krw: number | null;
+  }>;
+  const creativeAssetVariants = (creativeAssetVariantRes.data || []) as Array<{
+    platform: string | null;
+    asset_type: string | null;
+    lifecycle_status: string | null;
+    angle: string | null;
+    audience: string | null;
+    fatigue_score: number | null;
+  }>;
+  const travelIntentSignals = (travelIntentSignalRes.data || []) as Array<{
+    destination: string | null;
+    intent_key: string | null;
+    intent_type: string | null;
+    status: string | null;
+    cannibalization_risk: number | null;
+    duplicate_content_risk: number | null;
+    score: number | null;
+  }>;
+  const tenantWorkspaces = (tenantWorkspaceRes.data || []) as Array<{
+    tenant_id: string | null;
+    workspace_name: string | null;
+    automation_level: number | null;
+    require_human_approval: boolean | null;
+    full_auto_enabled: boolean | null;
+    risk_status: string | null;
+    billing_plan: string | null;
+  }>;
+  const tenantBillingProfiles = (tenantBillingProfileRes.data || []) as Array<{
+    billing_plan: string | null;
+    invoice_status: string | null;
+    base_subscription_krw: number | null;
+    managed_spend_fee_pct: number | null;
+    performance_fee_pct: number | null;
   }>;
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
@@ -1067,6 +1186,27 @@ async function buildSummaryResponse() {
       experiments_completed: experiments.filter((row) => row.status === 'completed').length,
       blog_versions_approved: blogVersions.filter((row) => row.status === 'approved').length,
       blog_versions_applied: blogVersions.filter((row) => row.status === 'applied').length,
+      platform_jobs: platformJobs.length,
+      platform_jobs_blocked: platformJobs.filter((row) => row.status === 'blocked' || row.guardrail_status === 'blocked').length,
+      platform_jobs_succeeded: platformJobs.filter((row) => row.status === 'succeeded').length,
+      platform_jobs_external_api_write: platformJobs.filter((row) => row.external_api_write).length,
+      conversion_upload_jobs: conversionUploadJobs.length,
+      conversion_upload_jobs_blocked: conversionUploadJobs.filter((row) => row.status === 'blocked').length,
+      conversion_upload_jobs_clean: conversionUploadJobs.filter((row) => row.status === 'planned').length,
+      data_quality_snapshots: dataQualitySnapshots.length,
+      data_quality_blocked: dataQualitySnapshots.filter((row) => row.status === 'blocked').length,
+      portfolio_plans_candidate: portfolioPlans.filter((row) => row.status === 'candidate').length,
+      portfolio_plans_approved: portfolioPlans.filter((row) => row.status === 'approved').length,
+      portfolio_expected_margin_delta_krw: sum(portfolioPlans, (row) => row.expected_margin_delta_krw),
+      portfolio_expected_spend_delta_krw: sum(portfolioPlans, (row) => row.expected_spend_delta_krw),
+      creative_asset_variants: creativeAssetVariants.length,
+      creative_asset_variants_testing: creativeAssetVariants.filter((row) => row.lifecycle_status === 'testing').length,
+      creative_asset_variants_fatigued: creativeAssetVariants.filter((row) => row.lifecycle_status === 'fatigued').length,
+      travel_intent_signals: travelIntentSignals.length,
+      travel_intent_duplicate_risks: travelIntentSignals.filter((row) => Number(row.duplicate_content_risk || 0) >= 60).length,
+      tenant_workspaces: tenantWorkspaces.length,
+      tenant_workspaces_full_auto: tenantWorkspaces.filter((row) => row.full_auto_enabled).length,
+      tenant_billing_profiles_active: tenantBillingProfiles.filter((row) => row.invoice_status === 'active').length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1105,6 +1245,20 @@ async function buildSummaryResponse() {
       experiments_by_type: byKey(experiments, (row) => row.experiment_type || 'unknown'),
       blog_versions_by_status: byKey(blogVersions, (row) => row.status || 'unknown'),
       blog_versions_by_change_type: byKey(blogVersions, (row) => row.change_type || 'unknown'),
+      platform_jobs_by_status: byKey(platformJobs, (row) => row.status || 'unknown'),
+      platform_jobs_by_platform: byKey(platformJobs, (row) => row.platform || 'unknown'),
+      platform_jobs_by_guardrail: byKey(platformJobs, (row) => row.guardrail_status || 'unknown'),
+      conversion_upload_jobs_by_status: byKey(conversionUploadJobs, (row) => row.status || 'unknown'),
+      conversion_upload_jobs_by_event: byKey(conversionUploadJobs, (row) => row.event_name || 'unknown'),
+      data_quality_by_status: byKey(dataQualitySnapshots, (row) => row.status || 'unknown'),
+      portfolio_plans_by_status: byKey(portfolioPlans, (row) => row.status || 'unknown'),
+      portfolio_plans_by_type: byKey(portfolioPlans, (row) => row.plan_type || 'unknown'),
+      creative_variants_by_status: byKey(creativeAssetVariants, (row) => row.lifecycle_status || 'unknown'),
+      creative_variants_by_type: byKey(creativeAssetVariants, (row) => row.asset_type || 'unknown'),
+      travel_intent_signals_by_intent: byKey(travelIntentSignals, (row) => row.intent_key || 'unknown'),
+      travel_intent_signals_by_duplicate_risk: byKey(travelIntentSignals, (row) => Number(row.duplicate_content_risk || 0) >= 60 ? 'high' : Number(row.duplicate_content_risk || 0) >= 30 ? 'medium' : 'low'),
+      tenant_workspaces_by_risk: byKey(tenantWorkspaces, (row) => row.risk_status || 'unknown'),
+      tenant_billing_profiles_by_plan: byKey(tenantBillingProfiles, (row) => row.billing_plan || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1160,6 +1314,54 @@ async function buildSummaryResponse() {
     tenant_guardrails: tenantGuardrails,
     tenant_policy: tenantPolicy,
     tenant_ad_readiness: tenantAdReadiness,
+    enterprise_layer: {
+      platform_job_queue: {
+        total: platformJobs.length,
+        blocked: platformJobs.filter((row) => row.status === 'blocked' || row.guardrail_status === 'blocked').length,
+        approved_or_running: platformJobs.filter((row) => ['approved', 'running'].includes(row.status || '')).length,
+        external_api_write_count: platformJobs.filter((row) => row.external_api_write).length,
+        safety_note: 'External writes remain gated by approval, budget, automation level, tenant policy, and kill switches.',
+      },
+      conversion_data_quality: dataQualitySnapshots[0] ? {
+        status: dataQualitySnapshots[0].status || 'unknown',
+        event_collection_rate: Number(dataQualitySnapshots[0].events_total || 0) > 0 ? 1 : 0,
+        clean_conversion_rate: Number(dataQualitySnapshots[0].events_total || 0) > 0
+          ? Math.round((Number(dataQualitySnapshots[0].clean_events || 0) / Number(dataQualitySnapshots[0].events_total || 1)) * 1000) / 1000
+          : 0,
+        uploadable_conversions: Number(dataQualitySnapshots[0].upload_ready_events || 0),
+        blocked_conversions: Number(dataQualitySnapshots[0].blocked_upload_events || 0),
+        attribution_coverage: Number(dataQualitySnapshots[0].attribution_coverage_pct || 0) / 100,
+      } : {
+        status: conversionUploadJobs.some((row) => row.status === 'blocked') ? 'warning' : 'unknown',
+        event_collection_rate: conversionEvents.length > 0 ? 1 : 0,
+        clean_conversion_rate: conversionUploadJobs.length > 0
+          ? Math.round((conversionUploadJobs.filter((row) => row.status === 'planned').length / conversionUploadJobs.length) * 1000) / 1000
+          : 0,
+        uploadable_conversions: conversionUploadJobs.filter((row) => row.status === 'planned').length,
+        blocked_conversions: conversionUploadJobs.filter((row) => row.status === 'blocked').length,
+        attribution_coverage: performanceFacts.length > 0 && conversionEvents.length > 0
+          ? Math.round((performanceFacts.length / conversionEvents.length) * 1000) / 1000
+          : 0,
+      },
+      portfolio_optimizer: {
+        candidates: portfolioPlans.filter((row) => row.status === 'candidate').length,
+        approved: portfolioPlans.filter((row) => row.status === 'approved').length,
+        applied: portfolioPlans.filter((row) => row.status === 'applied').length,
+        expected_spend_delta_krw: sum(portfolioPlans, (row) => row.expected_spend_delta_krw),
+        expected_margin_delta_krw: sum(portfolioPlans, (row) => row.expected_margin_delta_krw),
+      },
+      creative_factory: {
+        variants: creativeAssetVariants.length,
+        testing: creativeAssetVariants.filter((row) => row.lifecycle_status === 'testing').length,
+        fatigued: creativeAssetVariants.filter((row) => row.lifecycle_status === 'fatigued').length,
+        duplicate_content_risks: travelIntentSignals.filter((row) => Number(row.duplicate_content_risk || 0) >= 60).length,
+      },
+      saas_packaging: {
+        workspaces: tenantWorkspaces.length,
+        active_billing_profiles: tenantBillingProfiles.filter((row) => row.invoice_status === 'active').length,
+        full_auto_enabled: tenantWorkspaces.filter((row) => row.full_auto_enabled).length,
+      },
+    },
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
     expiring_packages: expiringPackageRes.data || [],
@@ -1180,6 +1382,14 @@ async function buildSummaryResponse() {
       performance_facts: performanceFactRes.data?.slice(0, 12) || [],
       experiments: experimentRes.data?.slice(0, 12) || [],
       blog_versions: blogVersionRes.data?.slice(0, 12) || [],
+      platform_jobs: platformJobRes.data?.slice(0, 12) || [],
+      conversion_upload_jobs: conversionUploadJobRes.data?.slice(0, 12) || [],
+      data_quality_snapshots: dataQualitySnapshotRes.data?.slice(0, 12) || [],
+      portfolio_plans: portfolioPlanRes.data?.slice(0, 12) || [],
+      creative_asset_variants: creativeAssetVariantRes.data?.slice(0, 12) || [],
+      travel_intent_signals: travelIntentSignalRes.data?.slice(0, 12) || [],
+      tenant_workspaces: tenantWorkspaceRes.data?.slice(0, 12) || [],
+      tenant_billing_profiles: tenantBillingProfileRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

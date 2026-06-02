@@ -40,6 +40,11 @@ const MUTABLE_TARGET_TABLES = new Set([
   'search_ad_keyword_plans',
   'ad_os_landing_evolution_queue',
   'blog_content_versions',
+  'ad_os_portfolio_budget_plans',
+  'ad_os_creative_asset_variants',
+  'ad_os_travel_intent_signals',
+  'tenant_ad_workspaces',
+  'ad_os_tenant_billing_profiles',
 ]);
 const EXTERNAL_APPLY_ONLY_TYPES = new Set([
   'publish_paused_keyword',
@@ -75,6 +80,16 @@ async function updateMutableTarget(targetTable: string, targetId: string, patch:
       return supabaseAdmin.from('ad_os_landing_evolution_queue').update(patch as never).eq('id', targetId);
     case 'blog_content_versions':
       return supabaseAdmin.from('blog_content_versions').update(patch as never).eq('id', targetId);
+    case 'ad_os_portfolio_budget_plans':
+      return supabaseAdmin.from('ad_os_portfolio_budget_plans').update(patch as never).eq('id', targetId);
+    case 'ad_os_creative_asset_variants':
+      return supabaseAdmin.from('ad_os_creative_asset_variants').update(patch as never).eq('id', targetId);
+    case 'ad_os_travel_intent_signals':
+      return supabaseAdmin.from('ad_os_travel_intent_signals').update(patch as never).eq('id', targetId);
+    case 'tenant_ad_workspaces':
+      return supabaseAdmin.from('tenant_ad_workspaces').update(patch as never).eq('id', targetId);
+    case 'ad_os_tenant_billing_profiles':
+      return supabaseAdmin.from('ad_os_tenant_billing_profiles').update(patch as never).eq('id', targetId);
     default:
       return { error: new Error('Target table is not mutable by this endpoint.') };
   }
