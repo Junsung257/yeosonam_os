@@ -645,6 +645,45 @@ export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
   }
 }
 
+export async function setNaverKeywordUserLock(keywordId: string, userLock: boolean): Promise<boolean> {
+  if (!isNaverAdsMutableKeywordId(keywordId)) {
+    console.warn(`[search-ads] Naver keyword lock update skipped: not a real ncc keyword id (${keywordId})`);
+    return false;
+  }
+
+  if (!isNaverAdsConfigured()) {
+    console.log(`[Mock] Naver keyword userLock ${keywordId}: ${userLock}`);
+    return true;
+  }
+
+  try {
+    const path = `/ncc/keywords/${keywordId}`;
+    const headers = await buildNaverAuthHeaders('PUT', path);
+
+    const res = await fetch(`${NAVER_API_BASE}${path}`, {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ nccKeywordId: keywordId, userLock }),
+    });
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      console.error(`[search-ads] Naver keyword lock update failed: ${errorText.slice(0, 200)}`);
+      return false;
+    }
+
+    console.log(`[search-ads] Naver keyword userLock updated: ${keywordId} -> ${userLock}`);
+    return true;
+  } catch (err) {
+    console.error('[search-ads] Naver keyword lock update error:', err);
+    return false;
+  }
+}
+
+export async function activateNaverKeyword(keywordId: string): Promise<boolean> {
+  return setNaverKeywordUserLock(keywordId, false);
+}
+
 // ── 구글 Ads API (실제 연동) ─────────────────────────────
 
 const GOOGLE_ADS_API_VERSION = process.env.GOOGLE_ADS_API_VERSION ?? 'v22';

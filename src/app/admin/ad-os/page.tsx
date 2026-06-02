@@ -290,6 +290,7 @@ export default function AdOsPage() {
   const [runningPilotSetup, setRunningPilotSetup] = useState(false);
   const [publishingDrafts, setPublishingDrafts] = useState(false);
   const [publishingNaverKeywords, setPublishingNaverKeywords] = useState(false);
+  const [activatingNaverKeywords, setActivatingNaverKeywords] = useState(false);
   const [harvestingLearning, setHarvestingLearning] = useState(false);
   const [optimizingPerformance, setOptimizingPerformance] = useState(false);
   const [runningBudgetPacing, setRunningBudgetPacing] = useState(false);
@@ -756,6 +757,29 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '성과 최적화 실패');
     } finally {
       setOptimizingPerformance(false);
+    }
+  };
+
+  const activateNaverPausedKeywords = async () => {
+    setActivatingNaverKeywords(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/publisher/naver/activate-paused', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'guarded', apply: true, limit: 20 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '네이버 정지 키워드 활성화 실패');
+      await refresh();
+      setAutomationMessage(
+        `네이버 정지 키워드 활성화 점검 완료: 대상 ${Number(json.summary.checked_keywords || 0).toLocaleString('ko-KR')}개, 승인요청 ${Number(json.summary.approved_activation_requests || 0).toLocaleString('ko-KR')}개, 활성화 ${Number(json.summary.activated_keywords || 0).toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '네이버 정지 키워드 활성화 실패');
+    } finally {
+      setActivatingNaverKeywords(false);
     }
   };
 
@@ -2026,6 +2050,10 @@ export default function AdOsPage() {
                 <Button size="sm" variant="secondary" onClick={publishNaverPausedKeywords} loading={publishingNaverKeywords}>
                   <PauseCircle size={14} />
                   네이버 정지 키워드 점검
+                </Button>
+                <Button size="sm" variant="secondary" onClick={activateNaverPausedKeywords} loading={activatingNaverKeywords}>
+                  <PlayCircle size={14} />
+                  네이버 정지 키워드 활성화
                 </Button>
                 <Button size="sm" variant="secondary" onClick={approveNaverCandidates} loading={approvingNaverCandidates}>
                   <Check size={14} />
