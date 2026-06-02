@@ -15,7 +15,7 @@ describe('decideAdOsBudgetPacing', () => {
       now,
     });
 
-    expect(decision.status).toBe('no_budget');
+    expect(decision.status).toBe('blocked');
     expect(decision.canApplyInternally).toBe(false);
   });
 
@@ -30,7 +30,7 @@ describe('decideAdOsBudgetPacing', () => {
       now,
     });
 
-    expect(decision.status).toBe('overspend');
+    expect(decision.status).toBe('over_pacing');
     expect(decision.recommendedAction).toBe('decrease_daily_cap');
     expect(decision.nextDailyBudgetCapKrw).toBeLessThan(30000);
   });
@@ -46,7 +46,7 @@ describe('decideAdOsBudgetPacing', () => {
       now,
     });
 
-    expect(decision.status).toBe('exhausted');
+    expect(decision.status).toBe('blocked');
     expect(decision.recommendedAction).toBe('pause_channel');
     expect(decision.nextDailyBudgetCapKrw).toBe(0);
   });

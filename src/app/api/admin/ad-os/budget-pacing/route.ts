@@ -230,9 +230,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const summary = {
     checked_channels: decisions.length,
-    overspend: decisions.filter(({ pacing }) => pacing.status === 'overspend').length,
-    underspend: decisions.filter(({ pacing }) => pacing.status === 'underspend').length,
-    exhausted: decisions.filter(({ pacing }) => pacing.status === 'exhausted').length,
+    over_pacing: decisions.filter(({ pacing }) => pacing.status === 'over_pacing').length,
+    under_pacing: decisions.filter(({ pacing }) => pacing.status === 'under_pacing').length,
+    loss_limit_near: decisions.filter(({ pacing }) => pacing.status === 'loss_limit_near').length,
+    blocked: decisions.filter(({ pacing }) => pacing.status === 'blocked').length,
     on_track: decisions.filter(({ pacing }) => pacing.status === 'on_track').length,
     applied_count: appliedCount,
   };
