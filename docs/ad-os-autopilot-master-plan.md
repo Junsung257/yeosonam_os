@@ -818,3 +818,28 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - This route is confirmation-only and sets `external_api_write=false` because it does not execute external API writes itself.
   - External spend remains disabled unless a separate audited executor is built and explicitly enabled behind tenant policy, budget caps, kill switch, and environment flags.
+
+## 47. 2026-06-03 Ad OS V221-V240 Naver paused-write executor gate
+
+- Added `src/lib/ad-os-v221-v240.ts` and `POST /api/admin/ad-os/channel-adapters/naver/paused-write-executor`.
+- Purpose:
+  - Converts approved Naver `create_paused_keyword` platform jobs into an audited executor path.
+  - Default mode is dry-run preflight. It checks payload, ad group id, automation level, and policy without calling Naver.
+- Live paused keyword creation is allowed only when all conditions pass:
+  - `requested_mode=live_paused_write`
+  - `apply=true`
+  - `confirm_live_write=true`
+  - platform job is `naver/create_paused_keyword` and `approved` or `running`
+  - keyword, bid, and `nccAdgroupId` are present
+  - automation level is at least 3
+  - latest Naver limited pilot policy is `active`, `pilot_level=live_paused_write`, and `live_external_write_enabled=true`
+  - monthly budget cap, daily cap, max CPC, and test loss cap are set
+  - environment flag, normally `AD_OS_NAVER_LIMITED_WRITE_ENABLED`, is enabled
+- If live execution succeeds:
+  - The route records an `ad_os_execution_attempts` row with `external_api_write=true`.
+  - The platform job stays pending external result confirmation rather than directly applying the change request.
+  - Operators must use `/api/admin/ad-os/external-results/confirm` with the returned Naver keyword id to mark the related change request as `applied`.
+- Safety principle:
+  - Active keyword activation and bid changes remain disabled in this executor.
+  - Google/Meta/Kakao live campaign writes remain disabled.
+  - A successful external write is not the same as applied semantics until confirmation records the external id.
