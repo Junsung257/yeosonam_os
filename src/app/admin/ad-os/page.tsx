@@ -331,6 +331,12 @@ export default function AdOsPage() {
   const [runningConversionAttribution, setRunningConversionAttribution] = useState(false);
   const [runningKeywordBrain, setRunningKeywordBrain] = useState(false);
   const [creatingNaverAssets, setCreatingNaverAssets] = useState(false);
+  const [executingNaverGate, setExecutingNaverGate] = useState(false);
+  const [exportingGoogleConversions, setExportingGoogleConversions] = useState(false);
+  const [exportingMetaConversions, setExportingMetaConversions] = useState(false);
+  const [runningBidOptimizer, setRunningBidOptimizer] = useState(false);
+  const [runningExperiments, setRunningExperiments] = useState(false);
+  const [applyingBlogEvolution, setApplyingBlogEvolution] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -1265,6 +1271,144 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '네이버 외부 자산 요청 실패');
     } finally {
       setCreatingNaverAssets(false);
+    }
+  };
+
+  const executeNaverGate = async () => {
+    setExecutingNaverGate(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/publisher/naver/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'paused_only', apply: true, limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '네이버 실행 게이트 실패');
+      await refresh();
+      setAutomationMessage(
+        `네이버 실행 게이트 완료: 요청 ${Number(json.summary?.requested || 0).toLocaleString('ko-KR')}개, 계획 ${Number(json.summary?.planned || 0).toLocaleString('ko-KR')}개, 차단 ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개. 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '네이버 실행 게이트 실패');
+    } finally {
+      setExecutingNaverGate(false);
+    }
+  };
+
+  const exportGoogleConversions = async () => {
+    setExportingGoogleConversions(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/conversion-export/google', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 100 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Google 전환 export 실패');
+      await refresh();
+      setAutomationMessage(
+        `Google 전환 export 후보 완료: 업로드 가능 ${Number(json.summary?.ready_for_upload || 0).toLocaleString('ko-KR')}개, 차단 ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개, 승인요청 ${Number(json.summary?.change_requests_created || 0).toLocaleString('ko-KR')}개. 외부 업로드 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google 전환 export 실패');
+    } finally {
+      setExportingGoogleConversions(false);
+    }
+  };
+
+  const exportMetaConversions = async () => {
+    setExportingMetaConversions(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/conversion-export/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 100 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Meta 전환 export 실패');
+      await refresh();
+      setAutomationMessage(
+        `Meta 전환 export 후보 완료: 업로드 가능 ${Number(json.summary?.ready_for_upload || 0).toLocaleString('ko-KR')}개, 차단 ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개, 승인요청 ${Number(json.summary?.change_requests_created || 0).toLocaleString('ko-KR')}개. 외부 업로드 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Meta 전환 export 실패');
+    } finally {
+      setExportingMetaConversions(false);
+    }
+  };
+
+  const runBidOptimizer = async () => {
+    setRunningBidOptimizer(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/bid-optimizer/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 200 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '입찰 최적화 후보 생성 실패');
+      await refresh();
+      setAutomationMessage(
+        `입찰 최적화 후보 완료: 후보 ${Number(json.summary?.candidates || 0).toLocaleString('ko-KR')}개, 중지 ${Number(json.summary?.pause_candidates || 0).toLocaleString('ko-KR')}개, 확대 ${Number(json.summary?.scale_candidates || 0).toLocaleString('ko-KR')}개.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '입찰 최적화 후보 생성 실패');
+    } finally {
+      setRunningBidOptimizer(false);
+    }
+  };
+
+  const runExperimentRunner = async () => {
+    setRunningExperiments(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/experiment-run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '실험 실행 실패');
+      await refresh();
+      setAutomationMessage(
+        `실험 실행 완료: 시작/유지 ${Number(json.summary?.started || 0).toLocaleString('ko-KR')}개, 완료 ${Number(json.summary?.completed || 0).toLocaleString('ko-KR')}개.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '실험 실행 실패');
+    } finally {
+      setRunningExperiments(false);
+    }
+  };
+
+  const applyBlogEvolution = async () => {
+    setApplyingBlogEvolution(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/blog-evolution/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, create_change_requests: true, limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '블로그 진화 적용 후보 실패');
+      await refresh();
+      setAutomationMessage(
+        `블로그 진화 후보 완료: 승인 버전 ${Number(json.summary?.versions_checked || 0).toLocaleString('ko-KR')}개, 변경요청 ${Number(json.summary?.change_requests_created || 0).toLocaleString('ko-KR')}개.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '블로그 진화 적용 후보 실패');
+    } finally {
+      setApplyingBlogEvolution(false);
     }
   };
 
@@ -2272,6 +2416,30 @@ export default function AdOsPage() {
                 <Button size="sm" variant="secondary" onClick={createNaverAssets} loading={creatingNaverAssets}>
                   <Rocket size={14} />
                   네이버 자산 요청
+                </Button>
+                <Button size="sm" variant="secondary" onClick={executeNaverGate} loading={executingNaverGate}>
+                  <ShieldCheck size={14} />
+                  네이버 실행 게이트
+                </Button>
+                <Button size="sm" variant="secondary" onClick={exportGoogleConversions} loading={exportingGoogleConversions}>
+                  <Download size={14} />
+                  Google 전환 export
+                </Button>
+                <Button size="sm" variant="secondary" onClick={exportMetaConversions} loading={exportingMetaConversions}>
+                  <Download size={14} />
+                  Meta 전환 export
+                </Button>
+                <Button size="sm" variant="secondary" onClick={runBidOptimizer} loading={runningBidOptimizer}>
+                  <Gauge size={14} />
+                  입찰 최적화 후보
+                </Button>
+                <Button size="sm" variant="secondary" onClick={runExperimentRunner} loading={runningExperiments}>
+                  <Bot size={14} />
+                  실험 실행/종료
+                </Button>
+                <Button size="sm" variant="secondary" onClick={applyBlogEvolution} loading={applyingBlogEvolution}>
+                  <Layers size={14} />
+                  블로그 진화 승인
                 </Button>
                 <Button size="sm" variant="secondary" onClick={createCreativeDrafts} loading={creatingCreativeDrafts}>
                   <Layers size={14} />

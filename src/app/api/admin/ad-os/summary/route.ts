@@ -479,6 +479,8 @@ async function buildSummaryResponse() {
     tenantReportRes,
     conversionEventRes,
     performanceFactRes,
+    experimentRes,
+    blogVersionRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -592,6 +594,16 @@ async function buildSummaryResponse() {
       .gte('event_date', new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10))
       .order('event_date', { ascending: false })
       .limit(500),
+    supabaseAdmin
+      .from('ad_os_experiments')
+      .select('id, experiment_type, name, platform, primary_metric, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('blog_content_versions')
+      .select('id, slug, change_type, status, reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
   const firstError =
@@ -613,7 +625,9 @@ async function buildSummaryResponse() {
     externalMutationRes.error ||
     tenantReportRes.error ||
     conversionEventRes.error ||
-    performanceFactRes.error;
+    performanceFactRes.error ||
+    experimentRes.error ||
+    blogVersionRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -762,6 +776,16 @@ async function buildSummaryResponse() {
     cost_krw: number | null;
     revenue_krw: number | null;
     margin_krw: number | null;
+  }>;
+  const experiments = (experimentRes.data || []) as Array<{
+    experiment_type: string | null;
+    platform: string | null;
+    status: string | null;
+  }>;
+  const blogVersions = (blogVersionRes.data || []) as Array<{
+    slug: string | null;
+    change_type: string | null;
+    status: string | null;
   }>;
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
@@ -1038,6 +1062,11 @@ async function buildSummaryResponse() {
       conversion_events_clean_30d: attributionEventsClean,
       conversion_events_quarantined_30d: attributionEventsQuarantined,
       performance_facts_30d: performanceFacts.length,
+      experiments: experiments.length,
+      experiments_running: experiments.filter((row) => row.status === 'running').length,
+      experiments_completed: experiments.filter((row) => row.status === 'completed').length,
+      blog_versions_approved: blogVersions.filter((row) => row.status === 'approved').length,
+      blog_versions_applied: blogVersions.filter((row) => row.status === 'applied').length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1072,6 +1101,10 @@ async function buildSummaryResponse() {
       conversion_events_by_status: byKey(conversionEvents, (row) => row.quarantine_status || 'clean'),
       performance_facts_by_source: byKey(performanceFacts, (row) => row.source || 'unknown'),
       performance_facts_by_platform: byKey(performanceFacts, (row) => row.platform || 'unknown'),
+      experiments_by_status: byKey(experiments, (row) => row.status || 'unknown'),
+      experiments_by_type: byKey(experiments, (row) => row.experiment_type || 'unknown'),
+      blog_versions_by_status: byKey(blogVersions, (row) => row.status || 'unknown'),
+      blog_versions_by_change_type: byKey(blogVersions, (row) => row.change_type || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1145,6 +1178,8 @@ async function buildSummaryResponse() {
       tenant_reports: tenantReportRes.data?.slice(0, 12) || [],
       conversion_events: conversionEventRes.data?.slice(0, 12) || [],
       performance_facts: performanceFactRes.data?.slice(0, 12) || [],
+      experiments: experimentRes.data?.slice(0, 12) || [],
+      blog_versions: blogVersionRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },
