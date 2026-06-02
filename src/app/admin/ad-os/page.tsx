@@ -201,6 +201,21 @@ type Summary = {
       dry_run: number;
       external_api_write_count: number;
     };
+    execution_gates?: {
+      gates: number;
+      eligible: number;
+      blocked: number;
+      monitor_only: number;
+      high_or_critical_risk: number;
+      external_api_write_count: number;
+    };
+    rollback_drills?: {
+      drills: number;
+      ready: number;
+      blocked: number;
+      not_required: number;
+      external_api_write_count: number;
+    };
   };
   launch_action_queue: Array<{
     id: string;
@@ -260,6 +275,8 @@ type Summary = {
     tenant_audit_exports?: Array<Record<string, unknown>>;
     channel_adapter_health?: Array<Record<string, unknown>>;
     platform_write_packets?: Array<Record<string, unknown>>;
+    adapter_execution_gates?: Array<Record<string, unknown>>;
+    rollback_drills?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -435,6 +452,8 @@ export default function AdOsPage() {
   const [creatingNaverAdapterPacket, setCreatingNaverAdapterPacket] = useState(false);
   const [creatingGoogleDraftPacket, setCreatingGoogleDraftPacket] = useState(false);
   const [creatingMetaCapiPacket, setCreatingMetaCapiPacket] = useState(false);
+  const [checkingExecutionGate, setCheckingExecutionGate] = useState(false);
+  const [runningRollbackDrill, setRunningRollbackDrill] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -1867,6 +1886,58 @@ export default function AdOsPage() {
     }
   };
 
+  const checkExecutionGate = async () => {
+    setCheckingExecutionGate(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/execution-gate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apply: true,
+          platform: 'naver',
+          requested_mode: 'limited_autopilot',
+          human_approved: false,
+          limit: 20,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '실행 게이트 확인 실패');
+      await refresh();
+      setAutomationMessage(
+        `실행 게이트 확인: eligible ${Number(json.summary?.eligible || 0).toLocaleString('ko-KR')}개, blocked ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개, high risk ${Number(json.summary?.high_or_critical_risk || 0).toLocaleString('ko-KR')}개. 승인 전 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '실행 게이트 확인 실패');
+    } finally {
+      setCheckingExecutionGate(false);
+    }
+  };
+
+  const runRollbackDrill = async () => {
+    setRunningRollbackDrill(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/rollback-drill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, platform: 'naver', limit: 20 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '롤백 드릴 실패');
+      await refresh();
+      setAutomationMessage(
+        `롤백 드릴 완료: ready ${Number(json.summary?.rollback_ready || 0).toLocaleString('ko-KR')}개, blocked ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개. 실제 롤백/외부 write는 실행하지 않았습니다.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '롤백 드릴 실패');
+    } finally {
+      setRunningRollbackDrill(false);
+    }
+  };
+
   const createAssetGroup = async () => {
     setCreatingAssetGroup(true);
     setError(null);
@@ -2064,6 +2135,8 @@ export default function AdOsPage() {
     createNaverPausedKeywordPacket,
     createGoogleDraftPacket,
     createMetaCapiTestPacket,
+    checkExecutionGate,
+    runRollbackDrill,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -2097,6 +2170,8 @@ export default function AdOsPage() {
     createNaverPausedKeywordPacket: creatingNaverAdapterPacket,
     createGoogleDraftPacket: creatingGoogleDraftPacket,
     createMetaCapiTestPacket: creatingMetaCapiPacket,
+    checkExecutionGate: checkingExecutionGate,
+    runRollbackDrill: runningRollbackDrill,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
@@ -2729,16 +2804,18 @@ export default function AdOsPage() {
           <section className="admin-card p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V85 Enterprise Runtime Layer</h2>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V100 Enterprise Runtime Layer</h2>
                 <p className="mt-1 text-admin-xs text-admin-muted">
-                  플랫폼 실행 큐, 전환 업로드 품질, 채널 어댑터 패킷, 마진 기준 최적화, 실험 표준, SaaS 감사 export를 staging 검증 가능한 흐름으로 묶습니다.
+                  플랫폼 실행 큐, 전환 업로드 품질, 채널 어댑터 패킷, 실행 게이트, 롤백 드릴, 마진 기준 최적화, 실험 표준을 staging 검증 가능한 흐름으로 묶습니다.
                 </p>
               </div>
               <StatusPill tone={(summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0) === 0 ? 'good' : 'bad'}>
                 외부 write {Number(
                   (summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0) +
                   (summary.enterprise_layer?.channel_adapters?.external_api_write_count || 0) +
-                  (summary.enterprise_layer?.write_packets?.external_api_write_count || 0),
+                  (summary.enterprise_layer?.write_packets?.external_api_write_count || 0) +
+                  (summary.enterprise_layer?.execution_gates?.external_api_write_count || 0) +
+                  (summary.enterprise_layer?.rollback_drills?.external_api_write_count || 0),
                 ).toLocaleString('ko-KR')}건
               </StatusPill>
             </div>
@@ -2798,6 +2875,16 @@ export default function AdOsPage() {
                 <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.write_packets?.packets || 0).toLocaleString('ko-KR')}</p>
                 <p className="mt-1 text-admin-2xs text-admin-muted">ready {Number(summary.enterprise_layer?.write_packets?.ready || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.write_packets?.blocked || 0).toLocaleString('ko-KR')} / dry-run {Number(summary.enterprise_layer?.write_packets?.dry_run || 0).toLocaleString('ko-KR')}</p>
               </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Execution Gates</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.execution_gates?.gates || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">eligible {Number(summary.enterprise_layer?.execution_gates?.eligible || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.execution_gates?.blocked || 0).toLocaleString('ko-KR')} / high risk {Number(summary.enterprise_layer?.execution_gates?.high_or_critical_risk || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Rollback Drills</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.rollback_drills?.drills || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">ready {Number(summary.enterprise_layer?.rollback_drills?.ready || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.rollback_drills?.blocked || 0).toLocaleString('ko-KR')} / not required {Number(summary.enterprise_layer?.rollback_drills?.not_required || 0).toLocaleString('ko-KR')}</p>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" onClick={runRuntimeReadiness} loading={checkingRuntimeReadiness}>
@@ -2814,6 +2901,12 @@ export default function AdOsPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={createMetaCapiTestPacket} loading={creatingMetaCapiPacket}>
                 Meta CAPI 패킷
+              </Button>
+              <Button size="sm" variant="secondary" onClick={checkExecutionGate} loading={checkingExecutionGate}>
+                실행 게이트
+              </Button>
+              <Button size="sm" variant="secondary" onClick={runRollbackDrill} loading={runningRollbackDrill}>
+                롤백 드릴
               </Button>
               <Button size="sm" variant="secondary" onClick={runPlatformJobs} loading={runningPlatformJobs}>
                 플랫폼 실행 큐

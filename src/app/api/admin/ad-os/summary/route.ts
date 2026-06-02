@@ -495,6 +495,8 @@ async function buildSummaryResponse() {
     tenantAuditExportRes,
     channelAdapterHealthRes,
     platformWritePacketRes,
+    adapterExecutionGateRes,
+    rollbackDrillRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -688,6 +690,16 @@ async function buildSummaryResponse() {
       .select('id, tenant_id, platform, packet_type, lifecycle_status, dry_run, external_api_write, blocked_reason, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_adapter_execution_gates')
+      .select('id, tenant_id, platform, gate_status, requested_mode, allowed_mode, risk_level, risk_score, external_api_write, next_action, evaluated_at')
+      .order('evaluated_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_rollback_drills')
+      .select('id, tenant_id, platform, drill_status, rollback_type, external_api_write, blocked_reason, drilled_at')
+      .order('drilled_at', { ascending: false })
+      .limit(100),
   ]);
 
   const firstError =
@@ -725,7 +737,9 @@ async function buildSummaryResponse() {
     experimentTemplateRes.error ||
     tenantAuditExportRes.error ||
     channelAdapterHealthRes.error ||
-    platformWritePacketRes.error;
+    platformWritePacketRes.error ||
+    adapterExecutionGateRes.error ||
+    rollbackDrillRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -946,6 +960,22 @@ async function buildSummaryResponse() {
     packet_type: string | null;
     lifecycle_status: string | null;
     dry_run: boolean | null;
+    external_api_write: boolean | null;
+    blocked_reason: string | null;
+  }>;
+  const adapterExecutionGates = (adapterExecutionGateRes.data || []) as Array<{
+    platform: string | null;
+    gate_status: string | null;
+    requested_mode: string | null;
+    allowed_mode: string | null;
+    risk_level: string | null;
+    risk_score: number | null;
+    external_api_write: boolean | null;
+  }>;
+  const rollbackDrills = (rollbackDrillRes.data || []) as Array<{
+    platform: string | null;
+    drill_status: string | null;
+    rollback_type: string | null;
     external_api_write: boolean | null;
     blocked_reason: string | null;
   }>;
@@ -1300,6 +1330,14 @@ async function buildSummaryResponse() {
       platform_write_packets_ready: platformWritePackets.filter((row) => row.lifecycle_status === 'ready').length,
       platform_write_packets_blocked: platformWritePackets.filter((row) => row.lifecycle_status === 'blocked').length,
       platform_write_packets_external_api_write: platformWritePackets.filter((row) => row.external_api_write).length,
+      adapter_execution_gates: adapterExecutionGates.length,
+      adapter_execution_gates_eligible: adapterExecutionGates.filter((row) => row.gate_status === 'eligible').length,
+      adapter_execution_gates_blocked: adapterExecutionGates.filter((row) => row.gate_status === 'blocked').length,
+      adapter_execution_gates_external_api_write: adapterExecutionGates.filter((row) => row.external_api_write).length,
+      rollback_drills: rollbackDrills.length,
+      rollback_drills_ready: rollbackDrills.filter((row) => row.drill_status === 'ready').length,
+      rollback_drills_blocked: rollbackDrills.filter((row) => row.drill_status === 'blocked').length,
+      rollback_drills_external_api_write: rollbackDrills.filter((row) => row.external_api_write).length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1362,6 +1400,10 @@ async function buildSummaryResponse() {
       channel_adapter_health_by_platform: byKey(channelAdapterHealth, (row) => row.platform || 'unknown'),
       platform_write_packets_by_status: byKey(platformWritePackets, (row) => row.lifecycle_status || 'unknown'),
       platform_write_packets_by_type: byKey(platformWritePackets, (row) => row.packet_type || 'unknown'),
+      adapter_execution_gates_by_status: byKey(adapterExecutionGates, (row) => row.gate_status || 'unknown'),
+      adapter_execution_gates_by_risk: byKey(adapterExecutionGates, (row) => row.risk_level || 'unknown'),
+      rollback_drills_by_status: byKey(rollbackDrills, (row) => row.drill_status || 'unknown'),
+      rollback_drills_by_type: byKey(rollbackDrills, (row) => row.rollback_type || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1502,6 +1544,21 @@ async function buildSummaryResponse() {
         dry_run: platformWritePackets.filter((row) => row.dry_run).length,
         external_api_write_count: platformWritePackets.filter((row) => row.external_api_write).length,
       },
+      execution_gates: {
+        gates: adapterExecutionGates.length,
+        eligible: adapterExecutionGates.filter((row) => row.gate_status === 'eligible').length,
+        blocked: adapterExecutionGates.filter((row) => row.gate_status === 'blocked').length,
+        monitor_only: adapterExecutionGates.filter((row) => row.gate_status === 'monitor_only').length,
+        high_or_critical_risk: adapterExecutionGates.filter((row) => ['high', 'critical'].includes(row.risk_level || '')).length,
+        external_api_write_count: adapterExecutionGates.filter((row) => row.external_api_write).length,
+      },
+      rollback_drills: {
+        drills: rollbackDrills.length,
+        ready: rollbackDrills.filter((row) => row.drill_status === 'ready').length,
+        blocked: rollbackDrills.filter((row) => row.drill_status === 'blocked').length,
+        not_required: rollbackDrills.filter((row) => row.drill_status === 'not_required').length,
+        external_api_write_count: rollbackDrills.filter((row) => row.external_api_write).length,
+      },
     },
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
@@ -1537,6 +1594,8 @@ async function buildSummaryResponse() {
       tenant_audit_exports: tenantAuditExportRes.data?.slice(0, 12) || [],
       channel_adapter_health: channelAdapterHealthRes.data?.slice(0, 12) || [],
       platform_write_packets: platformWritePacketRes.data?.slice(0, 12) || [],
+      adapter_execution_gates: adapterExecutionGateRes.data?.slice(0, 12) || [],
+      rollback_drills: rollbackDrillRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },
