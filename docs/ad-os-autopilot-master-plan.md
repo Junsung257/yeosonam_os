@@ -691,3 +691,28 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Acceptance evidence for this layer:
   - Operators can see whether each channel is missing credentials, blocked by permission, missing campaign, draft-ready, paused-write-ready, or executable.
   - Staging can record a full non-spend packet cycle before any live external write adapter is enabled.
+
+## 40. 2026-06-03 Ad OS V86-V100 execution gate and rollback drill layer
+
+- Added server-only V86-V100 tables:
+  - `ad_os_adapter_execution_gates`
+  - `ad_os_rollback_drills`
+- Added APIs:
+  - `POST /api/admin/ad-os/channel-adapters/execution-gate`
+  - `POST /api/admin/ad-os/channel-adapters/rollback-drill`
+- Execution gate purpose:
+  - Evaluates whether a platform write packet can move toward limited autopilot.
+  - Naver paused keyword packets are the only initial limited-write candidate.
+  - Google and Meta remain draft/test-only and are blocked from limited write.
+  - Human approval, tenant automation level, monthly/daily budget caps, max CPC, test-loss cap, kill switch, adapter readiness, packet readiness, and full-auto policy are all checked before eligibility.
+- Rollback drill purpose:
+  - Verifies the rollback payload and operational steps before any limited write is considered operational.
+  - Naver rollback drill uses `pause_keyword` semantics and records dry-run verification steps.
+  - Google draft and Meta CAPI test packets stay no-live-publish and are marked not-required or manual-review rather than live rollback.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose:
+  - execution gates by eligible/blocked/monitor-only/high-risk state
+  - rollback drills by ready/blocked/not-required state
+  - combined external write count across runtime, packets, gates, and drills
+- Operating principle remains:
+  - This layer does not spend money.
+  - It proves whether the system is safe enough to begin a future Naver limited-write pilot under explicit approval and budget caps.
