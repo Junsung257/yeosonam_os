@@ -216,6 +216,18 @@ type Summary = {
       not_required: number;
       external_api_write_count: number;
     };
+    limited_write_pilot?: {
+      policies: number;
+      active_policies: number;
+      dry_run_only_policies: number;
+      attempts: number;
+      dry_run_succeeded: number;
+      blocked: number;
+      live_write_blocked: number;
+      live_external_write_enabled: number;
+      external_api_write_count: number;
+      first_blocker: string | null;
+    };
   };
   launch_action_queue: Array<{
     id: string;
@@ -277,6 +289,8 @@ type Summary = {
     platform_write_packets?: Array<Record<string, unknown>>;
     adapter_execution_gates?: Array<Record<string, unknown>>;
     rollback_drills?: Array<Record<string, unknown>>;
+    limited_write_pilot_policies?: Array<Record<string, unknown>>;
+    limited_write_pilot_attempts?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -454,6 +468,7 @@ export default function AdOsPage() {
   const [creatingMetaCapiPacket, setCreatingMetaCapiPacket] = useState(false);
   const [checkingExecutionGate, setCheckingExecutionGate] = useState(false);
   const [runningRollbackDrill, setRunningRollbackDrill] = useState(false);
+  const [runningLimitedPilot, setRunningLimitedPilot] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -1938,6 +1953,34 @@ export default function AdOsPage() {
     }
   };
 
+  const runNaverLimitedPilot = async () => {
+    setRunningLimitedPilot(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/naver/limited-pilot', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apply: true,
+          ensure_policy: true,
+          requested_mode: 'dry_run',
+          limit: 20,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '네이버 제한 파일럿 실패');
+      await refresh();
+      setAutomationMessage(
+        `네이버 제한 파일럿: dry-run ${Number(json.summary?.dry_run_succeeded || 0).toLocaleString('ko-KR')}개, blocked ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개, live blocked ${Number(json.summary?.live_write_blocked || 0).toLocaleString('ko-KR')}개. 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '네이버 제한 파일럿 실패');
+    } finally {
+      setRunningLimitedPilot(false);
+    }
+  };
+
   const createAssetGroup = async () => {
     setCreatingAssetGroup(true);
     setError(null);
@@ -2137,6 +2180,7 @@ export default function AdOsPage() {
     createMetaCapiTestPacket,
     checkExecutionGate,
     runRollbackDrill,
+    runNaverLimitedPilot,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -2172,6 +2216,7 @@ export default function AdOsPage() {
     createMetaCapiTestPacket: creatingMetaCapiPacket,
     checkExecutionGate: checkingExecutionGate,
     runRollbackDrill: runningRollbackDrill,
+    runNaverLimitedPilot: runningLimitedPilot,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
@@ -2815,7 +2860,8 @@ export default function AdOsPage() {
                   (summary.enterprise_layer?.channel_adapters?.external_api_write_count || 0) +
                   (summary.enterprise_layer?.write_packets?.external_api_write_count || 0) +
                   (summary.enterprise_layer?.execution_gates?.external_api_write_count || 0) +
-                  (summary.enterprise_layer?.rollback_drills?.external_api_write_count || 0),
+                  (summary.enterprise_layer?.rollback_drills?.external_api_write_count || 0) +
+                  (summary.enterprise_layer?.limited_write_pilot?.external_api_write_count || 0),
                 ).toLocaleString('ko-KR')}건
               </StatusPill>
             </div>
@@ -2885,6 +2931,11 @@ export default function AdOsPage() {
                 <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.rollback_drills?.drills || 0).toLocaleString('ko-KR')}</p>
                 <p className="mt-1 text-admin-2xs text-admin-muted">ready {Number(summary.enterprise_layer?.rollback_drills?.ready || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.rollback_drills?.blocked || 0).toLocaleString('ko-KR')} / not required {Number(summary.enterprise_layer?.rollback_drills?.not_required || 0).toLocaleString('ko-KR')}</p>
               </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Naver Limited Pilot</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.limited_write_pilot?.attempts || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">dry-run {Number(summary.enterprise_layer?.limited_write_pilot?.dry_run_succeeded || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.limited_write_pilot?.blocked || 0).toLocaleString('ko-KR')} / live off {Number(summary.enterprise_layer?.limited_write_pilot?.live_write_blocked || 0).toLocaleString('ko-KR')}</p>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" onClick={runRuntimeReadiness} loading={checkingRuntimeReadiness}>
@@ -2907,6 +2958,9 @@ export default function AdOsPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={runRollbackDrill} loading={runningRollbackDrill}>
                 롤백 드릴
+              </Button>
+              <Button size="sm" variant="secondary" onClick={runNaverLimitedPilot} loading={runningLimitedPilot}>
+                네이버 제한 파일럿
               </Button>
               <Button size="sm" variant="secondary" onClick={runPlatformJobs} loading={runningPlatformJobs}>
                 플랫폼 실행 큐

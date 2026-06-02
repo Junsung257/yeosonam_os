@@ -497,6 +497,8 @@ async function buildSummaryResponse() {
     platformWritePacketRes,
     adapterExecutionGateRes,
     rollbackDrillRes,
+    limitedWritePilotPolicyRes,
+    limitedWritePilotAttemptRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -700,6 +702,16 @@ async function buildSummaryResponse() {
       .select('id, tenant_id, platform, drill_status, rollback_type, external_api_write, blocked_reason, drilled_at')
       .order('drilled_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_limited_write_pilot_policies')
+      .select('id, tenant_id, platform, status, pilot_level, monthly_budget_cap_krw, daily_budget_cap_krw, max_cpc_krw, max_test_loss_krw, live_external_write_enabled, updated_at')
+      .order('updated_at', { ascending: false })
+      .limit(20),
+    supabaseAdmin
+      .from('ad_os_limited_write_pilot_attempts')
+      .select('id, tenant_id, platform, requested_mode, attempt_status, external_api_write, blockers, next_action, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
   const firstError =
@@ -739,7 +751,9 @@ async function buildSummaryResponse() {
     channelAdapterHealthRes.error ||
     platformWritePacketRes.error ||
     adapterExecutionGateRes.error ||
-    rollbackDrillRes.error;
+    rollbackDrillRes.error ||
+    limitedWritePilotPolicyRes.error ||
+    limitedWritePilotAttemptRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -978,6 +992,20 @@ async function buildSummaryResponse() {
     rollback_type: string | null;
     external_api_write: boolean | null;
     blocked_reason: string | null;
+  }>;
+  const limitedWritePilotPolicies = (limitedWritePilotPolicyRes.data || []) as Array<{
+    platform: string | null;
+    status: string | null;
+    pilot_level: string | null;
+    live_external_write_enabled: boolean | null;
+  }>;
+  const limitedWritePilotAttempts = (limitedWritePilotAttemptRes.data || []) as Array<{
+    platform: string | null;
+    requested_mode: string | null;
+    attempt_status: string | null;
+    external_api_write: boolean | null;
+    blockers: string[] | null;
+    next_action: string | null;
   }>;
   const creativeAssetVariants = (creativeAssetVariantRes.data || []) as Array<{
     platform: string | null;
@@ -1338,6 +1366,12 @@ async function buildSummaryResponse() {
       rollback_drills_ready: rollbackDrills.filter((row) => row.drill_status === 'ready').length,
       rollback_drills_blocked: rollbackDrills.filter((row) => row.drill_status === 'blocked').length,
       rollback_drills_external_api_write: rollbackDrills.filter((row) => row.external_api_write).length,
+      limited_write_pilot_policies: limitedWritePilotPolicies.length,
+      limited_write_pilot_policies_active: limitedWritePilotPolicies.filter((row) => row.status === 'active').length,
+      limited_write_pilot_attempts: limitedWritePilotAttempts.length,
+      limited_write_pilot_dry_run_succeeded: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'dry_run_succeeded').length,
+      limited_write_pilot_blocked: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'blocked' || row.attempt_status === 'live_write_blocked').length,
+      limited_write_pilot_external_api_write: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1404,6 +1438,8 @@ async function buildSummaryResponse() {
       adapter_execution_gates_by_risk: byKey(adapterExecutionGates, (row) => row.risk_level || 'unknown'),
       rollback_drills_by_status: byKey(rollbackDrills, (row) => row.drill_status || 'unknown'),
       rollback_drills_by_type: byKey(rollbackDrills, (row) => row.rollback_type || 'unknown'),
+      limited_write_pilot_policies_by_status: byKey(limitedWritePilotPolicies, (row) => row.status || 'unknown'),
+      limited_write_pilot_attempts_by_status: byKey(limitedWritePilotAttempts, (row) => row.attempt_status || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1559,6 +1595,18 @@ async function buildSummaryResponse() {
         not_required: rollbackDrills.filter((row) => row.drill_status === 'not_required').length,
         external_api_write_count: rollbackDrills.filter((row) => row.external_api_write).length,
       },
+      limited_write_pilot: {
+        policies: limitedWritePilotPolicies.length,
+        active_policies: limitedWritePilotPolicies.filter((row) => row.status === 'active').length,
+        dry_run_only_policies: limitedWritePilotPolicies.filter((row) => row.pilot_level === 'dry_run_only').length,
+        attempts: limitedWritePilotAttempts.length,
+        dry_run_succeeded: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'dry_run_succeeded').length,
+        blocked: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'blocked').length,
+        live_write_blocked: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'live_write_blocked').length,
+        live_external_write_enabled: limitedWritePilotPolicies.filter((row) => row.live_external_write_enabled).length,
+        external_api_write_count: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
+        first_blocker: limitedWritePilotAttempts.find((row) => Array.isArray(row.blockers) && row.blockers.length > 0)?.blockers?.[0] || null,
+      },
     },
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
@@ -1596,6 +1644,8 @@ async function buildSummaryResponse() {
       platform_write_packets: platformWritePacketRes.data?.slice(0, 12) || [],
       adapter_execution_gates: adapterExecutionGateRes.data?.slice(0, 12) || [],
       rollback_drills: rollbackDrillRes.data?.slice(0, 12) || [],
+      limited_write_pilot_policies: limitedWritePilotPolicyRes.data?.slice(0, 12) || [],
+      limited_write_pilot_attempts: limitedWritePilotAttemptRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

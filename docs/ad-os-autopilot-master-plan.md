@@ -716,3 +716,32 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Operating principle remains:
   - This layer does not spend money.
   - It proves whether the system is safe enough to begin a future Naver limited-write pilot under explicit approval and budget caps.
+
+## 41. 2026-06-03 Ad OS V101-V120 Naver limited pilot control layer
+
+- Added server-only V101-V120 tables:
+  - `ad_os_limited_write_pilot_policies`
+  - `ad_os_limited_write_pilot_attempts`
+- Added API:
+  - `POST /api/admin/ad-os/channel-adapters/naver/limited-pilot`
+- Purpose:
+  - Promotes the V76-V100 packet/gate/rollback chain into an auditable Naver limited pilot ledger.
+  - Default policy is safe: `dry_run_only`, `live_external_write_enabled=false`, and `external_api_write=false`.
+  - Live paused-keyword writes require all of these before a future executor can be enabled:
+    - active pilot policy
+    - Naver ready packet
+    - eligible execution gate
+    - ready rollback drill
+    - human approval
+    - monthly/daily/max-CPC/test-loss budget caps
+    - explicit DB live-write flag
+    - explicit environment flag `AD_OS_NAVER_LIMITED_WRITE_ENABLED`
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose:
+  - limited pilot policies
+  - dry-run succeeded attempts
+  - blocked/live-blocked attempts
+  - first blocker
+  - external API write count
+- Operating principle remains:
+  - This layer still does not spend money.
+  - It is the last staging/operations checklist before a future Naver paused-only external write executor is allowed.
