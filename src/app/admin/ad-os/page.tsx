@@ -123,6 +123,17 @@ type Summary = {
       engagement_sessions_30d: number;
       avg_time_on_page_seconds: number;
       avg_scroll_depth_pct: number;
+      attribution_events_30d?: number;
+      attribution_clean_events_30d?: number;
+      attribution_quarantined_events_30d?: number;
+      fact_clicks_30d?: number;
+      fact_cta_clicks_30d?: number;
+      fact_conversions_30d?: number;
+      fact_spend_krw_30d?: number;
+      fact_revenue_krw_30d?: number;
+      fact_margin_krw_30d?: number;
+      fact_margin_roas_pct_30d?: number;
+      fact_cpa_krw_30d?: number;
     };
     status: Record<string, boolean>;
     next_action: string;
@@ -317,6 +328,7 @@ export default function AdOsPage() {
   const [buildingOpsPlan, setBuildingOpsPlan] = useState(false);
   const [creatingCreativeDrafts, setCreatingCreativeDrafts] = useState(false);
   const [syncingBookingFunnel, setSyncingBookingFunnel] = useState(false);
+  const [runningConversionAttribution, setRunningConversionAttribution] = useState(false);
   const [runningKeywordBrain, setRunningKeywordBrain] = useState(false);
   const [creatingNaverAssets, setCreatingNaverAssets] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
@@ -861,6 +873,29 @@ export default function AdOsPage() {
     }
   };
 
+  const runConversionAttribution = async () => {
+    setRunningConversionAttribution(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/conversion-attribution', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 30, apply: true, limit: 3000 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '전환 attribution 실패');
+      await refresh();
+      setAutomationMessage(
+        `전환 attribution 완료: 이벤트 ${Number(json.summary.events_checked || 0).toLocaleString('ko-KR')}개, 팩트 ${Number(json.summary.facts_prepared || 0).toLocaleString('ko-KR')}개, 예약 ${Number(json.summary.conversions || 0).toLocaleString('ko-KR')}건, 마진 ROAS ${Number(json.summary.margin_roas_pct || 0).toLocaleString('ko-KR')}%`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '전환 attribution 실패');
+    } finally {
+      setRunningConversionAttribution(false);
+    }
+  };
+
   const applyLearningRules = async () => {
     setApplyingLearning(true);
     setError(null);
@@ -1353,6 +1388,7 @@ export default function AdOsPage() {
     probePublisher,
     generateCandidates,
     harvestLearning,
+    runConversionAttribution,
     runLaunchAudit,
     runKillSwitchDryRun,
     harvestSearchTerms,
@@ -1369,6 +1405,7 @@ export default function AdOsPage() {
     probePublisher: probingPublisher,
     generateCandidates: generatingCandidates,
     harvestLearning: harvestingLearning,
+    runConversionAttribution: runningConversionAttribution,
     runLaunchAudit: runningLaunchAudit,
     runKillSwitchDryRun: runningKillSwitch,
     harvestSearchTerms: harvestingSearchTerms,
@@ -2191,6 +2228,10 @@ export default function AdOsPage() {
                 <Button size="sm" variant="secondary" onClick={syncPerformanceFacts} loading={syncingPerformance}>
                   <MousePointerClick size={14} />
                   성과 팩트 동기화
+                </Button>
+                <Button size="sm" variant="secondary" onClick={runConversionAttribution} loading={runningConversionAttribution}>
+                  <Gauge size={14} />
+                  전환 attribution
                 </Button>
                 <Button size="sm" variant="secondary" onClick={applyLearningRules} loading={applyingLearning}>
                   <ShieldCheck size={14} />
