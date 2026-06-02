@@ -9,7 +9,7 @@ export const AD_OS_AUTOMATION_MODES = [
   },
   {
     id: 'approval',
-    label: '승인형 집행',
+    label: '승인 후 집행',
     levelMin: 2,
     levelMax: 2,
     description: '운영자가 승인한 후보만 내부 드래프트 또는 정지 키워드 배포 대상으로 이동합니다.',
@@ -76,11 +76,11 @@ export function classifyChannelExecutionState(input: {
   if (!input.integrationReady) {
     return {
       state: 'missing_credentials',
-      label: '연동 미설정',
+      label: '연동 필요',
       tone: 'bad',
       canSpend: false,
       summary: `${input.platformLabel} API 또는 OAuth 정보가 아직 부족합니다.`,
-      nextAction: `${input.platformLabel} API 키, OAuth, 계정 ID를 먼저 연결하세요.`,
+      nextAction: `${input.platformLabel} API/OAuth와 계정 ID를 먼저 연결하세요.`,
     };
   }
 
@@ -102,7 +102,7 @@ export function classifyChannelExecutionState(input: {
       tone: 'warn',
       canSpend: false,
       summary: `${input.platformLabel} 연동은 준비됐지만 캠페인 또는 광고그룹이 확인되지 않았습니다.`,
-      nextAction: `${input.platformLabel} 캠페인과 광고그룹을 만들거나 기존 ID를 예산 설정에 저장하세요.`,
+      nextAction: `${input.platformLabel} 캠페인/광고그룹을 만들거나 기존 ID를 예산 설정에 저장하세요.`,
     };
   }
 
@@ -133,40 +133,38 @@ export function buildTenantRiskGuardrails(input: {
   activeBudgetChannels: number;
   maxAutomationLevel: number;
 }) {
-  const risks: Array<{ id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }> = [];
-
-  risks.push({
-    id: 'tenant_scope',
-    label: '테넌트 데이터 분리',
-    status: input.tenantScopedTables > 0 ? 'warn' : 'fail',
-    detail: input.tenantScopedTables > 0
-      ? '일부 마케팅/콘텐츠 테이블은 tenant_id 기반 확장 여지가 있습니다. 광고 OS 전용 테이블까지 더 정규화해야 합니다.'
-      : '광고 OS 전용 테넌트 스코프 증거가 부족합니다.',
-  });
-  risks.push({
-    id: 'budget_cap',
-    label: '테넌트 예산 한도',
-    status: input.monthlyBudgetKrw > 0 ? 'pass' : 'fail',
-    detail: input.monthlyBudgetKrw > 0
-      ? `현재 월 예산 한도 ${input.monthlyBudgetKrw.toLocaleString('ko-KR')}원 안에서만 자동화합니다.`
-      : '월 예산 한도가 없으면 외부 집행은 차단해야 합니다.',
-  });
-  risks.push({
-    id: 'automation_cap',
-    label: '자동화 권한 제한',
-    status: input.maxAutomationLevel <= 3 ? 'pass' : 'warn',
-    detail: input.maxAutomationLevel <= 3
-      ? '현재 완전자동 이전 단계입니다. 추천, 승인, 제한 예산 테스트 중심으로 운영합니다.'
-      : '완전자동 권한이 열려 있습니다. 승인권, 롤백, 손실 한도 검증이 필요합니다.',
-  });
-  risks.push({
-    id: 'active_channels',
-    label: '활성 채널 제한',
-    status: input.activeBudgetChannels <= 2 ? 'pass' : 'warn',
-    detail: input.activeBudgetChannels <= 2
-      ? '초기 운영은 제한된 채널 수로 학습합니다.'
-      : '여러 채널이 동시에 활성화되어 예산 분산과 원인 분석 난도가 높습니다.',
-  });
-
-  return risks;
+  return [
+    {
+      id: 'tenant_scope',
+      label: '테넌트 데이터 분리',
+      status: input.tenantScopedTables > 0 ? 'warn' : 'fail',
+      detail: input.tenantScopedTables > 0
+        ? '일부 마케팅 테이블은 tenant_id 기반 확장 여지가 있습니다. 광고 OS 전용 테이블까지 계속 정규화해야 합니다.'
+        : '광고 OS 전용 테넌트 스코프 증거가 부족합니다.',
+    },
+    {
+      id: 'budget_cap',
+      label: '테넌트 예산 한도',
+      status: input.monthlyBudgetKrw > 0 ? 'pass' : 'fail',
+      detail: input.monthlyBudgetKrw > 0
+        ? `현재 월 예산 한도 ${input.monthlyBudgetKrw.toLocaleString('ko-KR')}원 안에서만 자동화합니다.`
+        : '월 예산 한도가 없으면 모든 집행은 차단해야 합니다.',
+    },
+    {
+      id: 'automation_cap',
+      label: '자동화 권한 제한',
+      status: input.maxAutomationLevel <= 3 ? 'pass' : 'warn',
+      detail: input.maxAutomationLevel <= 3
+        ? '현재는 추천, 승인, 제한 예산 테스트 중심으로 운영합니다.'
+        : '완전자동 권한이 열려 있습니다. 승인권, 롤백, 손실 한도 검증이 필요합니다.',
+    },
+    {
+      id: 'active_channels',
+      label: '활성 채널 제한',
+      status: input.activeBudgetChannels <= 2 ? 'pass' : 'warn',
+      detail: input.activeBudgetChannels <= 2
+        ? '초기 운영은 제한된 채널 수로 학습합니다.'
+        : '여러 채널이 동시에 활성화되어 예산 분산과 원인 분석 난도가 높습니다.',
+    },
+  ] satisfies Array<{ id: string; label: string; status: 'pass' | 'warn' | 'fail'; detail: string }>;
 }

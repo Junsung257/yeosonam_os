@@ -1,16 +1,10 @@
 'use client';
 
-/**
- * /admin/blog/rankings — 블로그 SEO 순위 대시보드
- * - 7/14/30일 누적 클릭/노출/평균순위
- * - 미해결 이탈 경보
- * - Top movers (상승/하락)
- */
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
-import { PageHeader, KpiCard } from '@/components/admin/patterns';
+import { AlertTriangle, ArrowLeft, Eye, FileText, MousePointerClick, Search, TrendingDown, TrendingUp } from 'lucide-react';
+import { KpiCard, PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, Search, MousePointerClick, Eye, FileText, AlertTriangle, TrendingUp, TrendingDown } from 'lucide-react';
 
 interface TopRow {
   slug: string;
@@ -19,6 +13,7 @@ interface TopRow {
   avg_position: number | null;
   query_count: number;
 }
+
 interface Mover {
   slug: string;
   query: string;
@@ -28,6 +23,7 @@ interface Mover {
   impressions: number;
   clicks: number;
 }
+
 interface Alert {
   id: number;
   slug: string;
@@ -36,6 +32,14 @@ interface Alert {
   curr_position: number;
   delta: number;
   detected_at: string;
+}
+
+interface VisibilitySummary {
+  total: number;
+  google_indexed: number;
+  google_visible: number;
+  naver_index_requested: number;
+  naver_visible: number;
 }
 
 const RANK_SOURCES = [
@@ -49,24 +53,29 @@ export default function BlogRankingsPage() {
   const [days, setDays] = useState(14);
   const [source, setSource] = useState<(typeof RANK_SOURCES)[number]['id']>('gsc-page');
   const [summary, setSummary] = useState<{ totals: any; top: TopRow[]; source?: string; source_counts?: Record<string, number> } | null>(null);
+  const [visibilitySummary, setVisibilitySummary] = useState<VisibilitySummary | null>(null);
   const [movers, setMovers] = useState<{ ups: Mover[]; downs: Mover[] } | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [running, setRunning] = useState(false);
 
   const fetchAll = useCallback(async () => {
-    const [sumRes, movRes, alertRes] = await Promise.all([
-      fetch(`/api/admin/rank-dashboard?days=${days}&source=${source}`).then(r => r.json()),
-      fetch(`/api/admin/rank-dashboard?view=top_movers&days=${days}&source=${source}`).then(r => r.json()),
-      fetch(`/api/admin/rank-dashboard?view=alerts`).then(r => r.json()),
+    const [sumRes, movRes, alertRes, visibilityRes] = await Promise.all([
+      fetch(`/api/admin/rank-dashboard?days=${days}&source=${source}`, { cache: 'no-store' }).then((r) => r.json()),
+      fetch(`/api/admin/rank-dashboard?view=top_movers&days=${days}&source=${source}`, { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/admin/rank-dashboard?view=alerts', { cache: 'no-store' }).then((r) => r.json()),
+      fetch('/api/admin/blog/visibility?limit=120', { cache: 'no-store' }).then((r) => r.json()).catch(() => null),
     ]);
     setSummary(sumRes);
     setMovers(movRes);
     setAlerts(alertRes.alerts || []);
+    setVisibilitySummary(visibilityRes?.summary || null);
   }, [days, source]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => {
+    fetchAll();
+  }, [fetchAll]);
 
-  const triggerCron = async () => {
+  async function triggerCron() {
     setRunning(true);
     try {
       const res = await fetch('/api/admin/cron-trigger', {
@@ -76,20 +85,21 @@ export default function BlogRankingsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      alert('순위 추적 실행 완료\n\n' + JSON.stringify(data, null, 2).slice(0, 500));
-      fetchAll();
-    } catch (e) {
-      alert('실패: ' + (e as Error).message);
+      await fetchAll();
+    } catch (error) {
+      alert(`실패: ${(error as Error).message}`);
     } finally {
       setRunning(false);
     }
-  };
+  }
+
+  const currentSource = RANK_SOURCES.find((item) => item.id === source);
 
   return (
     <div className="space-y-5">
       <PageHeader
-        title="블로그 순위 대시보드"
-        subtitle="GSC 기반 일일 순위 추적 · 5계단 이상 하락 자동 경보"
+        title="블로그 순위/노출 대시보드"
+        subtitle="Google과 Naver의 색인, 실제 노출, 키워드 순위를 분리해서 확인합니다."
         actions={
           <>
             <Link href="/admin/blog/queue">
@@ -100,92 +110,101 @@ export default function BlogRankingsPage() {
             </Link>
             <Button variant="primary" size="sm" onClick={triggerCron} disabled={running}>
               <Search size={14} />
-              {running ? '추적중…' : '순위 즉시 추적'}
+              {running ? '추적 중' : '순위 즉시 추적'}
             </Button>
           </>
         }
       />
 
-      {/* 기간 탭 */}
       <section className="admin-card p-4">
         <div className="grid gap-3 md:grid-cols-3">
           <div>
-            <p className="text-admin-xs font-semibold text-admin-text-2">현재 데이터 범위</p>
+            <p className="text-admin-xs font-semibold text-admin-text-2">색인과 노출은 다릅니다</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              이 화면은 Google Search Console 기반의 구글 노출, 클릭, 평균 순위입니다.
+              Google Search Console의 색인 상태는 검색 결과 노출을 보장하지 않습니다. 실제 노출은 URL 검색, GSC 성과, SERP 순위 추적으로 따로 확인합니다.
             </p>
           </div>
           <div>
-            <p className="text-admin-xs font-semibold text-admin-text-2">네이버 순위</p>
+            <p className="text-admin-xs font-semibold text-admin-text-2">네이버는 별도 판단</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              네이버는 별도 서치어드바이저/검색 결과 수집 파이프라인이 필요하며, 아직 GSC 숫자와 섞어 표시하지 않습니다.
+              Naver IndexNow 요청은 수집을 빠르게 알리는 기능입니다. 색인 보장이 아니므로 요청됨, 검증 불가, 검색 노출 확인을 분리합니다.
             </p>
           </div>
           <div>
-            <p className="text-admin-xs font-semibold text-admin-text-2">광고 OS 연결</p>
+            <p className="text-admin-xs font-semibold text-admin-text-2">Ad OS 연결</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              클릭, CTA, 예약, CPA, ROAS는 Ad OS 학습 루프에서 블로그/키워드/상품 단위로 합쳐 판단합니다.
+              순위, 클릭, CTA, 예약, CPA, ROAS는 블로그/키워드/상품 단위로 묶여 광고 중지와 확장 후보로 넘어갑니다.
             </p>
           </div>
         </div>
       </section>
 
-      <div className="flex flex-wrap gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
-        {RANK_SOURCES.map(item => (
-          <button key={item.id}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <KpiCard label="Google 색인" value={(visibilitySummary?.google_indexed || 0).toLocaleString('ko-KR')} icon={FileText} tone="positive" />
+        <KpiCard label="Google 노출" value={(visibilitySummary?.google_visible || 0).toLocaleString('ko-KR')} icon={Eye} />
+        <KpiCard label="Naver 요청" value={(visibilitySummary?.naver_index_requested || 0).toLocaleString('ko-KR')} icon={Search} />
+        <KpiCard label="Naver 노출" value={(visibilitySummary?.naver_visible || 0).toLocaleString('ko-KR')} icon={Eye} />
+        <KpiCard label="추적 글" value={(visibilitySummary?.total || summary?.totals?.tracked_slugs || 0).toLocaleString('ko-KR')} icon={FileText} />
+      </div>
+
+      <div className="flex flex-wrap gap-1 rounded-admin-sm bg-admin-surface-2 p-1 w-fit">
+        {RANK_SOURCES.map((item) => (
+          <button
+            key={item.id}
             onClick={() => setSource(item.id)}
-            className={`min-w-24 px-3 py-1.5 text-left rounded-admin-xs transition-colors ${source === item.id ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}>
+            className={`min-w-24 rounded-admin-xs px-3 py-1.5 text-left transition-colors ${source === item.id ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}
+          >
             <span className="block text-admin-sm font-semibold">{item.label}</span>
             <span className="block text-admin-2xs">{item.description}</span>
           </button>
         ))}
       </div>
 
-      <div className="flex gap-1 bg-admin-surface-2 rounded-admin-sm p-1 w-fit">
-        {[7, 14, 30].map(d => (
-          <button key={d}
-            onClick={() => setDays(d)}
-            className={`px-3 h-8 text-admin-sm font-medium rounded-admin-xs transition-colors admin-num ${days === d ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}>
-            {d}일
+      <div className="flex gap-1 rounded-admin-sm bg-admin-surface-2 p-1 w-fit">
+        {[7, 14, 30].map((value) => (
+          <button
+            key={value}
+            onClick={() => setDays(value)}
+            className={`h-8 rounded-admin-xs px-3 text-admin-sm font-medium transition-colors admin-num ${days === value ? 'bg-admin-surface text-admin-text shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}
+          >
+            {value}일
           </button>
         ))}
       </div>
 
-      {/* 누적 요약 */}
       {summary && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <KpiCard label="총 클릭" value={(summary.totals?.total_clicks || 0).toLocaleString()} icon={MousePointerClick} tone="positive" />
-          <KpiCard label="총 노출" value={(summary.totals?.total_impressions || 0).toLocaleString()} icon={Eye} />
-          <KpiCard label="추적 중인 글" value={(summary.totals?.tracked_slugs || 0).toLocaleString()} icon={FileText} />
-          <KpiCard label="데이터 소스" value={RANK_SOURCES.find(item => item.id === source)?.label || 'Google'} icon={Search} />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <KpiCard label={`${currentSource?.label || '통합'} 클릭`} value={(summary.totals?.total_clicks || 0).toLocaleString('ko-KR')} icon={MousePointerClick} tone="positive" />
+          <KpiCard label={`${currentSource?.label || '통합'} 노출`} value={(summary.totals?.total_impressions || 0).toLocaleString('ko-KR')} icon={Eye} />
+          <KpiCard label="평균 순위" value={summary.totals?.avg_position ? Number(summary.totals.avg_position).toFixed(1) : '-'} icon={Search} />
+          <KpiCard label="데이터 소스" value={currentSource?.label || '통합'} icon={FileText} />
         </div>
       )}
 
-      {/* 미해결 경보 */}
       {alerts.length > 0 && (
-        <div className="bg-danger-light border border-danger/30 rounded-admin-md p-3">
-          <p className="text-admin-xs font-semibold text-danger mb-2 inline-flex items-center gap-1.5">
+        <div className="rounded-admin-md border border-danger/30 bg-danger-light p-3">
+          <p className="mb-2 inline-flex items-center gap-1.5 text-admin-xs font-semibold text-danger">
             <AlertTriangle size={12} />
-            순위 하락 경보 (<span className="admin-num">{alerts.length}</span>건)
+            순위 하락 경보 <span className="admin-num">{alerts.length}</span>건
           </p>
           <table className="w-full text-admin-xs">
             <thead>
               <tr className="border-b border-danger/30">
-                <th className="text-left px-2 py-1 text-danger font-semibold">slug</th>
-                <th className="text-left px-2 py-1 text-danger font-semibold">검색어</th>
-                <th className="text-right px-2 py-1 text-danger font-semibold">7일 평균 → 어제</th>
-                <th className="text-right px-2 py-1 text-danger font-semibold">하락폭</th>
+                <th className="px-2 py-1 text-left font-semibold text-danger">slug</th>
+                <th className="px-2 py-1 text-left font-semibold text-danger">검색어</th>
+                <th className="px-2 py-1 text-right font-semibold text-danger">이전 → 현재</th>
+                <th className="px-2 py-1 text-right font-semibold text-danger">하락</th>
               </tr>
             </thead>
             <tbody>
-              {alerts.slice(0, 10).map(a => (
-                <tr key={a.id} className="border-b border-danger/15">
+              {alerts.slice(0, 10).map((alert) => (
+                <tr key={alert.id} className="border-b border-danger/15">
                   <td className="px-2 py-1.5">
-                    <Link href={`/blog/${a.slug}`} className="text-brand hover:text-brand-dark hover:underline font-mono text-admin-2xs">{a.slug.slice(0, 30)}</Link>
+                    <Link href={`/blog/${alert.slug}`} className="font-mono text-admin-2xs text-brand hover:underline">{alert.slug.slice(0, 30)}</Link>
                   </td>
-                  <td className="px-2 py-1.5 text-admin-text-2">{a.query}</td>
-                  <td className="px-2 py-1.5 text-right font-mono text-admin-muted admin-num">{a.prev_position} → <b className="text-danger">{a.curr_position}</b></td>
-                  <td className="px-2 py-1.5 text-right text-danger font-semibold admin-num">+{a.delta}</td>
+                  <td className="px-2 py-1.5 text-admin-text-2">{alert.query}</td>
+                  <td className="px-2 py-1.5 text-right font-mono text-admin-muted admin-num">{alert.prev_position} → <b className="text-danger">{alert.curr_position}</b></td>
+                  <td className="px-2 py-1.5 text-right font-semibold text-danger admin-num">+{alert.delta}</td>
                 </tr>
               ))}
             </tbody>
@@ -193,11 +212,10 @@ export default function BlogRankingsPage() {
         </div>
       )}
 
-      {/* Top performers */}
       {summary?.top && summary.top.length > 0 && (
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
-          <div className="px-3 py-2.5 border-b border-admin-border">
-            <p className="text-admin-xs font-semibold text-admin-text-2">Top 30 — <span className="admin-num">{days}</span>일 누적 클릭 순</p>
+        <div className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs">
+          <div className="border-b border-admin-border px-3 py-2.5">
+            <p className="text-admin-xs font-semibold text-admin-text-2">Top 30, 최근 <span className="admin-num">{days}</span>일</p>
           </div>
           <table className="admin-data-table">
             <thead>
@@ -207,22 +225,18 @@ export default function BlogRankingsPage() {
                 <th className="text-right">노출</th>
                 <th className="text-right">CTR</th>
                 <th className="text-right">평균순위</th>
-                <th className="text-right">검색어수</th>
+                <th className="text-right">검색어 수</th>
               </tr>
             </thead>
             <tbody>
-              {summary.top.map((t: TopRow) => (
-                <tr key={t.slug}>
-                  <td>
-                    <Link href={`/blog/${t.slug}`} className="text-brand hover:text-brand-dark hover:underline font-mono text-admin-xs">{t.slug.slice(0, 40)}</Link>
-                  </td>
-                  <td className="text-right font-mono admin-num">{t.clicks.toLocaleString()}</td>
-                  <td className="text-right font-mono text-admin-muted admin-num">{t.impressions.toLocaleString()}</td>
-                  <td className="text-right font-mono admin-num">
-                    {t.impressions > 0 ? ((t.clicks / t.impressions) * 100).toFixed(1) + '%' : '—'}
-                  </td>
-                  <td className="text-right font-mono admin-num">{t.avg_position ?? '—'}</td>
-                  <td className="text-right text-admin-muted admin-num">{t.query_count}</td>
+              {summary.top.map((row) => (
+                <tr key={row.slug}>
+                  <td><Link href={`/blog/${row.slug}`} className="font-mono text-admin-xs text-brand hover:underline">{row.slug.slice(0, 44)}</Link></td>
+                  <td className="text-right admin-num">{row.clicks.toLocaleString('ko-KR')}</td>
+                  <td className="text-right text-admin-muted admin-num">{row.impressions.toLocaleString('ko-KR')}</td>
+                  <td className="text-right admin-num">{row.impressions > 0 ? `${((row.clicks / row.impressions) * 100).toFixed(1)}%` : '-'}</td>
+                  <td className="text-right admin-num">{row.avg_position ? Number(row.avg_position).toFixed(1) : '-'}</td>
+                  <td className="text-right text-admin-muted admin-num">{row.query_count}</td>
                 </tr>
               ))}
             </tbody>
@@ -230,35 +244,34 @@ export default function BlogRankingsPage() {
         </div>
       )}
 
-      {/* Movers */}
       {movers && (
-        <div className="grid grid-cols-2 gap-3">
-          <div className="bg-status-successBg border border-success/20 rounded-admin-md p-3">
-            <p className="text-admin-xs font-semibold text-status-successFg mb-2 inline-flex items-center gap-1.5">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="rounded-admin-md border border-success/20 bg-status-successBg p-3">
+            <p className="mb-2 inline-flex items-center gap-1.5 text-admin-xs font-semibold text-status-successFg">
               <TrendingUp size={12} />
               순위 상승 TOP 20
             </p>
-            <div className="space-y-1 max-h-72 overflow-y-auto">
+            <div className="max-h-72 space-y-1 overflow-y-auto">
               {movers.ups.length === 0 && <p className="text-admin-xs text-status-successFg opacity-70">데이터 부족</p>}
-              {movers.ups.map((m, i) => (
-                <div key={i} className="flex justify-between text-admin-2xs py-1 border-b border-success/15">
-                  <span className="text-admin-text truncate flex-1">{m.query}</span>
-                  <span className="font-mono text-status-successFg font-semibold admin-num">{m.first_position} → {m.last_position}</span>
+              {movers.ups.map((mover, index) => (
+                <div key={`${mover.slug}-${mover.query}-${index}`} className="flex justify-between border-b border-success/15 py-1 text-admin-2xs">
+                  <span className="flex-1 truncate text-admin-text">{mover.query}</span>
+                  <span className="font-mono font-semibold text-status-successFg admin-num">{mover.first_position} → {mover.last_position}</span>
                 </div>
               ))}
             </div>
           </div>
-          <div className="bg-danger-light border border-danger/20 rounded-admin-md p-3">
-            <p className="text-admin-xs font-semibold text-danger mb-2 inline-flex items-center gap-1.5">
+          <div className="rounded-admin-md border border-danger/20 bg-danger-light p-3">
+            <p className="mb-2 inline-flex items-center gap-1.5 text-admin-xs font-semibold text-danger">
               <TrendingDown size={12} />
               순위 하락 TOP 20
             </p>
-            <div className="space-y-1 max-h-72 overflow-y-auto">
+            <div className="max-h-72 space-y-1 overflow-y-auto">
               {movers.downs.length === 0 && <p className="text-admin-xs text-danger opacity-70">데이터 부족</p>}
-              {movers.downs.map((m, i) => (
-                <div key={i} className="flex justify-between text-admin-2xs py-1 border-b border-danger/15">
-                  <span className="text-admin-text truncate flex-1">{m.query}</span>
-                  <span className="font-mono text-danger font-semibold admin-num">{m.first_position} → {m.last_position}</span>
+              {movers.downs.map((mover, index) => (
+                <div key={`${mover.slug}-${mover.query}-${index}`} className="flex justify-between border-b border-danger/15 py-1 text-admin-2xs">
+                  <span className="flex-1 truncate text-admin-text">{mover.query}</span>
+                  <span className="font-mono font-semibold text-danger admin-num">{mover.first_position} → {mover.last_position}</span>
                 </div>
               ))}
             </div>

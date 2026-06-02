@@ -182,7 +182,11 @@ export default function MarketingCommandCenterPage() {
         setData({ checked_at: new Date().toISOString(), groups: [], actions: [] });
         setAssetGroupWarning((payload as { error?: string }).error ?? `Asset groups HTTP ${assetRes.status}`);
       } else {
-        setData(await assetRes.json());
+        const payload = await assetRes.json();
+        setData(payload);
+        if (payload?.ok === false) {
+          setAssetGroupWarning(payload.error ?? 'Asset groups are unavailable.');
+        }
       }
       if (!snapshotRes.ok) {
         const payload = await snapshotRes.json().catch(() => ({}));
