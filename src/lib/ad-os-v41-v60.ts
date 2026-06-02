@@ -719,6 +719,11 @@ export function buildTenantWorkspaceDefaults(input: {
   maxCpcKrw?: number | null;
   automationLevel?: number | null;
   billingPlan?: string | null;
+  approverUserIds?: string[] | null;
+  operatorUserIds?: string[] | null;
+  forbiddenKeywords?: string[] | null;
+  dataRetentionDays?: number | null;
+  auditExportEnabled?: boolean | null;
 }) {
   const allowed = (input.allowedPlatforms && input.allowedPlatforms.length > 0 ? input.allowedPlatforms : ['naver', 'google'])
     .filter((platform) => ['naver', 'google', 'meta', 'kakao'].includes(platform));
@@ -737,6 +742,11 @@ export function buildTenantWorkspaceDefaults(input: {
       full_auto_enabled: false,
       risk_status: automationLevel >= 4 ? 'restricted' : 'watch',
       billing_plan: input.billingPlan || 'pilot',
+      approver_user_ids: input.approverUserIds || [],
+      operator_user_ids: input.operatorUserIds || [],
+      forbidden_keywords: input.forbiddenKeywords || [],
+      data_retention_days: Math.max(30, int(input.dataRetentionDays ?? 730)),
+      audit_export_enabled: input.auditExportEnabled !== false,
     },
     billing: {
       tenant_id: input.tenantId || null,
