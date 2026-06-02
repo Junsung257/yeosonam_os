@@ -799,3 +799,22 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Operating principle:
   - `uploaded` is reserved for a future platform adapter that actually receives and records an external upload id.
   - Dry-run readiness is useful evidence, but it is not an external upload result.
+
+## 46. 2026-06-03 Ad OS V201-V220 external result confirmation layer
+
+- Added `src/lib/ad-os-v201-v220.ts` and `POST /api/admin/ad-os/external-results/confirm`.
+- Purpose:
+  - Records an already-returned external platform result without calling Naver, Google, Meta, or Kakao from this route.
+  - Keeps the execution route separate from the confirmation route, so `applied` and `uploaded` are not inferred from a dry run.
+- Platform job confirmation:
+  - Requires `confirm_external_result=true`.
+  - Requires a linked `change_request_id`, `external_mutation_result_id`, and successful `external_resource_id`.
+  - Only then moves `ad_os_platform_jobs.status=succeeded`, `ad_os_external_mutation_results.status=succeeded`, and `ad_os_change_requests.status=applied`.
+  - Failed external results mark the platform job and mutation result failed, but keep the change request unapplied.
+- Conversion upload confirmation:
+  - Requires `confirm_external_result=true`.
+  - Requires an `external_upload_id` before moving `ad_os_conversion_upload_jobs.status=uploaded`.
+  - Failed upload confirmations mark the job failed and retain the blocked/error reason.
+- Safety principle:
+  - This route is confirmation-only and sets `external_api_write=false` because it does not execute external API writes itself.
+  - External spend remains disabled unless a separate audited executor is built and explicitly enabled behind tenant policy, budget caps, kill switch, and environment flags.
