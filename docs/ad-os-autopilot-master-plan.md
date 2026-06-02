@@ -607,3 +607,37 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - `/admin/ad-os` now exposes V31-V40 operator buttons for Naver execution gate, Google/Meta conversion export, bid optimization, experiment execution, and blog evolution approval.
 - Change request PATCH now treats external-only requests (`publish_paused_keyword`, `activate_paused_keyword`, `sync_external_asset`, `upload_conversion_signal`) as audit/apply markers rather than trying to patch arbitrary platform payloads into internal tables.
 - Operating principle remains: no unapproved external spend, full-autopilot off by default, every platform mutation must be represented by a change request and mutation audit row.
+
+## 37. 2026-06-02 Ad OS V41-V60 enterprise control plane
+
+- Added server-only V41-V60 tables for platform jobs, conversion upload jobs, data-quality snapshots, portfolio budget plans, creative asset variants, travel intent signals, and tenant billing profiles.
+- Added `/api/admin/ad-os/platform-jobs/run`.
+  - Promotes approved `ad_os_external_mutation_results` into idempotent platform jobs.
+  - Requires `requested` mutation status, `change_request_id`, credentials, permission, campaign/ad group, budget, automation level, and kill-switch clearance.
+  - Still records `external_api_write=false`; actual write executors remain downstream.
+- Added `/api/admin/ad-os/conversion-upload/run` and `/api/admin/ad-os/data-quality`.
+  - Converts Google/Meta export packets into upload jobs.
+  - Blocks raw PII, denied consent, missing identifiers, quarantined events, and platform-specific invalid signals before any upload.
+  - Reports clean/blocked conversion coverage and attribution/margin coverage for the health dashboard.
+- Added `/api/admin/ad-os/optimizer/portfolio-plan` and `/api/admin/ad-os/optimizer/apply-approved`.
+  - Builds margin-ROAS/CPA/deadline/inventory-aware portfolio actions.
+  - Approved plans become change requests; they do not mutate external platforms directly.
+- Added `/api/admin/ad-os/creative-factory/asset-group`.
+  - Generates travel intent signals and draft creative asset variants for search ads, DKI, blog FAQ/CTA, Instagram carousel, and retargeting.
+  - Repeated destination products increase duplicate-content risk so operators can update hubs/CTAs/card news instead of mass-producing near-duplicate blog posts.
+- Added `/api/admin/ad-os/tenant-workspaces`.
+  - Creates agency/SaaS workspace defaults with monthly/daily/channel caps, max CPC, test-loss cap, automation level, approval requirement, full-auto disabled, and billing profile.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose the V41-V60 enterprise layer:
+  - platform job queue
+  - conversion upload quality
+  - portfolio optimizer
+  - creative factory
+  - travel intent duplicate risk
+  - tenant workspace/billing status
+- Change request PATCH can now apply/rollback V41-V60 internal plans/assets/workspaces after approval.
+- Industry alignment:
+  - Google AI Max/PMax style automation is mirrored as automation plus controls, not blind external writes.
+  - Google offline conversion and Meta CAPI quality checks are modeled as uploadable jobs with blocked reasons.
+  - Smartly-style creative scale is represented as draft creative variants with lifecycle/fatigue fields.
+  - Sojern/Skai-style travel optimization is represented through booked margin, deadlines, inventory, and tenant-level budget control.
+- Operating principle remains unchanged: recommendation and approval first; limited autopilot only inside tenant budgets and platform gates; full autopilot implemented as a disabled capability until data volume and explicit operating approval exist.

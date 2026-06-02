@@ -138,6 +138,34 @@ type Summary = {
     status: Record<string, boolean>;
     next_action: string;
   };
+  enterprise_layer?: {
+    platform_job_queue: {
+      total: number;
+      blocked: number;
+      approved_or_running: number;
+      external_api_write_count: number;
+      safety_note: string;
+    };
+    conversion_data_quality: Record<string, number | string | null>;
+    portfolio_optimizer: {
+      candidates: number;
+      approved: number;
+      applied: number;
+      expected_spend_delta_krw: number;
+      expected_margin_delta_krw: number;
+    };
+    creative_factory: {
+      variants: number;
+      testing: number;
+      fatigued: number;
+      duplicate_content_risks: number;
+    };
+    saas_packaging: {
+      workspaces: number;
+      active_billing_profiles: number;
+      full_auto_enabled: number;
+    };
+  };
   launch_action_queue: Array<{
     id: string;
     priority: number;
@@ -178,6 +206,18 @@ type Summary = {
     keyword_clusters?: Array<Record<string, unknown>>;
     external_mutations?: Array<Record<string, unknown>>;
     tenant_reports?: Array<Record<string, unknown>>;
+    conversion_events?: Array<Record<string, unknown>>;
+    performance_facts?: Array<Record<string, unknown>>;
+    experiments?: Array<Record<string, unknown>>;
+    blog_versions?: Array<Record<string, unknown>>;
+    platform_jobs?: Array<Record<string, unknown>>;
+    conversion_upload_jobs?: Array<Record<string, unknown>>;
+    data_quality_snapshots?: Array<Record<string, unknown>>;
+    portfolio_plans?: Array<Record<string, unknown>>;
+    creative_asset_variants?: Array<Record<string, unknown>>;
+    travel_intent_signals?: Array<Record<string, unknown>>;
+    tenant_workspaces?: Array<Record<string, unknown>>;
+    tenant_billing_profiles?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -337,6 +377,13 @@ export default function AdOsPage() {
   const [runningBidOptimizer, setRunningBidOptimizer] = useState(false);
   const [runningExperiments, setRunningExperiments] = useState(false);
   const [applyingBlogEvolution, setApplyingBlogEvolution] = useState(false);
+  const [runningPlatformJobs, setRunningPlatformJobs] = useState(false);
+  const [runningConversionUpload, setRunningConversionUpload] = useState(false);
+  const [loadingDataQuality, setLoadingDataQuality] = useState(false);
+  const [planningPortfolio, setPlanningPortfolio] = useState(false);
+  const [applyingPortfolio, setApplyingPortfolio] = useState(false);
+  const [creatingAssetGroup, setCreatingAssetGroup] = useState(false);
+  const [savingTenantWorkspace, setSavingTenantWorkspace] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -1412,6 +1459,178 @@ export default function AdOsPage() {
     }
   };
 
+  const runPlatformJobs = async () => {
+    setRunningPlatformJobs(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/platform-jobs/run', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, execute: false, limit: 100 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '플랫폼 실행 큐 생성 실패');
+      await refresh();
+      setAutomationMessage(
+        `플랫폼 실행 큐 완료: job ${Number(json.summary?.jobs || 0).toLocaleString('ko-KR')}개, 차단 ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개, 승인/준비 ${Number(json.summary?.approved || 0).toLocaleString('ko-KR')}개. 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '플랫폼 실행 큐 생성 실패');
+    } finally {
+      setRunningPlatformJobs(false);
+    }
+  };
+
+  const runConversionUploadJobs = async () => {
+    setRunningConversionUpload(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const [googleRes, metaRes] = await Promise.all([
+        fetch('/api/admin/ad-os/conversion-upload/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apply: true, platform: 'google', limit: 100 }),
+        }),
+        fetch('/api/admin/ad-os/conversion-upload/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apply: true, platform: 'meta', limit: 100 }),
+        }),
+      ]);
+      const googleJson = await googleRes.json();
+      const metaJson = await metaRes.json();
+      if (!googleRes.ok || !googleJson.ok) throw new Error(googleJson.error || 'Google 전환 업로드 job 실패');
+      if (!metaRes.ok || !metaJson.ok) throw new Error(metaJson.error || 'Meta 전환 업로드 job 실패');
+      await refresh();
+      setAutomationMessage(
+        `전환 업로드 job 완료: Google clean ${Number(googleJson.summary?.clean || 0).toLocaleString('ko-KR')}개 / blocked ${Number(googleJson.summary?.blocked || 0).toLocaleString('ko-KR')}개, Meta clean ${Number(metaJson.summary?.clean || 0).toLocaleString('ko-KR')}개 / blocked ${Number(metaJson.summary?.blocked || 0).toLocaleString('ko-KR')}개. 외부 업로드 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '전환 업로드 job 실패');
+    } finally {
+      setRunningConversionUpload(false);
+    }
+  };
+
+  const loadDataQuality = async () => {
+    setLoadingDataQuality(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/data-quality?days=14');
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '데이터 품질 조회 실패');
+      await refresh();
+      setAutomationMessage(
+        `전환 데이터 품질: ${String(json.summary?.status || 'unknown')} / 업로드 가능 ${Number(json.summary?.uploadable_conversions || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(json.summary?.blocked_conversions || 0).toLocaleString('ko-KR')}개 / attribution coverage ${Math.round(Number(json.summary?.attribution_coverage || 0) * 100)}%.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '데이터 품질 조회 실패');
+    } finally {
+      setLoadingDataQuality(false);
+    }
+  };
+
+  const runPortfolioPlan = async () => {
+    setPlanningPortfolio(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/optimizer/portfolio-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, days: 30 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '포트폴리오 최적화 후보 실패');
+      await refresh();
+      setAutomationMessage(
+        `포트폴리오 최적화 후보 완료: 생성 ${Number(json.summary?.generated || 0).toLocaleString('ko-KR')}개, 저장 ${Number(json.summary?.inserted || 0).toLocaleString('ko-KR')}개. 외부 변경은 승인 요청 이후에만 가능합니다.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '포트폴리오 최적화 후보 실패');
+    } finally {
+      setPlanningPortfolio(false);
+    }
+  };
+
+  const applyApprovedPortfolio = async () => {
+    setApplyingPortfolio(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/optimizer/apply-approved', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '승인 포트폴리오 적용 요청 실패');
+      await refresh();
+      setAutomationMessage(
+        `승인 포트폴리오 변경요청 생성: 승인 플랜 ${Number(json.summary?.approved_plans || 0).toLocaleString('ko-KR')}개, 변경요청 ${Number(json.summary?.inserted || 0).toLocaleString('ko-KR')}개. 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '승인 포트폴리오 적용 요청 실패');
+    } finally {
+      setApplyingPortfolio(false);
+    }
+  };
+
+  const createAssetGroup = async () => {
+    setCreatingAssetGroup(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/creative-factory/asset-group', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '여행 Creative Factory 실패');
+      await refresh();
+      setAutomationMessage(
+        `Creative Factory 완료: intent ${Number(json.summary?.generated_signals || 0).toLocaleString('ko-KR')}개, 소재 ${Number(json.summary?.generated_variants || 0).toLocaleString('ko-KR')}개. 중복 위험 intent는 신규 글 대신 업데이트/CTA/카드뉴스 후보로 남깁니다.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '여행 Creative Factory 실패');
+    } finally {
+      setCreatingAssetGroup(false);
+    }
+  };
+
+  const saveTenantWorkspaceDefaults = async () => {
+    setSavingTenantWorkspace(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/tenant-workspaces', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          billing_plan: 'agency',
+          monthly_budget_cap_krw: summary?.tenant_policy?.monthly_budget_cap_krw || 3000000,
+          daily_budget_cap_krw: summary?.tenant_policy?.daily_budget_cap_krw || 100000,
+          max_cpc_krw: summary?.tenant_policy?.max_cpc_krw || 800,
+          automation_level: Math.min(Number(summary?.tenant_policy?.max_automation_level || 2), 3),
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '테넌트 워크스페이스 저장 실패');
+      await refresh();
+      setAutomationMessage(
+        `테넌트 광고 워크스페이스 저장: 자동화 L${json.summary?.automation_level || 2}, 승인 필수 ${json.summary?.require_human_approval ? 'ON' : 'OFF'}, full auto ${json.summary?.full_auto_enabled ? 'ON' : 'OFF'}.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '테넌트 워크스페이스 저장 실패');
+    } finally {
+      setSavingTenantWorkspace(false);
+    }
+  };
+
   const updateChangeRequest = async (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => {
     setChangeRequestActionId(id);
     setError(null);
@@ -1541,6 +1760,13 @@ export default function AdOsPage() {
     loadTenantReport,
     runKeywordBrain,
     createNaverAssets,
+    runPlatformJobs,
+    runConversionUploadJobs,
+    loadDataQuality,
+    runPortfolioPlan,
+    applyApprovedPortfolio,
+    createAssetGroup,
+    saveTenantWorkspaceDefaults,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -1558,6 +1784,13 @@ export default function AdOsPage() {
     loadTenantReport: loadingTenantReport,
     runKeywordBrain: runningKeywordBrain,
     createNaverAssets: creatingNaverAssets,
+    runPlatformJobs: runningPlatformJobs,
+    runConversionUploadJobs: runningConversionUpload,
+    loadDataQuality: loadingDataQuality,
+    runPortfolioPlan: planningPortfolio,
+    applyApprovedPortfolio: applyingPortfolio,
+    createAssetGroup: creatingAssetGroup,
+    saveTenantWorkspaceDefaults: savingTenantWorkspace,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
@@ -2186,6 +2419,70 @@ export default function AdOsPage() {
               </div>
             </section>
           </div>
+
+          <section className="admin-card p-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V60 Enterprise Layer</h2>
+                <p className="mt-1 text-admin-xs text-admin-muted">
+                  플랫폼 실행 큐, 전환 업로드 품질, 마진 기준 포트폴리오 최적화, 여행 Creative Factory, SaaS 워크스페이스를 한 흐름으로 묶습니다.
+                </p>
+              </div>
+              <StatusPill tone={(summary.enterprise_layer?.platform_job_queue.external_api_write_count || 0) === 0 ? 'good' : 'bad'}>
+                외부 write {Number(summary.enterprise_layer?.platform_job_queue.external_api_write_count || 0).toLocaleString('ko-KR')}건
+              </StatusPill>
+            </div>
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">플랫폼 실행 큐</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.platform_job_queue.total || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">blocked {Number(summary.enterprise_layer?.platform_job_queue.blocked || 0).toLocaleString('ko-KR')} / approved {Number(summary.enterprise_layer?.platform_job_queue.approved_or_running || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">전환 데이터 품질</p>
+                <p className="mt-1 text-admin-xl font-bold text-admin-text">{String(summary.enterprise_layer?.conversion_data_quality.status || 'unknown')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">uploadable {Number(summary.enterprise_layer?.conversion_data_quality.uploadable_conversions || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.conversion_data_quality.blocked_conversions || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">포트폴리오 최적화</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.portfolio_optimizer.candidates || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">approved {Number(summary.enterprise_layer?.portfolio_optimizer.approved || 0).toLocaleString('ko-KR')} / margin {fmtWon(Number(summary.enterprise_layer?.portfolio_optimizer.expected_margin_delta_krw || 0))}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Creative Factory</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.creative_factory.variants || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">testing {Number(summary.enterprise_layer?.creative_factory.testing || 0).toLocaleString('ko-KR')} / duplicate risk {Number(summary.enterprise_layer?.creative_factory.duplicate_content_risks || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">SaaS 패키징</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.saas_packaging.workspaces || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">active billing {Number(summary.enterprise_layer?.saas_packaging.active_billing_profiles || 0).toLocaleString('ko-KR')} / full auto {Number(summary.enterprise_layer?.saas_packaging.full_auto_enabled || 0).toLocaleString('ko-KR')}</p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" onClick={runPlatformJobs} loading={runningPlatformJobs}>
+                플랫폼 실행 큐
+              </Button>
+              <Button size="sm" variant="secondary" onClick={runConversionUploadJobs} loading={runningConversionUpload}>
+                전환 업로드 job
+              </Button>
+              <Button size="sm" variant="secondary" onClick={loadDataQuality} loading={loadingDataQuality}>
+                데이터 품질 조회
+              </Button>
+              <Button size="sm" variant="secondary" onClick={runPortfolioPlan} loading={planningPortfolio}>
+                포트폴리오 후보
+              </Button>
+              <Button size="sm" variant="secondary" onClick={applyApprovedPortfolio} loading={applyingPortfolio}>
+                승인 플랜 변경요청
+              </Button>
+              <Button size="sm" variant="secondary" onClick={createAssetGroup} loading={creatingAssetGroup}>
+                Creative Factory
+              </Button>
+              <Button size="sm" variant="secondary" onClick={saveTenantWorkspaceDefaults} loading={savingTenantWorkspace}>
+                테넌트 워크스페이스
+              </Button>
+            </div>
+          </section>
 
           <section className="admin-card p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
