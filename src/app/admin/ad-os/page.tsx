@@ -313,6 +313,7 @@ export default function AdOsPage() {
   const [loadingTenantReport, setLoadingTenantReport] = useState(false);
   const [buildingOpsPlan, setBuildingOpsPlan] = useState(false);
   const [creatingCreativeDrafts, setCreatingCreativeDrafts] = useState(false);
+  const [syncingBookingFunnel, setSyncingBookingFunnel] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -804,6 +805,29 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : 'Creative Factory draft 생성 실패');
     } finally {
       setCreatingCreativeDrafts(false);
+    }
+  };
+
+  const syncBookingFunnel = async () => {
+    setSyncingBookingFunnel(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/booking-funnel-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, days: 30, limit: 500 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '예약 funnel 동기화 실패');
+      await refresh();
+      setAutomationMessage(
+        `예약 funnel 동기화 완료: 예약 ${Number(json.summary.bookings_checked || 0).toLocaleString('ko-KR')}건, 이벤트 ${Number(json.summary.events_prepared || 0).toLocaleString('ko-KR')}개, 취소 ${Number(json.summary.cancel_events || 0).toLocaleString('ko-KR')}개, 정산확정 ${Number(json.summary.settlement_events || 0).toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '예약 funnel 동기화 실패');
+    } finally {
+      setSyncingBookingFunnel(false);
     }
   };
 
@@ -2142,6 +2166,10 @@ export default function AdOsPage() {
                 <Button size="sm" variant="secondary" onClick={createCreativeDrafts} loading={creatingCreativeDrafts}>
                   <Layers size={14} />
                   Creative draft 생성
+                </Button>
+                <Button size="sm" variant="secondary" onClick={syncBookingFunnel} loading={syncingBookingFunnel}>
+                  <MousePointerClick size={14} />
+                  예약 funnel 동기화
                 </Button>
                 <Button size="sm" variant="secondary" onClick={runExpiryCleanup} loading={runningExpiryCleanup}>
                   <CalendarX size={14} />
