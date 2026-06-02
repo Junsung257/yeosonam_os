@@ -36,7 +36,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const { data: bookings, error } = await supabaseAdmin
     .from('bookings')
-    .select('id,tenant_id,package_id,status,total_price,total_cost,paid_amount,created_at,updated_at,cancelled_at,settlement_confirmed_at,utm_source,utm_medium,utm_campaign,utm_content,utm_term,referral_code')
+    .select('id,tenant_id,package_id,status,total_price,total_cost,paid_amount,created_at,updated_at,cancelled_at,settlement_confirmed_at,utm_source,utm_medium,utm_campaign,utm_content,referral_code')
     .gte('updated_at', sinceIso(days))
     .order('updated_at', { ascending: false })
     .limit(limit);
@@ -68,7 +68,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         utm_medium: booking.utm_medium,
         utm_campaign: booking.utm_campaign,
         utm_content: booking.utm_content,
-        utm_term: booking.utm_term,
+        utm_term: null,
         referral_code: booking.referral_code,
       },
     };
@@ -98,7 +98,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         utm_medium: booking.utm_medium || null,
         utm_campaign: booking.utm_campaign || null,
         utm_content: booking.utm_content || null,
-        utm_term: booking.utm_term || null,
+        utm_term: null,
         quarantine_status: normalized.quarantine_status,
         quality_flags: {
           ...normalized.quality_flags,
