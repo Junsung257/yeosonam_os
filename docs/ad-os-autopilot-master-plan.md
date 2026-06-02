@@ -789,3 +789,13 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - The route no longer marks approved requests as `applied` merely because channel gates pass. `applied` is reserved for a future audited executor that confirms an external mutation result.
 - Run summaries now include `staged_for_executor_requests`, `applied_requests=0`, and a `staging` block with blockers such as `external_api_write_not_performed`.
 - Unit coverage proves guarded apply can stage requests without marking them applied, dry-run remains unstaged, and explicit external result confirmation is required before applied semantics are allowed.
+
+## 45. 2026-06-03 Ad OS V181-V200 conversion upload staging hardening
+
+- Hardened `decideConversionUploadExecution` so dry-run conversion upload execution validates readiness but does not mark jobs as `uploaded`.
+- Clean Google/Meta upload candidates now stay `approved` with `external_upload_id=null`, `uploaded_at=null`, and a `dry_run_verification_id` in `response_payload`.
+- `/api/admin/ad-os/conversion-upload/execute` summary now separates `upload_ready_dry_run` from `uploaded_dry_run=0`.
+- `/admin/ad-os` copy now says “전환 upload 준비 검증” instead of implying platform upload completion.
+- Operating principle:
+  - `uploaded` is reserved for a future platform adapter that actually receives and records an external upload id.
+  - Dry-run readiness is useful evidence, but it is not an external upload result.

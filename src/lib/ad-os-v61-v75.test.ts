@@ -70,7 +70,7 @@ describe('ad-os-v61-v75 platform executor', () => {
 });
 
 describe('ad-os-v61-v75 conversion upload executor', () => {
-  it('uploads clean conversion candidates as dry-run records', () => {
+  it('validates clean conversion candidates without marking them uploaded', () => {
     const decision = decideConversionUploadExecution({
       id: 'upload-1',
       platform: 'google',
@@ -84,8 +84,14 @@ describe('ad-os-v61-v75 conversion upload executor', () => {
     }, { now: new Date('2026-06-02T00:00:00.000Z') });
 
     expect(decision.attempt).toMatchObject({ status: 'succeeded', external_api_write: false });
-    expect(decision.jobPatch.status).toBe('uploaded');
-    expect(decision.jobPatch.external_upload_id).toContain('dryrun:google:upload-1');
+    expect(decision.jobPatch.status).toBe('approved');
+    expect(decision.jobPatch.external_upload_id).toBeNull();
+    expect(decision.jobPatch.uploaded_at).toBeNull();
+    expect(decision.jobPatch.response_payload).toMatchObject({
+      dry_run: true,
+      external_api_write: false,
+      dry_run_verification_id: 'dryrun:google:upload-1',
+    });
   });
 
   it('blocks low-quality, stale, duplicate, or non-consented signals', () => {
