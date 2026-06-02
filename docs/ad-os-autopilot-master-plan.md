@@ -843,3 +843,31 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - Active keyword activation and bid changes remain disabled in this executor.
   - Google/Meta/Kakao live campaign writes remain disabled.
   - A successful external write is not the same as applied semantics until confirmation records the external id.
+
+## 48. 2026-06-03 Ad OS V241-V260 Google/Meta conversion upload adapter gate
+
+- Added `src/lib/ad-os-v241-v260.ts` and `POST /api/admin/ad-os/conversion-upload/external-adapter`.
+- Purpose:
+  - Separates conversion upload readiness from actual Google/Meta external upload.
+  - Keeps `/api/admin/ad-os/conversion-upload/execute` as dry-run readiness validation.
+  - Uses the new external adapter only for the tightly gated upload step.
+- Live conversion upload is allowed only when all conditions pass:
+  - `requested_mode=live_upload`
+  - `apply=true`
+  - `confirm_external_upload=true`
+  - job status is `approved` or `running`
+  - consent is granted, signal quality is at least 60, event is fresh, dedupe is unique, and identifiers exist
+  - global env flag `AD_OS_CONVERSION_UPLOAD_ENABLED` is enabled
+  - platform env flag is enabled:
+    - Meta: `AD_OS_META_CAPI_UPLOAD_ENABLED`
+    - Google: `AD_OS_GOOGLE_CONVERSION_UPLOAD_ENABLED`
+  - platform credentials are present:
+    - Meta: pixel id plus CAPI/access token
+    - Google: developer token, customer id, access token, and conversion action id
+- If live upload succeeds:
+  - The route records an `ad_os_execution_attempts` row with `external_api_write=true`.
+  - The conversion job remains pending confirmation instead of immediately becoming `uploaded`.
+  - Operators must call `/api/admin/ad-os/external-results/confirm` with the returned external upload id to set `ad_os_conversion_upload_jobs.status=uploaded`.
+- Safety principle:
+  - No conversion job becomes `uploaded` from a dry-run or from a platform upload response alone.
+  - Google/Meta campaign publishing remains separate and disabled by default.
