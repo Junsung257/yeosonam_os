@@ -368,13 +368,14 @@ export function decideConversionUploadExecution(
   if (staleStatus !== 'fresh') return block(`event_${staleStatus}`);
   if (dedupeStatus !== 'unique') return block(`dedupe_${dedupeStatus}`);
 
-  const externalUploadId = `dryrun:${job.platform}:${job.id}`;
+  const verificationId = `dryrun:${job.platform}:${job.id}`;
   const responsePayload = {
     executor: 'ad_os_v61_v75_conversion_runtime',
-    external_upload_id: externalUploadId,
+    dry_run_verification_id: verificationId,
     dry_run: true,
     external_api_write: false,
     platform: job.platform,
+    next_step: 'Keep this job approved until a platform upload adapter confirms an external upload id.',
   };
 
   return {
@@ -384,11 +385,11 @@ export function decideConversionUploadExecution(
       response_payload: responsePayload,
     },
     jobPatch: {
-      status: 'uploaded',
+      status: 'approved',
       blocked_reason: null,
       response_payload: responsePayload,
-      external_upload_id: externalUploadId,
-      uploaded_at: nowText,
+      external_upload_id: null,
+      uploaded_at: null,
       freshness_status: 'fresh',
       dedupe_status: 'unique',
       next_retry_at: null,

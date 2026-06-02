@@ -1733,7 +1733,7 @@ export default function AdOsPage() {
       if (!metaRes.ok || !metaJson.ok) throw new Error(metaJson.error || 'Meta 전환 executor 실패');
       await refresh();
       setAutomationMessage(
-        `전환 upload dry-run 완료: Google 업로드 후보 ${Number(googleJson.summary?.uploaded_dry_run || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(googleJson.summary?.blocked || 0).toLocaleString('ko-KR')}개, Meta 업로드 후보 ${Number(metaJson.summary?.uploaded_dry_run || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(metaJson.summary?.blocked || 0).toLocaleString('ko-KR')}개. 외부 업로드 0건.`,
+        `전환 upload 준비 검증 완료: Google 준비 ${Number(googleJson.summary?.upload_ready_dry_run || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(googleJson.summary?.blocked || 0).toLocaleString('ko-KR')}개, Meta 준비 ${Number(metaJson.summary?.upload_ready_dry_run || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(metaJson.summary?.blocked || 0).toLocaleString('ko-KR')}개. 외부 업로드 0건, uploaded 상태 전환 0건.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : '전환 upload dry-run 실패');

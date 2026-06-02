@@ -18,9 +18,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .from('ad_os_automation_runs')
     .insert({
       run_type: 'conversion_upload_execute',
-      mode: apply ? 'guarded_dry_run' : 'dry_run',
+      mode: apply ? 'guarded' : 'dry_run',
       status: 'running',
-      summary: { apply, platform, limit, external_api_write: false },
+      summary: { apply, platform, limit, executor_mode: 'guarded_dry_run', external_api_write: false },
     })
     .select('id')
     .single();
@@ -61,9 +61,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     jobs_checked: jobs?.length || 0,
     attempts_prepared: attempts.length,
     attempts_written: apply ? attempts.length : 0,
-    uploaded_dry_run: attempts.filter((attempt) => attempt.status === 'succeeded').length,
+    upload_ready_dry_run: attempts.filter((attempt) => attempt.status === 'succeeded').length,
+    uploaded_dry_run: 0,
     blocked: attempts.filter((attempt) => attempt.status === 'blocked').length,
     external_api_write: false,
+    note: 'Dry-run execution validates upload readiness only. Jobs stay approved until a platform adapter confirms an external upload id.',
   };
   await supabaseAdmin.from('ad_os_automation_runs').update({ status: 'completed', finished_at: new Date().toISOString(), summary }).eq('id', run.id);
 
