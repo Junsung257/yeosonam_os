@@ -186,6 +186,21 @@ type Summary = {
       ready: number;
       draft: number;
     };
+    channel_adapters?: {
+      snapshots: number;
+      paused_write_ready: number;
+      draft_ready: number;
+      executable: number;
+      blocked: number;
+      external_api_write_count: number;
+    };
+    write_packets?: {
+      packets: number;
+      ready: number;
+      blocked: number;
+      dry_run: number;
+      external_api_write_count: number;
+    };
   };
   launch_action_queue: Array<{
     id: string;
@@ -243,6 +258,8 @@ type Summary = {
     execution_attempts?: Array<Record<string, unknown>>;
     experiment_templates?: Array<Record<string, unknown>>;
     tenant_audit_exports?: Array<Record<string, unknown>>;
+    channel_adapter_health?: Array<Record<string, unknown>>;
+    platform_write_packets?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -414,6 +431,10 @@ export default function AdOsPage() {
   const [executingConversionDryRun, setExecutingConversionDryRun] = useState(false);
   const [standardizingExperiments, setStandardizingExperiments] = useState(false);
   const [creatingTenantAuditExport, setCreatingTenantAuditExport] = useState(false);
+  const [checkingChannelAdapters, setCheckingChannelAdapters] = useState(false);
+  const [creatingNaverAdapterPacket, setCreatingNaverAdapterPacket] = useState(false);
+  const [creatingGoogleDraftPacket, setCreatingGoogleDraftPacket] = useState(false);
+  const [creatingMetaCapiPacket, setCreatingMetaCapiPacket] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -1737,6 +1758,115 @@ export default function AdOsPage() {
     }
   };
 
+  const checkChannelAdapters = async () => {
+    setCheckingChannelAdapters(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/health', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '채널 어댑터 상태 확인 실패');
+      await refresh();
+      setAutomationMessage(
+        `채널 어댑터 확인: paused write ${Number(json.summary?.paused_write_ready || 0).toLocaleString('ko-KR')}개, draft ${Number(json.summary?.draft_ready || 0).toLocaleString('ko-KR')}개, blocked ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개. 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '채널 어댑터 상태 확인 실패');
+    } finally {
+      setCheckingChannelAdapters(false);
+    }
+  };
+
+  const createNaverPausedKeywordPacket = async () => {
+    setCreatingNaverAdapterPacket(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/naver/paused-keyword', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apply: true,
+          keyword: '부산 부모님 다낭 여행',
+          landing_url: '/blog/danang-parents-package',
+          max_cpc_krw: 250,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '네이버 paused keyword 패킷 실패');
+      await refresh();
+      setAutomationMessage(
+        `네이버 paused keyword 패킷: ${String(json.summary?.lifecycle_status || 'unknown')}, blocked ${String(json.summary?.blocked_reason || '없음')}, 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '네이버 paused keyword 패킷 실패');
+    } finally {
+      setCreatingNaverAdapterPacket(false);
+    }
+  };
+
+  const createGoogleDraftPacket = async () => {
+    setCreatingGoogleDraftPacket(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/google/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apply: true,
+          campaign_name: 'Danang longtail draft',
+          ad_group_name: 'Busan parents Danang',
+          keyword: '부산 부모님 다낭 여행',
+          landing_url: '/blog/danang-parents-package',
+          daily_budget_krw: 10000,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Google draft 패킷 실패');
+      await refresh();
+      setAutomationMessage(
+        `Google draft 패킷: ${String(json.summary?.lifecycle_status || 'unknown')}, blocked ${String(json.summary?.blocked_reason || '없음')}, live publish disabled.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google draft 패킷 실패');
+    } finally {
+      setCreatingGoogleDraftPacket(false);
+    }
+  };
+
+  const createMetaCapiTestPacket = async () => {
+    setCreatingMetaCapiPacket(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/channel-adapters/meta/capi-test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apply: true,
+          event_name: 'Lead',
+          event_id: `ad-os-capi-${Date.now()}`,
+          value_krw: 0,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Meta CAPI test 패킷 실패');
+      await refresh();
+      setAutomationMessage(
+        `Meta CAPI test 패킷: ${String(json.summary?.lifecycle_status || 'unknown')}, blocked ${String(json.summary?.blocked_reason || '없음')}, campaign publish는 비활성.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Meta CAPI test 패킷 실패');
+    } finally {
+      setCreatingMetaCapiPacket(false);
+    }
+  };
+
   const createAssetGroup = async () => {
     setCreatingAssetGroup(true);
     setError(null);
@@ -1930,6 +2060,10 @@ export default function AdOsPage() {
     executeConversionUploadsDryRun,
     standardizeExperimentTemplates,
     createTenantAuditExport,
+    checkChannelAdapters,
+    createNaverPausedKeywordPacket,
+    createGoogleDraftPacket,
+    createMetaCapiTestPacket,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -1959,6 +2093,10 @@ export default function AdOsPage() {
     executeConversionUploadsDryRun: executingConversionDryRun,
     standardizeExperimentTemplates: standardizingExperiments,
     createTenantAuditExport: creatingTenantAuditExport,
+    checkChannelAdapters: checkingChannelAdapters,
+    createNaverPausedKeywordPacket: creatingNaverAdapterPacket,
+    createGoogleDraftPacket: creatingGoogleDraftPacket,
+    createMetaCapiTestPacket: creatingMetaCapiPacket,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
@@ -2591,13 +2729,17 @@ export default function AdOsPage() {
           <section className="admin-card p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V75 Enterprise Runtime Layer</h2>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V85 Enterprise Runtime Layer</h2>
                 <p className="mt-1 text-admin-xs text-admin-muted">
-                  플랫폼 실행 큐, 전환 업로드 품질, 마진 기준 최적화, 실험 표준, SaaS 감사 export를 staging 검증 가능한 흐름으로 묶습니다.
+                  플랫폼 실행 큐, 전환 업로드 품질, 채널 어댑터 패킷, 마진 기준 최적화, 실험 표준, SaaS 감사 export를 staging 검증 가능한 흐름으로 묶습니다.
                 </p>
               </div>
               <StatusPill tone={(summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0) === 0 ? 'good' : 'bad'}>
-                외부 write {Number(summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0).toLocaleString('ko-KR')}건
+                외부 write {Number(
+                  (summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0) +
+                  (summary.enterprise_layer?.channel_adapters?.external_api_write_count || 0) +
+                  (summary.enterprise_layer?.write_packets?.external_api_write_count || 0),
+                ).toLocaleString('ko-KR')}건
               </StatusPill>
             </div>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
@@ -2646,10 +2788,32 @@ export default function AdOsPage() {
                 <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.tenant_audit_exports?.exports || 0).toLocaleString('ko-KR')}</p>
                 <p className="mt-1 text-admin-2xs text-admin-muted">ready {Number(summary.enterprise_layer?.tenant_audit_exports?.ready || 0).toLocaleString('ko-KR')} / draft {Number(summary.enterprise_layer?.tenant_audit_exports?.draft || 0).toLocaleString('ko-KR')}</p>
               </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Channel Adapters</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.channel_adapters?.snapshots || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">paused {Number(summary.enterprise_layer?.channel_adapters?.paused_write_ready || 0).toLocaleString('ko-KR')} / draft {Number(summary.enterprise_layer?.channel_adapters?.draft_ready || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.channel_adapters?.blocked || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Write Packets</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.write_packets?.packets || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">ready {Number(summary.enterprise_layer?.write_packets?.ready || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.write_packets?.blocked || 0).toLocaleString('ko-KR')} / dry-run {Number(summary.enterprise_layer?.write_packets?.dry_run || 0).toLocaleString('ko-KR')}</p>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               <Button size="sm" variant="secondary" onClick={runRuntimeReadiness} loading={checkingRuntimeReadiness}>
                 Runtime readiness
+              </Button>
+              <Button size="sm" variant="secondary" onClick={checkChannelAdapters} loading={checkingChannelAdapters}>
+                채널 어댑터 상태
+              </Button>
+              <Button size="sm" variant="secondary" onClick={createNaverPausedKeywordPacket} loading={creatingNaverAdapterPacket}>
+                네이버 paused 패킷
+              </Button>
+              <Button size="sm" variant="secondary" onClick={createGoogleDraftPacket} loading={creatingGoogleDraftPacket}>
+                Google draft 패킷
+              </Button>
+              <Button size="sm" variant="secondary" onClick={createMetaCapiTestPacket} loading={creatingMetaCapiPacket}>
+                Meta CAPI 패킷
               </Button>
               <Button size="sm" variant="secondary" onClick={runPlatformJobs} loading={runningPlatformJobs}>
                 플랫폼 실행 큐
