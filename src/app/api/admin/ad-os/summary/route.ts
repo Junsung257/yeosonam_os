@@ -493,6 +493,8 @@ async function buildSummaryResponse() {
     executionAttemptRes,
     experimentTemplateRes,
     tenantAuditExportRes,
+    channelAdapterHealthRes,
+    platformWritePacketRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -676,6 +678,16 @@ async function buildSummaryResponse() {
       .select('id, tenant_id, workspace_id, period_start, period_end, status, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_channel_adapter_health')
+      .select('id, tenant_id, platform, adapter_state, capability_level, credentials_ready, permission_ready, campaign_ready, budget_ready, conversion_ready, live_publish_enabled, external_api_write, blocked_reasons, capabilities, recommended_action, checked_at')
+      .order('checked_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_platform_write_packets')
+      .select('id, tenant_id, platform, packet_type, lifecycle_status, dry_run, external_api_write, blocked_reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ]);
 
   const firstError =
@@ -711,7 +723,9 @@ async function buildSummaryResponse() {
     runtimeReadinessRes.error ||
     executionAttemptRes.error ||
     experimentTemplateRes.error ||
-    tenantAuditExportRes.error;
+    tenantAuditExportRes.error ||
+    channelAdapterHealthRes.error ||
+    platformWritePacketRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -919,6 +933,21 @@ async function buildSummaryResponse() {
   }>;
   const tenantAuditExports = (tenantAuditExportRes.data || []) as Array<{
     status: string | null;
+  }>;
+  const channelAdapterHealth = (channelAdapterHealthRes.data || []) as Array<{
+    platform: string | null;
+    adapter_state: string | null;
+    capability_level: number | null;
+    external_api_write: boolean | null;
+    recommended_action: string | null;
+  }>;
+  const platformWritePackets = (platformWritePacketRes.data || []) as Array<{
+    platform: string | null;
+    packet_type: string | null;
+    lifecycle_status: string | null;
+    dry_run: boolean | null;
+    external_api_write: boolean | null;
+    blocked_reason: string | null;
   }>;
   const creativeAssetVariants = (creativeAssetVariantRes.data || []) as Array<{
     platform: string | null;
@@ -1263,6 +1292,14 @@ async function buildSummaryResponse() {
       experiment_templates_active: experimentTemplates.filter((row) => row.status === 'active').length,
       tenant_audit_exports: tenantAuditExports.length,
       tenant_audit_exports_ready: tenantAuditExports.filter((row) => row.status === 'ready').length,
+      channel_adapter_health: channelAdapterHealth.length,
+      channel_adapter_paused_write_ready: channelAdapterHealth.filter((row) => row.adapter_state === 'paused_write_ready').length,
+      channel_adapter_draft_ready: channelAdapterHealth.filter((row) => row.adapter_state === 'draft_ready').length,
+      channel_adapter_external_api_write: channelAdapterHealth.filter((row) => row.external_api_write).length,
+      platform_write_packets: platformWritePackets.length,
+      platform_write_packets_ready: platformWritePackets.filter((row) => row.lifecycle_status === 'ready').length,
+      platform_write_packets_blocked: platformWritePackets.filter((row) => row.lifecycle_status === 'blocked').length,
+      platform_write_packets_external_api_write: platformWritePackets.filter((row) => row.external_api_write).length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1321,6 +1358,10 @@ async function buildSummaryResponse() {
       execution_attempts_by_type: byKey(executionAttempts, (row) => row.attempt_type || 'unknown'),
       experiment_templates_by_type: byKey(experimentTemplates, (row) => row.experiment_type || 'unknown'),
       tenant_audit_exports_by_status: byKey(tenantAuditExports, (row) => row.status || 'unknown'),
+      channel_adapter_health_by_state: byKey(channelAdapterHealth, (row) => row.adapter_state || 'unknown'),
+      channel_adapter_health_by_platform: byKey(channelAdapterHealth, (row) => row.platform || 'unknown'),
+      platform_write_packets_by_status: byKey(platformWritePackets, (row) => row.lifecycle_status || 'unknown'),
+      platform_write_packets_by_type: byKey(platformWritePackets, (row) => row.packet_type || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1446,6 +1487,21 @@ async function buildSummaryResponse() {
         ready: tenantAuditExports.filter((row) => row.status === 'ready').length,
         draft: tenantAuditExports.filter((row) => row.status === 'draft').length,
       },
+      channel_adapters: {
+        snapshots: channelAdapterHealth.length,
+        paused_write_ready: channelAdapterHealth.filter((row) => row.adapter_state === 'paused_write_ready').length,
+        draft_ready: channelAdapterHealth.filter((row) => row.adapter_state === 'draft_ready').length,
+        executable: channelAdapterHealth.filter((row) => row.adapter_state === 'executable').length,
+        blocked: channelAdapterHealth.filter((row) => ['missing_credentials', 'permission_denied', 'blocked'].includes(row.adapter_state || '')).length,
+        external_api_write_count: channelAdapterHealth.filter((row) => row.external_api_write).length,
+      },
+      write_packets: {
+        packets: platformWritePackets.length,
+        ready: platformWritePackets.filter((row) => row.lifecycle_status === 'ready').length,
+        blocked: platformWritePackets.filter((row) => row.lifecycle_status === 'blocked').length,
+        dry_run: platformWritePackets.filter((row) => row.dry_run).length,
+        external_api_write_count: platformWritePackets.filter((row) => row.external_api_write).length,
+      },
     },
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
@@ -1479,6 +1535,8 @@ async function buildSummaryResponse() {
       execution_attempts: executionAttemptRes.data?.slice(0, 12) || [],
       experiment_templates: experimentTemplateRes.data?.slice(0, 12) || [],
       tenant_audit_exports: tenantAuditExportRes.data?.slice(0, 12) || [],
+      channel_adapter_health: channelAdapterHealthRes.data?.slice(0, 12) || [],
+      platform_write_packets: platformWritePacketRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

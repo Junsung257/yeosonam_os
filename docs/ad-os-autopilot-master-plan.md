@@ -668,3 +668,26 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - tenant audit exports
   - combined external-write count
 - Operating principle remains stricter than live automation: this layer verifies staging execution cycles end to end, but actual paid platform writes remain disabled unless a future channel adapter explicitly passes approval, budget, risk, kill-switch, and limited-autopilot gates.
+
+## 39. 2026-06-03 Ad OS V76-V85 channel adapter packet layer
+
+- Added server-only V76-V85 tables for channel adapter readiness and guarded platform write packets:
+  - `ad_os_channel_adapter_health`
+  - `ad_os_platform_write_packets`
+- Added channel adapter APIs:
+  - `GET/POST /api/admin/ad-os/channel-adapters/health`
+  - `POST /api/admin/ad-os/channel-adapters/naver/paused-keyword`
+  - `POST /api/admin/ad-os/channel-adapters/google/draft`
+  - `POST /api/admin/ad-os/channel-adapters/meta/capi-test`
+- Safety stance remains unchanged:
+  - Naver can prepare paused keyword packets when credentials, permission, campaign/ad group, budget, and approval-level automation are ready.
+  - Google is limited to campaign draft packets and conversion-action readiness checks. Live campaign publish stays disabled.
+  - Meta is limited to CAPI test event and creative seed packets. Campaign publish stays disabled.
+  - Every packet stores `dry_run=true` and `external_api_write=false`.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose:
+  - channel adapter snapshots by readiness state
+  - platform write packets by ready/blocked/dry-run state
+  - direct operator buttons for adapter health, Naver paused packets, Google draft packets, and Meta CAPI packets
+- Acceptance evidence for this layer:
+  - Operators can see whether each channel is missing credentials, blocked by permission, missing campaign, draft-ready, paused-write-ready, or executable.
+  - Staging can record a full non-spend packet cycle before any live external write adapter is enabled.
