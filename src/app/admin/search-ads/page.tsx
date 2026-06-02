@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useToast } from '@/components/ui/Toast';
 
@@ -44,6 +45,40 @@ interface SearchAdPlanRow {
   travel_packages?: { title?: string | null; destination?: string | null; short_code?: string | null } | null;
 }
 
+type ChannelTone = 'good' | 'warn' | 'bad' | 'neutral';
+type PublicAdOsMode = 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
+
+interface AdOsSummary {
+  ok?: boolean;
+  channel_execution_states?: Record<string, {
+    label: string;
+    tone: ChannelTone;
+    canSpend: boolean;
+    summary: string;
+    nextAction: string;
+  }>;
+  active_automation_modes?: Array<{
+    platform: string;
+    level: number;
+    mode: PublicAdOsMode;
+    status: string;
+  }>;
+}
+
+const CHANNEL_TONE_CLASS: Record<ChannelTone, string> = {
+  good: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+  warn: 'border-amber-200 bg-amber-50 text-amber-800',
+  bad: 'border-red-200 bg-red-50 text-red-800',
+  neutral: 'border-slate-200 bg-slate-50 text-slate-700',
+};
+
+function publicModeLabel(mode?: PublicAdOsMode) {
+  if (mode === 'full_auto') return '완전자동';
+  if (mode === 'limited_auto') return '제한 예산 자동집행';
+  if (mode === 'approval') return '승인';
+  return '추천';
+}
+
 export default function SearchAdsPage() {
   return (
     <div className="max-w-7xl mx-auto px-2 py-4 space-y-4">
@@ -79,6 +114,8 @@ function SearchAdsContent() {
   const [keywords, setKeywords] = useState<SearchAdKeyword[]>([]);
   const [planRows, setPlanRows] = useState<SearchAdPlanRow[]>([]);
   const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set());
+  const [adOsSummary, setAdOsSummary] = useState<AdOsSummary | null>(null);
+  const [adOsError, setAdOsError] = useState<string | null>(null);
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info'),
@@ -107,6 +144,30 @@ function SearchAdsContent() {
       .then(r => r.json())
       .then(d => setPackages((d.data ?? d.packages ?? []).filter((p: Package) => p.destination)));
   }, [refreshPlans]);
+
+  useEffect(() => {
+    let alive = true;
+    fetch('/api/admin/ad-os/summary', { cache: 'no-store' })
+      .then(async (res) => {
+        const json = await res.json().catch(() => ({}));
+        if (!alive) return;
+        if (!res.ok || !json.ok) {
+          setAdOsSummary(null);
+          setAdOsError(json.error || `HTTP ${res.status}`);
+          return;
+        }
+        setAdOsSummary(json);
+        setAdOsError(null);
+      })
+      .catch((error) => {
+        if (!alive) return;
+        setAdOsSummary(null);
+        setAdOsError(error instanceof Error ? error.message : 'Ad OS 상태 조회 실패');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 필터링
   const filtered = useMemo(() => {
@@ -344,6 +405,64 @@ function SearchAdsContent() {
       </div>
 
       {/* ── 상품 광고 런치센터 ─────────────────────────── */}
+      <section className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h2 className="text-admin-base font-semibold text-admin-text-2">검색광고 집행 준비 상태</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">
+              네이버와 구글을 분리해서 권한, 캠페인, 예산 집행 가능 여부를 확인합니다. 후보 생성과 실제 광고비 집행은 별도 단계입니다.
+            </p>
+          </div>
+          <Link href="/admin/ad-os" className="inline-flex h-9 items-center rounded-admin-sm border border-admin-border-strong px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
+            Ad OS 승인/예산 보기
+          </Link>
+        </div>
+        {adOsError ? (
+          <div className="mt-3 rounded-admin-sm border border-amber-200 bg-amber-50 p-3 text-admin-sm text-amber-800">
+            Ad OS 상태를 불러오지 못했습니다. {adOsError}
+          </div>
+        ) : (
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {(['naver', 'google'] as const).map((channel) => {
+              const state = adOsSummary?.channel_execution_states?.[channel];
+              const mode = adOsSummary?.active_automation_modes?.find((item) => item.platform === channel);
+              return (
+                <div key={channel} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-admin-sm font-semibold text-admin-text-2">
+                        {channel === 'naver' ? '네이버 검색광고' : 'Google Ads'}
+                      </p>
+                      <p className="mt-1 text-admin-xs text-admin-muted">
+                        {state?.summary || '아직 채널 상태 데이터가 없습니다.'}
+                      </p>
+                    </div>
+                    <span className={`rounded-full border px-2 py-0.5 text-admin-xs font-semibold ${CHANNEL_TONE_CLASS[state?.tone || 'neutral']}`}>
+                      {state?.label || '연동 필요'}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <div className="rounded-admin-xs bg-admin-surface-2 p-2">
+                      <p className="text-[10px] font-semibold text-admin-muted">자동화</p>
+                      <p className="mt-1 text-admin-xs font-bold text-admin-text-2">{publicModeLabel(mode?.mode)}</p>
+                    </div>
+                    <div className="rounded-admin-xs bg-admin-surface-2 p-2">
+                      <p className="text-[10px] font-semibold text-admin-muted">레벨</p>
+                      <p className="mt-1 text-admin-xs font-bold text-admin-text-2">L{mode?.level ?? 1}</p>
+                    </div>
+                    <div className="rounded-admin-xs bg-admin-surface-2 p-2">
+                      <p className="text-[10px] font-semibold text-admin-muted">광고비</p>
+                      <p className="mt-1 text-admin-xs font-bold text-admin-text-2">{state?.canSpend ? '집행 가능' : '차단'}</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-admin-xs text-admin-muted">다음 조치: {state?.nextAction || '계정 연결과 캠페인 상태를 확인하세요.'}</p>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
       <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
         <div className="px-3 py-2 border-b border-admin-border-mid flex items-center justify-between gap-3">
           <div>
