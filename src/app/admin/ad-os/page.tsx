@@ -712,7 +712,7 @@ export default function AdOsPage() {
       if (!res.ok || !json.ok) throw new Error(json.error || '네이버 정지 키워드 배포 점검 실패');
       await refresh();
       setAutomationMessage(
-        `네이버 정지 키워드 점검: 후보 ${json.summary.checked_keywords.toLocaleString('ko-KR')}개, 업로드 가능 ${json.summary.eligible_keywords.toLocaleString('ko-KR')}개, 보류 ${json.summary.blocked_keywords.toLocaleString('ko-KR')}개`,
+        `네이버 정지 키워드 점검: 후보 ${json.summary.checked_keywords.toLocaleString('ko-KR')}개, limited executor 후보 ${json.summary.eligible_keywords.toLocaleString('ko-KR')}개, 보류 ${json.summary.blocked_keywords.toLocaleString('ko-KR')}개. legacy publisher 외부 API write 0건.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : '네이버 정지 키워드 배포 점검 실패');
@@ -933,7 +933,7 @@ export default function AdOsPage() {
       if (!res.ok || !json.ok) throw new Error(json.error || '네이버 정지 키워드 활성화 실패');
       await refresh();
       setAutomationMessage(
-        `네이버 정지 키워드 활성화 점검 완료: 대상 ${Number(json.summary.checked_keywords || 0).toLocaleString('ko-KR')}개, 승인요청 ${Number(json.summary.approved_activation_requests || 0).toLocaleString('ko-KR')}개, 활성화 ${Number(json.summary.activated_keywords || 0).toLocaleString('ko-KR')}개`,
+        `네이버 정지 키워드 활성화 점검 완료: 대상 ${Number(json.summary.checked_keywords || 0).toLocaleString('ko-KR')}개, 승인요청 ${Number(json.summary.approved_activation_requests || 0).toLocaleString('ko-KR')}개, 실제 활성화 ${Number(json.summary.activated_keywords || 0).toLocaleString('ko-KR')}개. active-spend interlock 전까지 외부 API write 0건.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : '네이버 정지 키워드 활성화 실패');

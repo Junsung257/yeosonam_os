@@ -745,3 +745,27 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Operating principle remains:
   - This layer still does not spend money.
   - It is the last staging/operations checklist before a future Naver paused-only external write executor is allowed.
+
+## 42. 2026-06-03 Ad OS V121-V140 legacy Naver publisher safety interlock
+
+- Added pure safety interlock logic for legacy Naver publisher routes:
+  - `src/lib/ad-os-v121-v140.ts`
+  - `src/lib/ad-os-v121-v140-db.ts`
+- Updated legacy routes so they no longer call Naver external mutation APIs directly:
+  - `POST /api/admin/ad-os/publish-naver-keywords`
+  - `POST /api/admin/ad-os/publisher/naver/activate-paused`
+- The old paused-keyword publisher now records decisions and can mark a keyword as eligible for the future audited executor, but it keeps `created_keywords=0` and `external_api_write=false`.
+- The old activation publisher now records active-spend readiness only. It does not flip Naver keyword `userLock=false`.
+- Any future legacy paused write requires all of these before it can be considered:
+  - limited pilot policy `active`
+  - policy level `live_paused_write`
+  - `live_external_write_enabled=true`
+  - monthly/daily/max-CPC/test-loss caps
+  - environment flag `AD_OS_NAVER_LIMITED_WRITE_ENABLED`
+  - request body `confirm_live_write=true`
+- Any future active keyword activation additionally requires:
+  - environment flag `AD_OS_NAVER_ACTIVE_KEYWORD_ENABLED`
+  - request body `confirm_active_spend=true`
+- Operating principle remains:
+  - Legacy routes are now inspection/delegation routes, not external writers.
+  - Real writes must go through a future audited executor that records packet, gate, rollback drill, policy, idempotency key, and mutation result in one chain.
