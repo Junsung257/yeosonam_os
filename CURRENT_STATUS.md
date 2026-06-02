@@ -160,6 +160,9 @@
 | 29 | **ad_conversion_logs** | `id`, `session_id`, `user_id`(FK), `final_booking_id`(FK), `final_sales_price`, `base_cost`, `allocated_ad_spend`, `net_profit`(GEN), `attributed_source` | 광고→예약 전환 |
 | 30 | **keyword_performances** | `id`, `platform`, `keyword`, `ad_account_id`(FK), `total_spend/revenue/cost`, `net_profit`(GEN), `roas_pct`(GEN), `clicks`, `impressions`, `current_bid`, `status`, `is_longtail` | 키워드별 성과 |
 | 31 | **creative_performance** | `id`, `creative_id`(FK), `channel`, `date`, `impressions`, `clicks`, `spend`, `cpc`, `ctr`, `roas`, UNIQUE(creative_id,channel,date) | 소재별 일일 성과 |
+| 31a | **ad_os_keyword_clusters** | `id`, `product_id`, `platform`, `keyword_text`, `tier`, `intent`, `score`, `suggested_bid_krw`, `status` | Ad OS V19-V25 초세부 키워드 클러스터 |
+| 31b | **ad_os_external_mutation_results** | `id`, `platform`, `mutation_type`, `mode`, `status`, `change_request_id`, `idempotency_key` | 외부 광고 계정 변경 요청/결과 감사 로그 |
+| 31c | **ad_os_tenant_reports** | `id`, `tenant_id`, `period_start/end`, `report_type`, `metrics`, `next_actions`, `status` | 테넌트 광고 SaaS 리포트 스냅샷 |
 
 ### 콘텐츠 / 마케팅
 

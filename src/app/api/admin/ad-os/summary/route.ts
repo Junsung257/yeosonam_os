@@ -121,6 +121,8 @@ function buildExternalLaunchStatus(input: {
 function buildLaunchActionQueue(input: {
   externalLaunchStatus: ReturnType<typeof buildExternalLaunchStatus>;
   keywordCandidates: number;
+  keywordClusters: number;
+  pendingExternalMutations: number;
   approvedOrTestingKeywords: number;
   draftCampaigns: number;
   activeSearchBudgetChannels: number;
@@ -151,9 +153,20 @@ function buildLaunchActionQueue(input: {
   }
 
   if (!input.externalLaunchStatus.naver.ready) {
+    if (input.externalLaunchStatus.naver.pass >= 3 && input.pendingExternalMutations === 0) {
+      actions.push({
+        id: 'naver_create_assets',
+        priority: 2,
+        label: '네이버 외부 자산 요청',
+        description: '캠페인/비즈채널/광고그룹/paused 키워드 생성을 승인형 변경요청으로 만듭니다. 외부 광고비는 0원입니다.',
+        button_label: '자산 요청 생성',
+        ui_action: 'createNaverAssets',
+        tone: 'warn',
+      });
+    }
     actions.push({
       id: 'naver_setup_packet',
-      priority: input.externalLaunchStatus.naver.pass >= 4 ? 2 : 4,
+      priority: input.externalLaunchStatus.naver.pass >= 4 ? 3 : 4,
       label: '네이버 세팅 패킷',
       description: '네이버 광고센터에서 만들 캠페인/광고그룹/예산/키워드 샘플을 먼저 뽑습니다.',
       button_label: '세팅 패킷 생성',
@@ -192,6 +205,18 @@ function buildLaunchActionQueue(input: {
       button_label: '상품 후보 생성',
       ui_action: 'generateCandidates',
       tone: 'neutral',
+    });
+  }
+
+  if (input.keywordClusters === 0) {
+    actions.push({
+      id: 'keyword_brain',
+      priority: 5,
+      label: '초세부 키워드 Brain',
+      description: '상품 팩트, 검색어, 실패어를 묶어 부모님/출발지/항공/불안해소형 longtail cluster를 만듭니다.',
+      button_label: 'Keyword Brain',
+      ui_action: 'runKeywordBrain',
+      tone: 'good',
     });
   }
 
@@ -435,6 +460,9 @@ async function buildSummaryResponse() {
     budgetPacingRes,
     tenantAdAccountRes,
     changeRequestRes,
+    keywordClusterRes,
+    externalMutationRes,
+    tenantReportRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -521,6 +549,21 @@ async function buildSummaryResponse() {
       .select('id, request_type, status, risk_level, platform, title, reason, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabaseAdmin
+      .from('ad_os_keyword_clusters')
+      .select('id, platform, keyword_text, tier, intent, status, score, suggested_bid_krw, created_at')
+      .order('score', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_external_mutation_results')
+      .select('id, platform, mutation_type, mode, status, external_campaign_id, external_ad_group_id, error_message, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_tenant_reports')
+      .select('id, tenant_id, period_start, period_end, status, metrics, created_at')
+      .order('created_at', { ascending: false })
+      .limit(20),
   ]);
 
   const firstError =
@@ -537,7 +580,10 @@ async function buildSummaryResponse() {
     landingEvolutionRes.error ||
     budgetPacingRes.error ||
     tenantAdAccountRes.error ||
-    changeRequestRes.error;
+    changeRequestRes.error ||
+    keywordClusterRes.error ||
+    externalMutationRes.error ||
+    tenantReportRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -655,6 +701,20 @@ async function buildSummaryResponse() {
     status: string | null;
     risk_level: string | null;
   }>;
+  const keywordClusters = (keywordClusterRes.data || []) as Array<{
+    platform: string | null;
+    tier: string | null;
+    intent: string | null;
+    status: string | null;
+    score: number | null;
+  }>;
+  const externalMutations = (externalMutationRes.data || []) as Array<{
+    platform: string | null;
+    mutation_type: string | null;
+    mode: string | null;
+    status: string | null;
+  }>;
+  const tenantReports = tenantReportRes.data || [];
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
   const channelBudgets = PLATFORMS.map((platform) => ({
@@ -787,6 +847,8 @@ async function buildSummaryResponse() {
   const launchActionQueue = buildLaunchActionQueue({
     externalLaunchStatus,
     keywordCandidates,
+    keywordClusters: keywordClusters.length,
+    pendingExternalMutations: externalMutations.filter((row) => ['planned', 'requested'].includes(row.status || '')).length,
     approvedOrTestingKeywords: Number(externalLaunchStatus.approved_or_testing_keywords || 0),
     draftCampaigns,
     activeSearchBudgetChannels: channelBudgets.filter((budget) => ['naver', 'google'].includes(budget.platform) && budget.status === 'active' && budget.monthly_budget_krw > 0).length,
@@ -907,6 +969,11 @@ async function buildSummaryResponse() {
       tenant_ad_accounts_ready: tenantAdAccounts.filter((row) => row.connection_status === 'ready').length,
       change_requests_proposed: changeRequests.filter((row) => row.status === 'proposed').length,
       change_requests_high_risk: changeRequests.filter((row) => ['high', 'critical'].includes(row.risk_level || '')).length,
+      keyword_clusters: keywordClusters.length,
+      keyword_clusters_high_score: keywordClusters.filter((row) => Number(row.score || 0) >= 70).length,
+      external_mutation_requests: externalMutations.length,
+      external_mutation_pending: externalMutations.filter((row) => ['planned', 'requested'].includes(row.status || '')).length,
+      tenant_reports: tenantReports.length,
     },
     counts: {
       mappings_by_status: mappingsByStatus,
@@ -925,6 +992,10 @@ async function buildSummaryResponse() {
       tenant_ad_accounts_by_status: byKey(tenantAdAccounts, (row) => row.connection_status || 'unknown'),
       change_requests_by_status: byKey(changeRequests, (row) => row.status || 'unknown'),
       change_requests_by_type: byKey(changeRequests, (row) => row.request_type || 'unknown'),
+      keyword_clusters_by_tier: byKey(keywordClusters, (row) => row.tier || 'unknown'),
+      keyword_clusters_by_intent: byKey(keywordClusters, (row) => row.intent || 'unknown'),
+      external_mutations_by_status: byKey(externalMutations, (row) => row.status || 'unknown'),
+      external_mutations_by_type: byKey(externalMutations, (row) => row.mutation_type || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -978,6 +1049,9 @@ async function buildSummaryResponse() {
       budget_pacing: budgetPacingRes.data?.slice(0, 12) || [],
       tenant_ad_accounts: tenantAdAccountRes.data?.slice(0, 12) || [],
       change_requests: changeRequestRes.data?.slice(0, 12) || [],
+      keyword_clusters: keywordClusterRes.data?.slice(0, 12) || [],
+      external_mutations: externalMutationRes.data?.slice(0, 12) || [],
+      tenant_reports: tenantReportRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

@@ -563,3 +563,12 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - `npm.cmd run lint`
   - `npm.cmd run audit:event-taxonomy`
   - `npm.cmd run build`
+
+## 34. 2026-06-02 Ad OS V19-V25 enterprise slice
+
+- Added `ad_os_keyword_clusters`, `ad_os_external_mutation_results`, and `ad_os_tenant_reports`.
+- `/api/admin/ad-os/keyword-brain` mines product-fact, search-term, and waste-term based longtail clusters, then stores internal keyword clusters and search ad draft rows when `apply=true`. External spend remains 0 KRW.
+- `/api/admin/ad-os/publisher/naver/create-assets` creates approval-gated change requests and mutation audit rows for Naver campaign, business channel, ad group, and paused keyword setup. It does not directly create live external spend.
+- `/api/admin/ad-os/tenant-report` now includes keyword clusters and external mutation activity in the agency/SaaS report preview, and can persist a report draft.
+- `/admin/ad-os` exposes `Keyword Brain` and `Naver asset request` actions, plus result panels showing generated longtails and pending external asset requests.
+- Operating principle remains unchanged: recommendation and approval first, limited autopilot only inside tenant budget/risk guardrails, full autopilot off by default.

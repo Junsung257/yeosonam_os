@@ -164,6 +164,9 @@ type Summary = {
     budget_pacing: Array<Record<string, unknown>>;
     tenant_ad_accounts: Array<Record<string, unknown>>;
     change_requests: Array<Record<string, unknown>>;
+    keyword_clusters?: Array<Record<string, unknown>>;
+    external_mutations?: Array<Record<string, unknown>>;
+    tenant_reports?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -314,6 +317,8 @@ export default function AdOsPage() {
   const [buildingOpsPlan, setBuildingOpsPlan] = useState(false);
   const [creatingCreativeDrafts, setCreatingCreativeDrafts] = useState(false);
   const [syncingBookingFunnel, setSyncingBookingFunnel] = useState(false);
+  const [runningKeywordBrain, setRunningKeywordBrain] = useState(false);
+  const [creatingNaverAssets, setCreatingNaverAssets] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -321,6 +326,8 @@ export default function AdOsPage() {
   const [naverSetupPacket, setNaverSetupPacket] = useState<NaverSetupPacket | null>(null);
   const [tenantReport, setTenantReport] = useState<Record<string, unknown> | null>(null);
   const [opsPlan, setOpsPlan] = useState<Record<string, unknown> | null>(null);
+  const [keywordBrainResult, setKeywordBrainResult] = useState<Record<string, unknown> | null>(null);
+  const [naverAssetPlan, setNaverAssetPlan] = useState<Record<string, unknown> | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -1178,6 +1185,54 @@ export default function AdOsPage() {
     }
   };
 
+  const runKeywordBrain = async () => {
+    setRunningKeywordBrain(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/keyword-brain', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 80 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Keyword Brain 실행 실패');
+      setKeywordBrainResult(json);
+      await refresh();
+      setAutomationMessage(
+        `Keyword Brain 완료: 후보 ${Number(json.summary?.candidates || 0).toLocaleString('ko-KR')}개, 클러스터 ${Number(json.summary?.inserted_clusters || 0).toLocaleString('ko-KR')}개, 광고 draft ${Number(json.summary?.inserted_keyword_plans || 0).toLocaleString('ko-KR')}개. 외부 광고비 0원.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Keyword Brain 실행 실패');
+    } finally {
+      setRunningKeywordBrain(false);
+    }
+  };
+
+  const createNaverAssets = async () => {
+    setCreatingNaverAssets(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/publisher/naver/create-assets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '네이버 외부 자산 요청 실패');
+      setNaverAssetPlan(json);
+      await refresh();
+      setAutomationMessage(
+        `네이버 외부 자산 요청 완료: 변경요청 ${Number(json.summary?.inserted_change_requests || 0).toLocaleString('ko-KR')}개, mutation 감사 ${Number(json.summary?.inserted_mutation_rows || 0).toLocaleString('ko-KR')}개, 차단 ${Array.isArray(json.summary?.blockers) ? json.summary.blockers.join(', ') || '없음' : '없음'}. 외부 광고비 0원.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '네이버 외부 자산 요청 실패');
+    } finally {
+      setCreatingNaverAssets(false);
+    }
+  };
+
   const updateChangeRequest = async (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => {
     setChangeRequestActionId(id);
     setError(null);
@@ -1304,6 +1359,8 @@ export default function AdOsPage() {
     planExperiments,
     probeGooglePublisher,
     loadTenantReport,
+    runKeywordBrain,
+    createNaverAssets,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -1318,6 +1375,8 @@ export default function AdOsPage() {
     planExperiments: planningExperiments,
     probeGooglePublisher: probingGooglePublisher,
     loadTenantReport: loadingTenantReport,
+    runKeywordBrain: runningKeywordBrain,
+    createNaverAssets: creatingNaverAssets,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
@@ -1330,6 +1389,8 @@ export default function AdOsPage() {
   const opsMeasurement = opsPlan?.measurement as Record<string, number | string> | undefined;
   const opsKeywordMining = opsPlan?.keyword_mining as { candidates?: Array<Record<string, unknown>>; duplicate_content_action?: Record<string, unknown> } | undefined;
   const opsTenantPackaging = opsPlan?.tenant_packaging as { productReadinessLabel?: string; missing?: string[] } | undefined;
+  const keywordBrainCandidates = (keywordBrainResult?.candidates || []) as Array<Record<string, unknown>>;
+  const naverAssetMutations = (naverAssetPlan?.plan as { mutations?: Array<Record<string, unknown>> } | undefined)?.mutations || [];
 
   return (
     <div className="space-y-5">
@@ -2163,6 +2224,14 @@ export default function AdOsPage() {
                   <Bot size={14} />
                   V13-V18 운영 계획
                 </Button>
+                <Button size="sm" variant="secondary" onClick={runKeywordBrain} loading={runningKeywordBrain}>
+                  <Search size={14} />
+                  Keyword Brain
+                </Button>
+                <Button size="sm" variant="secondary" onClick={createNaverAssets} loading={creatingNaverAssets}>
+                  <Rocket size={14} />
+                  네이버 자산 요청
+                </Button>
                 <Button size="sm" variant="secondary" onClick={createCreativeDrafts} loading={creatingCreativeDrafts}>
                   <Layers size={14} />
                   Creative draft 생성
@@ -2231,6 +2300,62 @@ export default function AdOsPage() {
                   </p>
                 </div>
               )}
+              {keywordBrainResult && (
+                <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-admin-sm font-semibold text-admin-text">V21 초세부 키워드 Brain 결과</p>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">
+                        상품 팩트, 실제 검색어, 실패어를 묶어 longtail cluster와 검색광고 draft를 만들었습니다. 외부 광고비는 쓰지 않습니다.
+                      </p>
+                    </div>
+                    <StatusPill tone="good">
+                      {Number((keywordBrainResult.summary as Record<string, number> | undefined)?.candidates || 0).toLocaleString('ko-KR')}개
+                    </StatusPill>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-3">
+                    {keywordBrainCandidates.slice(0, 9).map((candidate) => (
+                      <div key={`${String(candidate.keyword)}-${String(candidate.matchType)}`} className="rounded-admin-xs border border-admin-border bg-admin-surface px-3 py-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="text-admin-xs font-semibold text-admin-text">{String(candidate.keyword || '-')}</p>
+                          <StatusPill tone={candidate.tier === 'negative' ? 'bad' : Number(candidate.score || 0) >= 70 ? 'good' : 'neutral'}>
+                            {String(candidate.tier || '-')}
+                          </StatusPill>
+                        </div>
+                        <p className="mt-1 text-admin-2xs text-admin-muted">
+                          {String(candidate.intent || '-')} · {String(candidate.matchType || '-')} · {fmtWon(Number(candidate.suggestedBidKrw || 0))}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {naverAssetPlan && (
+                <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-admin-sm font-semibold text-admin-text">V19 네이버 외부 자산 요청</p>
+                      <p className="mt-1 text-admin-2xs text-admin-muted">
+                        캠페인/비즈채널/광고그룹/paused 키워드 생성을 승인형 변경요청과 mutation audit로 남깁니다.
+                      </p>
+                    </div>
+                    <StatusPill tone={Number((naverAssetPlan.summary as Record<string, number> | undefined)?.inserted_change_requests || 0) > 0 ? 'warn' : 'neutral'}>
+                      CR {Number((naverAssetPlan.summary as Record<string, number> | undefined)?.inserted_change_requests || 0).toLocaleString('ko-KR')}
+                    </StatusPill>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
+                    {naverAssetMutations.map((mutation) => (
+                      <div key={String(mutation.mutationType)} className="rounded-admin-xs border border-admin-border bg-admin-surface px-3 py-2">
+                        <p className="text-admin-xs font-semibold text-admin-text">{String(mutation.title || mutation.mutationType || '-')}</p>
+                        <p className="mt-1 text-admin-2xs text-admin-muted">{String(mutation.requestType || '-')} · 승인 후 적용</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3 text-admin-2xs text-admin-muted">
+                    다음 액션: {String((naverAssetPlan.plan as Record<string, unknown> | undefined)?.nextAction || '-')}
+                  </p>
+                </div>
+              )}
               {tenantReportBody && (
                 <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
                   <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -2252,6 +2377,8 @@ export default function AdOsPage() {
                       ['CPA', fmtWon(Number(tenantReportBody.cpa_krw || 0))],
                       ['낭비 키워드', Number(tenantReportBody.paused_waste_keywords || 0).toLocaleString('ko-KR')],
                       ['저가 키워드', Number(tenantReportBody.discovered_cheap_keywords || 0).toLocaleString('ko-KR')],
+                      ['키워드 클러스터', Number(tenantReportBody.keyword_clusters || 0).toLocaleString('ko-KR')],
+                      ['외부 요청', Number(tenantReportBody.external_mutations || 0).toLocaleString('ko-KR')],
                     ].map(([label, value]) => (
                       <div key={label} className="rounded-admin-xs bg-admin-surface px-3 py-2">
                         <p className="text-admin-2xs text-admin-muted">{label}</p>
