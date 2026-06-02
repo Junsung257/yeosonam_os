@@ -871,3 +871,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - No conversion job becomes `uploaded` from a dry-run or from a platform upload response alone.
   - Google/Meta campaign publishing remains separate and disabled by default.
+
+## 49. 2026-06-03 Ad OS V261-V280 operations queue visibility
+
+- Extended `/api/admin/ad-os/summary` with an `ops_queues` layer derived from existing platform jobs, conversion upload jobs, and execution attempts.
+- Added three normalized operator queues:
+  - `ops_executor_queue`: approved/running platform jobs and conversion upload jobs that are ready for executor dry-run or gated live execution.
+  - `ops_confirmation_queue`: jobs that have an external mutation/upload result pending human confirmation before `applied` or `uploaded` semantics are granted.
+  - `ops_failed_queue`: blocked or failed platform jobs, conversion upload jobs, and executor attempts with blocker/next-action text.
+- `/admin/ad-os` now shows these queues inside the Enterprise Runtime Layer with counts for execution, confirmation, blocked/failed, and live writes.
+- Safety principle:
+  - Operators can see exactly whether Ad OS is waiting for an executor, waiting for external result confirmation, or blocked by policy/data quality.
+  - The UI does not introduce any new external write path; it only makes existing gates and pending states visible.

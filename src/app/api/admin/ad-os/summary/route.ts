@@ -29,6 +29,38 @@ function byKey<T>(rows: T[], pick: (row: T) => string | null | undefined): Recor
   }, {});
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function payloadFlag(row: { response_payload?: unknown }, key: string): boolean {
+  return asRecord(row.response_payload)[key] === true;
+}
+
+function sampleQueueRow(input: {
+  id: string | null | undefined;
+  source: string;
+  platform: string | null | undefined;
+  status: string | null | undefined;
+  title: string | null | undefined;
+  reason?: string | null | undefined;
+  next_action: string;
+  created_at?: string | null | undefined;
+}) {
+  return {
+    id: input.id || '',
+    source: input.source,
+    platform: input.platform || 'internal',
+    status: input.status || 'unknown',
+    title: input.title || input.source,
+    reason: input.reason || null,
+    next_action: input.next_action,
+    created_at: input.created_at || null,
+  };
+}
+
 function hasAllSecrets(names: string[]): boolean {
   return names.every((name) => Boolean(getSecret(name as never)));
 }
@@ -624,12 +656,12 @@ async function buildSummaryResponse() {
       .limit(100),
     supabaseAdmin
       .from('ad_os_platform_jobs')
-      .select('id, platform, job_type, status, guardrail_status, blocked_reason, automation_level, external_api_write, created_at')
+      .select('id, platform, job_type, status, guardrail_status, blocked_reason, automation_level, external_api_write, response_payload, change_request_id, external_mutation_result_id, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
       .from('ad_os_conversion_upload_jobs')
-      .select('id, platform, event_name, status, signal_quality_score, blocked_reason, created_at')
+      .select('id, platform, event_name, status, signal_quality_score, blocked_reason, response_payload, external_upload_id, uploaded_at, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
@@ -914,17 +946,28 @@ async function buildSummaryResponse() {
     status: string | null;
   }>;
   const platformJobs = (platformJobRes.data || []) as Array<{
+    id: string | null;
     platform: string | null;
     job_type: string | null;
     status: string | null;
     guardrail_status: string | null;
+    blocked_reason: string | null;
     external_api_write: boolean | null;
+    response_payload?: unknown;
+    external_mutation_result_id?: string | null;
+    created_at?: string | null;
   }>;
   const conversionUploadJobs = (conversionUploadJobRes.data || []) as Array<{
+    id: string | null;
     platform: string | null;
     event_name: string | null;
     status: string | null;
     signal_quality_score: number | null;
+    blocked_reason: string | null;
+    response_payload?: unknown;
+    external_upload_id?: string | null;
+    uploaded_at?: string | null;
+    created_at?: string | null;
   }>;
   const dataQualitySnapshots = (dataQualitySnapshotRes.data || []) as Array<{
     status: string | null;
@@ -950,10 +993,13 @@ async function buildSummaryResponse() {
     check_key: string | null;
   }>;
   const executionAttempts = (executionAttemptRes.data || []) as Array<{
+    id: string | null;
+    platform: string | null;
     attempt_type: string | null;
     status: string | null;
     external_api_write: boolean | null;
     blocked_reason: string | null;
+    created_at?: string | null;
   }>;
   const experimentTemplates = (experimentTemplateRes.data || []) as Array<{
     experiment_type: string | null;
@@ -1040,6 +1086,113 @@ async function buildSummaryResponse() {
     managed_spend_fee_pct: number | null;
     performance_fee_pct: number | null;
   }>;
+
+  const platformConfirmationJobs = platformJobs.filter((row) =>
+    row.status === 'running' &&
+    (
+      Boolean(row.external_mutation_result_id) ||
+      payloadFlag(row, 'external_result_pending_confirmation')
+    )
+  );
+  const conversionConfirmationJobs = conversionUploadJobs.filter((row) =>
+    row.status === 'running' &&
+    (
+      Boolean(row.external_upload_id) ||
+      payloadFlag(row, 'external_upload_id_pending_confirmation')
+    )
+  );
+  const executorQueueRows = [
+    ...platformJobs
+      .filter((row) => ['approved', 'running'].includes(row.status || '') && !platformConfirmationJobs.some((candidate) => candidate.id === row.id))
+      .map((row) => sampleQueueRow({
+        id: row.id,
+        source: 'platform_job',
+        platform: row.platform,
+        status: row.status,
+        title: row.job_type,
+        reason: row.blocked_reason,
+        next_action: row.platform === 'naver'
+          ? '네이버 paused-write executor dry-run 후 live gate를 확인하세요.'
+          : row.platform === 'google'
+            ? 'Google draft/OAuth/conversion action gate를 확인하세요.'
+            : row.platform === 'meta'
+              ? 'Meta creative/CAPI draft gate를 확인하세요.'
+              : '채널 어댑터 실행 게이트를 확인하세요.',
+        created_at: row.created_at,
+      })),
+    ...conversionUploadJobs
+      .filter((row) => ['approved', 'running'].includes(row.status || '') && !conversionConfirmationJobs.some((candidate) => candidate.id === row.id))
+      .map((row) => sampleQueueRow({
+        id: row.id,
+        source: 'conversion_upload_job',
+        platform: row.platform,
+        status: row.status,
+        title: row.event_name,
+        reason: row.blocked_reason,
+        next_action: '전환 upload dry-run으로 consent, dedupe, identifier 품질을 재확인하세요.',
+        created_at: row.created_at,
+      })),
+  ];
+  const confirmationQueueRows = [
+    ...platformConfirmationJobs.map((row) => sampleQueueRow({
+      id: row.id,
+      source: 'platform_job_confirmation',
+      platform: row.platform,
+      status: row.status,
+      title: row.job_type,
+      reason: row.external_mutation_result_id || 'external result pending',
+      next_action: '외부 플랫폼 결과를 확인한 뒤 external-results/confirm으로 성공/실패를 확정하세요.',
+      created_at: row.created_at,
+    })),
+    ...conversionConfirmationJobs.map((row) => sampleQueueRow({
+      id: row.id,
+      source: 'conversion_upload_confirmation',
+      platform: row.platform,
+      status: row.status,
+      title: row.event_name,
+      reason: row.external_upload_id || 'external upload id pending',
+      next_action: 'Google/Meta 업로드 id를 확인한 뒤 external-results/confirm으로 업로드 상태를 확정하세요.',
+      created_at: row.created_at,
+    })),
+  ];
+  const failedQueueRows = [
+    ...platformJobs
+      .filter((row) => ['blocked', 'failed'].includes(row.status || '') || row.guardrail_status === 'blocked')
+      .map((row) => sampleQueueRow({
+        id: row.id,
+        source: 'platform_job',
+        platform: row.platform,
+        status: row.status || row.guardrail_status,
+        title: row.job_type,
+        reason: row.blocked_reason,
+        next_action: row.blocked_reason || '예산, 권한, 자동화 레벨, kill switch를 확인하세요.',
+        created_at: row.created_at,
+      })),
+    ...conversionUploadJobs
+      .filter((row) => ['blocked', 'failed'].includes(row.status || ''))
+      .map((row) => sampleQueueRow({
+        id: row.id,
+        source: 'conversion_upload_job',
+        platform: row.platform,
+        status: row.status,
+        title: row.event_name,
+        reason: row.blocked_reason,
+        next_action: row.blocked_reason || 'PII, consent, dedupe, freshness, identifier 품질을 확인하세요.',
+        created_at: row.created_at,
+      })),
+    ...executionAttempts
+      .filter((row) => ['blocked', 'failed'].includes(row.status || ''))
+      .map((row) => sampleQueueRow({
+        id: row.id,
+        source: 'execution_attempt',
+        platform: row.platform,
+        status: row.status,
+        title: row.attempt_type,
+        reason: row.blocked_reason,
+        next_action: row.blocked_reason || '최근 실행 attempt의 dry-run 결과와 adapter gate를 확인하세요.',
+        created_at: row.created_at,
+      })),
+  ];
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
   const channelBudgets = PLATFORMS.map((platform) => ({
@@ -1372,6 +1525,9 @@ async function buildSummaryResponse() {
       limited_write_pilot_dry_run_succeeded: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'dry_run_succeeded').length,
       limited_write_pilot_blocked: limitedWritePilotAttempts.filter((row) => row.attempt_status === 'blocked' || row.attempt_status === 'live_write_blocked').length,
       limited_write_pilot_external_api_write: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
+      ops_executor_queue: executorQueueRows.length,
+      ops_confirmation_queue: confirmationQueueRows.length,
+      ops_failed_queue: failedQueueRows.length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1607,6 +1763,22 @@ async function buildSummaryResponse() {
         external_api_write_count: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
         first_blocker: limitedWritePilotAttempts.find((row) => Array.isArray(row.blockers) && row.blockers.length > 0)?.blockers?.[0] || null,
       },
+      ops_queues: {
+        executor_ready: executorQueueRows.length,
+        confirmation_pending: confirmationQueueRows.length,
+        failed_or_blocked: failedQueueRows.length,
+        live_writes:
+          executionAttempts.filter((row) => row.external_api_write).length +
+          platformJobs.filter((row) => row.external_api_write).length +
+          conversionUploadJobs.filter((row) => payloadFlag(row, 'external_api_write')).length,
+        next_action: confirmationQueueRows.length > 0
+          ? '외부 플랫폼 결과를 확인하고 성공/실패를 확정하세요.'
+          : failedQueueRows.length > 0
+            ? '실패·차단 사유를 먼저 해소한 뒤 dry-run을 재실행하세요.'
+            : executorQueueRows.length > 0
+              ? '승인된 job을 dry-run으로 검증하고 live gate를 확인하세요.'
+              : '승인 대기 변경요청 또는 상품 기반 후보 생성부터 진행하세요.',
+      },
     },
     launch_action_queue: launchActionQueue,
     recent_decisions: decisionRes.data || [],
@@ -1646,6 +1818,9 @@ async function buildSummaryResponse() {
       rollback_drills: rollbackDrillRes.data?.slice(0, 12) || [],
       limited_write_pilot_policies: limitedWritePilotPolicyRes.data?.slice(0, 12) || [],
       limited_write_pilot_attempts: limitedWritePilotAttemptRes.data?.slice(0, 12) || [],
+      ops_executor_queue: executorQueueRows.slice(0, 8),
+      ops_confirmation_queue: confirmationQueueRows.slice(0, 8),
+      ops_failed_queue: failedQueueRows.slice(0, 8),
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },
