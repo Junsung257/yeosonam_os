@@ -1,7 +1,8 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { withCronGuard } from '@/lib/cron-auth';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { withCronLogging } from '@/lib/cron-observability';
 import { logError } from '@/lib/sentry-logger';
 
 /**
@@ -18,9 +19,12 @@ import { logError } from '@/lib/sentry-logger';
  *   정보성 블로그(product_id IS NULL)는 절대 건드리지 않는다 (영구 SEO 자산).
  */
 export const dynamic = 'force-dynamic';
-const getHandler = async () => {
+const getHandler = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
+  }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return { skipped: true, reason: 'Supabase 미설정' };
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -38,7 +42,7 @@ const getHandler = async () => {
 
     if (error) throw error;
     if (!posts || posts.length === 0) {
-      return NextResponse.json({ archivedCount: 0, message: '상품 연결 글 없음' });
+      return { archivedCount: 0, message: '상품 연결 글 없음' };
     }
 
     const toArchive: Array<{ id: string; slug: string; reason: string }> = [];
@@ -85,14 +89,11 @@ const getHandler = async () => {
     }
 
     console.log(`[blog-lifecycle] ${archivedCount}개 블로그 아카이브`);
-    return NextResponse.json({ archivedCount, archived, checkedAt: new Date().toISOString() });
+    return { archivedCount, archived, checkedAt: new Date().toISOString() };
   } catch (err) {
     logError('[cron/blog-lifecycle] lifecycle processing failed', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '라이프사이클 처리 실패' },
-      { status: 500 },
-    );
+    return { errors: [err instanceof Error ? err.message : '라이프사이클 처리 실패'] };
   }
 }
 
-export const GET = withCronGuard(getHandler);
+export const GET = withCronLogging('blog-lifecycle', getHandler);

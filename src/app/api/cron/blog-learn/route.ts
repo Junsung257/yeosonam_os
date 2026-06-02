@@ -8,6 +8,7 @@ import { collectWeeklyMetrics } from '@/lib/blog-metrics-store';
 import { computeAdaptiveThresholds, persistAdaptiveThresholds } from '@/lib/blog-bayesian-optimizer';
 import { collectSystemHealth } from '@/lib/blog-content-orchestrator';
 import { autoFinalizeExperiments } from '@/lib/ab-test-engine';
+import { getSecret } from '@/lib/secret-registry';
 
 // 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
 export const dynamic = 'force-dynamic';
@@ -31,7 +32,7 @@ const handleBlogLearn = async (request: NextRequest) => {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  const baseUrl = new URL(request.url).origin;
   const result: Record<string, unknown> = { ranAt: new Date().toISOString() };
   const errors: string[] = [];
 
@@ -97,7 +98,11 @@ const handleBlogLearn = async (request: NextRequest) => {
 
   // ── B) Prompt optimizer ─────────────────────────────────────
   try {
-    const optRes = await fetch(`${baseUrl}/api/agent/prompt-optimizer`, { method: 'POST' });
+    const serviceRoleKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
+    const optRes = await fetch(`${baseUrl}/api/agent/prompt-optimizer`, {
+      method: 'POST',
+      headers: serviceRoleKey ? { Authorization: `Bearer ${serviceRoleKey}` } : undefined,
+    });
     const ct = optRes.headers.get('content-type') || '';
     if (!optRes.ok || !ct.includes('application/json')) {
       const body = await optRes.text();

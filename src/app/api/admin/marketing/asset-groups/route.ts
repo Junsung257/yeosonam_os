@@ -2,14 +2,25 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getMarketingAssetGroups } from '@/lib/marketing/asset-groups';
 import { attachLedgerToActions, syncMarketingRecommendations } from '@/lib/marketing/recommendation-ledger';
+import { withTimeout } from '@/lib/promise-timeout';
 
 export const dynamic = 'force-dynamic';
+
+const ASSET_GROUP_TIMEOUT_MS = 8000;
 
 async function getHandler(request: NextRequest) {
   const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get('limit') ?? 30), 1), 100);
   try {
-    const data = await getMarketingAssetGroups(limit);
-    const ledger = await syncMarketingRecommendations(data.groups, data.actions);
+    const data = await withTimeout(
+      getMarketingAssetGroups(limit),
+      ASSET_GROUP_TIMEOUT_MS,
+      'marketing asset groups',
+    );
+    const ledger = await withTimeout(
+      syncMarketingRecommendations(data.groups, data.actions),
+      ASSET_GROUP_TIMEOUT_MS,
+      'marketing recommendation ledger',
+    );
     const actions = attachLedgerToActions(data.actions, ledger);
     const groups = data.groups.map((group) => ({
       ...group,
@@ -25,10 +36,12 @@ async function getHandler(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown asset group error';
     const accessState = /401|permission|unauthorized|auth/i.test(message) ? 'permission_denied' : 'data_unavailable';
+    console.warn('[marketing/asset-groups] degraded response:', message);
     return NextResponse.json({
       ok: false,
       checked_at: new Date().toISOString(),
       access_state: accessState,
+      degraded: true,
       error: accessState === 'permission_denied'
         ? '권한 없음: 관리자 세션 또는 서버 권한으로 자산 그룹을 조회할 수 없습니다.'
         : message,

@@ -8,10 +8,12 @@ import {
 } from '@/lib/ad-os-governance';
 import { buildTenantAdReadiness } from '@/lib/ad-os-tenant-readiness';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { withTimeout } from '@/lib/promise-timeout';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
+const AD_OS_SUMMARY_TIMEOUT_MS = 8000;
 
 const PLATFORMS = ['naver', 'google', 'meta', 'kakao'] as const;
 
@@ -254,7 +256,164 @@ function buildLaunchActionQueue(input: {
     .slice(0, 5);
 }
 
-export const GET = withAdminGuard(async () => {
+function buildDegradedSummary(error: unknown) {
+  const message = error instanceof Error ? error.message : 'Ad OS summary unavailable';
+  const integrationStatus = {
+    naver: hasAllSecrets(['NAVER_ADS_API_KEY', 'NAVER_ADS_SECRET_KEY', 'NAVER_ADS_CUSTOMER_ID']),
+    google: hasAllSecrets(['GOOGLE_ADS_DEVELOPER_TOKEN', 'GOOGLE_ADS_CUSTOMER_ID', 'GOOGLE_ADS_CLIENT_ID', 'GOOGLE_ADS_CLIENT_SECRET']),
+    meta: hasAnySecret(['META_ACCESS_TOKEN', 'META_ADS_ACCESS_TOKEN']) && hasAllSecrets(['META_AD_ACCOUNT_ID']),
+    kakao: false,
+  };
+
+  return {
+    ok: false,
+    degraded: true,
+    error: message,
+    generated_at: new Date().toISOString(),
+    kpis: {
+      mapping_candidates: 0,
+      keyword_candidates: 0,
+      live_mappings: 0,
+      landing_blogs: 0,
+      published_blogs: 0,
+      tracked_clicks: 0,
+      tracked_cta_clicks: 0,
+      tracked_conversions: 0,
+      tracked_spend_krw: 0,
+      tracked_roas_pct: 0,
+      configured_monthly_budget_krw: 0,
+      draft_campaigns: 0,
+      active_campaigns: 0,
+      learning_events: 0,
+      search_term_candidates: 0,
+      tenant_ad_accounts: 0,
+      tenant_ad_accounts_ready: 0,
+      change_requests_proposed: 0,
+      change_requests_high_risk: 0,
+    },
+    counts: {},
+    readiness_audit: {
+      ready: false,
+      score: 0,
+      blockers: ['Supabase 응답 지연으로 Ad OS 상태를 확인하지 못했습니다.'],
+      warnings: [],
+      next_actions: ['외부 광고 집행은 자동 차단 상태로 유지하고 DB 연결 회복 후 다시 확인하세요.'],
+    },
+    learning_loop: {
+      scope: ['blog_landing', 'keyword', 'product', 'tenant'],
+      metrics: {
+        clicks: 0,
+        cta_clicks: 0,
+        conversions: 0,
+        spend_krw: 0,
+        conversion_value_krw: 0,
+        cpa_krw: 0,
+        roas_pct: 0,
+        cta_rate_pct: 0,
+        conversion_rate_pct: 0,
+        bounce_rate_pct: null,
+        engagement_sessions_30d: 0,
+        avg_time_on_page_seconds: 0,
+        avg_scroll_depth_pct: 0,
+      },
+      status: {
+        has_click_signal: false,
+        has_cta_signal: false,
+        has_booking_signal: false,
+        has_cost_signal: false,
+        bounce_tracking_ready: false,
+      },
+      next_action: 'DB 연결 회복 후 CPA/ROAS 학습 루프를 재계산합니다.',
+    },
+    channel_budgets: PLATFORMS.map((platform) => ({
+      platform,
+      configured: false,
+      monthly_budget_krw: 0,
+      daily_budget_cap_krw: 0,
+      max_cpc_krw: 0,
+      max_test_loss_krw: 0,
+      automation_level: 1,
+      status: 'paused',
+      external_account_id: null,
+      external_campaign_id: null,
+      external_ad_group_id: null,
+      external_config_note: null,
+    })),
+    integration_status: integrationStatus,
+    channel_execution_states: {
+      naver: {
+        label: '네이버',
+        tone: 'bad',
+        canSpend: false,
+        summary: '상태 확인 불가',
+        nextAction: 'Supabase 연결 회복 후 네이버 집행 준비도를 다시 확인하세요.',
+      },
+      google: {
+        label: '구글',
+        tone: 'bad',
+        canSpend: false,
+        summary: '상태 확인 불가',
+        nextAction: 'Supabase 연결 회복 후 구글 집행 준비도를 다시 확인하세요.',
+      },
+    },
+    active_automation_modes: PLATFORMS.map((platform) => ({
+      platform,
+      level: 1,
+      mode: 'recommendation',
+      status: 'paused',
+    })),
+    automation_modes: AD_OS_AUTOMATION_MODES,
+    tenant_guardrails: [
+      {
+        key: 'data_plane',
+        label: '데이터 연결',
+        status: 'fail',
+        message,
+      },
+    ],
+    tenant_policy: {
+      configured: false,
+      error: message,
+      tenant_id: null,
+      allowed_platforms: ['naver', 'google'],
+      monthly_budget_cap_krw: 0,
+      daily_budget_cap_krw: 0,
+      max_cpc_krw: 0,
+      max_test_loss_krw: 0,
+      max_automation_level: 1,
+      require_human_approval: true,
+      full_auto_enabled: false,
+      risk_status: 'blocked',
+    },
+    tenant_ad_readiness: [],
+    launch_action_queue: [
+      {
+        id: 'data_plane_recover',
+        priority: 1,
+        label: '데이터 연결 복구',
+        description: 'Supabase 응답 지연 중에는 외부 광고 집행을 켜지 않습니다.',
+        button_label: '상태 새로고침',
+        ui_action: 'refresh',
+        tone: 'bad',
+      },
+    ],
+    recent_decisions: [],
+    expiring_packages: [],
+    samples: {
+      mappings: [],
+      keyword_plans: [],
+      learning_events: [],
+      search_term_candidates: [],
+      product_scenarios: [],
+      landing_evolution_queue: [],
+      budget_pacing: [],
+      tenant_ad_accounts: [],
+      change_requests: [],
+    },
+  };
+}
+
+async function buildSummaryResponse() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -829,4 +988,18 @@ export const GET = withAdminGuard(async () => {
       { level: 5, label: '완전자율', description: '목표 CPA/ROAS와 예산 안에서 생성-집행-연장-중지 자동' },
     ],
   });
+}
+
+export const GET = withAdminGuard(async () => {
+  try {
+    return await withTimeout(
+      buildSummaryResponse(),
+      AD_OS_SUMMARY_TIMEOUT_MS,
+      'ad os summary',
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Ad OS summary unavailable';
+    console.warn('[ad-os/summary] degraded response:', message);
+    return NextResponse.json(buildDegradedSummary(error), { status: 503 });
+  }
 });

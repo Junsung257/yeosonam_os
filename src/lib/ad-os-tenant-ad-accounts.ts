@@ -162,3 +162,31 @@ export async function upsertTenantAdAccountProbe(
     .select('*')
     .single();
 }
+
+export async function syncTenantAdAccountBudgetCaps(
+  supabase: SupabaseClient,
+  input: {
+    platform: AdOsPlatform;
+    tenantId?: string | null;
+    accountMode?: 'agency_managed' | 'tenant_owned' | 'hybrid';
+    monthlyBudgetCapKrw: number;
+    dailyBudgetCapKrw: number;
+  },
+) {
+  const accountMode = input.accountMode || 'agency_managed';
+  const query = supabase
+    .from('ad_os_tenant_ad_accounts')
+    .update({
+      monthly_budget_cap_krw: nonNegativeInt(input.monthlyBudgetCapKrw),
+      daily_budget_cap_krw: nonNegativeInt(input.dailyBudgetCapKrw),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('platform', input.platform)
+    .eq('account_mode', accountMode);
+
+  const result = input.tenantId
+    ? await query.eq('tenant_id', input.tenantId)
+    : await query.is('tenant_id', null);
+
+  return result;
+}

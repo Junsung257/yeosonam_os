@@ -36,6 +36,10 @@ export const dynamic = 'force-dynamic';
 
 const MAX_PUBLISH_PER_RUN = 3;
 
+function currentPostingHourKst(): number {
+  return (new Date().getUTCHours() + 9) % 24;
+}
+
 async function runAutoPublishLoop(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -95,7 +99,7 @@ async function runAutoPublishLoop(request: NextRequest) {
   // 4) 후보 select
   const { data: candidates, error: fetchErr } = await supabaseAdmin
     .from('card_news')
-    .select('id, title, ig_caption, hook_type, palette_category, posting_hour_kst, design_archetype_id, slides_v2, generation_config')
+    .select('id, title, ig_caption, hook_type, palette_category, design_archetype_id, slides_v2, generation_config')
     .eq('status', 'confirmed')
     .or('ig_publish_status.is.null,ig_publish_status.eq.draft')
     .is('ig_post_id', null)
@@ -110,7 +114,6 @@ async function runAutoPublishLoop(request: NextRequest) {
     ig_caption: string | null;
     hook_type: string | null;
     palette_category: string | null;
-    posting_hour_kst: number | null;
     design_archetype_id: string | null;
     slides_v2: unknown;
     generation_config: Record<string, unknown> | null;
@@ -140,7 +143,7 @@ async function runAutoPublishLoop(request: NextRequest) {
       slide_roles,
       hook_type: card.hook_type,
       palette_category: card.palette_category,
-      posting_hour_kst: card.posting_hour_kst,
+      posting_hour_kst: currentPostingHourKst(),
     };
     const features = extractCardNewsFeatures(featuresInput);
     const fullText = [cover_headline, cover_body, card.ig_caption ?? '', ...slides.map((s) => `${s.headline ?? ''} ${s.body ?? ''}`)]

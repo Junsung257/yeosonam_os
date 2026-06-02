@@ -92,12 +92,13 @@ export async function recordCronRun(record: CronRunRecord): Promise<void> {
     .from('cron_run_logs')
     .insert({
       cron_name: record.cronName,
+      status: record.succeeded ? 'success' : 'error',
       started_at: record.startedAt,
       finished_at: record.finishedAt,
-      succeeded: record.succeeded,
-      duration_ms: record.durationMs,
-      processed_count: record.processedCount,
-      error_message: record.errorMessage,
+      elapsed_ms: record.durationMs,
+      summary: { processed_count: record.processedCount },
+      error_count: record.errorMessage ? 1 : 0,
+      error_messages: record.errorMessage ? [record.errorMessage] : [],
     });
 
   if (error) {
@@ -113,9 +114,24 @@ export async function collectSystemHealth(): Promise<SystemHealth> {
   // 1) 모든 크론의 최근 실행 기록
   const sevenDaysAgo = new Date(Date.now() - 7 * 86400_000).toISOString();
 
+  const { data: cronHealthRows } = await supabaseAdmin
+    .from('cron_health')
+    .select('cron_name, last_status, last_run_at, last_error_count, last_summary')
+    .in('cron_name', [...CRON_NAMES]);
+
+  const healthByName = new Map(
+    ((cronHealthRows || []) as Array<{
+      cron_name: string;
+      last_status: string | null;
+      last_run_at: string | null;
+      last_error_count: number | null;
+      last_summary: unknown;
+    }>).map(row => [row.cron_name, row]),
+  );
+
   const { data: cronLogs } = await supabaseAdmin
     .from('cron_run_logs')
-    .select('cron_name, started_at, succeeded, error_message')
+    .select('cron_name, started_at, status, error_messages')
     .gte('started_at', sevenDaysAgo)
     .order('started_at', { ascending: false });
 
@@ -123,18 +139,29 @@ export async function collectSystemHealth(): Promise<SystemHealth> {
   const cronStatuses: SystemHealth['cronStatuses'] = [];
 
   for (const name of CRON_NAMES) {
+    const healthRow = healthByName.get(name);
     const runs = (cronLogs || []).filter(
       (r: { cron_name: string }) => r.cron_name === name,
     ) as Array<{
       cron_name: string;
       started_at: string;
-      succeeded: boolean;
-      error_message: string | null;
+      status: 'success' | 'partial_failure' | 'error' | string | null;
+      error_messages: string[] | null;
     }>;
 
-    const lastRun = runs.length > 0 ? runs[0].started_at : null;
-    const lastSuccess = runs.find(r => r.succeeded)?.started_at ?? null;
-    const consecutiveFailures = runs.filter(r => !r.succeeded).length;
+    const lastRun = healthRow?.last_run_at ?? (runs.length > 0 ? runs[0].started_at : null);
+    const lastSuccess = healthRow?.last_status === 'success'
+      ? (healthRow.last_run_at ?? null)
+      : (runs.find(r => r.status === 'success')?.started_at ?? null);
+    let consecutiveFailures = 0;
+    if (healthRow) {
+      consecutiveFailures = healthRow.last_status === 'success' ? 0 : Math.max(1, healthRow.last_error_count ?? 1);
+    } else {
+      for (const run of runs) {
+        if (run.status === 'success') break;
+        consecutiveFailures++;
+      }
+    }
 
     const now = Date.now();
     const lastRunMs = lastRun ? new Date(lastRun).getTime() : 0;
@@ -173,12 +200,26 @@ export async function collectSystemHealth(): Promise<SystemHealth> {
   }
 
   // 4) 최근 에러
-  const recentErrors = (cronLogs || [])
-    .filter((r: { succeeded: boolean; error_message: string | null }) => !r.succeeded && r.error_message)
+  const healthErrors = ((cronHealthRows || []) as Array<{
+    cron_name: string;
+    last_status: string | null;
+    last_run_at: string | null;
+    last_error_count: number | null;
+    last_summary: { errors?: string[] } | null;
+  }>)
+    .filter(row => row.last_status !== 'success' && (row.last_error_count ?? 0) > 0)
+    .map(row => ({
+      cron: row.cron_name,
+      error: row.last_summary?.errors?.[0] ?? `${row.last_status ?? 'unknown'} (${row.last_error_count ?? 0} errors)`,
+      time: row.last_run_at ?? 'unknown',
+    }));
+
+  const recentErrors = healthErrors.length > 0 ? healthErrors.slice(0, 5) : (cronLogs || [])
+    .filter((r: { status: string | null; error_messages: string[] | null }) => r.status !== 'success' && (r.error_messages?.length ?? 0) > 0)
     .slice(0, 5)
-    .map((r: { cron_name: string; error_message: string; started_at: string }) => ({
+    .map((r: { cron_name: string; error_messages: string[] | null; started_at: string }) => ({
       cron: r.cron_name,
-      error: r.error_message ?? 'unknown',
+      error: r.error_messages?.[0] ?? 'unknown',
       time: r.started_at,
     }));
 
