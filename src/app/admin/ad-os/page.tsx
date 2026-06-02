@@ -409,9 +409,15 @@ function queueTone(status: unknown): 'neutral' | 'good' | 'warn' | 'bad' {
 function OpsQueueList({
   rows,
   empty,
+  loadingId,
+  onAction,
+  actions = [],
 }: {
   rows: Array<Record<string, unknown>>;
   empty: string;
+  loadingId?: string | null;
+  onAction?: (row: Record<string, unknown>, action: 'executor_dry_run' | 'confirm_failed' | 'acknowledge_blocker') => void;
+  actions?: Array<'executor_dry_run' | 'confirm_failed' | 'acknowledge_blocker'>;
 }) {
   if (rows.length === 0) {
     return (
@@ -443,6 +449,40 @@ function OpsQueueList({
             <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">
               다음: {String(row.next_action).slice(0, 120)}
             </p>
+          )}
+          {onAction && actions.length > 0 && String(row.id || '') && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {actions.includes('executor_dry_run') && ['platform_job', 'conversion_upload_job'].includes(String(row.source || '')) && (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => onAction(row, 'executor_dry_run')}
+                  loading={loadingId === `${String(row.source)}:${String(row.id)}:executor_dry_run`}
+                >
+                  Dry-run
+                </Button>
+              )}
+              {actions.includes('confirm_failed') && ['platform_job_confirmation', 'conversion_upload_confirmation'].includes(String(row.source || '')) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onAction(row, 'confirm_failed')}
+                  loading={loadingId === `${String(row.source)}:${String(row.id)}:confirm_failed`}
+                >
+                  실패 확정
+                </Button>
+              )}
+              {actions.includes('acknowledge_blocker') && ['platform_job', 'conversion_upload_job', 'execution_attempt'].includes(String(row.source || '')) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => onAction(row, 'acknowledge_blocker')}
+                  loading={loadingId === `${String(row.source)}:${String(row.id)}:acknowledge_blocker`}
+                >
+                  차단 확인
+                </Button>
+              )}
+            </div>
           )}
         </div>
       ))}
@@ -533,6 +573,7 @@ export default function AdOsPage() {
   const [runningLimitedPilot, setRunningLimitedPilot] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
+  const [opsQueueActionId, setOpsQueueActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [launchAudit, setLaunchAudit] = useState<LaunchAudit | null>(null);
   const [naverSetupPacket, setNaverSetupPacket] = useState<NaverSetupPacket | null>(null);
@@ -1801,6 +1842,54 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '전환 upload dry-run 실패');
     } finally {
       setExecutingConversionDryRun(false);
+    }
+  };
+
+  const runOpsQueueAction = async (
+    row: Record<string, unknown>,
+    action: 'executor_dry_run' | 'confirm_failed' | 'acknowledge_blocker',
+  ) => {
+    const source = String(row.source || '');
+    const id = String(row.id || '');
+    if (!source || !id) return;
+    if (
+      action === 'confirm_failed' &&
+      !window.confirm('외부 플랫폼 결과를 실패로 확정합니다. 성공 외부 ID가 있는 경우에는 확정 API로 성공 처리해야 합니다. 계속할까요?')
+    ) {
+      return;
+    }
+    const actionKey = `${source}:${id}:${action}`;
+    setOpsQueueActionId(actionKey);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/ops-queues/action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          source,
+          id,
+          action,
+          apply: true,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '운영 큐 액션 실패');
+      await refresh();
+      const blockedReason = json.summary?.blocked_reason ? ` / 차단: ${json.summary.blocked_reason}` : '';
+      const label =
+        action === 'executor_dry_run'
+          ? 'row dry-run'
+          : action === 'confirm_failed'
+            ? '외부 실패 확정'
+            : '차단 확인';
+      setAutomationMessage(
+        `운영 큐 ${label} 완료: ${source} ${id.slice(0, 8)} · 외부 API write 0건${blockedReason}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '운영 큐 액션 실패');
+    } finally {
+      setOpsQueueActionId(null);
     }
   };
 
@@ -3090,6 +3179,9 @@ export default function AdOsPage() {
                   <OpsQueueList
                     rows={summary.samples.ops_executor_queue || []}
                     empty="승인 후 실행 대기 중인 플랫폼 job 또는 전환 upload job이 없습니다."
+                    loadingId={opsQueueActionId}
+                    onAction={runOpsQueueAction}
+                    actions={['executor_dry_run']}
                   />
                 </div>
                 <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
@@ -3100,6 +3192,9 @@ export default function AdOsPage() {
                   <OpsQueueList
                     rows={summary.samples.ops_confirmation_queue || []}
                     empty="외부 플랫폼 결과 확인 후 확정해야 하는 job이 없습니다."
+                    loadingId={opsQueueActionId}
+                    onAction={runOpsQueueAction}
+                    actions={['confirm_failed']}
                   />
                 </div>
                 <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
@@ -3110,6 +3205,9 @@ export default function AdOsPage() {
                   <OpsQueueList
                     rows={summary.samples.ops_failed_queue || []}
                     empty="실패 또는 차단된 job과 executor attempt가 없습니다."
+                    loadingId={opsQueueActionId}
+                    onAction={runOpsQueueAction}
+                    actions={['acknowledge_blocker']}
                   />
                 </div>
               </div>

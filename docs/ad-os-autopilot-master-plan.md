@@ -883,3 +883,19 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - Operators can see exactly whether Ad OS is waiting for an executor, waiting for external result confirmation, or blocked by policy/data quality.
   - The UI does not introduce any new external write path; it only makes existing gates and pending states visible.
+
+## 50. 2026-06-03 Ad OS V281-V300 row-level operations queue actions
+
+- Added `POST /api/admin/ad-os/ops-queues/action` for row-level operator actions from `/admin/ad-os`.
+- Supported safe actions:
+  - `executor_dry_run`: validates one platform job or conversion upload job through the existing guarded runtime and writes an audit attempt when `apply=true`.
+  - `confirm_failed`: marks one pending external platform/conversion result as failed through the existing confirmation deciders; success confirmation still requires the explicit external result API with an external id.
+  - `acknowledge_blocker`: records that an operator reviewed a failed/blocked queue row without mutating external platforms.
+- `/admin/ad-os` queue rows now expose only the action appropriate for their queue:
+  - execution queue: `Dry-run`
+  - external confirmation queue: `실패 확정`
+  - failed/blocked queue: `차단 확인`
+- Safety principle:
+  - This layer still never calls Naver, Google, Meta, or Kakao.
+  - It does not add a live write path and does not allow success confirmation without an external resource/upload id.
+  - Live spend remains behind the dedicated channel adapter gates, tenant budgets, explicit confirmation flags, and environment flags.
