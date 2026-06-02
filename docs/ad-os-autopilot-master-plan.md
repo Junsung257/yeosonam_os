@@ -581,3 +581,29 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - `/api/admin/ad-os/summary` now exposes conversion event counts, quarantine counts, performance fact counts, fact-level CPA, and fact-level margin ROAS for the last 30 days.
 - `/admin/ad-os` adds a `conversion attribution` action so operators can run booking-funnel sync, conversion attribution, then learning apply in order.
 - External ad spend is still not directly executed by this slice. This is the measurement and audit bridge needed before limited autopilot can safely turn on platform-specific publishers.
+
+## 36. 2026-06-02 Ad OS V31-V40 guarded execution and learning operators
+
+- Added a V31-V40 rules module for conversion-export packets, Naver execution gates, bid optimization candidates, and experiment run decisions.
+- Added `/api/admin/ad-os/conversion-export/google` and `/api/admin/ad-os/conversion-export/meta`.
+  - Both routes prepare upload-ready packets from clean conversion events.
+  - Both routes create approval-gated `upload_conversion_signal` change requests when `apply=true`.
+  - Neither route performs external upload yet; `external_api_write` is explicitly false.
+- Added `/api/admin/ad-os/publisher/naver/execute`.
+  - Reads approved Naver change requests.
+  - Checks credentials, permission readiness, campaign/ad group presence, budget readiness, and automation level.
+  - Writes idempotent mutation audit rows to `ad_os_external_mutation_results`.
+  - `paused_only` allows paused keyword preparation but blocks activation/bid mutations. `active_allowed` still requires limited-autopilot guardrails.
+- Added `/api/admin/ad-os/bid-optimizer/apply`.
+  - Turns performance facts into approval-gated pause, bid-scale, and landing/CTA improvement change requests.
+  - Uses CPA, margin ROAS, CTA rate, spend, and bounce signals before proposing action.
+- Added `/api/admin/ad-os/experiment-run`.
+  - Moves approved experiments to running.
+  - Completes running experiments when minimum sample is reached and writes result summaries.
+- Added `/api/admin/ad-os/blog-evolution/apply`.
+  - Converts approved blog content versions into explicit change requests by default.
+  - Direct application is available only when `create_change_requests=false`, but the admin UI uses approval-gated mode.
+- `/api/admin/ad-os/summary` now includes experiment and blog-version counts/samples.
+- `/admin/ad-os` now exposes V31-V40 operator buttons for Naver execution gate, Google/Meta conversion export, bid optimization, experiment execution, and blog evolution approval.
+- Change request PATCH now treats external-only requests (`publish_paused_keyword`, `activate_paused_keyword`, `sync_external_asset`, `upload_conversion_signal`) as audit/apply markers rather than trying to patch arbitrary platform payloads into internal tables.
+- Operating principle remains: no unapproved external spend, full-autopilot off by default, every platform mutation must be represented by a change request and mutation audit row.
