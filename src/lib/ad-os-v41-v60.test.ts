@@ -154,6 +154,8 @@ describe('ad-os-v41-v60 optimizer and creative factory', () => {
     expect(defaults.workspace.require_human_approval).toBe(true);
     expect(defaults.workspace.full_auto_enabled).toBe(false);
     expect(defaults.workspace.automation_level).toBe(3);
+    expect(defaults.workspace.data_retention_days).toBe(730);
+    expect(defaults.workspace.audit_export_enabled).toBe(true);
     expect(defaults.billing.invoice_status).toBe('active');
   });
 });

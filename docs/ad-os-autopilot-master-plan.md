@@ -641,3 +641,30 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - Smartly-style creative scale is represented as draft creative variants with lifecycle/fatigue fields.
   - Sojern/Skai-style travel optimization is represented through booked margin, deadlines, inventory, and tenant-level budget control.
 - Operating principle remains unchanged: recommendation and approval first; limited autopilot only inside tenant budgets and platform gates; full autopilot implemented as a disabled capability until data volume and explicit operating approval exist.
+
+## 38. 2026-06-02 Ad OS V61-V75 runtime verification layer
+
+- Added server-only V61-V75 tables for runtime readiness checks, guarded execution attempts, experiment templates, and tenant audit exports.
+- Extended tenant workspaces with approver/operator IDs, forbidden keywords, data-retention days, and audit-export enablement.
+- Extended conversion upload jobs with retry, freshness, and dedupe status so Google/Meta upload candidates can be promoted or blocked with explicit reasons.
+- Added `/api/admin/ad-os/runtime-readiness`.
+  - Checks whether V41-V75 tables are present, admin APIs can return JSON, full auto is disabled, live external writes are zero, and tenant workspace/queues exist.
+  - Can persist readiness checks for audit history when `apply=true`.
+- Added `/api/admin/ad-os/platform-jobs/execute`.
+  - Consumes approved/running platform jobs and writes dry-run execution attempts.
+  - Allows paused/draft style verification; blocks active keyword activation, bid changes, Google live publish, Meta campaign publish, Kakao adapter gaps, and any unexpected `external_api_write=true`.
+- Added `/api/admin/ad-os/conversion-upload/execute`.
+  - Promotes clean conversion upload jobs to dry-run uploaded status with synthetic upload IDs.
+  - Blocks consent-not-granted, low signal quality, stale/expired events, duplicate/collision dedupe states, and pre-blocked jobs.
+- Added `/api/admin/ad-os/experiments/standardize`.
+  - Seeds holdout, date split, landing A/B, creative A/B, and match-type A/B templates.
+  - Keeps auto-winner and budget redistribution disabled until sample thresholds and operator approval are met.
+- Added `/api/admin/ad-os/tenant-audit-export`.
+  - Creates a monthly agency/SaaS audit draft with budget caps, automation level, full-auto state, live-write count, execution counts, conversion jobs, portfolio plans, and next actions.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose V61-V75 runtime state:
+  - readiness checks
+  - executor attempts
+  - experiment standards
+  - tenant audit exports
+  - combined external-write count
+- Operating principle remains stricter than live automation: this layer verifies staging execution cycles end to end, but actual paid platform writes remain disabled unless a future channel adapter explicitly passes approval, budget, risk, kill-switch, and limited-autopilot gates.

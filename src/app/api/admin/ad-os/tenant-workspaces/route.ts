@@ -64,6 +64,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     dailyBudgetCapKrw: body.daily_budget_cap_krw,
     maxCpcKrw: body.max_cpc_krw,
     automationLevel: body.automation_level,
+    approverUserIds: Array.isArray(body.approver_user_ids) ? body.approver_user_ids : [],
+    operatorUserIds: Array.isArray(body.operator_user_ids) ? body.operator_user_ids : [],
+    forbiddenKeywords: Array.isArray(body.forbidden_keywords) ? body.forbidden_keywords : [],
+    dataRetentionDays: body.data_retention_days,
+    auditExportEnabled: body.audit_export_enabled,
   });
 
   const { data: workspace, error: workspaceError } = await supabaseAdmin

@@ -489,6 +489,10 @@ async function buildSummaryResponse() {
     travelIntentSignalRes,
     tenantWorkspaceRes,
     tenantBillingProfileRes,
+    runtimeReadinessRes,
+    executionAttemptRes,
+    experimentTemplateRes,
+    tenantAuditExportRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -629,7 +633,7 @@ async function buildSummaryResponse() {
       .limit(30),
     supabaseAdmin
       .from('ad_os_portfolio_budget_plans')
-      .select('id, platform, plan_type, status, confidence, expected_spend_delta_krw, expected_margin_delta_krw, created_at')
+      .select('id, platform, plan_type, status, confidence, current_budget_krw, recommended_budget_krw, expected_margin_krw, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
@@ -650,6 +654,26 @@ async function buildSummaryResponse() {
     supabaseAdmin
       .from('ad_os_tenant_billing_profiles')
       .select('id, tenant_id, workspace_id, billing_plan, invoice_status, base_subscription_krw, managed_spend_fee_pct, performance_fee_pct, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_runtime_readiness_checks')
+      .select('id, tenant_id, check_key, surface, status, severity, next_action, checked_at')
+      .order('checked_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_execution_attempts')
+      .select('id, platform, attempt_type, status, dry_run, external_api_write, blocked_reason, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_experiment_templates')
+      .select('id, tenant_id, template_key, experiment_type, primary_metric, minimum_clicks, minimum_conversions, minimum_days, confidence_threshold, status, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
+    supabaseAdmin
+      .from('ad_os_tenant_audit_exports')
+      .select('id, tenant_id, workspace_id, period_start, period_end, status, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
   ]);
@@ -683,7 +707,11 @@ async function buildSummaryResponse() {
     creativeAssetVariantRes.error ||
     travelIntentSignalRes.error ||
     tenantWorkspaceRes.error ||
-    tenantBillingProfileRes.error;
+    tenantBillingProfileRes.error ||
+    runtimeReadinessRes.error ||
+    executionAttemptRes.error ||
+    experimentTemplateRes.error ||
+    tenantAuditExportRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -870,8 +898,27 @@ async function buildSummaryResponse() {
     plan_type: string | null;
     status: string | null;
     confidence: number | null;
-    expected_spend_delta_krw: number | null;
-    expected_margin_delta_krw: number | null;
+    current_budget_krw: number | null;
+    recommended_budget_krw: number | null;
+    expected_margin_krw: number | null;
+  }>;
+  const runtimeReadinessChecks = (runtimeReadinessRes.data || []) as Array<{
+    status: string | null;
+    severity: string | null;
+    check_key: string | null;
+  }>;
+  const executionAttempts = (executionAttemptRes.data || []) as Array<{
+    attempt_type: string | null;
+    status: string | null;
+    external_api_write: boolean | null;
+    blocked_reason: string | null;
+  }>;
+  const experimentTemplates = (experimentTemplateRes.data || []) as Array<{
+    experiment_type: string | null;
+    status: string | null;
+  }>;
+  const tenantAuditExports = (tenantAuditExportRes.data || []) as Array<{
+    status: string | null;
   }>;
   const creativeAssetVariants = (creativeAssetVariantRes.data || []) as Array<{
     platform: string | null;
@@ -1197,8 +1244,8 @@ async function buildSummaryResponse() {
       data_quality_blocked: dataQualitySnapshots.filter((row) => row.status === 'blocked').length,
       portfolio_plans_candidate: portfolioPlans.filter((row) => row.status === 'candidate').length,
       portfolio_plans_approved: portfolioPlans.filter((row) => row.status === 'approved').length,
-      portfolio_expected_margin_delta_krw: sum(portfolioPlans, (row) => row.expected_margin_delta_krw),
-      portfolio_expected_spend_delta_krw: sum(portfolioPlans, (row) => row.expected_spend_delta_krw),
+      portfolio_expected_margin_delta_krw: sum(portfolioPlans, (row) => row.expected_margin_krw),
+      portfolio_expected_spend_delta_krw: sum(portfolioPlans, (row) => Number(row.recommended_budget_krw || 0) - Number(row.current_budget_krw || 0)),
       creative_asset_variants: creativeAssetVariants.length,
       creative_asset_variants_testing: creativeAssetVariants.filter((row) => row.lifecycle_status === 'testing').length,
       creative_asset_variants_fatigued: creativeAssetVariants.filter((row) => row.lifecycle_status === 'fatigued').length,
@@ -1207,6 +1254,15 @@ async function buildSummaryResponse() {
       tenant_workspaces: tenantWorkspaces.length,
       tenant_workspaces_full_auto: tenantWorkspaces.filter((row) => row.full_auto_enabled).length,
       tenant_billing_profiles_active: tenantBillingProfiles.filter((row) => row.invoice_status === 'active').length,
+      runtime_readiness_checks: runtimeReadinessChecks.length,
+      runtime_readiness_blocked: runtimeReadinessChecks.filter((row) => ['blocked', 'fail'].includes(row.status || '')).length,
+      execution_attempts: executionAttempts.length,
+      execution_attempts_succeeded: executionAttempts.filter((row) => row.status === 'succeeded').length,
+      execution_attempts_blocked: executionAttempts.filter((row) => row.status === 'blocked').length,
+      execution_attempts_external_api_write: executionAttempts.filter((row) => row.external_api_write).length,
+      experiment_templates_active: experimentTemplates.filter((row) => row.status === 'active').length,
+      tenant_audit_exports: tenantAuditExports.length,
+      tenant_audit_exports_ready: tenantAuditExports.filter((row) => row.status === 'ready').length,
       fact_clicks_30d: factClicks,
       fact_cta_clicks_30d: factCtaClicks,
       fact_conversions_30d: factConversions,
@@ -1259,6 +1315,12 @@ async function buildSummaryResponse() {
       travel_intent_signals_by_duplicate_risk: byKey(travelIntentSignals, (row) => Number(row.duplicate_content_risk || 0) >= 60 ? 'high' : Number(row.duplicate_content_risk || 0) >= 30 ? 'medium' : 'low'),
       tenant_workspaces_by_risk: byKey(tenantWorkspaces, (row) => row.risk_status || 'unknown'),
       tenant_billing_profiles_by_plan: byKey(tenantBillingProfiles, (row) => row.billing_plan || 'unknown'),
+      runtime_readiness_by_status: byKey(runtimeReadinessChecks, (row) => row.status || 'unknown'),
+      runtime_readiness_by_key: byKey(runtimeReadinessChecks, (row) => row.check_key || 'unknown'),
+      execution_attempts_by_status: byKey(executionAttempts, (row) => row.status || 'unknown'),
+      execution_attempts_by_type: byKey(executionAttempts, (row) => row.attempt_type || 'unknown'),
+      experiment_templates_by_type: byKey(experimentTemplates, (row) => row.experiment_type || 'unknown'),
+      tenant_audit_exports_by_status: byKey(tenantAuditExports, (row) => row.status || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1347,8 +1409,8 @@ async function buildSummaryResponse() {
         candidates: portfolioPlans.filter((row) => row.status === 'candidate').length,
         approved: portfolioPlans.filter((row) => row.status === 'approved').length,
         applied: portfolioPlans.filter((row) => row.status === 'applied').length,
-        expected_spend_delta_krw: sum(portfolioPlans, (row) => row.expected_spend_delta_krw),
-        expected_margin_delta_krw: sum(portfolioPlans, (row) => row.expected_margin_delta_krw),
+        expected_spend_delta_krw: sum(portfolioPlans, (row) => Number(row.recommended_budget_krw || 0) - Number(row.current_budget_krw || 0)),
+        expected_margin_delta_krw: sum(portfolioPlans, (row) => row.expected_margin_krw),
       },
       creative_factory: {
         variants: creativeAssetVariants.length,
@@ -1360,6 +1422,29 @@ async function buildSummaryResponse() {
         workspaces: tenantWorkspaces.length,
         active_billing_profiles: tenantBillingProfiles.filter((row) => row.invoice_status === 'active').length,
         full_auto_enabled: tenantWorkspaces.filter((row) => row.full_auto_enabled).length,
+      },
+      runtime_readiness: {
+        checks: runtimeReadinessChecks.length,
+        blocked_or_failed: runtimeReadinessChecks.filter((row) => ['blocked', 'fail'].includes(row.status || '')).length,
+        critical: runtimeReadinessChecks.filter((row) => row.severity === 'critical').length,
+      },
+      runtime_execution: {
+        attempts: executionAttempts.length,
+        succeeded: executionAttempts.filter((row) => row.status === 'succeeded').length,
+        blocked: executionAttempts.filter((row) => row.status === 'blocked').length,
+        external_api_write_count:
+          executionAttempts.filter((row) => row.external_api_write).length +
+          platformJobs.filter((row) => row.external_api_write).length,
+      },
+      experiment_standards: {
+        templates: experimentTemplates.length,
+        active: experimentTemplates.filter((row) => row.status === 'active').length,
+        types: Object.keys(byKey(experimentTemplates, (row) => row.experiment_type || 'unknown')).length,
+      },
+      tenant_audit_exports: {
+        exports: tenantAuditExports.length,
+        ready: tenantAuditExports.filter((row) => row.status === 'ready').length,
+        draft: tenantAuditExports.filter((row) => row.status === 'draft').length,
       },
     },
     launch_action_queue: launchActionQueue,
@@ -1390,6 +1475,10 @@ async function buildSummaryResponse() {
       travel_intent_signals: travelIntentSignalRes.data?.slice(0, 12) || [],
       tenant_workspaces: tenantWorkspaceRes.data?.slice(0, 12) || [],
       tenant_billing_profiles: tenantBillingProfileRes.data?.slice(0, 12) || [],
+      runtime_readiness_checks: runtimeReadinessRes.data?.slice(0, 12) || [],
+      execution_attempts: executionAttemptRes.data?.slice(0, 12) || [],
+      experiment_templates: experimentTemplateRes.data?.slice(0, 12) || [],
+      tenant_audit_exports: tenantAuditExportRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

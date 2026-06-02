@@ -165,6 +165,27 @@ type Summary = {
       active_billing_profiles: number;
       full_auto_enabled: number;
     };
+    runtime_readiness?: {
+      checks: number;
+      blocked_or_failed: number;
+      critical: number;
+    };
+    runtime_execution?: {
+      attempts: number;
+      succeeded: number;
+      blocked: number;
+      external_api_write_count: number;
+    };
+    experiment_standards?: {
+      templates: number;
+      active: number;
+      types: number;
+    };
+    tenant_audit_exports?: {
+      exports: number;
+      ready: number;
+      draft: number;
+    };
   };
   launch_action_queue: Array<{
     id: string;
@@ -218,6 +239,10 @@ type Summary = {
     travel_intent_signals?: Array<Record<string, unknown>>;
     tenant_workspaces?: Array<Record<string, unknown>>;
     tenant_billing_profiles?: Array<Record<string, unknown>>;
+    runtime_readiness_checks?: Array<Record<string, unknown>>;
+    execution_attempts?: Array<Record<string, unknown>>;
+    experiment_templates?: Array<Record<string, unknown>>;
+    tenant_audit_exports?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -384,6 +409,11 @@ export default function AdOsPage() {
   const [applyingPortfolio, setApplyingPortfolio] = useState(false);
   const [creatingAssetGroup, setCreatingAssetGroup] = useState(false);
   const [savingTenantWorkspace, setSavingTenantWorkspace] = useState(false);
+  const [checkingRuntimeReadiness, setCheckingRuntimeReadiness] = useState(false);
+  const [executingPlatformDryRun, setExecutingPlatformDryRun] = useState(false);
+  const [executingConversionDryRun, setExecutingConversionDryRun] = useState(false);
+  const [standardizingExperiments, setStandardizingExperiments] = useState(false);
+  const [creatingTenantAuditExport, setCreatingTenantAuditExport] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -1579,6 +1609,134 @@ export default function AdOsPage() {
     }
   };
 
+  const runRuntimeReadiness = async () => {
+    setCheckingRuntimeReadiness(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/runtime-readiness', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'Runtime readiness 확인 실패');
+      await refresh();
+      setAutomationMessage(
+        `Runtime readiness 완료: 테이블 ${Number(json.summary?.tables_ready || 0).toLocaleString('ko-KR')}/${Number(json.summary?.tables_total || 0).toLocaleString('ko-KR')}, full auto ${Number(json.summary?.full_auto_enabled || 0).toLocaleString('ko-KR')}개, 외부 write ${Number(json.summary?.external_api_write_count || 0).toLocaleString('ko-KR')}건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Runtime readiness 확인 실패');
+    } finally {
+      setCheckingRuntimeReadiness(false);
+    }
+  };
+
+  const executePlatformJobsDryRun = async () => {
+    setExecutingPlatformDryRun(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/platform-jobs/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, mode: 'paused_only', limit: 50 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '플랫폼 executor dry-run 실패');
+      await refresh();
+      setAutomationMessage(
+        `플랫폼 executor dry-run 완료: 성공 ${Number(json.summary?.succeeded || 0).toLocaleString('ko-KR')}개, 차단 ${Number(json.summary?.blocked || 0).toLocaleString('ko-KR')}개, 외부 API write 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '플랫폼 executor dry-run 실패');
+    } finally {
+      setExecutingPlatformDryRun(false);
+    }
+  };
+
+  const executeConversionUploadsDryRun = async () => {
+    setExecutingConversionDryRun(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const [googleRes, metaRes] = await Promise.all([
+        fetch('/api/admin/ad-os/conversion-upload/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apply: true, platform: 'google', limit: 50 }),
+        }),
+        fetch('/api/admin/ad-os/conversion-upload/execute', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apply: true, platform: 'meta', limit: 50 }),
+        }),
+      ]);
+      const googleJson = await googleRes.json();
+      const metaJson = await metaRes.json();
+      if (!googleRes.ok || !googleJson.ok) throw new Error(googleJson.error || 'Google 전환 executor 실패');
+      if (!metaRes.ok || !metaJson.ok) throw new Error(metaJson.error || 'Meta 전환 executor 실패');
+      await refresh();
+      setAutomationMessage(
+        `전환 upload dry-run 완료: Google 업로드 후보 ${Number(googleJson.summary?.uploaded_dry_run || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(googleJson.summary?.blocked || 0).toLocaleString('ko-KR')}개, Meta 업로드 후보 ${Number(metaJson.summary?.uploaded_dry_run || 0).toLocaleString('ko-KR')}개 / 차단 ${Number(metaJson.summary?.blocked || 0).toLocaleString('ko-KR')}개. 외부 업로드 0건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '전환 upload dry-run 실패');
+    } finally {
+      setExecutingConversionDryRun(false);
+    }
+  };
+
+  const standardizeExperimentTemplates = async () => {
+    setStandardizingExperiments(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/experiments/standardize', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '실험 표준화 실패');
+      await refresh();
+      setAutomationMessage(
+        `실험 표준화 완료: 템플릿 ${Number(json.summary?.templates_written || 0).toLocaleString('ko-KR')}개, 자동 승패 판정 비활성 유지.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '실험 표준화 실패');
+    } finally {
+      setStandardizingExperiments(false);
+    }
+  };
+
+  const createTenantAuditExport = async () => {
+    setCreatingTenantAuditExport(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/tenant-audit-export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || 'tenant audit export 실패');
+      await refresh();
+      if (json.summary?.workspace_found === false) {
+        setAutomationMessage(String(json.summary?.next_action || '테넌트 워크스페이스를 먼저 생성하세요.'));
+        return;
+      }
+      setAutomationMessage(
+        `Tenant audit export 생성: 상태 ${String(json.summary?.export_status || 'draft')}, 저장 ${Number(json.summary?.written || 0).toLocaleString('ko-KR')}건.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'tenant audit export 실패');
+    } finally {
+      setCreatingTenantAuditExport(false);
+    }
+  };
+
   const createAssetGroup = async () => {
     setCreatingAssetGroup(true);
     setError(null);
@@ -1767,6 +1925,11 @@ export default function AdOsPage() {
     applyApprovedPortfolio,
     createAssetGroup,
     saveTenantWorkspaceDefaults,
+    runRuntimeReadiness,
+    executePlatformJobsDryRun,
+    executeConversionUploadsDryRun,
+    standardizeExperimentTemplates,
+    createTenantAuditExport,
   };
   const actionLoading: Record<string, boolean> = {
     runPilotSetup: runningPilotSetup,
@@ -1791,6 +1954,11 @@ export default function AdOsPage() {
     applyApprovedPortfolio: applyingPortfolio,
     createAssetGroup: creatingAssetGroup,
     saveTenantWorkspaceDefaults: savingTenantWorkspace,
+    runRuntimeReadiness: checkingRuntimeReadiness,
+    executePlatformJobsDryRun: executingPlatformDryRun,
+    executeConversionUploadsDryRun: executingConversionDryRun,
+    standardizeExperimentTemplates: standardizingExperiments,
+    createTenantAuditExport: creatingTenantAuditExport,
   };
   const topQueuedAction = summary?.launch_action_queue?.[0] || null;
   const executionStateEntries = Object.entries(summary?.channel_execution_states || {}).filter(([platform]) =>
@@ -2423,16 +2591,16 @@ export default function AdOsPage() {
           <section className="admin-card p-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
               <div>
-                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V60 Enterprise Layer</h2>
+                <h2 className="text-admin-base font-semibold text-admin-text-2">V41-V75 Enterprise Runtime Layer</h2>
                 <p className="mt-1 text-admin-xs text-admin-muted">
-                  플랫폼 실행 큐, 전환 업로드 품질, 마진 기준 포트폴리오 최적화, 여행 Creative Factory, SaaS 워크스페이스를 한 흐름으로 묶습니다.
+                  플랫폼 실행 큐, 전환 업로드 품질, 마진 기준 최적화, 실험 표준, SaaS 감사 export를 staging 검증 가능한 흐름으로 묶습니다.
                 </p>
               </div>
-              <StatusPill tone={(summary.enterprise_layer?.platform_job_queue.external_api_write_count || 0) === 0 ? 'good' : 'bad'}>
-                외부 write {Number(summary.enterprise_layer?.platform_job_queue.external_api_write_count || 0).toLocaleString('ko-KR')}건
+              <StatusPill tone={(summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0) === 0 ? 'good' : 'bad'}>
+                외부 write {Number(summary.enterprise_layer?.runtime_execution?.external_api_write_count || 0).toLocaleString('ko-KR')}건
               </StatusPill>
             </div>
-            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-2">
+            <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">플랫폼 실행 큐</p>
                 <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.platform_job_queue.total || 0).toLocaleString('ko-KR')}</p>
@@ -2458,13 +2626,42 @@ export default function AdOsPage() {
                 <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.saas_packaging.workspaces || 0).toLocaleString('ko-KR')}</p>
                 <p className="mt-1 text-admin-2xs text-admin-muted">active billing {Number(summary.enterprise_layer?.saas_packaging.active_billing_profiles || 0).toLocaleString('ko-KR')} / full auto {Number(summary.enterprise_layer?.saas_packaging.full_auto_enabled || 0).toLocaleString('ko-KR')}</p>
               </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Runtime Readiness</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.runtime_readiness?.checks || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">blocked/fail {Number(summary.enterprise_layer?.runtime_readiness?.blocked_or_failed || 0).toLocaleString('ko-KR')} / critical {Number(summary.enterprise_layer?.runtime_readiness?.critical || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Executor Attempts</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.runtime_execution?.attempts || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">success {Number(summary.enterprise_layer?.runtime_execution?.succeeded || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.runtime_execution?.blocked || 0).toLocaleString('ko-KR')}</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">실험 표준</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.experiment_standards?.active || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">types {Number(summary.enterprise_layer?.experiment_standards?.types || 0).toLocaleString('ko-KR')} / auto winner off</p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <p className="text-admin-2xs font-semibold text-admin-muted">Tenant Audit Export</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.tenant_audit_exports?.exports || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">ready {Number(summary.enterprise_layer?.tenant_audit_exports?.ready || 0).toLocaleString('ko-KR')} / draft {Number(summary.enterprise_layer?.tenant_audit_exports?.draft || 0).toLocaleString('ko-KR')}</p>
+              </div>
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
+              <Button size="sm" variant="secondary" onClick={runRuntimeReadiness} loading={checkingRuntimeReadiness}>
+                Runtime readiness
+              </Button>
               <Button size="sm" variant="secondary" onClick={runPlatformJobs} loading={runningPlatformJobs}>
                 플랫폼 실행 큐
               </Button>
+              <Button size="sm" variant="secondary" onClick={executePlatformJobsDryRun} loading={executingPlatformDryRun}>
+                플랫폼 dry-run 실행
+              </Button>
               <Button size="sm" variant="secondary" onClick={runConversionUploadJobs} loading={runningConversionUpload}>
                 전환 업로드 job
+              </Button>
+              <Button size="sm" variant="secondary" onClick={executeConversionUploadsDryRun} loading={executingConversionDryRun}>
+                전환 dry-run 실행
               </Button>
               <Button size="sm" variant="secondary" onClick={loadDataQuality} loading={loadingDataQuality}>
                 데이터 품질 조회
@@ -2480,6 +2677,12 @@ export default function AdOsPage() {
               </Button>
               <Button size="sm" variant="secondary" onClick={saveTenantWorkspaceDefaults} loading={savingTenantWorkspace}>
                 테넌트 워크스페이스
+              </Button>
+              <Button size="sm" variant="secondary" onClick={standardizeExperimentTemplates} loading={standardizingExperiments}>
+                실험 표준화
+              </Button>
+              <Button size="sm" variant="secondary" onClick={createTenantAuditExport} loading={creatingTenantAuditExport}>
+                Audit export
               </Button>
             </div>
           </section>
