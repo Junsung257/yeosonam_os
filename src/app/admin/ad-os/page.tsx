@@ -303,6 +303,9 @@ export default function AdOsPage() {
   const [runningExpiryCleanup, setRunningExpiryCleanup] = useState(false);
   const [runningKillSwitch, setRunningKillSwitch] = useState(false);
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
+  const [syncingPerformance, setSyncingPerformance] = useState(false);
+  const [applyingLearning, setApplyingLearning] = useState(false);
+  const [publishingExternal, setPublishingExternal] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
@@ -746,6 +749,75 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '성과 최적화 실패');
     } finally {
       setOptimizingPerformance(false);
+    }
+  };
+
+  const syncPerformanceFacts = async () => {
+    setSyncingPerformance(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/performance-sync', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ days: 30, apply: true }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '성과 팩트 동기화 실패');
+      await refresh();
+      setAutomationMessage(
+        `성과 팩트 동기화 완료: 팩트 ${json.summary.facts_prepared.toLocaleString('ko-KR')}개, 클릭 ${json.summary.total_clicks.toLocaleString('ko-KR')}개, CTA ${json.summary.total_cta_clicks.toLocaleString('ko-KR')}개, 전환 ${json.summary.total_conversions.toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '성과 팩트 동기화 실패');
+    } finally {
+      setSyncingPerformance(false);
+    }
+  };
+
+  const applyLearningRules = async () => {
+    setApplyingLearning(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/learning-apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true, limit: 100 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '학습 적용 후보 생성 실패');
+      await refresh();
+      setAutomationMessage(
+        `학습 적용 완료: 변경요청 ${json.summary.change_requests_inserted.toLocaleString('ko-KR')}개, 정지 ${json.summary.pause_candidates.toLocaleString('ko-KR')}개, 랜딩 ${json.summary.landing_candidates.toLocaleString('ko-KR')}개, 확장 ${json.summary.expansion_candidates.toLocaleString('ko-KR')}개`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '학습 적용 후보 생성 실패');
+    } finally {
+      setApplyingLearning(false);
+    }
+  };
+
+  const dryRunExternalPublish = async () => {
+    setPublishingExternal(true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const res = await fetch('/api/admin/ad-os/external-publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: 'naver', mode: 'dry_run', apply: false }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) throw new Error(json.error || '외부 발행 드라이런 실패');
+      await refresh();
+      setAutomationMessage(
+        `외부 발행 드라이런: ${json.summary.channel_state.label}, 승인요청 ${json.summary.approved_requests.toLocaleString('ko-KR')}개, 실제 외부 API 쓰기 ${json.summary.external_api_write ? '있음' : '없음'}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '외부 발행 드라이런 실패');
+    } finally {
+      setPublishingExternal(false);
     }
   };
 
@@ -1841,9 +1913,21 @@ export default function AdOsPage() {
                   <Gauge size={14} />
                   성과 학습 수확
                 </Button>
+                <Button size="sm" variant="secondary" onClick={syncPerformanceFacts} loading={syncingPerformance}>
+                  <MousePointerClick size={14} />
+                  성과 팩트 동기화
+                </Button>
+                <Button size="sm" variant="secondary" onClick={applyLearningRules} loading={applyingLearning}>
+                  <ShieldCheck size={14} />
+                  학습 적용 후보
+                </Button>
                 <Button size="sm" variant="secondary" onClick={optimizePerformance} loading={optimizingPerformance}>
                   <ShieldCheck size={14} />
                   성과 최적화 드라이런
+                </Button>
+                <Button size="sm" variant="secondary" onClick={dryRunExternalPublish} loading={publishingExternal}>
+                  <Rocket size={14} />
+                  외부 발행 드라이런
                 </Button>
                 <Button size="sm" variant="secondary" onClick={runBudgetPacing} loading={runningBudgetPacing}>
                   <Wallet size={14} />

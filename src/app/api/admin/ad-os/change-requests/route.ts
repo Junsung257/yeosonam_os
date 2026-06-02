@@ -21,6 +21,8 @@ const REQUEST_TYPES = new Set([
   'create_landing',
   'create_campaign',
   'sync_external_asset',
+  'update_blog_cta',
+  'create_card_news',
 ]);
 
 const STATUS_UPDATES = new Set(['approved', 'rejected', 'applied', 'rolled_back', 'expired']);
@@ -29,6 +31,7 @@ const MUTABLE_TARGET_TABLES = new Set([
   'ad_landing_mappings',
   'search_ad_keyword_plans',
   'ad_os_landing_evolution_queue',
+  'blog_content_versions',
 ]);
 const BLOCKED_PATCH_FIELDS = new Set(['id', 'tenant_id', 'created_at', 'updated_at', 'approved_at', 'applied_at']);
 
@@ -56,6 +59,8 @@ async function updateMutableTarget(targetTable: string, targetId: string, patch:
       return supabaseAdmin.from('search_ad_keyword_plans').update(patch as never).eq('id', targetId);
     case 'ad_os_landing_evolution_queue':
       return supabaseAdmin.from('ad_os_landing_evolution_queue').update(patch as never).eq('id', targetId);
+    case 'blog_content_versions':
+      return supabaseAdmin.from('blog_content_versions').update(patch as never).eq('id', targetId);
     default:
       return { error: new Error('이 대상 테이블은 자동 적용 대상이 아닙니다.') };
   }

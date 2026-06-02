@@ -8,7 +8,9 @@ export type AdOsChangeRequestType =
   | 'replace_landing'
   | 'create_landing'
   | 'create_campaign'
-  | 'sync_external_asset';
+  | 'sync_external_asset'
+  | 'update_blog_cta'
+  | 'create_card_news';
 
 export type AdOsChangeRisk = 'low' | 'medium' | 'high' | 'critical';
 
@@ -21,8 +23,8 @@ export function riskForChangeRequest(input: {
   if (input.changesExternalAccount && input.automationLevel >= 4) return 'critical';
   if (input.requestType === 'pause_channel') return 'high';
   if (input.requestType === 'budget_change' && Number(input.externalSpendKrw || 0) > 0) return 'high';
-  if (['increase_bid', 'create_campaign'].includes(input.requestType)) return 'high';
-  if (['pause_keyword', 'decrease_bid', 'replace_landing'].includes(input.requestType)) return 'medium';
+  if (['increase_bid', 'create_campaign', 'create_keyword'].includes(input.requestType)) return 'high';
+  if (['pause_keyword', 'decrease_bid', 'replace_landing', 'update_blog_cta'].includes(input.requestType)) return 'medium';
   return 'low';
 }
 
@@ -52,6 +54,8 @@ export function titleForChangeRequest(type: AdOsChangeRequestType): string {
     create_landing: '랜딩 생성',
     create_campaign: '캠페인 생성',
     sync_external_asset: '외부 자산 연결',
+    update_blog_cta: '블로그 CTA 개선',
+    create_card_news: '카드뉴스 생성',
   };
   return labels[type];
 }
