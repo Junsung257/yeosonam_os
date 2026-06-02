@@ -228,6 +228,13 @@ type Summary = {
       external_api_write_count: number;
       first_blocker: string | null;
     };
+    ops_queues?: {
+      executor_ready: number;
+      confirmation_pending: number;
+      failed_or_blocked: number;
+      live_writes: number;
+      next_action: string;
+    };
   };
   launch_action_queue: Array<{
     id: string;
@@ -291,6 +298,9 @@ type Summary = {
     rollback_drills?: Array<Record<string, unknown>>;
     limited_write_pilot_policies?: Array<Record<string, unknown>>;
     limited_write_pilot_attempts?: Array<Record<string, unknown>>;
+    ops_executor_queue?: Array<Record<string, unknown>>;
+    ops_confirmation_queue?: Array<Record<string, unknown>>;
+    ops_failed_queue?: Array<Record<string, unknown>>;
   };
   automation_ladder: Array<{ level: number; label: string; description: string }>;
 };
@@ -386,6 +396,58 @@ function StatusPill({ children, tone = 'neutral' }: { children: ReactNode; tone?
           ? 'bg-rose-50 text-rose-700'
           : 'bg-admin-surface-2 text-admin-muted';
   return <span className={`inline-flex items-center rounded-admin-xs px-2 py-0.5 text-admin-2xs font-semibold ${cls}`}>{children}</span>;
+}
+
+function queueTone(status: unknown): 'neutral' | 'good' | 'warn' | 'bad' {
+  const value = String(status || '');
+  if (['succeeded', 'uploaded', 'applied'].includes(value)) return 'good';
+  if (['blocked', 'failed', 'rejected'].includes(value)) return 'bad';
+  if (['approved', 'running', 'requested'].includes(value)) return 'warn';
+  return 'neutral';
+}
+
+function OpsQueueList({
+  rows,
+  empty,
+}: {
+  rows: Array<Record<string, unknown>>;
+  empty: string;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-admin-sm bg-admin-surface-2 p-4 text-admin-xs text-admin-muted">
+        {empty}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {rows.map((row, idx) => (
+        <div key={String(row.id || idx)} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="truncate text-admin-xs font-semibold text-admin-text">{String(row.title || row.source || '-')}</p>
+              <p className="mt-0.5 text-admin-2xs text-admin-muted">
+                {PLATFORM_LABEL[String(row.platform)] || String(row.platform || 'internal')} · {String(row.source || '-')}
+              </p>
+            </div>
+            <StatusPill tone={queueTone(row.status)}>{String(row.status || '-')}</StatusPill>
+          </div>
+          {Boolean(row.reason || row.next_action) && (
+            <p className="mt-2 text-admin-2xs leading-5 text-admin-muted">
+              {String(row.reason || row.next_action).slice(0, 120)}
+            </p>
+          )}
+          {Boolean(row.reason && row.next_action) && (
+            <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">
+              다음: {String(row.next_action).slice(0, 120)}
+            </p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function readinessTone(status: 'pass' | 'partial' | 'fail'): 'good' | 'warn' | 'bad' {
@@ -2995,6 +3057,62 @@ export default function AdOsPage() {
               <Button size="sm" variant="secondary" onClick={createTenantAuditExport} loading={creatingTenantAuditExport}>
                 Audit export
               </Button>
+            </div>
+            <div className="mt-5 border-t border-admin-border pt-4">
+              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                <div>
+                  <h3 className="text-admin-sm font-semibold text-admin-text-2">운영 큐</h3>
+                  <p className="mt-1 text-admin-xs text-admin-muted">
+                    {summary.enterprise_layer?.ops_queues?.next_action || '승인된 실행, 외부 결과 확정, 실패·차단 상태를 같은 흐름으로 확인합니다.'}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <StatusPill tone={(summary.enterprise_layer?.ops_queues?.executor_ready || 0) > 0 ? 'warn' : 'neutral'}>
+                    실행 {Number(summary.enterprise_layer?.ops_queues?.executor_ready || 0).toLocaleString('ko-KR')}
+                  </StatusPill>
+                  <StatusPill tone={(summary.enterprise_layer?.ops_queues?.confirmation_pending || 0) > 0 ? 'warn' : 'neutral'}>
+                    확정 {Number(summary.enterprise_layer?.ops_queues?.confirmation_pending || 0).toLocaleString('ko-KR')}
+                  </StatusPill>
+                  <StatusPill tone={(summary.enterprise_layer?.ops_queues?.failed_or_blocked || 0) > 0 ? 'bad' : 'good'}>
+                    차단 {Number(summary.enterprise_layer?.ops_queues?.failed_or_blocked || 0).toLocaleString('ko-KR')}
+                  </StatusPill>
+                  <StatusPill tone={(summary.enterprise_layer?.ops_queues?.live_writes || 0) === 0 ? 'good' : 'bad'}>
+                    live write {Number(summary.enterprise_layer?.ops_queues?.live_writes || 0).toLocaleString('ko-KR')}
+                  </StatusPill>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-1 xl:grid-cols-3 gap-3">
+                <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-admin-xs font-semibold text-admin-text">실행 큐</h4>
+                    <PlayCircle size={14} className="text-admin-muted" />
+                  </div>
+                  <OpsQueueList
+                    rows={summary.samples.ops_executor_queue || []}
+                    empty="승인 후 실행 대기 중인 플랫폼 job 또는 전환 upload job이 없습니다."
+                  />
+                </div>
+                <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-admin-xs font-semibold text-admin-text">외부 결과 확정</h4>
+                    <CheckCircle2 size={14} className="text-admin-muted" />
+                  </div>
+                  <OpsQueueList
+                    rows={summary.samples.ops_confirmation_queue || []}
+                    empty="외부 플랫폼 결과 확인 후 확정해야 하는 job이 없습니다."
+                  />
+                </div>
+                <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <h4 className="text-admin-xs font-semibold text-admin-text">실패·차단</h4>
+                    <AlertTriangle size={14} className="text-admin-muted" />
+                  </div>
+                  <OpsQueueList
+                    rows={summary.samples.ops_failed_queue || []}
+                    empty="실패 또는 차단된 job과 executor attempt가 없습니다."
+                  />
+                </div>
+              </div>
             </div>
           </section>
 
