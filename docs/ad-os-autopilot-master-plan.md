@@ -778,3 +778,14 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - `quality_flags` now records whether raw PII was removed and whether first-party hashes are present, so data-quality dashboards can distinguish safe hashed signal from missing signal.
 - Google/Meta conversion export packet builders now read `first_party_hashes` and can prepare upload candidates without requiring raw email or phone in `raw_payload`.
 - Unit coverage proves raw PII is absent from sanitized payloads, Google upload packets can use hashed email, Meta upload packets can use hashed phone, and no raw PII appears in generated conversion export packets.
+
+## 44. 2026-06-03 Ad OS V161-V180 external publish staging hardening
+
+- Added `decideExternalPublishStaging` to separate three states that were easy to confuse:
+  - approved internal change request,
+  - staged audit/platform-job candidate,
+  - externally confirmed applied result.
+- `/api/admin/ad-os/external-publish` now creates mutation audit rows only and keeps approved external change requests in `approved` status while `external_api_write=false`.
+- The route no longer marks approved requests as `applied` merely because channel gates pass. `applied` is reserved for a future audited executor that confirms an external mutation result.
+- Run summaries now include `staged_for_executor_requests`, `applied_requests=0`, and a `staging` block with blockers such as `external_api_write_not_performed`.
+- Unit coverage proves guarded apply can stage requests without marking them applied, dry-run remains unstaged, and explicit external result confirmation is required before applied semantics are allowed.

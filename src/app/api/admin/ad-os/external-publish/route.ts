@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { decideExternalPublishStaging } from '@/lib/ad-os-v161-v180';
 import { classifyAdOsChannelState, hasGoogleAdsCredentials, hasNaverSearchAdsCredentials } from '@/lib/ad-os-v3-v7';
 import { buildExternalMutationAuditRow } from '@/lib/ad-os-v26-v30';
 import { withAdminGuard } from '@/lib/admin-guard';
@@ -11,6 +12,7 @@ type ExternalPublishBody = {
   change_request_ids?: string[];
   mode?: 'dry_run' | 'guarded' | 'full';
   apply?: boolean;
+  confirm_external_result?: boolean;
   limit?: number;
 };
 
@@ -105,8 +107,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   });
 
   const canPublish = channelState.state === 'executable';
-  const appliedIds: string[] = [];
   const blockedReason = canPublish ? null : channelState.state;
+  const staging = decideExternalPublishStaging({
+    apply,
+    canPublish,
+    requests: requestRes.data || [],
+    externalApiWrite: false,
+    confirmExternalResult: body.confirm_external_result === true,
+  });
 
   const decisions = (requestRes.data || []).map((changeRequest: { id: string; request_type: string; target_table: string; target_id: string; proposed_change?: unknown }) => ({
     run_id: run.id,
@@ -116,7 +124,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     target_id: changeRequest.id,
     before_state: json({ status: 'approved', request_type: changeRequest.request_type }),
     after_state: json({
-      status: apply && canPublish ? 'applied' : 'approved',
+      status: staging.mark_change_request_applied ? 'applied' : 'approved',
+      executor_stage: staging.can_stage_for_executor ? 'staged_for_executor' : 'not_staged',
+      applied_after_external_confirmation: staging.mark_change_request_applied,
       external_publish: canPublish ? 'ready' : 'blocked',
       proposed_change: changeRequest.proposed_change || {},
     }),
@@ -167,33 +177,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     }
   }
 
-  if (apply && canPublish) {
-    for (const changeRequest of requestRes.data || []) {
-      const { error } = await supabaseAdmin
-        .from('ad_os_change_requests')
-        .update({
-          status: 'applied',
-          applied_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', changeRequest.id);
-      if (error) {
-        await supabaseAdmin
-          .from('ad_os_automation_runs')
-          .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] })
-          .eq('id', run.id);
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-      }
-      appliedIds.push(changeRequest.id);
-    }
-    if (appliedIds.length > 0) {
-      await supabaseAdmin
-        .from('ad_os_decision_logs')
-        .update({ applied: true })
-        .eq('run_id', run.id)
-        .in('target_id', appliedIds);
-    }
-  }
+  const appliedIds: string[] = staging.applied_request_ids;
+  const stagedIds: string[] = staging.staged_request_ids;
 
   const summary = {
     platform,
@@ -201,11 +186,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     apply,
     channel_state: channelState,
     approved_requests: requestRes.data?.length || 0,
+    staged_for_executor_requests: stagedIds.length,
     applied_requests: appliedIds.length,
     mutation_audit_rows: mutationRows.length,
     mutation_audit_status: byStatus(mutationRows.map((row) => row.status)),
     external_api_write: false,
-    note: 'This guarded publisher creates idempotent external mutation audit rows and marks approved changes as applied only after channel gates pass. Real external API mutation remains behind channel-specific publisher implementations.',
+    staging,
+    note: 'This guarded publisher creates idempotent external mutation audit rows only. Approved changes stay approved until an audited executor confirms an external result; this route performs no external API write.',
   };
 
   await supabaseAdmin
