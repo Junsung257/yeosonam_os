@@ -23,6 +23,14 @@ const REQUEST_TYPES = new Set([
   'sync_external_asset',
   'update_blog_cta',
   'create_card_news',
+  'create_negative_keyword',
+  'create_experiment',
+  'publish_paused_keyword',
+  'upload_conversion_signal',
+  'activate_paused_keyword',
+  'sync_performance',
+  'create_creative_draft',
+  'update_tenant_policy',
 ]);
 
 const STATUS_UPDATES = new Set(['approved', 'rejected', 'applied', 'rolled_back', 'expired']);
