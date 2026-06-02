@@ -1,0 +1,3 @@
+-- No-op migration created to mirror production migration history.
+-- This was applied during Ad OS V8-V12 production verification and intentionally
+-- makes no schema or data changes.
