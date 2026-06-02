@@ -127,6 +127,8 @@ function buildLaunchActionQueue(input: {
   draftCampaigns: number;
   activeSearchBudgetChannels: number;
   learningEventCount: number;
+  conversionEvents: number;
+  performanceFacts: number;
   productScenarioCandidates: number;
   landingEvolutionCandidates: number;
 }) {
@@ -229,6 +231,18 @@ function buildLaunchActionQueue(input: {
       button_label: '성과 학습 수확',
       ui_action: 'harvestLearning',
       tone: 'neutral',
+    });
+  }
+
+  if (input.conversionEvents > 0 && input.performanceFacts === 0) {
+    actions.push({
+      id: 'conversion_attribution',
+      priority: 6,
+      label: '전환 attribution',
+      description: '클릭/CTA/예약 이벤트는 있으나 학습용 성과 팩트가 비어 있습니다. 이벤트를 상품·키워드·블로그 단위로 묶습니다.',
+      button_label: '전환 attribution',
+      ui_action: 'runConversionAttribution',
+      tone: 'good',
     });
   }
 
@@ -463,6 +477,8 @@ async function buildSummaryResponse() {
     keywordClusterRes,
     externalMutationRes,
     tenantReportRes,
+    conversionEventRes,
+    performanceFactRes,
   ] = await Promise.all([
     supabaseAdmin
       .from('ad_landing_mappings')
@@ -564,6 +580,18 @@ async function buildSummaryResponse() {
       .select('id, tenant_id, period_start, period_end, status, metrics, created_at')
       .order('created_at', { ascending: false })
       .limit(20),
+    supabaseAdmin
+      .from('ad_os_conversion_events')
+      .select('id, event_type, platform, quarantine_status, revenue_krw, margin_krw, cost_krw, event_time')
+      .gte('event_time', new Date(Date.now() - 30 * 86400_000).toISOString())
+      .order('event_time', { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from('ad_os_performance_facts')
+      .select('id, platform, source, clicks, cta_clicks, conversions, cost_krw, revenue_krw, margin_krw, event_date')
+      .gte('event_date', new Date(Date.now() - 30 * 86400_000).toISOString().slice(0, 10))
+      .order('event_date', { ascending: false })
+      .limit(500),
   ]);
 
   const firstError =
@@ -583,7 +611,9 @@ async function buildSummaryResponse() {
     changeRequestRes.error ||
     keywordClusterRes.error ||
     externalMutationRes.error ||
-    tenantReportRes.error;
+    tenantReportRes.error ||
+    conversionEventRes.error ||
+    performanceFactRes.error;
   if (firstError) {
     return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
   }
@@ -715,6 +745,24 @@ async function buildSummaryResponse() {
     status: string | null;
   }>;
   const tenantReports = tenantReportRes.data || [];
+  const conversionEvents = (conversionEventRes.data || []) as Array<{
+    event_type: string | null;
+    platform: string | null;
+    quarantine_status: string | null;
+    revenue_krw: number | null;
+    margin_krw: number | null;
+    cost_krw: number | null;
+  }>;
+  const performanceFacts = (performanceFactRes.data || []) as Array<{
+    platform: string | null;
+    source: string | null;
+    clicks: number | null;
+    cta_clicks: number | null;
+    conversions: number | null;
+    cost_krw: number | null;
+    revenue_krw: number | null;
+    margin_krw: number | null;
+  }>;
 
   const budgetByPlatform = new Map(budgets.map((b) => [b.platform, b]));
   const channelBudgets = PLATFORMS.map((platform) => ({
@@ -789,6 +837,16 @@ async function buildSummaryResponse() {
   const trackedConversions = sum(mappings, (m) => m.conversions);
   const trackedConversionValueKrw = sum(mappings, (m) => m.conversion_value_krw);
   const trackedSpendKrw = sum(campaigns, (c) => c.total_spend_krw);
+  const factClicks = sum(performanceFacts, (row) => row.clicks);
+  const factCtaClicks = sum(performanceFacts, (row) => row.cta_clicks);
+  const factConversions = sum(performanceFacts, (row) => row.conversions);
+  const factSpendKrw = sum(performanceFacts, (row) => row.cost_krw);
+  const factRevenueKrw = sum(performanceFacts, (row) => row.revenue_krw);
+  const factMarginKrw = sum(performanceFacts, (row) => row.margin_krw);
+  const attributionEventsClean = conversionEvents.filter((row) => !row.quarantine_status || row.quarantine_status === 'clean').length;
+  const attributionEventsQuarantined = conversionEvents.filter((row) => row.quarantine_status && row.quarantine_status !== 'clean').length;
+  const attributionMarginRoasPct = factSpendKrw > 0 ? Math.round((factMarginKrw / factSpendKrw) * 100) : 0;
+  const attributionCpaKrw = factConversions > 0 ? Math.round(factSpendKrw / factConversions) : 0;
   const trackedCpaKrw = trackedConversions > 0 ? Math.round(trackedSpendKrw / trackedConversions) : 0;
   const trackedRoasPct = trackedSpendKrw > 0 ? Math.round((trackedConversionValueKrw / trackedSpendKrw) * 100) : 0;
   const trackedCtaRatePct = trackedClicks > 0 ? Math.round((trackedCtaClicks / trackedClicks) * 1000) / 10 : 0;
@@ -853,6 +911,8 @@ async function buildSummaryResponse() {
     draftCampaigns,
     activeSearchBudgetChannels: channelBudgets.filter((budget) => ['naver', 'google'].includes(budget.platform) && budget.status === 'active' && budget.monthly_budget_krw > 0).length,
     learningEventCount: learningEvents.length,
+    conversionEvents: conversionEvents.length,
+    performanceFacts: performanceFacts.length,
     productScenarioCandidates: productScenarios.filter((row) => ['candidate', 'queued'].includes(row.status || '')).length,
     landingEvolutionCandidates: landingEvolutionQueue.filter((row) => row.status === 'candidate').length,
   });
@@ -974,6 +1034,18 @@ async function buildSummaryResponse() {
       external_mutation_requests: externalMutations.length,
       external_mutation_pending: externalMutations.filter((row) => ['planned', 'requested'].includes(row.status || '')).length,
       tenant_reports: tenantReports.length,
+      conversion_events_30d: conversionEvents.length,
+      conversion_events_clean_30d: attributionEventsClean,
+      conversion_events_quarantined_30d: attributionEventsQuarantined,
+      performance_facts_30d: performanceFacts.length,
+      fact_clicks_30d: factClicks,
+      fact_cta_clicks_30d: factCtaClicks,
+      fact_conversions_30d: factConversions,
+      fact_spend_krw_30d: factSpendKrw,
+      fact_revenue_krw_30d: factRevenueKrw,
+      fact_margin_krw_30d: factMarginKrw,
+      fact_margin_roas_pct_30d: attributionMarginRoasPct,
+      fact_cpa_krw_30d: attributionCpaKrw,
     },
     counts: {
       mappings_by_status: mappingsByStatus,
@@ -996,6 +1068,10 @@ async function buildSummaryResponse() {
       keyword_clusters_by_intent: byKey(keywordClusters, (row) => row.intent || 'unknown'),
       external_mutations_by_status: byKey(externalMutations, (row) => row.status || 'unknown'),
       external_mutations_by_type: byKey(externalMutations, (row) => row.mutation_type || 'unknown'),
+      conversion_events_by_type: byKey(conversionEvents, (row) => row.event_type || 'unknown'),
+      conversion_events_by_status: byKey(conversionEvents, (row) => row.quarantine_status || 'clean'),
+      performance_facts_by_source: byKey(performanceFacts, (row) => row.source || 'unknown'),
+      performance_facts_by_platform: byKey(performanceFacts, (row) => row.platform || 'unknown'),
     },
     readiness_audit: readinessAudit,
     learning_loop: {
@@ -1014,6 +1090,17 @@ async function buildSummaryResponse() {
         engagement_sessions_30d: engagementSessions,
         avg_time_on_page_seconds: avgTimeOnPageSeconds,
         avg_scroll_depth_pct: avgScrollDepthPct,
+        attribution_events_30d: conversionEvents.length,
+        attribution_clean_events_30d: attributionEventsClean,
+        attribution_quarantined_events_30d: attributionEventsQuarantined,
+        fact_clicks_30d: factClicks,
+        fact_cta_clicks_30d: factCtaClicks,
+        fact_conversions_30d: factConversions,
+        fact_spend_krw_30d: factSpendKrw,
+        fact_revenue_krw_30d: factRevenueKrw,
+        fact_margin_krw_30d: factMarginKrw,
+        fact_margin_roas_pct_30d: attributionMarginRoasPct,
+        fact_cpa_krw_30d: attributionCpaKrw,
       },
       status: {
         has_click_signal: trackedClicks > 0,
@@ -1021,10 +1108,14 @@ async function buildSummaryResponse() {
         has_booking_signal: trackedConversions > 0,
         has_cost_signal: trackedSpendKrw > 0,
         bounce_tracking_ready: engagementSessions > 0,
+        attribution_ready: performanceFacts.length > 0,
+        margin_learning_ready: factMarginKrw !== 0 || factRevenueKrw > 0,
       },
-      next_action: trackedSpendKrw > 0
-        ? 'CPA/ROAS 기준으로 키워드 증액, 정지, 제외어 후보를 학습합니다.'
-        : '외부 광고비 또는 검색어 성과 수집이 들어오면 CPA/ROAS 학습이 활성화됩니다.',
+      next_action: performanceFacts.length > 0
+        ? '전환 attribution fact 기준으로 CPA/마진 ROAS 학습을 실행할 수 있습니다.'
+        : trackedSpendKrw > 0
+          ? '성과 팩트 동기화와 전환 attribution을 실행해 광고비와 예약/마진을 묶으세요.'
+          : '외부 광고비 또는 검색어 성과 수집이 들어오면 CPA/ROAS 학습이 활성화됩니다.',
     },
     channel_budgets: channelBudgets,
     integration_status: integrationStatus,
@@ -1052,6 +1143,8 @@ async function buildSummaryResponse() {
       keyword_clusters: keywordClusterRes.data?.slice(0, 12) || [],
       external_mutations: externalMutationRes.data?.slice(0, 12) || [],
       tenant_reports: tenantReportRes.data?.slice(0, 12) || [],
+      conversion_events: conversionEventRes.data?.slice(0, 12) || [],
+      performance_facts: performanceFactRes.data?.slice(0, 12) || [],
     },
     automation_ladder: [
       { level: 0, label: '분석만', description: 'AI가 추천만 만들고 DB/외부 광고는 변경하지 않음' },

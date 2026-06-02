@@ -572,3 +572,12 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - `/api/admin/ad-os/tenant-report` now includes keyword clusters and external mutation activity in the agency/SaaS report preview, and can persist a report draft.
 - `/admin/ad-os` exposes `Keyword Brain` and `Naver asset request` actions, plus result panels showing generated longtails and pending external asset requests.
 - Operating principle remains unchanged: recommendation and approval first, limited autopilot only inside tenant budget/risk guardrails, full autopilot off by default.
+
+## 35. 2026-06-02 Ad OS V26-V30 attribution and mutation audit slice
+
+- Added `/api/admin/ad-os/conversion-attribution` to roll clean `ad_os_conversion_events` into `ad_os_performance_facts` by date, platform, product, scenario, landing, creative, campaign, keyword, and search term.
+- Conversion attribution keeps quarantined/test/admin/bot events out of learning, then reports clicks, CTA clicks, bookings, spend, revenue, margin, CPA, and margin ROAS.
+- `/api/admin/ad-os/external-publish` now writes idempotent `ad_os_external_mutation_results` rows for approved change requests, including blocked/planned/requested status and external-spend=false evidence.
+- `/api/admin/ad-os/summary` now exposes conversion event counts, quarantine counts, performance fact counts, fact-level CPA, and fact-level margin ROAS for the last 30 days.
+- `/admin/ad-os` adds a `conversion attribution` action so operators can run booking-funnel sync, conversion attribution, then learning apply in order.
+- External ad spend is still not directly executed by this slice. This is the measurement and audit bridge needed before limited autopilot can safely turn on platform-specific publishers.
