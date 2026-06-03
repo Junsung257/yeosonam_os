@@ -211,6 +211,22 @@ type Summary = {
       missing: string[];
       next_action: string;
     };
+    completion_audit?: {
+      status: 'ready' | 'needs_attention' | 'blocked';
+      readiness_score: number;
+      passed: number;
+      warnings: number;
+      failed: number;
+      top_blocker: string;
+      next_action: string;
+      requirements: Array<{
+        id: string;
+        label: string;
+        status: 'pass' | 'warn' | 'fail';
+        evidence: string;
+        next_action: string;
+      }>;
+    };
     experiment_standards?: {
       templates: number;
       active: number;
@@ -3084,6 +3100,23 @@ export default function AdOsPage() {
                 </p>
                 <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
                   {summary.enterprise_layer?.agency_reporting?.next_action || 'Generate tenant report drafts and audit exports.'}
+                </p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-admin-2xs font-semibold text-admin-muted">Completion Audit</p>
+                  <StatusPill tone={summary.enterprise_layer?.completion_audit?.status === 'ready' ? 'good' : summary.enterprise_layer?.completion_audit?.status === 'blocked' ? 'bad' : 'warn'}>
+                    {summary.enterprise_layer?.completion_audit?.status || 'unknown'}
+                  </StatusPill>
+                </div>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">
+                  {Number(summary.enterprise_layer?.completion_audit?.readiness_score || 0).toLocaleString('ko-KR')}%
+                </p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">
+                  pass {Number(summary.enterprise_layer?.completion_audit?.passed || 0).toLocaleString('ko-KR')} / warn {Number(summary.enterprise_layer?.completion_audit?.warnings || 0).toLocaleString('ko-KR')} / fail {Number(summary.enterprise_layer?.completion_audit?.failed || 0).toLocaleString('ko-KR')}
+                </p>
+                <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                  {summary.enterprise_layer?.completion_audit?.next_action || 'Collect current evidence before declaring Ad OS complete.'}
                 </p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
