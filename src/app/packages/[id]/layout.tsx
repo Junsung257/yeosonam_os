@@ -28,6 +28,10 @@ function getPackageUrl(id: string) {
   return `${BASE_URL}/packages/${encodeURIComponent(id)}`;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 function resolveOgImage(candidate: string | null) {
   if (candidate && /^https?:\/\//i.test(candidate)) return candidate;
   if (candidate?.startsWith('/')) return `${BASE_URL}${candidate}`;
@@ -37,10 +41,10 @@ function resolveOgImage(candidate: string | null) {
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id?: string | string[] }>;
 }): Promise<Metadata> {
   const { id: rawId } = await params;
-  const id = rawId.trim();
+  const id = getRouteParam(rawId);
   const canonical = getPackageUrl(id);
   const pkg = id ? await safeGetPackage(id) : null;
   if (!pkg) {
