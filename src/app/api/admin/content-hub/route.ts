@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -18,7 +20,7 @@ export const dynamic = 'force-dynamic';
  *   limit      - 페이지당 건수 (기본 20, 최대 100)
  */
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [], total: 0 });
+  if (!isSupabaseConfigured) return apiResponse({ data: [], total: 0 });
 
   const { searchParams } = request.nextUrl;
   const tenantId  = searchParams.get('tenant_id');
@@ -44,10 +46,10 @@ const getHandler = async (request: NextRequest) => {
     const { data, count, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ data, total: count ?? 0, page, limit });
+    return apiResponse({ data, total: count ?? 0, page, limit });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }
