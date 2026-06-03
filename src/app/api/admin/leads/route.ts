@@ -7,7 +7,9 @@
  * 정렬: submitted_at(leads) / created_at(qa_inquiries) → 통합 created_at desc.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export type AdminInquirySource = 'lead' | 'qa';
@@ -31,9 +33,9 @@ export interface AdminInquiryRow {
   status: string | null;
 }
 
-export async function GET(_req: NextRequest) {
+async function getHandler() {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ rows: [], total: 0 });
+    return apiResponse({ rows: [], total: 0 });
   }
   try {
     const [{ data: leads, error: leadsErr }, { data: qaInquiries, error: qaErr }] = await Promise.all([
@@ -101,11 +103,10 @@ export async function GET(_req: NextRequest) {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
     );
 
-    return NextResponse.json({ rows, total: rows.length });
+    return apiResponse({ rows, total: rows.length });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err, '조회 실패') }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
