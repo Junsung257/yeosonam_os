@@ -899,3 +899,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - This layer still never calls Naver, Google, Meta, or Kakao.
   - It does not add a live write path and does not allow success confirmation without an external resource/upload id.
   - Live spend remains behind the dedicated channel adapter gates, tenant budgets, explicit confirmation flags, and environment flags.
+
+## 51. 2026-06-03 Ad OS V301-V320 staging E2E smoke fixture
+
+- Added `src/lib/ad-os-v301-v320.ts` and `src/lib/ad-os-v301-v320.test.ts`.
+- Purpose:
+  - Provides a deterministic Danang package smoke fixture for staging and CI.
+  - Proves one product can generate scenarios, longtail keyword candidates, travel intent signals, creative drafts, a guarded Naver paused-keyword platform job, a clean Google conversion upload job, a data-quality snapshot, and a margin-aware portfolio plan.
+  - Verifies the V281-V300 operations queue action policy only allows dry-run execution, failed-result confirmation, and blocker acknowledgement.
+- Safety principle:
+  - The fixture is pure TypeScript and does not read or write Supabase.
+  - It does not call Naver, Google, Meta, or Kakao.
+  - Every executor/conversion/ops action assertion requires `external_api_write=false`, so this becomes a regression tripwire before staging live-write pilots.
