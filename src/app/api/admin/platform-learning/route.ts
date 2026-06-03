@@ -4,9 +4,11 @@
  *
  * 플랫폼 AI 플라이휠 이벤트 조회 — 어드민 대시보드용
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -30,9 +32,9 @@ interface FeedbackStats {
   }>;
 }
 
-const getHandler = async (req: NextRequest) => {
+const getHandler = async (req: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ events: [], total: 0 });
+    return apiResponse({ events: [], total: 0 });
   }
 
   const sp = req.nextUrl.searchParams;
@@ -43,12 +45,19 @@ const getHandler = async (req: NextRequest) => {
     const sb = supabaseAdmin;
 
     // 전체 집계
-    const { data: allFeedback } = await sb
+    const { data: allFeedback, error: statsError } = await sb
       .from('platform_learning_events')
       .select('id, created_at, source, session_id, payload')
       .eq('source', 'qa_chat')
       .filter('payload->>event', 'eq', 'feedback')
       .order('created_at', { ascending: false });
+
+    if (statsError) {
+      return apiResponse(
+        { error: sanitizeDbError(statsError, 'Failed to load feedback stats') },
+        { status: 500 },
+      );
+    }
 
     const rows = (allFeedback ?? []) as Array<{
       id: string;
@@ -109,7 +118,7 @@ const getHandler = async (req: NextRequest) => {
       })),
     };
 
-    return NextResponse.json({ stats: statsResult });
+    return apiResponse({ stats: statsResult });
   }
 
   // ── 일반 이벤트 목록 ──────────────────────────────────────
@@ -133,17 +142,18 @@ const getHandler = async (req: NextRequest) => {
   const { data, error, count } = await q;
 
   if (error) {
-    if (error.message.includes('does not exist') || error.code === '42P01') {
-      return NextResponse.json({
+    const safeError = sanitizeDbError(error, 'Failed to load platform learning events');
+    if (safeError.includes('does not exist') || error.code === '42P01') {
+      return apiResponse({
         events: [],
         total: 0,
         notice: 'platform_learning_events 테이블이 없습니다. Supabase 마이그레이션을 적용하세요.',
       });
     }
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: safeError }, { status: 500 });
   }
 
-  return NextResponse.json({ events: data ?? [], total: count ?? 0 });
+  return apiResponse({ events: data ?? [], total: count ?? 0 });
 };
 
 export const GET = withAdminGuard(getHandler);
