@@ -5,8 +5,10 @@
  * 운영이 TTL·리타겟 정책을 맞출 때 참고.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -18,7 +20,7 @@ export async function GET(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB not configured' }, { status: 503 });
   }
 
   const nowIso = new Date().toISOString();
@@ -36,13 +38,13 @@ export async function GET(request: NextRequest) {
     .gte('plan_expires_at', nowIso);
 
   if (e1 || e2) {
-    return NextResponse.json(
-      { error: (e1 ?? e2)?.message ?? '집계 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(e1 ?? e2, 'Plan housekeeping failed') },
       { status: 500 },
     );
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     asOf: nowIso,
     planExpiredRowCount: expiredCount ?? 0,
