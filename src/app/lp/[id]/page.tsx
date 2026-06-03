@@ -6,8 +6,23 @@ import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } fro
 import { LandingClient } from './LandingClient';
 import { LpRouteSkeleton } from './LpRouteSkeleton';
 
-/** 세그먼트 ISR — unstable_cache(300s)와 함께 동작 */
 export const revalidate = 300;
+
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
+async function safeLoadLpPackage(id: string) {
+  const normalizedId = id.trim();
+  if (!normalizedId) return null;
+
+  try {
+    return await loadLpPackageForPage(normalizedId);
+  } catch {
+    return null;
+  }
+}
 
 export async function generateMetadata(
   props: {
@@ -15,29 +30,37 @@ export async function generateMetadata(
   }
 ): Promise<Metadata> {
   const params = await props.params;
-  const data = await loadLpPackageForPage(params.id);
+  const base = siteBaseUrl();
+  const encodedId = encodeURIComponent(params.id.trim());
+  const data = await safeLoadLpPackage(params.id);
   if (!data) {
-    return { title: '상품 | 여소남', robots: { index: false, follow: true } };
+    return {
+      title: '상품 | 여소남',
+      robots: { index: false, follow: true },
+      alternates: { canonical: `${base}/lp/${encodedId}` },
+    };
   }
+
   const fallbackTitle = data.destination ? `${data.destination} 패키지` : '여소남 패키지 여행';
   const plainTitle =
     (data.customMessage.default.headline || fallbackTitle)
       .replace(/\s*\n\s*/g, ' ')
       .trim() || fallbackTitle;
   const rawTitle =
-    plainTitle.length > 55 ? `${plainTitle.slice(0, 52)}… | 여소남` : `${plainTitle} | 여소남`;
-  // 루트 layout.tsx의 title.template('%s | 여소남') 재적용 방지
+    plainTitle.length > 55 ? `${plainTitle.slice(0, 52)}... | 여소남` : `${plainTitle} | 여소남`;
   const title = { absolute: rawTitle };
   const desc =
     (data.customMessage.default.subline || fallbackTitle).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
   const ogImages =
     hero && /^https?:\/\//i.test(hero)
-      ? [{ url: hero, alt: data.destination }]
+      ? [{ url: hero, alt: data.destination || fallbackTitle }]
       : undefined;
+
   return {
     title,
     description: desc,
+    alternates: { canonical: `${base}/lp/${encodedId}` },
     openGraph: {
       title: rawTitle,
       description: desc,
@@ -55,17 +78,15 @@ export async function generateMetadata(
 
 export default async function LpPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
-  const data = await loadLpPackageForPage(params.id);
+  const data = await safeLoadLpPackage(params.id);
   if (!data) notFound();
 
-  // Tier 1 플랫폼 기본약관 서버사이드 pre-fetch (바텀시트 waterfall 방지)
-  // LP는 Tier 1(플랫폼 공통)만 로드 — id만 전달하면 platform tier 조회 가능
   let initialNotices: NoticeBlock[] = [];
   try {
     const resolved = await resolveTermsForPackage({ id: data.id }, 'mobile');
     initialNotices = formatCancellationDates(resolved, data.departureFullDate ?? null);
   } catch {
-    // 약관 로드 실패는 무시 (바텀시트는 동작)
+    // Keep the landing page renderable even if standard terms are temporarily unavailable.
   }
 
   return (

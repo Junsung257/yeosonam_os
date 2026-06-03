@@ -263,7 +263,7 @@ export function LandingClient({
   initialNotices?: NoticeBlock[];
 }) {
   const searchParams = useSearchParams();
-  const source = (searchParams.get('source') ?? 'default') as ChannelSource;
+  const source = (searchParams?.get('source') ?? 'default') as ChannelSource;
   const validSource: ChannelSource = ['insta', 'kakao'].includes(source) ? source : 'default';
 
   const data = initialData;
@@ -308,7 +308,7 @@ export function LandingClient({
   }, [registerScrollSentinel]);
 
   const msg = data.customMessage[validSource];
-  const utmTerm = sanitizeUtmTermForDisplay(searchParams.get('utm_term'));
+  const utmTerm = sanitizeUtmTermForDisplay(searchParams?.get('utm_term') ?? null);
 
   // 채널별 히어로 스타일
   const isInsta = validSource === 'insta';
