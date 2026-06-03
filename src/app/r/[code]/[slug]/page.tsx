@@ -45,23 +45,26 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
   }
 
   const code = normalizeAffiliateReferralCode(safeDecodePathSegment(rawCode));
+  const metadataCode = code || rawCode;
+  const decodedSlug = safeDecodePathSegment(slug);
   const baseUrl = siteBaseUrl();
-  const encodedCode = encodeURIComponent(rawCode);
-  const encodedSlug = encodeURIComponent(slug);
-  const ogUrl = `${baseUrl}/api/og/affiliate?code=${encodeURIComponent(code || rawCode)}&pkg=${encodeURIComponent(slug)}`;
+  const encodedCode = encodeURIComponent(metadataCode);
+  const encodedSlug = encodeURIComponent(decodedSlug);
+  const canonicalUrl = `${baseUrl}/r/${encodedCode}/${encodedSlug}`;
+  const ogUrl = `${baseUrl}/api/og/affiliate?code=${encodeURIComponent(metadataCode)}&pkg=${encodedSlug}`;
 
-  let title = `여소남 추천 여행 — ${code || rawCode}`;
+  let title = `여소남 추천 여행 — ${metadataCode}`;
   let description = '여소남 제휴 콘텐츠 · 추천 보상 포함 (광고)';
   if (isSupabaseConfigured) {
     try {
       const { data: pkg } = await supabaseAdmin
         .from('travel_packages')
         .select('title, destination, product_summary')
-        .eq('id', slug)
+        .eq('id', decodedSlug)
         .maybeSingle();
       if (pkg) {
         const p = pkg as { title?: string; destination?: string; product_summary?: string };
-        title = `${p.title || title} · ${code || rawCode} × 여소남`;
+        title = `${p.title || title} · ${metadataCode} × 여소남`;
         description = (p.product_summary || `${p.destination || ''} 여행 패키지`) + ' · 여소남 제휴 콘텐츠 (광고)';
       }
     } catch { /* */ }
@@ -74,7 +77,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
       title,
       description,
       images: [{ url: ogUrl, width: 1200, height: 630 }],
-      url: `${baseUrl}/r/${encodedCode}/${encodedSlug}`,
+      url: canonicalUrl,
       type: 'website',
     },
     twitter: {
@@ -83,7 +86,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
       description,
       images: [ogUrl],
     },
-    alternates: { canonical: `${baseUrl}/r/${encodedCode}/${encodedSlug}` },
+    alternates: { canonical: canonicalUrl },
     robots: { index: false, follow: false },  // 단축링크는 검색 인덱싱 차단
   };
 }
