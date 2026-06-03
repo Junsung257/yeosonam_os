@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { isNaverAdsConfigured } from '@/lib/search-ads-api';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export type Platform = 'google_ads' | 'meta' | 'naver' | 'google_analytics';
 
@@ -44,7 +46,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   let tenantId = request.nextUrl.searchParams.get('tenant_id');
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ integrations: emptyIntegrations() });
+    return apiResponse({ integrations: emptyIntegrations() });
   }
 
   if (!tenantId) {
@@ -55,7 +57,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       .order('created_at', { ascending: true })
       .limit(1);
     tenantId = data?.[0]?.id ?? null;
-    if (!tenantId) return NextResponse.json({ integrations: emptyIntegrations() });
+    if (!tenantId) return apiResponse({ integrations: emptyIntegrations() });
   }
 
   try {
@@ -92,10 +94,10 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       };
     });
 
-    return NextResponse.json({ integrations, resolvedTenantId: tenantId });
+    return apiResponse({ integrations, resolvedTenantId: tenantId });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err, '처리 실패') },
       { status: 500 },
     );
   }
