@@ -1,13 +1,9 @@
-/**
- * Phase 3-F: 개별 항공편 상태 변경
- * PATCH /api/admin/flight-alerts/[id]
- */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { sendSlackAlert } from '@/lib/slack-alert';
-import { logAndSanitize } from '@/lib/error-sanitizer';
+import { NextRequest, type NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logAndSanitize } from '@/lib/error-sanitizer';
+import { sendSlackAlert } from '@/lib/slack-alert';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,24 +12,16 @@ const patchHandler = async (
   { params }: { params: { id: string } },
 ): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
-  }
-
-  const token =
-    request.cookies.get('sb-access-token')?.value ??
-    request.headers.get('Authorization')?.replace('Bearer ', '');
-  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
-  if (!userData?.user?.id) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
 
   const { id } = params;
   if (!id) {
-    return NextResponse.json({ error: 'id 필수' }, { status: 400 });
+    return apiResponse({ error: 'ID_REQUIRED' }, { status: 400 });
   }
 
   try {
-    const body = await request.json() as {
+    let body: {
       status?: string;
       delayMinutes?: number;
       actualDeparture?: string;
@@ -41,6 +29,11 @@ const patchHandler = async (
       notifiedCustomer?: boolean;
       notifiedOperator?: boolean;
     };
+    try {
+      body = await request.json();
+    } catch {
+      return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
+    }
 
     const updatePayload: Record<string, unknown> = {};
     if (body.status !== undefined) updatePayload.status = body.status;
@@ -51,15 +44,16 @@ const patchHandler = async (
     if (body.notifiedOperator !== undefined) updatePayload.notified_operator = body.notifiedOperator;
 
     if (Object.keys(updatePayload).length === 0) {
-      return NextResponse.json({ error: '변경할 필드 없음' }, { status: 400 });
+      return apiResponse({ error: 'NO_FIELDS_TO_UPDATE' }, { status: 400 });
     }
 
-    // 기존 레코드 조회 (알림에 필요한 정보)
-    const { data: existing } = await supabaseAdmin
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from('flight_alerts')
       .select('flight_number, route, scheduled_departure, status')
       .eq('id', id)
       .limit(1);
+
+    if (existingError) throw existingError;
 
     const { error } = await supabaseAdmin
       .from('flight_alerts')
@@ -68,14 +62,12 @@ const patchHandler = async (
 
     if (error) throw error;
 
-    // 상태가 delayed/cancelled로 변경 시 Slack 알림
     const newStatus = body.status;
     if (newStatus === 'delayed' || newStatus === 'cancelled') {
       const flight = existing?.[0];
-      const emoji = newStatus === 'cancelled' ? '🚫' : '⏰';
-      const label = newStatus === 'cancelled' ? '취소' : `지연 ${body.delayMinutes ?? '?'}분`;
+      const label = newStatus === 'cancelled' ? 'cancelled' : `delayed ${body.delayMinutes ?? '?'}m`;
       await sendSlackAlert(
-        `${emoji} 항공편 상태 변경 → ${label}: ${flight?.flight_number ?? id} (${flight?.route ?? ''})`,
+        `Flight status changed to ${label}: ${flight?.flight_number ?? id} (${flight?.route ?? ''})`,
         {
           flight_id: id,
           scheduled: flight?.scheduled_departure,
@@ -86,13 +78,13 @@ const patchHandler = async (
       );
     }
 
-    return NextResponse.json({ ok: true });
+    return apiResponse({ ok: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: logAndSanitize('admin-flight-alerts-patch', err, '업데이트 실패') },
+    return apiResponse(
+      { error: logAndSanitize('admin-flight-alerts-patch', err, 'REQUEST_FAILED') },
       { status: 500 },
     );
   }
-}
+};
 
 export const PATCH = withAdminGuard(patchHandler);
