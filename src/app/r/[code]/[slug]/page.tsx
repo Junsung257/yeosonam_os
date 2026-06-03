@@ -19,11 +19,18 @@ interface Params {
   searchParams?: Promise<{ sub?: string }>;
 }
 
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.co.kr')
+    .replace(/\/+$/, '');
+}
+
 export async function generateMetadata(props: Params): Promise<Metadata> {
   const params = await props.params;
   const { code: rawCode, slug } = params;
   const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
+  const baseUrl = siteBaseUrl();
+  const encodedCode = encodeURIComponent(rawCode);
+  const encodedSlug = encodeURIComponent(slug);
   const ogUrl = `${baseUrl}/api/og/affiliate?code=${encodeURIComponent(code || rawCode)}&pkg=${encodeURIComponent(slug)}`;
 
   let title = `여소남 추천 여행 — ${code || rawCode}`;
@@ -50,7 +57,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
       title,
       description,
       images: [{ url: ogUrl, width: 1200, height: 630 }],
-      url: `${baseUrl}/r/${encodeURIComponent(rawCode)}/${slug}`,
+      url: `${baseUrl}/r/${encodedCode}/${encodedSlug}`,
       type: 'website',
     },
     twitter: {
@@ -59,6 +66,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
       description,
       images: [ogUrl],
     },
+    alternates: { canonical: `${baseUrl}/r/${encodedCode}/${encodedSlug}` },
     robots: { index: false, follow: false },  // 단축링크는 검색 인덱싱 차단
   };
 }

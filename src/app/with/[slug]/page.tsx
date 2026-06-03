@@ -27,22 +27,32 @@ interface PageProps {
   params: Promise<{ slug: string }>;
 }
 
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const params = await props.params;
   const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
-  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
+  const base = siteBaseUrl();
   if (!looksLikeReferralCode(slug)) {
     return { title: '제휴 랜딩', robots: { index: false, follow: false } };
   }
   let name = slug;
   if (isSupabaseConfigured) {
-    const { data } = await supabaseAdmin
-      .from('affiliates')
-      .select('name')
-      .eq('referral_code', slug)
-      .eq('is_active', true)
-      .maybeSingle();
-    if (data && (data as { name?: string }).name) name = (data as { name: string }).name;
+    try {
+      const { data } = await supabaseAdmin
+        .from('affiliates')
+        .select('name')
+        .eq('referral_code', slug)
+        .eq('is_active', true)
+        .maybeSingle();
+      const affiliateName = typeof data?.name === 'string' ? data.name.trim() : '';
+      if (affiliateName) name = affiliateName;
+    } catch {
+      name = slug;
+    }
   }
   return {
     title: `${name} × 여소남`,

@@ -19,13 +19,17 @@ export async function generateMetadata(
   if (!data) {
     return { title: '상품 | 여소남', robots: { index: false, follow: true } };
   }
-  const plainTitle = data.customMessage.default.headline.replace(/\s*\n\s*/g, ' ').trim();
+  const fallbackTitle = data.destination ? `${data.destination} 패키지` : '여소남 패키지 여행';
+  const plainTitle =
+    (data.customMessage.default.headline || fallbackTitle)
+      .replace(/\s*\n\s*/g, ' ')
+      .trim() || fallbackTitle;
   const rawTitle =
     plainTitle.length > 55 ? `${plainTitle.slice(0, 52)}… | 여소남` : `${plainTitle} | 여소남`;
   // 루트 layout.tsx의 title.template('%s | 여소남') 재적용 방지
   const title = { absolute: rawTitle };
   const desc =
-    (data.customMessage.default.subline || `${data.destination} 패키지`).slice(0, 160) || rawTitle;
+    (data.customMessage.default.subline || fallbackTitle).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
   const ogImages =
     hero && /^https?:\/\//i.test(hero)
