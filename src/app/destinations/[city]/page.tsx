@@ -290,21 +290,22 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
   const decoded = safeDecodePathSegment(city).trim();
   const encodedCity = encodeDestinationPathSegment(decoded);
   const canonical = encodedCity ? `${BASE_URL}/destinations/${encodedCity}` : `${BASE_URL}/destinations`;
-  const fallbackTitle = '여행지 가이드 | 여소남';
+  const fallbackTitle = '여행지 가이드';
+  const fallbackSocialTitle = `${fallbackTitle} | 여소남`;
   if (!decoded) {
     return {
       title: fallbackTitle,
       alternates: { canonical },
       robots: { index: false, follow: true },
       openGraph: {
-        title: fallbackTitle,
+        title: fallbackSocialTitle,
         url: canonical,
         type: 'website',
         images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
       },
       twitter: {
         card: 'summary_large_image',
-        title: fallbackTitle,
+        title: fallbackSocialTitle,
         images: [SOCIAL_IMAGE_URL],
       },
     };
