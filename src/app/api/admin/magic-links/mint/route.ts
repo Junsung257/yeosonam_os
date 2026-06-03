@@ -19,11 +19,13 @@
  * 발송: 본 라우트는 발급만 함. 알림톡/SMS 발송은 사장님 wire 완료 후 별도 라우트에서.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard, resolveAdminActorLabel } from '@/lib/admin-guard';
 import { mintMagicToken, type MagicActionType, type MagicRecipientChannel } from '@/lib/magic-link';
 import { dispatchMagicLink, type DispatchResult } from '@/lib/magic-link-dispatch';
 import { supabaseAdmin } from '@/lib/supabase';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const ALLOWED_ACTIONS: MagicActionType[] = [
   'booking_portal',
@@ -59,12 +61,12 @@ export const POST = withAdminGuard(async (req: NextRequest) => {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'invalid_json' }, { status: 400 });
+    return apiResponse({ error: 'invalid_json' }, { status: 400 });
   }
 
   const actionType = body.actionType as MagicActionType | undefined;
   if (!actionType || !ALLOWED_ACTIONS.includes(actionType)) {
-    return NextResponse.json(
+    return apiResponse(
       { error: 'invalid_action_type', allowed: ALLOWED_ACTIONS },
       { status: 400 },
     );
@@ -72,7 +74,7 @@ export const POST = withAdminGuard(async (req: NextRequest) => {
 
   const bookingId = typeof body.bookingId === 'string' ? body.bookingId : null;
   if (!bookingId && actionType !== 'jarvis_session') {
-    return NextResponse.json({ error: 'booking_id_required' }, { status: 400 });
+    return apiResponse({ error: 'booking_id_required' }, { status: 400 });
   }
 
   const ttlHours = clampInt(body.ttlHours, 1, 24 * 365) ?? DEFAULT_TTL_HOURS[actionType];
@@ -147,7 +149,7 @@ export const POST = withAdminGuard(async (req: NextRequest) => {
       });
     }
 
-    return NextResponse.json({
+    return apiResponse({
       tokenId: result.tokenId,
       rawToken: result.rawToken,
       url: result.url,
@@ -155,8 +157,7 @@ export const POST = withAdminGuard(async (req: NextRequest) => {
       dispatch: dispatchResult,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'mint_failed';
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, 'mint_failed') }, { status: 500 });
   }
 });
 
