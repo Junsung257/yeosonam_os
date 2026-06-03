@@ -20,7 +20,7 @@ interface Params {
 }
 
 function siteBaseUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.co.kr')
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
     .replace(/\/+$/, '');
 }
 
