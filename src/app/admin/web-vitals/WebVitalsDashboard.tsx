@@ -66,14 +66,16 @@ export default function WebVitalsDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStats = async (p: Period) => {
+  const fetchStats = async (p: Period, signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch(`/api/admin/web-vitals?period=${p}`, {
         credentials: 'same-origin',
+        signal,
       });
       const payload = (await response.json().catch(() => null)) as WebVitalsResponse | null;
+      if (signal?.aborted) return;
       if (!response.ok) {
         setError(payload?.error ?? '데이터 로딩 실패');
         setStats({});
@@ -81,15 +83,19 @@ export default function WebVitalsDashboard() {
       }
       setStats(normalizeStats(payload?.stats));
     } catch (e) {
+      if (signal?.aborted) return;
       setError(e instanceof Error ? e.message : '데이터 로딩 실패');
       setStats({});
     } finally {
+      if (signal?.aborted) return;
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStats(period);
+    const controller = new AbortController();
+    fetchStats(period, controller.signal);
+    return () => controller.abort();
   }, [period]);
 
   const getBarColor = (goodPct: number) => {
