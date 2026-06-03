@@ -1,15 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+async function getHandler() {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   const [{ data: snapshots, error: snapshotError }, { data: alerts, error: alertError }] =
@@ -28,11 +26,13 @@ export async function GET(request: NextRequest) {
 
   const error = snapshotError ?? alertError;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({
+  return apiResponse({
     snapshots: snapshots ?? [],
     alerts: alerts ?? [],
   });
 }
+
+export const GET = withAdminGuard(getHandler);
