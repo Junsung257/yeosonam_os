@@ -135,6 +135,7 @@ function Countdown({ deadline }: { deadline: string }) {
 export default function AdminRfqDetailPage() {
   const params = useParams();
   const id = getRouteParam(params?.id);
+  const encodedId = encodeURIComponent(id);
 
   const [rfq, setRfq] = useState<GroupRfq | null>(null);
   const [bids, setBids] = useState<RfqBid[]>([]);
@@ -162,10 +163,10 @@ export default function AdminRfqDetailPage() {
     setError('');
     try {
       const [rfqRes, bidsRes, propsRes, msgsRes] = await Promise.all([
-        fetch(`/api/rfq/${id}`),
-        fetch(`/api/rfq/${id}/bid`),
-        fetch(`/api/rfq/${id}/proposals`),
-        fetch(`/api/rfq/${id}/messages?viewAs=admin`),
+        fetch(`/api/rfq/${encodedId}`),
+        fetch(`/api/rfq/${encodedId}/bid`),
+        fetch(`/api/rfq/${encodedId}/proposals`),
+        fetch(`/api/rfq/${encodedId}/messages?viewAs=admin`),
       ]);
       if (!rfqRes.ok) throw new Error('RFQ 데이터를 불러올 수 없습니다');
       const rfqData = await rfqRes.json();
@@ -193,7 +194,7 @@ export default function AdminRfqDetailPage() {
     if (!id) return;
     setTransitioning(status);
     try {
-      const res = await fetch(`/api/rfq/${id}`, {
+      const res = await fetch(`/api/rfq/${encodedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'transition', status }),
@@ -211,7 +212,7 @@ export default function AdminRfqDetailPage() {
     if (!id) return;
     setAnalyzing(true);
     try {
-      const res = await fetch(`/api/rfq/${id}/analyze`, { method: 'POST' });
+      const res = await fetch(`/api/rfq/${encodedId}/analyze`, { method: 'POST' });
       if (!res.ok) throw new Error('분석 실패');
       const data = await res.json();
       setReport(data);
