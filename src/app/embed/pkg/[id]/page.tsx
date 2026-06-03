@@ -20,8 +20,8 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ ref?: string }>;
+  params: Promise<{ id?: string | string[] }>;
+  searchParams: Promise<{ ref?: string | string[] }>;
 }
 
 export const dynamic = 'force-dynamic';
@@ -46,12 +46,17 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default async function EmbedWidget(props: Params) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const id = params.id.trim();
+  const id = getRouteParam(params.id);
   const encodedId = encodeURIComponent(id);
-  const ref = searchParams.ref ? normalizeAffiliateReferralCode(searchParams.ref) : '';
+  const rawRef = getRouteParam(searchParams.ref);
+  const ref = rawRef ? normalizeAffiliateReferralCode(rawRef) : '';
 
   let pkg: PackageRow | null = null;
   let aff: AffiliateRow | null = null;
