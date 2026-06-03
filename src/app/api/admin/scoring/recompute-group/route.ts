@@ -1,22 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { recomputeGroupScores, recomputeGroupForPackage } from '@/lib/scoring/recommend';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { recomputeGroupForPackage, recomputeGroupScores } from '@/lib/scoring/recommend';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-/**
- * 그룹 단위 즉시 재계산 — 패키지 등록 직후 호출용 (1~2초).
- *
- * Body 형식 1: { package_id: "uuid" } — 패키지 ID로 자동 그룹 추론
- * Body 형식 2: { destination: "다낭", departure_date: "2026-04-20" }
- */
 const postHandler = async (req: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
+
   let body: { package_id?: string; destination?: string; departure_date?: string | null };
-  try { body = await req.json(); } catch {
-    return NextResponse.json({ error: 'invalid json' }, { status: 400 });
+  try {
+    body = await req.json();
+  } catch {
+    return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
   }
 
   try {
@@ -26,15 +25,13 @@ const postHandler = async (req: NextRequest) => {
     } else if (body.destination) {
       result = await recomputeGroupScores(body.destination, body.departure_date ?? null);
     } else {
-      return NextResponse.json({ error: 'package_id 또는 destination 필수' }, { status: 400 });
+      return apiResponse({ error: 'PACKAGE_ID_OR_DESTINATION_REQUIRED' }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, ...result });
+
+    return apiResponse({ ok: true, ...result });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
-}
+};
 
 export const POST = withAdminGuard(postHandler);
