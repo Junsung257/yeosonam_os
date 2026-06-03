@@ -48,7 +48,7 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
 export default function SharePage() {
   const params  = useParams<{ code: string }>();
   const router  = useRouter();
-  const code    = params.code;
+  const code    = typeof params?.code === 'string' ? params.code : '';
 
   const [shared,     setShared]     = useState<SharedItinerary | null>(null);
   const [loading,    setLoading]    = useState(true);
@@ -65,16 +65,23 @@ export default function SharePage() {
   const [addingToCart, setAddingToCart] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/share?code=${code}`)
+    if (!code) {
+      setError('공유 코드가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
+    fetch(`/api/share?code=${encodeURIComponent(code)}`)
       .then(r => r.json())
       .then(d => {
         if (d.error) setError(d.error);
+        else if (!d.shared || typeof d.shared !== 'object') setError('공유 정보를 찾을 수 없습니다.');
         else {
           setShared(d.shared);
           // FIXED: 재고 조회
           if (d.shared.share_type === 'FIXED' && d.shared.product_id) {
             const today = new Date().toISOString().slice(0, 10);
-            fetch(`/api/packages/${d.shared.product_id}/inventory?from=${today}`)
+            fetch(`/api/packages/${encodeURIComponent(d.shared.product_id)}/inventory?from=${today}`)
               .then(r => r.json())
               .then(inv => setBlocks(inv.blocks ?? []))
               .catch(() => {});
