@@ -1050,3 +1050,10 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - The route reuses the deterministic Danang package fixture from V301-V320 to prove one product can generate scenarios, ultra-longtail keywords, travel intent signals, creative variants, a paused Naver platform job, a clean Google conversion upload candidate, a portfolio plan, and safe ops queue decisions.
 - The response explicitly marks `read_only: true`, `fixture_only: true`, `database_mutation: false`, `external_api_write: false`, and `external_spend_krw: 0`.
 - This does not replace DB-backed staging tests. It gives operators a fast JSON regression proof before they run Supabase migrations or external-platform dry-run flows.
+
+## 64. 2026-06-03 Ad OS V561-V580 completion audit smoke UX
+
+- Surfaced the staging smoke gate inside `/admin/ad-os?panel=completion-audit` so operators can see control-plane fixture evidence next to the completion audit.
+- The UI shows pass/fail, assertion count, generated keyword count, creative variant count, external spend, and explicit DB/external-write off indicators.
+- Added a `Read-only smoke` action and direct JSON drilldown to `/api/admin/ad-os/staging-smoke`.
+- This remains a verification surface only. It does not mutate Supabase state, change automation level, or write to Naver/Google/Meta.

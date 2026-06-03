@@ -377,6 +377,40 @@ type LaunchAudit = {
   }>;
 };
 
+type StagingSmoke = {
+  ok: boolean;
+  checked_at: string;
+  source: string;
+  smoke: {
+    status: 'pass' | 'fail';
+    passed_assertions: number;
+    failed_assertions: number;
+    next_action: string;
+    counts: {
+      scenarios: number;
+      keywords: number;
+      intent_signals: number;
+      creative_variants: number;
+      platform_jobs: number;
+      conversion_upload_jobs: number;
+      portfolio_plans: number;
+    };
+    evidence: {
+      package_id: string;
+      platform_job_status: string;
+      conversion_upload_status: string;
+      external_api_write_zero: boolean;
+    };
+  };
+  safety: {
+    read_only: boolean;
+    external_api_write: boolean;
+    database_mutation: boolean;
+    fixture_only: boolean;
+    external_spend_krw: number;
+  };
+};
+
 type NaverSetupPacket = {
   existing_assets: {
     campaigns: number;
@@ -433,6 +467,13 @@ function pct(value: number, total: number): string {
 
 async function fetchSummary(): Promise<Summary> {
   const res = await fetch('/api/admin/ad-os/summary');
+  const json = await res.json();
+  if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
+
+async function fetchStagingSmoke(): Promise<StagingSmoke> {
+  const res = await fetch('/api/admin/ad-os/staging-smoke');
   const json = await res.json();
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
@@ -624,6 +665,7 @@ export default function AdOsPage() {
   const [checkingExecutionGate, setCheckingExecutionGate] = useState(false);
   const [runningRollbackDrill, setRunningRollbackDrill] = useState(false);
   const [runningLimitedPilot, setRunningLimitedPilot] = useState(false);
+  const [checkingStagingSmoke, setCheckingStagingSmoke] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [opsQueueActionId, setOpsQueueActionId] = useState<string | null>(null);
@@ -634,6 +676,7 @@ export default function AdOsPage() {
   const [opsPlan, setOpsPlan] = useState<Record<string, unknown> | null>(null);
   const [keywordBrainResult, setKeywordBrainResult] = useState<Record<string, unknown> | null>(null);
   const [naverAssetPlan, setNaverAssetPlan] = useState<Record<string, unknown> | null>(null);
+  const [stagingSmoke, setStagingSmoke] = useState<StagingSmoke | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -657,11 +700,43 @@ export default function AdOsPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetchStagingSmoke()
+      .then((json) => {
+        if (alive) setStagingSmoke(json);
+      })
+      .catch((err) => {
+        if (alive) setError(err instanceof Error ? err.message : '스테이징 스모크 조회 실패');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const refresh = async () => {
     const next = await fetchSummary();
     setSummary(next);
     setBudgetDrafts(next.channel_budgets);
     setTenantPolicyDraft(next.tenant_policy || null);
+  };
+
+  const runStagingSmoke = async () => {
+    setCheckingStagingSmoke(true);
+    setError(null);
+    try {
+      const json = await fetchStagingSmoke();
+      setStagingSmoke(json);
+      setAutomationMessage(
+        json.ok
+          ? '스테이징 스모크가 통과했습니다. 외부 광고비/DB 쓰기 없이 control-plane 한 사이클이 검증됐습니다.'
+          : '스테이징 스모크가 실패했습니다. 실패 assertion을 먼저 복구해야 staging readiness를 선언할 수 있습니다.',
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '스테이징 스모크 조회 실패');
+    } finally {
+      setCheckingStagingSmoke(false);
+    }
   };
 
   const updateBudgetDraft = (platform: string, key: keyof BudgetDraft, value: string | number) => {
@@ -3139,6 +3214,61 @@ export default function AdOsPage() {
                 <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
                   {summary.enterprise_layer?.completion_audit?.next_action || 'Collect current evidence before declaring Ad OS complete.'}
                 </p>
+                <div className="mt-3 rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+                  <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-admin-2xs font-semibold text-admin-muted">Staging Smoke</p>
+                      <p className="mt-1 text-admin-2xs leading-5 text-admin-muted">
+                        다낭 fixture로 상품→시나리오→키워드→소재→paused 실행 큐→전환 업로드 후보→포트폴리오 학습까지 read-only로 확인합니다.
+                      </p>
+                    </div>
+                    <StatusPill tone={stagingSmoke?.ok ? 'good' : stagingSmoke ? 'bad' : 'neutral'}>
+                      {stagingSmoke?.smoke.status || 'not checked'}
+                    </StatusPill>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                    <div>
+                      <p className="text-admin-2xs text-admin-muted">Assertions</p>
+                      <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                        {Number(stagingSmoke?.smoke.passed_assertions || 0).toLocaleString('ko-KR')} / {Number(
+                          (stagingSmoke?.smoke.passed_assertions || 0) + (stagingSmoke?.smoke.failed_assertions || 0),
+                        ).toLocaleString('ko-KR')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-admin-2xs text-admin-muted">Keywords</p>
+                      <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                        {Number(stagingSmoke?.smoke.counts.keywords || 0).toLocaleString('ko-KR')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-admin-2xs text-admin-muted">Creative</p>
+                      <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                        {Number(stagingSmoke?.smoke.counts.creative_variants || 0).toLocaleString('ko-KR')}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-admin-2xs text-admin-muted">External spend</p>
+                      <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                        {fmtWon(stagingSmoke?.safety.external_spend_krw || 0)}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                    {stagingSmoke?.smoke.next_action || '스모크 API를 조회하면 운영 전 안전 증거가 여기에 표시됩니다.'}
+                  </p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <Button size="sm" variant="secondary" onClick={runStagingSmoke} loading={checkingStagingSmoke}>
+                      Read-only smoke
+                    </Button>
+                    <Link href="/api/admin/ad-os/staging-smoke" className="inline-flex items-center gap-1 text-admin-2xs font-semibold text-blue-700">
+                      JSON 보기 <ArrowRight className="h-3 w-3" />
+                    </Link>
+                    <StatusPill tone={stagingSmoke?.safety.external_api_write === false && stagingSmoke?.safety.database_mutation === false ? 'good' : 'warn'}>
+                      DB write {stagingSmoke?.safety.database_mutation ? 'on' : 'off'} · external write {stagingSmoke?.safety.external_api_write ? 'on' : 'off'}
+                    </StatusPill>
+                  </div>
+                </div>
                 <div className="mt-3 space-y-2">
                   {completionDrilldown.length > 0 ? completionDrilldown.map((item) => (
                     <div key={item.id} className="grid gap-2 border-t border-admin-border pt-2 md:grid-cols-[minmax(0,1fr)_auto]">
