@@ -28,12 +28,13 @@ interface SubNavProps {
  */
 export default function SubNav({ basePath, tabs }: SubNavProps) {
   const pathname = usePathname();
+  const currentPath = pathname || basePath;
 
   return (
     <div className="border-b border-admin-border mb-6">
       <nav className="flex gap-0 -mb-px overflow-x-auto scrollbar-none">
         {tabs.map((tab) => {
-          const isActive = pathname === tab.href || pathname.startsWith(tab.href + '/');
+          const isActive = currentPath === tab.href || currentPath.startsWith(tab.href + '/');
           return (
             <Link
               key={tab.href}
