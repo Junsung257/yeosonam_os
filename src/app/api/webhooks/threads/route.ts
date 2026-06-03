@@ -76,7 +76,10 @@ export async function POST(request: NextRequest) {
       }
     }
     if (rows.length > 0) {
-      await supabaseAdmin.from('social_webhook_events').insert(rows as never);
+      const { error } = await supabaseAdmin.from('social_webhook_events').insert(rows as never);
+      if (error) {
+        console.error('[webhook:threads] insert error (responding 200):', sanitizeDbError(error));
+      }
     }
   } catch (err) {
     console.error('[webhook:threads] processing error:', sanitizeDbError(err));
