@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { analyzeSearchTerms, fetchGoogleSearchTerms, type SearchTerm } from '@/lib/search-ads-api';
 
@@ -26,7 +28,7 @@ function learningScore(row: { clicks?: number | null; cta_clicks?: number | null
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -47,7 +49,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || '학습 실행 로그 생성 실패' }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(runError, 'Learning harvest run create failed') }, { status: 500 });
   }
 
   const [mappingRes, engagementRes, conversionRes, keywordRes] = await Promise.all([
@@ -76,11 +78,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const firstError = mappingRes.error || engagementRes.error || conversionRes.error || keywordRes.error;
   if (firstError) {
+    const safeError = sanitizeDbError(firstError);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: firstError.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const learningEvents: Array<Record<string, unknown>> = [];
@@ -193,11 +196,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .from('ad_os_learning_events')
         .upsert(learningEvents, { onConflict: 'source_table,source_id,signal_type' });
       if (error) {
+        const safeError = sanitizeDbError(error);
         await supabaseAdmin
           .from('ad_os_automation_runs')
-          .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] })
+          .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
           .eq('id', run.id);
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return apiResponse({ ok: false, error: safeError }, { status: 500 });
       }
     }
     if (searchTermCandidates.length > 0) {
@@ -205,11 +209,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .from('ad_os_search_term_candidates')
         .upsert(searchTermCandidates, { onConflict: 'platform,search_term,action' });
       if (error) {
+        const safeError = sanitizeDbError(error);
         await supabaseAdmin
           .from('ad_os_automation_runs')
-          .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] })
+          .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
           .eq('id', run.id);
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        return apiResponse({ ok: false, error: safeError }, { status: 500 });
       }
     }
   }
@@ -252,5 +257,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, signals: topSignals, search_terms: searchTermCandidates.slice(0, 30) });
+  return apiResponse({ ok: true, run_id: run.id, summary, signals: topSignals, search_terms: searchTermCandidates.slice(0, 30) });
 });
