@@ -16,6 +16,18 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
+function withCanonical(metadata: Metadata, canonical: string): Metadata {
+  return {
+    ...metadata,
+    alternates: { canonical },
+  };
+}
+
 async function safeGetSharedRfq(token: string) {
   const normalizedToken = token.trim();
   if (!normalizedToken) return null;
@@ -38,8 +50,9 @@ async function safeGetRfqReactions(rfqId: string) {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { token: rawToken } = await params;
   const token = getRouteParam(rawToken);
+  const canonical = `${siteBaseUrl()}/share/rfq/${encodeURIComponent(token)}`;
   const data = await safeGetSharedRfq(token);
-  if (!data) return FALLBACK_METADATA;
+  if (!data) return withCanonical(FALLBACK_METADATA, canonical);
 
   const customerName = data.customer_name?.trim() || '고객';
   const destination = data.destination?.trim() || '여행지';
@@ -50,7 +63,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     title: `${customerName}님의 단독맞춤여행 견적`,
     description: `${destination} · ${travelerCount || '문의'}명 · ${nights}박`,
     robots: { index: false, follow: false },
+    alternates: { canonical },
     openGraph: {
+      url: canonical,
       title: `${customerName}님의 여행 견적`,
       description: `함께 떠날 ${destination} 여행 견적을 확인해보세요.`,
     },
