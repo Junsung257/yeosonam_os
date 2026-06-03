@@ -23,6 +23,7 @@ export default function RfqChatPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const id = getRouteParam(params?.id);
+  const encodedId = id ? encodeURIComponent(id) : '';
   const proposalId = searchParams?.get('proposal_id') ?? '';
 
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -36,14 +37,14 @@ export default function RfqChatPage() {
   useEffect(() => {
     fetchMessages();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [id]);
+  }, [id, encodedId]);
 
   // 10초 폴링
   useEffect(() => {
     const interval = setInterval(fetchMessages, 10000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [id]);
+  }, [id, encodedId]);
 
   // 자동 스크롤
   useEffect(() => {
@@ -58,7 +59,7 @@ export default function RfqChatPage() {
     }
 
     try {
-      const res = await fetch(`/api/rfq/${id}/messages?viewAs=customer`);
+      const res = await fetch(`/api/rfq/${encodedId}/messages?viewAs=customer`);
       if (!res.ok) throw new Error('메시지를 불러올 수 없습니다');
       const data = await res.json();
       setMessages(Array.isArray(data) ? data : []);
@@ -88,7 +89,7 @@ export default function RfqChatPage() {
     setMessages((prev) => [...prev, optimistic]);
 
     try {
-      await fetch(`/api/rfq/${id}/messages`, {
+      await fetch(`/api/rfq/${encodedId}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -124,7 +125,7 @@ export default function RfqChatPage() {
       {/* 헤더 */}
       <div className="bg-white border-b sticky top-0 z-10 px-4 py-3">
         <div className="max-w-2xl mx-auto flex items-center gap-3">
-          <Link href={`/rfq/${id}`} className="text-gray-400 hover:text-gray-600 text-sm">
+          <Link href={`/rfq/${encodedId}`} className="text-gray-400 hover:text-gray-600 text-sm">
             ←
           </Link>
           <div>
