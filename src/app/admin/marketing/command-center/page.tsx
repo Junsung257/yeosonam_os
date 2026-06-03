@@ -6,6 +6,16 @@ import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 type AdOsMode = 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
+type CompletionStatus = 'ready' | 'needs_attention' | 'blocked';
+type CompletionRequirementStatus = 'pass' | 'warn' | 'fail';
+
+interface CompletionRequirement {
+  id: string;
+  label: string;
+  status: CompletionRequirementStatus;
+  evidence: string;
+  next_action: string;
+}
 
 interface MarketingNextAction {
   id: string;
@@ -104,6 +114,18 @@ interface AdOsSummary {
     status: 'pass' | 'warn' | 'fail';
     detail: string;
   }>;
+  enterprise_layer?: {
+    completion_audit?: {
+      status: CompletionStatus;
+      readiness_score: number;
+      passed: number;
+      warnings: number;
+      failed: number;
+      top_blocker: string;
+      next_action: string;
+      requirements?: CompletionRequirement[];
+    };
+  };
 }
 
 const SEVERITY_CLASS: Record<Severity, string> = {
@@ -118,6 +140,12 @@ const STATUS_CLASS: Record<'good' | 'warn' | 'bad' | 'neutral', string> = {
   warn: 'bg-amber-50 text-amber-700',
   bad: 'bg-red-50 text-red-700',
   neutral: 'bg-slate-100 text-slate-600',
+};
+
+const REQUIREMENT_CLASS: Record<CompletionRequirementStatus, string> = {
+  pass: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  warn: 'border-amber-200 bg-amber-50 text-amber-700',
+  fail: 'border-red-200 bg-red-50 text-red-700',
 };
 
 function modeLabel(mode: AdOsMode | undefined) {
@@ -143,6 +171,13 @@ function scoreClass(score: number) {
   if (score >= 80) return 'text-emerald-700';
   if (score >= 55) return 'text-amber-700';
   return 'text-red-700';
+}
+
+function completionTone(status?: CompletionStatus): 'good' | 'warn' | 'bad' | 'neutral' {
+  if (status === 'ready') return 'good';
+  if (status === 'blocked') return 'bad';
+  if (status === 'needs_attention') return 'warn';
+  return 'neutral';
 }
 
 function canCreateDraft(action: MarketingNextAction) {
@@ -277,6 +312,17 @@ export default function MarketingCommandCenterPage() {
     ['naver', 'google'].includes(platform),
   );
   const adOsModeByPlatform = new Map((adOs?.active_automation_modes ?? []).map((mode) => [mode.platform, mode]));
+  const completionAudit = adOs?.enterprise_layer?.completion_audit;
+  const fallbackCompletionRequirements: CompletionRequirement[] = [{
+    id: 'empty',
+    label: 'Audit evidence',
+    status: adOsError ? 'fail' : 'warn',
+    evidence: adOsError || 'No completion requirements returned yet.',
+    next_action: 'Recover /api/admin/ad-os/summary and /api/admin/ad-os/completion-audit.',
+  }];
+  const completionRequirements = (completionAudit?.requirements ?? [])
+    .filter((requirement) => ['external_write_zero', 'full_auto_default_off', 'tenant_budget_guardrails', 'incident_response_clear'].includes(requirement.id))
+    .slice(0, 4);
   const guardrailStatus = adOsError || !adOs
     ? 'warn'
     : adOs.tenant_guardrails?.some((guardrail) => guardrail.status === 'fail')
@@ -350,6 +396,50 @@ export default function MarketingCommandCenterPage() {
           <p className="mt-2 text-2xl font-bold text-orange-700">{summary.high}</p>
         </div>
       </div>
+
+      <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-admin-base font-semibold text-admin-text-2">Ad OS Completion Gate</h2>
+              <span className={`rounded-full px-2 py-1 text-admin-xs font-semibold ${STATUS_CLASS[completionTone(completionAudit?.status)]}`}>
+                {completionAudit?.status ?? (adOsError ? 'unavailable' : 'checking')}
+              </span>
+            </div>
+            <p className="mt-1 text-admin-sm text-admin-text-2">
+              {completionAudit
+                ? `${completionAudit.readiness_score}% ready | pass ${completionAudit.passed} / warn ${completionAudit.warnings} / fail ${completionAudit.failed}`
+                : adOsError
+                  ? `Ad OS audit unavailable: ${adOsError}`
+                  : 'Ad OS completion evidence is loading.'}
+            </p>
+            <p className="mt-1 text-admin-xs text-admin-muted">
+              {completionAudit?.next_action ?? 'Open System Health to inspect Ad OS readiness before scaling search ads.'}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link href="/admin/ad-os?panel=completion-audit" className="rounded-lg bg-blue-600 px-4 py-2 text-admin-sm font-semibold text-white hover:bg-blue-700">
+              Audit
+            </Link>
+            <Link href="/admin/marketing/system-health" className="rounded-lg border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg">
+              Health
+            </Link>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          {(completionRequirements.length ? completionRequirements : fallbackCompletionRequirements).map((requirement) => (
+            <div key={requirement.id} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="line-clamp-1 text-admin-sm font-semibold text-admin-text-2">{requirement.label}</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase ${REQUIREMENT_CLASS[requirement.status]}`}>
+                  {requirement.status}
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-2 text-admin-xs text-admin-muted">{requirement.evidence}</p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
         <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
