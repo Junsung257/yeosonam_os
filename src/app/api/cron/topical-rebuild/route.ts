@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { rebuildAllClusters } from '@/lib/topical-authority';
 import { seedProgrammaticTopics, promotePendingTopics } from '@/lib/programmatic-seo';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * Topical Authority + Programmatic SEO 통합 cron — 매주 일요일 18:00 UTC (월 03:00 KST)
@@ -36,7 +37,7 @@ async function runTopicalRebuild(request: NextRequest) {
   try {
     seedResult = await seedProgrammaticTopics();
   } catch (err) {
-    errors.push(`seed 실패: ${err instanceof Error ? err.message : String(err)}`);
+    errors.push(`seed failed: ${sanitizeDbError(err)}`);
   }
 
   // 2) Pending 토픽 promote (주당 7개 = 매일 1편 분량)
@@ -44,7 +45,7 @@ async function runTopicalRebuild(request: NextRequest) {
   try {
     promoteResult = await promotePendingTopics({ limit: 7 });
   } catch (err) {
-    errors.push(`promote 실패: ${err instanceof Error ? err.message : String(err)}`);
+    errors.push(`promote failed: ${sanitizeDbError(err)}`);
   }
 
   // 3) Topical Authority cluster 재구성
@@ -52,7 +53,7 @@ async function runTopicalRebuild(request: NextRequest) {
   try {
     clusterResult = await rebuildAllClusters();
   } catch (err) {
-    errors.push(`cluster rebuild 실패: ${err instanceof Error ? err.message : String(err)}`);
+    errors.push(`cluster rebuild failed: ${sanitizeDbError(err)}`);
   }
 
   return {
