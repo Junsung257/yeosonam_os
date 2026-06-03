@@ -46,7 +46,7 @@ export async function generateMetadata(
   const data = await safeLoadLpPackage(id);
   if (!data) {
     return {
-      title: '상품 | 여소남',
+      title: '상품',
       robots: { index: false, follow: true },
       alternates: { canonical },
       openGraph: {
