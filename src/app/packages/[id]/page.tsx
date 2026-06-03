@@ -83,12 +83,25 @@ export async function generateMetadata({
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
   const { id } = await params;
+  if (!isSupabaseConfigured) return { title: '상품 상세' };
   const sb = supabaseAdmin;
-  const { data } = await sb
-    .from('travel_packages')
-    .select('title, destination, price, product_summary, status, audit_status')
-    .eq('id', id)
-    .single();
+  let data: {
+    title?: string | null;
+    destination?: string | null;
+    product_summary?: string | null;
+    status?: string | null;
+    audit_status?: string | null;
+  } | null = null;
+  try {
+    const result = await sb
+      .from('travel_packages')
+      .select('title, destination, price, product_summary, status, audit_status')
+      .eq('id', id)
+      .single();
+    data = result.data;
+  } catch {
+    return { title: '상품 상세' };
+  }
 
   // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
   if (!data) return { title: '상품 상세' };
@@ -97,13 +110,16 @@ export async function generateMetadata({
   if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
     return { title: '상품 상세', robots: { index: false, follow: false } };
   }
+  const title = String(data.title || data.destination || '여소남 패키지 여행');
+  const destination = String(data.destination || '패키지');
+  const description = data.product_summary || `${destination} ${title} - 여소남 패키지 여행`;
 
   return {
-    title: `${data.title} | 여소남`,
-    description: data.product_summary || `${data.destination} ${data.title} - 여소남 패키지 여행`,
+    title: `${title} | 여소남`,
+    description,
     openGraph: {
-      title: data.title,
-      description: data.product_summary || `${data.destination} 여행`,
+      title,
+      description,
     },
   };
 }
