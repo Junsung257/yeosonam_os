@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: 'DB 미설정' });
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
-  }
+  const authError = requireCronBearer(request);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, skipped: 'DB 미설정' });
 
   const dateParam = request.nextUrl.searchParams.get('date');
   const day = dateParam || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
       .eq('is_duplicate', false)
       .not('referral_code', 'is', null)
       .limit(200000);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
     const map = new Map<string, { referral_code: string; sub_id: string; clicks: number; sessions: Set<string>; packages: Set<string> }>();
     for (const r of (rows || []) as Array<{ referral_code: string; sub_id: string | null; session_id: string | null; package_id: string | null }>) {
@@ -57,17 +58,14 @@ export async function GET(request: NextRequest) {
       const { error: upErr } = await supabaseAdmin
         .from('affiliate_sub_attribution_daily')
         .upsert(payload as never, { onConflict: 'day,referral_code,sub_id' });
-      if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+      if (upErr) return apiResponse({ error: sanitizeDbError(upErr) }, { status: 500 });
     }
 
     await reportAffiliateCronSuccess('affiliate-sub-daily-rollup', { day, rows: (rows || []).length, groups: payload.length });
-    return NextResponse.json({ ok: true, day, rows: (rows || []).length, groups: payload.length });
+    return apiResponse({ ok: true, day, rows: (rows || []).length, groups: payload.length });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-sub-daily-rollup', err, { day, from, to });
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'affiliate sub daily rollup failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err, 'affiliate sub daily rollup failed') }, { status: 500 });
   }
 }
 
