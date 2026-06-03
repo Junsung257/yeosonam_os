@@ -8,6 +8,7 @@ import {
 } from '@/lib/ad-os-governance';
 import { buildTenantAdReadiness } from '@/lib/ad-os-tenant-readiness';
 import { buildAdOsIncidentSummary } from '@/lib/ad-os-v321-v340';
+import { buildAgencyReportingSummary } from '@/lib/ad-os-v341-v360';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { withTimeout } from '@/lib/promise-timeout';
 import { getSecret } from '@/lib/secret-registry';
@@ -465,6 +466,21 @@ function buildDegradedSummary(error: unknown) {
           evidence: { degraded: true },
         }],
       },
+      agency_reporting: {
+        status: 'blocked',
+        readiness_score: 0,
+        workspaces: 0,
+        billable_tenants: 0,
+        active_billing_profiles: 0,
+        monthly_reports: 0,
+        ready_or_draft_reports: 0,
+        audit_exports: 0,
+        ready_audit_exports: 0,
+        full_auto_enabled: 0,
+        open_incidents: 1,
+        missing: ['data_plane'],
+        next_action: 'Supabase 연결 회복 후 테넌트 리포트와 audit export 상태를 다시 계산하세요.',
+      },
     },
     tenant_policy: {
       configured: false,
@@ -653,7 +669,7 @@ async function buildSummaryResponse() {
       .limit(100),
     supabaseAdmin
       .from('ad_os_tenant_reports')
-      .select('id, tenant_id, period_start, period_end, status, metrics, created_at')
+      .select('id, tenant_id, period_start, period_end, report_type, status, metrics, created_at')
       .order('created_at', { ascending: false })
       .limit(20),
     supabaseAdmin
@@ -710,7 +726,7 @@ async function buildSummaryResponse() {
       .limit(100),
     supabaseAdmin
       .from('tenant_ad_workspaces')
-      .select('id, tenant_id, workspace_name, monthly_budget_cap_krw, daily_budget_cap_krw, max_cpc_krw, automation_level, require_human_approval, full_auto_enabled, risk_status, billing_plan, created_at')
+      .select('id, tenant_id, workspace_name, monthly_budget_cap_krw, daily_budget_cap_krw, max_cpc_krw, automation_level, require_human_approval, full_auto_enabled, audit_export_enabled, risk_status, billing_plan, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
@@ -940,7 +956,13 @@ async function buildSummaryResponse() {
     mode: string | null;
     status: string | null;
   }>;
-  const tenantReports = tenantReportRes.data || [];
+  const tenantReports = (tenantReportRes.data || []) as Array<{
+    tenant_id: string | null;
+    period_start: string | null;
+    period_end: string | null;
+    report_type?: string | null;
+    status: string | null;
+  }>;
   const conversionEvents = (conversionEventRes.data || []) as Array<{
     event_type: string | null;
     platform: string | null;
@@ -1101,12 +1123,14 @@ async function buildSummaryResponse() {
     automation_level: number | null;
     require_human_approval: boolean | null;
     full_auto_enabled: boolean | null;
+    audit_export_enabled?: boolean | null;
     monthly_budget_cap_krw?: number | null;
     daily_budget_cap_krw?: number | null;
     risk_status: string | null;
     billing_plan: string | null;
   }>;
   const tenantBillingProfiles = (tenantBillingProfileRes.data || []) as Array<{
+    tenant_id: string | null;
     billing_plan: string | null;
     invoice_status: string | null;
     base_subscription_krw: number | null;
@@ -1119,6 +1143,13 @@ async function buildSummaryResponse() {
     dataQualitySnapshots,
     executionAttempts,
     tenantWorkspaces,
+  });
+  const agencyReporting = buildAgencyReportingSummary({
+    tenantWorkspaces,
+    tenantBillingProfiles,
+    tenantReports,
+    tenantAuditExports,
+    incidentResponse,
   });
 
   const platformConfirmationJobs = platformJobs.filter((row) =>
@@ -1746,6 +1777,7 @@ async function buildSummaryResponse() {
           platformJobs.filter((row) => row.external_api_write).length,
       },
       incident_response: incidentResponse,
+      agency_reporting: agencyReporting,
       experiment_standards: {
         templates: experimentTemplates.length,
         active: experimentTemplates.filter((row) => row.status === 'active').length,

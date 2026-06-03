@@ -196,6 +196,21 @@ type Summary = {
         next_action: string;
       }>;
     };
+    agency_reporting?: {
+      status: 'ready' | 'needs_attention' | 'blocked';
+      readiness_score: number;
+      workspaces: number;
+      billable_tenants: number;
+      active_billing_profiles: number;
+      monthly_reports: number;
+      ready_or_draft_reports: number;
+      audit_exports: number;
+      ready_audit_exports: number;
+      full_auto_enabled: number;
+      open_incidents: number;
+      missing: string[];
+      next_action: string;
+    };
     experiment_standards?: {
       templates: number;
       active: number;
@@ -3055,29 +3070,46 @@ export default function AdOsPage() {
                 </p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-admin-2xs font-semibold text-admin-muted">Agency Reporting</p>
+                  <StatusPill tone={summary.enterprise_layer?.agency_reporting?.status === 'ready' ? 'good' : summary.enterprise_layer?.agency_reporting?.status === 'blocked' ? 'bad' : 'warn'}>
+                    {summary.enterprise_layer?.agency_reporting?.status || 'unknown'}
+                  </StatusPill>
+                </div>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">
+                  {Number(summary.enterprise_layer?.agency_reporting?.readiness_score || 0).toLocaleString('ko-KR')}%
+                </p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">
+                  reports {Number(summary.enterprise_layer?.agency_reporting?.ready_or_draft_reports || 0).toLocaleString('ko-KR')} / audit {Number(summary.enterprise_layer?.agency_reporting?.ready_audit_exports || 0).toLocaleString('ko-KR')} / billing {Number(summary.enterprise_layer?.agency_reporting?.active_billing_profiles || 0).toLocaleString('ko-KR')}
+                </p>
+                <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                  {summary.enterprise_layer?.agency_reporting?.next_action || 'Generate tenant report drafts and audit exports.'}
+                </p>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">플랫폼 실행 큐</p>
-                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.platform_job_queue.total || 0).toLocaleString('ko-KR')}</p>
-                <p className="mt-1 text-admin-2xs text-admin-muted">blocked {Number(summary.enterprise_layer?.platform_job_queue.blocked || 0).toLocaleString('ko-KR')} / approved {Number(summary.enterprise_layer?.platform_job_queue.approved_or_running || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.platform_job_queue?.total || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">blocked {Number(summary.enterprise_layer?.platform_job_queue?.blocked || 0).toLocaleString('ko-KR')} / approved {Number(summary.enterprise_layer?.platform_job_queue?.approved_or_running || 0).toLocaleString('ko-KR')}</p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">전환 데이터 품질</p>
-                <p className="mt-1 text-admin-xl font-bold text-admin-text">{String(summary.enterprise_layer?.conversion_data_quality.status || 'unknown')}</p>
-                <p className="mt-1 text-admin-2xs text-admin-muted">uploadable {Number(summary.enterprise_layer?.conversion_data_quality.uploadable_conversions || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.conversion_data_quality.blocked_conversions || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-xl font-bold text-admin-text">{String(summary.enterprise_layer?.conversion_data_quality?.status || 'unknown')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">uploadable {Number(summary.enterprise_layer?.conversion_data_quality?.uploadable_conversions || 0).toLocaleString('ko-KR')} / blocked {Number(summary.enterprise_layer?.conversion_data_quality?.blocked_conversions || 0).toLocaleString('ko-KR')}</p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">포트폴리오 최적화</p>
-                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.portfolio_optimizer.candidates || 0).toLocaleString('ko-KR')}</p>
-                <p className="mt-1 text-admin-2xs text-admin-muted">approved {Number(summary.enterprise_layer?.portfolio_optimizer.approved || 0).toLocaleString('ko-KR')} / margin {fmtWon(Number(summary.enterprise_layer?.portfolio_optimizer.expected_margin_delta_krw || 0))}</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.portfolio_optimizer?.candidates || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">approved {Number(summary.enterprise_layer?.portfolio_optimizer?.approved || 0).toLocaleString('ko-KR')} / margin {fmtWon(Number(summary.enterprise_layer?.portfolio_optimizer?.expected_margin_delta_krw || 0))}</p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">Creative Factory</p>
-                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.creative_factory.variants || 0).toLocaleString('ko-KR')}</p>
-                <p className="mt-1 text-admin-2xs text-admin-muted">testing {Number(summary.enterprise_layer?.creative_factory.testing || 0).toLocaleString('ko-KR')} / duplicate risk {Number(summary.enterprise_layer?.creative_factory.duplicate_content_risks || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.creative_factory?.variants || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">testing {Number(summary.enterprise_layer?.creative_factory?.testing || 0).toLocaleString('ko-KR')} / duplicate risk {Number(summary.enterprise_layer?.creative_factory?.duplicate_content_risks || 0).toLocaleString('ko-KR')}</p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">SaaS 패키징</p>
-                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.saas_packaging.workspaces || 0).toLocaleString('ko-KR')}</p>
-                <p className="mt-1 text-admin-2xs text-admin-muted">active billing {Number(summary.enterprise_layer?.saas_packaging.active_billing_profiles || 0).toLocaleString('ko-KR')} / full auto {Number(summary.enterprise_layer?.saas_packaging.full_auto_enabled || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.saas_packaging?.workspaces || 0).toLocaleString('ko-KR')}</p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">active billing {Number(summary.enterprise_layer?.saas_packaging?.active_billing_profiles || 0).toLocaleString('ko-KR')} / full auto {Number(summary.enterprise_layer?.saas_packaging?.full_auto_enabled || 0).toLocaleString('ko-KR')}</p>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">Runtime Readiness</p>
