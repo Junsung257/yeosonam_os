@@ -14,6 +14,10 @@ import PaymentActions from './_actions';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
 async function fetchTransaction(id: string) {
   if (!isSupabaseConfigured) return null;
   const { data } = await supabaseAdmin
@@ -53,11 +57,14 @@ async function fetchActiveBookings(): Promise<BookingCandidate[]> {
 }
 export default async function MobilePaymentDetail(
   props: {
-    params: Promise<{ id: string }>;
+    params: Promise<{ id?: string | string[] }>;
   }
 ) {
   const params = await props.params;
-  const tx = (await fetchTransaction(params.id)) as unknown as {
+  const transactionId = getRouteParam(params.id);
+  if (!transactionId) notFound();
+
+  const tx = (await fetchTransaction(transactionId)) as unknown as {
     id: string;
     match_status: string;
     amount: number;
@@ -127,7 +134,7 @@ export default async function MobilePaymentDetail(
               </span>
             </div>
             <Link
-              href={`/m/admin/bookings/${tx.bookings.id}`}
+              href={`/m/admin/bookings/${encodeURIComponent(tx.bookings.id)}`}
               className="block"
             >
               <div className="text-sm font-semibold text-admin-text">

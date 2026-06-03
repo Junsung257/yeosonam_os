@@ -17,6 +17,10 @@ import BookingConciergeAdminPanel from '@/components/booking/BookingConciergeAdm
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
 async function fetchBooking(id: string) {
   if (!isSupabaseConfigured) return null;
   const { data } = await supabaseAdmin
@@ -75,14 +79,18 @@ function ProgressBar({ status }: { status: string }) {
 
 export default async function MobileBookingDetail(
   props: {
-    params: Promise<{ id: string }>;
+    params: Promise<{ id?: string | string[] }>;
   }
 ) {
   const params = await props.params;
-  const booking = await fetchBooking(params.id);
+  const bookingId = getRouteParam(params.id);
+  if (!bookingId) notFound();
+
+  const booking = await fetchBooking(bookingId);
   if (!booking) notFound();
 
-  const logs = await fetchRecentLogs(params.id);
+  const logs = await fetchRecentLogs(bookingId);
+  const encodedBookingId = encodeURIComponent(bookingId);
 
   const customer = (
     booking as {
@@ -192,13 +200,13 @@ export default async function MobileBookingDetail(
           </dl>
         </section>
 
-        <BookingConciergeAdminPanel bookingId={params.id} />
+        <BookingConciergeAdminPanel bookingId={bookingId} />
 
         <section className="bg-white border border-admin-border-mid rounded-admin-lg px-4 py-3 space-y-2">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold text-admin-muted">최근 이벤트</h3>
             <Link
-              href={`/m/admin/timeline/${params.id}`}
+              href={`/m/admin/timeline/${encodedBookingId}`}
               className="text-[11px] text-admin-muted underline underline-offset-2"
             >
               전체 보기
@@ -240,7 +248,7 @@ export default async function MobileBookingDetail(
         )}
       </main>
       <BookingActions
-        bookingId={params.id}
+        bookingId={bookingId}
         status={booking.status}
         transitions={transitions}
       />
