@@ -8,6 +8,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -18,7 +19,7 @@ const MIN_CRITIC_DECISIONS = 5;
 const handleCardNewsAutoLive = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) {
-    return { ok: false, error: 'Supabase 미설정', errors: ['Supabase 미설정'] };
+    return { ok: false, error: 'Supabase not configured', errors: ['Supabase not configured'] };
   }
 
   try {
@@ -74,7 +75,7 @@ const handleCardNewsAutoLive = async (request: NextRequest) => {
         })
         .eq('id', g.id);
       if (updateErr) {
-        skipped.push({ id: g.id, reason: `update 실패: ${updateErr.message}` });
+        skipped.push({ id: g.id, reason: `update failed: ${sanitizeDbError(updateErr)}` });
         continue;
       }
       transitioned.push(g.id);
@@ -89,7 +90,7 @@ const handleCardNewsAutoLive = async (request: NextRequest) => {
       skipped,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
+    const message = sanitizeDbError(err);
     return { ok: false, error: message, errors: [message] };
   }
 };
