@@ -22,11 +22,13 @@
  *   - 주말/야간은 스킵 (오탐 방지)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { logError } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -57,7 +59,9 @@ export async function GET(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
 
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ error: 'DB not configured' }, { status: 503 });
+  }
 
   const alerts: string[] = [];
   const summary = {
@@ -109,7 +113,7 @@ export async function GET(request: NextRequest) {
 
     if (staleRows.length > 0 && isMorningDigest) {
       const top5 = staleRows.slice(0, 5)
-        .map(r => `  • ${r.counterparty_name} ${r.amount.toLocaleString()}원 (${Math.round(r.hours_stale)}h, ${r.match_status})`)
+        .map(r => `  • tx:${r.id.slice(0, 8)} ${r.amount.toLocaleString()}원 (${Math.round(r.hours_stale)}h, ${r.match_status})`)
         .join('\n');
       alerts.push(
         `⏰ *24시간 이상 미처리 거래 ${staleRows.length}건 (총 ${summary.stale_total_amount.toLocaleString()}원)*\n${top5}` +
@@ -155,9 +159,9 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, ...summary, alerts });
+    return apiResponse({ ok: true, ...summary, alerts });
   } catch (e: any) {
     logError('[cron/payment-heartbeat] heartbeat failed', e);
-    return NextResponse.json({ error: e?.message ?? 'heartbeat 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e, 'Heartbeat failed') }, { status: 500 });
   }
 }
