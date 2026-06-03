@@ -26,9 +26,13 @@ interface MarketingCopy {
   summary?: string;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function InfluencerAssets() {
   const params = useParams();
-  const code = params.code as string;
+  const code = getRouteParam(params?.code);
   const { authenticated } = useInfluencerAuth();
 
   const [cardNews, setCardNews] = useState<CardNewsAsset[]>([]);
@@ -38,6 +42,12 @@ export default function InfluencerAssets() {
   const [copiedIdx, setCopiedIdx] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    if (!code) {
+      setCardNews([]);
+      setCopies([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const res = await fetch(`/api/influencer/assets?code=${encodeURIComponent(code)}`);
