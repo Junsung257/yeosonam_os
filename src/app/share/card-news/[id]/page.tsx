@@ -26,8 +26,15 @@ interface CardNewsDetail {
   } | null;
 }
 
+function safeImageUrl(input?: string | null): string | null {
+  const value = input?.trim();
+  if (!value) return null;
+  return /^https?:\/\//i.test(value) || value.startsWith('/') ? value : null;
+}
+
 export default function SharedCardNewsPage() {
   const params = useParams<{ id: string }>();
+  const cardNewsId = typeof params?.id === 'string' ? params.id : '';
   const [data, setData] = useState<CardNewsDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -36,13 +43,16 @@ export default function SharedCardNewsPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch(`/api/card-news/${params.id}`);
+        if (!cardNewsId) throw new Error('카드뉴스 ID가 올바르지 않습니다');
+
+        const res = await fetch(`/api/card-news/${encodeURIComponent(cardNewsId)}`);
         if (!res.ok) throw new Error('카드뉴스를 찾을 수 없습니다');
         const json = await res.json();
         setData(json);
+        setCurrentSlide(0);
 
         // 조회수 증가 (조용히)
-        fetch(`/api/card-news/${params.id}`, {
+        fetch(`/api/card-news/${encodeURIComponent(cardNewsId)}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ _track_view: true }),
@@ -54,7 +64,7 @@ export default function SharedCardNewsPage() {
       }
     }
     load();
-  }, [params.id]);
+  }, [cardNewsId]);
 
   if (loading) {
     return (
@@ -79,8 +89,12 @@ export default function SharedCardNewsPage() {
     );
   }
 
-  const slides = data.slides as Array<{ heading: string; body: string; image_url?: string }> | null;
-  const totalSlides = slides?.length ?? 0;
+  const slides = Array.isArray(data.slides) ? data.slides : [];
+  const totalSlides = slides.length;
+  const currentSlideIndex = totalSlides > 0 ? Math.min(currentSlide, totalSlides - 1) : 0;
+  const current = slides[currentSlideIndex] ?? null;
+  const currentImageUrl = safeImageUrl(current?.image_url);
+  const affiliateLogoUrl = safeImageUrl(data.affiliate?.logo_url);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-6 px-4">
@@ -92,10 +106,10 @@ export default function SharedCardNewsPage() {
             href={`/link/${data.affiliate.referral_code}`}
             className="inline-flex items-center gap-1.5 mt-1 text-xs text-indigo-600 hover:text-indigo-800"
           >
-            {data.affiliate.logo_url && (
+            {affiliateLogoUrl && (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={data.affiliate.logo_url}
+                src={affiliateLogoUrl}
                 alt={data.affiliate.name}
                 className="w-4 h-4 rounded-full"
               />
@@ -108,17 +122,17 @@ export default function SharedCardNewsPage() {
       {/* 카드뉴스 뷰어 (모바일 퍼스트) */}
       <div className="w-full max-w-sm aspect-[9/16] bg-white rounded-2xl shadow-lg overflow-hidden relative">
         {/* 슬라이드 컨텐츠 */}
-        {slides && slides[currentSlide] ? (
+        {current ? (
           <div className="h-full flex flex-col p-6 relative">
             {/* 배경 그라디언트 */}
             <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-purple-50" />
 
             {/* 이미지 (있으면) */}
-            {slides[currentSlide].image_url && (
+            {currentImageUrl && (
               <div className="relative w-full h-48 mb-4 rounded-xl overflow-hidden z-10">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={slides[currentSlide].image_url!}
+                  src={currentImageUrl}
                   alt=""
                   className="w-full h-full object-cover"
                 />
@@ -128,10 +142,10 @@ export default function SharedCardNewsPage() {
             {/* 텍스트 */}
             <div className="relative z-10 flex-1 flex flex-col justify-center">
               <h2 className="text-xl font-bold text-gray-800 mb-3 leading-snug">
-                {slides[currentSlide].heading}
+                {current.heading}
               </h2>
               <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
-                {slides[currentSlide].body}
+                {current.body}
               </p>
             </div>
 
@@ -142,7 +156,7 @@ export default function SharedCardNewsPage() {
                   key={i}
                   onClick={() => setCurrentSlide(i)}
                   className={`w-2 h-2 rounded-full transition-all ${
-                    i === currentSlide
+                    i === currentSlideIndex
                       ? 'bg-indigo-600 w-4'
                       : 'bg-gray-300 hover:bg-gray-400'
                   }`}
@@ -162,17 +176,17 @@ export default function SharedCardNewsPage() {
         <div className="flex items-center gap-4 mt-4">
           <button
             onClick={() => setCurrentSlide((p) => Math.max(0, p - 1))}
-            disabled={currentSlide === 0}
+            disabled={currentSlideIndex === 0}
             className="px-4 py-2 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             ← 이전
           </button>
           <span className="text-xs text-gray-500">
-            {currentSlide + 1} / {totalSlides}
+            {currentSlideIndex + 1} / {totalSlides}
           </span>
           <button
             onClick={() => setCurrentSlide((p) => Math.min(totalSlides - 1, p + 1))}
-            disabled={currentSlide === totalSlides - 1}
+            disabled={currentSlideIndex === totalSlides - 1}
             className="px-4 py-2 rounded-lg bg-white border border-gray-200 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             다음 →
