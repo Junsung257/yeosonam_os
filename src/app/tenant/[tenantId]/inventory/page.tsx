@@ -39,10 +39,12 @@ function getDaysInMonth(year: number, month: number) {
 }
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 export default function TenantInventoryPage() {
   const params   = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantId = getRouteParam(params?.tenantId);
 
   const now = new Date();
   const [viewYear,  setViewYear]  = useState(now.getFullYear());
@@ -58,6 +60,8 @@ export default function TenantInventoryPage() {
 
   // 상품 목록 로드
   useEffect(() => {
+    if (!tenantId) return;
+
     fetch(`/api/tenant/products?tenant_id=${tenantId}`)
       .then(r => r.json())
       .then(d => {
@@ -68,7 +72,7 @@ export default function TenantInventoryPage() {
   }, [tenantId, selectedProduct]);
 
   const loadBlocks = useCallback(async () => {
-    if (!selectedProduct) return;
+    if (!tenantId || !selectedProduct) return;
     setLoading(true);
     const from = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-01`;
     const to   = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${getDaysInMonth(viewYear, viewMonth)}`;
@@ -76,7 +80,7 @@ export default function TenantInventoryPage() {
     const data = await res.json();
     setBlocks(data.blocks ?? []);
     setLoading(false);
-  }, [selectedProduct, viewYear, viewMonth]);
+  }, [selectedProduct, tenantId, viewYear, viewMonth]);
 
   useEffect(() => { loadBlocks(); }, [loadBlocks]);
 
@@ -94,7 +98,7 @@ export default function TenantInventoryPage() {
 
   async function saveDayBlock(e: React.FormEvent) {
     e.preventDefault();
-    if (!dayModal) return;
+    if (!tenantId || !dayModal) return;
     setSaving(true);
     await fetch('/api/tenant/inventory', {
       method:  'POST',
@@ -116,6 +120,8 @@ export default function TenantInventoryPage() {
 
   // 전월 일괄 복사
   async function copyPrevMonth() {
+    if (!tenantId || !selectedProduct) return;
+
     const prevMonth = viewMonth === 0 ? 11 : viewMonth - 1;
     const prevYear  = viewMonth === 0 ? viewYear - 1 : viewYear;
     const from = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;

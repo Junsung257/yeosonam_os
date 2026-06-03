@@ -22,10 +22,12 @@ function getMonthOptions() {
 }
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 export default function TenantSettlementsPage() {
   const params   = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantId = getRouteParam(params?.tenantId);
   const monthOptions = getMonthOptions();
 
   const [month,      setMonth]      = useState(monthOptions[0]);
@@ -34,6 +36,11 @@ export default function TenantSettlementsPage() {
   const [loading,    setLoading]    = useState(true);
 
   const load = useCallback(async () => {
+    if (!tenantId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const res  = await fetch(`/api/tenant/settlements?tenant_id=${tenantId}&month=${month}`);
     const data = await res.json();
