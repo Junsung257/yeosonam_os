@@ -16,9 +16,11 @@
  *   }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,16 +33,16 @@ interface DriftRow {
   drift: number;
 }
 
-const getHandler = async (_req: NextRequest) => {
+const getHandler = async (_req: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
   }
 
   // [1] 현재 drift 검출 (RPC)
   const { data: driftData, error: driftErr } = await supabaseAdmin.rpc('reconcile_ledger');
   if (driftErr) {
-    return NextResponse.json(
-      { ok: false, error: driftErr.message, code: driftErr.code },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(driftErr, 'Ledger reconcile failed') },
       { status: 500 },
     );
   }
@@ -49,12 +51,19 @@ const getHandler = async (_req: NextRequest) => {
 
   // [2] 최근 7일 ledger 활동 (entry 수 + 거래액)
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: entries } = await supabaseAdmin
+  const { data: entries, error: entriesErr } = await supabaseAdmin
     .from('ledger_entries')
     .select('created_at, account, amount')
     .gte('created_at', since)
     .order('created_at', { ascending: false })
     .limit(5000);
+
+  if (entriesErr) {
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(entriesErr, 'Failed to load ledger entries') },
+      { status: 500 },
+    );
+  }
 
   const dailyMap = new Map<string, { count: number; paid_total: number; payout_total: number }>();
   let lastEntryAt: string | null = null;
@@ -81,7 +90,7 @@ const getHandler = async (_req: NextRequest) => {
     drift: Number(r.drift) || 0,
   }));
 
-  return NextResponse.json({
+  return apiResponse({
     ok: drifts.length === 0,
     drift_count: drifts.length,
     total_abs_drift: totalAbsDrift,
