@@ -9,14 +9,14 @@
  *
  * OG 메타: 동적 og 이미지 (어필리에이터 + 여소남 + 상품)로 카톡 공유 미리보기 강화.
  */
-import { redirect } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import type { Metadata } from 'next';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
-  params: Promise<{ code: string; slug: string }>;
-  searchParams?: Promise<{ sub?: string }>;
+  params: Promise<{ code?: string | string[]; slug?: string | string[] }>;
+  searchParams?: Promise<{ sub?: string | string[] }>;
 }
 
 function siteBaseUrl(): string {
@@ -32,9 +32,18 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export async function generateMetadata(props: Params): Promise<Metadata> {
   const params = await props.params;
-  const { code: rawCode, slug } = params;
+  const rawCode = getRouteParam(params.code);
+  const slug = getRouteParam(params.slug);
+  if (!rawCode || !slug) {
+    return { title: '여소남 추천 여행', robots: { index: false, follow: false } };
+  }
+
   const code = normalizeAffiliateReferralCode(safeDecodePathSegment(rawCode));
   const baseUrl = siteBaseUrl();
   const encodedCode = encodeURIComponent(rawCode);
@@ -82,11 +91,15 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
 export default async function AffiliateShortLinkPage(props: Params) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const { code: rawCode, slug } = params;
+  const rawCode = getRouteParam(params.code);
+  const slug = getRouteParam(params.slug);
+  if (!rawCode || !slug) notFound();
+
   const code = normalizeAffiliateReferralCode(safeDecodePathSegment(rawCode));
+  const rawSub = getRouteParam(searchParams?.sub);
   const subRaw =
-    typeof searchParams?.sub === 'string'
-      ? searchParams.sub.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
+    rawSub
+      ? rawSub.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
       : '';
 
   // 서버측 클릭 추적 (best-effort) — 실패해도 redirect 진행.

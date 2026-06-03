@@ -4,13 +4,17 @@ import { RfqShareClient } from './RfqShareClient';
 import type { Metadata } from 'next';
 
 interface Props {
-  params: Promise<{ token: string }>;
+  params: Promise<{ token?: string | string[] }>;
 }
 
 const FALLBACK_METADATA: Metadata = {
   title: '견적 공유 - 여소남',
   robots: { index: false, follow: false },
 };
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
 
 async function safeGetSharedRfq(token: string) {
   const normalizedToken = token.trim();
@@ -32,7 +36,8 @@ async function safeGetRfqReactions(rfqId: string) {
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = getRouteParam(rawToken);
   const data = await safeGetSharedRfq(token);
   if (!data) return FALLBACK_METADATA;
 
@@ -53,7 +58,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 export default async function RfqSharePage({ params }: Props) {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = getRouteParam(rawToken);
   const data = await safeGetSharedRfq(token);
   if (!data) notFound();
 
