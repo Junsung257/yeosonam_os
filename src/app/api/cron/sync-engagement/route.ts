@@ -29,6 +29,8 @@ import { appendVoiceSample } from '@/lib/content-pipeline/brand-voice';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
+import { refreshThreadsTrendLearning } from '@/lib/threads-trend-learner';
+import { fetchThreadsInsights } from '@/lib/threads-api';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -52,15 +54,25 @@ type NormalizedMetrics = {
   raw?: unknown;
 };
 
+type PlatformMetricsResult = {
+  metrics: NormalizedMetrics | null;
+  score: number;
+  error?: string;
+  errorCategory?: string;
+};
+
 interface DistributionRow {
   id: string;
+  product_id: string | null;
   platform: string;
   external_id: string | null;
   external_url: string | null;
   payload: Record<string, unknown>;
   engagement: Record<string, unknown>;
+  generation_config: Record<string, unknown> | null;
   published_at: string | null;
   card_news_id: string | null;
+  tenant_id: string | null;
 }
 
 interface CardNewsPublishedRow {
@@ -133,7 +145,9 @@ async function runSyncEngagement(request: NextRequest) {
     distributions: { checked: 0, updated: 0, snapshots: 0 },
     card_news_ig: { checked: 0, updated: 0, snapshots: 0 },
     webhook_consumed: { checked: 0, processed: 0, skipped: 0 },
+    threads_insights: { errors: 0, identity_mismatch: 0 },
     top_performers_added: 0,
+    trend_learning_refreshed: 0,
     errors: [] as string[],
   };
 
@@ -143,7 +157,7 @@ async function runSyncEngagement(request: NextRequest) {
   try {
     const { data, error } = await supabaseAdmin
       .from('content_distributions')
-      .select('id, platform, external_id, external_url, payload, engagement, published_at, card_news_id')
+      .select('id, product_id, platform, external_id, external_url, payload, engagement, generation_config, published_at, card_news_id, tenant_id')
       .eq('status', 'published')
       .gte('published_at', thirtyDaysAgo)
       .not('external_id', 'is', null)
@@ -162,9 +176,9 @@ async function runSyncEngagement(request: NextRequest) {
       const chunk = rows.slice(i, i + CHUNK_SIZE);
       const results = await Promise.allSettled(
         chunk.map(async (row) => {
-          const { metrics, score } = await fetchPlatformMetrics(row.platform, row.external_id!);
-          if (!metrics) return { row, metrics: null, score: 0 };
-          return { row, metrics, score };
+          const { metrics, score, error, errorCategory } = await fetchPlatformMetrics(row.platform, row.external_id!);
+          if (!metrics) return { row, metrics: null, score: 0, error, errorCategory };
+          return { row, metrics, score, error, errorCategory };
         }),
       );
 
@@ -174,8 +188,15 @@ async function runSyncEngagement(request: NextRequest) {
           summary.errors.push(`dist fetch fatal: ${res.reason instanceof Error ? res.reason.message : String(res.reason)}`);
           continue;
         }
-        const { row, metrics, score } = res.value;
-        if (!metrics) continue;
+        const { row, metrics, score, error, errorCategory } = res.value;
+        if (!metrics) {
+          if (row.platform === 'threads_post' && error) {
+            await markThreadsInsightsError(row, error, errorCategory);
+            summary.threads_insights.errors += 1;
+            if (errorCategory === 'identity_or_permission_mismatch') summary.threads_insights.identity_mismatch += 1;
+          }
+          continue;
+        }
 
         try {
           const { error: snapErr } = await supabaseAdmin
@@ -183,6 +204,7 @@ async function runSyncEngagement(request: NextRequest) {
             .insert({
               distribution_id: row.id,
               card_news_id: row.card_news_id,
+              tenant_id: row.tenant_id,
               platform: normalizePlatform(row.platform),
               external_id: row.external_id,
               views: metrics.views ?? null,
@@ -199,6 +221,8 @@ async function runSyncEngagement(request: NextRequest) {
               spend: metrics.spend ?? null,
               impressions_legacy: metrics.impressions_legacy ?? null,
               performance_score: score,
+              hook_type: extractHookTypeFromPayload(row),
+              posting_hour: postingHourKstFromIso(row.published_at),
               raw_response: metrics.raw ?? null,
             });
           if (!snapErr) summary.distributions.snapshots += 1;
@@ -215,6 +239,10 @@ async function runSyncEngagement(request: NextRequest) {
             ctr: metrics.ctr ?? null,
             spend: metrics.spend ?? null,
             performance_score: score,
+            insights_status: 'synced',
+            insights_error: null,
+            insights_error_category: null,
+            identity_mismatch: false,
             synced_at: new Date().toISOString(),
           };
           await supabaseAdmin
@@ -222,6 +250,9 @@ async function runSyncEngagement(request: NextRequest) {
             .update({ engagement: merged })
             .eq('id', row.id);
           summary.distributions.updated += 1;
+          if (row.platform === 'threads_post') {
+            await queueThreadsRewriteCandidate(row, metrics, score);
+          }
           if (score > 0) performanceScores.push({ row, score });
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -452,9 +483,112 @@ async function runSyncEngagement(request: NextRequest) {
     summary.errors.push(`[C] webhook consume fatal: ${err instanceof Error ? err.message : String(err)}`);
   }
 
+  try {
+    const learning = await refreshThreadsTrendLearning();
+    summary.trend_learning_refreshed = learning.refreshed;
+  } catch (err) {
+    summary.errors.push(`trend_learning_refresh: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   const elapsedMs = Date.now() - startedAt;
   console.log('[sync-engagement]', JSON.stringify({ ...summary, elapsed_ms: elapsedMs }));
   return { ...summary, elapsed_ms: elapsedMs };
+}
+
+function extractHookTypeFromPayload(row: DistributionRow): string | null {
+  const generationConfig = row.generation_config;
+  if (generationConfig && typeof generationConfig === 'object' && 'hook_type' in generationConfig) {
+    const hook = (generationConfig as Record<string, unknown>).hook_type;
+    return typeof hook === 'string' ? hook : null;
+  }
+  const payloadHook = row.payload?.hook_type;
+  if (typeof payloadHook === 'string') return payloadHook;
+  return null;
+}
+
+async function queueThreadsRewriteCandidate(
+  row: DistributionRow,
+  metrics: NormalizedMetrics,
+  score: number,
+): Promise<void> {
+  if (row.engagement?.rewrite_candidate_queued_at) return;
+  const views = metrics.views ?? 0;
+  const publishedAt = row.published_at ? new Date(row.published_at).getTime() : Date.now();
+  const ageHours = (Date.now() - publishedAt) / (60 * 60 * 1000);
+  if (views < 50 || ageHours < 2 || score >= 0.03) return;
+
+  const content = extractContentFromPayload(row);
+  if (!content) return;
+
+  try {
+    const idempotencyKey = `threads_rewrite:${row.id}`;
+    const { data: existing } = await supabaseAdmin
+      .from('agent_actions')
+      .select('id')
+      .eq('action_type', 'threads_rewrite_candidate')
+      .eq('idempotency_key', idempotencyKey)
+      .maybeSingle();
+    if (existing) return;
+
+    await supabaseAdmin.from('agent_actions').insert({
+      agent_type: 'marketing_orchestrator',
+      action_type: 'threads_rewrite_candidate',
+      summary: `Threads 저성과 글 재작성 후보 (${(score * 100).toFixed(2)}점)`,
+      payload: {
+        distribution_id: row.id,
+        product_id: row.product_id,
+        platform: row.platform,
+        external_id: row.external_id,
+        published_at: row.published_at,
+        metrics: {
+          views: metrics.views ?? null,
+          likes: metrics.likes ?? null,
+          replies: metrics.replies ?? null,
+          reposts: metrics.reposts ?? null,
+          quotes: metrics.quotes ?? null,
+          performance_score: score,
+        },
+        original_content: content.slice(0, 1800),
+        recommended_action: 'regenerate_threads_post_with_trending_hooks',
+      },
+      status: 'pending',
+      priority: score < 0.015 ? 'high' : 'normal',
+      tenant_id: row.tenant_id,
+      idempotency_key: idempotencyKey,
+    } as never);
+    await supabaseAdmin
+      .from('content_distributions')
+      .update({
+        engagement: {
+          ...(row.engagement ?? {}),
+          rewrite_candidate_queued_at: new Date().toISOString(),
+          rewrite_candidate_reason: `views=${views}, score=${score.toFixed(4)}`,
+        },
+      })
+      .eq('id', row.id);
+  } catch (err) {
+    console.warn('[sync-engagement] threads rewrite candidate 실패:', err instanceof Error ? err.message : String(err));
+  }
+}
+
+async function markThreadsInsightsError(
+  row: DistributionRow,
+  error: string,
+  errorCategory?: string,
+): Promise<void> {
+  await supabaseAdmin
+    .from('content_distributions')
+    .update({
+      engagement: {
+        ...(row.engagement ?? {}),
+        insights_status: 'failed',
+        insights_error: error,
+        insights_error_category: errorCategory ?? 'unknown',
+        insights_checked_at: new Date().toISOString(),
+        identity_mismatch: errorCategory === 'identity_or_permission_mismatch',
+      },
+    })
+    .eq('id', row.id);
 }
 
 export const GET = withCronLogging('sync-engagement', runSyncEngagement);
@@ -465,16 +599,14 @@ export const GET = withCronLogging('sync-engagement', runSyncEngagement);
 async function fetchPlatformMetrics(
   platform: string,
   externalId: string,
-): Promise<{ metrics: NormalizedMetrics | null; score: number }> {
+): Promise<PlatformMetricsResult> {
   if (platform === 'instagram_caption' || platform === 'instagram_carousel') {
     const m = await fetchInstagramMetrics(externalId);
     if (!m) return { metrics: null, score: 0 };
     return { metrics: m, score: computeInstagramScore(m) };
   }
   if (platform === 'threads_post') {
-    const m = await fetchThreadsMetrics(externalId);
-    if (!m) return { metrics: null, score: 0 };
-    return { metrics: m, score: computeThreadsScore(m) };
+    return fetchThreadsMetrics(externalId);
   }
   if (platform === 'meta_ads') {
     const m = await fetchMetaAdsMetrics(externalId);
@@ -548,34 +680,22 @@ function computeInstagramScore(m: NormalizedMetrics): number {
 
 // Threads Media Insights
 // docs: https://developers.facebook.com/docs/threads/insights
-async function fetchThreadsMetrics(mediaId: string): Promise<NormalizedMetrics | null> {
+async function fetchThreadsMetrics(mediaId: string): Promise<PlatformMetricsResult> {
   const accessToken = getSecret('THREADS_ACCESS_TOKEN') ?? getSecret('META_ACCESS_TOKEN');
-  if (!accessToken) return null;
-  try {
-    const metricList = ['views', 'likes', 'replies', 'reposts', 'quotes'].join(',');
-    const url = `https://graph.threads.net/v1.0/${mediaId}/insights?metric=${metricList}&access_token=${encodeURIComponent(accessToken)}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const data = await res.json();
-    const entries = (data.data ?? []) as Array<{ name: string; values: Array<{ value: number }> }>;
-    const get = (name: string) => entries.find(e => e.name === name)?.values?.[0]?.value ?? null;
+  if (!accessToken) return { metrics: null, score: 0, error: 'THREADS_ACCESS_TOKEN missing', errorCategory: 'token_invalid' };
+  const result = await fetchThreadsInsights(mediaId, accessToken);
+  if (!result.ok || !result.metrics) {
     return {
-      views: get('views') ?? undefined,
-      likes: get('likes') ?? undefined,
-      replies: get('replies') ?? undefined,
-      reposts: get('reposts') ?? undefined,
-      quotes: get('quotes') ?? undefined,
-      raw: data,
+      metrics: null,
+      score: 0,
+      error: result.error ?? 'Threads insights unavailable',
+      errorCategory: result.errorCategory,
     };
-  } catch {
-    return null;
   }
-}
-
-function computeThreadsScore(m: NormalizedMetrics): number {
-  const denom = (m.views ?? 1) || 1;
-  const numer = (m.reposts ?? 0) * 5 + (m.quotes ?? 0) * 3 + (m.replies ?? 0) * 2 + (m.likes ?? 0);
-  return Math.min(1, numer / denom);
+  return {
+    metrics: result.metrics,
+    score: result.score ?? 0,
+  };
 }
 
 async function fetchMetaAdsMetrics(adId: string): Promise<NormalizedMetrics | null> {

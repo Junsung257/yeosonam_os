@@ -20,9 +20,13 @@ interface CsScript {
   script: string;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function InfluencerPlaybookPage() {
   const params = useParams();
-  const code = params.code as string;
+  const code = getRouteParam(params?.code);
   const { authenticated } = useInfluencerAuth();
   const [best, setBest] = useState<BestPractice[]>([]);
   const [scripts, setScripts] = useState<CsScript[]>([]);
@@ -32,6 +36,12 @@ export default function InfluencerPlaybookPage() {
   useEffect(() => {
     if (!authenticated) return;
     const run = async () => {
+      if (!code) {
+        setBest([]);
+        setScripts([]);
+        setLoading(false);
+        return;
+      }
       setLoading(true);
       try {
         const res = await fetch(`/api/influencer/playbook?code=${encodeURIComponent(code)}`);

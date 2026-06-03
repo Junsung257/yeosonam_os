@@ -78,7 +78,7 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
               return (
                 <li key={p.id}>
                   <Link
-                    href={`/packages/${p.id}`}
+                    href={`/packages/${encodeURIComponent(p.id)}`}
                     className="group flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 p-3 backdrop-blur transition hover:border-blue-200 hover:shadow-sm"
                   >
                     <div className="min-w-0 flex-1">

@@ -9,6 +9,7 @@ import { getMinPriceFromDates } from './price-dates';
 import { matchAttraction as matchAttr } from './attraction-matcher';
 import type { AttractionData } from './attraction-matcher';
 import { romanize } from './slug-utils';
+import { sanitizeCustomerVisibleNotices } from './product-registration-v3/customer-payload';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -60,7 +61,13 @@ export interface ProductData {
   product_highlights?: string[];
   itinerary?: string[];
   optional_tours?: { name: string; price_usd?: number }[];
-  notices_parsed?: { title: string; text: string }[];
+  notices_parsed?: {
+    title: string;
+    text: string;
+    category?: string;
+    template_key?: string;
+    review_status?: string;
+  }[];
 }
 
 export interface GenerateOptions {
@@ -767,7 +774,7 @@ export function generateBlogPost(
 
   // ── FAQ (FAQPage JSON-LD 자동 추출 + 롱테일 검색 유입) ──────────────
   // 1) notices_parsed 우선, 2) 없으면 상품 스펙 기반 기본 FAQ 3종 생성
-  const notices = product.notices_parsed;
+  const notices = sanitizeCustomerVisibleNotices(product.notices_parsed, { strictStandardOnly: true });
   const faqItems: { title: string; text: string }[] = [];
 
   if (Array.isArray(notices) && notices.length > 0) {

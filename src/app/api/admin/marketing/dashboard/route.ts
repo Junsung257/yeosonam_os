@@ -1,4 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 
@@ -18,9 +21,9 @@ import { ADMIN_CACHE } from '@/lib/admin-cache';
  *   }
  * }
  */
-export async function GET(request: NextRequest): Promise<NextResponse> {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ data: null, mock: true }, { headers: ADMIN_CACHE.noCache });
+    return apiResponse({ data: null, mock: true }, { headers: ADMIN_CACHE.noCache });
   }
 
   const searchParams = request.nextUrl.searchParams;
@@ -232,7 +235,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     const blendedRoas = totalSpend > 0 ? (attributedRevenue / totalSpend) * 100 : 0;
     const avgCpa = totalConversions > 0 ? totalSpend / totalConversions : 0;
 
-    return NextResponse.json({
+    return apiResponse({
       data: {
         channels,
         funnel,
@@ -245,10 +248,12 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       },
     }, { headers: ADMIN_CACHE.analytics });
   } catch (err) {
-    console.error('[dashboard] 집계 오류:', err);
-    return NextResponse.json({ data: null, error: 'aggregation_error' }, { status: 500, headers: ADMIN_CACHE.noCache });
+    console.error('[dashboard] 집계 오류:', sanitizeDbError(err));
+    return apiResponse({ data: null, error: 'aggregation_error' }, { status: 500, headers: ADMIN_CACHE.noCache });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
 
 interface TrendPoint {
   date: string;

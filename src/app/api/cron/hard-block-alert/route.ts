@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 60;
 
@@ -29,7 +31,7 @@ interface AlertItem {
 
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
+  if (!isSupabaseConfigured || !supabaseAdmin) return apiResponse({ skipped: true, reason: 'Supabase not configured' });
 
   try {
     // 1. 하드블럭 설정된 활성 패키지 조회
@@ -42,7 +44,7 @@ export async function GET(request: NextRequest) {
 
     if (pkgErr) throw pkgErr;
     if (!packages?.length) {
-      return NextResponse.json({ checked: 0, upcomingCount: 0, alerts: 0 });
+      return apiResponse({ checked: 0, upcomingCount: 0, alerts: 0 });
     }
 
     // 2. price_dates JSONB에서 D-60 이내 출발일이 있는 패키지만 추출
@@ -72,7 +74,7 @@ export async function GET(request: NextRequest) {
       });
 
     if (!upcoming.length) {
-      return NextResponse.json({
+      return apiResponse({
         checked: packages.length,
         upcomingCount: 0,
         alerts: 0,
@@ -133,15 +135,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    return apiResponse({
       checked: packages.length,
       upcomingCount: upcoming.length,
       alerts: alertItems.length,
       alertItems,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = sanitizeDbError(err, 'Hard-block alert failed');
     await sendSlackAlert(`[hard-block-alert] 크론 실패: ${msg}`);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiResponse({ error: msg }, { status: 500 });
   }
 }

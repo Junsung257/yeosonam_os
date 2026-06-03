@@ -72,10 +72,15 @@ const PRODUCT_TYPE_LABELS: Record<string, string> = {
   CRUISE:   '🚢 크루즈',
 };
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function TransactionDetailPage() {
   const params  = useParams();
   const router  = useRouter();
-  const id      = params.id as string;
+  const id      = getRouteParam(params?.id);
+  const encodedId = encodeURIComponent(id);
 
   const [txn, setTxn]           = useState<Transaction | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -83,9 +88,16 @@ export default function TransactionDetailPage() {
   const [error, setError]       = useState('');
 
   const load = useCallback(async () => {
+    if (!id) {
+      setTxn(null);
+      setError('트랜잭션 ID가 올바르지 않습니다');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
+    setError('');
     try {
-      const res  = await fetch(`/api/concierge/transactions/${id}`);
+      const res  = await fetch(`/api/concierge/transactions/${encodedId}`);
       const data = await res.json();
       setTxn(data.transaction ?? null);
     } catch {
@@ -93,16 +105,17 @@ export default function TransactionDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [encodedId, id]);
 
   useEffect(() => { load(); }, [load]);
 
   async function handleRefund() {
+    if (!id) return;
     if (!confirm('이 트랜잭션을 환불 처리하시겠습니까?')) return;
     setRefunding(true);
     setError('');
     try {
-      const res  = await fetch(`/api/concierge/transactions/${id}`, {
+      const res  = await fetch(`/api/concierge/transactions/${encodedId}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ action: 'refund' }),

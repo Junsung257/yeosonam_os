@@ -39,16 +39,122 @@ interface SharedItinerary {
   created_at:    string;
 }
 
-function fmt(n: number) { return n.toLocaleString('ko-KR'); }
+function fmt(n: number) { return Number.isFinite(n) ? n.toLocaleString('ko-KR') : '0'; }
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
+function fmtDateLabel(value?: string | null): string {
+  return typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : '-';
+}
+
+function getString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function getFiniteNumber(value: unknown, fallback = 0): number {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return fallback;
+}
+
+function getPositiveInteger(value: unknown, fallback = 1): number {
+  return Math.max(1, Math.round(getFiniteNumber(value, fallback)));
+}
+
+function isProductType(value: unknown): value is CartItem['product_type'] {
+  return value === 'HOTEL' || value === 'ACTIVITY' || value === 'CRUISE';
+}
+
+function isProductCategory(value: unknown): value is CartItem['product_category'] {
+  return value === 'DYNAMIC' || value === 'FIXED';
+}
+
+function normalizeCartItem(value: unknown): CartItem | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  const productId = getString(record.product_id).trim();
+  const productName = getString(record.product_name).trim();
+  const productType = record.product_type;
+  const productCategory = record.product_category;
+  if (!productId || !productName || !isProductType(productType) || !isProductCategory(productCategory)) {
+    return null;
+  }
+
+  return {
+    product_id: productId,
+    product_name: productName,
+    api_name: getString(record.api_name).trim() || 'tenant_product',
+    product_type: productType,
+    product_category: productCategory,
+    cost: Math.max(0, getFiniteNumber(record.cost)),
+    price: Math.max(0, getFiniteNumber(record.price)),
+    quantity: getPositiveInteger(record.quantity),
+    description: getString(record.description),
+    attrs: record.attrs && typeof record.attrs === 'object' ? record.attrs as Record<string, unknown> : undefined,
+  };
+}
+
+function normalizeSharedItinerary(value: unknown): SharedItinerary | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  const shareType = record.share_type;
+  if (shareType !== 'DYNAMIC' && shareType !== 'FIXED') return null;
+
+  const items = Array.isArray(record.items)
+    ? record.items.map(normalizeCartItem).filter((item): item is CartItem => item != null)
+    : undefined;
+
+  return {
+    id: getString(record.id),
+    share_code: getString(record.share_code),
+    share_type: shareType,
+    items,
+    search_query: getString(record.search_query) || undefined,
+    product_id: getString(record.product_id) || undefined,
+    product_name: getString(record.product_name) || undefined,
+    review_text: getString(record.review_text) || undefined,
+    creator_name: getString(record.creator_name).trim() || '여행자',
+    view_count: Math.max(0, Math.round(getFiniteNumber(record.view_count))),
+    expires_at: getString(record.expires_at),
+    created_at: getString(record.created_at),
+  };
+}
+
+function normalizeInventoryBlocks(value: unknown): InventoryBlock[] {
+  if (!Array.isArray(value)) return [];
+
+  return value.flatMap(block => {
+    if (!block || typeof block !== 'object') return [];
+
+    const record = block as Record<string, unknown>;
+    const date = getString(record.date);
+    if (date.length < 10) return [];
+
+    return [{
+      id: getString(record.id) || date,
+      date,
+      available_seats: Math.max(0, Math.round(getFiniteNumber(record.available_seats))),
+      price_override: record.price_override == null ? undefined : Math.max(0, getFiniteNumber(record.price_override)),
+      status: getString(record.status),
+    }];
+  });
+}
 
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
   HOTEL: '🏨 호텔', ACTIVITY: '🎫 액티비티', CRUISE: '🛳 크루즈',
 };
 
 export default function SharePage() {
-  const params  = useParams<{ code: string }>();
+  const params  = useParams<{ code?: string | string[] }>();
   const router  = useRouter();
-  const code    = params.code;
+  const code    = getRouteParam(params?.code);
 
   const [shared,     setShared]     = useState<SharedItinerary | null>(null);
   const [loading,    setLoading]    = useState(true);
@@ -65,24 +171,65 @@ export default function SharePage() {
   const [addingToCart, setAddingToCart] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/share?code=${code}`)
+    const controller = new AbortController();
+    let isActive = true;
+
+    setLoading(true);
+    setError('');
+    setShared(null);
+    setBlocks([]);
+    setSelectedDate('');
+    setRefreshedPrices(new Map());
+
+    if (!code) {
+      setError('공유 코드가 올바르지 않습니다.');
+      setLoading(false);
+      return () => {
+        isActive = false;
+        controller.abort();
+      };
+    }
+
+    fetch(`/api/share?code=${encodeURIComponent(code)}`, { signal: controller.signal })
       .then(r => r.json())
       .then(d => {
+        if (!isActive) return;
         if (d.error) setError(d.error);
+        else if (!d.shared || typeof d.shared !== 'object') setError('공유 정보를 찾을 수 없습니다.');
         else {
-          setShared(d.shared);
+          const normalizedShared = normalizeSharedItinerary(d.shared);
+          if (!normalizedShared) {
+            setError('공유 정보를 찾을 수 없습니다.');
+            return;
+          }
+
+          setShared(normalizedShared);
           // FIXED: 재고 조회
-          if (d.shared.share_type === 'FIXED' && d.shared.product_id) {
+          if (normalizedShared.share_type === 'FIXED' && normalizedShared.product_id) {
             const today = new Date().toISOString().slice(0, 10);
-            fetch(`/api/packages/${d.shared.product_id}/inventory?from=${today}`)
+            fetch(`/api/packages/${encodeURIComponent(normalizedShared.product_id)}/inventory?from=${today}`, {
+              signal: controller.signal,
+            })
               .then(r => r.json())
-              .then(inv => setBlocks(inv.blocks ?? []))
+              .then(inv => {
+                if (isActive) setBlocks(normalizeInventoryBlocks(inv.blocks));
+              })
               .catch(() => {});
           }
         }
       })
-      .catch(() => setError('공유 정보를 불러오는 데 실패했습니다.'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!isActive || controller.signal.aborted) return;
+        setError('공유 정보를 불러오는 데 실패했습니다.');
+      })
+      .finally(() => {
+        if (isActive) setLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [code]);
 
   // DYNAMIC: 오늘의 가격으로 재조회
@@ -97,8 +244,11 @@ export default function SharePage() {
       });
       const data = await res.json();
       const map  = new Map<string, number>();
-      for (const r of (data.results ?? [])) {
-        map.set(r.product_id, r.price);
+      for (const r of (Array.isArray(data.results) ? data.results : [])) {
+        if (!r || typeof r !== 'object') continue;
+        const record = r as Record<string, unknown>;
+        const productId = getString(record.product_id).trim();
+        if (productId) map.set(productId, Math.max(0, getFiniteNumber(record.price)));
       }
       setRefreshedPrices(map);
     } catch {
@@ -203,7 +353,7 @@ export default function SharePage() {
               : (shared.product_name ?? '패키지 상품')}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            공유일: {shared.created_at.slice(0, 10)} · 만료: {shared.expires_at.slice(0, 10)}
+            공유일: {fmtDateLabel(shared.created_at)} · 만료: {fmtDateLabel(shared.expires_at)}
           </p>
         </div>
 

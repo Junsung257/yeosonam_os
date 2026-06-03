@@ -1,20 +1,23 @@
-/**
- * @file /api/admin/fraud-quarantine/route.ts
- * @description fraud_signals_log 어드민 API — GET 목록, POST resolve.
- *
- * 박제 (2026-05-13 Phase 9 Final):
- * AA-1 자동 격리된 booking 을 사장님이 한 화면에서 검토 + 1-click resolve.
- */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+
+type FraudQuarantineBody = {
+  id?: number;
+  action?: 'resolve' | 'unresolve' | 'block';
+  resolved_by?: string;
+  notes?: string;
+};
 
 async function getHandler(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
+  }
 
   const url = new URL(request.url);
-  const status = url.searchParams.get('status') ?? 'unresolved'; // unresolved | resolved | all
+  const status = url.searchParams.get('status') ?? 'unresolved';
 
   try {
     let query = supabaseAdmin
@@ -35,73 +38,82 @@ async function getHandler(request: NextRequest) {
     else if (status === 'resolved') query = query.not('resolved_at', 'is', null);
 
     const { data, error } = await query;
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
-    return NextResponse.json({ items: data ?? [] });
+    return apiResponse({ items: data ?? [] });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
 }
 
-/** POST: 격리 해결 (resolved_at + resolved_by + notes) */
 async function postHandler(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
+  }
+
   try {
-    const body = await request.json() as { id?: number; action?: 'resolve' | 'unresolve' | 'block'; resolved_by?: string; notes?: string };
-    if (!body.id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
+    let body: FraudQuarantineBody;
+    try {
+      body = await request.json() as FraudQuarantineBody;
+    } catch {
+      return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
+    }
+
+    if (!body.id) return apiResponse({ error: 'ID_REQUIRED' }, { status: 400 });
 
     if (body.action === 'unresolve') {
       const { error } = await supabaseAdmin
         .from('fraud_signals_log')
         .update({ resolved_at: null, resolved_by: null, notes: body.notes ?? null })
         .eq('id', body.id);
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ ok: true, action: 'unresolved' });
+      if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+      return apiResponse({ ok: true, action: 'unresolved' });
     }
 
     if (body.action === 'block') {
-      // 1) fraud_signals_log: action=blocked 로 marker 후 resolved 처리
-      const { data: signalRow } = await supabaseAdmin
+      const { data: signalRow, error: signalError } = await supabaseAdmin
         .from('fraud_signals_log')
         .select('booking_id')
         .eq('id', body.id)
         .maybeSingle();
-      const bookingId = (signalRow as { booking_id?: string } | null)?.booking_id;
+      if (signalError) return apiResponse({ error: sanitizeDbError(signalError) }, { status: 500 });
 
+      const bookingId = (signalRow as { booking_id?: string } | null)?.booking_id;
       const { error: updateLogErr } = await supabaseAdmin
         .from('fraud_signals_log')
         .update({
           auto_action: 'blocked',
           resolved_at: new Date().toISOString(),
           resolved_by: body.resolved_by ?? 'admin',
-          notes: body.notes ?? '사장님 차단 결정',
+          notes: body.notes ?? 'admin blocked',
         })
         .eq('id', body.id);
-      if (updateLogErr) return NextResponse.json({ error: updateLogErr.message }, { status: 500 });
+      if (updateLogErr) return apiResponse({ error: sanitizeDbError(updateLogErr) }, { status: 500 });
 
-      // 2) booking status='cancelled' (block 의미 — 운영적 취소)
       if (bookingId) {
-        await supabaseAdmin
+        const { error: bookingError } = await supabaseAdmin
           .from('bookings')
           .update({ status: 'cancelled', updated_at: new Date().toISOString() })
           .eq('id', bookingId);
+        if (bookingError) return apiResponse({ error: sanitizeDbError(bookingError) }, { status: 500 });
       }
-      return NextResponse.json({ ok: true, action: 'blocked', booking_id: bookingId });
+
+      return apiResponse({ ok: true, action: 'blocked', booking_id: bookingId });
     }
 
-    // 기본: resolve (false positive 또는 해결)
     const { error } = await supabaseAdmin
       .from('fraud_signals_log')
       .update({
         resolved_at: new Date().toISOString(),
-        resolved_by:  body.resolved_by ?? 'admin',
-        notes:       body.notes ?? null,
+        resolved_by: body.resolved_by ?? 'admin',
+        notes: body.notes ?? null,
       })
       .eq('id', body.id);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, action: 'resolved' });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+
+    return apiResponse({ ok: true, action: 'resolved' });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
 }
 

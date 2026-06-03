@@ -25,7 +25,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type PageParams = { params: Promise<{ token: string }> };
+type PageParams = { params: Promise<{ token?: string | string[] }> };
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
 
 interface PassportMeta {
   surname?: string;
@@ -38,7 +42,10 @@ interface PassportMeta {
 }
 
 export default async function PassportPage({ params }: PageParams) {
-  const { token: tokenIdFromUrl } = await params;
+  const { token: rawToken } = await params;
+  const tokenIdFromUrl = getRouteParam(rawToken);
+  if (!tokenIdFromUrl) return <Err msg="안내 메시지의 링크를 다시 열어 주세요." />;
+
   const cookieStore = await cookies();
   const sessionCookie = cookieStore.get(MAGIC_SESSION_COOKIE)?.value;
   const session = verifyMagicSessionToken(sessionCookie);

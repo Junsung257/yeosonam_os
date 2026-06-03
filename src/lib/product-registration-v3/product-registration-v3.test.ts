@@ -144,6 +144,28 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     }
   });
 
+  it('does not assume a fixed catalog size and can plan six variants from one source', async () => {
+    const raw = Array.from({ length: 6 }, (_, index) => {
+      const n = index + 1;
+      return [
+        `Product: Variable Catalog ${n} 3N5D`,
+        `Price: ${(699000 + index * 10000).toLocaleString('ko-KR')} KRW / minimum 4`,
+        `DAY 1 LJ11${n} departure 21:35 arrival 00:25`,
+        'DAY 2 City attraction',
+        `DAY 5 LJ12${n} departure 01:00 arrival 06:40`,
+        'Include hotel meal',
+        'Exclude personal expense',
+      ].join('\n');
+    }).join('\n\n');
+
+    const result = await runProductRegistrationV3(raw);
+
+    expect(result.structure_plan.document_type).toBe('catalog');
+    expect(result.structure_plan.expected_products).toBe(6);
+    expect(result.ledger.variants).toHaveLength(6);
+    expect(result.gate_result.checks.find(check => check.id === 'expected_products_match')?.status).toBe('pass');
+  });
+
   it('keeps airport meeting time as meeting, not flight departure', async () => {
     const result = await runProductRegistrationV3(buildBaekduEightVariantFixture());
     const variant = result.ledger.variants[0];

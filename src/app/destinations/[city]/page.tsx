@@ -35,7 +35,52 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
   }
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://www.yeosonam.com'
+).replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
+
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+function clampRating(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.min(5, Math.max(1, value));
+}
+
+function getPositiveNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+async function getDestinationSocialImage(city: string): Promise<string> {
+  if (!isSupabaseConfigured) return SOCIAL_IMAGE_URL;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('destination_metadata')
+      .select('hero_image_url, photo_approved')
+      .eq('destination', city)
+      .maybeSingle();
+    if (error) return SOCIAL_IMAGE_URL;
+
+    const row = data as Pick<DestinationMeta, 'hero_image_url' | 'photo_approved'> | null;
+    const candidate = row?.photo_approved ? row.hero_image_url?.trim() : null;
+    return candidate && isSafeImageSrc(candidate) ? candidate : SOCIAL_IMAGE_URL;
+  } catch {
+    return SOCIAL_IMAGE_URL;
+  }
+}
 
 interface DestinationMeta {
   tagline: string | null;
@@ -55,6 +100,9 @@ interface ClimateData {
   seasonal_signals: unknown;
 }
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+type PackagePriceDate = { date?: string };
+
 interface PillarData {
   destination: string;
   packageCount: number;
@@ -65,7 +113,7 @@ interface PillarData {
     id: string;
     name: string;
     short_desc: string | null;
-    photos: Array<{ src_medium?: string }> | null;
+    photos: GalleryPhoto[] | null;
     badge_type: string | null;
   }>;
   packages: Array<{
@@ -79,7 +127,7 @@ interface PillarData {
     departure_airport: string | null;
     avg_rating: number | null;
     review_count: number;
-    price_dates: Array<{ date?: string }> | null;
+    price_dates: PackagePriceDate[] | null;
   }>;
   relatedPosts: Array<{
     id: string;
@@ -105,6 +153,81 @@ interface PillarData {
 
 function extractDepartureCity(airport: string): string {
   return airport.split('(')[0].trim();
+}
+
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function getNullableTrimmedString(value: unknown): string | null {
+  return value == null ? null : getTrimmedString(value);
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPhotoList(value: unknown): GalleryPhoto[] | null {
+  if (!Array.isArray(value)) return null;
+  const photos = value.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object');
+  return photos.length > 0 ? photos : null;
+}
+
+function getPriceDateList(value: unknown): PackagePriceDate[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const priceDates = value
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+    .map((item) => ({ date: getTrimmedString(item.date) ?? undefined }));
+
+  return priceDates.length > 0 ? priceDates : null;
+}
+
+function normalizeAttractionRow(row: unknown): PillarData['attractions'][number] | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const name = getTrimmedString(record.name);
+  if (!id || !name) return null;
+
+  return {
+    id,
+    name,
+    short_desc: getNullableTrimmedString(record.short_desc),
+    photos: getPhotoList(record.photos),
+    badge_type: getNullableTrimmedString(record.badge_type),
+  };
+}
+
+function normalizePackageRow(row: unknown): PillarData['packages'][number] | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const title = getTrimmedString(record.title);
+  const destination = getTrimmedString(record.destination);
+  if (!id || !title || !destination) return null;
+
+  return {
+    id,
+    title,
+    destination,
+    duration: getFiniteNumber(record.duration),
+    nights: getFiniteNumber(record.nights),
+    price: getFiniteNumber(record.price),
+    airline: getNullableTrimmedString(record.airline),
+    departure_airport: getNullableTrimmedString(record.departure_airport),
+    avg_rating: getFiniteNumber(record.avg_rating),
+    review_count: Math.max(0, Math.trunc(getFiniteNumber(record.review_count) ?? 0)),
+    price_dates: getPriceDateList(record.price_dates),
+  };
 }
 
 async function getPillarData(city: string): Promise<PillarData | null> {
@@ -192,11 +315,14 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   if (!stats || stats.length === 0) return null;
   const stat = stats[0];
 
-  const alivePkgs = (packages || []).filter(p => {
-    const pd = (p.price_dates || []) as unknown as Array<{ date?: string }>;
-    if (pd.length === 0) return true;
-    return pd.some(d => d.date && d.date >= today);
-  });
+  const alivePkgs = ((packages as unknown[] | null) ?? [])
+    .map(normalizePackageRow)
+    .filter((p): p is PillarData['packages'][number] => p !== null)
+    .filter((p) => {
+      const pd = p.price_dates ?? [];
+      if (pd.length === 0) return true;
+      return pd.some((d) => d.date && d.date >= today);
+    });
 
   let siblingCities: string[] = [];
   if (region && allDests) {
@@ -228,7 +354,9 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     avgRating: stat.avg_rating ? Number(stat.avg_rating) : null,
     reviewCount: stat.total_reviews || 0,
     minPrice: stat.min_price || null,
-    attractions: (attractions || []) as unknown as PillarData['attractions'],
+    attractions: ((attractions as unknown[] | null) ?? [])
+      .map(normalizeAttractionRow)
+      .filter((row): row is PillarData['attractions'][number] => row !== null),
     packages: alivePkgs,
     relatedPosts: (posts || []) as unknown as PillarData['relatedPosts'],
     pillarPost: (pillarRow as unknown as PillarData['pillarPost'][] | null)?.[0] || null,
@@ -239,15 +367,42 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   };
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ city: string }> }): Promise<Metadata> {
-  const { city } = await params;
-  const decoded = decodeURIComponent(city);
+export async function generateMetadata({ params }: { params: Promise<{ city?: string | string[] }> }): Promise<Metadata> {
+  const { city: rawCity } = await params;
+  const city = getRouteParam(rawCity);
+  const decoded = safeDecodePathSegment(city).trim();
   const encodedCity = encodeDestinationPathSegment(decoded);
+  const canonical = encodedCity ? `${BASE_URL}/destinations/${encodedCity}` : `${BASE_URL}/destinations`;
+  const fallbackTitle = '여행지 가이드';
+  const fallbackSocialTitle = `${fallbackTitle} | 여소남`;
+  if (!decoded) {
+    return {
+      title: fallbackTitle,
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+      openGraph: {
+        title: fallbackSocialTitle,
+        url: canonical,
+        type: 'website',
+        images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: fallbackSocialTitle,
+        images: [SOCIAL_IMAGE_URL],
+      },
+    };
+  }
+
+  const title = `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`;
+  const description = `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`;
+  const socialImage = await getDestinationSocialImage(decoded);
+
   return {
-    title: `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`,
-    description: `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`,
+    title,
+    description,
     alternates: {
-      canonical: `${BASE_URL}/destinations/${encodedCity}`,
+      canonical,
       types: {
         'application/rss+xml': [
           { url: `${BASE_URL}/destinations/${encodedCity}/rss.xml`, title: `${decoded} 여행 매거진 RSS` },
@@ -256,9 +411,16 @@ export async function generateMetadata({ params }: { params: Promise<{ city: str
     },
     openGraph: {
       title: `${decoded} 여행 완벽 가이드 | 여소남`,
-      description: `${decoded} 여행의 모든 것. 운영팀 검증 관광지와 엄선 패키지까지.`,
-      url: `${BASE_URL}/destinations/${encodedCity}`,
+      description,
+      url: canonical,
       type: 'website',
+      images: [{ url: socialImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [socialImage],
     },
   };
 }
@@ -272,9 +434,11 @@ async function renderPillarBody(md: string): Promise<string> {
   return DOMPurify.sanitize(colored, { ADD_TAGS: ['mark', 'aside'], ADD_ATTR: ['class'] });
 }
 
-export default async function DestinationPillarPage({ params }: { params: Promise<{ city: string }> }) {
-  const { city } = await params;
-  const decoded = decodeURIComponent(city);
+export default async function DestinationPillarPage({ params }: { params: Promise<{ city?: string | string[] }> }) {
+  const { city: rawCity } = await params;
+  const city = getRouteParam(rawCity);
+  const decoded = safeDecodePathSegment(city).trim();
+  if (!decoded) notFound();
   const encodedCity = encodeDestinationPathSegment(decoded);
   let data: PillarData | null = null;
   try {
@@ -293,7 +457,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       : null;
   const fromAttr =
     (data.attractions ?? [])
-      .map(a => pickAttractionPhotoUrl(a.photos as { src_medium?: string; src_large?: string }[] | null))
+      .map(a => pickAttractionPhotoUrl(a.photos))
       .find(Boolean) ?? null;
   const heroImage = fromMeta || fromAttr;
 
@@ -309,6 +473,9 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       : `여소남 운영팀이 직접 검증한 ${decoded} 여행의 핵심 정보`);
 
   // 출발지가 1개면 필터 탭 의미 없음
+  const destinationRating = clampRating(data.avgRating);
+  const destinationReviewCount = getPositiveNumber(data.reviewCount);
+
   const showDepartureTabs = data.departureCities.length >= 2;
 
   // 출발월 분포 (climate 카드용)
@@ -338,12 +505,12 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 description: data.pillarPost?.seo_description || `${decoded} 여행 완벽 가이드`,
                 url: `${BASE_URL}/destinations/${encodedCity}`,
                 ...(heroImage ? { image: heroImage } : {}),
-                ...(data.avgRating
+                ...(destinationRating && destinationReviewCount
                   ? {
                       aggregateRating: {
                         '@type': 'AggregateRating',
-                        ratingValue: data.avgRating.toFixed(2),
-                        reviewCount: data.reviewCount || 1,
+                        ratingValue: destinationRating.toFixed(2),
+                        reviewCount: destinationReviewCount,
                       },
                     }
                   : {}),
@@ -373,25 +540,30 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                     {
                       '@type': 'ItemList',
                       name: `${decoded} 여행 상품`,
-                      itemListElement: data.packages.slice(0, 10).map((p, i) => ({
-                        '@type': 'ListItem',
-                        position: i + 1,
-                        item: {
-                          '@type': 'Product',
-                          name: p.title,
-                          url: `${BASE_URL}/packages/${p.id}`,
-                          ...(p.avg_rating && p.review_count > 0
-                            ? {
-                                aggregateRating: {
-                                  '@type': 'AggregateRating',
-                                  ratingValue: Number(p.avg_rating).toFixed(2),
-                                  reviewCount: p.review_count,
-                                },
-                              }
-                            : {}),
-                          ...(p.price ? { offers: { '@type': 'Offer', price: p.price, priceCurrency: 'KRW' } } : {}),
-                        },
-                      })),
+                      itemListElement: data.packages.slice(0, 10).map((p, i) => {
+                        const packageRating = clampRating(p.avg_rating);
+                        const packageReviewCount = getPositiveNumber(p.review_count);
+                        const packagePrice = getPositiveNumber(p.price);
+                        return {
+                          '@type': 'ListItem',
+                          position: i + 1,
+                          item: {
+                            '@type': 'Product',
+                            name: p.title,
+                            url: `${BASE_URL}/packages/${encodeURIComponent(p.id)}`,
+                            ...(packageRating && packageReviewCount
+                              ? {
+                                  aggregateRating: {
+                                    '@type': 'AggregateRating',
+                                    ratingValue: packageRating.toFixed(2),
+                                    reviewCount: packageReviewCount,
+                                  },
+                                }
+                              : {}),
+                            ...(packagePrice ? { offers: { '@type': 'Offer', price: packagePrice, priceCurrency: 'KRW' } } : {}),
+                          },
+                        };
+                      }),
                     },
                   ]
                 : []),
@@ -564,7 +736,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
               />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
                 {data.attractions.map(a => {
-                  const img = a.photos?.[0]?.src_medium;
+                  const img = pickAttractionPhotoUrl(a.photos);
                   return (
                     <div
                       key={a.id}
@@ -625,7 +797,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 {data.relatedPosts.map(p => (
                   <Link
                     key={p.id}
-                    href={`/blog/${p.slug}`}
+                    href={`/blog/${encodeURIComponent(p.slug)}`}
                     className="group bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                   >
                     {p.og_image_url ? (

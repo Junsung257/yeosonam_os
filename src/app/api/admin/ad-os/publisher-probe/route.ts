@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { classifyProbeMessageStatus, upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import {
   fetchNaverKeywordTool,
@@ -112,7 +114,7 @@ async function probeGoogle(hint: string) {
   });
 
   if (!res.ok) {
-    const body = await res.text();
+    const body = sanitizeDbError(await res.text(), 'Google Ads API request failed');
     return {
       platform: 'google',
       status: 'failed' as ProbeStatus,
@@ -148,7 +150,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     probeGoogle(hint),
   ]);
 
-  const persistedAccounts = [];
+  const persistedAccounts: unknown[] = [];
   if (isSupabaseConfigured) {
     for (const probe of [naver, google]) {
       const platform = probe.platform as 'naver' | 'google';
@@ -177,7 +179,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     }
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     hint,
     probes: { naver, google },

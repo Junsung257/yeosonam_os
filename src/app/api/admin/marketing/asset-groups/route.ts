@@ -1,5 +1,7 @@
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getMarketingAssetGroups } from '@/lib/marketing/asset-groups';
 import { attachLedgerToActions, syncMarketingRecommendations } from '@/lib/marketing/recommendation-ledger';
 import { withTimeout } from '@/lib/promise-timeout';
@@ -8,7 +10,7 @@ export const dynamic = 'force-dynamic';
 
 const ASSET_GROUP_TIMEOUT_MS = 8000;
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const limit = Math.min(Math.max(Number(request.nextUrl.searchParams.get('limit') ?? 30), 1), 100);
   try {
     const data = await withTimeout(
@@ -26,7 +28,7 @@ async function getHandler(request: NextRequest) {
       ...group,
       next_actions: attachLedgerToActions(group.next_actions, ledger),
     }));
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       checked_at: new Date().toISOString(),
       access_state: 'ready',
@@ -34,10 +36,10 @@ async function getHandler(request: NextRequest) {
       actions,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Unknown asset group error';
+    const message = sanitizeDbError(error, 'Unknown asset group error');
     const accessState = /401|permission|unauthorized|auth/i.test(message) ? 'permission_denied' : 'data_unavailable';
     console.warn('[marketing/asset-groups] degraded response:', message);
-    return NextResponse.json({
+    return apiResponse({
       ok: false,
       checked_at: new Date().toISOString(),
       access_state: accessState,

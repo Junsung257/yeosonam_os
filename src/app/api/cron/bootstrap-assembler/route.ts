@@ -11,12 +11,14 @@
  *
  * GET /api/cron/bootstrap-assembler?secret=CRON_SECRET[&dryRun=1]
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import fs from 'node:fs';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const MIN_PACKAGES = 3;
 
@@ -41,8 +43,8 @@ function assemblerFileExists(slug: string): boolean {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, message: 'DB 미설정' });
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, message: 'DB not configured' });
 
   const dryRun = new URL(request.url).searchParams.get('dryRun') === '1';
   const startedAt = new Date().toISOString();
@@ -85,7 +87,7 @@ export async function GET(request: NextRequest) {
     candidates.sort((a, b) => b.packages - a.packages);
 
     if (dryRun) {
-      return NextResponse.json({
+      return apiResponse({
         ok: true,
         dryRun: true,
         startedAt,
@@ -114,12 +116,12 @@ export async function GET(request: NextRequest) {
         proc.unref();
         triggered.push(c.destination);
       } catch (e) {
-        console.warn(`[Bootstrap] ${c.destination} spawn 실패:`, e instanceof Error ? e.message : e);
+        console.warn(`[Bootstrap] ${c.destination} spawn failed:`, sanitizeDbError(e));
         queuedOnly.push(c.destination);
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       startedAt,
       finishedAt: new Date().toISOString(),
@@ -129,8 +131,8 @@ export async function GET(request: NextRequest) {
       queued_only: queuedOnly,
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : '에러' },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

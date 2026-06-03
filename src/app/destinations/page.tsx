@@ -9,7 +9,9 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 600;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 export const metadata: Metadata = {
   title: '여행지 완벽 가이드 | 목적지별 총정리',
@@ -20,6 +22,13 @@ export const metadata: Metadata = {
     description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
     url: `${BASE_URL}/destinations`,
     type: 'website',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '여행지 완벽 가이드',
+    description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
+    images: [SOCIAL_IMAGE_URL],
   },
 };
 
@@ -31,37 +40,87 @@ interface DestinationStat {
   min_price: number | null;
 }
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+
 interface AttractionSample {
   destination: string;
   name: string;
-  photos: Array<{ src_medium?: string; src_large?: string }> | null;
+  photos: GalleryPhoto[] | null;
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeDestinationStat(row: Partial<DestinationStat> | null | undefined): DestinationStat | null {
+  const destination = typeof row?.destination === 'string' ? row.destination.trim() : '';
+  if (!destination) return null;
+
+  return {
+    destination,
+    package_count: Math.max(0, Math.trunc(toFiniteNumber(row?.package_count) ?? 0)),
+    avg_rating: toFiniteNumber(row?.avg_rating),
+    total_reviews: Math.max(0, Math.trunc(toFiniteNumber(row?.total_reviews) ?? 0)),
+    min_price: toFiniteNumber(row?.min_price),
+  };
+}
+
+function normalizeAttractionSample(row: unknown): AttractionSample | null {
+  if (!row || typeof row !== 'object') return null;
+  const record = row as Record<string, unknown>;
+  const destination = typeof record.destination === 'string' ? record.destination.trim() : '';
+  const name = typeof record.name === 'string' ? record.name.trim() : '';
+  if (!destination || !name) return null;
+
+  const photos = Array.isArray(record.photos)
+    ? record.photos.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object')
+    : null;
+
+  return {
+    destination,
+    name,
+    photos: photos && photos.length > 0 ? photos : null,
+  };
 }
 
 async function getDestinations() {
   if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
 
-  const { data: stats } = await supabaseAdmin
-    .from('active_destinations')
-    .select('*')
-    .order('package_count', { ascending: false });
+  try {
+    const { data: stats } = await supabaseAdmin
+      .from('active_destinations')
+      .select('*')
+      .order('package_count', { ascending: false });
 
-  // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
-  const destinations = (stats as DestinationStat[] | null)?.map(s => s.destination) || [];
-  const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
-    .from('attractions')
-    .select('destination, name, photos')
-    .in('destination', destinations)
-    .not('photos', 'is', null)
-    .limit(4000) : { data: null };
+    // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
+    const normalizedStats = ((stats as Array<Partial<DestinationStat>> | null) ?? [])
+      .map(normalizeDestinationStat)
+      .filter((stat): stat is DestinationStat => stat !== null);
+    const destinations = normalizedStats.map(s => s.destination);
+    const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
+      .from('attractions')
+      .select('destination, name, photos')
+      .in('destination', destinations)
+      .not('photos', 'is', null)
+      .limit(4000) : { data: null };
 
-  const attractionsByDest: Record<string, AttractionSample> = {};
-  (attractions as AttractionSample[] | null)?.forEach(a => {
-    if (a.destination && !attractionsByDest[a.destination]) {
-      attractionsByDest[a.destination] = a;
-    }
-  });
+    const attractionsByDest: Record<string, AttractionSample> = {};
+    ((attractions as unknown[] | null) ?? []).forEach((row) => {
+      const sample = normalizeAttractionSample(row);
+      if (sample && !attractionsByDest[sample.destination]) {
+        attractionsByDest[sample.destination] = sample;
+      }
+    });
 
-  return { stats: (stats as DestinationStat[]) || [], attractionsByDest };
+    return { stats: normalizedStats, attractionsByDest };
+  } catch {
+    return { stats: [], attractionsByDest: {} };
+  }
 }
 
 export default async function DestinationsIndexPage() {

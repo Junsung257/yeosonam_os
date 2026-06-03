@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-node-dev.ps1",
+    "dev:temp": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/run-dev-temp.ps1",
     "dev:clean": "npm run clean:next && next dev",
     "clean:next": "node -e \"require('child_process').execSync('powershell -c Remove-Item -Recurse -Force .next -ErrorAction SilentlyContinue', {stdio:'inherit'})\"",
     "prebuild": "node scripts/copy-partytown-lib.cjs && node db/audit_vercel_functions_count.js --ci",
@@ -43,6 +45,9 @@
     "test:regression:coverage": "node tests/regression/err-coverage.js",
     "test:regression:uncovered": "node tests/regression/err-coverage.js --uncovered",
     "audit:packages": "node db/audit_existing_packages.js",
+    "audit:product-mobile-readiness": "node scripts/audit-product-mobile-landing-readiness.mjs",
+    "audit:product-structured-keywords": "node scripts/audit-product-structured-keywords.cjs",
+    "backfill:product-v3-structured-facts": "npx tsx scripts/backfill-product-v3-structured-facts.ts",
     "test:jarvis-v2": "node --test db/smoke_jarvis_v2.js",
     "verify:blog-bridge": "node scripts/verify-blog-publisher-bridge.mjs",
     "verify:blog-bridge:dry": "node scripts/verify-blog-publisher-bridge.mjs --dry-run",

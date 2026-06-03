@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { syncTenantAdAccountBudgetCaps } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -39,7 +41,7 @@ function toNullableNonNegativeNumber(value: unknown): number | null {
 function cleanBudget(input: BudgetInput) {
   const platform = input.platform as Platform;
   if (!PLATFORMS.includes(platform)) {
-    throw new Error(`지원하지 않는 채널입니다: ${input.platform}`);
+    throw new Error('Unsupported platform');
   }
 
   return {
@@ -64,7 +66,7 @@ function cleanBudget(input: BudgetInput) {
 
 export const GET = withAdminGuard(async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const { data, error } = await supabaseAdmin
@@ -73,13 +75,13 @@ export const GET = withAdminGuard(async () => {
     .is('tenant_id', null)
     .order('platform', { ascending: true });
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, budgets: data || [] });
+  if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ ok: true, budgets: data || [] });
 });
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -96,7 +98,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .eq('platform', row.platform)
         .maybeSingle();
 
-      if (existing.error) throw new Error(existing.error.message);
+      if (existing.error) throw new Error(sanitizeDbError(existing.error));
 
       const query = existing.data?.id
         ? supabaseAdmin
@@ -112,7 +114,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
             .single();
 
       const { data, error } = await query;
-      if (error) throw new Error(error.message);
+      if (error) throw new Error(sanitizeDbError(error));
 
       if (['naver', 'google'].includes(row.platform)) {
         await syncTenantAdAccountBudgetCaps(supabaseAdmin, {
@@ -125,10 +127,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       saved.push(data);
     }
 
-    return NextResponse.json({ ok: true, saved });
+    return apiResponse({ ok: true, saved });
   } catch (error) {
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : '예산 저장 실패' },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(error, 'Budget save failed') },
       { status: 400 },
     );
   }

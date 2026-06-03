@@ -263,7 +263,7 @@ export function LandingClient({
   initialNotices?: NoticeBlock[];
 }) {
   const searchParams = useSearchParams();
-  const source = (searchParams.get('source') ?? 'default') as ChannelSource;
+  const source = (searchParams?.get('source') ?? 'default') as ChannelSource;
   const validSource: ChannelSource = ['insta', 'kakao'].includes(source) ? source : 'default';
 
   const data = initialData;
@@ -308,7 +308,7 @@ export function LandingClient({
   }, [registerScrollSentinel]);
 
   const msg = data.customMessage[validSource];
-  const utmTerm = sanitizeUtmTermForDisplay(searchParams.get('utm_term'));
+  const utmTerm = sanitizeUtmTermForDisplay(searchParams?.get('utm_term') ?? null);
 
   // 채널별 히어로 스타일
   const isInsta = validSource === 'insta';
@@ -323,7 +323,7 @@ export function LandingClient({
     <div className="min-h-screen bg-[var(--bg-section)] text-[var(--text-primary)] max-w-[430px] mx-auto relative pb-36">
 
       <div className="flex justify-end px-4 py-2.5 border-b border-[var(--border-mid)] bg-white/90 backdrop-blur-sm sticky top-0 z-30">
-        <Link href={`/packages/${data.id}`} className="text-xs font-semibold text-[var(--brand)] hover:underline">
+        <Link href={`/packages/${encodeURIComponent(data.id)}`} className="text-xs font-semibold text-[var(--brand)] hover:underline">
           전체 일정·약관 보기
         </Link>
       </div>
@@ -401,7 +401,7 @@ export function LandingClient({
               카카오로 바로 문의
             </button>
             <Link
-              href={`/packages/${data.id}`}
+              href={`/packages/${encodeURIComponent(data.id)}`}
               className="flex items-center justify-center px-4 py-3 rounded-xl border border-white/50 text-sm font-semibold text-white bg-black/25 backdrop-blur-md hover:bg-black/35"
             >
               상세

@@ -6,6 +6,22 @@ import ReviewForm from './ReviewForm';
 
 export const dynamic = 'force-dynamic';
 
+const DEFAULT_REVIEW_TITLE = '후기 작성 | 여소남';
+const DEFAULT_REVIEW_DESCRIPTION = '여소남 여행 후기를 작성해주세요. 다른 여행자분들께 큰 도움이 됩니다.';
+
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+interface ReviewMetadataBookingRow {
+  travel_packages: { title?: string | null } | null;
+}
+
 async function getBookingInfo(bookingId: string) {
   if (!isSupabaseConfigured) return null;
 
@@ -38,34 +54,67 @@ async function getBookingInfo(bookingId: string) {
   };
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ booking_id: string }> }): Promise<Metadata> {
-  const { booking_id } = await params;
-  if (!isSupabaseConfigured) {
-    return { title: '후기 작성 | 여소남' };
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ booking_id?: string | string[] }>;
+}): Promise<Metadata> {
+  const { booking_id: rawBookingId } = await params;
+  const bookingId = getRouteParam(rawBookingId);
+  const canonical = `${siteBaseUrl()}/review/${encodeURIComponent(bookingId)}`;
+
+  if (!isSupabaseConfigured || !bookingId) {
+    return {
+      title: DEFAULT_REVIEW_TITLE,
+      description: DEFAULT_REVIEW_DESCRIPTION,
+      alternates: { canonical },
+      robots: { index: false, follow: false },
+    };
   }
 
-  const { data } = await supabaseAdmin
-    .from('bookings')
-    .select('travel_packages(title)')
-    .eq('id', booking_id)
-    .limit(1);
+  let data: ReviewMetadataBookingRow[] | null = null;
+  try {
+    const result = await supabaseAdmin
+      .from('bookings')
+      .select('travel_packages(title)')
+      .eq('id', bookingId)
+      .limit(1);
+    data = result.data as ReviewMetadataBookingRow[] | null;
+  } catch {
+    return {
+      title: DEFAULT_REVIEW_TITLE,
+      description: DEFAULT_REVIEW_DESCRIPTION,
+      alternates: { canonical },
+      robots: { index: false, follow: false },
+    };
+  }
 
-  const pkg = data?.[0]?.travel_packages as { title?: string } | null;
-  const title = pkg?.title ? `${pkg.title} 후기 | 여소남` : '후기 작성 | 여소남';
+  const pkg = data?.[0]?.travel_packages ?? null;
+  const title = pkg?.title ? `${pkg.title} 후기 | 여소남` : DEFAULT_REVIEW_TITLE;
 
   return {
     title,
-    description: '여소남 여행 후기를 작성해주세요. 다른 여행자분들께 큰 도움이 됩니다.',
+    description: DEFAULT_REVIEW_DESCRIPTION,
+    alternates: { canonical },
+    robots: { index: false, follow: false },
     openGraph: {
+      url: canonical,
       title,
       description: '여소남 여행 후기를 작성해주세요.',
     },
   };
 }
 
-export default async function ReviewPage({ params }: { params: Promise<{ booking_id: string }> }) {
-  const { booking_id } = await params;
-  const info = await getBookingInfo(booking_id);
+export default async function ReviewPage({
+  params,
+}: {
+  params: Promise<{ booking_id?: string | string[] }>;
+}) {
+  const { booking_id: rawBookingId } = await params;
+  const bookingId = getRouteParam(rawBookingId);
+  if (!bookingId) notFound();
+
+  const info = await getBookingInfo(bookingId);
   if (!info) notFound();
 
   const pkg = info.booking.travel_packages;
@@ -106,7 +155,7 @@ export default async function ReviewPage({ params }: { params: Promise<{ booking
           </div>
         )}
 
-        <ReviewForm bookingId={booking_id} />
+        <ReviewForm bookingId={bookingId} />
       </div>
     </main>
   );

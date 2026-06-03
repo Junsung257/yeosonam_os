@@ -55,11 +55,33 @@ export async function POST(req: NextRequest) {
     updated_at: new Date().toISOString(),
   };
 
-  const { data, error } = await supabaseAdmin
+  const { data: existing, error: existingError } = await supabaseAdmin
     .from('affiliate_promo_codes')
-    .upsert(payload as never, { onConflict: 'code' })
+    .select('id, affiliate_id')
+    .eq('code', normalized)
+    .maybeSingle();
+  if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+
+  const existingRow = existing as { id: string; affiliate_id: string } | null;
+  if (existingRow && existingRow.affiliate_id !== affiliate.id) {
+    return NextResponse.json({ error: '이미 사용 중인 프로모션 코드입니다.' }, { status: 409 });
+  }
+
+  const query = existingRow
+    ? supabaseAdmin
+        .from('affiliate_promo_codes')
+        .update(payload as never)
+        .eq('id', existingRow.id)
+    : supabaseAdmin
+        .from('affiliate_promo_codes')
+        .insert(payload as never);
+
+  const { data, error } = await query
     .select('id, code, discount_type, discount_value, is_active, starts_at, ends_at, max_uses, uses_count, created_at')
     .single();
+  if (error?.code === '23505') {
+    return NextResponse.json({ error: '이미 사용 중인 프로모션 코드입니다.' }, { status: 409 });
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ promo_code: data });

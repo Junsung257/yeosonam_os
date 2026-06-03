@@ -6,7 +6,8 @@
  * 용도: db/audit_legacy_pkg_to_ir.js 가 여러 pkg 를 배치로 감사할 때 TS 런타임 대신 API 호출.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { pkgToIntake } from '@/lib/pkg-to-ir';
 import { validateIntake } from '@/lib/intake-normalizer';
@@ -21,19 +22,19 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ ok: false, error: 'Invalid JSON' }, { status: 400 });
+    return apiResponse({ ok: false, error: 'Invalid JSON' }, { status: 400 });
   }
   if (!body.pkg) {
-    return NextResponse.json({ ok: false, error: 'pkg 필수' }, { status: 400 });
+    return apiResponse({ ok: false, error: 'pkg 필수' }, { status: 400 });
   }
 
   const { ir, warnings } = pkgToIntake(body.pkg as Parameters<typeof pkgToIntake>[0]);
   const validation = validateIntake(ir);
 
   if (validation.success) {
-    return NextResponse.json({ ok: true, validated: true, warnings, errors: [] });
+    return apiResponse({ ok: true, validated: true, warnings, errors: [] });
   }
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     validated: false,
     warnings,

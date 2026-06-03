@@ -23,6 +23,8 @@ import {
   type WebhookPayload,
 } from '@/lib/meta-webhook';
 import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 
@@ -34,8 +36,9 @@ export async function GET(request: NextRequest) {
 
   const result = verifyWebhookChallenge(mode, token, challenge, getSecret('META_WEBHOOK_VERIFY_TOKEN') ?? undefined);
   if (!result.ok) {
-    console.warn('[webhook:ig] verify 실패:', result.error);
-    return new NextResponse(result.error ?? 'verify failed', { status: 403 });
+    const message = sanitizeDbError(result.error, 'verify failed');
+    console.warn('[webhook:ig] verify failed:', message);
+    return new NextResponse(message, { status: 403 });
   }
   return new NextResponse(result.response ?? '', { status: 200 });
 }
@@ -46,14 +49,15 @@ export async function POST(request: NextRequest) {
 
   const sigCheck = verifyWebhookSignature(rawBody, sig, getSecret('META_APP_SECRET') ?? undefined);
   if (!sigCheck.ok) {
-    console.warn('[webhook:ig] 서명 실패:', sigCheck.error);
-    return new NextResponse(sigCheck.error ?? 'invalid signature', { status: 403 });
+    const message = sanitizeDbError(sigCheck.error, 'invalid signature');
+    console.warn('[webhook:ig] signature failed:', message);
+    return new NextResponse(message, { status: 403 });
   }
 
   // 1초 룰 준수 — DB insert 1회만
   try {
     const payload = JSON.parse(rawBody) as WebhookPayload;
-    if (!isSupabaseConfigured) return NextResponse.json({ ok: true }); // 그래도 200 반환
+    if (!isSupabaseConfigured) return apiResponse({ ok: true }); // 그래도 200 반환
 
     const rows: Array<Record<string, unknown>> = [];
     for (const entry of payload.entry ?? []) {
@@ -83,11 +87,14 @@ export async function POST(request: NextRequest) {
       }
     }
     if (rows.length > 0) {
-      await supabaseAdmin.from('social_webhook_events').insert(rows as never);
+      const { error } = await supabaseAdmin.from('social_webhook_events').insert(rows as never);
+      if (error) {
+        console.error('[webhook:ig] insert error (responding 200):', sanitizeDbError(error));
+      }
     }
   } catch (err) {
-    console.error('[webhook:ig] 처리 에러 (응답은 200 유지):', err instanceof Error ? err.message : err);
+    console.error('[webhook:ig] processing error (responding 200):', sanitizeDbError(err));
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

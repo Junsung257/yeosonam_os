@@ -22,9 +22,11 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 // 동적이지만 응답 캐시 헤더로 CDN/브라우저 캐시 활용
@@ -32,7 +34,7 @@ export const dynamic = 'force-dynamic';
 
 const getHandler = async (_req: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({
+    return apiResponse({
       pendingActions: 0,
       unmatchedPending: 0,
       pendingPackages: 0,
@@ -45,10 +47,7 @@ const getHandler = async (_req: NextRequest) => {
   const { data, error } = await supabaseAdmin.rpc('get_admin_badge_counts');
 
   if (error) {
-    return NextResponse.json(
-      { error: error.message, code: error.code },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   const counts = (data ?? {}) as {
@@ -58,7 +57,7 @@ const getHandler = async (_req: NextRequest) => {
     computed_at?: string;
   };
 
-  return NextResponse.json(
+  return apiResponse(
     {
       pendingActions:   counts.pending_actions   ?? 0,
       unmatchedPending: counts.unmatched_pending ?? 0,

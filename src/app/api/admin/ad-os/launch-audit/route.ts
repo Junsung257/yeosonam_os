@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
 import { upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
@@ -30,7 +31,7 @@ function item(id: string, label: string, status: AuditItem['status'], evidence: 
 
 export const POST = withAdminGuard(async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const [
@@ -64,7 +65,7 @@ export const POST = withAdminGuard(async () => {
 
   const firstDbError = budgetRes.error || keywordRes.error || campaignRes.error;
   if (firstDbError) {
-    return NextResponse.json({ ok: false, error: firstDbError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(firstDbError) }, { status: 500 });
   }
 
   const budgets = (budgetRes.data || []) as Array<{
@@ -215,7 +216,7 @@ export const POST = withAdminGuard(async () => {
     }),
   ]);
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     readiness: {
       pass,

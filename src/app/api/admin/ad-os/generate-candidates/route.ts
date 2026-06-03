@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { buildAndSaveSearchAdPackagePlan } from '@/lib/search-ads-auto-planner';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -13,9 +15,23 @@ type PackageRow = {
   created_at: string | null;
 };
 
+type DecisionLogRow = {
+  run_id: string;
+  platform: null;
+  decision_type: 'create_candidate';
+  target_table: 'travel_packages';
+  target_id: string;
+  before_state: Record<string, unknown>;
+  after_state: Record<string, unknown>;
+  reason: string;
+  confidence: number;
+  expected_impact: Record<string, unknown>;
+  applied: boolean;
+};
+
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -29,7 +45,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .limit(limit * 4);
 
   if (packageError) {
-    return NextResponse.json({ ok: false, error: packageError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(packageError) }, { status: 500 });
   }
 
   const rows = (packages || []) as PackageRow[];
@@ -43,7 +59,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .in('package_id', packageIds);
 
     if (existingError) {
-      return NextResponse.json({ ok: false, error: existingError.message }, { status: 500 });
+      return apiResponse({ ok: false, error: sanitizeDbError(existingError) }, { status: 500 });
     }
 
     for (const row of existing || []) {
@@ -65,11 +81,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || '후보 생성 실행 로그 생성 실패' }, { status: 500 });
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(runError, 'Candidate generation run create failed') },
+      { status: 500 },
+    );
   }
 
   const results: Array<{ package_id: string; title: string | null; saved: number; keywords: number; error?: string }> = [];
-  const decisions = [];
+  const decisions: DecisionLogRow[] = [];
 
   for (const pkg of targets) {
     try {
@@ -99,13 +118,21 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         title: pkg.title,
         saved: 0,
         keywords: 0,
-        error: error instanceof Error ? error.message : String(error),
+        error: sanitizeDbError(error, 'Candidate generation failed'),
       });
     }
   }
 
   if (decisions.length > 0) {
-    await supabaseAdmin.from('ad_os_decision_logs').insert(decisions);
+    const { error } = await supabaseAdmin.from('ad_os_decision_logs').insert(decisions);
+    if (error) {
+      const safeError = sanitizeDbError(error);
+      await supabaseAdmin
+        .from('ad_os_automation_runs')
+        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
+        .eq('id', run.id);
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
+    }
   }
 
   const summary = {
@@ -127,5 +154,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, results });
+  return apiResponse({ ok: true, run_id: run.id, summary, results });
 });

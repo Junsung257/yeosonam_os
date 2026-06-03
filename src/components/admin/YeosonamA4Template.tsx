@@ -12,6 +12,7 @@ import { renderPackage, getAirlineName, type CanonicalView } from '@/lib/render-
 import PackageTermsSection from '@/components/package/PackageTermsSection';
 import type { NoticeBlock } from '@/lib/standard-terms';
 import { dedupeNoticesForDisplay } from '@/lib/terms-presentation';
+import { hasSupplierRemarkRawLeakRisk, sanitizeCustomerVisibleNotices } from '@/lib/product-registration-v3/customer-payload';
 import TransportBar from '@/components/itinerary/TransportBar';
 
 /**
@@ -1041,14 +1042,23 @@ function NoticesPage({ noticesParsed, customerNotes }: {
   let typedNotices: NoticeItemLocal[] = [];
   let legacyNotes: string[] = [];
 
-  if (noticesParsed?.length) {
-    const first = noticesParsed[0];
+  const rawLeakRisk = hasSupplierRemarkRawLeakRisk({
+    notices_parsed: noticesParsed,
+    customer_notes: customerNotes,
+  });
+
+  if (noticesParsed?.length && !rawLeakRisk) {
+    const hasV3NoticeMeta = noticesParsed.some(notice =>
+      notice && typeof notice === 'object' && ('template_key' in notice || 'review_status' in notice || 'category' in notice),
+    );
+    const safeNotices = sanitizeCustomerVisibleNotices(noticesParsed, { strictStandardOnly: hasV3NoticeMeta });
+    const first = safeNotices[0];
     if (typeof first === 'object' && first !== null && 'type' in first) {
-      typedNotices = normalizeNotices(noticesParsed as NoticeItemLocal[]);
+      typedNotices = normalizeNotices(safeNotices as NoticeItemLocal[]);
     } else {
-      legacyNotes = noticesParsed as string[];
+      legacyNotes = safeNotices as string[];
     }
-  } else if (customerNotes) {
+  } else if (customerNotes && !rawLeakRisk) {
     legacyNotes = splitCustomerNotes(customerNotes);
   }
 

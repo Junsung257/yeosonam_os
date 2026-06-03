@@ -1,5 +1,5 @@
 'use client'
-import { useState, useRef, useEffect } from 'react'
+import { Suspense, useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ActionCard } from './components/ActionCard'
 import AgentActionsPanel from './components/AgentActionsPanel'
@@ -33,9 +33,28 @@ interface Message {
   timestamp: string
 }
 
-export default function JarvisPage() {
+function JarvisFallback() {
+  return (
+    <div className="flex h-[calc(100vh-8rem)]">
+      <div className="flex-1 flex flex-col min-w-0">
+        <div className="mb-4 h-24 rounded-admin-md bg-admin-surface-2 animate-pulse" />
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-full bg-admin-surface-2 animate-pulse" />
+          <div className="space-y-2">
+            <div className="h-5 w-24 rounded bg-admin-surface-2 animate-pulse" />
+            <div className="h-3 w-40 rounded bg-admin-surface-2 animate-pulse" />
+          </div>
+        </div>
+        <div className="flex-1 rounded-admin-lg border border-admin-border-mid bg-admin-surface animate-pulse" />
+      </div>
+      <div className="ml-4 w-80 rounded-admin-lg border border-admin-border-mid bg-admin-surface-2 animate-pulse" />
+    </div>
+  )
+}
+
+function JarvisPageContent() {
   const searchParams = useSearchParams()
-  const initialTab = searchParams.get('tab') === 'actions' ? 'actions' : 'chat'
+  const initialTab = searchParams?.get('tab') === 'actions' ? 'actions' : 'chat'
   const [activeTab, setActiveTab] = useState<'chat' | 'actions'>(initialTab)
   const [pendingCount, setPendingCount] = useState(0)
   const [messages, setMessages] = useState<Message[]>([
@@ -104,7 +123,7 @@ export default function JarvisPage() {
       setMessages(prev => [...prev, {
         id: Date.now().toString(),
         role: 'assistant',
-        content: '오류가 발생했습니다. 다시 시도���주세요.',
+        content: '오류가 발생했습니다. 다시 시도해주세요.',
         timestamp: new Date().toISOString()
       }])
     } finally {
@@ -136,7 +155,7 @@ export default function JarvisPage() {
     setMessages(prev => [...prev, {
       id: Date.now().toString(),
       role: 'assistant',
-      content: '취소���었습니다.',
+      content: '취소되었습니다.',
       timestamp: new Date().toISOString()
     }])
   }
@@ -302,5 +321,13 @@ export default function JarvisPage() {
       {/* 오른쪽: MCP 도구 가이드 */}
       <McpToolGuide />
     </div>
+  )
+}
+
+export default function JarvisPage() {
+  return (
+    <Suspense fallback={<JarvisFallback />}>
+      <JarvisPageContent />
+    </Suspense>
   )
 }

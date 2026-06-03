@@ -22,6 +22,11 @@ interface Application {
   applied_at: string;
   reviewed_at: string | null;
   has_invite_code?: boolean;
+  terms_accepted_at?: string | null;
+  disclosure_ack_at?: string | null;
+  channel_url_normalized?: string | null;
+  application_risk_score?: number | null;
+  risk_reasons?: string[] | null;
 }
 
 const STATUS_BADGE: Record<string, { label: string; color: string }> = {
@@ -284,6 +289,21 @@ export default function ApplicationsPage() {
                   <div>
                     <div className="flex items-center gap-2">
                       <h3 className="font-semibold text-admin-text">{app.name}</h3>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${
+                        Number(app.application_risk_score || 0) >= 60
+                          ? 'bg-red-50 text-red-600'
+                          : Number(app.application_risk_score || 0) >= 30
+                            ? 'bg-amber-50 text-amber-700'
+                            : 'bg-emerald-50 text-emerald-700'
+                      }`}>
+                        Risk {Number(app.application_risk_score || 0)}
+                      </span>
+                      <span className={app.terms_accepted_at ? 'text-[10px] text-emerald-700' : 'text-[10px] text-red-600'}>
+                        Terms {app.terms_accepted_at ? 'OK' : 'Missing'}
+                      </span>
+                      <span className={app.disclosure_ack_at ? 'text-[10px] text-emerald-700' : 'text-[10px] text-red-600'}>
+                        Disclosure {app.disclosure_ack_at ? 'OK' : 'Missing'}
+                      </span>
                       <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[app.status]?.color}`}>
                         {STATUS_BADGE[app.status]?.label}
                       </span>

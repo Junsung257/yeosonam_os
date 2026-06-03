@@ -1,27 +1,26 @@
-import { NextResponse } from 'next/server';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { recomputeAllScores } from '@/lib/scoring/recommend';
-import { fitHedonicCoefs } from '@/lib/scoring/hedonic-fit';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { fitHedonicCoefs } from '@/lib/scoring/hedonic-fit';
+import { recomputeAllScores } from '@/lib/scoring/recommend';
 import { logError } from '@/lib/sentry-logger';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-/**
- * 어드민 즉시 재계산 — 가중치/시장가 변경 후 미리보기용.
- * 흐름: 1차 점수 → 헤도닉 학습 → 2차 점수.
- */
 const postHandler = async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
+
   const startedAt = Date.now();
   try {
     const first = await recomputeAllScores();
     const hedonic = await fitHedonicCoefs();
     const second = await recomputeAllScores();
-    return NextResponse.json({
+
+    return apiResponse({
       ok: true,
       ms: Date.now() - startedAt,
       first: { groups: first.groups, packages: first.packages },
@@ -36,11 +35,8 @@ const postHandler = async () => {
     });
   } catch (e) {
     logError('[admin/scoring/recompute] recompute failed', e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
-}
+};
 
 export const POST = withAdminGuard(postHandler);

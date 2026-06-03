@@ -48,8 +48,11 @@
 | Solapi 리뷰 요청 템플릿 | `docs/solapi-review-template-guide.md` |
 | **/register 변경 이력 (P0~P1·결정)** | **`docs/register-changelog.md`** |
 | 미설정 트래커 | `docs/pending-settings-tracker.md` |
+| Threads 자동화 운영 런북 | `docs/threads-autopilot-runbook.md` |
+| Threads 운영 투입 체크리스트 | `docs/threads-go-live-checklist.md` |
 | 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
 | 상품 등록 정확도·토큰 절감 플랜 | `docs/product-registration-accuracy-plan.md` |
+| **상품등록 V3 표준언어·REMARK·검수 UI SSOT** | **`docs/product-registration-v3-standard-language.md`** |
 | 추천·비교 V1 개발 실행서 | `docs/recommendation-comparison-v1-plan.md` |
 | 호텔 점수 V1.5 운영 런북 | `docs/hotel-scoring-v1-5-runbook.md` |
 | 게이미피케이션 운영 런북 | `docs/gamification-runbook.md` |

@@ -10,9 +10,11 @@ import { applyPendingBanditRewards } from '@/lib/content-pipeline/bandit';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
+import { evaluateThreadsDistribution } from '@/lib/content-pipeline/threads-automation';
+import { publishDistribution, type ScheduledDistributionRow } from '@/lib/social-publishing/distribution-publisher';
 
 /**
- * Auto Publish Loop — 시간당 1회
+ * Auto Publish Loop — 2시간당 1회
  *
  * 흐름:
  *   1. detectAndPauseIfAnomaly — 이상치 검사 (24h 평균 ER < baseline 30% → 24h pause)
@@ -35,6 +37,7 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const MAX_PUBLISH_PER_RUN = 3;
+const MAX_THREADS_PER_RUN = 5;
 
 function currentPostingHourKst(): number {
   return (new Date().getUTCHours() + 9) % 24;
@@ -62,6 +65,11 @@ async function runAutoPublishLoop(request: NextRequest) {
     auto_paused: 0,
     actually_published: 0,
     dry_run_logged: 0,
+    threads_candidates_evaluated: 0,
+    threads_approved: 0,
+    threads_published: 0,
+    threads_rejected: 0,
+    threads_dry_run_logged: 0,
     errors,
   };
 
@@ -95,6 +103,14 @@ async function runAutoPublishLoop(request: NextRequest) {
   if (guard.anomaly_paused_until && new Date(guard.anomaly_paused_until) > new Date()) {
     return { ...summary, message: `anomaly_paused_until=${guard.anomaly_paused_until} → 종료` };
   }
+
+  const threadsResult = await processThreadsCandidates(summary.dry_run);
+  summary.threads_candidates_evaluated = threadsResult.evaluated;
+  summary.threads_approved = threadsResult.approved;
+  summary.threads_published = threadsResult.published;
+  summary.threads_rejected = threadsResult.rejected;
+  summary.threads_dry_run_logged = threadsResult.dryRunLogged;
+  errors.push(...threadsResult.errors);
 
   // 4) 후보 select
   const { data: candidates, error: fetchErr } = await supabaseAdmin
@@ -206,3 +222,86 @@ async function runAutoPublishLoop(request: NextRequest) {
 }
 
 export const GET = withCronLogging('auto-publish-loop', runAutoPublishLoop);
+
+async function processThreadsCandidates(dryRun: boolean): Promise<{
+  evaluated: number;
+  approved: number;
+  published: number;
+  rejected: number;
+  dryRunLogged: number;
+  errors: string[];
+}> {
+  const result = {
+    evaluated: 0,
+    approved: 0,
+    published: 0,
+    rejected: 0,
+    dryRunLogged: 0,
+    errors: [] as string[],
+  };
+
+  const { data, error } = await supabaseAdmin
+    .from('content_distributions')
+    .select('id, product_id, card_news_id, blog_post_id, platform, payload, scheduled_for, engagement, tenant_id, retry_count, max_retries')
+    .eq('platform', 'threads_post')
+    .in('status', ['draft', 'approved'])
+    .order('created_at', { ascending: true })
+    .limit(MAX_THREADS_PER_RUN);
+
+  if (error) {
+    result.errors.push(`threads candidates: ${error.message}`);
+    return result;
+  }
+
+  const rows = (data ?? []) as ScheduledDistributionRow[];
+  result.evaluated = rows.length;
+  for (const row of rows) {
+    try {
+      const gate = await evaluateThreadsDistribution({
+        distributionId: row.id,
+        payload: row.payload,
+        scheduledFor: row.scheduled_for,
+        dryRun,
+      });
+      if (!gate.approved) {
+        result.rejected += 1;
+        await supabaseAdmin
+          .from('content_distributions')
+          .update({
+            error_message: `Threads critic gate: ${gate.reason ?? 'rejected'}`,
+            engagement: { ...(row.engagement ?? {}), predicted_er: gate.predicted_er },
+          })
+          .eq('id', row.id);
+        continue;
+      }
+
+      result.approved += 1;
+      if (dryRun) {
+        result.dryRunLogged += 1;
+        await supabaseAdmin
+          .from('content_distributions')
+          .update({
+            engagement: { ...(row.engagement ?? {}), predicted_er: gate.predicted_er, auto_publish_dry_run_at: new Date().toISOString() },
+          })
+          .eq('id', row.id);
+        continue;
+      }
+
+      const publishResult = await publishDistribution({
+        ...row,
+        scheduled_for: row.scheduled_for ?? new Date().toISOString(),
+      }, {
+        precomputedGate: gate,
+      });
+      if (publishResult.status === 'published') {
+        result.published += 1;
+      } else {
+        result.rejected += 1;
+      }
+    } catch (err) {
+      result.errors.push(`threads ${row.id}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return result;
+}

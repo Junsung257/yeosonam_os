@@ -11,6 +11,25 @@ interface NavUsageEntry {
   t: number; // timestamp
 }
 
+function isNavUsageEntry(value: unknown): value is NavUsageEntry {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as NavUsageEntry).href === 'string' &&
+    Number.isFinite((value as NavUsageEntry).t)
+  );
+}
+
+function parseNavUsage(raw: string | null): NavUsageEntry[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter(isNavUsageEntry) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * 메뉴 클릭 로그를 localStorage에 수집하는 훅.
  * 사이드바/네비게이션 클릭 시 trackNavClick(href)을 호출.
@@ -23,7 +42,7 @@ export function useNavLogger() {
     if (batchRef.current.length === 0) return;
     try {
       const raw = window.localStorage.getItem(NAV_USAGE_KEY);
-      const existing: NavUsageEntry[] = raw ? JSON.parse(raw) : [];
+      const existing = parseNavUsage(raw);
       const merged = [...existing, ...batchRef.current].slice(-MAX_ENTRIES);
       window.localStorage.setItem(NAV_USAGE_KEY, JSON.stringify(merged));
     } catch {
@@ -58,8 +77,7 @@ export function readNavUsage(): Record<string, number> {
   if (typeof window === 'undefined') return {};
   try {
     const raw = window.localStorage.getItem(NAV_USAGE_KEY);
-    if (!raw) return {};
-    const entries: NavUsageEntry[] = JSON.parse(raw);
+    const entries = parseNavUsage(raw);
     const cutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
     const counts: Record<string, number> = {};
     for (const e of entries) {

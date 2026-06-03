@@ -11,19 +11,20 @@
  *   { "path": "/api/cron/visual-baseline-monitor", "schedule": "0 9 * * *" }
  */
 
-import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: Request) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
-  }
-
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
+  }
+
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   try {
@@ -80,14 +81,14 @@ export async function GET(request: Request) {
           }),
         });
       } catch (e) {
-        console.warn('Slack webhook failed:', e);
+        console.warn('Slack webhook failed:', sanitizeDbError(e));
       }
     }
 
-    return NextResponse.json(result);
+    return apiResponse(result);
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'monitor failed' },
+    return apiResponse(
+      { error: sanitizeDbError(err, 'Monitor failed') },
       { status: 500 },
     );
   }

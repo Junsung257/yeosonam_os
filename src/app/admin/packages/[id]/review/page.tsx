@@ -25,6 +25,7 @@ import {
   type StandardNoticeDraft,
   type StandardNoticeReviewStatus,
 } from '@/lib/product-registration-v3/standard-notices';
+import type { StructuredFact } from '@/lib/product-registration-v3/structured-facts';
 
 interface FieldConfidence {
   score: number;
@@ -82,6 +83,16 @@ interface QualityData {
     reasons: string[];
     warnings: string[];
   };
+  v3_draft?: {
+    id: string;
+    status: 'ready_to_publish' | 'needs_review' | 'blocked' | null;
+    created_at: string | null;
+    standard_notices: StandardNoticeDraft[];
+    structured_facts: StructuredFact[];
+    blocks_approval: boolean;
+    block_reasons: string[];
+    gate_result?: unknown;
+  } | null;
 }
 
 const SEVERITY_BG: Record<string, string> = {
@@ -416,10 +427,10 @@ export default function PackageReviewPage() {
     }
     setNoticeSaving(true);
     try {
-      const res = await fetch('/api/packages', {
+      const res = await fetch(`/api/admin/packages/${pkg.id}/standard-notices`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(built.payload),
+        body: JSON.stringify({ rows }),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -495,7 +506,14 @@ export default function PackageReviewPage() {
       }))
       .filter(item => item.text.length > 4),
   );
-  const noticeRows = detectedNoticeRows.map((row, idx) => {
+  const v3DraftNoticeRows = Array.isArray(quality?.v3_draft?.standard_notices)
+    ? quality.v3_draft.standard_notices
+    : [];
+  const structuredFactRows = Array.isArray(quality?.v3_draft?.structured_facts)
+    ? quality.v3_draft.structured_facts
+    : [];
+  const reviewSourceNoticeRows = v3DraftNoticeRows.length > 0 ? v3DraftNoticeRows : detectedNoticeRows;
+  const noticeRows = reviewSourceNoticeRows.map((row, idx) => {
     const review_key = noticeReviewKey(row, idx);
     const edit = noticeEdits[review_key] ?? {};
     const valuesText = edit.valuesText ?? JSON.stringify(row.values, null, 2);
@@ -740,6 +758,61 @@ export default function PackageReviewPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {structuredFactRows.length > 0 && (
+        <div className="mt-6 bg-admin-bg border border-admin-border-mid rounded-admin-md p-4 overflow-x-auto">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+            <h3 className="text-sm font-bold text-admin-text-2">정형 키워드 추출 테이블</h3>
+            <div className="text-[11px] text-admin-muted">원문 evidence → 카테고리/값 → 여소남 표준문구</div>
+          </div>
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="bg-admin-surface-2">
+                <th className="border border-admin-border-mid p-2 text-left">원문</th>
+                <th className="border border-admin-border-mid p-2 text-left">카테고리</th>
+                <th className="border border-admin-border-mid p-2 text-left">추출값</th>
+                <th className="border border-admin-border-mid p-2 text-left">여소남 표준문구</th>
+                <th className="border border-admin-border-mid p-2 text-left">Evidence</th>
+                <th className="border border-admin-border-mid p-2 text-left">노출여부</th>
+                <th className="border border-admin-border-mid p-2 text-left">Risk</th>
+                <th className="border border-admin-border-mid p-2 text-left">검수상태</th>
+              </tr>
+            </thead>
+            <tbody>
+              {structuredFactRows.map((row, idx) => (
+                <tr key={`${row.category}:${row.evidence[0]?.line_start ?? idx}:${idx}`}>
+                  <td className="border border-admin-border-mid p-2 align-top max-w-72">
+                    <div className="line-clamp-3" title={row.evidence[0]?.quote ?? ''}>
+                      {row.evidence[0]?.quote ?? '-'}
+                    </div>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top font-mono">{row.category}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <pre className="w-56 whitespace-pre-wrap break-words font-mono">
+                      {JSON.stringify(row.values, null, 2)}
+                    </pre>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">{row.standard_text}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">L{row.evidence[0]?.line_start ?? '-'}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">{row.visibility}</td>
+                  <td className="border border-admin-border-mid p-2 align-top">
+                    <span className={`inline-flex rounded px-2 py-0.5 text-[11px] font-bold ${
+                      row.risk_level === 'high'
+                        ? 'bg-red-50 text-red-700'
+                        : row.risk_level === 'medium'
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-emerald-50 text-emerald-700'
+                    }`}>
+                      {row.risk_level}
+                    </span>
+                  </td>
+                  <td className="border border-admin-border-mid p-2 align-top">{row.review_status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

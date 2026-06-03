@@ -1,12 +1,16 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
 interface MetricStats {
   p75: number;
   goodPct: number;
   count: number;
+}
+
+interface WebVitalsResponse {
+  stats?: Record<string, MetricStats>;
+  error?: string;
 }
 
 type Period = 'day' | 'week';
@@ -35,68 +39,63 @@ const GOOD_THRESHOLDS: Record<string, number> = {
   TTFB: 800,
 };
 
+function getFiniteNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clampPercent(value: unknown): number {
+  return Math.min(100, Math.max(0, getFiniteNumber(value)));
+}
+
+function normalizeStats(stats: WebVitalsResponse['stats']): Record<string, MetricStats> {
+  return Object.fromEntries(
+    Object.entries(stats ?? {}).map(([name, metric]) => [
+      name,
+      {
+        p75: getFiniteNumber(metric?.p75),
+        goodPct: clampPercent(metric?.goodPct),
+        count: Math.max(0, Math.round(getFiniteNumber(metric?.count))),
+      },
+    ])
+  );
+}
+
 export default function WebVitalsDashboard() {
   const [stats, setStats] = useState<Record<string, MetricStats> | null>(null);
   const [period, setPeriod] = useState<Period>('day');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-    const fetchStats = async (p: Period) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !supabaseKey) {
-          setError('Supabase 환경변수가 설정되지 않았습니다');
-          setLoading(false);
-          return;
-        }
-        const supabase = createClient(supabaseUrl, supabaseKey);
-      const since =
-        p === 'day'
-          ? new Date(Date.now() - 86400_000).toISOString()
-          : new Date(Date.now() - 7 * 86400_000).toISOString();
-
-      const { data, error: dbError } = await supabase
-        .from('web_vitals')
-        .select('name, value, rating, path')
-        .gte('created_at', since);
-
-      if (dbError) throw dbError;
-      if (!data || data.length === 0) {
+  const fetchStats = async (p: Period, signal?: AbortSignal) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/admin/web-vitals?period=${p}`, {
+        credentials: 'same-origin',
+        signal,
+      });
+      const payload = (await response.json().catch(() => null)) as WebVitalsResponse | null;
+      if (signal?.aborted) return;
+      if (!response.ok) {
+        setError(payload?.error ?? '데이터 로딩 실패');
         setStats({});
         return;
       }
-
-      const byMetric: Record<string, number[]> = {};
-      for (const row of data) {
-        if (!byMetric[row.name]) byMetric[row.name] = [];
-        byMetric[row.name].push(Number(row.value));
-      }
-
-      const result: Record<string, MetricStats> = {};
-      for (const [name, values] of Object.entries(byMetric)) {
-        const sorted = [...values].sort((a, b) => a - b);
-        const p75 = sorted[Math.floor(sorted.length * 0.75)];
-        const threshold = GOOD_THRESHOLDS[name] ?? Infinity;
-        const goodCount = values.filter((v) => v <= threshold).length;
-        result[name] = {
-          p75,
-          goodPct: Math.round((goodCount / values.length) * 100),
-          count: values.length,
-        };
-      }
-      setStats(result);
+      setStats(normalizeStats(payload?.stats));
     } catch (e) {
+      if (signal?.aborted) return;
       setError(e instanceof Error ? e.message : '데이터 로딩 실패');
+      setStats({});
     } finally {
+      if (signal?.aborted) return;
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchStats(period);
+    const controller = new AbortController();
+    fetchStats(period, controller.signal);
+    return () => controller.abort();
   }, [period]);
 
   const getBarColor = (goodPct: number) => {

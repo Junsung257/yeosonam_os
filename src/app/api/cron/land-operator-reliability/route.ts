@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { fitLandOperatorReliability } from '@/lib/scoring/reliability-fit';
 import { logError } from '@/lib/sentry-logger';
@@ -8,20 +10,20 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function GET(req: NextRequest) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
-  }
   if (!isCronAuthorized(req)) {
     return cronUnauthorizedResponse();
+  }
+  if (!isSupabaseConfigured) {
+    return apiResponse({ skipped: true, reason: 'Supabase not configured' });
   }
   const startedAt = Date.now();
   try {
     const result = await fitLandOperatorReliability();
-    return NextResponse.json({ ok: true, ms: Date.now() - startedAt, ...result });
+    return apiResponse({ ok: true, ms: Date.now() - startedAt, ...result });
   } catch (e) {
     logError('[cron/land-operator-reliability] fitting failed', e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed' },
+    return apiResponse(
+      { error: sanitizeDbError(e, 'Land operator reliability fitting failed') },
       { status: 500 },
     );
   }

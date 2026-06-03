@@ -78,6 +78,7 @@ test-results/
 # Local logs/reports generated during audits/dev
 .ai_rewrite.log
 .next-dev.log
+.next-dev-*.log
 .pipeline.log
 .pipeline2.log
 .sync_all.log
@@ -90,6 +91,8 @@ lint_output.txt
 tmp-*.json
 tmp-*.txt
 tmp-*.html
+.tmp/
+tsconfig.*.tmp.*
 
 # Lighthouse 로컬 분석 산출물
 .tmp-lh-*.json
@@ -182,3 +185,7 @@ fix-catch-patterns.py
 .codex-*.out.log
 .codex-*.pid
 .codex-*.mjs
+
+# Local desktop cleanup archives
+.desktop-dev-archive/
+.desktop-worktrees/

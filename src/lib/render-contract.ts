@@ -49,6 +49,7 @@ import {
   formatTermLine,
   type NormalizedTermLine,
 } from '@/lib/terms-catalog';
+import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Input / Output 타입
@@ -123,7 +124,7 @@ export interface RenderPackageInput {
   customer_notes?: string | null;
   /** 운영 전용 메모. 고객 노출 차단 (어드민 전용). */
   internal_notes?: string | null;
-  notices_parsed?: Array<{ type?: string; title?: string; text?: string }> | null;
+  notices_parsed?: Array<CustomerSafeNotice | { type?: string; title?: string; text?: string }> | null;
   inclusions?: string[] | null;
   itinerary_data?: {
     meta?: {

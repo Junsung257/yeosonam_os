@@ -10,25 +10,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { checkAffiliateContentQuota, incrementAffiliateContentUsage, logAffiliateMonthlyUsage } from '@/lib/card-news/affiliate-quota';
 import { getAffiliateBrandKit, buildBrandOverrides } from '@/lib/card-news/brand-kit';
-import { getSecret } from '@/lib/secret-registry';
-import crypto from 'crypto';
+import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
 
 export const runtime = 'nodejs';
 export const maxDuration = 120;
-
-function verifyToken(token: string): string | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 2) return null;
-    const payload = JSON.parse(Buffer.from(parts[0], 'base64').toString());
-    const secret = getSecret('AFFILIATE_TOKEN_SECRET') || getSecret('SUPABASE_JWT_SECRET') || 'dev-secret-change-in-prod';
-    const expectedHmac = crypto.createHmac('sha256', secret).update(parts[0]).digest('hex');
-    if (parts[1] !== expectedHmac) return null;
-    return payload.affiliate_id;
-  } catch {
-    return null;
-  }
-}
 
 interface RequestBody {
   title?: string;
@@ -52,11 +37,12 @@ export async function POST(request: NextRequest) {
   if (!auth?.startsWith('Bearer ')) {
     return NextResponse.json({ error: '인증 필요' }, { status: 401 });
   }
-  const affiliateId = verifyToken(auth.slice(7));
-  if (!affiliateId) {
+  const token = await verifyAffiliateToken(auth.slice(7));
+  if (!token.ok) {
     return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
   }
 
+  const affiliateId = token.affiliateId;
   try {
     const body = (await request.json()) as RequestBody;
     const effectiveTitle = body.title || body.topic || '';
@@ -146,11 +132,12 @@ export async function GET(request: NextRequest) {
   }
 
   // 토큰에서 affiliate_id 추출
-  const affiliateId = verifyToken(auth.slice(7));
-  if (!affiliateId) {
+  const token = await verifyAffiliateToken(auth.slice(7));
+  if (!token.ok) {
     return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
   }
 
+  const affiliateId = token.affiliateId;
   const { data, error } = await supabaseAdmin
     .from('card_news')
     .select('id, title, title_slides, status, created_at, updated_at, views, clicks, scheduled_at')

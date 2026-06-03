@@ -3,6 +3,9 @@ import { Suspense } from 'react';
 import PackagesClient from './PackagesClient';
 import Loading from './loading';
 
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+
 // 옵션 4a — Page 가 searchParams 안 받음 → 정적 prerender (`○`).
 //   클라이언트(PackagesClient) 가 useSearchParams + SWR 로 `/api/packages/search` fetch.
 //   API route 응답에 Cache-Control: s-maxage=60, swr=300 헤더 → Vercel Edge CDN cache.
@@ -16,7 +19,7 @@ import Loading from './loading';
 export const metadata: Metadata = {
   title: '패키지 상품',
   description: '여소남 단체·패키지 여행 상품. 중국·일본·동남아·마카오 등 인기 여행지 — 확정일·요금 비교.',
-  alternates: { canonical: '/packages' },
+  alternates: { canonical: `${BASE_URL}/packages` },
 };
 
 export default function PackagesPage() {

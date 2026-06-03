@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildCreativeFactoryDrafts } from '@/lib/ad-os-v13-v18';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +17,7 @@ function slugify(value: string): string {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -29,9 +31,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .order('created_at', { ascending: false })
     .limit(1);
   const packageRes = packageId ? await packageQuery.eq('id', packageId).maybeSingle() : await packageQuery.maybeSingle();
-  if (packageRes.error) return NextResponse.json({ ok: false, error: packageRes.error.message }, { status: 500 });
+  if (packageRes.error) return apiResponse({ ok: false, error: sanitizeDbError(packageRes.error) }, { status: 500 });
   const pkg = packageRes.data as { id: string; title: string | null; destination: string | null; tenant_id?: string | null } | null;
-  if (!pkg) return NextResponse.json({ ok: false, error: 'No package found for creative factory' }, { status: 404 });
+  if (!pkg) return apiResponse({ ok: false, error: 'No package found for creative factory' }, { status: 404 });
 
   const drafts = buildCreativeFactoryDrafts({
     destination: pkg.destination || 'travel',
@@ -98,11 +100,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   let inserted: Array<{ id: string }> = [];
   if (apply && rows.length > 0) {
     const { data, error } = await supabaseAdmin.from('content_creatives').insert(rows).select('id');
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
     inserted = data || [];
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     applied: apply,
     package: pkg,

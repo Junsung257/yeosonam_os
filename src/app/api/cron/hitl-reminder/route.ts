@@ -1,14 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 30;
 
 // 30분 이상 처리되지 않은 frozen 에스컬레이션을 재알림
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
+  if (!isSupabaseConfigured || !supabaseAdmin) return apiResponse({ skipped: true, reason: 'Supabase not configured' });
 
   try {
     const thirtyMinAgo = new Date(Date.now() - 30 * 60_000).toISOString();
@@ -22,7 +24,7 @@ export async function GET(request: NextRequest) {
       .limit(10);
 
     if (error) throw error;
-    if (!staleTasks?.length) return NextResponse.json({ stale: 0 });
+    if (!staleTasks?.length) return apiResponse({ stale: 0 });
 
     type StaleTask = { id: string; risk_level: string; task_context: unknown; created_at: string };
     const lines = staleTasks.map((t: StaleTask) => {
@@ -37,10 +39,10 @@ export async function GET(request: NextRequest) {
       { items: lines, action: '👉 /admin/escalations' },
     );
 
-    return NextResponse.json({ stale: staleTasks.length });
+    return apiResponse({ stale: staleTasks.length });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitizeDbError(err, 'HITL reminder failed');
     await sendSlackAlert(`[hitl-reminder] 크론 오류: ${message}`);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiResponse({ error: message }, { status: 500 });
   }
 }

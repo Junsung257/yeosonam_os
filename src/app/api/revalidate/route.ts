@@ -1,51 +1,51 @@
 /**
  * POST /api/revalidate
  *
- * DB 수정 스크립트나 외부 툴에서 ISR 캐시를 즉시 무효화할 때 사용.
+ * Invalidates ISR cache paths after trusted database/admin scripts.
  * Body: { paths: string[], secret: string }
- *
- * 예시:
- *   curl -X POST http://localhost:3000/api/revalidate \
- *     -H "Content-Type: application/json" \
- *     -d '{"paths":["/packages/abc-123","/packages"],"secret":"..."}'
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getSecret } from '@/lib/secret-registry';
+import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import { apiResponse } from '@/lib/api-response';
+import { getSecret } from '@/lib/secret-registry';
 import { safeEqualString } from '@/lib/timing-safe';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+
+function noStore(body: Record<string, unknown>, status: number) {
+  const response = apiResponse(body, { status });
+  response.headers.set('Cache-Control', 'no-store');
+  return response;
+}
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { paths, secret } = body;
 
-    // 시크릿 검증 (환경변수 REVALIDATE_SECRET 필수)
     const expectedSecret = getSecret('REVALIDATE_SECRET');
     if (!expectedSecret) {
-      return NextResponse.json({ error: 'REVALIDATE_SECRET 미설정' }, { status: 500 });
+      return noStore({ error: 'Service unavailable' }, 503);
     }
     if (!safeEqualString(secret, expectedSecret)) {
-      return NextResponse.json({ error: 'Invalid secret' }, { status: 401 });
+      return noStore({ error: 'Invalid secret' }, 401);
     }
 
     if (!Array.isArray(paths) || paths.length === 0) {
-      return NextResponse.json({ error: 'paths 배열 필수' }, { status: 400 });
+      return apiResponse({ error: 'paths array is required' }, { status: 400 });
     }
 
     const revalidated: string[] = [];
-    for (const p of paths) {
-      if (typeof p !== 'string') continue;
-      // 경로 검증 — 임의 재검증 방지
-      if (!p.startsWith('/')) continue;
-      revalidatePath(p);
-      revalidated.push(p);
+    for (const path of paths) {
+      if (typeof path !== 'string') continue;
+      if (!path.startsWith('/')) continue;
+      revalidatePath(path);
+      revalidated.push(path);
     }
 
-    return NextResponse.json({ success: true, revalidated });
+    return apiResponse({ success: true, revalidated });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: sanitizeDbError(err, 'revalidate failed') },
       { status: 500 },
     );

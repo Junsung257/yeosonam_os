@@ -9,7 +9,8 @@
  * 실행 주기: 일 1회 권장 (vercel.json 또는 vercel.ts crons 에 추가)
  */
 
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
 
@@ -18,7 +19,7 @@ export const runtime = 'nodejs';
 
 const getHandler = async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return apiResponse({ skipped: true, reason: 'Supabase 미설정' });
   }
 
   try {
@@ -26,8 +27,8 @@ const getHandler = async () => {
       .rpc('cleanup_expired_magic_tokens', { retention_days: 30 } as never);
 
     if (error) {
-      return NextResponse.json(
-        { ok: false, error: error.message },
+      return apiResponse(
+        { ok: false, error: sanitizeDbError(error) },
         { status: 500 },
       );
     }
@@ -36,15 +37,15 @@ const getHandler = async () => {
     const row = Array.isArray(data) ? data[0] : data;
     const r = row as { deleted_tokens?: number; archived_audit?: number } | null;
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       deletedTokens: Number(r?.deleted_tokens ?? 0),
       archivedAudit: Number(r?.archived_audit ?? 0),
       ranAt: new Date().toISOString(),
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'cleanup_failed' },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(err, 'cleanup_failed') },
       { status: 500 },
     );
   }

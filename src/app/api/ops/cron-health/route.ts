@@ -1,37 +1,36 @@
 /**
  * GET /api/ops/cron-health
  *
- * 전체 크론의 최근 실행 상태 + 최근 24h 실패 이력 반환.
- * 향후 Ops 대시보드 / booking_tasks Inbox "시스템 상태" 섹션에서 사용.
- *
- * 인증: admin 세션 또는 CRON_SECRET Bearer (Vercel cron 내부 점검용).
+ * Returns recent cron health and the last 24h failure history for the ops dashboard.
+ * Access is protected by middleware; CRON_SECRET Bearer is recognized for server-to-server callers
+ * that are allowed through the platform layer.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
-  // admin 세션은 middleware 가 보장 (비공개 경로). CRON_SECRET 는 서버-to-서버 용.
   const authHeader = request.headers.get('authorization');
   const cronSecret = getSecret('CRON_SECRET');
-  const hasCronSecret = Boolean(cronSecret && authHeader === `Bearer ${cronSecret}`);
-  // middleware 에서 이 경로를 통과시킨 상태 (admin 세션 있음) OR cron secret 일치 → 허용
-  // 그 외 (/api/ ops 이므로 middleware 가 차단) → 여기 도달 못함
+  const accessMode = cronSecret && safeEqualString(authHeader, `Bearer ${cronSecret}`)
+    ? 'cron'
+    : 'admin';
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB가 설정되지 않았습니다.' }, { status: 503 });
   }
 
   try {
-    // 1. 각 크론의 최근 상태 (view)
     const { data: health, error: healthErr } = await supabaseAdmin
       .from('cron_health')
       .select('*');
     if (healthErr) throw healthErr;
 
-    // 2. 최근 24h 실패 이력
     const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: recentFailures, error: failErr } = await supabaseAdmin
       .from('cron_run_logs')
@@ -42,33 +41,38 @@ export async function GET(request: NextRequest) {
       .limit(50);
     if (failErr) throw failErr;
 
-    // 3. 크론별 7일 성공률
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
     const { data: weekRuns } = await supabaseAdmin
       .from('cron_run_logs')
       .select('cron_name, status')
       .gte('started_at', weekAgo);
+
     const statsByName: Record<string, { total: number; success: number; error: number }> = {};
-    for (const r of (weekRuns ?? []) as Array<{ cron_name: string; status: string }>) {
-      const s = statsByName[r.cron_name] ??= { total: 0, success: 0, error: 0 };
-      s.total += 1;
-      if (r.status === 'success') s.success += 1;
-      else if (r.status === 'error') s.error += 1;
-    }
-    const successRate7d: Record<string, number> = {};
-    for (const [name, s] of Object.entries(statsByName)) {
-      successRate7d[name] = s.total > 0 ? Math.round((s.success / s.total) * 1000) / 10 : 0;
+    for (const run of (weekRuns ?? []) as Array<{ cron_name: string; status: string }>) {
+      const stats = statsByName[run.cron_name] ??= { total: 0, success: 0, error: 0 };
+      stats.total += 1;
+      if (run.status === 'success') stats.success += 1;
+      else if (run.status === 'error') stats.error += 1;
     }
 
-    return NextResponse.json({
+    const successRate7d: Record<string, number> = {};
+    for (const [name, stats] of Object.entries(statsByName)) {
+      successRate7d[name] = stats.total > 0
+        ? Math.round((stats.success / stats.total) * 1000) / 10
+        : 0;
+    }
+
+    return apiResponse({
       health,
       recent_failures_24h: recentFailures,
       success_rate_7d_percent: successRate7d,
       generated_at: new Date().toISOString(),
+      access_mode: accessMode,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+    console.error('[ops/cron-health] failed:', sanitizeDbError(err));
+    return apiResponse(
+      { error: '크론 상태 조회에 실패했습니다.' },
       { status: 500 },
     );
   }

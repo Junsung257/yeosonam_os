@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
-import { Suspense } from 'react';
+import React, { Suspense } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -29,6 +29,26 @@ import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
+
+function isNextNotFoundError(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === 'object' &&
+    'digest' in err &&
+    typeof (err as { digest?: unknown }).digest === 'string' &&
+    (err as { digest: string }).digest.startsWith('NEXT_HTTP_ERROR_FALLBACK;404')
+  );
+}
+
+function isNextRedirectError(err: unknown): boolean {
+  return (
+    !!err &&
+    typeof err === 'object' &&
+    'digest' in err &&
+    typeof (err as { digest?: unknown }).digest === 'string' &&
+    (err as { digest: string }).digest.startsWith('NEXT_REDIRECT')
+  );
+}
 
 /**
  * A/B 테스트용 headline variant 생성 (Power word + 연도 조정)
@@ -469,12 +489,16 @@ export default async function BlogDetailPage({
   try {
     return await renderBlogDetail({ rawSlug, slug, utmCampaign, utmTerm, utmSource });
   } catch (err) {
+    if (isNextNotFoundError(err) || isNextRedirectError(err)) {
+      throw err;
+    }
+
     logError('[blog/detail] render failed', err, {
       slug,
       rawSlug,
       digest: err && typeof err === 'object' && 'digest' in err ? (err as { digest: string }).digest : null,
     });
-    notFound();
+    throw err;
   }
 }
 

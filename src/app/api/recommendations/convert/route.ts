@@ -1,16 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 // POST /api/recommendations/convert — 전환 로깅
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   }
 
   try {
     const { sessionId, packageId } = await request.json();
     if (!sessionId || !packageId) {
-      return NextResponse.json({ success: true });
+      return apiResponse({ success: true });
     }
 
     await supabaseAdmin
@@ -20,8 +21,8 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   } catch {
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   }
 }

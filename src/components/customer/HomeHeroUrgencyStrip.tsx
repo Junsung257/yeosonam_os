@@ -21,7 +21,7 @@ export function HomeHeroUrgencyStrip({ items }: { items: HomeUrgencyTeaser[] }) 
         {items.map(item => (
           <li key={item.id}>
             <Link
-              href={`/packages/${item.id}`}
+              href={`/packages/${encodeURIComponent(item.id)}`}
               className="flex items-start gap-3 rounded-xl border border-[#E8ECF2] bg-[#FAFBFF] px-3 py-3 hover:border-brand/40 transition-colors card-touch"
             >
               <div className="min-w-0 flex-1">

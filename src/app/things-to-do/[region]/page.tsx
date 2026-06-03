@@ -21,7 +21,21 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
+
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
 
 const CATEGORY_LABELS: Record<string, string> = {
   sightseeing: '관광·명소',
@@ -35,6 +49,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   museum: '박물관·전시',
 };
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+
 interface AttractionRow {
   id: string;
   name: string;
@@ -42,7 +58,7 @@ interface AttractionRow {
   long_desc: string | null;
   category: string | null;
   badge_type: string | null;
-  photos: Array<{ src_medium?: string; src_large?: string }> | null;
+  photos: GalleryPhoto[] | null;
   emoji: string | null;
   region: string;
 }
@@ -55,7 +71,7 @@ interface PackageRow {
   nights: number | null;
   price: number | null;
   airline: string | null;
-  photos: Array<{ src_medium?: string; src_large?: string }> | null;
+  photos: GalleryPhoto[] | null;
   photo_urls: string[] | null;
 }
 
@@ -66,6 +82,79 @@ interface PageData {
   totalAttractions: number;
 }
 
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function getNullableTrimmedString(value: unknown): string | null {
+  return value == null ? null : getTrimmedString(value);
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPositiveNumber(value: unknown): number | null {
+  const number = getFiniteNumber(value);
+  return number != null && number > 0 ? number : null;
+}
+
+function getPhotoList(value: unknown): GalleryPhoto[] | null {
+  if (!Array.isArray(value)) return null;
+  const photos = value.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object');
+  return photos.length > 0 ? photos : null;
+}
+
+function normalizeAttractionRow(row: unknown, fallbackRegion: string): AttractionRow | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const name = getTrimmedString(record.name);
+  if (!id || !name) return null;
+
+  return {
+    id,
+    name,
+    short_desc: getNullableTrimmedString(record.short_desc),
+    long_desc: getNullableTrimmedString(record.long_desc),
+    category: getNullableTrimmedString(record.category),
+    badge_type: getNullableTrimmedString(record.badge_type),
+    photos: getPhotoList(record.photos),
+    emoji: getNullableTrimmedString(record.emoji),
+    region: getTrimmedString(record.region) ?? fallbackRegion,
+  };
+}
+
+function normalizePackageRow(row: unknown): PackageRow | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const title = getTrimmedString(record.title);
+  if (!id || !title) return null;
+
+  return {
+    id,
+    title,
+    destination: getNullableTrimmedString(record.destination),
+    duration: getPositiveNumber(record.duration),
+    nights: getPositiveNumber(record.nights),
+    price: getPositiveNumber(record.price),
+    airline: getNullableTrimmedString(record.airline),
+    photos: getPhotoList(record.photos),
+    photo_urls: Array.isArray(record.photo_urls)
+      ? record.photo_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+      : null,
+  };
+}
+
 function pickPackageCoverUrl(p: PackageRow): string | null {
   const fromPhotos = pickAttractionPhotoUrl(p.photos);
   if (fromPhotos) return fromPhotos;
@@ -73,23 +162,37 @@ function pickPackageCoverUrl(p: PackageRow): string | null {
   return isSafeImageSrc(raw) ? raw.trim() : null;
 }
 
+function toAttractionListItem(a: AttractionRow, index: number) {
+  return {
+    '@type': 'ListItem',
+    position: index + 1,
+    name: a.name,
+    ...(a.short_desc ? { description: a.short_desc } : {}),
+  };
+}
+
 export async function generateStaticParams() {
   if (!isSupabaseConfigured) return [];
-  const { data } = await supabaseAdmin
-    .from('attractions')
-    .select('region')
-    .not('region', 'is', null);
-  if (!data) return [];
-  const set = new Set<string>();
-  for (const r of data) {
-    if (r.region) set.add(r.region);
+  try {
+    const { data } = await supabaseAdmin
+      .from('attractions')
+      .select('region')
+      .not('region', 'is', null);
+    if (!data) return [];
+    const set = new Set<string>();
+    for (const r of data) {
+      if (typeof r.region === 'string' && r.region.trim()) set.add(r.region.trim());
+    }
+    return Array.from(set).map((region) => ({ region }));
+  } catch {
+    return [];
   }
-  return Array.from(set).map((region) => ({ region: encodeURIComponent(region) }));
 }
 
 async function getPageData(regionRaw: string): Promise<PageData | null> {
   if (!isSupabaseConfigured) return null;
-  const region = decodeURIComponent(regionRaw);
+  const region = safeDecodePathSegment(regionRaw).trim();
+  if (!region) return null;
 
   const [{ data: attractions }, { data: packages }] = await Promise.all([
     supabaseAdmin
@@ -105,12 +208,15 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .in('status', ['approved', 'active'])
       .order('price', { ascending: true })
       .limit(8),
-  ]);
+  ]).catch(() => [{ data: null }, { data: null }]);
 
-  if (!attractions || attractions.length === 0) return null;
+  const normalizedAttractions = ((attractions as unknown[] | null) ?? [])
+    .map((row) => normalizeAttractionRow(row, region))
+    .filter((row): row is AttractionRow => row != null);
+  if (normalizedAttractions.length === 0) return null;
 
   const grouped: Record<string, AttractionRow[]> = {};
-  for (const a of attractions as AttractionRow[]) {
+  for (const a of normalizedAttractions) {
     const cat = a.category ?? 'sightseeing';
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(a);
@@ -119,36 +225,57 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
   return {
     region,
     attractionsByCategory: grouped,
-    packages: (packages ?? []) as PackageRow[],
-    totalAttractions: attractions.length,
+    packages: ((packages as unknown[] | null) ?? [])
+      .map(normalizePackageRow)
+      .filter((row): row is PackageRow => row != null),
+    totalAttractions: normalizedAttractions.length,
   };
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ region: string }> }): Promise<Metadata> {
-  const { region: regionRaw } = await params;
-  const region = decodeURIComponent(regionRaw);
+export async function generateMetadata({ params }: { params: Promise<{ region?: string | string[] }> }): Promise<Metadata> {
+  const { region: rawRegion } = await params;
+  const regionRaw = getRouteParam(rawRegion);
+  const region = safeDecodePathSegment(regionRaw).trim();
+  const canonical = region ? `${BASE_URL}/things-to-do/${encodeURIComponent(region)}` : `${BASE_URL}/things-to-do`;
+  if (!region) {
+    return {
+      title: '여행지별 명소',
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
+
   const data = await getPageData(regionRaw);
   const count = data?.totalAttractions ?? 0;
-  const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리 | 여소남`;
+  const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리`;
+  const socialTitle = `${title} | 여소남`;
   const description = `${region} 여행 시 꼭 가봐야 할 명소 ${count}곳을 카테고리(자연·문화·먹거리·쇼핑)별로 정리. 운영팀이 검증한 추천 일정과 패키지까지 한 페이지에서.`;
+  const firstAttraction = data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat()[0] : null;
+  const firstImage = firstAttraction?.photos?.[0]?.src_large ?? firstAttraction?.photos?.[0]?.src_medium ?? null;
+  const ogImage = isSafeImageSrc(firstImage) ? firstImage.trim() : SOCIAL_IMAGE_URL;
   return {
     title,
     description,
-    alternates: { canonical: `${BASE_URL}/things-to-do/${encodeURIComponent(region)}` },
+    alternates: { canonical },
     openGraph: {
-      title,
+      title: socialTitle,
       description,
-      url: `${BASE_URL}/things-to-do/${encodeURIComponent(region)}`,
+      url: canonical,
       type: 'website',
-      images: data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat().slice(0, 1).map(a => ({
-        url: a.photos?.[0]?.src_large ?? a.photos?.[0]?.src_medium ?? `${BASE_URL}/og-default.png`,
-      })) : undefined,
+      images: [{ url: ogImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: socialTitle,
+      description,
+      images: [ogImage],
     },
   };
 }
 
-export default async function ThingsToDoRegionPage({ params }: { params: Promise<{ region: string }> }) {
-  const { region: regionRaw } = await params;
+export default async function ThingsToDoRegionPage({ params }: { params: Promise<{ region?: string | string[] }> }) {
+  const { region: rawRegion } = await params;
+  const regionRaw = getRouteParam(rawRegion);
   const data = await getPageData(regionRaw);
   if (!data) notFound();
 
@@ -228,7 +355,7 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
             {data.packages.map((p) => (
               <Link
                 key={p.id}
-                href={`/packages/${p.id}`}
+                href={`/packages/${encodeURIComponent(p.id)}`}
                 className="block overflow-hidden rounded-lg border border-neutral-200 bg-white hover:shadow-md transition-shadow"
               >
                 {(() => {
@@ -270,12 +397,7 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
             '@type': 'ItemList',
             name: `${data.region} 가볼만한 곳`,
             numberOfItems: data.totalAttractions,
-            itemListElement: Object.values(data.attractionsByCategory).flat().slice(0, 20).map((a, i) => ({
-              '@type': 'ListItem',
-              position: i + 1,
-              name: a.name,
-              description: a.short_desc ?? undefined,
-            })),
+            itemListElement: Object.values(data.attractionsByCategory).flat().slice(0, 20).map(toAttractionListItem),
           }),
         }}
       />

@@ -16,6 +16,8 @@ import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getPrompt } from '@/lib/prompt-loader';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const REVIEW_SENTIMENT_FALLBACK = `다음 여행 패키지 리뷰를 분석하여 JSON으로 응답하세요.
 
@@ -94,12 +96,12 @@ async function analyzeReviewSentiment(content: string, rating: number): Promise<
 export async function GET(request: NextRequest): Promise<NextResponse> {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   const apiKey = getSecret('GEMINI_API_KEY');
   if (!apiKey) {
-    return NextResponse.json({ ok: false, error: 'GEMINI_API_KEY 미설정', analyzed: 0 });
+    return apiResponse({ ok: false, error: 'Gemini API key not configured', analyzed: 0 }, { status: 503 });
   }
 
   try {
@@ -112,7 +114,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     if (fetchErr) throw fetchErr;
     if (!reviews || reviews.length === 0) {
-      return NextResponse.json({ ok: true, analyzed: 0, message: '분석 대기 리뷰 없음' });
+      return apiResponse({ ok: true, analyzed: 0, message: '분석 대기 리뷰 없음' });
     }
 
     let analyzed = 0;
@@ -136,7 +138,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
         if (updateErr) {
           failed++;
-          console.error(`[review-sentiment] 업데이트 실패 ${review.id}:`, updateErr.message);
+          console.error(`[review-sentiment] 업데이트 실패 ${review.id}:`, sanitizeDbError(updateErr));
         } else {
           analyzed++;
         }
@@ -156,10 +158,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       });
     }
 
-    return NextResponse.json({ ok: true, analyzed, failed, total: reviews.length });
+    return apiResponse({ ok: true, analyzed, failed, total: reviews.length });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
+    const message = sanitizeDbError(err, 'Review sentiment processing failed');
     await sendSlackAlert('[리뷰 감정분석 크론] 오류', { error: message });
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiResponse({ ok: false, error: message }, { status: 500 });
   }
 }

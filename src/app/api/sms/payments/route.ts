@@ -5,16 +5,15 @@
  * PATCH /api/sms/payments          - 수동 매칭 (paymentId + bookingId)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
+const getHandler = async (_request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 500 });
   }
 
   const { data: payments, error } = await supabase
@@ -32,24 +31,21 @@ export async function GET(request: NextRequest) {
     .limit(200);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({ payments: payments || [] });
-}
+  return apiResponse({ payments: payments || [] });
+};
 
-export async function PATCH(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
+const patchHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 500 });
   }
 
   try {
     const { paymentId, bookingId } = await request.json();
     if (!paymentId || !bookingId) {
-      return NextResponse.json({ error: 'paymentId, bookingId 필요' }, { status: 400 });
+      return apiResponse({ error: 'paymentId, bookingId 필요' }, { status: 400 });
     }
 
     // sms_payments 업데이트
@@ -76,15 +72,18 @@ export async function PATCH(request: NextRequest) {
         p_created_by: 'admin',
       });
       if (rpcErr) {
-        return NextResponse.json({ error: rpcErr.message }, { status: 500 });
+        return apiResponse({ error: sanitizeDbError(rpcErr) }, { status: 500 });
       }
     }
 
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '처리 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(error, '처리 실패') },
       { status: 500 }
     );
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);
+export const PATCH = withAdminGuard(patchHandler);

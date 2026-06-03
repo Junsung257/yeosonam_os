@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -42,7 +44,7 @@ function appendFeedbackNote(existing: string | null, feedback: string, memo: str
 }
 
 const getHandler = async (req: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ configured: false, rows: [], summary: null });
+  if (!isSupabaseConfigured) return apiResponse({ configured: false, rows: [], summary: null });
 
   const limit = Math.min(Math.max(Number(req.nextUrl.searchParams.get('limit') ?? 40), 1), 100);
   const { data, error } = await supabaseAdmin
@@ -51,7 +53,7 @@ const getHandler = async (req: NextRequest) => {
     .order('recommended_at', { ascending: false })
     .limit(limit);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
   const rows = (data ?? []) as OutcomeRow[];
   const packageIds = Array.from(new Set(rows.map((row) => row.package_id).filter(Boolean)));
@@ -75,7 +77,7 @@ const getHandler = async (req: NextRequest) => {
     has_feedback: Boolean(row.notes?.includes('[recommendation-feedback]')),
   }));
 
-  return NextResponse.json({
+  return apiResponse({
     configured: true,
     rows: withPackage,
     summary: {
@@ -89,17 +91,17 @@ const getHandler = async (req: NextRequest) => {
 };
 
 const postHandler = async (req: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ configured: false });
+  if (!isSupabaseConfigured) return apiResponse({ configured: false });
 
   let body: { id?: number; feedback?: string; memo?: string | null };
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: 'invalid json' }, { status: 400 });
+    return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
   }
 
   if (!body.id || !body.feedback || !(body.feedback in FEEDBACK_OUTCOME)) {
-    return NextResponse.json({ error: 'id and valid feedback are required' }, { status: 400 });
+    return apiResponse({ error: 'INVALID_FEEDBACK_REQUEST' }, { status: 400 });
   }
 
   const { data: current, error: readError } = await supabaseAdmin
@@ -107,7 +109,7 @@ const postHandler = async (req: NextRequest) => {
     .select('id,notes,outcome')
     .eq('id', body.id)
     .single();
-  if (readError) return NextResponse.json({ error: readError.message }, { status: 500 });
+  if (readError) return apiResponse({ error: sanitizeDbError(readError) }, { status: 500 });
 
   const outcome = FEEDBACK_OUTCOME[body.feedback];
   const update: Record<string, unknown> = {
@@ -125,8 +127,8 @@ const postHandler = async (req: NextRequest) => {
     .select('id,package_id,source,intent,recommended_rank,outcome,outcome_at,notes,recommended_at')
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, row: data });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ ok: true, row: data });
 };
 
 export const GET = withAdminGuard(getHandler);

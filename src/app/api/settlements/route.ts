@@ -1,33 +1,111 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { NextRequest } from 'next/server';
+import { requireAdminRequest } from '@/lib/admin-guard';
+import { errorResponse, successResponse } from '@/lib/api-response';
+import {
+  applySettlementApproval,
+  calculateDraftForAffiliate,
+} from '@/lib/affiliate/settlement-calc';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
-import { successResponse, errorResponse } from '@/lib/api-response';
 
-const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
+type AffiliateForSettlement = {
+  id: string;
+  name: string;
+  payout_type: string;
+};
 
-// GET: 정산 목록 조회
+type SettlementWithAffiliate = {
+  id: string;
+  affiliate_id: string;
+  settlement_period: string;
+  status: string | null;
+  qualified_booking_count: number | null;
+  total_amount: number | null;
+  carryover_balance: number | null;
+  final_total: number | null;
+  tax_deduction: number | null;
+  final_payout: number | null;
+  affiliates: { id: string; name: string; booking_count: number | null } | null;
+};
+
+const SETTLEMENT_STATUSES = ['COMPLETED', 'VOID', 'PENDING', 'READY', 'HOLD'] as const;
+type SettlementStatus = (typeof SETTLEMENT_STATUSES)[number];
+
+const ALLOWED_TRANSITIONS: Record<SettlementStatus, SettlementStatus[]> = {
+  PENDING: ['READY'],
+  READY: ['HOLD', 'COMPLETED', 'VOID'],
+  HOLD: ['READY'],
+  COMPLETED: ['VOID'],
+  VOID: [],
+};
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function resolveSettlementPeriodRange(period: string) {
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+    return null;
+  }
+
+  return {
+    periodStart: `${year}-${String(month).padStart(2, '0')}-01`,
+    periodEnd: new Date(Date.UTC(year, month, 0)).toISOString().split('T')[0],
+    todayIso: new Date().toISOString().split('T')[0],
+  };
+}
+
+function requiredText(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isValidIsoDate(value: string): boolean {
+  const time = Date.parse(value);
+  return Number.isFinite(time);
+}
+
+function isValidEvidenceUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function isSettlementStatus(value: string): value is SettlementStatus {
+  return SETTLEMENT_STATUSES.includes(value as SettlementStatus);
+}
+
+function canTransition(from: string | null, to: SettlementStatus): boolean {
+  const current = isSettlementStatus(from || '') ? (from as SettlementStatus) : 'PENDING';
+  return ALLOWED_TRANSITIONS[current].includes(to);
+}
+
+function amountDelta(a: number, b: number): number {
+  return Math.abs(Number(a || 0) - Number(b || 0));
+}
+
 export async function GET(request: NextRequest) {
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const guard = await requireAdminRequest(request);
+  if (guard) return guard;
 
   if (!isSupabaseConfigured) {
     return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
+
   const { searchParams } = new URL(request.url);
   const affiliateId = searchParams.get('affiliateId');
-  const period = searchParams.get('period'); // "2026-03"
-
-  const supabase = supabaseAdmin;
+  const period = searchParams.get('period');
 
   try {
-    // UUID 형식 사전 검증 — 잘못된 affiliateId 는 빈 결과 반환 (500 회피)
-    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (affiliateId && !UUID_RE.test(affiliateId)) {
       return successResponse({ settlements: [] });
     }
 
-    let query = supabase
+    let query = supabaseAdmin
       .from('settlements')
       .select('*, affiliates(id, name, referral_code, grade, payout_type)')
       .order('settlement_period', { ascending: false });
@@ -44,236 +122,204 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST: 월간 정산 마감 실행
 export async function POST(request: NextRequest) {
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const guard = await requireAdminRequest(request);
+  if (guard) return guard;
 
   if (!isSupabaseConfigured) {
     return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
-  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();
-    const { affiliateId, period } = body; // period: "2026-03"
+    const affiliateId = requiredText(body.affiliateId);
+    const period = requiredText(body.period);
 
     if (!affiliateId) return errorResponse('MISSING_FIELD', 'affiliateId가 필요합니다.', 400);
-    if (!period) return errorResponse('MISSING_FIELD', 'period가 필요합니다. (예: 2026-03)', 400);
+    if (!period) return errorResponse('MISSING_FIELD', 'period가 필요합니다. 예: 2026-03', 400);
 
-    // ① 어필리에이트 정보 조회
-    const { data: affiliate, error: aErr } = await supabase
+    const range = resolveSettlementPeriodRange(period);
+    if (!range) return errorResponse('INVALID_PERIOD', 'period는 YYYY-MM 형식이어야 합니다.', 400);
+
+    const { data: affiliate, error: affiliateErr } = await supabaseAdmin
       .from('affiliates')
-      .select('id, name, payout_type, booking_count')
+      .select('id, name, payout_type')
       .eq('id', affiliateId)
       .single();
-    if (aErr || !affiliate) return errorResponse('NOT_FOUND', '어필리에이트를 찾을 수 없습니다.', 404);
-
-    // ② 해당 period의 귀국일이 지난 확정 예약 조회
-    const [year, month] = period.split('-').map(Number);
-    const periodStart = `${year}-${String(month).padStart(2, '0')}-01`;
-    const periodEnd = new Date(year, month, 0).toISOString().split('T')[0]; // 월말
-    const today = new Date().toISOString().split('T')[0];
-
-    const { data: bookings, error: bErr } = await supabase
-      .from('bookings')
-      .select('id, influencer_commission, return_date, status, dispute_flag')
-      .eq('affiliate_id', affiliateId)
-      .in('status', ['confirmed', 'completed'])
-      .gte('departure_date', periodStart)
-      .lte('departure_date', periodEnd)
-      .lte('return_date', today)   // 귀국일이 지난 것만
-      .or('is_deleted.is.null,is_deleted.eq.false');
-
-    if (bErr) throw bErr;
-
-    type BookingRow = {
-      return_date?: string | null;
-      dispute_flag?: boolean | null;
-      influencer_commission?: number | null;
-    };
-    const qualifiedBookings = ((bookings ?? []) as BookingRow[]).filter(
-      (b) => b.return_date && b.return_date <= today && !b.dispute_flag,
-    );
-    const qualifiedCount = qualifiedBookings.length;
-    const totalAmount = qualifiedBookings.reduce(
-      (s: number, b: BookingRow) => s + (b.influencer_commission || 0),
-      0,
-    );
-
-    // ③ 이전 달 이월 잔액 조회
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevPeriod = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
-
-    const { data: prevSettlement } = await supabase
-      .from('settlements')
-      .select('carryover_balance, status')
-      .eq('affiliate_id', affiliateId)
-      .eq('settlement_period', prevPeriod)
-      .single();
-
-    const prevCarryover = prevSettlement?.carryover_balance ?? 0;
-
-    // ④ 조건 판단: 건수 + 금액 AND 조건 (cron과 동일 기준)
-    const pendingTotal = totalAmount + prevCarryover;
-    const qualified = qualifiedCount >= MIN_COUNT && pendingTotal >= MIN_AMOUNT;
-
-    let settlement;
-    if (!qualified) {
-      // 조건 미달: 이월 처리
-      const { data, error } = await supabase
-        .from('settlements')
-        .upsert({
-          affiliate_id: affiliateId,
-          settlement_period: period,
-          qualified_booking_count: qualifiedCount,
-          total_amount: totalAmount,
-          carryover_balance: prevCarryover + totalAmount, // 누적 이월
-          final_total: 0,
-          tax_deduction: 0,
-          final_payout: 0,
-          status: 'PENDING',
-        }, { onConflict: 'affiliate_id,settlement_period' })
-        .select()
-        .single();
-      if (error) throw error;
-      settlement = data;
-    } else {
-      // 조건 충족: 정산 확정
-      const finalTotal = totalAmount + prevCarryover;
-      const taxDeduction = affiliate.payout_type === 'PERSONAL'
-        ? Math.round(finalTotal * PERSONAL_TAX_RATE)
-        : 0;
-      const finalPayout = finalTotal - taxDeduction;
-
-      const { data, error } = await supabase
-        .from('settlements')
-        .upsert({
-          affiliate_id: affiliateId,
-          settlement_period: period,
-          qualified_booking_count: qualifiedCount,
-          total_amount: totalAmount,
-          carryover_balance: prevCarryover,
-          final_total: finalTotal,
-          tax_deduction: taxDeduction,
-          final_payout: finalPayout,
-          status: 'READY',
-        }, { onConflict: 'affiliate_id,settlement_period' })
-        .select()
-        .single();
-      if (error) throw error;
-      settlement = data;
-
-      // 어필리에이트 booking_count 증가 (등급 트리거 발동)
-      await supabase
-        .from('affiliates')
-        .update({ booking_count: affiliate.booking_count + qualifiedCount })
-        .eq('id', affiliateId);
-
-      // 이전 달 이월 리셋 (carryover_balance = 0으로 업데이트)
-      if (prevSettlement && prevCarryover > 0) {
-        await supabase
-          .from('settlements')
-          .update({ carryover_balance: 0 })
-          .eq('affiliate_id', affiliateId)
-          .eq('settlement_period', prevPeriod);
-      }
+    if (affiliateErr || !affiliate) {
+      return errorResponse('NOT_FOUND', '어필리에이트를 찾을 수 없습니다.', 404);
     }
 
-    // ⑤ audit_log 기록
-    await supabase.from('audit_logs').insert([{
-      action: 'SETTLEMENT_CLOSE',
-      target_type: 'settlement',
-      target_id: settlement?.id,
-      description: `${affiliate.name} 님 ${period} 정산 마감 — 상태: ${settlement?.status}, 지급액: ${settlement?.final_payout?.toLocaleString()}원`,
-      after_value: settlement,
-    }]);
+    const draft = await calculateDraftForAffiliate(
+      affiliate as AffiliateForSettlement,
+      period,
+      range.periodStart,
+      range.periodEnd,
+      range.todayIso,
+    );
+    if (!draft) {
+      return errorResponse('ALREADY_FINALIZED', '이미 READY/COMPLETED 상태인 정산입니다.', 409);
+    }
 
-    return successResponse({ settlement, qualified, qualifiedCount, totalAmount });
+    await applySettlementApproval(draft);
+
+    const { data: settlement, error: settlementErr } = await supabaseAdmin
+      .from('settlements')
+      .select('*')
+      .eq('affiliate_id', affiliateId)
+      .eq('settlement_period', period)
+      .single();
+    if (settlementErr) throw settlementErr;
+
+    return successResponse({
+      settlement,
+      qualified: draft.qualified,
+      qualifiedCount: draft.qualified_booking_count,
+      totalAmount: draft.total_amount,
+    });
   } catch (err) {
     return errorResponse('SETTLEMENT_FAILED', err instanceof Error ? err.message : '정산 처리 실패', 500);
   }
 }
 
-// PATCH: 정산 상태 수동 변경 (COMPLETED, VOID + 원복)
 export async function PATCH(request: NextRequest) {
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const guard = await requireAdminRequest(request);
+  if (guard) return guard;
 
   if (!isSupabaseConfigured) {
     return errorResponse('SERVICE_UNAVAILABLE', 'Supabase 미설정', 503);
   }
-  const supabase = supabaseAdmin;
 
   try {
     const body = await request.json();
-    const { id, status } = body;
+    const id = requiredText(body.id);
+    const status = requiredText(body.status);
+
     if (!id) return errorResponse('MISSING_FIELD', 'id가 필요합니다.', 400);
-    if (!['COMPLETED', 'VOID', 'PENDING', 'READY', 'HOLD'].includes(status)) {
+    if (!isSettlementStatus(status)) {
       return errorResponse('INVALID_STATUS', '유효하지 않은 상태값입니다.', 400);
     }
 
-    // 현재 정산 정보 조회 (원복용)
-    const { data: current, error: fetchErr } = await supabase
+    const { data: rawCurrent, error: fetchErr } = await supabaseAdmin
       .from('settlements')
       .select('*, affiliates(id, name, booking_count)')
       .eq('id', id)
       .single();
 
-    if (fetchErr || !current) return errorResponse('NOT_FOUND', '정산을 찾을 수 없습니다.', 404);
+    if (fetchErr || !rawCurrent) {
+      return errorResponse('NOT_FOUND', '정산을 찾을 수 없습니다.', 404);
+    }
+    const current = rawCurrent as SettlementWithAffiliate;
+
+    if (!canTransition(current.status, status)) {
+      return errorResponse(
+        'INVALID_SETTLEMENT_TRANSITION',
+        `${current.status || 'UNKNOWN'} 상태에서 ${status} 상태로 변경할 수 없습니다.`,
+        409,
+      );
+    }
 
     const payload: Record<string, unknown> = { status };
-    if (status === 'COMPLETED') payload.settled_at = new Date().toISOString();
 
-    // HOLD 처리
+    if (status === 'COMPLETED') {
+      const payoutReference = requiredText(body.payout_reference);
+      const paidBy = requiredText(body.paid_by);
+      const paidAt = requiredText(body.paid_at);
+      const receiptUrl = requiredText(body.receipt_url);
+      const withholdingAmount = Number(body.withholding_amount);
+
+      if (
+        !payoutReference ||
+        !paidBy ||
+        !paidAt ||
+        !isValidIsoDate(paidAt) ||
+        !receiptUrl ||
+        !isValidEvidenceUrl(receiptUrl) ||
+        !Number.isFinite(withholdingAmount) ||
+        withholdingAmount < 0
+      ) {
+        return errorResponse(
+          'PAYOUT_EVIDENCE_REQUIRED',
+          'COMPLETED 전환에는 payout_reference, paid_by, 유효한 paid_at, withholding_amount, http(s) receipt_url이 필요합니다.',
+          400,
+        );
+      }
+
+      const finalTotal = Number(current.final_total || 0);
+      const finalPayout = Number(current.final_payout || 0);
+      if (withholdingAmount > finalTotal) {
+        return errorResponse('INVALID_WITHHOLDING_AMOUNT', '원천징수액은 이월 포함 정산액보다 클 수 없습니다.', 400);
+      }
+      if (amountDelta(finalPayout + withholdingAmount, finalTotal) > 1) {
+        return errorResponse(
+          'PAYOUT_AMOUNT_MISMATCH',
+          '실지급액과 원천징수액의 합이 이월 포함 정산액과 일치해야 합니다.',
+          400,
+        );
+      }
+
+      payload.settled_at = paidAt;
+      payload.payout_reference = payoutReference;
+      payload.paid_by = paidBy;
+      payload.paid_at = paidAt;
+      payload.withholding_amount = withholdingAmount;
+      payload.receipt_url = receiptUrl;
+    }
+
     if (status === 'HOLD') {
-      payload.hold_reason = body.hold_reason || null;
+      const holdReason = requiredText(body.hold_reason);
+      if (!holdReason) {
+        return errorResponse('HOLD_REASON_REQUIRED', 'HOLD 전환에는 hold_reason이 필요합니다.', 400);
+      }
+      payload.hold_reason = holdReason;
       payload.held_at = new Date().toISOString();
     }
-    // HOLD → READY 해제
+
     if (status === 'READY' && current.status === 'HOLD') {
       payload.released_at = new Date().toISOString();
       payload.hold_reason = null;
     }
 
-    // ── VOID 원복 로직 ─────────────────────────────────
-    if (status === 'VOID' && ['READY', 'COMPLETED'].includes(current.status)) {
-      const affiliate = current.affiliates as Record<string, unknown> | null;
-      const affBookingCount = (affiliate?.booking_count as number) ?? 0;
+    if (status === 'VOID') {
+      const affBookingCount = Number(current.affiliates?.booking_count ?? 0);
 
-      // 1. booking_count 차감 (정산 시 증가한 만큼 되돌림)
-      if (affiliate && current.qualified_booking_count > 0) {
-        const newCount = Math.max(0, affBookingCount - current.qualified_booking_count);
-        await supabase
+      if (current.affiliate_id && Number(current.qualified_booking_count || 0) > 0) {
+        const newCount = Math.max(0, affBookingCount - Number(current.qualified_booking_count || 0));
+        await supabaseAdmin
           .from('affiliates')
           .update({ booking_count: newCount })
           .eq('id', current.affiliate_id);
       }
 
-      // 2. 이월 잔액 복구 (이전 달 carryover를 다시 살림)
-      if (current.carryover_balance > 0) {
-        const [year, month] = current.settlement_period.split('-').map(Number);
-        const prevMonth = month === 1 ? 12 : month - 1;
-        const prevYear = month === 1 ? year - 1 : year;
-        const prevPeriod = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
+      if (Number(current.carryover_balance || 0) > 0) {
+        const range = resolveSettlementPeriodRange(current.settlement_period);
+        if (range) {
+          const [yearRaw, monthRaw] = current.settlement_period.split('-').map(Number);
+          const prevMonth = monthRaw === 1 ? 12 : monthRaw - 1;
+          const prevYear = monthRaw === 1 ? yearRaw - 1 : yearRaw;
+          const prevPeriod = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
 
-        await supabase
-          .from('settlements')
-          .update({ carryover_balance: current.carryover_balance })
-          .eq('affiliate_id', current.affiliate_id)
-          .eq('settlement_period', prevPeriod);
+          await supabaseAdmin
+            .from('settlements')
+            .update({ carryover_balance: current.carryover_balance })
+            .eq('affiliate_id', current.affiliate_id)
+            .eq('settlement_period', prevPeriod);
+        }
       }
 
-      // 3. 현재 정산을 이월 상태로 되돌림
       payload.final_total = 0;
       payload.tax_deduction = 0;
       payload.final_payout = 0;
       payload.settled_at = null;
-      payload.carryover_balance = (current.carryover_balance || 0) + (current.total_amount || 0);
+      payload.payout_reference = null;
+      payload.paid_by = null;
+      payload.paid_at = null;
+      payload.withholding_amount = 0;
+      payload.receipt_url = null;
+      payload.carryover_balance = Number(current.carryover_balance || 0) + Number(current.total_amount || 0);
     }
 
-    const { data, error } = await supabase
+    const { data, error } = await supabaseAdmin
       .from('settlements')
       .update(payload)
       .eq('id', id)
@@ -282,19 +328,39 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error;
 
-    // audit_log
-    const logAffiliate = current.affiliates as Record<string, unknown> | null;
-    const logName = logAffiliate?.name ?? '';
-    const logBookCount = logAffiliate?.booking_count;
-    await supabase.from('audit_logs').insert([{
+    const logName = current.affiliates?.name ?? '';
+    await supabaseAdmin.from('audit_logs').insert([{
       action: status === 'VOID' ? 'SETTLEMENT_VOID_ROLLBACK' : `SETTLEMENT_${status}`,
       target_type: 'settlement',
       target_id: id,
       description: status === 'VOID'
-        ? `${logName} ${current.settlement_period} 정산 원복 — booking_count 차감, 이월 복구`
-        : `정산 상태 → ${status}`,
-      before_value: { status: current.status, final_payout: current.final_payout, booking_count: logBookCount },
-      after_value: { status, final_payout: data?.final_payout },
+        ? `${logName} ${current.settlement_period} 정산 롤백`
+        : `정산 상태 ${status}`,
+      before_value: {
+        status: current.status,
+        total_amount: current.total_amount,
+        final_total: current.final_total,
+        final_payout: current.final_payout,
+        payout_reference: (current as Record<string, unknown>).payout_reference ?? null,
+        paid_by: (current as Record<string, unknown>).paid_by ?? null,
+        paid_at: (current as Record<string, unknown>).paid_at ?? null,
+        withholding_amount: (current as Record<string, unknown>).withholding_amount ?? null,
+        receipt_url: (current as Record<string, unknown>).receipt_url ?? null,
+        hold_reason: (current as Record<string, unknown>).hold_reason ?? null,
+        held_at: (current as Record<string, unknown>).held_at ?? null,
+        released_at: (current as Record<string, unknown>).released_at ?? null,
+        booking_count: current.affiliates?.booking_count,
+      },
+      after_value: {
+        status,
+        final_payout: data?.final_payout,
+        payout_reference: payload.payout_reference ?? null,
+        paid_by: payload.paid_by ?? null,
+        paid_at: payload.paid_at ?? null,
+        withholding_amount: payload.withholding_amount ?? null,
+        receipt_url: payload.receipt_url ?? null,
+        hold_reason: payload.hold_reason ?? null,
+      },
     }]);
 
     return successResponse({ settlement: data });

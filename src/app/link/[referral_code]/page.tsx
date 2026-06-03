@@ -64,16 +64,27 @@ const SOCIAL_ICONS: Record<string, string> = {
   website: '🌐',
 };
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function AffiliateLinkInBioPage() {
-  const params = useParams<{ referral_code: string }>();
+  const params = useParams<{ referral_code?: string | string[] }>();
+  const referralCode = getRouteParam(params?.referral_code);
   const [data, setData] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
+      if (!referralCode) {
+        setError('추천인 코드가 올바르지 않습니다.');
+        setLoading(false);
+        return;
+      }
+
       try {
-        const res = await fetch(`/api/affiliate/public/${params.referral_code}`);
+        const res = await fetch(`/api/affiliate/public/${encodeURIComponent(referralCode)}`);
         if (!res.ok) {
           if (res.status === 404) throw new Error('어필리에이터를 찾을 수 없습니다');
           throw new Error('로드 실패');
@@ -87,7 +98,7 @@ export default function AffiliateLinkInBioPage() {
       }
     }
     load();
-  }, [params.referral_code]);
+  }, [referralCode]);
 
   // 브랜드 컬러
   const primaryColor = data?.brand_kit?.primary_color ?? '#4F46E5';
@@ -207,7 +218,7 @@ export default function AffiliateLinkInBioPage() {
             }>).map((pkg) => (
               <a
                 key={pkg.id}
-                href={`/packages/${pkg.id}?ref=${a.referral_code}`}
+                href={`/packages/${encodeURIComponent(pkg.id)}?ref=${encodeURIComponent(a.referral_code)}`}
                 className="block bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
               >
                 {pkg.main_image ? (
@@ -247,7 +258,7 @@ export default function AffiliateLinkInBioPage() {
             {card_news.map((cn) => (
               <a
                 key={cn.id}
-                href={`/share/card-news/${cn.id}`}
+                href={`/share/card-news/${encodeURIComponent(cn.id)}`}
                 className="block bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
               >
                 {cn.thumbnail_url ? (

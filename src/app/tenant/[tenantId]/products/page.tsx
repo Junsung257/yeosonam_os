@@ -25,6 +25,8 @@ const STATUS_BADGE: Record<string, string> = {
 };
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 const EMPTY_FORM = {
   id:               '',
@@ -40,7 +42,8 @@ const EMPTY_FORM = {
 
 export default function TenantProductsPage() {
   const params   = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantId = getRouteParam(params?.tenantId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
 
   const [products, setProducts] = useState<TenantProduct[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -50,12 +53,18 @@ export default function TenantProductsPage() {
   const [error, setError]       = useState('');
 
   const load = useCallback(async () => {
+    if (!tenantId) {
+      setError('테넌트 ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    const res  = await fetch(`/api/tenant/products?tenant_id=${tenantId}`);
+    const res  = await fetch(`/api/tenant/products?tenant_id=${encodedTenantId}`);
     const data = await res.json();
     setProducts(data.products ?? []);
     setLoading(false);
-  }, [tenantId]);
+  }, [encodedTenantId, tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -83,6 +92,11 @@ export default function TenantProductsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!tenantId) {
+      setError('테넌트 ID가 올바르지 않습니다.');
+      return;
+    }
+
     setSaving(true);
     setError('');
     try {

@@ -33,7 +33,7 @@ export default function ChatWidget() {
   }, [isOpen]);
 
   // admin 페이지에서는 자비스 플로팅 위젯을 사용하므로 숨김
-  if (pathname.startsWith('/admin')) return null;
+  if (pathname?.startsWith('/admin')) return null;
 
   const handleSend = async () => {
     const text = inputValue.trim();
@@ -570,7 +570,7 @@ function MessageBubble({
             {message.products.map((product) => (
               <a
                 key={product.id}
-                href={`/packages/${product.id}`}
+                href={`/packages/${encodeURIComponent(product.id)}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block bg-white rounded-xl p-3 shadow-sm hover:shadow-md transition-shadow"

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
 
 /**
  * POST /api/admin/integrations/disconnect
@@ -12,7 +13,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
  */
 const postHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ success: true, mock: true });
+    return apiResponse({ success: true, mock: true });
   }
 
   try {
@@ -20,12 +21,12 @@ const postHandler = async (request: NextRequest): Promise<NextResponse> => {
     const { tenant_id, platform } = body;
 
     if (!tenant_id || !platform) {
-      return NextResponse.json({ error: 'tenant_id, platform 필수' }, { status: 400 });
+      return apiResponse({ error: 'tenant_id, platform 필수' }, { status: 400 });
     }
 
     const ALLOWED = ['google_ads', 'meta', 'naver', 'google_analytics'];
     if (!ALLOWED.includes(platform)) {
-      return NextResponse.json({ error: '지원하지 않는 플랫폼' }, { status: 400 });
+      return apiResponse({ error: '지원하지 않는 플랫폼' }, { status: 400 });
     }
 
     const { error } = await supabaseAdmin
@@ -36,9 +37,9 @@ const postHandler = async (request: NextRequest): Promise<NextResponse> => {
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, platform, disconnected_at: new Date().toISOString() });
+    return apiResponse({ success: true, platform, disconnected_at: new Date().toISOString() });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: logAndSanitize('admin-integrations-disconnect', err, '처리 실패') },
       { status: 500 },
     );

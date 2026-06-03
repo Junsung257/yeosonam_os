@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchBlogSearchMetrics, isGSCConfigured, extractSlugFromUrl } from '@/lib/gsc-client';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * Rank Tracking — 매일 03:00 UTC 실행
@@ -49,7 +50,7 @@ async function runRankTracking(request: NextRequest) {
   const dateStr = targetDate.toISOString().split('T')[0];
 
   const metrics = await fetchBlogSearchMetrics(siteUrl, dateStr, true).catch(err => {
-    errors.push(`GSC fetch 실패: ${err instanceof Error ? err.message : String(err)}`);
+    errors.push(`GSC fetch failed: ${sanitizeDbError(err)}`);
     return [];
   });
 
@@ -81,7 +82,7 @@ async function runRankTracking(request: NextRequest) {
     const { error: insErr } = await supabaseAdmin
       .from('rank_history')
       .upsert(rows, { onConflict: 'slug,query,date,source', ignoreDuplicates: false });
-    if (insErr) errors.push(`rank_history upsert 실패: ${insErr.message}`);
+    if (insErr) errors.push(`rank_history upsert failed: ${sanitizeDbError(insErr)}`);
     else inserted = rows.length;
   }
 
@@ -135,7 +136,7 @@ async function runRankTracking(request: NextRequest) {
     if (alertRows.length > 0) {
       const { error: aErr } = await supabaseAdmin.from('rank_alerts').insert(alertRows);
       if (aErr) {
-        errors.push(`rank_alerts insert 실패: ${aErr.message}`);
+        errors.push(`rank_alerts insert failed: ${sanitizeDbError(aErr)}`);
       } else {
         alerts = alertRows.length;
 
@@ -182,8 +183,7 @@ async function runRankTracking(request: NextRequest) {
         const settled = await Promise.allSettled(patchTasks);
         settled.forEach((r, i) => {
           if (r.status === 'rejected') {
-            const msg = r.reason instanceof Error ? r.reason.message : String(r.reason);
-            errors.push(`generation_meta 패치 ${i}: ${msg}`);
+            errors.push(`generation_meta patch ${i}: ${sanitizeDbError(r.reason)}`);
           }
         });
       }

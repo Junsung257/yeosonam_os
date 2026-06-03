@@ -2,7 +2,8 @@ import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 const HARD_LIMIT = 45000;
 
 export const revalidate = 60;

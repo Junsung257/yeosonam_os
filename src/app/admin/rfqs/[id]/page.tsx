@@ -5,6 +5,10 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface GroupRfq {
   id: string;
@@ -130,7 +134,8 @@ function Countdown({ deadline }: { deadline: string }) {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function AdminRfqDetailPage() {
   const params = useParams();
-  const id = params.id as string;
+  const id = getRouteParam(params?.id);
+  const encodedId = encodeURIComponent(id);
 
   const [rfq, setRfq] = useState<GroupRfq | null>(null);
   const [bids, setBids] = useState<RfqBid[]>([]);
@@ -149,14 +154,19 @@ export default function AdminRfqDetailPage() {
   }, [id]);
 
   async function fetchAll() {
+    if (!id) {
+      setError('RFQ ID가 올바르지 않습니다');
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError('');
     try {
       const [rfqRes, bidsRes, propsRes, msgsRes] = await Promise.all([
-        fetch(`/api/rfq/${id}`),
-        fetch(`/api/rfq/${id}/bid`),
-        fetch(`/api/rfq/${id}/proposals`),
-        fetch(`/api/rfq/${id}/messages?viewAs=admin`),
+        fetch(`/api/rfq/${encodedId}`),
+        fetch(`/api/rfq/${encodedId}/bid`),
+        fetch(`/api/rfq/${encodedId}/proposals`),
+        fetch(`/api/rfq/${encodedId}/messages?viewAs=admin`),
       ]);
       if (!rfqRes.ok) throw new Error('RFQ 데이터를 불러올 수 없습니다');
       const rfqData = await rfqRes.json();
@@ -181,9 +191,10 @@ export default function AdminRfqDetailPage() {
   }
 
   async function transition(status: string) {
+    if (!id) return;
     setTransitioning(status);
     try {
-      const res = await fetch(`/api/rfq/${id}`, {
+      const res = await fetch(`/api/rfq/${encodedId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'transition', status }),
@@ -198,9 +209,10 @@ export default function AdminRfqDetailPage() {
   }
 
   async function runAnalysis() {
+    if (!id) return;
     setAnalyzing(true);
     try {
-      const res = await fetch(`/api/rfq/${id}/analyze`, { method: 'POST' });
+      const res = await fetch(`/api/rfq/${encodedId}/analyze`, { method: 'POST' });
       if (!res.ok) throw new Error('분석 실패');
       const data = await res.json();
       setReport(data);
@@ -234,7 +246,16 @@ export default function AdminRfqDetailPage() {
     );
   }
   if (error || !rfq) {
-    return <div className="p-8 text-red-500 text-sm">{error || 'RFQ를 찾을 수 없습니다'}</div>;
+    return (
+      <div className="p-6 max-w-3xl">
+        <div className="rounded-admin-md border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+          {error || 'RFQ를 찾을 수 없습니다'}
+        </div>
+        <Link href="/admin/rfqs" className="mt-4 inline-block text-sm text-indigo-600 hover:underline">
+          RFQ 목록으로 돌아가기
+        </Link>
+      </div>
+    );
   }
 
   return (

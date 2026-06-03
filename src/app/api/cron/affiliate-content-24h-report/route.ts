@@ -13,8 +13,10 @@
  *
  * 실제 발송은 /admin/jarvis 결재함에서 수동 또는 자동 승인 후 KakaoNotificationAdapter 가 처리.
  */
-import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
@@ -22,11 +24,10 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
+  const authError = requireCronBearer(request);
+  if (authError) return authError;
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
-  }
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
   try {
     const { supabaseAdmin } = await import('@/lib/supabase');
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
     if (!contents || contents.length === 0) {
       await reportAffiliateCronSuccess('affiliate-content-24h-report', { drafted: 0, reason: 'no_target_contents' });
-      return NextResponse.json({ ok: true, drafted: 0, reason: '대상 콘텐츠 없음' });
+      return apiResponse({ ok: true, drafted: 0, reason: '대상 콘텐츠 없음' });
     }
 
     const contentIds = contents.map((c: { id: string }) => c.id);
@@ -128,7 +129,7 @@ export async function GET(request: NextRequest) {
       drafted: drafted.length,
       content_count: contents.length,
     });
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       drafted: drafted.length,
       content_count: contents.length,
@@ -136,9 +137,6 @@ export async function GET(request: NextRequest) {
     });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-content-24h-report', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '실행 실패' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err, '실행 실패') }, { status: 500 });
   }
 }

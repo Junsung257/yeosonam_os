@@ -9,9 +9,11 @@
  * 3. "자동 병합됨" 노트 기록
  */
 
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
-import { reconcilePlaceName } from '@/lib/wikidata-reconcile';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300; // Vercel cron 최대 5분
@@ -30,7 +32,10 @@ interface AttractionRow {
   is_active: boolean;
 }
 
-export async function POST(): Promise<Response> {
+export async function POST(request: NextRequest): Promise<Response> {
+  const authError = requireCronBearer(request);
+  if (authError) return authError;
+
   const startedAt = Date.now();
   const log: string[] = [];
 
@@ -118,7 +123,7 @@ export async function POST(): Promise<Response> {
     const elapsed = Date.now() - startedAt;
     log.push(`완료: ${mergedCount}개 중복 병합됨 (${elapsed}ms)`);
 
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       mergedCount,
       elapsed,
@@ -126,9 +131,9 @@ export async function POST(): Promise<Response> {
     });
   } catch (err) {
     const elapsed = Date.now() - startedAt;
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitizeDbError(err);
     log.push(`오류: ${message}`);
-    return NextResponse.json({
+    return apiResponse({
       success: false,
       error: message,
       elapsed,

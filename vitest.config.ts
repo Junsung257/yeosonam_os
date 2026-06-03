@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import path from 'path';
+import react from '@vitejs/plugin-react';
 
 /**
  * 여소남 OS — Vitest 설정
@@ -8,6 +9,7 @@ import path from 'path';
  * Playwright 비주얼 테스트(`tests/visual`)와 회귀 테스트(`tests/regression`)는 별도 러너 사용.
  */
 export default defineConfig({
+  plugins: [react()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

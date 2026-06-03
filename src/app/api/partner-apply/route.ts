@@ -2,6 +2,48 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 
+function normalizeChannelUrl(raw: unknown): string {
+  const value = String(raw || '').trim();
+  if (!value) return '';
+  try {
+    const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+    const url = new URL(withScheme);
+    url.hash = '';
+    url.hostname = url.hostname.toLowerCase();
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    return url.toString();
+  } catch {
+    return value.toLowerCase();
+  }
+}
+
+function scoreApplicationRisk(input: {
+  channelUrl: string;
+  followerCount: number | null;
+  hasInviteCode: boolean;
+  intro: string | null;
+}) {
+  const reasons: string[] = [];
+  let score = 0;
+  if (!/^https?:\/\//i.test(input.channelUrl)) {
+    score += 25;
+    reasons.push('invalid_or_unparsed_channel_url');
+  }
+  if (!input.hasInviteCode) {
+    score += 20;
+    reasons.push('no_invite_code');
+  }
+  if ((input.followerCount || 0) < 100) {
+    score += 20;
+    reasons.push('low_follower_count');
+  }
+  if (!input.intro || input.intro.trim().length < 10) {
+    score += 15;
+    reasons.push('thin_intro');
+  }
+  return { score: Math.min(100, score), reasons };
+}
+
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
@@ -33,6 +75,17 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const channelUrlNormalized = normalizeChannelUrl(channel_url);
+    const termsAccepted = body.terms_accepted === true || body.termsAccepted === true;
+    const disclosureAck = body.disclosure_ack === true || body.disclosureAck === true;
+    const nowIso = new Date().toISOString();
+    const risk = scoreApplicationRisk({
+      channelUrl: channelUrlNormalized,
+      followerCount: Number.isFinite(Number(follower_count)) ? Number(follower_count) : null,
+      hasInviteCode: !!submittedCode,
+      intro: typeof intro === 'string' ? intro : null,
+    });
+
     // 중복 신청 확인
     const { data: existing } = await supabaseAdmin
       .from('affiliate_applications')
@@ -55,12 +108,17 @@ export async function POST(request: NextRequest) {
         phone,
         channel_type,
         channel_url,
+        channel_url_normalized: channelUrlNormalized,
         follower_count: follower_count || null,
         intro: intro || null,
         business_type: business_type || 'individual',
         business_number: business_number || null,
         has_invite_code: !!submittedCode,
-      })
+        terms_accepted_at: termsAccepted ? nowIso : null,
+        disclosure_ack_at: disclosureAck ? nowIso : null,
+        application_risk_score: risk.score,
+        risk_reasons: risk.reasons,
+      } as never)
       .select()
       .single();
 

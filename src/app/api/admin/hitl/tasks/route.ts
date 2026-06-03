@@ -1,18 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // frozen agent_tasks + jarvis_pending_actions 목록 조회 (에스컬레이션 대시보드용)
-const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ tasks: [] });
-
-  const token =
-    request.cookies.get('sb-access-token')?.value ??
-    request.headers.get('Authorization')?.replace('Bearer ', '');
-  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
-  if (!userData?.user?.id) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
-  }
+const getHandler = async (_request: NextRequest): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ tasks: [] });
 
   try {
     const [{ data, error }, { data: pendingActions, error: pendingError }] = await Promise.all([
@@ -56,10 +50,10 @@ const getHandler = async (request: NextRequest) => {
       .sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       .slice(0, 50);
 
-    return NextResponse.json({ tasks });
+    return apiResponse({ tasks });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

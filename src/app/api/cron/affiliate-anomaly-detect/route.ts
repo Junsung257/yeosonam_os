@@ -183,6 +183,20 @@ export async function GET(request: Request) {
           priority: 'critical',
         })),
       );
+      await supabaseAdmin.from('affiliate_anomaly_events').insert(
+        findings.map((finding) => ({
+          affiliate_id: finding.affiliate_id,
+          referral_code: finding.referral_code,
+          event_type: finding.kind,
+          severity: finding.kind === 'geo_anomaly' ? 'critical' : 'high',
+          payload: {
+            affiliate_name: finding.affiliate_name,
+            detail: finding.detail,
+            source: 'affiliate-anomaly-detect',
+            date: yesterdayIso,
+          },
+        })),
+      );
     }
 
     await void(supabaseAdmin.from('audit_logs').insert({

@@ -24,15 +24,16 @@ export default function WebVitalsReporter() {
 
   useEffect(() => {
     let cancelled = false;
-    const pageType = getPageType(pathname);
-    const slug = getSlug(pathname);
+    const path = pathname || '/';
+    const pageType = getPageType(path);
+    const slug = getSlug(path);
 
     const send = (name: string, value: number) => {
-      const key = `${pathname}::${name}`;
+      const key = `${path}::${name}`;
       if (sentRef.current.has(key)) return;
       sentRef.current.add(key);
 
-      const body = JSON.stringify({ name, value, path: pathname, pageType, slug });
+      const body = JSON.stringify({ name, value, path, pageType, slug });
       if (navigator.sendBeacon) {
         navigator.sendBeacon('/api/web-vitals', body);
       } else {

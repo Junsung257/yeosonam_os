@@ -96,7 +96,7 @@ export default function RecommendationSection({ customerId, destination, title =
           {recs.slice(0, 8).map(rec => (
             <Link
               key={rec.package_id}
-              href={`/packages/${rec.package_id}`}
+              href={`/packages/${encodeURIComponent(rec.package_id)}`}
               onClick={() => handleClick(rec.package_id)}
               className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-all"
             >

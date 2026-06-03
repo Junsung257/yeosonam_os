@@ -9,11 +9,13 @@
  * Vercel Cron: 0 * * * * (매시간)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { detectFraudSignals, maxSeverity, type BookingAttempt } from '@/lib/fraud-detect';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -30,10 +32,10 @@ interface BookingRow {
   } | null;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(request: NextRequest): Promise<Response> {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   try {
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     if (fetchErr) throw fetchErr;
     if (!bookings || bookings.length === 0) {
-      return NextResponse.json({ ok: true, checked: 0, flagged: 0 });
+      return apiResponse({ ok: true, checked: 0, flagged: 0 });
     }
 
     const rows = bookings as unknown as BookingRow[];
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     }
 
     if (flaggedItems.length === 0) {
-      return NextResponse.json({
+      return apiResponse({
         ok: true,
         checked: attempts.length,
         flagged: 0,
@@ -124,7 +126,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
             auto_action:   'memo_marked',
           });
         } else {
-          console.warn('[fraud-detect] booking auto-mark 실패:', memoErr.message);
+          console.warn('[fraud-detect] booking auto-mark 실패:', sanitizeDbError(memoErr));
         }
       }
       if (auditRows.length > 0) {
@@ -175,7 +177,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       medium: mediumItems.length,
     });
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       checked: attempts.length,
       flagged: flaggedItems.length,
@@ -184,8 +186,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       auto_actions: autoActions,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
+    const message = sanitizeDbError(err, 'Fraud detection failed');
     await sendSlackAlert('[사기 탐지 크론] 오류', { error: message });
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiResponse({ ok: false, error: message }, { status: 500 });
   }
 }

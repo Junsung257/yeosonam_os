@@ -1,15 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
   const codeRaw = request.nextUrl.searchParams.get('code') || '';
   const code = normalizeAffiliateReferralCode(codeRaw);
-  if (!code) return NextResponse.json({ valid: false, reason: 'INVALID_CODE' }, { status: 400 });
+  if (!code) return apiResponse({ valid: false, reason: 'INVALID_CODE' }, { status: 400 });
 
   const nowIso = new Date().toISOString();
   const { data, error } = await supabaseAdmin
@@ -18,8 +20,8 @@ export async function GET(request: NextRequest) {
     .eq('code', code)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data) return NextResponse.json({ valid: false, reason: 'NOT_FOUND' });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  if (!data) return apiResponse({ valid: false, reason: 'NOT_FOUND' });
 
   const row = data as {
     id: string;
@@ -34,14 +36,14 @@ export async function GET(request: NextRequest) {
     max_uses: number | null;
   };
 
-  if (!row.is_active) return NextResponse.json({ valid: false, reason: 'INACTIVE' });
-  if (row.starts_at && row.starts_at > nowIso) return NextResponse.json({ valid: false, reason: 'NOT_STARTED' });
-  if (row.ends_at && row.ends_at < nowIso) return NextResponse.json({ valid: false, reason: 'EXPIRED' });
+  if (!row.is_active) return apiResponse({ valid: false, reason: 'INACTIVE' });
+  if (row.starts_at && row.starts_at > nowIso) return apiResponse({ valid: false, reason: 'NOT_STARTED' });
+  if (row.ends_at && row.ends_at < nowIso) return apiResponse({ valid: false, reason: 'EXPIRED' });
   if (typeof row.max_uses === 'number' && row.max_uses >= 0 && row.uses_count >= row.max_uses) {
-    return NextResponse.json({ valid: false, reason: 'MAX_USES_REACHED' });
+    return apiResponse({ valid: false, reason: 'MAX_USES_REACHED' });
   }
 
-  return NextResponse.json({
+  return apiResponse({
     valid: true,
     promo: {
       id: row.id,

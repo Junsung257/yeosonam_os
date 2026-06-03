@@ -20,8 +20,8 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 
 interface Params {
-  params: Promise<{ id: string }>;
-  searchParams: Promise<{ ref?: string }>;
+  params: Promise<{ id?: string | string[] }>;
+  searchParams: Promise<{ ref?: string | string[] }>;
 }
 
 export const dynamic = 'force-dynamic';
@@ -41,16 +41,27 @@ interface AffiliateRow {
   logo_url: string | null;
 }
 
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default async function EmbedWidget(props: Params) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const { id } = params;
-  const ref = searchParams.ref ? normalizeAffiliateReferralCode(searchParams.ref) : '';
+  const id = getRouteParam(params.id);
+  const encodedId = encodeURIComponent(id);
+  const rawRef = getRouteParam(searchParams.ref);
+  const ref = rawRef ? normalizeAffiliateReferralCode(rawRef) : '';
 
   let pkg: PackageRow | null = null;
   let aff: AffiliateRow | null = null;
 
-  if (isSupabaseConfigured) {
+  if (id && isSupabaseConfigured) {
     try {
       const [{ data: p }, { data: a }] = await Promise.all([
         supabaseAdmin
@@ -68,10 +79,10 @@ export default async function EmbedWidget(props: Params) {
     } catch { /* */ }
   }
 
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://yeosonam.co.kr';
+  const baseUrl = siteBaseUrl();
   const targetUrl = ref
-    ? `${baseUrl}/packages/${id}?ref=${encodeURIComponent(ref)}&utm_source=embed`
-    : `${baseUrl}/packages/${id}?utm_source=embed`;
+    ? `${baseUrl}/packages/${encodedId}?ref=${encodeURIComponent(ref)}&utm_source=embed`
+    : `${baseUrl}/packages/${encodedId}?utm_source=embed`;
 
   if (!pkg) {
     return (

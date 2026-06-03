@@ -3,19 +3,21 @@
  *
  * /admin/jarvis/rag 페이지가 호출. retriever lib 그대로 활용.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { retrieve, type SourceType } from '@/lib/jarvis/rag/retriever';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const getHandler = async (req: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ hits: [] });
+const getHandler = async (req: NextRequest): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ hits: [] });
   const sp = req.nextUrl.searchParams;
   const q = sp.get('q')?.trim();
-  if (!q) return NextResponse.json({ hits: [], error: 'q 필수' }, { status: 400 });
+  if (!q) return apiResponse({ hits: [], error: 'q 필수' }, { status: 400 });
 
   const source = sp.get('source');
   const sourceTypes = source && ['package', 'blog', 'attraction', 'policy'].includes(source)
@@ -30,7 +32,7 @@ const getHandler = async (req: NextRequest) => {
       limit: 10,
       rerank: false,              // 원본 RRF 순서 유지 (검증용)
     });
-    return NextResponse.json({
+    return apiResponse({
       hits: hits.map(h => ({
         source_type: h.sourceType,
         source_id: h.sourceId,
@@ -44,8 +46,8 @@ const getHandler = async (req: NextRequest) => {
       })),
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed', hits: [] },
+    return apiResponse(
+      { error: sanitizeDbError(e, 'failed'), hits: [] },
       { status: 500 },
     );
   }

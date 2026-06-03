@@ -5,6 +5,11 @@ import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
 import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { logWarning } from '@/lib/sentry-logger';
+import { hashAffiliatePin } from '@/lib/affiliate/auth-service';
+
+function generatePortalPin(): string {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
 
 // GET: 파트너 신청 목록
 const getHandler = async (request: NextRequest) => {
@@ -50,7 +55,7 @@ const postHandler = async (request: NextRequest) => {
 
     if (action === 'approve') {
       // PIN 생성 (전화번호 뒷 4자리)
-      const pin = app.phone.replace(/[^0-9]/g, '').slice(-4) || '0000';
+      const pin = generatePortalPin();
 
       // 추천코드 생성 (혼동 문자 제외 6자리 + DB 중복 체크)
       const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // 0,O,1,I 제외
@@ -76,13 +81,15 @@ const postHandler = async (request: NextRequest) => {
           name: app.name,
           phone: app.phone,
           referral_code: code,
-          pin,
+          portal_pin: pin,
+          pin_hash: hashAffiliatePin(pin),
           payout_type: app.business_type === 'business' ? 'BUSINESS' : 'PERSONAL',
           business_number: app.business_number || null,
           commission_rate: getDefaultAffiliateCommissionRate(),
           is_active: true,
+          partner_status: 'approved_not_onboarded',
           memo: `채널: ${app.channel_type} / ${app.channel_url}${app.intro ? ` / ${app.intro}` : ''}`,
-        })
+        } as never)
         .select()
         .single();
 
@@ -114,7 +121,7 @@ const postHandler = async (request: NextRequest) => {
         logWarning('[admin/applications] approval notification failed', notifyErr);
       }
 
-      return NextResponse.json({ affiliate, message: '승인 완료' });
+      return NextResponse.json({ affiliate: { ...(affiliate as Record<string, unknown>), pin }, message: '승인 완료' });
 
     } else if (action === 'reject') {
       await supabaseAdmin

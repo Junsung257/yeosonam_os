@@ -14,6 +14,7 @@ import { triggerContentGeneration } from '@/lib/auto-content-trigger';
 import { getSecret } from '@/lib/secret-registry';
 import { withCronLogging } from '@/lib/cron-observability';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 300;
 
@@ -36,11 +37,11 @@ async function getNextCode(depCode: string, destCode: string, days: number): Pro
 
 const handleBandRss = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return { error: 'DB 미설정', errors: ['DB 미설정'] };
+  if (!isSupabaseConfigured) return { error: 'DB not configured', errors: ['DB not configured'] };
 
   const rssUrl = getSecret('BAND_RSS_URL');
   if (!rssUrl) {
-    return { skipped: true, reason: 'BAND_RSS_URL 미설정', errors: [] as string[] };
+    return { skipped: true, reason: 'BAND_RSS_URL not configured', errors: [] as string[] };
   }
 
   const results = { imported: 0, skipped: 0, failed: 0, errors: [] as string[] };
@@ -123,16 +124,17 @@ const handleBandRss = async (request: NextRequest) => {
         });
         results.imported++;
       } catch (err) {
+        const message = sanitizeDbError(err, 'Band post import failed');
         await supabaseAdmin.from('band_import_log').insert({
           post_url: post.url, post_title: post.title,
-          status: 'failed', error_msg: err instanceof Error ? err.message : '알 수 없는 오류',
+          status: 'failed', error_msg: message,
         });
         results.failed++;
-        results.errors.push(post.title);
+        results.errors.push(message);
       }
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'RSS 수신 실패';
+    const msg = sanitizeDbError(err, 'RSS fetch failed');
     return { error: msg, ...results, errors: [...results.errors, msg] };
   }
 

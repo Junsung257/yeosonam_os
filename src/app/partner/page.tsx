@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { fmtDateISO } from '@/lib/admin-utils';
 
@@ -44,9 +44,9 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: '#ef4444',
 };
 
-export default function PartnerPortalPage() {
+function PartnerPortalContent() {
   const searchParams = useSearchParams();
-  const token = searchParams.get('token') ?? '';
+  const token = searchParams?.get('token') ?? '';
 
   const [operator, setOperator] = useState<OperatorInfo | null>(null);
   const [packages, setPackages] = useState<PackageItem[]>([]);
@@ -405,3 +405,11 @@ const styles: Record<string, React.CSSProperties> = {
     marginTop: 32,
   },
 };
+
+export default function PartnerPortalPage() {
+  return (
+    <Suspense>
+      <PartnerPortalContent />
+    </Suspense>
+  );
+}

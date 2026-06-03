@@ -45,6 +45,8 @@ const BID_STATUS_COLORS: Record<string, string> = {
 };
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 // ── 카운트다운 ────────────────────────────────────────────────────────────────
 function UnlockCountdown({ seconds }: { seconds: number }) {
@@ -78,7 +80,8 @@ function UnlockCountdown({ seconds }: { seconds: number }) {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function TenantRfqsPage() {
   const params = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantId = getRouteParam(params?.tenantId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
 
   const [rfqs, setRfqs] = useState<TenantRfq[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,11 +92,17 @@ export default function TenantRfqsPage() {
     const interval = setInterval(fetchRfqs, 30000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [tenantId]);
+  }, [tenantId, encodedTenantId]);
 
   async function fetchRfqs() {
+    if (!tenantId) {
+      setError('테넌트 ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/tenant/rfqs?tenant_id=${tenantId}`);
+      const res = await fetch(`/api/tenant/rfqs?tenant_id=${encodedTenantId}`);
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
       const data = await res.json();
       setRfqs(Array.isArray(data) ? data : []);
@@ -217,14 +226,14 @@ export default function TenantRfqsPage() {
               {/* 액션 */}
               {rfq.is_unlocked && !rfq.my_bid ? (
                 <Link
-                  href={`/tenant/${tenantId}/rfqs/${rfq.id}`}
+                  href={`/tenant/${encodedTenantId}/rfqs/${encodeURIComponent(rfq.id)}`}
                   className="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   입찰하기
                 </Link>
               ) : rfq.is_unlocked && rfq.my_bid ? (
                 <Link
-                  href={`/tenant/${tenantId}/rfqs/${rfq.id}`}
+                  href={`/tenant/${encodedTenantId}/rfqs/${encodeURIComponent(rfq.id)}`}
                   className="block w-full text-center border border-indigo-300 text-indigo-700 hover:bg-indigo-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   상세 보기

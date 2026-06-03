@@ -24,37 +24,97 @@ const PKG_CARD_FIELDS =
   'id, title, destination, country, price, display_title, product_summary, product_highlights, status';
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slug?: string | string[] }>;
+}
+
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
+function socialImageUrl(): string {
+  return `${siteBaseUrl()}/og-image.png`;
+}
+
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const params = await props.params;
-  const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
-  const base = process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
+  const rawSlug = getRouteParam(params.slug);
+  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(rawSlug));
+  const base = siteBaseUrl();
+  const canonical = slug ? `${base}/with/${encodeURIComponent(slug)}` : `${base}/with`;
+  const imageUrl = socialImageUrl();
   if (!looksLikeReferralCode(slug)) {
-    return { title: '제휴 랜딩', robots: { index: false, follow: false } };
+    const title = '제휴 랜딩';
+    return {
+      title,
+      robots: { index: false, follow: false },
+      alternates: { canonical },
+      openGraph: {
+        title,
+        url: canonical,
+        type: 'website',
+        images: [{ url: imageUrl, width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        images: [imageUrl],
+      },
+    };
   }
   let name = slug;
   if (isSupabaseConfigured) {
-    const { data } = await supabaseAdmin
-      .from('affiliates')
-      .select('name')
-      .eq('referral_code', slug)
-      .eq('is_active', true)
-      .maybeSingle();
-    if (data && (data as { name?: string }).name) name = (data as { name: string }).name;
+    try {
+      const { data } = await supabaseAdmin
+        .from('affiliates')
+        .select('name')
+        .eq('referral_code', slug)
+        .eq('is_active', true)
+        .maybeSingle();
+      const affiliateName = typeof data?.name === 'string' ? data.name.trim() : '';
+      if (affiliateName) name = affiliateName;
+    } catch {
+      name = slug;
+    }
   }
+  const title = `${name} 제휴 여행`;
+  const socialTitle = `${name} x Yeosonam`;
   return {
-    title: `${name} × 여소남`,
+    title,
     description: `${name}님과 함께하는 여소남 패키지 여행. 제휴 혜택이 적용됩니다.`,
     robots: { index: false, follow: false },
-    alternates: { canonical: `${base}/with/${encodeURIComponent(slug)}` },
+    alternates: { canonical },
+    openGraph: {
+      title: socialTitle,
+      description: `${name} partner travel landing page.`,
+      url: canonical,
+      images: [{ url: imageUrl, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: socialTitle,
+      description: `${name} partner travel landing page.`,
+      images: [imageUrl],
+    },
   };
 }
 
 export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   const params = await props.params;
-  const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
+  const rawSlug = getRouteParam(params.slug);
+  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(rawSlug));
   if (!looksLikeReferralCode(slug)) notFound();
 
   if (!isSupabaseConfigured) {
@@ -68,12 +128,20 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
     );
   }
 
-  const { data: aff, error: affErr } = await supabaseAdmin
-    .from('affiliates')
-    .select('name, referral_code, logo_url, landing_intro, landing_pick_package_ids, landing_video_url')
-    .eq('referral_code', slug)
-    .eq('is_active', true)
-    .maybeSingle();
+  let aff: unknown = null;
+  let affErr: unknown = null;
+  try {
+    const result = await supabaseAdmin
+      .from('affiliates')
+      .select('name, referral_code, logo_url, landing_intro, landing_pick_package_ids, landing_video_url')
+      .eq('referral_code', slug)
+      .eq('is_active', true)
+      .maybeSingle();
+    aff = result.data;
+    affErr = result.error;
+  } catch {
+    affErr = true;
+  }
 
   if (affErr || !aff) notFound();
 
@@ -100,27 +168,35 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   }> = [];
 
   if (pickIds.length > 0) {
-    const { data: picked } = await supabaseAdmin
-      .from('travel_packages')
-      .select(PKG_CARD_FIELDS)
-      .in('id', pickIds)
-      .in('status', ['active', 'approved'])
-      .or('audit_status.is.null,audit_status.neq.blocked');
-    const order = new Map(pickIds.map((id, i) => [id, i]));
-    picks = (picked || []).sort(
-      (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
-    );
+    try {
+      const { data: picked } = await supabaseAdmin
+        .from('travel_packages')
+        .select(PKG_CARD_FIELDS)
+        .in('id', pickIds)
+        .in('status', ['active', 'approved'])
+        .or('audit_status.is.null,audit_status.neq.blocked');
+      const order = new Map(pickIds.map((id, i) => [id, i]));
+      picks = (picked || []).sort(
+        (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
+      );
+    } catch {
+      picks = [];
+    }
   }
 
   if (picks.length === 0) {
-    const { data: fallback } = await supabaseAdmin
-      .from('travel_packages')
-      .select(PKG_CARD_FIELDS)
-      .in('status', ['active', 'approved'])
-      .or('audit_status.is.null,audit_status.neq.blocked')
-      .order('created_at', { ascending: false })
-      .limit(6);
-    picks = fallback || [];
+    try {
+      const { data: fallback } = await supabaseAdmin
+        .from('travel_packages')
+        .select(PKG_CARD_FIELDS)
+        .in('status', ['active', 'approved'])
+        .or('audit_status.is.null,audit_status.neq.blocked')
+        .order('created_at', { ascending: false })
+        .limit(6);
+      picks = fallback || [];
+    } catch {
+      picks = [];
+    }
   }
 
   const refQ = encodeURIComponent(row.referral_code);
@@ -226,7 +302,7 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
                 return (
                   <li key={pkg.id}>
                     <Link
-                      href={`/packages/${pkg.id}?ref=${refQ}`}
+                      href={`/packages/${encodeURIComponent(pkg.id)}?ref=${refQ}`}
                       className="block h-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-emerald-400 hover:shadow-md"
                     >
                       <div className="text-xs font-medium text-emerald-700">

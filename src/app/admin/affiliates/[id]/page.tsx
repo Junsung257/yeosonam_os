@@ -62,9 +62,13 @@ const STATUS_LABELS: Record<string, string> = {
   PENDING: '이월 대기', READY: '지급 대기', COMPLETED: '지급 완료', VOID: '취소됨',
 };
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function AffiliateDetailPage() {
-  const params = useParams<{ id: string }>();
-  const affiliateId = typeof params?.id === 'string' ? params.id : '';
+  const params = useParams<{ id?: string | string[] }>();
+  const affiliateId = getRouteParam(params?.id);
   const [affiliate, setAffiliate] = useState<Affiliate | null>(null);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,13 +91,21 @@ export default function AffiliateDetailPage() {
   }, []);
 
   const load = useCallback(async () => {
-    if (!affiliateId) return;
+    if (!affiliateId) {
+      setAffiliate(null);
+      setSettlements([]);
+      setPromoRows([]);
+      setLoading(false);
+      return;
+    }
+
+    const encodedAffiliateId = encodeURIComponent(affiliateId);
     setLoading(true);
     try {
       const [aRes, sRes, pRes] = await Promise.all([
-        fetch(`/api/affiliates?id=${affiliateId}&showBankInfo=false`),
-        fetch(`/api/settlements?affiliateId=${affiliateId}`),
-        fetch(`/api/admin/affiliate-promo-report?affiliateId=${affiliateId}`),
+        fetch(`/api/affiliates?id=${encodedAffiliateId}&showBankInfo=false`),
+        fetch(`/api/settlements?affiliateId=${encodedAffiliateId}`),
+        fetch(`/api/admin/affiliate-promo-report?affiliateId=${encodedAffiliateId}`),
       ]);
       const aJson = await aRes.json();
       const sJson = await sRes.json();
@@ -173,7 +185,7 @@ export default function AffiliateDetailPage() {
 
   const toggleBankInfo = async () => {
     if (!affiliateId) return;
-    const res = await fetch(`/api/affiliates?id=${affiliateId}&showBankInfo=true`);
+    const res = await fetch(`/api/affiliates?id=${encodeURIComponent(affiliateId)}&showBankInfo=true`);
     const json = await res.json();
     setAffiliate(prev => prev ? { ...prev, bank_info: json.affiliate?.bank_info } : prev);
     setShowBankInfo(true);
@@ -809,7 +821,7 @@ function ContentInsightSection({
 
   const handleMarkRead = async (insightId: string) => {
     try {
-      await fetch(`/api/affiliate/insights/${insightId}/read`, {
+      await fetch(`/api/affiliate/insights/${encodeURIComponent(insightId)}/read`, {
         method: 'PATCH',
       });
       setInsights((prev) =>

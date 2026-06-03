@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 function lastNDays(n: number): string[] {
   const days: string[] = [];
@@ -49,9 +51,9 @@ function buildMockPerformance() {
  * - trend: 7일 시계열 (recharts LineChart용)
  * - recent_tasks: 에이전트 실행 최신 20건
  */
-const getHandler = async (request: NextRequest): Promise<NextResponse> => {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(buildMockPerformance());
+    return apiResponse(buildMockPerformance());
   }
 
   const daysParam = Math.min(
@@ -171,10 +173,10 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
         t.started_at && t.completed_at
           ? new Date(t.completed_at).getTime() - new Date(t.started_at).getTime()
           : null,
-      last_error: t.last_error,
+      last_error: t.last_error ? sanitizeDbError(t.last_error) : null,
     }));
 
-    return NextResponse.json({
+    return apiResponse({
       period: `last_${days}d`,
       metrics: {
         ad: { roas_pct, total_spend, total_revenue },
@@ -185,8 +187,8 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       recent_tasks,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

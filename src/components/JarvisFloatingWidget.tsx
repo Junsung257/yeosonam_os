@@ -45,6 +45,7 @@ const RISK_STYLES = {
 
 export default function JarvisFloatingWidget() {
   const pathname = usePathname()
+  const path = pathname || '/'
   const [isOpen, setIsOpen] = useState(false)
   const [messages, setMessages] = useState<Message[]>([
     { id: '0', role: 'assistant', content: '안녕하세요! 자비스입니다. 무엇을 도와드릴까요?' }
@@ -64,9 +65,9 @@ export default function JarvisFloatingWidget() {
   }, [isOpen])
 
   // admin 페이지에서만 표시 (모든 hook 이후 early return — react-hooks/rules-of-hooks)
-  if (!pathname.startsWith('/admin')) return null
+  if (!path.startsWith('/admin')) return null
   // /admin/jarvis 페이지에서는 중복 방지 위해 숨김
-  if (pathname.startsWith('/admin/jarvis')) return null
+  if (path.startsWith('/admin/jarvis')) return null
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || loading) return

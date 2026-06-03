@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 발행 정책 관리 API (plural — admin-guarded)
@@ -35,11 +37,11 @@ type AllowedField = typeof ALLOWED_FIELDS[number];
 const SLOT_TIME_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 function unauthorized() {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  return apiResponse({ error: 'Unauthorized' }, { status: 401 });
 }
 
 function badRequest(msg: string) {
-  return NextResponse.json({ error: msg }, { status: 400 });
+  return apiResponse({ error: msg }, { status: 400 });
 }
 
 function validateField(key: AllowedField, value: unknown): string | null {
@@ -111,7 +113,7 @@ function validateField(key: AllowedField, value: unknown): string | null {
 export async function GET(request: NextRequest) {
   if (!(await isAdminRequest(request))) return unauthorized();
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ items: [], configured: false });
+    return apiResponse({ items: [], configured: false });
   }
 
   const scope = request.nextUrl.searchParams.get('scope');
@@ -123,15 +125,15 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
-  return NextResponse.json({ items: data ?? [], configured: true });
+  return apiResponse({ items: data ?? [], configured: true });
 }
 
 export async function PATCH(request: NextRequest) {
   if (!(await isAdminRequest(request))) return unauthorized();
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 });
+    return apiResponse({ error: 'Service unavailable' }, { status: 503 });
   }
 
   let body: Record<string, unknown>;
@@ -168,14 +170,14 @@ export async function PATCH(request: NextRequest) {
     .limit(1);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
   if (!data || data.length === 0) {
-    return NextResponse.json({ error: `policy not found for scope=${scope}` }, { status: 404 });
+    return apiResponse({ error: `policy not found for scope=${scope}` }, { status: 404 });
   }
 
   const actor = await resolveAdminActorLabel(request);
-  return NextResponse.json({
+  return apiResponse({
     item: data[0],
     actor,
     changed_fields: Object.keys(updates).filter((k) => k !== 'updated_at'),

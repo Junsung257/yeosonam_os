@@ -10,23 +10,30 @@ interface Tenant {
   status: string;
 }
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
   const params    = useParams();
-  const tenantId  = params.tenantId as string;
+  const tenantId  = getRouteParam(params?.tenantId);
+  const encodedTenantId = encodeURIComponent(tenantId);
+  const currentPath = pathname || '';
   const [tenant, setTenant] = useState<Tenant | null>(null);
 
   useEffect(() => {
-    fetch(`/api/tenants/${tenantId}`)
+    if (!tenantId) return;
+
+    fetch(`/api/tenants/${encodedTenantId}`)
       .then(r => r.json())
       .then(d => setTenant(d.tenant ?? null))
       .catch(() => {});
-  }, [tenantId]);
+  }, [encodedTenantId, tenantId]);
 
   const navItems = [
-    { href: `/tenant/${tenantId}/products`,    label: '🛍 상품 관리' },
-    { href: `/tenant/${tenantId}/inventory`,   label: '📅 재고 관리' },
-    { href: `/tenant/${tenantId}/settlements`, label: '💰 정산 조회' },
+    { href: `/tenant/${encodedTenantId}/products`,    label: '🛍 상품 관리' },
+    { href: `/tenant/${encodedTenantId}/inventory`,   label: '📅 재고 관리' },
+    { href: `/tenant/${encodedTenantId}/settlements`, label: '💰 정산 조회' },
   ];
 
   return (
@@ -62,7 +69,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
                     key={item.href}
                     href={item.href}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                      pathname.startsWith(item.href)
+                      currentPath.startsWith(item.href)
                         ? 'bg-indigo-50 text-indigo-700'
                         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                     }`}

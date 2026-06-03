@@ -1,23 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { getSecret } from '@/lib/secret-registry';
-import crypto from 'crypto';
+import { verifyAffiliateToken } from '@/lib/affiliate/jwt-auth';
 
 export const runtime = 'nodejs';
-
-function verifyToken(token: string): string | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 2) return null;
-    const payload = JSON.parse(Buffer.from(parts[0], 'base64').toString());
-    const secret = getSecret('AFFILIATE_TOKEN_SECRET') || getSecret('SUPABASE_JWT_SECRET') || 'dev-secret-change-in-prod';
-    const expectedHmac = crypto.createHmac('sha256', secret).update(parts[0]).digest('hex');
-    if (parts[1] !== expectedHmac) return null;
-    return payload.affiliate_id;
-  } catch {
-    return null;
-  }
-}
 
 export async function GET(
   request: NextRequest,
@@ -34,12 +19,13 @@ export async function GET(
     return NextResponse.json({ error: '인증 필요' }, { status: 401 });
   }
 
-  const affiliateId = verifyToken(auth.slice(7));
-  if (!affiliateId) {
+  const token = await verifyAffiliateToken(auth.slice(7));
+  if (!token.ok) {
     return NextResponse.json({ error: '유효하지 않은 토큰' }, { status: 401 });
   }
 
   // 카드뉴스 조회 + 권한 확인 (created_by_affiliate_id가 일치해야 함)
+  const affiliateId = token.affiliateId;
   const { data: cardNews, error } = await supabaseAdmin
     .from('card_news')
     .select('*')

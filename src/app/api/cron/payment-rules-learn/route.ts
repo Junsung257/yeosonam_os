@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifySlack } from '@/lib/slack-notifier';
 import { withCronGuard } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * GET /api/cron/payment-rules-learn
@@ -14,7 +16,7 @@ import { withCronGuard } from '@/lib/cron-auth';
 export const dynamic = 'force-dynamic';
 const getHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 500 });
   }
 
   const minCount = Number(req.nextUrl.searchParams.get('min_count')) || 3;
@@ -34,10 +36,10 @@ const getHandler = async (req: NextRequest) => {
         { lookback_days: lookbackDays, min_count: minCount },
       ).catch(() => {});
     }
-    return NextResponse.json(data);
+    return apiResponse(data);
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : '학습 실패' },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(err, 'Learning failed') },
       { status: 500 },
     );
   }

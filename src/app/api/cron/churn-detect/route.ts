@@ -19,6 +19,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { logError } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +47,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   try {
@@ -74,7 +76,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     if (refundViews.length === 0) {
-      return NextResponse.json({
+      return apiResponse({
         ok: true,
         risky_count: 0,
         message: '환불 페이지 조회 없음',
@@ -126,7 +128,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     });
 
     if (riskyBookings.length === 0) {
-      return NextResponse.json({
+      return apiResponse({
         ok: true,
         risky_count: 0,
         refund_page_views: refundViews.length,
@@ -191,7 +193,7 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
     console.log(`[churn-detect] 취소 위험 ${riskyBookings.length}명 감지, Slack 발송 완료`);
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       risky_count: riskyBookings.length,
       refund_page_views: refundViews.length,
@@ -206,9 +208,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       checked_at: new Date().toISOString(),
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '취소 감지 실패';
+    const message = sanitizeDbError(err, 'Churn detection failed');
     logError('[cron/churn-detect] detection failed', err);
     await sendSlackAlert(`[churn-detect] 크론 오류: ${message}`);
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiResponse({ ok: false, error: message }, { status: 500 });
   }
 }

@@ -1,90 +1,84 @@
-/**
- * 여소남 OS — MCP API 키 관리 API
- *
- * GET  /api/admin/mcp/tokens — 키 목록 조회
- * POST /api/admin/mcp/tokens — 새 키 생성
- * DELETE /api/admin/mcp/tokens?id=xxx — 키 비활성화
- *
- * 키는 tenant_tokens 테이블을 사용하지만,
- * MCP 전용으로 provider='mcp' 인 레코드를 사용.
- */
+import { createHash, randomBytes } from 'crypto';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { invalidateMcpAuthCache } from '@/lib/jarvis/mcp-server';
+import { supabaseAdmin } from '@/lib/supabase';
 
-import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
-import { invalidateMcpAuthCache } from '@/lib/jarvis/mcp-server'
-import { createHash, randomBytes } from 'crypto'
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-
-/** MCP API 키 생성 (sk-mcp- 접두사 + 32바이트 랜덤 hex) */
 function generateMcpKey(): string {
-  const raw = randomBytes(32).toString('hex')
-  return `sk-mcp-${raw}`
+  const raw = randomBytes(32).toString('hex');
+  return `sk-mcp-${raw}`;
 }
 
 function hashKey(key: string): string {
-  return createHash('sha256').update(key).digest('hex')
+  return createHash('sha256').update(key).digest('hex');
 }
 
-/** 인증 미들웨어 */
-async function requireAdmin(request: NextRequest) {
-  const { data: { user } } = await supabaseAdmin.auth.getUser(
-    request.headers.get('Authorization')?.replace('Bearer ', '') ?? '',
-  )
-  if (!user) {
-    return null
-  }
-  // platform_admin 확인
-  const { data: profile } = await supabaseAdmin
+async function requirePlatformAdmin(request: NextRequest) {
+  const token = request.headers.get('Authorization')?.replace('Bearer ', '') ?? '';
+  const { data: { user } } = await supabaseAdmin.auth.getUser(token);
+  if (!user) return null;
+
+  const { data: profile, error } = await supabaseAdmin
     .from('staff_profiles')
     .select('role')
     .eq('id', user.id)
-    .single()
-  if (!profile || profile.role !== 'platform_admin') {
-    return null
-  }
-  return user
+    .single();
+
+  if (error || !profile || profile.role !== 'platform_admin') return null;
+  return user;
 }
 
 export async function GET(request: NextRequest) {
-  const user = await requireAdmin(request)
+  const user = await requirePlatformAdmin(request);
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return apiResponse({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const { data, error } = await supabaseAdmin
     .from('tenant_tokens')
     .select('id, label, token_prefix, role, is_active, last_used_at, created_at')
     .eq('provider', 'mcp')
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({ tokens: data ?? [] })
+  return apiResponse({ tokens: data ?? [] });
 }
 
 export async function POST(request: NextRequest) {
-  const user = await requireAdmin(request)
+  const user = await requirePlatformAdmin(request);
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return apiResponse({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
-  const { label, role } = await request.json()
+  let body: { label?: unknown; role?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
+  }
+
+  const label = typeof body.label === 'string' ? body.label.trim() : '';
   if (!label) {
-    return NextResponse.json({ error: 'label 필드 필요' }, { status: 400 })
+    return apiResponse({ error: 'LABEL_REQUIRED' }, { status: 400 });
   }
 
-  const validRoles = ['tenant_staff', 'tenant_admin', 'platform_admin']
-  if (role && !validRoles.includes(role)) {
-    return NextResponse.json({ error: `role 은 ${validRoles.join(', ')} 중 하나` }, { status: 400 })
+  const validRoles = ['tenant_staff', 'tenant_admin', 'platform_admin'] as const;
+  const role = typeof body.role === 'string' ? body.role : undefined;
+  if (role && !validRoles.includes(role as typeof validRoles[number])) {
+    return apiResponse({ error: 'INVALID_ROLE' }, { status: 400 });
   }
 
-  const rawKey = generateMcpKey()
-  const keyHash = hashKey(rawKey)
-  const prefix = rawKey.substring(0, 12) // sk-mcp-XXXXXX...
+  const rawKey = generateMcpKey();
+  const keyHash = hashKey(rawKey);
+  const prefix = rawKey.substring(0, 12);
+  const tokenRole = role ?? 'tenant_staff';
 
   const { data, error } = await supabaseAdmin
     .from('tenant_tokens')
@@ -92,50 +86,48 @@ export async function POST(request: NextRequest) {
       provider: 'mcp',
       label,
       token_prefix: prefix,
-      access_token: keyHash, // SHA-256 해시만 저장 (원본은 반환 후 폐기)
-      role: role ?? 'tenant_staff',
+      access_token: keyHash,
+      role: tokenRole,
       is_active: true,
       scopes: [],
     })
     .select('id')
-    .single()
+    .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({
+  return apiResponse({
     id: data.id,
-    token: rawKey, // 최초 1회만 반환
+    token: rawKey,
     label,
-    role: role ?? 'tenant_staff',
-  })
+    role: tokenRole,
+  });
 }
 
 export async function DELETE(request: NextRequest) {
-  const user = await requireAdmin(request)
+  const user = await requirePlatformAdmin(request);
   if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return apiResponse({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
-  const id = request.nextUrl.searchParams.get('id')
+  const id = request.nextUrl.searchParams.get('id');
   if (!id) {
-    return NextResponse.json({ error: 'id 파라미터 필요' }, { status: 400 })
+    return apiResponse({ error: 'ID_REQUIRED' }, { status: 400 });
   }
 
-  // 완전 삭제 대신 비활성화
   const { error } = await supabaseAdmin
     .from('tenant_tokens')
     .update({ is_active: false })
     .eq('id', id)
-    .eq('provider', 'mcp')
+    .eq('provider', 'mcp');
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  // 캐시 무효화
-  invalidateMcpAuthCache()
+  invalidateMcpAuthCache();
 
-  return NextResponse.json({ success: true })
+  return apiResponse({ success: true });
 }

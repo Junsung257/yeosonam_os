@@ -78,6 +78,11 @@ function EmptyReviewsState() {
   );
 }
 
+function clampRating(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.min(5, Math.max(1, value));
+}
+
 export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
   if (!isSupabaseConfigured) return null;
 
@@ -106,7 +111,9 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
   const rows = (reviews as unknown as ReviewRow[]) || [];
   if (rows.length === 0) return <EmptyReviewsState />;
 
-  const avg = Number(stats.avg_rating);
+  const avg = clampRating(Number(stats.avg_rating));
+  if (avg === null) return <EmptyReviewsState />;
+  const reviewCount = Math.max(rows.length, Number(stats.review_count) || 0);
 
   // 세부 카테고리 평균
   const withRatings = rows.filter(r => r.value_for_money || r.itinerary_quality || r.guide_quality || r.accommodation_quality || r.food_quality);
@@ -135,13 +142,13 @@ export default async function ReviewsSection({ packageId, limit = 5 }: Props) {
             aggregateRating: {
               '@type': 'AggregateRating',
               ratingValue: avg.toFixed(2),
-              reviewCount: stats.review_count,
+              reviewCount,
               bestRating: 5,
               worstRating: 1,
             },
             review: rows.slice(0, 5).map(r => ({
               '@type': 'Review',
-              reviewRating: { '@type': 'Rating', ratingValue: r.overall_rating, bestRating: 5 },
+              reviewRating: { '@type': 'Rating', ratingValue: clampRating(r.overall_rating) ?? 1, bestRating: 5 },
               author: { '@type': 'Person', name: r.customers?.name?.charAt(0) ? `${r.customers.name.charAt(0)}**` : '고객' },
               datePublished: r.created_at,
               ...(r.review_text ? { reviewBody: r.review_text } : {}),

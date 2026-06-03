@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * Vercel Cron 엔트리포인트
@@ -27,7 +29,14 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    const result = await optimizeResponse.json();
+    const result = (await optimizeResponse.json()) as Record<string, any>;
+
+    if (!optimizeResponse.ok) {
+      return apiResponse(
+        { ok: false, error: sanitizeDbError(result?.error ?? `HTTP ${optimizeResponse.status}`) },
+        { status: optimizeResponse.status },
+      );
+    }
 
     console.log(
       `[META CRON] ${new Date().toISOString()} — ` +
@@ -37,15 +46,16 @@ export async function GET(request: NextRequest) {
       `오류: ${result.errors?.length ?? 0}개`
     );
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       timestamp: new Date().toISOString(),
       ...result,
     });
   } catch (error) {
-    console.error('[META CRON] 자동 최적화 실패:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '크론 실행 실패' },
+    const message = sanitizeDbError(error, 'Meta optimization cron failed');
+    console.error('[META CRON] 자동 최적화 실패:', message);
+    return apiResponse(
+      { error: message },
       { status: 500 }
     );
   }

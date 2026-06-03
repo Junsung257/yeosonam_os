@@ -1,9 +1,6 @@
-/**
- * GET /api/tax?month=YYYY-MM
- * 출발일 기준 세무 데이터 조회
- * 반환: { bookings, kpis, todos }
- */
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 function monthRange(month: string): { from: string; to: string } {
@@ -14,9 +11,14 @@ function monthRange(month: string): { from: string; to: string } {
   return { from, to };
 }
 
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' };
+
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ bookings: [], kpis: {}, todos: {} }, { headers: { 'Cache-Control': 'no-store' } });
+    return apiResponse(
+      { bookings: [], kpis: {}, todos: {} },
+      { headers: NO_STORE_HEADERS },
+    );
   }
 
   const month = request.nextUrl.searchParams.get('month') ??
@@ -39,29 +41,30 @@ export async function GET(request: NextRequest) {
     .order('departure_date', { ascending: true });
 
   if (error) {
-    console.error('[세무] 조회 실패:', error);
-    return NextResponse.json({ error: error.message }, { headers: { 'Cache-Control': 'no-store' }, status: 500 });
+    console.error('[tax] fetch failed:', sanitizeDbError(error));
+    return apiResponse(
+      { error: sanitizeDbError(error, '조회 실패') },
+      { headers: NO_STORE_HEADERS, status: 500 },
+    );
   }
 
   const bookings = data ?? [];
 
-  // KPI 집계 (정수 연산, 1원 오차 없음)
   const total_price = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_price as number | null) ?? 0)), 0);
-  const total_cost  = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_cost  as number | null) ?? 0)), 0);
-  const net_sales   = total_price - total_cost;
+  const total_cost = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_cost as number | null) ?? 0)), 0);
+  const net_sales = total_price - total_cost;
   const vat_estimate = Math.floor(net_sales * 0.1);
 
-  // To-Do 알림
   const pending_transfers = bookings.filter(
-    (b: Record<string, unknown>) => b.transfer_status === 'PENDING' && b.status !== 'cancelled'
+    (b: Record<string, unknown>) => b.transfer_status === 'PENDING' && b.status !== 'cancelled',
   );
   const not_issued_receipts = bookings.filter(
-    (b: Record<string, unknown>) => b.customer_receipt_status === 'NOT_ISSUED'
+    (b: Record<string, unknown>) => b.customer_receipt_status === 'NOT_ISSUED',
   );
 
-  return NextResponse.json({
+  return apiResponse({
     bookings,
     kpis: { total_price, total_cost, net_sales, vat_estimate },
     todos: { pending_transfers, not_issued_receipts },
-  }, { headers: { 'Cache-Control': 'no-store' } });
+  }, { headers: NO_STORE_HEADERS });
 }

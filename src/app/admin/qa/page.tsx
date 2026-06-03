@@ -285,7 +285,7 @@ export default function QAPage() {
                 {mmsg.packages && mmsg.packages.length > 0 && (
                   <div className="mt-3 space-y-2">
                     {mmsg.packages.map((pkg) => (
-                      <Link key={pkg.id} href={`/packages/${pkg.id}`}>
+                      <Link key={pkg.id} href={`/packages/${encodeURIComponent(pkg.id)}`}>
                         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 hover:border-admin-border-strong transition cursor-pointer">
                           <p className="font-medium text-admin-text-2 text-admin-sm">{pkg.title}</p>
                           <div className="flex items-center gap-3 mt-1 text-[11px] text-admin-muted">

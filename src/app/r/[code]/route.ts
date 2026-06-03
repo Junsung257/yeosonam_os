@@ -14,12 +14,17 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { isValidUuid } from '@/lib/supabase-filter-safe';
 
-export async function GET(request: NextRequest, props: { params: Promise<{ code: string }> }) {
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+export async function GET(request: NextRequest, props: { params: Promise<{ code?: string | string[] }> }) {
   const params = await props.params;
-  const { code } = params;
+  const code = getRouteParam(params.code);
 
-  if (!isSupabaseConfigured || !supabaseAdmin) {
+  if (!isSupabaseConfigured || !supabaseAdmin || !isValidUuid(code)) {
     return NextResponse.redirect(new URL('/', request.url));
   }
 

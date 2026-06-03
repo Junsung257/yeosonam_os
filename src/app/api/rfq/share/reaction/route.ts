@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { addRfqReaction } from '@/lib/db/rfq-share';
 
 export async function POST(req: NextRequest) {
@@ -7,17 +9,17 @@ export async function POST(req: NextRequest) {
     const { rfqId, visitorToken, reactionType, comment } = body;
 
     if (!rfqId || !visitorToken || !reactionType) {
-      return NextResponse.json({ error: '필수 파라미터 누락' }, { status: 400 });
+      return apiResponse({ error: '필수 파라미터 누락' }, { status: 400 });
     }
 
     const ok = await addRfqReaction(rfqId, visitorToken, reactionType, comment);
     if (!ok) {
-      return NextResponse.json({ error: '반응 저장 실패' }, { status: 500 });
+      return apiResponse({ error: '반응 저장 실패' }, { status: 500 });
     }
 
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   } catch (e) {
-    console.error('Reaction API error:', e);
-    return NextResponse.json({ error: '서버 오류' }, { status: 500 });
+    console.error('Reaction API error:', sanitizeDbError(e));
+    return apiResponse({ error: '서버 오류' }, { status: 500 });
   }
 }

@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
+import { apiResponse } from '@/lib/api-response';
 import { withCronGuard } from '@/lib/cron-auth';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 /**
  * unmatched_activities 일일 안전망 sweep — ERR-unmatched-stale-after-alias@2026-04-29
@@ -21,11 +22,10 @@ export const dynamic = 'force-dynamic';
 const getHandler = async () => {
   try {
     const result = await resweepUnmatchedActivities(); // attractionIds 없으면 전체 sweep
-    return NextResponse.json({ ok: true, ...result });
+    return apiResponse({ ok: true, ...result });
   } catch (error) {
-    console.error('[cron resweep-unmatched]', error);
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : 'sweep 실패' },
+    return apiResponse(
+      { ok: false, error: logAndSanitize('cron resweep-unmatched', error, 'sweep failed') },
       { status: 500 },
     );
   }

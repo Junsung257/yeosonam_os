@@ -12,6 +12,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { safeEqualString } from '@/lib/timing-safe';
@@ -31,29 +33,34 @@ interface TossWebhookBody {
   };
 }
 
+function maskOrderId(orderId: string): string {
+  if (orderId.length <= 8) return '***';
+  return `${orderId.slice(0, 4)}***${orderId.slice(-4)}`;
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   // 서명 검증: Basic {base64(secretKey:)} 형식
   const secretKey = getSecret('TOSS_SECRET_KEY');
   if (!secretKey) {
-    console.error('[toss-webhook] TOSS_SECRET_KEY 미설정 — 요청 거부');
-    return NextResponse.json({ error: 'TOSS_SECRET_KEY 미설정' }, { status: 503 });
+    console.error('[toss-webhook] signing secret missing');
+    return apiResponse({ error: 'Webhook unavailable' }, { status: 503 });
   }
   const authHeader = request.headers.get('Authorization') ?? '';
   const expected = `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`;
   if (!safeEqualString(authHeader, expected)) {
-    return NextResponse.json({ error: '인증 실패' }, { status: 401 });
+    return apiResponse({ error: 'Unauthorized' }, { status: 401 });
   }
 
   let body: TossWebhookBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'invalid json' }, { status: 400 });
+    return apiResponse({ error: 'invalid json' }, { status: 400 });
   }
 
   if (!isSupabaseConfigured) {
     console.log('[toss-webhook] Supabase 미설정, 이벤트 무시:', body.eventType);
-    return NextResponse.json({ ok: true });
+    return apiResponse({ ok: true });
   }
 
   try {
@@ -82,7 +89,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           const tenantPrefix = orderId.split('-')[0];
           if (tenantPrefix) {
             // prefix 매칭으로 구독 상태 업데이트 (옵션 — 비정확할 수 있어 로그만)
-            console.warn(`[toss-webhook] 결제 취소: orderId=${orderId}`);
+            console.warn(`[toss-webhook] 결제 취소: orderId=${maskOrderId(orderId)}`);
           }
         }
         break;
@@ -107,9 +114,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         break;
     }
   } catch (err) {
-    console.error('[toss-webhook] 처리 오류:', err instanceof Error ? err.message : err);
-    return NextResponse.json({ error: '처리 실패' }, { status: 500 });
+    console.error('[toss-webhook] 처리 오류:', sanitizeDbError(err));
+    return apiResponse({ error: '처리 실패' }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

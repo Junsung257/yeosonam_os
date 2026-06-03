@@ -4,9 +4,11 @@
  * TMP 파이프라인 현황: 임포트된 상품들의 카드뉴스·블로그·발행 상태를 한 번에 조회
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export interface PipelineRow {
   productId: string;
@@ -23,12 +25,15 @@ export interface PipelineRow {
   threadsPublishedAt: string | null;
 }
 
-const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ rows: [] });
+const getHandler = async (request: NextRequest): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ rows: [] });
 
   const { searchParams } = request.nextUrl;
   const source = searchParams.get('source') ?? 'all';
-  const limit  = Math.min(100, parseInt(searchParams.get('limit') ?? '50'));
+  const requestedLimit = Number.parseInt(searchParams.get('limit') ?? '50', 10);
+  const limit = Number.isFinite(requestedLimit)
+    ? Math.min(100, Math.max(1, requestedLimit))
+    : 50;
 
   try {
     // 임포트된 상품 목록
@@ -45,7 +50,7 @@ const getHandler = async (request: NextRequest) => {
 
     const { data: products, error } = await q;
     if (error) throw error;
-    if (!products?.length) return NextResponse.json({ rows: [] });
+    if (!products?.length) return apiResponse({ rows: [] });
 
     const productIds = (products as ProductRow[]).map(p => p.id);
 
@@ -105,10 +110,10 @@ const getHandler = async (request: NextRequest) => {
       };
     });
 
-    return NextResponse.json({ rows });
+    return apiResponse({ rows });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err, '조회 실패') },
       { status: 500 },
     );
   }

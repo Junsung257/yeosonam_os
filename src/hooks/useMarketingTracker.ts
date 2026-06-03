@@ -110,7 +110,7 @@ export function useMarketingTracker() {
       setLogs(prev => prev.filter(l => l.id !== existing.id));
 
       try {
-        const res = await fetch(`/api/marketing-logs?id=${existing.id}`, { method: 'DELETE' });
+        const res = await fetch(`/api/marketing-logs?id=${encodeURIComponent(existing.id)}`, { method: 'DELETE' });
         if (!res.ok) throw new Error('삭제 실패');
         setTogglingKey(null);
         return { success: true };

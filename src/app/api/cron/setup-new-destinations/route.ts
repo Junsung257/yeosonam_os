@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 신규 여행지 자동 셋업 크론
@@ -18,7 +20,7 @@ export async function POST(req: NextRequest) {
     return cronUnauthorizedResponse();
   }
 
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) return apiResponse({ error: 'DB not configured' }, { status: 503 });
 
   const { generateDestinationTaglines } = await import('@/lib/destination-setup');
 
@@ -28,7 +30,7 @@ export async function POST(req: NextRequest) {
     supabaseAdmin.from('destination_metadata').select('destination'),
   ]);
 
-  if (!allDests) return NextResponse.json({ error: 'destinations 조회 실패' }, { status: 500 });
+  if (!allDests) return apiResponse({ error: 'destinations lookup failed' }, { status: 500 });
 
   const existingSet = new Set((existingMeta || []).map((m: { destination: string }) => m.destination));
   const newDests = allDests
@@ -36,7 +38,7 @@ export async function POST(req: NextRequest) {
     .filter((d: string) => !existingSet.has(d));
 
   if (newDests.length === 0) {
-    return NextResponse.json({ message: '신규 여행지 없음', processed: 0 });
+    return apiResponse({ message: '신규 여행지 없음', processed: 0 });
   }
 
   const results: Array<{ destination: string; status: 'ok' | 'error'; tagline?: string; error?: string }> = [];
@@ -49,12 +51,12 @@ export async function POST(req: NextRequest) {
         .from('destination_metadata')
         .upsert({ destination, tagline, hero_tagline, photo_approved: false }, { onConflict: 'destination' });
 
-      if (error) throw new Error(error.message);
+      if (error) throw error;
 
       results.push({ destination, status: 'ok', tagline });
       await new Promise(r => setTimeout(r, 300)); // Rate limit 방어
     } catch (e) {
-      results.push({ destination, status: 'error', error: e instanceof Error ? e.message : String(e) });
+      results.push({ destination, status: 'error', error: sanitizeDbError(e) });
     }
   }
 
@@ -73,7 +75,7 @@ export async function POST(req: NextRequest) {
     } catch { /* fire-and-forget */ }
   }
 
-  return NextResponse.json({
+  return apiResponse({
     processed: results.length,
     succeeded: succeeded.length,
     failed: failed.length,

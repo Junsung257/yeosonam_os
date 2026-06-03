@@ -8,12 +8,17 @@ interface BookingInfo {
 }
 
 interface PageProps {
-  params: Promise<{ token: string }>;
+  params: Promise<{ token?: string | string[] }>;
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
 }
 
 export default function CompanionOnboardingPage(props: PageProps) {
   const params = use(props.params);
-  const { token } = params;
+  const token = getRouteParam(params.token);
+  const encodedToken = encodeURIComponent(token);
 
   const [bookingInfo, setBookingInfo] = useState<BookingInfo | null>(null);
   const [alreadySubmitted, setAlreadySubmitted] = useState(false);
@@ -32,7 +37,13 @@ export default function CompanionOnboardingPage(props: PageProps) {
   const [email, setEmail] = useState('');
 
   useEffect(() => {
-    fetch(`/api/join/${token}`)
+    if (!token) {
+      setLoadError('초대 링크가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
+    fetch(`/api/join/${encodedToken}`)
       .then(async (res) => {
         const json = await res.json();
         if (!res.ok) {
@@ -44,7 +55,7 @@ export default function CompanionOnboardingPage(props: PageProps) {
       })
       .catch(() => setLoadError('서버에 연결할 수 없습니다.'))
       .finally(() => setLoading(false));
-  }, [token]);
+  }, [encodedToken, token]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -52,7 +63,7 @@ export default function CompanionOnboardingPage(props: PageProps) {
     setSubmitting(true);
 
     try {
-      const res = await fetch(`/api/join/${token}`, {
+      const res = await fetch(`/api/join/${encodedToken}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

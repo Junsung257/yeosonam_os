@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,8 +10,8 @@ async function patchHandler(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const { id } = await params;
@@ -17,7 +19,7 @@ async function patchHandler(
   const { is_active } = body;
 
   if (typeof is_active !== 'boolean') {
-    return NextResponse.json({ error: 'is_active (boolean) 필요' }, { status: 400 });
+    return apiResponse({ error: 'is_active (boolean) 필요' }, { status: 400 });
   }
 
   const { error } = await supabaseAdmin
@@ -26,10 +28,10 @@ async function patchHandler(
     .eq('id', id);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }
 
 export const PATCH = withAdminGuard(patchHandler);

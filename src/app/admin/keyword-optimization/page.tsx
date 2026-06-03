@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
 interface OptimizationLog {
   id: string;
@@ -37,38 +36,52 @@ export default function KeywordOptimizationPage() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchLogs = async () => {
       setLoading(true);
       setError(null);
       try {
-        const url = '/api/admin/optimization/logs' + (platform !== 'all' ? `?platform=${platform}&limit=${limit}` : `?limit=${limit}`);
-        // 우선 Supabase 직접 조회 (fallback)
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (supabaseUrl && supabaseKey) {
-          const supabase = createClient(supabaseUrl, supabaseKey);
-          let query = supabase
-            .from('optimization_log')
-            .select('*')
-            .order('ran_at', { ascending: false })
-            .limit(limit);
-          if (platform !== 'all') {
-            query = query.eq('platform', platform);
-          }
-          const { data, error: dbError } = await query;
-          if (dbError) {
-            setError(dbError.message);
-          } else {
-            setLogs((data ?? []) as OptimizationLog[]);
-          }
+        const params = new URLSearchParams({ limit: String(limit) });
+        if (platform !== 'all') {
+          params.set('platform', platform);
         }
+        const response = await fetch(`/api/admin/optimization/logs?${params.toString()}`, {
+          credentials: 'same-origin',
+          signal: controller.signal,
+        });
+        const payload = (await response.json().catch(() => null)) as
+          | OptimizationLog[]
+          | { error?: string }
+          | null;
+        if (controller.signal.aborted) {
+          return;
+        }
+        if (!response.ok) {
+          setError(
+            !Array.isArray(payload)
+              ? payload?.error ?? '최적화 로그를 불러오지 못했습니다.'
+              : '최적화 로그를 불러오지 못했습니다.'
+          );
+          setLogs([]);
+          return;
+        }
+        setLogs(Array.isArray(payload) ? payload : []);
       } catch (err) {
+        if (controller.signal.aborted) {
+          return;
+        }
         setError(err instanceof Error ? err.message : 'Unknown error');
+        setLogs([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
     fetchLogs();
+
+    return () => controller.abort();
   }, [platform, limit]);
 
   return (

@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { runAdOsProductAutopilot } from '@/lib/ad-os-product-autopilot';
+import { NextRequest } from 'next/server';
+import { runAdOsProductAutopilot, type ProductAutopilotResult } from '@/lib/ad-os-product-autopilot';
 import { automationLevelToPublicMode, type AdOsPublicAutomationMode } from '@/lib/ad-os-v3-v7';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,13 +31,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const body = (await request.json().catch(() => ({}))) as ProductPipelineBody;
   const packageIds = [...new Set([...(body.package_ids || []), body.package_id].filter(Boolean) as string[])];
   if (packageIds.length === 0) {
-    return NextResponse.json({ ok: false, error: 'package_id or package_ids is required' }, { status: 400 });
+    return apiResponse({ ok: false, error: 'package_id or package_ids is required' }, { status: 400 });
   }
 
   const publicMode = body.automation_mode || automationLevelToPublicMode(body.automation_level ?? 2);
   const mode = modeToAutopilot(publicMode);
   const apply = canApply(publicMode, Boolean(body.apply));
-  const results = [];
+  const results: ProductAutopilotResult[] = [];
 
   for (const packageId of packageIds.slice(0, 30)) {
     results.push(await runAdOsProductAutopilot({
@@ -47,7 +49,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     }));
   }
 
-  return NextResponse.json({
+  const safeResults = results.map((result) => ({
+    ...result,
+    warnings: result.warnings.map((warning) => sanitizeDbError(warning)),
+  }));
+
+  return apiResponse({
     ok: results.every((result) => result.ok),
     automation_mode: publicMode,
     mode,
@@ -60,6 +67,6 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       landing_actions: results.reduce((sum, result) => sum + result.landing_evolution.queued, 0),
       search_keywords: results.reduce((sum, result) => sum + result.search_ads.keywords, 0),
     },
-    results,
+    results: safeResults,
   });
 });

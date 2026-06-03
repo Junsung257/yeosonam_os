@@ -4,7 +4,7 @@
  * /admin 메인 대시보드 ScoringKpiWidget 데이터.
  * - 활성 정책 / 그룹 수 / score row / LTR 진행 / 미해결 알림 / 최근 winner
  */
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 
@@ -12,7 +12,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const getHandler = async () => {
-  if (!isSupabaseConfigured) return NextResponse.json({ active_policy_version: null });
+  if (!isSupabaseConfigured) return apiResponse({ active_policy_version: null });
   const [policyRes, groupsRes, ltrRes, alertsRes, abRes] = await Promise.all([
     supabaseAdmin.from('scoring_policies').select('version').eq('is_active', true).limit(1).single(),
     supabaseAdmin.from('package_scores').select('group_key', { count: 'exact', head: true }),
@@ -22,7 +22,7 @@ const getHandler = async () => {
   ]);
 
   const ltrSamples = ltrRes.count ?? 0;
-  return NextResponse.json({
+  return apiResponse({
     active_policy_version: policyRes.data?.version ?? null,
     total_groups: groupsRes.count ?? 0,
     total_score_rows: groupsRes.count ?? 0, // 같은 그룹 N row니 별도 count
@@ -34,6 +34,6 @@ const getHandler = async () => {
       confidence: abRes.data[0].confidence,
     } : null,
   });
-}
+};
 
 export const GET = withAdminGuard(getHandler);

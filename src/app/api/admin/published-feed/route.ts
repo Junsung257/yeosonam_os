@@ -34,6 +34,10 @@ interface FeedItem {
   external_id: string | null;
   created_at: string;
   tenant_id: string | null;
+  error_message?: string | null;
+  retry_count?: number | null;
+  max_retries?: number | null;
+  engagement?: Record<string, unknown> | null;
   meta?: Record<string, unknown>;
 }
 
@@ -53,7 +57,7 @@ const getHandler = async (request: NextRequest) => {
     // 1) content_distributions
     let distQuery = supabaseAdmin
       .from('content_distributions')
-      .select('id, product_id, card_news_id, platform, status, scheduled_for, published_at, external_id, external_url, created_at, tenant_id, payload')
+      .select('id, product_id, card_news_id, platform, status, scheduled_for, published_at, external_id, external_url, created_at, tenant_id, payload, error_message, retry_count, max_retries, engagement, generation_config')
       .gte('created_at', sinceIso)
       .order('created_at', { ascending: false })
       .limit(limit);
@@ -114,6 +118,11 @@ const getHandler = async (request: NextRequest) => {
         external_id: d.external_id,
         created_at: d.created_at,
         tenant_id: d.tenant_id,
+        error_message: d.error_message ?? null,
+        retry_count: d.retry_count ?? null,
+        max_retries: d.max_retries ?? null,
+        engagement: (d.engagement as Record<string, unknown> | null) ?? null,
+        meta: extractGenerationMeta(d.generation_config as Record<string, unknown> | null),
       });
     }
 
@@ -197,6 +206,16 @@ function extractPayloadTitle(platform: string, payload: Record<string, unknown> 
   if (platform === 'kakao_channel') return ((payload.message_text as string) ?? '').slice(0, 60) || null;
   if (platform === 'google_ads_rsa') return ((payload.headlines as string[])?.[0]) ?? null;
   return null;
+}
+
+function extractGenerationMeta(config: Record<string, unknown> | null): Record<string, unknown> | undefined {
+  if (!config) return undefined;
+  const keys = ['predicted_er', 'risk_flags', 'why_this_will_work', 'trend_sources', 'hook_type', 'learning_mode', 'trend_confidence'];
+  const meta: Record<string, unknown> = {};
+  for (const key of keys) {
+    if (key in config) meta[key] = config[key];
+  }
+  return Object.keys(meta).length > 0 ? meta : undefined;
 }
 
 export const GET = withAdminGuard(getHandler);

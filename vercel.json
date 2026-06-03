@@ -95,7 +95,7 @@
     },
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "30 23 * * *"
+      "schedule": "*/15 * * * *"
     },
     {
       "path": "/api/cron/blog-publisher",

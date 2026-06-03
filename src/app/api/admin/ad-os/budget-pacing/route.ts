@@ -1,6 +1,8 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { decideAdOsBudgetPacing } from '@/lib/ad-os-budget-pacing';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -19,9 +21,19 @@ function json(value: unknown) {
   return JSON.parse(JSON.stringify(value ?? {}));
 }
 
+async function failRun(runId: string, error: unknown, fallback?: string) {
+  const safeError = sanitizeDbError(error, fallback);
+  await supabaseAdmin.from('ad_os_automation_runs').update({
+    status: 'failed',
+    finished_at: new Date().toISOString(),
+    errors: [{ message: safeError }],
+  }).eq('id', runId);
+  return safeError;
+}
+
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -42,7 +54,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || '페이싱 실행 로그 생성 실패' }, { status: 500 });
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(runError, 'Budget pacing run create failed') },
+      { status: 500 },
+    );
   }
 
   let budgetQuery = supabaseAdmin
@@ -53,12 +68,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const { data: budgets, error: budgetError } = await budgetQuery;
 
   if (budgetError) {
-    await supabaseAdmin.from('ad_os_automation_runs').update({
-      status: 'failed',
-      finished_at: new Date().toISOString(),
-      errors: [{ message: budgetError.message }],
-    }).eq('id', run.id);
-    return NextResponse.json({ ok: false, error: budgetError.message }, { status: 500 });
+    const safeError = await failRun(run.id, budgetError);
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const periodStart = new Date();
@@ -70,12 +81,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .gte('date', fromDate);
 
   if (perfError) {
-    await supabaseAdmin.from('ad_os_automation_runs').update({
-      status: 'failed',
-      finished_at: new Date().toISOString(),
-      errors: [{ message: perfError.message }],
-    }).eq('id', run.id);
-    return NextResponse.json({ ok: false, error: perfError.message }, { status: 500 });
+    const safeError = await failRun(run.id, perfError);
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const spendByPlatform = new Map<string, number>();
@@ -116,12 +123,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     }));
     const { error: snapshotError } = await supabaseAdmin.from('ad_os_budget_pacing_snapshots').insert(snapshotRows);
     if (snapshotError) {
-      await supabaseAdmin.from('ad_os_automation_runs').update({
-        status: 'failed',
-        finished_at: new Date().toISOString(),
-        errors: [{ message: snapshotError.message }],
-      }).eq('id', run.id);
-      return NextResponse.json({ ok: false, error: snapshotError.message }, { status: 500 });
+      const safeError = await failRun(run.id, snapshotError);
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
 
     const decisionRows = decisions.map(({ budget, pacing }) => ({
@@ -148,7 +151,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       applied: false,
       blocked_reason: pacing.canApplyInternally ? null : 'automation_level_or_budget_not_ready',
     }));
-    await supabaseAdmin.from('ad_os_decision_logs').insert(decisionRows);
+    const { error: decisionError } = await supabaseAdmin.from('ad_os_decision_logs').insert(decisionRows);
+    if (decisionError) {
+      const safeError = await failRun(run.id, decisionError);
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
+    }
 
     const changeRequests = decisions
       .filter(({ pacing }) => pacing.recommendedAction !== 'no_change')
@@ -178,12 +185,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     if (changeRequests.length > 0) {
       const { error: requestError } = await supabaseAdmin.from('ad_os_change_requests').insert(changeRequests);
       if (requestError) {
-        await supabaseAdmin.from('ad_os_automation_runs').update({
-          status: 'failed',
-          finished_at: new Date().toISOString(),
-          errors: [{ message: requestError.message }],
-        }).eq('id', run.id);
-        return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
+        const safeError = await failRun(run.id, requestError);
+        return apiResponse({ ok: false, error: safeError }, { status: 500 });
       }
     }
   }
@@ -209,12 +212,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         .update(patch)
         .eq('id', budget.id);
       if (updateError) {
-        await supabaseAdmin.from('ad_os_automation_runs').update({
-          status: 'failed',
-          finished_at: new Date().toISOString(),
-          errors: [{ message: updateError.message }],
-        }).eq('id', run.id);
-        return NextResponse.json({ ok: false, error: updateError.message }, { status: 500 });
+        const safeError = await failRun(run.id, updateError);
+        return apiResponse({ ok: false, error: safeError }, { status: 500 });
       }
       appliedCount += 1;
     }
@@ -243,7 +242,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     run_id: run.id,
     summary,

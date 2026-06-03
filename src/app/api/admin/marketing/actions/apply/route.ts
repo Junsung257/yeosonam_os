@@ -1,5 +1,7 @@
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { applyMarketingAction } from '@/lib/marketing/action-runner';
 
 export const dynamic = 'force-dynamic';
@@ -11,17 +13,17 @@ async function postHandler(request: NextRequest) {
     const dryRun = body?.dry_run !== false;
 
     if (!actionId) {
-      return NextResponse.json({ error: 'action_id is required' }, { status: 400 });
+      return apiResponse({ error: 'action_id is required' }, { status: 400 });
     }
 
     const plan = await applyMarketingAction(actionId, dryRun);
-    return NextResponse.json({
+    return apiResponse({
       applied_at: new Date().toISOString(),
       plan,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Failed to apply marketing action' },
+    return apiResponse(
+      { error: sanitizeDbError(err, 'Failed to apply marketing action') },
       { status: 500 },
     );
   }

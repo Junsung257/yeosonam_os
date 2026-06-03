@@ -1,7 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const RISK_EMOJI: Record<string, string> = {
   critical: '🚨',
@@ -12,16 +15,8 @@ const RISK_EMOJI: Record<string, string> = {
 
 // JARVIS 에이전트가 에스컬레이션 시 호출하는 엔드포인트
 // agent_tasks.status = 'frozen' 설정 + Slack 즉시 알림
-const postHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: false });
-
-  const token =
-    request.cookies.get('sb-access-token')?.value ??
-    request.headers.get('Authorization')?.replace('Bearer ', '');
-  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
-  if (!userData?.user?.id) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
-  }
+const postHandler = async (request: NextRequest): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ ok: false });
 
   try {
     const body = await request.json();
@@ -43,7 +38,7 @@ const postHandler = async (request: NextRequest) => {
     }
 
     const emoji = RISK_EMOJI[riskLevel] ?? '⚠️';
-    const shortMsg = message ? message.slice(0, 200) : '(메시지 없음)';
+    const shortMsg = safeRawTextExcerpt(message, 200) ?? '(message omitted)';
 
     await sendSlackAlert(
       `${emoji} [JARVIS 에스컬레이션] 위험도: ${riskLevel.toUpperCase()} — 즉시 확인 필요`,
@@ -58,10 +53,10 @@ const postHandler = async (request: NextRequest) => {
       },
     );
 
-    return NextResponse.json({ ok: true, notified: true });
+    return apiResponse({ ok: true, notified: true });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

@@ -18,7 +18,8 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 
 export const revalidate = 1800;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 function esc(s: string): string {
   return s
@@ -29,42 +30,68 @@ function esc(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
-export async function GET(_request: NextRequest, props: { params: Promise<{ city: string }> }) {
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? '';
+}
+
+export async function GET(_request: NextRequest, props: { params: Promise<{ city?: string | string[] }> }) {
   const params = await props.params;
-  const { city } = params;
-  const decoded = decodeURIComponent(city);
+  const city = getRouteParam(params.city);
+  const decoded = safeDecodePathSegment(city).trim();
+  if (!decoded) {
+    return new NextResponse('<error>missing destination</error>', { status: 404 });
+  }
 
   if (!isSupabaseConfigured) {
     return new NextResponse('<error>db not configured</error>', { status: 503 });
   }
 
   // destination 매칭 글 (destination 컬럼 또는 travel_packages.destination)
-  const { data: posts } = await supabaseAdmin
-    .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, travel_packages(destination)')
-    .eq('channel', 'naver_blog')
-    .eq('status', 'published')
-    .not('slug', 'is', null)
-    .order('published_at', { ascending: false })
-    .limit(50);
+  let posts: unknown[] = [];
+  try {
+    const result = await supabaseAdmin
+      .from('content_creatives')
+      .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, travel_packages(destination)')
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .not('slug', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(50);
+    posts = result.data ?? [];
+  } catch {
+    posts = [];
+  }
 
   const filtered = ((posts || []) as Array<any>).filter(p =>
-    p.destination === decoded || p.travel_packages?.destination === decoded
+    typeof p?.slug === 'string' &&
+    p.slug.trim() &&
+    (p.destination === decoded || p.travel_packages?.destination === decoded)
   ).slice(0, 20);
 
   const channelUrl = `${BASE_URL}/destinations/${encodeDestinationPathSegment(decoded)}`;
   const channelTitle = `${decoded} 여행 매거진 | 여소남`;
   const channelDesc = `여소남이 엄선한 ${decoded} 여행 가이드와 꿀팁 — 실시간 업데이트`;
-  const lastBuild = filtered[0]?.published_at
-    ? new Date(filtered[0].published_at).toUTCString()
-    : new Date().toUTCString();
+  const lastBuildDate = filtered[0]?.published_at ? new Date(filtered[0].published_at) : new Date();
+  const lastBuild = Number.isFinite(lastBuildDate.getTime()) ? lastBuildDate.toUTCString() : new Date().toUTCString();
 
   const items = filtered.map(p => {
-    const url = `${BASE_URL}/blog/${p.slug}`;
-    const pubDate = new Date(p.published_at || Date.now()).toUTCString();
+    const url = `${BASE_URL}/blog/${encodeURIComponent(p.slug.trim())}`;
+    const date = new Date(p.published_at || Date.now());
+    const pubDate = Number.isFinite(date.getTime()) ? date.toUTCString() : new Date().toUTCString();
     const title = p.seo_title || `${decoded} 여행 가이드`;
     const desc = p.seo_description || '';
     const category = p.content_type || 'guide';
+    const imageUrl = typeof p.og_image_url === 'string' && /^https?:\/\//i.test(p.og_image_url.trim())
+      ? p.og_image_url.trim()
+      : null;
 
     return `
     <item>
@@ -74,7 +101,7 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
       <description>${esc(desc)}</description>
       <category>${esc(category)}</category>
       <pubDate>${pubDate}</pubDate>
-      ${p.og_image_url ? `<enclosure url="${esc(p.og_image_url)}" type="image/jpeg" />` : ''}
+      ${imageUrl ? `<enclosure url="${esc(imageUrl)}" type="image/jpeg" />` : ''}
     </item>`;
   }).join('\n');
 

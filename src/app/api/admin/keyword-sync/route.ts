@@ -1,7 +1,9 @@
-﻿import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 interface SyncMetric {
   impressions: number;
@@ -56,10 +58,10 @@ async function isAuthorized(request: NextRequest): Promise<boolean> {
 
 export async function POST(request: NextRequest) {
   if (!(await isAuthorized(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return apiResponse({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Server config error' }, { status: 500 });
+    return apiResponse({ error: 'Server config error' }, { status: 500 });
   }
 
   let body: SyncBody | null;
@@ -69,7 +71,7 @@ export async function POST(request: NextRequest) {
     body = null;
   }
   if (!body) {
-    return NextResponse.json({ error: 'Invalid keyword sync payload' }, { status: 400 });
+    return apiResponse({ error: 'Invalid keyword sync payload' }, { status: 400 });
   }
 
   const today = new Date().toISOString().slice(0, 10);
@@ -90,23 +92,23 @@ export async function POST(request: NextRequest) {
     { onConflict: 'keyword_text,platform,date' },
   );
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ success: true });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ success: true });
 }
 
 export async function GET(request: NextRequest) {
   if (!(await isAuthorized(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return apiResponse({ error: 'Unauthorized' }, { status: 401 });
   }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Server config error' }, { status: 500 });
+    return apiResponse({ error: 'Server config error' }, { status: 500 });
   }
 
   const daysParam = Number(request.nextUrl.searchParams.get('days') ?? '7');
   const days = Number.isFinite(daysParam) ? Math.min(Math.max(Math.trunc(daysParam), 1), 90) : 7;
   const platform = request.nextUrl.searchParams.get('platform');
   if (platform && !isValidPlatform(platform)) {
-    return NextResponse.json({ error: 'Invalid platform' }, { status: 400 });
+    return apiResponse({ error: 'Invalid platform' }, { status: 400 });
   }
 
   const startDate = new Date();
@@ -121,6 +123,6 @@ export async function GET(request: NextRequest) {
   if (platform) query = query.eq('platform', platform);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data ?? []);
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse(data ?? []);
 }

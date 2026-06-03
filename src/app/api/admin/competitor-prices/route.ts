@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { logError } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ export const dynamic = 'force-dynamic';
  */
 const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ data: [], yeosonamPrices: [] });
+    return apiResponse({ data: [], yeosonamPrices: [] });
   }
 
   try {
@@ -71,13 +72,13 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       };
     });
 
-    return NextResponse.json({
+    return apiResponse({
       data: competitorData ?? [],
       yeosonamPrices,
     });
   } catch (err) {
     logError('[competitor-prices] GET failed', err);
-    return NextResponse.json(
+    return apiResponse(
       { error: logAndSanitize('admin-competitor-prices', err, '처리 실패') },
       { status: 500 },
     );
@@ -92,7 +93,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
  */
 const postHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
   try {
@@ -109,13 +110,13 @@ const postHandler = async (request: NextRequest): Promise<NextResponse> => {
       };
 
     if (!destination || !duration || !competitor || price == null) {
-      return NextResponse.json(
+      return apiResponse(
         { error: 'destination, duration, competitor, price 필수' },
         { status: 400 },
       );
     }
     if (typeof price !== 'number' || price < 0) {
-      return NextResponse.json({ error: 'price는 0 이상의 숫자여야 합니다' }, { status: 400 });
+      return apiResponse({ error: 'price는 0 이상의 숫자여야 합니다' }, { status: 400 });
     }
 
     const { data, error } = await supabaseAdmin
@@ -134,10 +135,10 @@ const postHandler = async (request: NextRequest): Promise<NextResponse> => {
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, data });
+    return apiResponse({ ok: true, data });
   } catch (err) {
     logError('[competitor-prices] POST failed', err);
-    return NextResponse.json(
+    return apiResponse(
       { error: logAndSanitize('admin-competitor-prices', err, '처리 실패') },
       { status: 500 },
     );

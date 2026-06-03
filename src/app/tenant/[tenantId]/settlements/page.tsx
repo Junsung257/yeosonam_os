@@ -22,10 +22,13 @@ function getMonthOptions() {
 }
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 export default function TenantSettlementsPage() {
   const params   = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantId = getRouteParam(params?.tenantId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
   const monthOptions = getMonthOptions();
 
   const [month,      setMonth]      = useState(monthOptions[0]);
@@ -34,13 +37,18 @@ export default function TenantSettlementsPage() {
   const [loading,    setLoading]    = useState(true);
 
   const load = useCallback(async () => {
+    if (!tenantId) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
-    const res  = await fetch(`/api/tenant/settlements?tenant_id=${tenantId}&month=${month}`);
+    const res  = await fetch(`/api/tenant/settlements?tenant_id=${encodedTenantId}&month=${encodeURIComponent(month)}`);
     const data = await res.json();
     setRows(data.rows ?? []);
     setTotalCost(data.total_cost ?? 0);
     setLoading(false);
-  }, [tenantId, month]);
+  }, [encodedTenantId, tenantId, month]);
 
   useEffect(() => { load(); }, [load]);
 

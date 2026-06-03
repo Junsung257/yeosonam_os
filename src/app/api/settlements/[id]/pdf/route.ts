@@ -80,10 +80,10 @@ export async function GET(request: NextRequest, props: { params: Promise<{ id: s
       .select('id, package_title, adult_count, adult_price, child_count, child_price, influencer_commission, applied_total_commission_rate, commission_breakdown, return_date, departure_date, dispute_flag')
       .eq('affiliate_id', settlement.affiliate_id)
       .in('status', ['confirmed', 'completed', 'fully_paid'])
-      .gte('departure_date', periodStart)
-      .lte('departure_date', periodEnd)
+      .gte('return_date', periodStart)
+      .lte('return_date', periodEnd)
       .or('is_deleted.is.null,is_deleted.eq.false')
-      .order('departure_date', { ascending: true });
+      .order('return_date', { ascending: true });
 
     const qualifiedBookings = (bookings || []).filter((b: Record<string, unknown>) => !b.dispute_flag);
 

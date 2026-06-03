@@ -1015,6 +1015,7 @@ export type Database = {
           created_at: string
           expires_at: string | null
           id: string
+          idempotency_key: string | null
           payload: Json
           priority: string
           reject_reason: string | null
@@ -1032,6 +1033,7 @@ export type Database = {
           created_at?: string
           expires_at?: string | null
           id?: string
+          idempotency_key?: string | null
           payload?: Json
           priority?: string
           reject_reason?: string | null
@@ -1049,6 +1051,7 @@ export type Database = {
           created_at?: string
           expires_at?: string | null
           id?: string
+          idempotency_key?: string | null
           payload?: Json
           priority?: string
           reject_reason?: string | null

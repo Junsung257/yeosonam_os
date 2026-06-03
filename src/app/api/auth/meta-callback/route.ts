@@ -57,9 +57,14 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'state 검증 실패' }, { status: 400 });
   }
 
-  const appId = getSecret('META_APP_ID');
-  const appSecret = getSecret('META_APP_SECRET');
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
+  const isThreadsOAuth = payload.platform === 'threads';
+  const appId = isThreadsOAuth
+    ? getSecret('THREADS_APP_ID') || getSecret('META_APP_ID')
+    : getSecret('META_APP_ID');
+  const appSecret = isThreadsOAuth
+    ? getSecret('THREADS_APP_SECRET') || getSecret('META_APP_SECRET')
+    : getSecret('META_APP_SECRET');
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || (isThreadsOAuth ? 'https://www.yeosonam.com' : undefined);
   if (!appId || !appSecret || !siteUrl) {
     return NextResponse.json({ error: 'Meta OAuth 환경변수 미설정' }, { status: 500 });
   }

@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { runAdOsProductAutopilot } from '@/lib/ad-os-product-autopilot';
 
 export const dynamic = 'force-dynamic';
@@ -14,7 +16,7 @@ type ProductAutopilotBody = {
 export const POST = withAdminGuard(async (request: NextRequest) => {
   const body = (await request.json().catch(() => ({}))) as ProductAutopilotBody;
   if (!body.package_id) {
-    return NextResponse.json({ ok: false, error: 'package_id is required' }, { status: 400 });
+    return apiResponse({ ok: false, error: 'package_id is required' }, { status: 400 });
   }
 
   const result = await runAdOsProductAutopilot({
@@ -25,5 +27,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     source: 'admin_api',
   });
 
-  return NextResponse.json(result, { status: result.ok ? 200 : 500 });
+  if (!result.ok) {
+    return apiResponse({
+      ...result,
+      warnings: result.warnings.map((warning) => sanitizeDbError(warning)),
+    }, { status: 500 });
+  }
+
+  return apiResponse(result);
 });

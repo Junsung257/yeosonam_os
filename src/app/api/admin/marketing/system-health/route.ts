@@ -4,6 +4,8 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { getSecret, type SecretKey } from '@/lib/secret-registry';
 import { runMarketingIntegrationProbes } from '@/lib/marketing/integration-probes';
 import { withTimeout } from '@/lib/promise-timeout';
+import { checkThreadsPublishingLimit, getThreadsConfig } from '@/lib/threads-publisher';
+import { fetchThreadsInsights, probeThreadsIdentity } from '@/lib/threads-api';
 import {
   COMPLETION_REQUIREMENT_EXTERNAL_WRITE_ZERO,
   COMPLETION_REQUIREMENT_FULL_AUTO_DEFAULT_OFF,
@@ -107,7 +109,7 @@ async function dbChecks(): Promise<Check[]> {
 
 async function cronChecks(): Promise<Check[]> {
   if (!isSupabaseConfigured) return [];
-  const names = ['blog-publisher', 'gsc-index-rank', 'rank-tracking', 'publish-scheduled', 'sync-engagement', 'daily-marketing', 'marketing-rules', 'meta-token-refresh'];
+  const names = ['blog-publisher', 'gsc-index-rank', 'rank-tracking', 'publish-scheduled', 'sync-engagement', 'threads-trend-miner', 'auto-publish-loop', 'daily-marketing', 'marketing-rules', 'meta-token-refresh'];
   const { data, error } = await supabaseAdmin
     .from('cron_health')
     .select('cron_name, last_status, last_run_at, last_error_count, last_summary')
@@ -127,6 +129,144 @@ async function cronChecks(): Promise<Check[]> {
       detail: row?.last_summary ? { last_summary: row.last_summary } : undefined,
     };
   });
+}
+
+async function threadsChecks(): Promise<Check[]> {
+  const hasAccessToken = Boolean(getSecret('THREADS_ACCESS_TOKEN') || getSecret('META_ACCESS_TOKEN'));
+  const hasUserId = Boolean(getSecret('THREADS_USER_ID'));
+  const checks: Check[] = [{
+    key: 'threads.config',
+    label: 'Threads publish config',
+    status: hasAccessToken && hasUserId ? 'ok' : 'fail',
+    message: hasAccessToken && hasUserId
+      ? 'Threads token and user id are configured.'
+      : `Missing Threads settings: ${[
+          !hasAccessToken ? 'THREADS_ACCESS_TOKEN or META_ACCESS_TOKEN' : null,
+          !hasUserId ? 'THREADS_USER_ID' : null,
+        ].filter(Boolean).join(', ')}`,
+    detail: {
+      access_token_configured: hasAccessToken,
+      user_id_configured: hasUserId,
+      keyword_search_scope_configured: Boolean(getSecret('THREADS_KEYWORD_SEARCH_ENABLED' as SecretKey)),
+    },
+  }];
+
+  if (!isSupabaseConfigured) return checks;
+
+  const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const [{ count: failedCount }, { count: retryCount }, cfg] = await Promise.all([
+    supabaseAdmin
+      .from('content_distributions')
+      .select('id', { count: 'exact', head: true })
+      .eq('platform', 'threads_post')
+      .eq('status', 'failed')
+      .gte('created_at', sinceIso),
+    supabaseAdmin
+      .from('content_distributions')
+      .select('id', { count: 'exact', head: true })
+      .eq('platform', 'threads_post')
+      .eq('status', 'scheduled')
+      .gt('retry_count', 0),
+    getThreadsConfig(),
+  ]);
+
+  checks.push({
+    key: 'threads.queue',
+    label: 'Threads publish queue',
+    status: (failedCount ?? 0) > 0 ? 'warn' : 'ok',
+    message: `24h failed: ${failedCount ?? 0}; retry waiting: ${retryCount ?? 0}`,
+    detail: { failed_24h: failedCount ?? 0, retry_waiting: retryCount ?? 0 },
+  });
+
+  if (cfg) {
+    const identity = await probeThreadsIdentity(cfg.accessToken);
+    checks.push({
+      key: 'threads.identity',
+      label: 'Threads account identity',
+      status: identity.ok && identity.id === cfg.threadsUserId ? 'ok' : identity.ok ? 'warn' : 'fail',
+      message: identity.ok
+        ? `token user ${maskTail(identity.id)}${identity.username ? ` (@${identity.username})` : ''}; configured ${maskTail(cfg.threadsUserId)}`
+        : `Identity probe failed: ${identity.error ?? 'unknown'}`,
+      detail: {
+        token_user_tail: maskTail(identity.id),
+        configured_user_tail: maskTail(cfg.threadsUserId),
+        username: identity.username ?? null,
+        error_category: identity.errorCategory ?? null,
+      },
+    });
+
+    const quota = await checkThreadsPublishingLimit(cfg.threadsUserId, cfg.accessToken);
+    checks.push({
+      key: 'threads.quota',
+      label: 'Threads publish quota',
+      status: quota && quota.quotaUsed >= quota.quotaLimit ? 'fail' : quota ? 'ok' : 'warn',
+      message: quota ? `quota ${quota.quotaUsed}/${quota.quotaLimit}` : 'Quota probe unavailable.',
+      detail: quota ?? undefined,
+    });
+
+    const [{ data: latest }, { count: snapshotCount }, { count: fingerprintCount }] = await Promise.all([
+      supabaseAdmin
+        .from('content_distributions')
+        .select('id, external_id, external_url, engagement, published_at')
+        .eq('platform', 'threads_post')
+        .eq('status', 'published')
+        .not('external_id', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('post_engagement_snapshots')
+        .select('id', { count: 'exact', head: true })
+        .eq('platform', 'threads'),
+      supabaseAdmin
+        .from('trend_style_fingerprints')
+        .select('id', { count: 'exact', head: true })
+        .eq('platform', 'threads'),
+    ]);
+
+    if (latest?.external_id) {
+      const insights = await fetchThreadsInsights(latest.external_id as string, cfg.accessToken);
+      checks.push({
+        key: 'threads.latest_post_probe',
+        label: 'Threads latest post insights',
+        status: insights.ok ? 'ok' : insights.errorCategory === 'identity_or_permission_mismatch' ? 'fail' : 'warn',
+        message: insights.ok
+          ? `latest post insights ok; external tail ${maskTail(latest.external_id as string)}`
+          : `latest post insights failed: ${insights.error ?? 'unknown'}`,
+        detail: {
+          distribution_id: latest.id,
+          external_tail: maskTail(latest.external_id as string),
+          error_category: insights.errorCategory ?? null,
+          engagement_status: (latest.engagement as Record<string, unknown> | null)?.insights_status ?? null,
+        },
+      });
+    } else {
+      checks.push({
+        key: 'threads.latest_post_probe',
+        label: 'Threads latest post insights',
+        status: 'warn',
+        message: 'No published Threads distribution with external_id found.',
+      });
+    }
+
+    checks.push({
+      key: 'threads.learning_rows',
+      label: 'Threads learning rows',
+      status: (snapshotCount ?? 0) > 0 && (fingerprintCount ?? 0) > 0 ? 'ok' : 'warn',
+      message: `snapshots: ${snapshotCount ?? 0}; fingerprints: ${fingerprintCount ?? 0}`,
+      detail: {
+        snapshots: snapshotCount ?? 0,
+        fingerprints: fingerprintCount ?? 0,
+      },
+    });
+  }
+
+  return checks;
+}
+
+function maskTail(value?: string | null): string {
+  if (!value) return 'missing';
+  return `...${value.slice(-6)}`;
 }
 
 async function adOsCompletionChecks(request: NextRequest): Promise<Check[]> {
@@ -205,14 +345,16 @@ async function getHandler(request: NextRequest) {
   const baseChecks = SECRET_GROUPS.map(secretCheck);
   let db: Check[] = [];
   let cron: Check[] = [];
+  let threads: Check[] = [];
   let adOs: Check[] = [];
   let probes: Awaited<ReturnType<typeof runMarketingIntegrationProbes>> = [];
 
   try {
-    [db, cron, adOs, probes] = await withTimeout(
+    [db, cron, threads, adOs, probes] = await withTimeout(
       Promise.all([
         dbChecks(),
         cronChecks(),
+        threadsChecks(),
         adOsCompletionChecks(request),
         runMarketingIntegrationProbes(),
       ]),
@@ -223,6 +365,7 @@ async function getHandler(request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Marketing system health unavailable';
     db = [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message }];
     cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Skipped because Supabase health check timed out.' }];
+    threads = [{ key: 'threads.health', label: 'Threads health', status: 'warn', message: 'Skipped because system health check timed out.' }];
     adOs = [{
       key: 'ad_os.completion_audit',
       label: 'Ad OS completion audit',
@@ -241,7 +384,7 @@ async function getHandler(request: NextRequest) {
     detail: { probe_status: probe.status, ...(probe.detail ?? {}) },
   }));
 
-  const checks = [...baseChecks, ...db, ...cron, ...adOs, ...probeChecks];
+  const checks = [...baseChecks, ...db, ...cron, ...threads, ...adOs, ...probeChecks];
   const score = Math.round((checks.filter((check) => check.status === 'ok').length / Math.max(checks.length, 1)) * 100);
 
   return NextResponse.json({

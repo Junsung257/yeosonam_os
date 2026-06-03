@@ -17,11 +17,13 @@
  * 관측성: 응답 JSON 에 rule별 duration/count 포함 → 모니터링 뷰에서 참조
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { runAllRules } from '@/lib/booking-tasks/runner';
 import { ALL_RULES } from '@/lib/booking-tasks/rules';
 import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 60; // Vercel Pro 플랜 기준 상한
 
@@ -33,12 +35,16 @@ export async function GET(request: NextRequest) {
   const isForce = request.nextUrl.searchParams.get('force') === 'true';
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const started = Date.now();
   const result = await runAllRules(ALL_RULES, { isForce });
   const totalErrors = result.rules.flatMap(r => r.errors);
+  const safeRules = result.rules.map(rule => ({
+    ...rule,
+    errors: rule.errors.map(error => sanitizeDbError(error)),
+  }));
 
   console.log('[booking-tasks-runner]', {
     runId: result.runId,
@@ -56,13 +62,13 @@ export async function GET(request: NextRequest) {
     })),
   });
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     is_force: isForce,
     runId: result.runId,
     duration_ms: Date.now() - started,
     woken_from_snooze: result.wokenFromSnooze,
-    rules: result.rules,
+    rules: safeRules,
     error_count: totalErrors.length,
     run_at: new Date().toISOString(),
   });

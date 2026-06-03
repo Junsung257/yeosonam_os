@@ -1,8 +1,9 @@
-import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { searchPexelsPhotos, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { withCronGuard } from '@/lib/cron-auth';
 import { logError } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 사진 없는 관광지 자동 Pexels 백필 — 이미지 파이프라인 Tier 3
@@ -19,11 +20,11 @@ import { logError } from '@/lib/sentry-logger';
  */
 export const dynamic = 'force-dynamic';
 const getHandler = async () => {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
   if (!isPexelsConfigured()) {
-    return NextResponse.json({ ok: false, error: 'PEXELS_API_KEY 미설정' }, { status: 500 });
+    return apiResponse({ ok: false, error: 'Pexels API key not configured' }, { status: 503 });
   }
 
   const start = Date.now();
@@ -42,7 +43,7 @@ const getHandler = async () => {
 
     if (fetchErr) throw fetchErr;
     if (!targets || targets.length === 0) {
-      return NextResponse.json({ ok: true, total: 0, filled: 0, skipped: 0, errors: 0, durationMs: Date.now() - start });
+      return apiResponse({ ok: true, total: 0, filled: 0, skipped: 0, errors: 0, durationMs: Date.now() - start });
     }
 
     // 병렬 처리 (Pexels 200req/h 제한 — 30개 병렬 문제없음)
@@ -85,7 +86,7 @@ const getHandler = async () => {
       })
     );
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       total: targets.length,
       filled,
@@ -95,8 +96,8 @@ const getHandler = async () => {
     });
   } catch (error) {
     logError('[cron/fill-attraction-photos] cron failed', error);
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : '처리 실패', durationMs: Date.now() - start },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(error, 'Attraction photo fill failed'), durationMs: Date.now() - start },
       { status: 500 },
     );
   }

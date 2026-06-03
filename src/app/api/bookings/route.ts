@@ -11,6 +11,60 @@ import { getSecret } from '@/lib/secret-registry';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 
+function buildAttributionSnapshot(
+  body: Record<string, any>,
+  context: {
+    affRef: string;
+    affSub: string | null;
+    promoCode: string;
+    selfReferralBlocked: boolean;
+    selfReferralReason: string | null;
+    promoOwnerMismatch: boolean;
+    promoOwnerAffiliateId: string | null;
+  },
+) {
+  return {
+    source: 'booking_create',
+    captured_at: new Date().toISOString(),
+    affiliate_id: body.affiliateId || null,
+    referral_code: body.referral_code || context.affRef || null,
+    promo_code: body.promo_code || context.promoCode || null,
+    promo_affiliate_id: body.promo_affiliate_id || null,
+    attribution_model: body.attribution_model || 'last_touch',
+    attribution_split: body.attribution_split || null,
+    sub_id: context.affSub,
+    utm_source: body.utm_source || null,
+    utm_medium: body.utm_medium || null,
+    utm_campaign: body.utm_campaign || null,
+    utm_term: body.utm_term || null,
+    utm_content: body.utm_content || null,
+    self_referral_blocked: context.selfReferralBlocked,
+    self_referral_reason: context.selfReferralReason,
+    promo_owner_mismatch: context.promoOwnerMismatch,
+    promo_owner_affiliate_id: context.promoOwnerAffiliateId,
+  };
+}
+
+function logAffiliateAnomalyEvent(event: {
+  affiliate_id?: string | null;
+  referral_code?: string | null;
+  event_type: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  booking_id?: string | null;
+  session_id?: string | null;
+  payload: Record<string, unknown>;
+}) {
+  ff(supabaseAdmin.from('affiliate_anomaly_events').insert({
+    affiliate_id: event.affiliate_id ?? null,
+    referral_code: event.referral_code ?? null,
+    event_type: event.event_type,
+    severity: event.severity,
+    booking_id: event.booking_id ?? null,
+    session_id: event.session_id ?? null,
+    payload: event.payload,
+  } as never), `affiliate_anomaly_events.${event.event_type}`);
+}
+
 /** fire-and-forget: 에러는 console.warn으로 기록 */
 function ff<T>(p: PromiseLike<T>, label?: string): void {
   Promise.resolve(p).then(() => {}).catch((e: unknown) => {
@@ -237,6 +291,8 @@ export async function POST(request: NextRequest) {
     let affData: AffRow | null = null;
     let selfReferralBlocked = false;
     let selfReferralReason: string | null = null;
+    let promoOwnerMismatch = false;
+    let promoOwnerAffiliateId: string | null = null;
 
     const affQuery = affRef && !body.affiliateId
       ? supabaseAdmin.from('affiliates').select('id, grade, bonus_rate, created_at, phone, email').eq('referral_code', affRef).eq('is_active', true).maybeSingle()
@@ -269,7 +325,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 프로모코드 귀속: 쿠키 ref가 없어도 할인코드로 affiliate 귀속
-    if (!body.affiliateId && promoCode) {
+    if (promoCode) {
       const nowIso = new Date().toISOString();
       const { data: promoRow } = await supabaseAdmin
         .from('affiliate_promo_codes')
@@ -287,12 +343,16 @@ export async function POST(request: NextRequest) {
           max_uses: number | null;
           uses_count: number;
         };
+        promoOwnerAffiliateId = p.affiliate_id;
         const activeWindow =
           p.is_active &&
           (!p.starts_at || p.starts_at <= nowIso) &&
           (!p.ends_at || p.ends_at >= nowIso) &&
           (p.max_uses === null || p.uses_count < p.max_uses);
-        if (activeWindow) {
+        if (body.affiliateId && body.affiliateId !== p.affiliate_id) {
+          promoOwnerMismatch = true;
+        }
+        if (!body.affiliateId && activeWindow) {
           body.affiliateId = p.affiliate_id;
           body.bookingType = 'AFFILIATE';
           body.promo_code = p.code;
@@ -391,7 +451,9 @@ export async function POST(request: NextRequest) {
     if (body.utmContent && !body.utm_content) body.utm_content = body.utmContent;
     if (affRef && !body.referral_code) body.referral_code = affRef;
     if (promoCode && !body.promo_code) body.promo_code = promoCode;
-    if (body.affiliateId && !body.promo_affiliate_id && body.promo_code) body.promo_affiliate_id = body.affiliateId;
+    if (body.promo_code && !body.promo_affiliate_id) {
+      body.promo_affiliate_id = promoOwnerAffiliateId || body.affiliateId || null;
+    }
     if (!body.attribution_model) body.attribution_model = 'last_touch';
     if (!body.attribution_split) {
       body.attribution_split = {
@@ -401,6 +463,15 @@ export async function POST(request: NextRequest) {
         sub_id: affSub,
       };
     }
+    body.attribution_snapshot = buildAttributionSnapshot(body, {
+      affRef,
+      affSub,
+      promoCode,
+      selfReferralBlocked,
+      selfReferralReason,
+      promoOwnerMismatch,
+      promoOwnerAffiliateId,
+    });
 
     const booking = await createBooking(body);
 
@@ -417,6 +488,35 @@ export async function POST(request: NextRequest) {
         target_id: booking.id,
         description: `affiliate=${affData.id}, reason=${selfReferralReason || 'MATCH'}`,
       }), 'audit_logs.self_referral_blocked');
+      logAffiliateAnomalyEvent({
+        affiliate_id: affData.id,
+        referral_code: body.referral_code || affRef || null,
+        event_type: 'self_referral_blocked',
+        severity: 'high',
+        booking_id: booking.id as string,
+        session_id: affSub,
+        payload: {
+          reason: selfReferralReason || 'MATCH',
+          attribution_snapshot: body.attribution_snapshot,
+        },
+      });
+    }
+
+    if (booking?.id && promoOwnerMismatch) {
+      logAffiliateAnomalyEvent({
+        affiliate_id: body.affiliateId || null,
+        referral_code: body.referral_code || affRef || null,
+        event_type: 'promo_affiliate_mismatch',
+        severity: 'medium',
+        booking_id: booking.id as string,
+        session_id: affSub,
+        payload: {
+          booking_affiliate_id: body.affiliateId || null,
+          promo_affiliate_id: promoOwnerAffiliateId,
+          promo_code: body.promo_code || promoCode,
+          attribution_snapshot: body.attribution_snapshot,
+        },
+      });
     }
 
     // 어필리에이트 last_conversion_at 업데이트
@@ -446,18 +546,9 @@ export async function POST(request: NextRequest) {
 
     // 프로모코드 사용량 증가 (예약 생성 성공 후)
     if (body.promo_code && booking?.id) {
-      const { data: promo } = await supabaseAdmin
-        .from('affiliate_promo_codes')
-        .select('id, uses_count')
-        .eq('code', body.promo_code)
-        .maybeSingle();
-      if (promo) {
-        const pr = promo as { id: string; uses_count: number };
-        ff(supabaseAdmin
-          .from('affiliate_promo_codes')
-          .update({ uses_count: (pr.uses_count || 0) + 1, updated_at: new Date().toISOString() })
-          .eq('id', pr.id), 'affiliate_promo_codes.uses_count');
-      }
+      ff(supabaseAdmin.rpc('increment_affiliate_promo_uses', {
+        p_promo_code: body.promo_code,
+      }), 'affiliate_promo_codes.uses_count');
     }
 
     // Lifetime 귀속 실험군: 신규 고객이 제휴로 첫 예약하면 실험군 할당

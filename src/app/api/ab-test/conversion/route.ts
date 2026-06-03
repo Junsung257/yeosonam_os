@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { recordConversion } from '@/lib/ab-test-engine';
 
 /**
@@ -16,14 +17,14 @@ export async function POST(request: NextRequest) {
     const { experimentId, visitorId } = body;
 
     if (!experimentId || !visitorId) {
-      return NextResponse.json({ error: 'experimentId와 visitorId는 필수입니다.' }, { status: 400 });
+      return apiResponse({ error: 'experimentId와 visitorId는 필수입니다.' }, { status: 400 });
     }
 
     // 기록 실패는 무시 (비파괴)
     await recordConversion(experimentId, visitorId).catch(() => {});
 
-    return NextResponse.json({ recorded: true });
+    return apiResponse({ recorded: true });
   } catch {
-    return NextResponse.json({ error: '변환 기록 실패' }, { status: 500 });
+    return apiResponse({ error: '변환 기록 실패' }, { status: 500 });
   }
 }

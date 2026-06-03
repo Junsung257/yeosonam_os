@@ -5,21 +5,23 @@
  * POST /api/affiliate/insights - 인사이트 수동 생성/갱신
  * PATCH /api/affiliate/insights/:id/read - 읽음 처리
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import {
   getAffiliateInsights,
   analyzeAndSaveInsights,
-  markInsightAsRead,
 } from '@/lib/card-news/affiliate-feedback';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 /** GET: 어필리에이터 인사이트 목록 */
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
   const affiliateId = request.nextUrl.searchParams.get('affiliate_id');
@@ -29,45 +31,46 @@ export async function GET(request: NextRequest) {
   );
 
   if (!affiliateId) {
-    return NextResponse.json({ error: 'affiliate_id 필수' }, { status: 400 });
+    return apiResponse({ error: 'affiliate_id 필수' }, { status: 400 });
   }
 
   try {
     const insights = await getAffiliateInsights(affiliateId, limit);
-    return NextResponse.json({ insights });
+    return apiResponse({ insights });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
-}
+};
 
 /** POST: 인사이트 생성/갱신 */
-export async function POST(request: NextRequest) {
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
   let body: { affiliate_id: string; affiliate_name?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON 파싱 실패' }, { status: 400 });
+    return apiResponse({ error: 'JSON 파싱 실패' }, { status: 400 });
   }
 
   if (!body.affiliate_id) {
-    return NextResponse.json({ error: 'affiliate_id 필수' }, { status: 400 });
+    return apiResponse({ error: 'affiliate_id 필수' }, { status: 400 });
   }
 
   try {
     const name = body.affiliate_name ?? '파트너';
     const insights = await analyzeAndSaveInsights(body.affiliate_id, name);
-    return NextResponse.json({
+    return apiResponse({
       success: true,
       insights_generated: insights.length,
       insights,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);
+export const POST = withAdminGuard(postHandler);

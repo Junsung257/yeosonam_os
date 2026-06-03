@@ -16,11 +16,14 @@ interface DistRow {
 
 interface AutoPublishResult {
   ok: boolean;
+  dryRun?: boolean;
+  publishNow?: boolean;
   product_id: string;
   product_title: string;
   tenant_id: string | null;
   elapsed_ms: number;
   distributions: DistRow[];
+  immediate_results?: Array<{ id: string; platform: string; status: string; error?: string }>;
   blog_queue_id: string | null;
   blog_scheduled_for: string | null;
   card_news_variants: { triggered: boolean; payload?: Record<string, unknown> | null; reason?: string };
@@ -145,7 +148,7 @@ export default function AutoPublishPage() {
             여소남 자동화 오케스트레이터
           </h1>
           <p className="text-admin-muted-2 text-sm max-w-md mx-auto">
-            한 번의 클릭으로 마케팅 콘텐츠를 5개 플랫폼에 즉시 생성하고 최적의 시간대에 자동 발행합니다.
+            한 번의 클릭으로 마케팅 콘텐츠를 6개 플랫폼에 생성하고 최적의 시간대에 자동 발행합니다.
           </p>
         </header>
 
@@ -273,7 +276,7 @@ export default function AutoPublishPage() {
                   />
                   <div>
                     <div className="text-sm font-semibold text-admin-border-mid">⚡ 즉시 발행</div>
-                    <div className="text-xs text-admin-muted-2">최적의 시간 예측(Best Time)을 건너뛰고 즉시 큐를 적재합니다.</div>
+                    <div className="text-xs text-admin-muted-2">Threads와 Meta Ads는 즉시 발행하고, 나머지는 즉시 예약/큐에 적재합니다.</div>
                   </div>
                 </label>
               </div>
@@ -328,7 +331,36 @@ export default function AutoPublishPage() {
             )}
 
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-admin-border-mid">플랫폼별 예약 현황</h3>
+              <h3 className="text-lg font-bold text-admin-border-mid">
+                {result.publishNow ? '플랫폼별 처리 현황' : '플랫폼별 예약 현황'}
+              </h3>
+              {result.publishNow && result.immediate_results && result.immediate_results.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {result.immediate_results.map((r) => (
+                    <div
+                      key={`${r.platform}:${r.id}`}
+                      className={`rounded-admin-md border px-3 py-2 text-xs ${
+                        r.status === 'published'
+                          ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-100'
+                          : r.status === 'skipped'
+                            ? 'border-amber-700/60 bg-amber-950/30 text-amber-100'
+                            : 'border-red-700/60 bg-red-950/30 text-red-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-bold">{PLATFORM_LABEL[r.platform] ?? r.platform}</span>
+                        <span className="font-mono uppercase">{r.status}</span>
+                      </div>
+                      {r.error && <div className="mt-1 break-words opacity-80">{r.error}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {result.publishNow && (
+                <p className="text-xs text-admin-muted-2">
+                  즉시 발행은 현재 Threads와 Meta Ads만 외부 API까지 실행합니다. 나머지 플랫폼은 생성 후 예약/큐 상태로 남습니다.
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 {result.distributions.map((d) => (
                   <div
@@ -420,12 +452,34 @@ function PayloadPreview({ platform, payload }: { platform: string; payload: Reco
   if (platform === 'threads_post') {
     const main = payload.main as string | undefined;
     const thread = (payload.thread as string[]) ?? [];
+    const why = payload.why_this_will_work as string | undefined;
+    const predictedEr = typeof payload.predicted_er === 'number' ? payload.predicted_er : null;
+    const learningMode = payload.learning_mode as string | undefined;
+    const trendConfidence = typeof payload.trend_confidence === 'number' ? payload.trend_confidence : null;
+    const riskFlags = Array.isArray(payload.risk_flags) ? payload.risk_flags.filter((v): v is string => typeof v === 'string') : [];
+    const trendSources = Array.isArray(payload.trend_sources) ? payload.trend_sources as Array<Record<string, unknown>> : [];
     return (
       <div className="space-y-2">
         <pre className="whitespace-pre-wrap font-sans leading-relaxed">{main}</pre>
         {thread.map((t, i) => (
           <pre key={i} className="ml-4 whitespace-pre-wrap font-sans leading-relaxed text-admin-muted-2 border-l-2 border-slate-700 pl-2">{t}</pre>
         ))}
+        <div className="mt-3 rounded border border-slate-800 bg-slate-900/80 p-3 text-[11px]">
+          {why && <div><span className="font-bold text-cyan-300">why:</span> {why}</div>}
+          {predictedEr !== null && <div><span className="font-bold text-cyan-300">predicted ER:</span> {(predictedEr * 100).toFixed(2)}%</div>}
+          {learningMode && (
+            <div>
+              <span className="font-bold text-cyan-300">learning:</span> {learningMode}
+              {trendConfidence !== null ? ` (${Math.round(trendConfidence * 100)}%)` : ''}
+            </div>
+          )}
+          {riskFlags.length > 0 && <div className="text-amber-300">risk: {riskFlags.join(', ')}</div>}
+          {trendSources.length > 0 && (
+            <div className="mt-1 text-admin-muted-2">
+              sources: {trendSources.slice(0, 3).map((s) => `${s.source_type}/${s.hook_type}/${s.sample_count}`).join(' | ')}
+            </div>
+          )}
+        </div>
       </div>
     );
   }

@@ -28,6 +28,7 @@ import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { useChatStore } from '@/lib/chat-store';
+import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -80,7 +81,7 @@ interface Package {
   special_notes?: string;
   customer_notes?: string;
   internal_notes?: string;
-  notices_parsed?: (string | { type: string; title: string; text: string })[];
+  notices_parsed?: (string | CustomerSafeNotice | { type: string; title: string; text: string })[];
   itinerary_data?: { days?: DaySchedule[]; highlights?: { remarks?: string[] } } | DaySchedule[];
   display_title?: string;
   hero_tagline?: string;
@@ -90,9 +91,10 @@ interface Package {
 }
 
 interface AttractionInfo {
+  id?: string | null;
   name: string; short_desc?: string | null; long_desc?: string | null; badge_type?: string | null; emoji?: string | null;
   aliases?: string[]; photos?: { src_medium: string; src_large: string; photographer: string; pexels_id: number }[];
-  country?: string | null; region?: string | null;
+  country?: string | null; region?: string | null; category?: string | null;
 }
 
 // W-final F2 — flight/city 파서는 render-contract.ts 단일 소스로 이관.

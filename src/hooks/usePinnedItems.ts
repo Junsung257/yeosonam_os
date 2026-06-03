@@ -19,6 +19,18 @@ export interface PinnedItem {
 let cached: PinnedItem[] | undefined;
 const EMPTY: PinnedItem[] = [];
 
+function isPinnedItem(value: unknown): value is PinnedItem {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    typeof (value as PinnedItem).id === 'string' &&
+    typeof (value as PinnedItem).label === 'string' &&
+    typeof (value as PinnedItem).href === 'string' &&
+    typeof (value as PinnedItem).iconName === 'string' &&
+    Number.isFinite((value as PinnedItem).createdAt)
+  );
+}
+
 function subscribe(callback: () => void) {
   window.addEventListener('storage', callback);
   window.addEventListener('admin:pinned-changed', callback);
@@ -33,11 +45,12 @@ function getSnapshot(): PinnedItem[] {
   try {
     const raw = window.localStorage.getItem(PINNED_KEY);
     if (raw === null) return EMPTY;
-    const parsed: PinnedItem[] = JSON.parse(raw);
+    const parsed: unknown = JSON.parse(raw);
+    const items = Array.isArray(parsed) ? parsed.filter(isPinnedItem).slice(-MAX_PINNED) : EMPTY;
     // 직렬화 비교로 캐시 무효화 (깊은 === 유지)
     const rawCached = cached ? JSON.stringify(cached) : null;
-    const rawParsed = JSON.stringify(parsed);
-    if (rawCached !== rawParsed) cached = parsed;
+    const rawParsed = JSON.stringify(items);
+    if (rawCached !== rawParsed) cached = items;
     return cached ?? EMPTY;
   } catch {
     return EMPTY;

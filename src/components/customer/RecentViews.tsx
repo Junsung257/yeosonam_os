@@ -118,7 +118,7 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
         {packages.map((pkg) => (
           <Link
             key={pkg.id}
-            href={`/packages/${pkg.id}`}
+            href={`/packages/${encodeURIComponent(pkg.id)}`}
             className="flex-shrink-0 w-[160px] snap-start rounded-xl border border-gray-200 bg-white p-3 hover:border-brand/40 hover:shadow-sm transition-all card-touch"
           >
             <p className="text-[11px] font-semibold text-text-body mb-1 line-clamp-1">

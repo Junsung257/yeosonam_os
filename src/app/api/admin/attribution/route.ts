@@ -1,34 +1,25 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { NextRequest, type NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * GET /api/admin/attribution
- *
- * 콘텐츠 → 클릭 → 문의 → 예약 퍼널 집계
- *
- * Query params:
- *   tenant_id   - 테넌트 필터 (필수)
- *   content_type - 'card_news' | 'blog' | 'email' | 'all' (기본 'all')
- *   days        - 조회 기간 (기본 30, 최대 90)
- *   content_id  - 특정 콘텐츠 ID 필터 (옵션)
- */
 const getHandler = async (request: NextRequest): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(buildMockAttribution());
+    return apiResponse(buildMockAttribution());
   }
 
   const { searchParams } = request.nextUrl;
-  const tenantId   = searchParams.get('tenant_id');
+  const tenantId = searchParams.get('tenant_id');
   const contentType = searchParams.get('content_type') ?? 'all';
-  const parsedDays  = parseInt(searchParams.get('days') ?? '30', 10);
-  const days        = Math.min(Number.isNaN(parsedDays) ? 30 : parsedDays, 90);
-  const contentId   = searchParams.get('content_id');
+  const parsedDays = Number.parseInt(searchParams.get('days') ?? '30', 10);
+  const days = Math.min(Math.max(Number.isNaN(parsedDays) ? 30 : parsedDays, 1), 90);
+  const contentId = searchParams.get('content_id');
 
   if (!tenantId) {
-    return NextResponse.json({ error: 'tenant_id 필수' }, { status: 400 });
+    return apiResponse({ error: 'TENANT_ID_REQUIRED' }, { status: 400 });
   }
 
   try {
@@ -41,7 +32,7 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       .gte('occurred_at', since);
 
     if (contentType !== 'all') query = query.eq('content_type', contentType);
-    if (contentId)            query = query.eq('content_id', contentId);
+    if (contentId) query = query.eq('content_id', contentId);
 
     const { data: events, error } = await query.limit(10_000);
     if (error) throw error;
@@ -49,7 +40,6 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
     type EventRow = { content_id: string; content_type: string; event_type: string; occurred_at: string };
     const rows = (events ?? []) as EventRow[];
 
-    // 퍼널 집계 (단일 패스)
     const funnel = { view: 0, click: 0, inquiry: 0, booking: 0 };
     const byContent = new Map<string, typeof funnel>();
 
@@ -65,36 +55,31 @@ const getHandler = async (request: NextRequest): Promise<NextResponse> => {
       }
     }
 
-    // 전환율 계산
-    const ctr        = funnel.view > 0 ? (funnel.click / funnel.view) * 100 : 0;
-    const inquiry_cr = funnel.click > 0 ? (funnel.inquiry / funnel.click) * 100 : 0;
-    const booking_cr = funnel.inquiry > 0 ? (funnel.booking / funnel.inquiry) * 100 : 0;
+    const ctr = funnel.view > 0 ? (funnel.click / funnel.view) * 100 : 0;
+    const inquiryCr = funnel.click > 0 ? (funnel.inquiry / funnel.click) * 100 : 0;
+    const bookingCr = funnel.inquiry > 0 ? (funnel.booking / funnel.inquiry) * 100 : 0;
 
-    // 상위 5개 콘텐츠 (예약 기준)
     const top_content = [...byContent.entries()]
       .sort((a, b) => b[1].booking - a[1].booking || b[1].inquiry - a[1].inquiry)
       .slice(0, 5)
       .map(([content_id, counts]) => ({ content_id, ...counts }));
 
-    return NextResponse.json({
+    return apiResponse({
       period: `last_${days}d`,
       tenant_id: tenantId,
       funnel,
       rates: {
         ctr: Math.round(ctr * 10) / 10,
-        inquiry_cr: Math.round(inquiry_cr * 10) / 10,
-        booking_cr: Math.round(booking_cr * 10) / 10,
+        inquiry_cr: Math.round(inquiryCr * 10) / 10,
+        booking_cr: Math.round(bookingCr * 10) / 10,
       },
       top_content,
       total_events: rows.length,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
-}
+};
 
 function buildMockAttribution() {
   return {

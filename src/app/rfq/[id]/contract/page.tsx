@@ -5,9 +5,13 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 export default function ContractPage() {
   const params  = useParams();
-  const rfqId   = params.id as string;
+  const rfqId   = getRouteParam(params?.id);
+  const encodedRfqId = rfqId ? encodeURIComponent(rfqId) : '';
 
   const [html,    setHtml]    = useState('');
   const [loading, setLoading] = useState(true);
@@ -15,7 +19,13 @@ export default function ContractPage() {
   const [printed, setPrinted] = useState(false);
 
   useEffect(() => {
-    fetch(`/api/rfq/${rfqId}/contract`)
+    if (!rfqId) {
+      setError('RFQ ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
+    fetch(`/api/rfq/${encodedRfqId}/contract`)
       .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error ?? '조회 실패'); });
         return r.json();
@@ -23,7 +33,7 @@ export default function ContractPage() {
       .then(d => setHtml(d.contract_html ?? ''))
       .catch(e => setError(e instanceof Error ? e.message : '오류가 발생했습니다'))
       .finally(() => setLoading(false));
-  }, [rfqId]);
+  }, [rfqId, encodedRfqId]);
 
   function handlePrint() {
     const win = window.open('', '_blank');
@@ -47,7 +57,7 @@ export default function ContractPage() {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center gap-4">
         <p className="text-red-500 text-sm">{error}</p>
-        <Link href={`/rfq/${rfqId}`} className="text-brand text-sm hover:underline">
+        <Link href={`/rfq/${encodedRfqId}`} className="text-brand text-sm hover:underline">
           ← 견적 현황으로
         </Link>
       </div>
@@ -60,7 +70,7 @@ export default function ContractPage() {
       <div className="bg-white border-b sticky top-0 z-10 px-4 py-3">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href={`/rfq/${rfqId}`} className="text-gray-400 hover:text-gray-600 text-sm">←</Link>
+            <Link href={`/rfq/${encodedRfqId}`} className="text-gray-400 hover:text-gray-600 text-sm">←</Link>
             <div>
               <h1 className="font-semibold text-gray-900">단체여행 표준 계약서</h1>
               <p className="text-xs text-gray-500">RFQ #{rfqId.slice(0, 8)}</p>
@@ -109,7 +119,7 @@ export default function ContractPage() {
           </p>
           <div className="flex gap-3 justify-center">
             <Link
-              href={`/rfq/${rfqId}`}
+              href={`/rfq/${encodedRfqId}`}
               className="border border-gray-300 text-gray-600 hover:bg-gray-50 px-5 py-2.5 rounded-xl text-sm font-medium transition-colors"
             >
               돌아가기

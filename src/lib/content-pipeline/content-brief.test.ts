@@ -58,6 +58,15 @@ describe('content brief customer remark safety', () => {
     expect(b2bDetailSource).not.toContain('itinerary_data, special_notes');
   });
 
+  it('uses only V3 standard notice metadata for blog FAQ generation', () => {
+    const repoRoot = process.cwd();
+    const contentGeneratorSource = readFileSync(path.join(repoRoot, 'src/lib/content-generator.ts'), 'utf8');
+
+    expect(contentGeneratorSource).toContain('sanitizeCustomerVisibleNotices');
+    expect(contentGeneratorSource).toContain('strictStandardOnly: true');
+    expect(contentGeneratorSource).not.toContain('const notices = product.notices_parsed;');
+  });
+
   it('strips supplier remarks from the mixed public packages API response', () => {
     const repoRoot = process.cwd();
     const packagesRouteSource = readFileSync(path.join(repoRoot, 'src/app/api/packages/route.ts'), 'utf8');

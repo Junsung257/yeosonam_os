@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
@@ -15,10 +17,9 @@ function pickModel(): Model {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: 'DB 미설정' });
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
-  }
+  const authError = requireCronBearer(request);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, skipped: 'DB 미설정' });
 
   let model = pickModel();
   const sinceDays = Number(request.nextUrl.searchParams.get('days') || '30');
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', since)
       .or('is_deleted.is.null,is_deleted.eq.false')
       .limit(2000);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
     let updated = 0;
     type BookingRow = {
@@ -99,12 +100,10 @@ export async function GET(request: NextRequest) {
         .eq('is_active', true)
         .maybeSingle();
       if (!aff) return;
-      const affiliateId = (aff as { id: string }).id;
 
       const { error: upErr } = await supabaseAdmin
         .from('bookings')
         .update({
-          affiliate_id: affiliateId,
           referral_code: chosenRef,
           attribution_model: model,
           attribution_split: split,
@@ -120,13 +119,10 @@ export async function GET(request: NextRequest) {
     }
 
     await reportAffiliateCronSuccess('affiliate-attribution-recalc', { model, processed: (bookings || []).length, updated });
-    return NextResponse.json({ ok: true, model, since, processed: (bookings || []).length, updated });
+    return apiResponse({ ok: true, model, since, processed: (bookings || []).length, updated });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-attribution-recalc', err, { model, sinceDays, since });
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'affiliate attribution recalc failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err, 'affiliate attribution recalc failed') }, { status: 500 });
   }
 }
 

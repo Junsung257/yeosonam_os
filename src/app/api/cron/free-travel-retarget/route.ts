@@ -14,10 +14,12 @@
  * 알림톡 링크: /free-travel?session={세션id} (저장 견적 복원)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendFreeTravelRetarget } from '@/lib/kakao';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -38,7 +40,7 @@ export async function GET(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB not configured' }, { status: 503 });
   }
 
   const now   = new Date();
@@ -55,7 +57,7 @@ export async function GET(request: NextRequest) {
     .limit(100);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   const targets = ((sessions ?? []) as FtsRow[]).filter(
@@ -63,7 +65,7 @@ export async function GET(request: NextRequest) {
   );
 
   if (targets.length === 0) {
-    return NextResponse.json({ ok: true, sent: 0, reason: '대상 없음' });
+    return apiResponse({ ok: true, sent: 0, reason: '대상 없음' });
   }
 
   let sent = 0;
@@ -99,5 +101,5 @@ export async function GET(request: NextRequest) {
     await new Promise(r => setTimeout(r, 300));
   }
 
-  return NextResponse.json({ ok: true, sent, failed, total: targets.length });
+  return apiResponse({ ok: true, sent, failed, total: targets.length });
 }

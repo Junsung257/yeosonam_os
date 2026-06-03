@@ -13,11 +13,12 @@
  * 인증: x-vercel-cron 헤더 또는 CRON_SECRET.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronOrVercelAuthorized, cronUnauthorizedResponse, withCronGuard } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { detectVariantWinner } from '@/lib/card-news-html/winner-detector';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { apiResponse } from '@/lib/api-response';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -30,8 +31,8 @@ const getHandler = async (request: NextRequest) => {
     return cronUnauthorizedResponse();
   }
 
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const startedAt = Date.now();
@@ -47,8 +48,8 @@ const getHandler = async (request: NextRequest) => {
     .is('winner_decided_at', null);
 
   if (error) {
-    console.error('[variant-winner-decide]', error);
-    return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
+    console.error('[variant-winner-decide]', sanitizeDbError(error));
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   // 2. variant_group_id 별로 그룹 + 가장 늦은 발행 시간 계산
@@ -97,12 +98,12 @@ const getHandler = async (request: NextRequest) => {
         group_id: groupId,
         decided: false,
         archived_count: 0,
-        reason: e instanceof Error ? e.message : String(e),
+        reason: sanitizeDbError(e),
       });
     }
   }
 
-  return NextResponse.json({
+  return apiResponse({
     eligible_groups: eligibleGroups.length,
     decided_count: decisions.filter((d) => d.decided).length,
     decisions,

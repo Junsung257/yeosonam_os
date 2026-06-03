@@ -10,9 +10,33 @@ export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
 const GRADE_LABELS: Record<number, string> = { 1: '브론즈', 2: '실버', 3: '골드', 4: '플래티넘', 5: '다이아' };
 
+function NewBookingFallback() {
+  return (
+    <div className="min-h-screen bg-admin-bg py-8">
+      <div className="max-w-3xl mx-auto px-4 space-y-6 animate-pulse">
+        <div className="h-4 w-28 rounded bg-admin-surface-2" />
+        <div className="h-8 w-36 rounded bg-admin-surface-2" />
+        {[...Array(5)].map((_, index) => (
+          <div key={index} className="rounded-admin-md bg-white p-5 shadow-admin-xs">
+            <div className="h-5 w-36 rounded bg-admin-surface-2 mb-4" />
+            <div className="grid grid-cols-2 gap-3">
+              <div className="h-10 rounded bg-admin-surface-2" />
+              <div className="h-10 rounded bg-admin-surface-2" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default async function NewBookingPage() {
   if (!isSupabaseConfigured) {
-    return <Suspense><NewBookingFormClient /></Suspense>;
+    return (
+      <Suspense fallback={<NewBookingFallback />}>
+        <NewBookingFormClient />
+      </Suspense>
+    );
   }
 
   const [pkgResult, custResult, affResult, rateInfo] = await Promise.all([
@@ -42,7 +66,7 @@ export default async function NewBookingPage() {
   }));
 
   return (
-    <Suspense>
+    <Suspense fallback={<NewBookingFallback />}>
       <NewBookingFormClient
         initialPackages={(pkgResult.data ?? []) as unknown as ServerPackage[]}
         initialCustomers={(custResult.data ?? []) as unknown as ServerCustomer[]}

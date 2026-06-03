@@ -28,10 +28,18 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-type PageParams = { params: Promise<{ token: string }> };
+type PageParams = { params: Promise<{ token?: string | string[] }> };
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
 
 export default async function MagicLinkChatPage({ params }: PageParams) {
-  const { token: tokenIdFromUrl } = await params;
+  const { token: rawToken } = await params;
+  const tokenIdFromUrl = getRouteParam(rawToken);
+  if (!tokenIdFromUrl) {
+    return <EnterpriseError reason="session_required" />;
+  }
 
   // ── 1) magic-session 쿠키 검증 ──────────────────────────────
   const cookieStore = await cookies();

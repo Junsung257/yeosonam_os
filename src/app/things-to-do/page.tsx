@@ -12,7 +12,9 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export const revalidate = 86400; // 1d
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 interface RegionEntry {
   region: string;
@@ -20,47 +22,79 @@ interface RegionEntry {
   cover: string | null;
 }
 
+interface AttractionPhoto {
+  src_medium?: string;
+  src_large?: string;
+}
+
+function normalizeRegionName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isAttractionPhotoArray(value: unknown): value is AttractionPhoto[] {
+  return Array.isArray(value);
+}
+
 async function getRegions(): Promise<RegionEntry[]> {
   if (!isSupabaseConfigured) return [];
-  const { data: regionRows } = await supabaseAdmin
-    .from('attractions')
-    .select('region')
-    .not('region', 'is', null)
-    .order('mention_count', { ascending: false })
-    .limit(4000);
+  try {
+    const { data: regionRows } = await supabaseAdmin
+      .from('attractions')
+      .select('region')
+      .not('region', 'is', null)
+      .order('mention_count', { ascending: false })
+      .limit(4000);
 
-  if (!regionRows) return [];
-  const { data: coverRows } = await supabaseAdmin
-    .from('attractions')
-    .select('region, photos')
-    .not('region', 'is', null)
-    .not('photos', 'is', null)
-    .order('mention_count', { ascending: false })
-    .limit(450);
+    if (!regionRows) return [];
+    const { data: coverRows } = await supabaseAdmin
+      .from('attractions')
+      .select('region, photos')
+      .not('region', 'is', null)
+      .not('photos', 'is', null)
+      .order('mention_count', { ascending: false })
+      .limit(450);
 
-  const map = new Map<string, RegionEntry>();
-  for (const r of regionRows) {
-    if (!r.region) continue;
-    if (!map.has(r.region)) map.set(r.region, { region: r.region, count: 0, cover: null });
-    const e = map.get(r.region)!;
-    e.count += 1;
-  }
+    const map = new Map<string, RegionEntry>();
+    for (const r of regionRows) {
+      const region = normalizeRegionName(r.region);
+      if (!region) continue;
+      if (!map.has(region)) map.set(region, { region, count: 0, cover: null });
+      const e = map.get(region)!;
+      e.count += 1;
+    }
 
-  for (const r of coverRows ?? []) {
-    if (!r.region) continue;
-    const e = map.get(r.region);
-    if (!e || e.cover) continue;
-      const photos = r.photos as Array<{ src_medium?: string; src_large?: string }> | null;
-      const u = pickAttractionPhotoUrl(photos ?? undefined);
+    for (const r of coverRows ?? []) {
+      const region = normalizeRegionName(r.region);
+      if (!region) continue;
+      const e = map.get(region);
+      if (!e || e.cover) continue;
+      const photos = isAttractionPhotoArray(r.photos) ? r.photos : undefined;
+      const u = pickAttractionPhotoUrl(photos);
       if (u) e.cover = u;
+    }
+    return Array.from(map.values()).sort((a, b) => b.count - a.count);
+  } catch {
+    return [];
   }
-  return Array.from(map.values()).sort((a, b) => b.count - a.count);
 }
 
 export const metadata: Metadata = {
   title: '여행지별 가볼만한 곳 — 운영팀 검증 명소',
   description: '아시아·유럽·미주 인기 여행지의 가볼만한 곳을 카테고리별로 정리. 여소남 운영팀이 직접 답사하고 검증한 명소만 모아 보여드립니다.',
   alternates: { canonical: `${BASE_URL}/things-to-do` },
+  openGraph: {
+    title: '여행지별 가볼만한 곳',
+    description: '여소남 운영팀이 직접 답사하고 검증한 여행지별 명소 모음.',
+    url: `${BASE_URL}/things-to-do`,
+    type: 'website',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '여행지별 가볼만한 곳',
+    description: '여소남 운영팀이 직접 답사하고 검증한 여행지별 명소 모음.',
+    images: [SOCIAL_IMAGE_URL],
+  },
 };
 
 export default async function ThingsToDoIndexPage() {

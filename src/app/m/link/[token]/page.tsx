@@ -23,10 +23,19 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false, noarchive: true, nosnippet: true, noimageindex: true },
 };
 
-type PageParams = { params: Promise<{ token: string }> };
+type PageParams = { params: Promise<{ token?: string | string[] }> };
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
 
 export default async function MagicLinkLandingPage({ params }: PageParams) {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = getRouteParam(rawToken);
+  if (!token) {
+    return <ErrorView reason="not_found" />;
+  }
+
   const result = await verifyMagicToken(token);
 
   if (!result.ok) {

@@ -1,10 +1,11 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
 
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  if (!isSupabaseConfigured) return NextResponse.json({ rows: [] });
+async function getHandler(request: NextRequest) {
+  if (!isSupabaseConfigured) return apiResponse({ rows: [] });
 
   const sinceDays = Number(request.nextUrl.searchParams.get('days') || '90');
   const affiliateId = request.nextUrl.searchParams.get('affiliateId');
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     .limit(500);
   if (affiliateId) promoQuery = promoQuery.eq('affiliate_id', affiliateId);
   const { data: promoRows, error } = await promoQuery;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
   const affiliateIds = [...new Set((promoRows || []).map((p: any) => p.affiliate_id).filter(Boolean))];
   const { data: affiliates } = affiliateIds.length
@@ -63,6 +64,8 @@ export async function GET(request: NextRequest) {
     };
   });
 
-  return NextResponse.json({ rows });
+  return apiResponse({ rows });
 }
+
+export const GET = withAdminGuard(getHandler);
 

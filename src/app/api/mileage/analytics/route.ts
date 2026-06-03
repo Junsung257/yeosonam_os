@@ -9,43 +9,29 @@
  * 보안: Admin 세션 필요
  * (민감 데이터 — 전체 고객 마일리지/등급 정보 포함)
  */
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+const getHandler = async () => {
   try {
-    const { isSupabaseConfigured, supabaseAdmin, supabase } = await import('@/lib/supabase');
+    const { isSupabaseConfigured, supabaseAdmin } = await import('@/lib/supabase');
 
     if (!isSupabaseConfigured) {
-      return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-    }
-
-    // ── Admin 인증 ─────────────────────────────────────────────
-    const sb = supabase;
-    const { data: { user } } = await sb.auth.getUser();
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { data: admin } = await supabaseAdmin
-      .from('admins')
-      .select('id')
-      .eq('id', user.id)
-      .single();
-    if (!admin) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+      return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
     }
 
     // ── 데이터 수집 (단일 패스) ────────────────────────────────
     // 1. 고객 데이터 (마일리지 + 등급)
     const { data: customers } = await supabaseAdmin
       .from('customers')
-      .select('id, grade, mileage, name');
+      .select('id, grade, mileage');
 
     if (!customers || customers.length === 0) {
-      return NextResponse.json({
+      return apiResponse({
         totalBalance: 0,
         customerCount: 0,
         avgMileage: 0,
@@ -132,7 +118,7 @@ export async function GET() {
         ? ((totalEarnedAllTime - totalBalance) / totalEarnedAllTime) * 100
         : 0;
 
-    return NextResponse.json({
+    return apiResponse({
       totalBalance,
       customerCount,
       avgMileage,
@@ -143,7 +129,8 @@ export async function GET() {
       totalExpiredAllTime,
     });
   } catch (error) {
-    console.error('[MileageAnalytics] API 오류:', error);
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return apiResponse({ error: logAndSanitize('mileage-analytics', error) }, { status: 500 });
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);

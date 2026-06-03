@@ -1,37 +1,41 @@
 /**
- * 알림톡 자동 발송 cron 엔드포인트
+ * POST /api/notify/alimtalk
  *
- * 호출 방법 (cron-job.org 등 외부 크론):
- *   POST https://your-domain.com/api/notify/alimtalk?type=preparation
- *   POST https://your-domain.com/api/notify/alimtalk?type=passport
- *   Header: x-cron-secret: {CRON_SECRET}
- *
- * type=preparation → 출발 D-7 예약자에게 준비물 안내
- * type=passport    → 여권 만료 6개월 이내 고객에게 알림
+ * Cron-only endpoint for sending preparation and passport-expiry Alimtalk notices.
+ * Header: x-cron-secret: {CRON_SECRET}
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { sendPreparationGuide, sendPassportExpiryNotice } from '@/lib/kakao';
 import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
-import { sendPreparationGuide, sendPassportExpiryNotice } from '@/lib/kakao';
 import { safeEqualString } from '@/lib/timing-safe';
 
+type NotifyType = 'preparation' | 'passport';
+
+function isNotifyType(value: string | null): value is NotifyType {
+  return value === 'preparation' || value === 'passport';
+}
+
 export async function POST(request: NextRequest) {
-  // cron secret 검증
   const secret = request.headers.get('x-cron-secret');
   const cronSecret = getSecret('CRON_SECRET');
   if (!cronSecret || !safeEqualString(secret, cronSecret)) {
-    return NextResponse.json({ error: '인증 실패' }, { status: 401 });
+    return apiResponse({ error: '인증에 실패했습니다.' }, { status: 401 });
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 503 });
   }
 
   const { searchParams } = new URL(request.url);
   const type = searchParams.get('type');
+  if (!isNotifyType(type)) {
+    return apiResponse({ error: 'type 파라미터는 preparation 또는 passport여야 합니다.' }, { status: 400 });
+  }
 
-  // 준비물 안내 (출발 D-7)
   if (type === 'preparation') {
     const today = new Date();
     const d7 = new Date(today);
@@ -44,10 +48,13 @@ export async function POST(request: NextRequest) {
       .eq('departure_date', dateStr)
       .in('status', ['pending', 'confirmed']);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) {
+      console.error('[notify/alimtalk] preparation lookup failed:', sanitizeDbError(error));
+      return apiResponse({ error: '발송 대상 조회에 실패했습니다.' }, { status: 500 });
+    }
 
-    const sent: string[] = [];
-    const failed: string[] = [];
+    let sent = 0;
+    let failed = 0;
 
     for (const booking of bookings || []) {
       const customer = (booking as { customers?: { name?: string; phone?: string } }).customers;
@@ -58,50 +65,50 @@ export async function POST(request: NextRequest) {
           name: customer.name,
           packageTitle: (booking as { package_title?: string }).package_title || '여행 상품',
         });
-        sent.push(customer.name);
-      } catch {
-        failed.push(customer.name);
+        sent++;
+      } catch (sendError) {
+        failed++;
+        console.warn('[notify/alimtalk] preparation send failed:', sanitizeDbError(sendError));
       }
     }
 
-    return NextResponse.json({ type: 'preparation', sent, failed, total: sent.length + failed.length });
+    return apiResponse({ type, sent, failed, total: sent + failed });
   }
 
-  // 여권 만료 알림 (6개월 이내)
-  if (type === 'passport') {
-    const today = new Date().toISOString().split('T')[0];
-    const sixMonthsLater = new Date();
-    sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
-    const sixMonthsStr = sixMonthsLater.toISOString().split('T')[0];
+  const today = new Date().toISOString().split('T')[0];
+  const sixMonthsLater = new Date();
+  sixMonthsLater.setMonth(sixMonthsLater.getMonth() + 6);
+  const sixMonthsStr = sixMonthsLater.toISOString().split('T')[0];
 
-    const { data: customers, error } = await supabase
-      .from('customers')
-      .select('name, phone, passport_expiry')
-      .gte('passport_expiry', today)
-      .lte('passport_expiry', sixMonthsStr)
-      .not('phone', 'is', null);
+  const { data: customers, error } = await supabase
+    .from('customers')
+    .select('name, phone, passport_expiry')
+    .gte('passport_expiry', today)
+    .lte('passport_expiry', sixMonthsStr)
+    .not('phone', 'is', null);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    console.error('[notify/alimtalk] passport lookup failed:', sanitizeDbError(error));
+    return apiResponse({ error: '발송 대상 조회에 실패했습니다.' }, { status: 500 });
+  }
 
-    const sent: string[] = [];
-    const failed: string[] = [];
+  let sent = 0;
+  let failed = 0;
 
-    for (const customer of customers || []) {
-      if (!customer.phone || !customer.name) continue;
-      try {
-        await sendPassportExpiryNotice({
-          phone: customer.phone,
-          name: customer.name,
-          expiryDate: customer.passport_expiry,
-        });
-        sent.push(customer.name);
-      } catch {
-        failed.push(customer.name);
-      }
+  for (const customer of customers || []) {
+    if (!customer.phone || !customer.name) continue;
+    try {
+      await sendPassportExpiryNotice({
+        phone: customer.phone,
+        name: customer.name,
+        expiryDate: customer.passport_expiry,
+      });
+      sent++;
+    } catch (sendError) {
+      failed++;
+      console.warn('[notify/alimtalk] passport send failed:', sanitizeDbError(sendError));
     }
-
-    return NextResponse.json({ type: 'passport', sent, failed, total: sent.length + failed.length });
   }
 
-  return NextResponse.json({ error: 'type 파라미터 필요 (preparation | passport)' }, { status: 400 });
+  return apiResponse({ type, sent, failed, total: sent + failed });
 }

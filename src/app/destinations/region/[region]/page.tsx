@@ -13,25 +13,111 @@ import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemot
 export const revalidate = 600;
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+interface RegionDestination {
+  destination: string;
+  package_count: number;
+  min_price: number | null;
+  avg_rating: number | null;
+  total_reviews: number | null;
+}
+
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+
+interface AttractionImageSample {
+  region: string;
+  photos: GalleryPhoto[] | null;
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPositiveNumber(value: unknown): number | null {
+  const number = getFiniteNumber(value);
+  return number != null && number > 0 ? number : null;
+}
+
+function getNonNegativeInteger(value: unknown): number {
+  const number = getFiniteNumber(value);
+  return number != null ? Math.max(0, Math.round(number)) : 0;
+}
+
+function getNullableNonNegativeInteger(value: unknown): number | null {
+  if (value == null) return null;
+  return getNonNegativeInteger(value);
+}
+
+function normalizeActiveDestination(row: unknown): RegionDestination | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const destination = typeof record.destination === 'string' ? record.destination.trim() : '';
+  if (!destination) return null;
+
+  return {
+    destination,
+    package_count: getNonNegativeInteger(record.package_count),
+    min_price: getPositiveNumber(record.min_price),
+    avg_rating: getPositiveNumber(record.avg_rating),
+    total_reviews: getNullableNonNegativeInteger(record.total_reviews),
+  };
+}
+
+function normalizeAttractionImageSample(row: unknown): AttractionImageSample | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const region = typeof record.region === 'string' ? record.region.trim() : '';
+  if (!region) return null;
+
+  const photos = Array.isArray(record.photos)
+    ? record.photos.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object')
+    : null;
+
+  return {
+    region,
+    photos: photos && photos.length > 0 ? photos : null,
+  };
+}
 
 export async function generateStaticParams() {
   return REGIONS.map(r => ({ region: r.slug }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ region: string }> }): Promise<Metadata> {
-  const { region: slug } = await params;
+export async function generateMetadata({ params }: { params: Promise<{ region?: string | string[] }> }): Promise<Metadata> {
+  const { region: rawRegion } = await params;
+  const slug = getRouteParam(rawRegion);
   const region = getRegionBySlug(slug);
-  if (!region) return {};
+  const canonical = slug ? `${BASE_URL}/destinations/region/${encodeURIComponent(slug)}` : `${BASE_URL}/destinations`;
+  if (!region) return { title: '여행지', alternates: { canonical }, robots: { index: false, follow: true } };
   return {
     title: `${region.label} 여행 패키지 가이드`,
     description: `${region.label} 여행의 모든 것 — ${region.tagline}. ${region.featuredCities.slice(0, 4).join('·')} 등 운영팀 검증 패키지를 한곳에서.`,
-    alternates: { canonical: `${BASE_URL}/destinations/region/${slug}` },
+    alternates: { canonical },
     openGraph: {
       title: `${region.label} 여행 가이드 | 여소남`,
       description: region.tagline,
-      url: `${BASE_URL}/destinations/region/${slug}`,
+      url: canonical,
       type: 'website',
+      images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${region.label} 여행 가이드 | 여소남`,
+      description: region.tagline,
+      images: [SOCIAL_IMAGE_URL],
     },
   };
 }
@@ -53,11 +139,15 @@ interface RegionData {
   minPrice: number | null;
 }
 
+function getEmptyRegionData(): RegionData {
+  return { cities: [], packages: [], posts: [], totalPackages: 0, minPrice: null };
+}
+
 async function getRegionData(slug: string): Promise<RegionData | null> {
   const region = getRegionBySlug(slug);
   if (!region) return null;
   if (!isSupabaseConfigured) {
-    return { cities: [], packages: [], posts: [], totalPackages: 0, minPrice: null };
+    return getEmptyRegionData();
   }
 
   const { data: allDests } = await supabaseAdmin
@@ -66,8 +156,9 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .limit(500);
 
   // 이 region 에 속하는 도시만 필터 — 토큰화 매칭(cityInRegion)으로 멀티시티 "북경/홍콩" false-positive 방지.
-  const regionDests = ((allDests as Array<{ destination: string; package_count: number; min_price: number | null; avg_rating: number | null; total_reviews: number | null }> | null) ?? [])
-    .filter(d => cityInRegion(d.destination, slug));
+  const regionDests = ((allDests as unknown[] | null) ?? [])
+    .map(normalizeActiveDestination)
+    .filter((d): d is RegionDestination => d != null && cityInRegion(d.destination, slug));
 
   const dests = regionDests.map(d => d.destination);
 
@@ -105,11 +196,11 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
-  ((attrs as Array<{ region: string; photos: Array<{ src_medium?: string; src_large?: string }> | null }> | null) ?? []).forEach(a => {
-    const key = a.region;
-    if (key && !imgByDest[key]) {
-      const u = pickAttractionPhotoUrl(a.photos ?? undefined);
-      if (u) imgByDest[key] = u;
+  ((attrs as unknown[] | null) ?? []).forEach((row) => {
+    const sample = normalizeAttractionImageSample(row);
+    if (sample && !imgByDest[sample.region]) {
+      const u = pickAttractionPhotoUrl(sample.photos);
+      if (u) imgByDest[sample.region] = u;
     }
   });
 
@@ -130,10 +221,10 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .sort((a, b) => (b.package_count ?? 0) - (a.package_count ?? 0))
     .map(d => ({
       destination: d.destination,
-      package_count: d.package_count ?? 0,
-      min_price: d.min_price ?? null,
-      avg_rating: d.avg_rating != null ? Number(d.avg_rating) : null,
-      total_reviews: d.total_reviews ?? null,
+      package_count: d.package_count,
+      min_price: d.min_price,
+      avg_rating: d.avg_rating,
+      total_reviews: d.total_reviews,
       image: imgByDest[d.destination] ?? null,
     }));
 
@@ -155,12 +246,19 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   };
 }
 
-export default async function RegionLandingPage({ params }: { params: Promise<{ region: string }> }) {
-  const { region: slug } = await params;
+export default async function RegionLandingPage({ params }: { params: Promise<{ region?: string | string[] }> }) {
+  const { region: rawRegion } = await params;
+  const slug = getRouteParam(rawRegion);
+  const encodedSlug = encodeURIComponent(slug);
   const region = getRegionBySlug(slug);
   if (!region) notFound();
 
-  const data = await getRegionData(slug);
+  let data: RegionData | null = null;
+  try {
+    data = await getRegionData(slug);
+  } catch {
+    data = getEmptyRegionData();
+  }
   if (!data) notFound();
 
   const heroImage = data.cities.find(c => c.image)?.image ?? null;
@@ -178,7 +276,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                 '@type': 'CollectionPage',
                 name: `${region.label} 여행 패키지`,
                 description: region.tagline,
-                url: `${BASE_URL}/destinations/region/${slug}`,
+                url: `${BASE_URL}/destinations/region/${encodedSlug}`,
                 inLanguage: 'ko-KR',
               },
               {
@@ -186,7 +284,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                 itemListElement: [
                   { '@type': 'ListItem', position: 1, name: '홈', item: BASE_URL },
                   { '@type': 'ListItem', position: 2, name: '여행지', item: `${BASE_URL}/destinations` },
-                  { '@type': 'ListItem', position: 3, name: region.label, item: `${BASE_URL}/destinations/region/${slug}` },
+                  { '@type': 'ListItem', position: 3, name: region.label, item: `${BASE_URL}/destinations/region/${encodedSlug}` },
                 ],
               },
             ],
@@ -252,7 +350,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
           <div className="border-b border-slate-200 bg-white sticky top-14 md:top-16 z-30">
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex gap-2 overflow-x-auto scrollbar-hide">
               <Link
-                href={`/destinations/region/${slug}`}
+                href={`/destinations/region/${encodedSlug}`}
                 className="flex-shrink-0 text-sm bg-brand text-white px-3 py-1.5 rounded-md font-medium"
                 aria-current="page"
               >
@@ -346,7 +444,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
               <SectionHeader title={`${region.label} 여행 매거진`} subtitle="가이드 · 꿀팁 · 후기" />
               <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-4">
                 {data.posts.map(p => (
-                  <Link key={p.id} href={`/blog/${p.slug}`} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
+                  <Link key={p.id} href={`/blog/${encodeURIComponent(p.slug)}`} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
                     <SafeMagazineThumb url={p.og_image_url} title={p.seo_title || ''} />
                     <div className="p-4">
                       <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-brand tracking-tight">

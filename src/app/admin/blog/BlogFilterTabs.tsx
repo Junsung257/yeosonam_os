@@ -11,12 +11,13 @@ const STATUS_TABS = [
 export default function BlogFilterTabs({ currentStatus }: { currentStatus: string }) {
   const router = useRouter();
   const pathname = usePathname();
+  const currentPath = pathname || '/admin/blog';
 
   const setStatus = (status: string) => {
     const params = new URLSearchParams();
     if (status !== 'all') params.set('status', status);
     const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    router.push(qs ? `${currentPath}?${qs}` : currentPath);
   };
 
   return (

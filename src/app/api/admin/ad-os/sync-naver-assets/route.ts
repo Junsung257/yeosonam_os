@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import {
   fetchNaverAdgroups,
@@ -14,12 +15,12 @@ export const dynamic = 'force-dynamic';
 
 export const POST = withAdminGuard(async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const config = getNaverAdsConfigStatus();
   if (!config.configured) {
-    return NextResponse.json({
+    return apiResponse({
       ok: false,
       error: 'Naver SearchAd API keys are not configured.',
       config,
@@ -36,9 +37,9 @@ export const POST = withAdminGuard(async () => {
 
   const firstError = campaignRes.error || adgroupRes.error || channelRes.error;
   if (firstError) {
-    return NextResponse.json({
+    return apiResponse({
       ok: false,
-      error: firstError,
+      error: sanitizeDbError(firstError, 'Naver asset sync failed'),
       saved: false,
       counts: {
         campaigns: campaignRes.campaigns.length,
@@ -83,7 +84,7 @@ export const POST = withAdminGuard(async () => {
       notes: nextAction,
     });
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       saved: false,
       summary,
@@ -109,7 +110,7 @@ export const POST = withAdminGuard(async () => {
     .maybeSingle();
 
   if (existing.error) {
-    return NextResponse.json({ ok: false, error: existing.error.message, saved: false }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(existing.error), saved: false }, { status: 500 });
   }
 
   const query = existing.data?.id
@@ -135,7 +136,7 @@ export const POST = withAdminGuard(async () => {
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message, saved: false }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(error), saved: false }, { status: 500 });
   }
 
   const accountSaveRes = await upsertTenantAdAccountProbe(supabaseAdmin, {
@@ -156,13 +157,13 @@ export const POST = withAdminGuard(async () => {
     notes: row.external_config_note,
   });
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     saved: true,
     summary,
     saved_budget: data,
     saved_account: accountSaveRes.data || null,
-    account_error: accountSaveRes.error?.message || null,
+    account_error: accountSaveRes.error ? sanitizeDbError(accountSaveRes.error) : null,
     next_action: 'Naver ad group ID was saved. Run launch audit, then run the paused keyword publisher dry-run.',
   });
 });

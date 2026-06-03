@@ -1,11 +1,12 @@
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function getHandler() {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({
+    return apiResponse({
       totalEvents: 0, totalCorrections: 0, activeCorrections: 0,
       recentCritiques: 0, blockCritiques: 0, warnCritiques: 0, passCritiques: 0,
       hitlCount: 0, topErrors: [], corrections: [], scenarios: [],
@@ -106,7 +107,7 @@ export async function GET() {
     ? Math.round((passedScenarioRuns7d / scenarioRunCount7d) * 1000) / 10
     : 0;
 
-  return NextResponse.json({
+  return apiResponse({
     totalEvents,
     totalCorrections,
     activeCorrections,
@@ -126,3 +127,5 @@ export async function GET() {
     failedScenarioRuns7d,
   });
 }
+
+export const GET = withAdminGuard(getHandler);

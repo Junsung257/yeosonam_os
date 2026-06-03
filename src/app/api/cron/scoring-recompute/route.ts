@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { recomputeAllScores, snapshotScoreHistory } from '@/lib/scoring/recommend';
@@ -6,6 +6,8 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { snapshotBatch } from '@/lib/scoring/feature-snapshots';
 import { fitHedonicCoefs } from '@/lib/scoring/hedonic-fit';
 import { learnMarketRates } from '@/lib/scoring/learn-market-rates';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
@@ -21,11 +23,11 @@ export const maxDuration = 300;
  * 보호: CRON_SECRET 헤더 검증 (env 미설정이면 인증 생략 — 로컬 개발용)
  */
 export async function GET(req: NextRequest) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
-  }
   if (!isCronAuthorized(req)) {
     return cronUnauthorizedResponse();
+  }
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ skipped: true, reason: 'Supabase not configured' });
   }
 
   const startedAt = Date.now();
@@ -38,7 +40,7 @@ export async function GET(req: NextRequest) {
       const { syncStaleMrtHotelIntel } = await import('@/lib/mrt-hotel-intel');
       mrtHotel = await syncStaleMrtHotelIntel({ maxPackages: 30, freshWithinDays: 14 });
     } catch (e) {
-      console.warn('[cron/scoring-recompute] mrt hotel sync:', e instanceof Error ? e.message : e);
+      console.warn('[cron/scoring-recompute] mrt hotel sync:', sanitizeDbError(e));
     }
     // 1) 1차 점수
     const first = await recomputeAllScores();
@@ -79,10 +81,10 @@ export async function GET(req: NextRequest) {
       }
       featureSnap = await snapshotBatch(lite);
     } catch (e) {
-      console.warn('[feature-snapshot]', e instanceof Error ? e.message : 'failed');
+      console.warn('[feature-snapshot]', sanitizeDbError(e, 'Feature snapshot failed'));
     }
     const ms = Date.now() - startedAt;
-    return NextResponse.json({
+    return apiResponse({
       ok: true, ms,
       market: { upserted: market.upserted, options_seen: market.options_seen },
       mrt_hotel_intel: mrtHotel,
@@ -99,9 +101,10 @@ export async function GET(req: NextRequest) {
       second: { groups: second.groups, packages: second.packages, version: second.policy_version },
     });
   } catch (e) {
-    console.error('[cron/scoring-recompute] failed:', e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed' },
+    const message = sanitizeDbError(e, 'Scoring recompute failed');
+    console.error('[cron/scoring-recompute] failed:', message);
+    return apiResponse(
+      { error: message },
       { status: 500 },
     );
   }

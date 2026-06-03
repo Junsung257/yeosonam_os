@@ -7,8 +7,10 @@
  * 충분한 신뢰도(95%)가 모이면 winner를 policy_ab_results에 INSERT.
  * 사장님이 /admin/scoring/funnel 에서 결과 보고 수동 활성 전환.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { postAlert } from '@/lib/admin-alerts';
@@ -59,17 +61,17 @@ async function loadKpi(policyId: string, since: string): Promise<PolicyKpi> {
 }
 
 async function handle(req: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
   if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
+  if (!isSupabaseConfigured) return apiResponse({ skipped: true });
 
   // 정책 목록
   const { data: policies, error } = await supabaseAdmin
     .from('scoring_policies')
     .select('id, version, is_active');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   const ps = (policies ?? []) as PolicyMeta[];
   const active = ps.find(p => p.is_active);
-  if (!active) return NextResponse.json({ skipped: true, reason: 'active 정책 없음' });
+  if (!active) return apiResponse({ skipped: true, reason: 'active 정책 없음' });
 
   // 최근 30일
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
@@ -88,7 +90,7 @@ async function handle(req: NextRequest) {
   candidateKpis.sort((a, b) => b.kpi.exposures - a.kpi.exposures);
   const challenger = candidateKpis[0];
   if (!challenger) {
-    return NextResponse.json({
+    return apiResponse({
       ok: true, skipped: true, reason: '비활성 정책 사용 데이터 없음',
       active_kpi: activeKpi,
     });
@@ -120,7 +122,7 @@ async function handle(req: NextRequest) {
     winner, confidence,
     notes: `auto AB compare ${periodStart} ~ ${periodEnd}`,
   });
-  if (insErr) console.error('[policy-ab insert]', insErr.message);
+  if (insErr) console.error('[policy-ab insert]', sanitizeDbError(insErr));
 
   // winner 판정 시 admin alert (활성 전환 추천)
   if (winner && winner !== active.id) {
@@ -150,7 +152,7 @@ async function handle(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     active: { ...active, kpi: activeKpi, booking_rate: aRate, wilson_lower: aLower },
     challenger: { ...challenger.policy, kpi: challenger.kpi, booking_rate: bRate, wilson_lower: bLower },

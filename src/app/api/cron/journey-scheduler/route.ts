@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { requireCronBearer } from '@/lib/cron-auth';
 import { isSupabaseConfigured, supabase, createMessageLog } from '@/lib/supabase';
 import { getNotificationAdapter } from '@/lib/notification-adapter';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 고객 여정 타임머신 스케줄러
@@ -20,7 +22,7 @@ export async function GET(request: NextRequest) {
   const isForce = request.nextUrl.searchParams.get('force') === 'true';
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const today = new Date();
@@ -66,11 +68,11 @@ export async function GET(request: NextRequest) {
         });
         processed.d15++;
       } catch (e) {
-        processed.errors.push(`D-15 ${(b as { booking_no?: string }).booking_no}: ${e}`);
+        processed.errors.push(`D-15 booking:${String(b.id).slice(0, 8)} ${sanitizeDbError(e)}`);
       }
     }
   } catch (e) {
-    processed.errors.push(`D-15 쿼리 실패: ${e}`);
+    processed.errors.push(`D-15 query ${sanitizeDbError(e)}`);
   }
 
   // ─── D-3: 출발 확정서 안내 ─────────────────────────────────────────
@@ -96,11 +98,11 @@ export async function GET(request: NextRequest) {
         });
         processed.d3++;
       } catch (e) {
-        processed.errors.push(`D-3 ${(b as { booking_no?: string }).booking_no}: ${e}`);
+        processed.errors.push(`D-3 booking:${String(b.id).slice(0, 8)} ${sanitizeDbError(e)}`);
       }
     }
   } catch (e) {
-    processed.errors.push(`D-3 쿼리 실패: ${e}`);
+    processed.errors.push(`D-3 query ${sanitizeDbError(e)}`);
   }
 
   // ─── D+1: 귀국 해피콜 ─────────────────────────────────────────────
@@ -125,15 +127,20 @@ export async function GET(request: NextRequest) {
         });
         processed.d_plus1++;
       } catch (e) {
-        processed.errors.push(`D+1 ${(b as { booking_no?: string }).booking_no}: ${e}`);
+        processed.errors.push(`D+1 booking:${String(b.id).slice(0, 8)} ${sanitizeDbError(e)}`);
       }
     }
   } catch (e) {
-    processed.errors.push(`D+1 쿼리 실패: ${e}`);
+    processed.errors.push(`D+1 query ${sanitizeDbError(e)}`);
   }
 
-  console.log('[여정 스케줄러]', processed);
-  return NextResponse.json({
+  console.log('[여정 스케줄러]', {
+    d15: processed.d15,
+    d3: processed.d3,
+    d_plus1: processed.d_plus1,
+    errors: processed.errors.length,
+  });
+  return apiResponse({
     ok: true,
     is_force: isForce,
     processed,

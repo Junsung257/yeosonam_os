@@ -16,7 +16,38 @@ import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://www.yeosonam.com'
+).replace(/\/+$/, '');
+
+function getPackageUrl(id: string): string {
+  return `${BASE_URL}/packages/${encodeURIComponent(id.trim())}`;
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function getNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getFiniteNumber(value: unknown): number | undefined {
+  const normalized = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(normalized) ? normalized : undefined;
+}
+
+function getStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
 
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
@@ -48,7 +79,10 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
       .in('status', ['active', 'approved'])
       .order('updated_at', { ascending: false })
       .limit(50);
-    return ((data ?? []) as Array<{ id: string }>).map((p) => ({ id: p.id }));
+    return ((data ?? []) as Array<{ id?: unknown }>)
+      .map((p) => (typeof p.id === 'string' ? p.id.trim() : ''))
+      .filter((id): id is string => id.length > 0)
+      .map((id) => ({ id }));
   } catch {
     return [];
   }
@@ -80,40 +114,64 @@ const DETAIL_FIELDS = `
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id?: string | string[] }>;
 }): Promise<Metadata> {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = getRouteParam(rawId);
+  const canonical = getPackageUrl(id);
+  if (!id || !isUuid(id) || !isSupabaseConfigured) {
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
+  }
   const sb = supabaseAdmin;
-  const { data } = await sb
-    .from('travel_packages')
-    .select('title, destination, price, product_summary, status, audit_status')
-    .eq('id', id)
-    .single();
+  let data: {
+    title?: string | null;
+    destination?: string | null;
+    product_summary?: string | null;
+    status?: string | null;
+    audit_status?: string | null;
+  } | null = null;
+  try {
+    const result = await sb
+      .from('travel_packages')
+      .select('title, destination, price, product_summary, status, audit_status')
+      .eq('id', id)
+      .single();
+    data = result.data;
+  } catch {
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
+  }
 
   // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
-  if (!data) return { title: '상품 상세' };
+  if (!data) return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
   if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
-    return { title: '상품 상세', robots: { index: false, follow: false } };
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: false } };
   }
+  const title = String(data.title || data.destination || '여소남 패키지 여행');
+  const destination = String(data.destination || '패키지');
+  const description = data.product_summary || `${destination} ${title} - 여소남 패키지 여행`;
 
   return {
-    title: `${data.title} | 여소남`,
-    description: data.product_summary || `${data.destination} ${data.title} - 여소남 패키지 여행`,
+    title: `${title} | 여소남`,
+    description,
     openGraph: {
-      title: data.title,
-      description: data.product_summary || `${data.destination} 여행`,
+      title,
+      description,
+      url: canonical,
     },
+    alternates: { canonical },
   };
 }
 
 export default async function PackageDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id?: string | string[] }>;
 }) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = getRouteParam(rawId);
+  if (!id || !isUuid(id)) notFound();
   const sb = supabaseAdmin;
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
@@ -523,24 +581,35 @@ export default async function PackageDetailPage({
   }
 
   // JSON-LD Product + BreadcrumbList
-  const pkgJsonLd = normalizedPkg ? {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: normalizedPkg.title,
-    description: normalizedPkg.product_summary || `${normalizedPkg.destination} 여행 패키지`,
-    category: normalizedPkg.destination,
-    offers: {
-      '@type': 'AggregateOffer',
-      priceCurrency: 'KRW',
-      lowPrice: (normalizedPkg as unknown as { price_min?: number }).price_min ?? undefined,
-      highPrice: (normalizedPkg as unknown as { price_max?: number }).price_max ?? undefined,
-      offerCount: normalizedPkg.price_dates?.length ?? undefined,
-      availability: 'https://schema.org/InStock',
-      url: `${BASE_URL}/packages/${id}`,
-      seller: { '@type': 'Organization', name: '여소남' },
-    },
-    ...(normalizedPkg.product_highlights?.length ? { award: normalizedPkg.product_highlights.slice(0, 3).map((h: string) => ({ '@type': 'Award', name: h })) } : {}),
-  } : null;
+  const pkgJsonLd = normalizedPkg ? (() => {
+    const highlights = getStringList((normalizedPkg as { product_highlights?: unknown }).product_highlights);
+    const priceDates = Array.isArray((normalizedPkg as { price_dates?: unknown }).price_dates)
+      ? (normalizedPkg as { price_dates: unknown[] }).price_dates
+      : [];
+
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: getNonEmptyString(normalizedPkg.title) ?? '여소남 패키지 여행',
+      description:
+        getNonEmptyString(normalizedPkg.product_summary) ??
+        `${getNonEmptyString(normalizedPkg.destination) ?? '패키지'} 여행 패키지`,
+      category: getNonEmptyString(normalizedPkg.destination) ?? '패키지',
+      offers: {
+        '@type': 'AggregateOffer',
+        priceCurrency: 'KRW',
+        lowPrice: getFiniteNumber((normalizedPkg as { price_min?: unknown }).price_min),
+        highPrice: getFiniteNumber((normalizedPkg as { price_max?: unknown }).price_max),
+        offerCount: priceDates.length > 0 ? priceDates.length : undefined,
+        availability: 'https://schema.org/InStock',
+        url: getPackageUrl(id),
+        seller: { '@type': 'Organization', name: '여소남' },
+      },
+      ...(highlights.length > 0
+        ? { award: highlights.slice(0, 3).map((name) => ({ '@type': 'Award', name })) }
+        : {}),
+    };
+  })() : null;
   const clientPackage = normalizedPkg
     ? (() => {
         const {

@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -14,24 +16,34 @@ const VALID_TYPES = new Set([
   'lead_sheet_open',
 ]);
 
+interface ScoreSignalBody {
+  package_id?: string;
+  signal_type?: string;
+  group_key?: string;
+  rank?: number;
+  score?: number;
+  session_id?: string;
+}
+
 /**
- * 패키지 시그널 수집 (LTR 학습 데이터).
- * Body: { package_id, signal_type, group_key?, rank?, score?, session_id? }
- * 클라이언트 fetch — abuse 방지는 추후 rate limit 적용.
+ * Collects package scoring signals for LTR learning.
+ * Insert failures remain silent 200s to protect client UX.
  */
 export async function POST(req: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: false }, { status: 200 }); // silent
-  let body: {
-    package_id?: string; signal_type?: string;
-    group_key?: string; rank?: number; score?: number; session_id?: string;
-  };
-  try { body = await req.json(); } catch { return NextResponse.json({ error: 'invalid json' }, { status: 400 }); }
+  if (!isSupabaseConfigured) return apiResponse({ ok: false }, { status: 200 });
+
+  let body: ScoreSignalBody;
+  try {
+    body = await req.json() as ScoreSignalBody;
+  } catch {
+    return apiResponse({ error: 'invalid json' }, { status: 400 });
+  }
 
   if (!body.package_id || !body.signal_type) {
-    return NextResponse.json({ error: 'package_id, signal_type 필수' }, { status: 400 });
+    return apiResponse({ error: 'package_id and signal_type are required' }, { status: 400 });
   }
   if (!VALID_TYPES.has(body.signal_type)) {
-    return NextResponse.json({ error: `signal_type 허용: ${[...VALID_TYPES].join(',')}` }, { status: 400 });
+    return apiResponse({ error: 'unsupported signal_type' }, { status: 400 });
   }
 
   const sessionId = body.session_id ?? req.cookies.get('ys_session_id')?.value ?? null;
@@ -46,10 +58,11 @@ export async function POST(req: NextRequest) {
       topsis_score_at_signal: body.score ?? null,
       session_id: sessionId,
     });
+
   if (error) {
-    // 시그널 INSERT 실패해도 클라이언트엔 silent 200 (UX 보호)
-    console.error('[tracking/score-signal] insert 실패:', error.message);
-    return NextResponse.json({ ok: false }, { status: 200 });
+    console.error('[tracking/score-signal] insert failed:', sanitizeDbError(error));
+    return apiResponse({ ok: false }, { status: 200 });
   }
-  return NextResponse.json({ ok: true });
+
+  return apiResponse({ ok: true });
 }

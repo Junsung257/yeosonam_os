@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: 'DB 미설정' });
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
-  }
+  const authError = requireCronBearer(request);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, skipped: 'DB 미설정' });
 
   const since14 = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
   try {
@@ -17,10 +18,10 @@ export async function GET(request: NextRequest) {
       .from('affiliates')
       .select('id, name, referral_code, is_active')
       .eq('is_active', true);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
     if (!affiliates?.length) {
       await reportAffiliateCronSuccess('affiliate-reactivation-campaign', { drafted: 0, reason: 'no_active_affiliates' });
-      return NextResponse.json({ ok: true, drafted: 0 });
+      return apiResponse({ ok: true, drafted: 0 });
     }
 
     let drafted = 0;
@@ -72,13 +73,10 @@ export async function GET(request: NextRequest) {
     }
 
     await reportAffiliateCronSuccess('affiliate-reactivation-campaign', { drafted });
-    return NextResponse.json({ ok: true, drafted });
+    return apiResponse({ ok: true, drafted });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-reactivation-campaign', err, { since14 });
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'affiliate reactivation campaign failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err, 'affiliate reactivation campaign failed') }, { status: 500 });
   }
 }
 

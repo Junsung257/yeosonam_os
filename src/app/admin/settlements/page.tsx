@@ -1,10 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { AlertCircle, CheckCircle, Clock, Coins, Copy, ExternalLink, PauseCircle, Receipt, Wallet, X, XCircle } from 'lucide-react';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
-import { Wallet, Receipt, Clock, AlertCircle, Coins } from 'lucide-react';
+
+type SettlementStatus = 'PENDING' | 'READY' | 'COMPLETED' | 'VOID' | 'HOLD';
 
 interface Settlement {
   id: string;
@@ -15,32 +17,90 @@ interface Settlement {
   final_total: number;
   tax_deduction: number;
   final_payout: number;
-  status: 'PENDING' | 'READY' | 'COMPLETED' | 'VOID';
-  settled_at?: string;
-  affiliates?: { id: string; name: string; referral_code: string; grade: number; payout_type: string };
+  status: SettlementStatus;
+  settled_at?: string | null;
+  payout_reference?: string | null;
+  paid_by?: string | null;
+  paid_at?: string | null;
+  withholding_amount?: number | null;
+  receipt_url?: string | null;
+  hold_reason?: string | null;
+  held_at?: string | null;
+  released_at?: string | null;
+  affiliates?: {
+    id: string;
+    name: string;
+    referral_code: string;
+    grade: number;
+    payout_type: string;
+  } | null;
 }
 
-interface Affiliate { id: string; name: string; referral_code: string; }
+interface Affiliate {
+  id: string;
+  name: string;
+  referral_code: string;
+}
+
+interface PayoutEvidenceForm {
+  payout_reference: string;
+  paid_by: string;
+  paid_at: string;
+  withholding_amount: string;
+  receipt_url: string;
+}
 
 const STATUS_BADGES: Record<string, string> = {
-  PENDING:   'bg-status-neutralBg text-status-neutralFg',
-  READY:     'bg-status-infoBg text-status-infoFg',
+  PENDING: 'bg-status-neutralBg text-status-neutralFg',
+  READY: 'bg-status-infoBg text-status-infoFg',
   COMPLETED: 'bg-status-successBg text-status-successFg',
-  VOID:      'bg-status-dangerBg text-status-dangerFg',
-};
-const STATUS_LABELS: Record<string, string> = {
-  PENDING: '이월 대기', READY: '지급 대기', COMPLETED: '지급 완료', VOID: '취소됨',
+  VOID: 'bg-status-dangerBg text-status-dangerFg',
+  HOLD: 'bg-status-warningBg text-status-warningFg',
 };
 
-// 최근 12개월 목록
+const STATUS_LABELS: Record<string, string> = {
+  PENDING: '이월 대기',
+  READY: '지급 대기',
+  COMPLETED: '지급 완료',
+  VOID: '취소',
+  HOLD: '보류',
+};
+
 function getMonthOptions(): string[] {
   const options: string[] = [];
   const now = new Date();
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 12; i += 1) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
   return options;
+}
+
+function todayLocalInputValue(): string {
+  const d = new Date();
+  const offset = d.getTimezoneOffset();
+  return new Date(d.getTime() - offset * 60000).toISOString().slice(0, 16);
+}
+
+function unwrapSettlements(json: unknown): Settlement[] {
+  const root = json as { settlements?: Settlement[]; data?: { settlements?: Settlement[] } };
+  return root.settlements || root.data?.settlements || [];
+}
+
+function unwrapAffiliates(json: unknown): Affiliate[] {
+  const root = json as { affiliates?: Affiliate[]; data?: { affiliates?: Affiliate[] } };
+  return root.affiliates || root.data?.affiliates || [];
+}
+
+function apiError(json: unknown, fallback: string): string {
+  const root = json as { error?: string | { message?: string } };
+  if (typeof root.error === 'string') return root.error;
+  if (root.error?.message) return root.error.message;
+  return fallback;
+}
+
+function krw(value: number | null | undefined) {
+  return `₩${Number(value || 0).toLocaleString()}`;
 }
 
 export default function SettlementsPage() {
@@ -48,28 +108,45 @@ export default function SettlementsPage() {
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [loading, setLoading] = useState(true);
-  const [closing, setClosing] = useState<string | null>(null); // affiliateId
+  const [closing, setClosing] = useState<string | null>(null);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
+  const [completionTarget, setCompletionTarget] = useState<Settlement | null>(null);
+  const [holdTarget, setHoldTarget] = useState<Settlement | null>(null);
+  const [holdReason, setHoldReason] = useState('');
+  const [search, setSearch] = useState('');
+  const [copiedEvidence, setCopiedEvidence] = useState('');
+  const [evidence, setEvidence] = useState<PayoutEvidenceForm>({
+    payout_reference: '',
+    paid_by: '',
+    paid_at: todayLocalInputValue(),
+    withholding_amount: '0',
+    receipt_url: '',
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [sRes, aRes] = await Promise.all([
-        fetch(`/api/settlements?period=${period}`),
+        fetch(`/api/settlements?period=${encodeURIComponent(period)}`),
         fetch('/api/affiliates'),
       ]);
       const sJson = await sRes.json();
       const aJson = await aRes.json();
-      setSettlements(sJson.settlements || []);
-      setAffiliates(aJson.affiliates || []);
+      if (!sRes.ok) throw new Error(apiError(sJson, '정산 목록을 불러오지 못했습니다.'));
+      if (!aRes.ok) throw new Error(apiError(aJson, '파트너 목록을 불러오지 못했습니다.'));
+      setSettlements(unwrapSettlements(sJson));
+      setAffiliates(unwrapAffiliates(aJson));
+    } catch (err) {
+      alert(err instanceof Error ? err.message : '정산 데이터를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
   }, [period]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
-  // 정산 마감 실행
   const closeSettlement = async (affiliateId: string) => {
     setClosing(affiliateId);
     try {
@@ -79,97 +156,145 @@ export default function SettlementsPage() {
         body: JSON.stringify({ affiliateId, period }),
       });
       const json = await res.json();
-      if (!res.ok) { alert(json.error || '마감 실패'); return; }
+      if (!res.ok) {
+        alert(apiError(json, '정산 마감에 실패했습니다.'));
+        return;
+      }
       load();
     } finally {
       setClosing(null);
     }
   };
 
-  // 상태 변경 (COMPLETED, VOID)
-  const updateStatus = async (id: string, status: string) => {
-    if (!confirm(`상태를 "${STATUS_LABELS[status]}"로 변경하시겠습니까?`)) return;
+  const updateStatus = async (id: string, status: SettlementStatus, payload: Record<string, unknown> = {}) => {
+    if (!['COMPLETED', 'HOLD'].includes(status) && !confirm(`정산 상태를 "${STATUS_LABELS[status]}"로 변경할까요?`)) return;
     setStatusUpdating(id);
     try {
       const res = await fetch('/api/settlements', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, status }),
+        body: JSON.stringify({ id, status, ...payload }),
       });
-      if (!res.ok) { const j = await res.json(); alert(j.error); return; }
+      const json = await res.json();
+      if (!res.ok) {
+        alert(apiError(json, '상태 변경에 실패했습니다.'));
+        return;
+      }
+      setCompletionTarget(null);
+      setHoldTarget(null);
+      setHoldReason('');
       load();
     } finally {
       setStatusUpdating(null);
     }
   };
 
-  // 정산이 없는 어필리에이트 (이번 달 마감 전)
-  const settledIds = new Set(settlements.map(s => s.affiliates?.id));
-  const unsettledAffiliates = affiliates.filter(a => !settledIds.has(a.id));
+  const openCompletionModal = (settlement: Settlement) => {
+    setCompletionTarget(settlement);
+    setEvidence({
+      payout_reference: '',
+      paid_by: '',
+      paid_at: todayLocalInputValue(),
+      withholding_amount: String(Number(settlement.tax_deduction || 0)),
+      receipt_url: '',
+    });
+  };
 
-  // KPI
-  const totalPayout = settlements.reduce((s, x) => s + x.final_payout, 0);
-  const totalTax = settlements.reduce((s, x) => s + x.tax_deduction, 0);
-  const readyCount = settlements.filter(s => s.status === 'READY').length;
-  const pendingCount = settlements.filter(s => s.status === 'PENDING').length;
+  const submitCompletion = () => {
+    if (!completionTarget) return;
+    updateStatus(completionTarget.id, 'COMPLETED', {
+      payout_reference: evidence.payout_reference.trim(),
+      paid_by: evidence.paid_by.trim(),
+      paid_at: new Date(evidence.paid_at).toISOString(),
+      withholding_amount: Number(evidence.withholding_amount),
+      receipt_url: evidence.receipt_url.trim(),
+    });
+  };
+
+  const openHoldModal = (settlement: Settlement) => {
+    setHoldTarget(settlement);
+    setHoldReason(settlement.hold_reason || '');
+  };
+
+  const submitHold = () => {
+    if (!holdTarget) return;
+    updateStatus(holdTarget.id, 'HOLD', { hold_reason: holdReason.trim() });
+  };
+
+  const settledIds = useMemo(() => new Set(settlements.map((s) => s.affiliates?.id).filter(Boolean)), [settlements]);
+  const unsettledAffiliates = affiliates.filter((a) => !settledIds.has(a.id));
+  const visibleSettlements = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return settlements;
+    return settlements.filter((s) => [
+      s.affiliates?.name,
+      s.affiliates?.referral_code,
+      s.payout_reference,
+    ].some((value) => (value || '').toLowerCase().includes(q)));
+  }, [search, settlements]);
+
+  const totalPayout = settlements.reduce((s, x) => s + Number(x.final_payout || 0), 0);
+  const totalTax = settlements.reduce((s, x) => s + Number(x.tax_deduction || 0), 0);
+  const statusCounts = {
+    READY: settlements.filter((s) => s.status === 'READY').length,
+    HOLD: settlements.filter((s) => s.status === 'HOLD').length,
+    COMPLETED: settlements.filter((s) => s.status === 'COMPLETED').length,
+    VOID: settlements.filter((s) => s.status === 'VOID').length,
+  };
+
+  const copyEvidence = async (settlement: Settlement) => {
+    const value = settlement.receipt_url || settlement.payout_reference || '';
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setCopiedEvidence(settlement.id);
+    window.setTimeout(() => setCopiedEvidence(''), 1400);
+  };
 
   return (
     <div className="space-y-5">
       <PageHeader
         title="정산 관리"
-        subtitle="월간 어필리에이트 수수료 정산"
+        subtitle="월간 파트너 수수료 정산과 지급 증빙 관리"
         actions={
-          <select
-            value={period}
-            onChange={e => setPeriod(e.target.value)}
-            className="h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
-          >
-            {getMonthOptions().map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="파트너, 코드, 증빙 검색"
+              className="h-9 w-56 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-base text-admin-text transition-colors focus:border-brand focus:outline-none focus:shadow-admin-focus"
+            />
+            <select
+              value={period}
+              onChange={(e) => setPeriod(e.target.value)}
+              className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-base text-admin-text admin-num transition-colors focus:border-brand focus:outline-none focus:shadow-admin-focus"
+            >
+              {getMonthOptions().map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </div>
         }
       />
 
-      {/* KPI */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard
-          label="총 지급 예정액"
-          value={`₩${totalPayout.toLocaleString()}`}
-          icon={Wallet}
-          tone="positive"
-        />
-        <KpiCard
-          label="총 원천세 공제"
-          value={`-₩${totalTax.toLocaleString()}`}
-          icon={Receipt}
-          tone="negative"
-        />
-        <KpiCard
-          label="지급 대기"
-          value={readyCount.toLocaleString()}
-          unit="건"
-          icon={Clock}
-        />
-        <KpiCard
-          label="이월 대기"
-          value={pendingCount.toLocaleString()}
-          unit="건"
-          icon={AlertCircle}
-          tone={pendingCount > 0 ? 'negative' : 'neutral'}
-        />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <KpiCard label="총 지급 예정액" value={krw(totalPayout)} icon={Wallet} tone="positive" />
+        <KpiCard label="총 원천징수" value={`-${krw(totalTax)}`} icon={Receipt} tone="negative" />
+        <KpiCard label="지급 대기" value={statusCounts.READY.toLocaleString()} unit="건" icon={Clock} />
+        <KpiCard label="보류" value={statusCounts.HOLD.toLocaleString()} unit="건" icon={PauseCircle} tone={statusCounts.HOLD > 0 ? 'negative' : 'neutral'} />
+        <KpiCard label="지급 완료" value={statusCounts.COMPLETED.toLocaleString()} unit="건" icon={CheckCircle} tone="positive" />
+        <KpiCard label="취소" value={statusCounts.VOID.toLocaleString()} unit="건" icon={XCircle} tone={statusCounts.VOID > 0 ? 'negative' : 'neutral'} />
       </div>
 
-      {/* 정산 현황 테이블 */}
-      <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs overflow-hidden">
-        <div className="px-4 py-3 border-b border-admin-border flex items-center justify-between">
+      <div className="overflow-hidden rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs">
+        <div className="flex items-center justify-between border-b border-admin-border px-4 py-3">
           <h2 className="text-admin-h3 text-admin-text admin-num">{period} 정산 현황</h2>
-          <span className="text-admin-xs text-admin-muted admin-num">{settlements.length}건</span>
+          <span className="text-admin-xs text-admin-muted admin-num">{visibleSettlements.length} / {settlements.length}건</span>
         </div>
         <table className="admin-data-table">
           <thead>
             <tr>
-              {['파트너', '건수', '발생 수수료', '이월 포함', '원천세', '실지급액', '상태', '액션'].map(h => (
+              {['파트너', '건수', '발생 수수료', '이월 포함', '원천징수', '실지급액', '상태', '지급 증빙', '액션'].map((h) => (
                 <th key={h}>{h}</th>
               ))}
             </tr>
@@ -178,55 +303,91 @@ export default function SettlementsPage() {
             {loading ? (
               Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i}>
-                  {[100, 40, 80, 80, 60, 80, 56, 80].map((w, j) => (
+                  {[100, 40, 80, 80, 60, 80, 56, 120, 160].map((w, j) => (
                     <td key={j}>
-                      <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
+                      <div className="h-3 animate-pulse rounded bg-admin-surface-2" style={{ width: w }} />
                     </td>
                   ))}
                 </tr>
               ))
-            ) : settlements.length === 0 ? (
+            ) : visibleSettlements.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-14 text-center" style={{ height: 'auto' }}>
+                <td colSpan={9} className="py-14 text-center" style={{ height: 'auto' }}>
                   <div className="flex flex-col items-center gap-3">
-                    <div className="w-12 h-12 rounded-full bg-admin-surface-2 flex items-center justify-center text-admin-muted">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-admin-surface-2 text-admin-muted">
                       <Coins size={20} strokeWidth={1.75} />
                     </div>
-                    <p className="text-admin-sm font-medium text-admin-muted">이번 달 정산 데이터가 없습니다.</p>
+                    <p className="text-admin-sm font-medium text-admin-muted">조건에 맞는 정산 데이터가 없습니다.</p>
                   </div>
                 </td>
               </tr>
-            ) : settlements.map(s => (
+            ) : visibleSettlements.map((s) => (
               <tr key={s.id}>
                 <td>
                   <div className="font-medium text-admin-text">{s.affiliates?.name}</div>
-                  <div className="text-admin-xs text-admin-muted font-mono">{s.affiliates?.referral_code}</div>
+                  <div className="font-mono text-admin-xs text-admin-muted">{s.affiliates?.referral_code}</div>
                 </td>
-                <td className="admin-num">{s.qualified_booking_count}건</td>
-                <td className="admin-num">₩{s.total_amount.toLocaleString()}</td>
-                <td className="font-medium admin-num">₩{s.final_total.toLocaleString()}</td>
-                <td className="text-danger admin-num">
-                  {s.tax_deduction > 0 ? `-₩${s.tax_deduction.toLocaleString()}` : '—'}
-                </td>
-                <td className="font-bold text-success admin-num">₩{s.final_payout.toLocaleString()}</td>
+                <td className="admin-num">{Number(s.qualified_booking_count || 0).toLocaleString()}건</td>
+                <td className="admin-num">{krw(s.total_amount)}</td>
+                <td className="font-medium admin-num">{krw(s.final_total)}</td>
+                <td className="text-danger admin-num">{s.tax_deduction > 0 ? `-${krw(s.tax_deduction)}` : '₩0'}</td>
+                <td className="font-bold text-success admin-num">{krw(s.final_payout)}</td>
                 <td>
-                  <span className={`px-2 py-0.5 rounded-admin-xs text-admin-xs font-semibold ${STATUS_BADGES[s.status]}`}>
-                    {STATUS_LABELS[s.status]}
+                  <span className={`rounded-admin-xs px-2 py-0.5 text-admin-xs font-semibold ${STATUS_BADGES[s.status] || STATUS_BADGES.PENDING}`}>
+                    {STATUS_LABELS[s.status] || s.status}
                   </span>
+                  {s.status === 'HOLD' && s.hold_reason ? (
+                    <div className="mt-1 max-w-[180px] truncate text-admin-xs text-admin-muted" title={s.hold_reason}>
+                      {s.hold_reason}
+                    </div>
+                  ) : null}
                 </td>
                 <td>
-                  <div className="flex gap-1.5 items-center">
+                  <EvidenceCell settlement={s} copied={copiedEvidence === s.id} onCopy={() => copyEvidence(s)} />
+                </td>
+                <td>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {s.status === 'PENDING' && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => updateStatus(s.id, 'READY')}
+                        disabled={statusUpdating === s.id}
+                      >
+                        지급 대기
+                      </Button>
+                    )}
                     {s.status === 'READY' && (
+                      <>
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => openCompletionModal(s)}
+                          disabled={statusUpdating === s.id}
+                        >
+                          지급 완료
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => openHoldModal(s)}
+                          disabled={statusUpdating === s.id}
+                        >
+                          보류
+                        </Button>
+                      </>
+                    )}
+                    {s.status === 'HOLD' && (
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => updateStatus(s.id, 'COMPLETED')}
+                        onClick={() => updateStatus(s.id, 'READY')}
                         disabled={statusUpdating === s.id}
                       >
-                        지급 완료
+                        보류 해제
                       </Button>
                     )}
-                    {['READY', 'PENDING'].includes(s.status) && (
+                    {['READY', 'COMPLETED'].includes(s.status) && (
                       <Button
                         variant="secondary"
                         size="sm"
@@ -238,7 +399,7 @@ export default function SettlementsPage() {
                     )}
                     <Link
                       href={`/admin/affiliates/${s.affiliates?.id}`}
-                      className="text-admin-xs text-brand hover:text-brand-dark font-medium"
+                      className="text-admin-xs font-medium text-brand hover:text-brand-dark"
                     >
                       상세
                     </Link>
@@ -250,21 +411,22 @@ export default function SettlementsPage() {
         </table>
       </div>
 
-      {/* 미마감 어필리에이트 */}
       {unsettledAffiliates.length > 0 && (
         <div className="admin-card overflow-hidden">
-          <div className="px-4 py-3 border-b border-admin-border">
-            <h2 className="text-admin-h3 text-admin-text">정산 마감 대기 <span className="admin-num text-admin-muted">({unsettledAffiliates.length}명)</span></h2>
-            <p className="text-admin-xs text-admin-muted mt-0.5 admin-num">
-              아래 파트너는 {period} 정산 마감이 실행되지 않았습니다.
+          <div className="border-b border-admin-border px-4 py-3">
+            <h2 className="text-admin-h3 text-admin-text">
+              정산 마감 대기 <span className="admin-num text-admin-muted">({unsettledAffiliates.length}명)</span>
+            </h2>
+            <p className="mt-0.5 text-admin-xs text-admin-muted admin-num">
+              아래 파트너는 {period} 정산 마감이 아직 실행되지 않았습니다.
             </p>
           </div>
           <div>
-            {unsettledAffiliates.map(a => (
-              <div key={a.id} className="px-4 py-2 flex items-center justify-between border-b border-admin-border last:border-b-0">
+            {unsettledAffiliates.map((a) => (
+              <div key={a.id} className="flex items-center justify-between border-b border-admin-border px-4 py-2 last:border-b-0">
                 <div>
-                  <span className="font-medium text-admin-text text-admin-sm">{a.name}</span>
-                  <span className="ml-2 text-admin-xs text-admin-muted font-mono">{a.referral_code}</span>
+                  <span className="text-admin-sm font-medium text-admin-text">{a.name}</span>
+                  <span className="ml-2 font-mono text-admin-xs text-admin-muted">{a.referral_code}</span>
                 </div>
                 <Button
                   variant="primary"
@@ -272,13 +434,291 @@ export default function SettlementsPage() {
                   onClick={() => closeSettlement(a.id)}
                   disabled={closing === a.id}
                 >
-                  {closing === a.id ? '마감 중…' : '정산 마감 실행'}
+                  {closing === a.id ? '마감 중' : '정산 마감 실행'}
                 </Button>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {completionTarget && (
+        <PayoutEvidenceModal
+          settlement={completionTarget}
+          evidence={evidence}
+          submitting={statusUpdating === completionTarget.id}
+          onChange={setEvidence}
+          onClose={() => setCompletionTarget(null)}
+          onSubmit={submitCompletion}
+        />
+      )}
+      {holdTarget && (
+        <HoldReasonModal
+          settlement={holdTarget}
+          reason={holdReason}
+          submitting={statusUpdating === holdTarget.id}
+          onChange={setHoldReason}
+          onClose={() => {
+            setHoldTarget(null);
+            setHoldReason('');
+          }}
+          onSubmit={submitHold}
+        />
+      )}
     </div>
+  );
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '';
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
+}
+
+function EvidenceCell({ settlement, copied, onCopy }: { settlement: Settlement; copied: boolean; onCopy: () => void }) {
+  if (settlement.status === 'COMPLETED') {
+    return (
+      <div className="space-y-1 text-admin-xs">
+        <div className="font-medium text-admin-text">{settlement.payout_reference || '참조번호 없음'}</div>
+        <div className="text-admin-muted admin-num">{formatDateTime(settlement.paid_at)}</div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onCopy}
+            className="inline-flex items-center gap-1 font-medium text-brand hover:text-brand-dark"
+          >
+            <Copy size={12} /> {copied ? '복사됨' : '복사'}
+          </button>
+          {settlement.receipt_url ? (
+            <a
+              href={settlement.receipt_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 font-medium text-brand hover:text-brand-dark"
+            >
+              <ExternalLink size={12} /> 열기
+            </a>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  if (settlement.status === 'HOLD') {
+    return <span className="text-admin-xs text-admin-muted">보류 사유 확인 필요</span>;
+  }
+
+  return <span className="text-admin-xs text-admin-muted">-</span>;
+}
+
+function PayoutEvidenceModal({
+  settlement,
+  evidence,
+  submitting,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  settlement: Settlement;
+  evidence: PayoutEvidenceForm;
+  submitting: boolean;
+  onChange: (next: PayoutEvidenceForm) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const withholdingAmount = Number(evidence.withholding_amount);
+  const amountMismatch =
+    Number.isFinite(withholdingAmount)
+    && Math.abs(Number(settlement.final_payout || 0) + withholdingAmount - Number(settlement.final_total || 0)) > 1;
+  const disabled =
+    !evidence.payout_reference.trim() ||
+    !evidence.paid_by.trim() ||
+    !evidence.paid_at.trim() ||
+    !evidence.receipt_url.trim() ||
+    !Number.isFinite(withholdingAmount) ||
+    withholdingAmount < 0 ||
+    withholdingAmount > Number(settlement.final_total || 0) ||
+    amountMismatch;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-lg rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-lg">
+        <div className="flex items-start justify-between border-b border-admin-border px-5 py-4">
+          <div>
+            <h2 className="text-admin-h2 text-admin-text">지급 증빙 입력</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">
+              {settlement.affiliates?.name} · {settlement.settlement_period} · {krw(settlement.final_payout)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-admin-sm text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text"
+            aria-label="닫기"
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        <div className="space-y-3 px-5 py-4">
+          <Field
+            name="payout_reference"
+            label="지급 참조번호"
+            value={evidence.payout_reference}
+            onChange={(value) => onChange({ ...evidence, payout_reference: value })}
+            placeholder="은행 거래번호, 내부 지급 ID 등"
+            required
+          />
+          <Field
+            name="paid_by"
+            label="지급 처리자"
+            value={evidence.paid_by}
+            onChange={(value) => onChange({ ...evidence, paid_by: value })}
+            placeholder="담당자 또는 서비스 계정"
+            required
+          />
+          <Field
+            name="paid_at"
+            label="지급 일시"
+            type="datetime-local"
+            value={evidence.paid_at}
+            onChange={(value) => onChange({ ...evidence, paid_at: value })}
+            required
+          />
+          <Field
+            name="withholding_amount"
+            label="원천징수액"
+            type="number"
+            value={evidence.withholding_amount}
+            onChange={(value) => onChange({ ...evidence, withholding_amount: value })}
+            placeholder="0"
+            min={0}
+            required
+          />
+          <Field
+            name="receipt_url"
+            label="증빙 URL"
+            value={evidence.receipt_url}
+            onChange={(value) => onChange({ ...evidence, receipt_url: value })}
+            placeholder="영수증, 이체확인증, 파일 URL"
+            required
+          />
+          {amountMismatch ? (
+            <p className="rounded-admin-sm bg-status-warningBg px-3 py-2 text-admin-xs font-medium text-status-warningFg">
+              실지급액과 원천징수액의 합이 이월 포함 정산액과 일치해야 합니다.
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-admin-border px-5 py-4">
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={submitting}>
+            취소
+          </Button>
+          <Button variant="primary" size="sm" onClick={onSubmit} disabled={disabled} loading={submitting}>
+            증빙 저장 후 완료
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HoldReasonModal({
+  settlement,
+  reason,
+  submitting,
+  onChange,
+  onClose,
+  onSubmit,
+}: {
+  settlement: Settlement;
+  reason: string;
+  submitting: boolean;
+  onChange: (next: string) => void;
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const disabled = !reason.trim();
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-md rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-lg">
+        <div className="flex items-start justify-between border-b border-admin-border px-5 py-4">
+          <div>
+            <h2 className="text-admin-h2 text-admin-text">정산 보류</h2>
+            <p className="mt-1 text-admin-xs text-admin-muted">
+              {settlement.affiliates?.name} · {settlement.settlement_period} · {krw(settlement.final_payout)}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-admin-sm text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text"
+            aria-label="닫기"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <label className="block">
+            <span className="mb-1 block text-admin-xs font-medium text-admin-muted">보류 사유</span>
+            <textarea
+              name="hold_reason"
+              value={reason}
+              onChange={(e) => onChange(e.target.value)}
+              required
+              rows={4}
+              className="w-full resize-none rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-base text-admin-text outline-none transition-colors focus:border-brand focus:shadow-admin-focus"
+              placeholder="계좌 확인, 금액 재검토, 증빙 대기 등"
+            />
+          </label>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-admin-border px-5 py-4">
+          <Button variant="secondary" size="sm" onClick={onClose} disabled={submitting}>
+            취소
+          </Button>
+          <Button variant="primary" size="sm" onClick={onSubmit} disabled={disabled} loading={submitting}>
+            보류 저장
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Field({
+  name,
+  label,
+  value,
+  onChange,
+  type = 'text',
+  placeholder,
+  min,
+  required = false,
+}: {
+  name: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  placeholder?: string;
+  min?: number;
+  required?: boolean;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-admin-xs font-medium text-admin-muted">{label}</span>
+      <input
+        name={name}
+        type={type}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        min={min}
+        required={required}
+        className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-base text-admin-text outline-none transition-colors focus:border-brand focus:shadow-admin-focus"
+      />
+    </label>
   );
 }

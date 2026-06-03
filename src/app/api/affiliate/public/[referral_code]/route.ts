@@ -1,32 +1,35 @@
-/**
- * GET /api/affiliate/public/[referral_code]
- *
- * 공개 어필리에이터 프로필 API (인증 불필요)
- * - 어필리에이터 정보 (이름, 로고, bio, 소셜 링크)
- * - 어필리에이터의 공개 카드뉴스 목록 (발행된 것만)
- * - 조회수 추적 없음 (퍼블릭 뷰)
- */
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
+type PublicCardNews = {
+  id: number;
+  title: string;
+  template_family: string | null;
+  variant_angle: string | null;
+  ig_slide_urls: string[] | null;
+  created_at: string;
+  engagement_score: number | null;
+};
+
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   props: { params: Promise<{ referral_code: string }> },
 ) {
   const { referral_code } = await props.params;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
   if (!referral_code || referral_code.length < 3) {
-    return NextResponse.json({ error: '유효하지 않은 referral 코드' }, { status: 400 });
+    return apiResponse({ error: '유효하지 않은 referral 코드' }, { status: 400 });
   }
 
   try {
-    // 1. 어필리에이터 정보 조회
     const { data: affiliate, error: affErr } = await supabaseAdmin
       .from('affiliates')
       .select(
@@ -38,10 +41,9 @@ export async function GET(
 
     if (affErr) throw affErr;
     if (!affiliate) {
-      return NextResponse.json({ error: '어필리에이터를 찾을 수 없습니다' }, { status: 404 });
+      return apiResponse({ error: '어필리에이터를 찾을 수 없습니다' }, { status: 404 });
     }
 
-    // 2. 연결된 brand_kit 조회
     const { data: brandKit } = await supabaseAdmin
       .from('brand_kits')
       .select('*')
@@ -50,7 +52,6 @@ export async function GET(
       .eq('is_active', true)
       .maybeSingle();
 
-    // 3. 어필리에이터의 공개 카드뉴스 목록
     const { data: cardNews, error: cnErr } = await supabaseAdmin
       .from('card_news')
       .select(
@@ -63,7 +64,6 @@ export async function GET(
 
     if (cnErr) throw cnErr;
 
-    // 4. 추천 패키지 (pick_package_ids)
     let packages: unknown[] = [];
     if (affiliate.landing_pick_package_ids && affiliate.landing_pick_package_ids.length > 0) {
       const { data: pkgData } = await supabaseAdmin
@@ -74,7 +74,7 @@ export async function GET(
       packages = pkgData ?? [];
     }
 
-    return NextResponse.json({
+    return apiResponse({
       affiliate: {
         name: affiliate.name,
         referral_code: affiliate.referral_code,
@@ -98,15 +98,7 @@ export async function GET(
             brand_tagline: brandKit.brand_tagline,
           }
         : null,
-      card_news: (cardNews ?? []).map((cn: {
-        id: number;
-        title: string;
-        template_family: string | null;
-        variant_angle: string | null;
-        ig_slide_urls: string[] | null;
-        created_at: string;
-        engagement_score: number | null;
-      }) => ({
+      card_news: (cardNews ?? []).map((cn: PublicCardNews) => ({
         id: cn.id,
         title: cn.title,
         template_family: cn.template_family,
@@ -118,7 +110,6 @@ export async function GET(
       packages,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, '조회 실패') }, { status: 500 });
   }
 }

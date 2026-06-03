@@ -1,23 +1,31 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { allowRateLimit, getClientIpFromRequest } from '@/lib/simple-rate-limit';
 import { logError } from '@/lib/sentry-logger';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+
+async function requireAdminApi(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
+  }
+  if (!(await isAdminRequest(request))) {
+    return apiResponse({ error: 'UNAUTHORIZED' }, { status: 403 });
+  }
+  return null;
+}
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-  }
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
-  }
+  const authError = await requireAdminApi(request);
+  if (authError) return authError;
 
   const { id: bookingId } = await params;
   if (!bookingId) {
-    return NextResponse.json({ error: '예약 ID가 필요합니다.' }, { status: 400 });
+    return apiResponse({ error: 'BOOKING_ID_REQUIRED' }, { status: 400 });
   }
 
   const { data: booking, error: bErr } = await supabaseAdmin
@@ -25,8 +33,13 @@ export async function GET(
     .select('id, concierge_ai_paused')
     .eq('id', bookingId)
     .maybeSingle();
-  if (bErr || !booking) {
-    return NextResponse.json({ error: '예약을 찾을 수 없습니다.' }, { status: 404 });
+
+  if (bErr) {
+    logError('[admin/bookings/concierge-messages] booking lookup failed', bErr);
+    return apiResponse({ error: sanitizeDbError(bErr) }, { status: 500 });
+  }
+  if (!booking) {
+    return apiResponse({ error: 'BOOKING_NOT_FOUND' }, { status: 404 });
   }
 
   const aiPaused = Boolean((booking as { concierge_ai_paused?: boolean }).concierge_ai_paused);
@@ -40,40 +53,33 @@ export async function GET(
 
   if (error) {
     logError('[admin/bookings/concierge-messages] GET failed', error);
-    return NextResponse.json(
-      { error: '메시지를 불러오지 못했습니다. booking_concierge_messages 마이그레이션을 확인하세요.' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({ messages: data ?? [], aiPaused });
+  return apiResponse({ messages: data ?? [], aiPaused });
 }
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-  }
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
-  }
+  const authError = await requireAdminApi(request);
+  if (authError) return authError;
 
   const { id: bookingId } = await params;
   if (!bookingId) {
-    return NextResponse.json({ error: '예약 ID가 필요합니다.' }, { status: 400 });
+    return apiResponse({ error: 'BOOKING_ID_REQUIRED' }, { status: 400 });
   }
 
   let body: { aiPaused?: unknown };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON 본문이 필요합니다.' }, { status: 400 });
+    return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
   }
 
   if (typeof body.aiPaused !== 'boolean') {
-    return NextResponse.json({ error: 'aiPaused(boolean)가 필요합니다.' }, { status: 400 });
+    return apiResponse({ error: 'AI_PAUSED_REQUIRED' }, { status: 400 });
   }
 
   const { data: row, error: uErr } = await supabaseAdmin
@@ -83,12 +89,15 @@ export async function PATCH(
     .select('id, concierge_ai_paused')
     .maybeSingle();
 
-  if (uErr || !row) {
-    if (uErr) logError('[admin/bookings/concierge-messages] PATCH failed', uErr);
-    return NextResponse.json({ error: '갱신에 실패했습니다. 컬럼(concierge_ai_paused) 마이그레이션을 확인하세요.' }, { status: 500 });
+  if (uErr) {
+    logError('[admin/bookings/concierge-messages] PATCH failed', uErr);
+    return apiResponse({ error: sanitizeDbError(uErr) }, { status: 500 });
+  }
+  if (!row) {
+    return apiResponse({ error: 'BOOKING_NOT_FOUND' }, { status: 404 });
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     aiPaused: Boolean((row as { concierge_ai_paused?: boolean }).concierge_ai_paused),
   });
@@ -98,36 +107,32 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-  }
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: '권한이 없습니다.' }, { status: 403 });
-  }
+  const authError = await requireAdminApi(request);
+  if (authError) return authError;
 
   const { id: bookingId } = await params;
   if (!bookingId) {
-    return NextResponse.json({ error: '예약 ID가 필요합니다.' }, { status: 400 });
+    return apiResponse({ error: 'BOOKING_ID_REQUIRED' }, { status: 400 });
   }
 
   const ip = getClientIpFromRequest(request);
   if (!allowRateLimit(`admin_concierge_post:${bookingId}:${ip}`, 40, 60_000)) {
-    return NextResponse.json({ error: '요청이 너무 많습니다.' }, { status: 429 });
+    return apiResponse({ error: 'RATE_LIMITED' }, { status: 429 });
   }
 
   let body: { content?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON 본문이 필요합니다.' }, { status: 400 });
+    return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
   }
 
   const content = typeof body.content === 'string' ? body.content.trim() : '';
   if (!content) {
-    return NextResponse.json({ error: '내용을 입력해 주세요.' }, { status: 400 });
+    return apiResponse({ error: 'CONTENT_REQUIRED' }, { status: 400 });
   }
   if (content.length > 4_000) {
-    return NextResponse.json({ error: '내용이 너무 깁니다.' }, { status: 400 });
+    return apiResponse({ error: 'CONTENT_TOO_LONG' }, { status: 400 });
   }
 
   const { data: booking, error: bErr } = await supabaseAdmin
@@ -135,8 +140,13 @@ export async function POST(
     .select('id')
     .eq('id', bookingId)
     .maybeSingle();
-  if (bErr || !booking) {
-    return NextResponse.json({ error: '예약을 찾을 수 없습니다.' }, { status: 404 });
+
+  if (bErr) {
+    logError('[admin/bookings/concierge-messages] POST booking lookup failed', bErr);
+    return apiResponse({ error: sanitizeDbError(bErr) }, { status: 500 });
+  }
+  if (!booking) {
+    return apiResponse({ error: 'BOOKING_NOT_FOUND' }, { status: 404 });
   }
 
   const actor = await resolveAdminActorLabel(request);
@@ -150,8 +160,8 @@ export async function POST(
 
   if (insErr) {
     logError('[admin/bookings/concierge-messages] POST failed', insErr);
-    return NextResponse.json({ error: '저장에 실패했습니다.' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(insErr) }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

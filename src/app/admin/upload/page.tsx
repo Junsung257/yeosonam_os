@@ -23,6 +23,13 @@ interface QueueItem {
   confidence?: number;
   landOperator?: string;
   commissionRate?: number;
+  trustScore?: {
+    score: number;
+    grade: 'perfect' | 'review' | 'blocked';
+    publishable: boolean;
+    blockers: Array<{ code: string; message: string }>;
+    warnings: Array<{ code: string; message: string }>;
+  } | null;
   errorMsg?: string;
   productCount?: number;
   titles?: string[];
@@ -53,6 +60,11 @@ interface QueueItem {
     mobile_url: string;
     lp_url: string;
     a4_url: string;
+    price_rows_saved?: number | null;
+    price_dates_count?: number;
+    itinerary_days_count?: number;
+    commission_rate?: number | null;
+    land_operator?: string | null;
   }>;
   verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'error';
   verifyReport?: { checks: VerifyCheck[]; warnCount: number; failCount: number };
@@ -65,6 +77,14 @@ interface QueueItem {
    *  사장님 인지 보장 — UI 에 빨간 경고 + /admin/alerts 링크.
    */
   catalogSplitWarning?: { headerCount: number; processedCount: number };
+}
+
+interface PendingTextItem {
+  id: string;
+  rawText: string;
+  sourceLabel?: string;
+  landOperator?: string;
+  commissionRate?: number;
 }
 
 // 서버가 비-JSON 응답(오류 페이지, 게이트웨이 타임아웃 등)을 반환할 때도 안전하게 파싱
@@ -157,9 +177,11 @@ export default function UploadPage() {
   const [forceReprocess, setForceReprocess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [textInput, setTextInput] = useState('');
+  const [textLandOperator, setTextLandOperator] = useState('');
+  const [textCommissionRate, setTextCommissionRate] = useState('10');
 
   const activeCountRef = useRef(0);
-  const pendingTextRef = useRef<Array<{ id: string; rawText: string }>>([]);
+  const pendingTextRef = useRef<PendingTextItem[]>([]);
   const bulkModeRef = useRef(false);
   bulkModeRef.current = bulkMode;
   const forceReprocessRef = useRef(false);
@@ -222,12 +244,13 @@ export default function UploadPage() {
       dbId: data.dbId,
       title: data.productCount > 1 ? `${data.productCount}개 상품` : (ed?.title || file.name),
       confidence: data.finalConfidence ?? data.data?.confidence,
-      landOperator: match ? match[1] : ed?.land_operator,
-      commissionRate: match ? parseFloat(match[2]) : undefined,
+      landOperator: data.uploadMetadata?.landOperator ?? (match ? match[1] : ed?.land_operator),
+      commissionRate: data.uploadMetadata?.commissionRate ?? (match ? parseFloat(match[2]) : undefined),
       productCount: data.productCount,
       titles: data.titles,
       tokenUsage: data.tokenUsage ?? null,
       gate: data.gate ?? null,
+      trustScore: data.trustScore ?? null,
       attractionStats: data.attractionStats ?? null,
       registerReport: data.registerReport ?? null,
       catalogSplitWarning: data.catalogSplitWarning ?? null,
@@ -285,7 +308,8 @@ export default function UploadPage() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 텍스트 아이템 병렬 처리 — refs만 사용하므로 deps 불필요
-  const processTextItem = useCallback(async (id: string, rawText: string) => {
+  const processTextItem = useCallback(async (item: PendingTextItem) => {
+    const { id, rawText } = item;
     setQueue(prev => prev.map(it => it.id === id ? { ...it, status: 'processing' } : it));
 
     try {
@@ -293,7 +317,12 @@ export default function UploadPage() {
       const res = await fetchWithSessionRefresh(uploadUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rawText }),
+        body: JSON.stringify({
+          rawText,
+          sourceLabel: item.sourceLabel,
+          landOperator: item.landOperator,
+          commissionRate: item.commissionRate,
+        }),
       });
       const data = await safeResJson(res);
       if (!res.ok) throw new Error((data.error as string) || '처리 실패');
@@ -314,9 +343,11 @@ export default function UploadPage() {
         titles,
         dbId,
         confidence: data.finalConfidence ?? data.data?.confidence,
-        landOperator: ed?.land_operator,
+        landOperator: data.uploadMetadata?.landOperator ?? item.landOperator ?? ed?.land_operator,
+        commissionRate: data.uploadMetadata?.commissionRate ?? item.commissionRate,
         tokenUsage: data.tokenUsage ?? null,
         gate: data.gate ?? null,
+        trustScore: data.trustScore ?? null,
         attractionStats: data.attractionStats ?? null,
         registerReport,
         catalogSplitWarning: data.catalogSplitWarning ?? null,
@@ -334,7 +365,7 @@ export default function UploadPage() {
       const next = pendingTextRef.current.shift();
       if (next) {
         activeCountRef.current++;
-        processTextItem(next.id, next.rawText);
+        processTextItem(next);
       }
     }
   }, [runVerify]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -345,6 +376,9 @@ export default function UploadPage() {
     if (chunks.length === 0) { alert('텍스트가 너무 짧습니다.'); return; }
 
     const now = Date.now();
+    const landOperator = textLandOperator.trim() || undefined;
+    const commissionRate = Number(textCommissionRate);
+    const safeCommissionRate = Number.isFinite(commissionRate) ? commissionRate : undefined;
     const newItems: QueueItem[] = chunks.map((chunk, i) => {
       itemSeqRef.current++;
       const fallback = `텍스트 #${itemSeqRef.current}`;
@@ -354,6 +388,8 @@ export default function UploadPage() {
         file: new File([], sourceLabel),
         rawText: chunk,
         sourceLabel,
+        landOperator,
+        commissionRate: safeCommissionRate,
         status: 'waiting',
         title: sourceLabel,
       };
@@ -371,9 +407,21 @@ export default function UploadPage() {
     for (const item of newItems) {
       if (activeCountRef.current < MAX_CONCURRENT) {
         activeCountRef.current++;
-        processTextItem(item.id, item.rawText!);
+        processTextItem({
+          id: item.id,
+          rawText: item.rawText!,
+          sourceLabel: item.sourceLabel,
+          landOperator: item.landOperator,
+          commissionRate: item.commissionRate,
+        });
       } else {
-        pendingTextRef.current.push({ id: item.id, rawText: item.rawText! });
+        pendingTextRef.current.push({
+          id: item.id,
+          rawText: item.rawText!,
+          sourceLabel: item.sourceLabel,
+          landOperator: item.landOperator,
+          commissionRate: item.commissionRate,
+        });
       }
     }
   };
@@ -390,9 +438,21 @@ export default function UploadPage() {
     setQueue(prev => prev.map(it => it.id === item.id ? { ...it, status: 'waiting', errorMsg: undefined, verifyStatus: undefined } : it));
     if (activeCountRef.current < MAX_CONCURRENT) {
       activeCountRef.current++;
-      processTextItem(item.id, item.rawText);
+      processTextItem({
+        id: item.id,
+        rawText: item.rawText,
+        sourceLabel: item.sourceLabel,
+        landOperator: item.landOperator,
+        commissionRate: item.commissionRate,
+      });
     } else {
-      pendingTextRef.current.push({ id: item.id, rawText: item.rawText });
+      pendingTextRef.current.push({
+        id: item.id,
+        rawText: item.rawText,
+        sourceLabel: item.sourceLabel,
+        landOperator: item.landOperator,
+        commissionRate: item.commissionRate,
+      });
     }
   }, [processTextItem]);
 
@@ -518,6 +578,30 @@ export default function UploadPage() {
               >
                 템플릿 넣기
               </button>
+            </div>
+            <div className="mb-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <label className="block">
+                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">랜드사</span>
+                <input
+                  value={textLandOperator}
+                  onChange={e => setTextLandOperator(e.target.value)}
+                  placeholder="예: 투어폰"
+                  className="w-full rounded-lg border border-admin-border-mid px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+              <label className="block">
+                <span className="block text-[11px] font-medium text-admin-text-2 mb-1">수수료율(%)</span>
+                <input
+                  value={textCommissionRate}
+                  onChange={e => setTextCommissionRate(e.target.value)}
+                  inputMode="decimal"
+                  placeholder="예: 9"
+                  className="w-full rounded-lg border border-admin-border-mid px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </label>
+              <p className="sm:col-span-2 text-[10px] text-admin-muted-2">
+                내부 메타 전용입니다. 고객 화면, 모바일 LP, A4, 블로그/카드뉴스에는 노출하지 않습니다.
+              </p>
             </div>
             <textarea
               ref={textareaRef}
@@ -715,6 +799,23 @@ export default function UploadPage() {
                             {item.gate && item.gate !== 'CLEAN' && (
                               <span className={`text-[11px] font-medium ${item.gate === 'BLOCKED' ? 'text-red-600' : item.gate === 'REVIEW_NEEDED' ? 'text-orange-500' : 'text-yellow-600'}`}>
                                 {item.gate}
+                              </span>
+                            )}
+                            {item.trustScore && (
+                              <span
+                                className={`text-[11px] font-semibold ${
+                                  item.trustScore.score === 100
+                                    ? 'text-green-700'
+                                    : item.trustScore.grade === 'blocked'
+                                      ? 'text-red-600'
+                                      : 'text-orange-600'
+                                }`}
+                                title={[
+                                  ...item.trustScore.blockers.map(b => `BLOCK: ${b.code}`),
+                                  ...item.trustScore.warnings.map(w => `WARN: ${w.code}`),
+                                ].join('\n')}
+                              >
+                                등록신뢰도 {item.trustScore.score}점
                               </span>
                             )}
                             {item.dbId && (item.gate === 'BLOCKED' || item.gate === 'REVIEW_NEEDED') && (

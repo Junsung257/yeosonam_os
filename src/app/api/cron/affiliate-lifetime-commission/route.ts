@@ -1,15 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { requireCronBearer } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: 'DB 미설정' });
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
-  }
+  const authError = requireCronBearer(request);
+  if (authError) return authError;
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, skipped: 'DB 미설정' });
 
   const sinceDays = Number(request.nextUrl.searchParams.get('days') || '60');
   const since = new Date(Date.now() - Math.max(1, sinceDays) * 24 * 60 * 60 * 1000).toISOString();
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', since)
       .or('is_deleted.is.null,is_deleted.eq.false')
       .limit(3000);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
     let applied = 0;
     type BookingRow = {
@@ -91,13 +92,10 @@ export async function GET(request: NextRequest) {
     }
 
     await reportAffiliateCronSuccess('affiliate-lifetime-commission', { checked: (bookings || []).length, applied });
-    return NextResponse.json({ ok: true, checked: (bookings || []).length, applied });
+    return apiResponse({ ok: true, checked: (bookings || []).length, applied });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-lifetime-commission', err, { sinceDays, since });
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'affiliate lifetime commission failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err, 'affiliate lifetime commission failed') }, { status: 500 });
   }
 }
 

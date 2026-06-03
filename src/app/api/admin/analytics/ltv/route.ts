@@ -1,7 +1,9 @@
-import { NextResponse } from 'next/server';
+import { type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // LTV 코호트 분석 — UTM 채널별 평생 결제액 집계
 // bookings.utm_source 기준으로 cohort 분류
@@ -12,8 +14,8 @@ import { withAdminGuard } from '@/lib/admin-guard';
 const LTV_BOOKING_LIMIT = 5000;
 const CACHE_HEADERS = ADMIN_CACHE.analytics;
 
-const getHandler = async () => {
-  if (!isSupabaseConfigured) return NextResponse.json({ cohorts: [] });
+const getHandler = async (): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ cohorts: [] });
 
   try {
     // 완료된 예약만 (fully_paid + deposit_paid 이상). 최근순 limit 가드.
@@ -30,7 +32,7 @@ const getHandler = async () => {
 
     if (error) throw error;
     if (!bookings?.length) {
-      return NextResponse.json({ cohorts: [] }, { headers: CACHE_HEADERS });
+      return apiResponse({ cohorts: [] }, { headers: CACHE_HEADERS });
     }
 
     // 고객별 첫 예약 채널 결정 (첫 예약의 utm_source)
@@ -96,7 +98,7 @@ const getHandler = async () => {
       }))
       .sort((a, b) => b.totalRevenue - a.totalRevenue);
 
-    return NextResponse.json(
+    return apiResponse(
       {
         cohorts,
         totalCustomers: customerFirstChannel.size,
@@ -106,8 +108,8 @@ const getHandler = async () => {
       { headers: CACHE_HEADERS },
     );
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

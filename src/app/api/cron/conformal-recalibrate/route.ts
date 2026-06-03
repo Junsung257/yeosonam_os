@@ -15,10 +15,12 @@
  * 결과: registration_auto_policy.conformal_threshold / sample_size / last_calibrated_at 갱신.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { refreshConformalPolicy } from '@/lib/conformal-calibration';
 import { invalidateRegistrationPolicyCache } from '@/lib/registration-policy';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
@@ -32,7 +34,7 @@ export async function GET(request: NextRequest) {
     // 5분 cache 강제 무효화 — 다음 등록 호출이 fresh threshold 즉시 받도록.
     invalidateRegistrationPolicyCache();
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       threshold: result.threshold,
       sampleSize: result.sampleSize,
@@ -41,10 +43,10 @@ export async function GET(request: NextRequest) {
       elapsed_ms: Date.now() - start,
     });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       {
         ok: false,
-        error: err instanceof Error ? err.message : '재보정 실패',
+        error: sanitizeDbError(err, 'Recalibration failed'),
         elapsed_ms: Date.now() - start,
       },
       { status: 500 },

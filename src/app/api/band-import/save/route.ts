@@ -5,7 +5,9 @@
  * 저장 성공 시 auto-content-trigger 호출 (Phase 3에서 연결)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { triggerContentGeneration } from '@/lib/auto-content-trigger';
 import { BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer';
@@ -27,13 +29,13 @@ interface Preview {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const { preview, rawText } = await request.json() as { preview: Preview; rawText?: string };
 
     if (!preview?.internal_code) {
-      return NextResponse.json({ error: 'preview 데이터 누락' }, { status: 400 });
+      return apiResponse({ error: 'preview 데이터 누락' }, { status: 400 });
     }
 
     // products INSERT
@@ -61,7 +63,7 @@ export async function POST(request: NextRequest) {
 
     if (insertErr) {
       if (insertErr.code === '23505') {
-        return NextResponse.json(
+        return apiResponse(
           { error: `이미 존재하는 상품 코드: ${preview.internal_code}` },
           { status: 409 },
         );
@@ -89,10 +91,10 @@ export async function POST(request: NextRequest) {
       destinationCode: preview.destination_code,
     });
 
-    return NextResponse.json({ productId, ok: true }, { status: 201 });
+    return apiResponse({ productId, ok: true }, { status: 201 });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '저장 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err, '저장 실패') },
       { status: 500 },
     );
   }

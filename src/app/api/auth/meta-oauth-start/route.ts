@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { createHmac } from 'crypto';
 import { getSecret } from '@/lib/secret-registry';
+import { apiResponse } from '@/lib/api-response';
 
 /**
  * Meta (Instagram/Facebook Ads) OAuth 시작
@@ -14,13 +15,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f
 export async function GET(request: NextRequest) {
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
   if (!tenantId || !UUID_RE.test(tenantId)) {
-    return NextResponse.json({ error: 'tenant_id 필수 (UUID v4 형식)' }, { status: 400 });
+    return apiResponse({ error: 'tenant_id 필수 (UUID v4 형식)' }, { status: 400 });
   }
 
   const appId = getSecret('META_APP_ID');
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
   if (!appId || !siteUrl) {
-    return NextResponse.json(
+    return apiResponse(
       { error: 'META_APP_ID 또는 NEXT_PUBLIC_SITE_URL 미설정' },
       { status: 500 },
     );
@@ -39,5 +40,5 @@ export async function GET(request: NextRequest) {
   });
 
   const url = `https://www.facebook.com/v18.0/dialog/oauth?${params.toString()}`;
-  return NextResponse.json({ url });
+  return apiResponse({ url });
 }

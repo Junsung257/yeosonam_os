@@ -9,11 +9,13 @@
  *
  * GET /api/cron/mrt-sync-tier1?secret=CRON_SECRET
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // 사장님 주력 destination — 누적 등록 빈도 + MRT 카테고리 coverage 기준.
 // 신규 추가 시 여기에 한 줄. 너무 많으면 일 cron 으로 분산.
@@ -32,8 +34,8 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, message: 'DB 미설정' });
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, message: 'DB not configured' });
 
   const startedAt = new Date().toISOString();
   const url = new URL(request.url);
@@ -63,7 +65,7 @@ export async function GET(request: NextRequest) {
     const targets = stats.slice(0, limit);
 
     if (dryRun) {
-      return NextResponse.json({
+      return apiResponse({
         ok: true,
         dryRun: true,
         startedAt,
@@ -102,11 +104,11 @@ export async function GET(request: NextRequest) {
         proc.unref();
         triggered.push(t.destination);
       } catch (e) {
-        console.warn(`[MRT-Tier1] ${t.destination} spawn 실패:`, e instanceof Error ? e.message : e);
+        console.warn(`[MRT-Tier1] ${t.destination} spawn failed:`, sanitizeDbError(e));
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       startedAt,
       finishedAt: new Date().toISOString(),
@@ -117,8 +119,8 @@ export async function GET(request: NextRequest) {
       remaining_in_tier1: stats.length - targets.length,
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : '에러' },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

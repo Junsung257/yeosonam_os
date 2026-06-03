@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-export async function GET() {
-  if (!isSupabaseConfigured) return NextResponse.json({ logs: [] });
+const getHandler = async () => {
+  if (!isSupabaseConfigured) return apiResponse({ logs: [] });
 
   const { data, error } = await supabaseAdmin
     .from('band_import_log')
@@ -10,6 +12,8 @@ export async function GET() {
     .order('imported_at', { ascending: false })
     .limit(50);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ logs: data ?? [] });
-}
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ logs: data ?? [] });
+};
+
+export const GET = withAdminGuard(getHandler);

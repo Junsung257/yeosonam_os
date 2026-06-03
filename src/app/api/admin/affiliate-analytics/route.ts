@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
 import {
   parseBasis,
@@ -20,11 +22,8 @@ import {
  *
  * 두 산식은 src/lib/kpi-basis.ts의 단일 정의를 공유. 산식 변경 시 그 한 곳만 수정.
  */
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
-  if (!isSupabaseConfigured) return NextResponse.json({ stats: null });
+const getHandler = async (request: NextRequest) => {
+  if (!isSupabaseConfigured) return apiResponse({ stats: null });
 
   const basis: KPIBasis = parseBasis(request.nextUrl.searchParams.get('basis'));
   const basisMeta = getBasisMeta(basis);
@@ -311,7 +310,7 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(
+    return apiResponse(
       {
         basis,
         basisMeta: {
@@ -341,6 +340,8 @@ export async function GET(request: NextRequest) {
     );
   } catch (err) {
     logError('[affiliate-analytics] query failed', err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);

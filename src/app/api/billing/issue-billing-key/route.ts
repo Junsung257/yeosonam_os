@@ -1,57 +1,74 @@
 /**
  * POST /api/billing/issue-billing-key
  *
- * TossPayments 빌링키 발급 (최초 카드 등록 시 호출).
+ * Exchanges a TossPayments auth key for a billing key and stores it encrypted.
  *
  * Body: { tenant_id, customer_key, auth_key }
- *   - customer_key: 사전에 생성한 UUID (테넌트별 1개)
- *   - auth_key: TossPayments 위젯에서 콜백으로 받은 인증키
- *
- * 환경변수: TOSS_SECRET_KEY
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { encrypt } from '@/lib/encryption';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { encrypt } from '@/lib/encryption';
 
 const TOSS_BASE = 'https://api.tosspayments.com/v1';
 
+interface IssueBillingKeyBody {
+  tenant_id?: string;
+  customer_key?: string;
+  auth_key?: string;
+}
+
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'DB가 설정되지 않았습니다.' }, { status: 503 });
+  }
 
   const secretKey = getSecret('TOSS_SECRET_KEY');
-  if (!secretKey) return NextResponse.json({ error: 'TOSS_SECRET_KEY 미설정' }, { status: 503 });
-
-  const { tenant_id, customer_key, auth_key } = await request.json() as {
-    tenant_id?: string;
-    customer_key?: string;
-    auth_key?: string;
-  };
-
-  if (!tenant_id || !customer_key || !auth_key) {
-    return NextResponse.json({ error: 'tenant_id, customer_key, auth_key 필수' }, { status: 400 });
+  if (!secretKey) {
+    return apiResponse({ error: '결제 설정이 완료되지 않았습니다.' }, { status: 503 });
   }
 
-  // TossPayments 빌링키 발급
-  const tossRes = await fetch(`${TOSS_BASE}/billing/authorizations/${auth_key}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ customerKey: customer_key }),
-  });
+  let body: IssueBillingKeyBody;
+  try {
+    body = await request.json() as IssueBillingKeyBody;
+  } catch {
+    return apiResponse({ error: 'JSON 파싱에 실패했습니다.' }, { status: 400 });
+  }
+
+  const { tenant_id, customer_key, auth_key } = body;
+  if (!tenant_id || !customer_key || !auth_key) {
+    return apiResponse({ error: 'tenant_id, customer_key, auth_key는 필수입니다.' }, { status: 400 });
+  }
+
+  let tossRes: Response;
+  try {
+    tossRes = await fetch(`${TOSS_BASE}/billing/authorizations/${auth_key}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${Buffer.from(`${secretKey}:`).toString('base64')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ customerKey: customer_key }),
+    });
+  } catch (error) {
+    console.error('[issue-billing-key] Toss fetch failed:', sanitizeDbError(error));
+    return apiResponse({ error: '결제사 호출에 실패했습니다.' }, { status: 502 });
+  }
 
   if (!tossRes.ok) {
-    const detail = await tossRes.text();
-    console.error('[issue-billing-key] Toss 빌링키 발급 실패:', detail);
-    return NextResponse.json({ error: '빌링키 발급 실패', detail }, { status: 502 });
+    const detail = await tossRes.text().catch(() => '');
+    console.error('[issue-billing-key] Toss billing authorization failed:', sanitizeDbError(detail));
+    return apiResponse({ error: '빌링키 발급에 실패했습니다.' }, { status: 502 });
   }
 
-  const tossJson = await tossRes.json() as { billingKey: string; customerKey: string };
+  const tossJson = await tossRes.json() as { billingKey?: string; customerKey?: string };
+  if (!tossJson.billingKey) {
+    return apiResponse({ error: '빌링키 발급 응답이 올바르지 않습니다.' }, { status: 502 });
+  }
 
-  // 빌링키 암호화 후 DB 저장
   const encryptedKey = encrypt(tossJson.billingKey);
 
   const { error } = await supabaseAdmin
@@ -66,7 +83,10 @@ export async function POST(request: NextRequest) {
       { onConflict: 'tenant_id' },
     );
 
-  if (error) throw error;
+  if (error) {
+    console.error('[issue-billing-key] subscription upsert failed:', sanitizeDbError(error));
+    return apiResponse({ error: '빌링키 저장에 실패했습니다.' }, { status: 500 });
+  }
 
-  return NextResponse.json({ ok: true, customer_key });
+  return apiResponse({ ok: true, customer_key });
 }

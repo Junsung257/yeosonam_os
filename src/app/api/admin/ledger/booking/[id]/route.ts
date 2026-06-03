@@ -16,9 +16,11 @@
  *   }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -28,10 +30,10 @@ const getHandler = async (
   { params }: { params: { id: string } },
 ) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 500 });
   }
   const { id } = params;
-  if (!id) return NextResponse.json({ error: 'id 필요' }, { status: 400 });
+  if (!id) return apiResponse({ error: 'id 필요' }, { status: 400 });
 
   // [1] booking 기본 정보
   const { data: booking, error: bErr } = await supabaseAdmin
@@ -40,7 +42,7 @@ const getHandler = async (
     .eq('id', id)
     .single();
   if (bErr || !booking) {
-    return NextResponse.json({ error: bErr?.message ?? 'booking not found' }, { status: 404 });
+    return apiResponse({ error: bErr ? sanitizeDbError(bErr, 'booking not found') : 'booking not found' }, { status: 404 });
   }
 
   // [2] ledger entries 시간순
@@ -51,7 +53,7 @@ const getHandler = async (
     .order('created_at', { ascending: true })
     .limit(500);
   if (lErr) {
-    return NextResponse.json({ error: lErr.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(lErr) }, { status: 500 });
   }
 
   // [3] 누적 잔액 계산
@@ -82,7 +84,7 @@ const getHandler = async (
   const paidBal = b.paid_amount ?? 0;
   const payoutBal = b.total_paid_out ?? 0;
 
-  return NextResponse.json({
+  return apiResponse({
     booking: {
       id: b.id,
       booking_no: b.booking_no,
@@ -103,6 +105,6 @@ const getHandler = async (
       payout_drift: payoutBal - runningPayout,  // 0 이어야 정상
     },
   });
-}
+};
 
 export const GET = withAdminGuard(getHandler);

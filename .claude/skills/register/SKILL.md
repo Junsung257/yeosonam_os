@@ -73,34 +73,25 @@ const raw_text_hash = crypto.createHash('sha256').update(raw_text).digest('hex')
 2. `.claude/commands/manage-attractions.md` — **관광지 처리 가이드 (MUST READ)**
 3. `.claude/CLAUDE.md` 섹션 0 — Zero-Hallucination Policy
 
-## 🌱 관광지 자동 시드 (V5 — 2026-05-15 정책 갱신)
+## 🌱 관광지 처리 정책 (STRICT SSOT)
 
-> **이전 정책 ERR-20260418-33 "자동 시드 금지" 폐기 (2026-05-15).** 사장님 비전 V5 가 진짜 표준.
-> **권위 문서**: [`.claude/commands/manage-attractions.md`](../../commands/manage-attractions.md) — 항상 정책 SSOT.
+> **권위 문서**: [`docs/product-registration-v3-standard-language.md`](../../../docs/product-registration-v3-standard-language.md), [`.claude/commands/manage-attractions.md`](../../commands/manage-attractions.md)
 
-**자동 시드 표준 흐름 (V5):**
-1. **다중 source 검색** (우선순위 순):
-   - Tier 1: MRT canonical (`mrt_gid` 있는 attraction · cron sync)
-   - Tier 2: Wikidata Wikipedia 한국어 → 영문 fallback (`fetchWikidataDescription`)
-   - Tier 3: 하나투어/모두투어 OTA fetch (`ota-name-normalizer.ts` — alias 정규화 / playwright cron G3)
-   - Tier 4: LLM short generate (`generateGenericShortDesc` — 최후 fallback, 무조건 시드 보장)
-2. **Paraphrase 검증** (`paraphrase-enforcer.ts` cosine ≤ 0.6) + G2 Self-Refine critic
-3. **photos 자동 attach** (Pexels multilingual)
-4. **출처 추적** (`source` / `external_url` / `raw_descriptions` 보존 → 저작권 안전)
-5. **Same-Session Seed-Reflect**: 시드 직후 `enrichItineraryWithAttractionReferences` 재실행 + `travel_packages.itinerary_data` UPDATE + `revalidatePath` ISR 무효화 → 같은 등록부터 즉시 카드 표시
-6. **매칭 실패 시 unmatched_activities INSERT + `admin_alerts`** (silent fail 금지)
+**표준 흐름:**
+1. 기존 `attractions` + `aliases` 매칭 우선
+2. 매칭 실패 시 `unmatched_activities` 큐 적재
+3. 어드민에서 수동 검수:
+   - 기존 관광지 표기 변형이면 alias 연결
+   - 진짜 신규 관광지면 `/admin/attractions`에서 명시적으로 생성
 
-**옛 정책 금지 사항 (여전히 유효):**
-- ❌ `db/seed_XXX_attractions.js` 같은 임시 1회성 시드 스크립트 생성 금지 (자동 시드는 `autoSeedAttraction` 단일 모듈로 통합)
-- ❌ 출처 없는 LLM 단독 생성 → DB INSERT (paraphrase 검증 우회 금지)
-- ❌ 시드 실패 silent swallow (반드시 unmatched 큐 + admin_alerts)
+**절대 금지:**
+- ❌ 업로드/크론/파서가 supplier 텍스트를 근거로 `attractions` 자동 신규 INSERT
+- ❌ 외부 source(Wikidata/Wikipedia/OTA/LLM) 결과를 자동 생성 근거로 즉시 DB 반영
+- ❌ `db/seed_*attractions*.js` 같은 임시 자동 시드 스크립트
 
-**구현 모듈 SSOT:**
-- `src/lib/parser/auto-attraction-seeder.ts` — 통합 시드 진입점
-- `src/lib/parser/paraphrase-enforcer.ts` — 표현 차용 차단
-- `src/lib/parser/multilingual-photo.ts` — 사진 attach
-- `src/lib/parser/ota-name-normalizer.ts` + `ota-playwright-fetcher.ts` — OTA alias 정규화
-- `scripts/enrich-ota-aliases.mjs` + `.github/workflows/ota-alias-enrichment.yml` — 일 1회 GitHub Actions cron (비용 0)
+**허용:**
+- ✅ 수동 검수 액션(관리자 명시 트리거)으로만 신규 관광지 생성
+- ✅ 자동화는 “매칭/큐 적재/제안 정보 저장”까지
 
 ---
 

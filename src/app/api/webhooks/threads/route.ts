@@ -23,6 +23,8 @@ import {
   type WebhookPayload,
 } from '@/lib/meta-webhook';
 import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 
@@ -34,8 +36,9 @@ export async function GET(request: NextRequest) {
 
   const result = verifyWebhookChallenge(mode, token, challenge, getSecret('META_WEBHOOK_VERIFY_TOKEN') ?? undefined);
   if (!result.ok) {
-    console.warn('[webhook:threads] verify 실패:', result.error);
-    return new NextResponse(result.error ?? 'verify failed', { status: 403 });
+    const message = sanitizeDbError(result.error, 'verify failed');
+    console.warn('[webhook:threads] verify failed:', message);
+    return new NextResponse(message, { status: 403 });
   }
   return new NextResponse(result.response ?? '', { status: 200 });
 }
@@ -46,13 +49,14 @@ export async function POST(request: NextRequest) {
 
   const sigCheck = verifyWebhookSignature(rawBody, sig, getSecret('META_APP_SECRET') ?? undefined);
   if (!sigCheck.ok) {
-    console.warn('[webhook:threads] 서명 실패:', sigCheck.error);
-    return new NextResponse(sigCheck.error ?? 'invalid signature', { status: 403 });
+    const message = sanitizeDbError(sigCheck.error, 'invalid signature');
+    console.warn('[webhook:threads] signature failed:', message);
+    return new NextResponse(message, { status: 403 });
   }
 
   try {
     const payload = JSON.parse(rawBody) as WebhookPayload;
-    if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
+    if (!isSupabaseConfigured) return apiResponse({ ok: true });
 
     const rows: Array<Record<string, unknown>> = [];
     for (const entry of payload.entry ?? []) {
@@ -72,11 +76,14 @@ export async function POST(request: NextRequest) {
       }
     }
     if (rows.length > 0) {
-      await supabaseAdmin.from('social_webhook_events').insert(rows as never);
+      const { error } = await supabaseAdmin.from('social_webhook_events').insert(rows as never);
+      if (error) {
+        console.error('[webhook:threads] insert error (responding 200):', sanitizeDbError(error));
+      }
     }
   } catch (err) {
-    console.error('[webhook:threads] 처리 에러:', err instanceof Error ? err.message : err);
+    console.error('[webhook:threads] processing error:', sanitizeDbError(err));
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

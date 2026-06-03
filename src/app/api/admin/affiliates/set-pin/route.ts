@@ -1,35 +1,41 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { hashAffiliatePin } from '@/lib/affiliate/auth-service';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 
 async function postHandler(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
 
-  let body: { affiliate_id: string; pin: string };
+  let body: { affiliate_id?: unknown; pin?: unknown };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON 파싱 실패' }, { status: 400 });
+    return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
   }
 
-  if (!body.affiliate_id || !body.pin || body.pin.length < 4) {
-    return NextResponse.json({ error: '유효하지 않은 요청' }, { status: 400 });
+  const affiliateId = typeof body.affiliate_id === 'string' ? body.affiliate_id.trim() : '';
+  const pin = typeof body.pin === 'string' ? body.pin.trim() : '';
+
+  if (!affiliateId || !/^\d{4,12}$/.test(pin)) {
+    return apiResponse({ error: 'INVALID_PIN_REQUEST' }, { status: 400 });
   }
 
   const { error } = await supabaseAdmin
     .from('affiliates')
-    .update({ portal_pin: body.pin })
-    .eq('id', body.affiliate_id);
+    .update({ portal_pin: pin, pin_hash: hashAffiliatePin(pin) } as never)
+    .eq('id', affiliateId);
 
   if (error) {
-    return NextResponse.json({ error: 'PIN 설정 중 오류가 발생했습니다.' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  return apiResponse({ success: true });
 }
 
 export const POST = withAdminGuard(postHandler);

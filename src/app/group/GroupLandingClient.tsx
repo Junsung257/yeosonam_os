@@ -141,10 +141,10 @@ export default function GroupLandingClient() {
     try {
       // ── UTM / 네이버 키워드 수집 ─────────────────────────
       const utm = {
-        source: searchParams.get('utm_source'),
-        medium: searchParams.get('utm_medium'),
-        campaign: searchParams.get('utm_campaign'),
-        n_keyword: searchParams.get('n_keyword'),
+        source: searchParams?.get('utm_source') ?? null,
+        medium: searchParams?.get('utm_medium') ?? null,
+        campaign: searchParams?.get('utm_campaign') ?? null,
+        n_keyword: searchParams?.get('n_keyword') ?? null,
       };
 
       // ── /api/rfq 로 POST (기존 엔드포인트 재사용) ─────────

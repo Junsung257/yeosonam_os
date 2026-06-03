@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 발행 정책 관리 API
@@ -10,24 +12,30 @@ import { withAdminGuard } from '@/lib/admin-guard';
  */
 
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
+  if (!isSupabaseConfigured) return apiResponse({ items: [] });
 
   const scope = request.nextUrl.searchParams.get('scope');
   let query = supabaseAdmin.from('publishing_policies').select('*').order('scope', { ascending: true });
   if (scope) query = query.eq('scope', scope);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ items: data || [] });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ items: data || [] });
 }
 
 const patchHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
+
+  let body: Record<string, unknown>;
+  try {
+    body = await request.json();
+  } catch {
+    return apiResponse({ error: 'invalid json' }, { status: 400 });
+  }
 
   try {
-    const body = await request.json();
     const { scope, ...updates } = body;
-    if (!scope) return NextResponse.json({ error: 'scope 필수' }, { status: 400 });
+    if (!scope) return apiResponse({ error: 'scope 필수' }, { status: 400 });
 
     // 화이트리스트 필드만
     const allowed = [
@@ -47,10 +55,10 @@ const patchHandler = async (request: NextRequest) => {
       .eq('scope', scope)
       .select();
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ item: data?.[0] });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+    return apiResponse({ item: data?.[0] });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '업데이트 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, '업데이트 실패') }, { status: 500 });
   }
 }
 

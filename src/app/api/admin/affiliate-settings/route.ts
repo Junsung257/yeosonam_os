@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 type AttributionModel = 'last_touch' | 'first_touch' | 'linear';
@@ -12,12 +13,9 @@ function normalizeModel(v: unknown): AttributionModel {
   return 'last_touch';
 }
 
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
+async function getHandler() {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ attribution_model: 'last_touch' as AttributionModel });
+    return apiResponse({ attribution_model: 'last_touch' as AttributionModel });
   }
 
   const { data, error } = await supabaseAdmin
@@ -25,22 +23,25 @@ export async function GET(request: NextRequest) {
     .select('key, value')
     .eq('key', 'affiliate_attribution_model')
     .maybeSingle();
-  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
   const model = normalizeModel((data as { value?: { model?: string } } | null)?.value?.model);
-  return NextResponse.json({ attribution_model: model });
+  return apiResponse({ attribution_model: model });
 }
 
-export async function PATCH(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
+async function patchHandler(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
-  const body = await request.json();
-  const model = normalizeModel(body?.attribution_model);
+  let body: { attribution_model?: unknown };
+  try {
+    body = await request.json();
+  } catch {
+    return apiResponse({ error: 'invalid json' }, { status: 400 });
+  }
+
+  const model = normalizeModel(body.attribution_model);
   const { error } = await supabaseAdmin
     .from('app_settings')
     .upsert(
@@ -54,7 +55,9 @@ export async function PATCH(request: NextRequest) {
       } as never,
       { onConflict: 'key' },
     );
-  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
-  return NextResponse.json({ ok: true, attribution_model: model });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ ok: true, attribution_model: model });
 }
 
+export const GET = withAdminGuard(getHandler);
+export const PATCH = withAdminGuard(patchHandler);

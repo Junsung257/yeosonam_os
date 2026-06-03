@@ -13,8 +13,8 @@ function CallbackHandler() {
       const supabase = getSupabaseClient();
 
       // PKCE 방식: ?code= 쿼리 파라미터
-      const code = searchParams.get('code');
-      const type = searchParams.get('type');
+      const code = searchParams?.get('code');
+      const type = searchParams?.get('type');
 
       if (code) {
         try {

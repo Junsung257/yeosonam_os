@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { getSecret } from '@/lib/secret-registry';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 토픽 권위 + Programmatic SEO 상태 조회 + 즉시 실행 트리거
@@ -11,8 +13,8 @@ import { getSecret } from '@/lib/secret-registry';
  *   POST  { action: 'promote', limit: N } → pending → queue 즉시 promote
  */
 
-const getHandler = async () => {
-  if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
+const getHandler = async (): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ items: [] });
 
   try {
     const [
@@ -67,7 +69,7 @@ const getHandler = async () => {
       clusters.length === 0 ? 'Cluster 재구성을 실행해 Pillar와 하위 글을 내부링크로 묶으세요.' : null,
     ].filter(Boolean);
 
-    return NextResponse.json({
+    return apiResponse({
       pillars: pillarRes.data || [],
       pillar_count: pillarRes.count || 0,
       cluster_total: clusters.length,
@@ -79,7 +81,7 @@ const getHandler = async () => {
       matrix_pending_sample: matrixSampleRes.data || [],
     });
   } catch (err) {
-    return NextResponse.json({
+    return apiResponse({
       pillars: [],
       pillar_count: 0,
       cluster_total: 0,
@@ -89,42 +91,59 @@ const getHandler = async () => {
       next_actions: ['토픽 권위 상태 조회 오류를 먼저 해결하세요.'],
       matrix: { pending: 0, queued: 0, skipped: 0, failed: 0, dropped: 0, published: 0 },
       matrix_pending_sample: [],
-      error: err instanceof Error ? err.message : '토픽 권위 상태 조회 실패',
+      error: sanitizeDbError(err, '토픽 권위 상태 조회 실패'),
     }, { status: 500 });
   }
 }
 
-const postHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+const postHandler = async (request: NextRequest): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
-  const body = await request.json().catch(() => ({}));
-  const action = body.action;
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+  try {
+    const body = await request.json().catch(() => ({}));
+    const action = body.action;
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
 
-  if (action === 'rebuild') {
-    const headers: Record<string, string> = {};
-    const secret = getSecret('CRON_SECRET');
-    if (secret) headers.Authorization = `Bearer ${secret}`;
-    const res = await fetch(`${baseUrl}/api/cron/topical-rebuild`, { headers });
-    return NextResponse.json({ result: await res.json() });
+    if (action === 'rebuild') {
+      const headers: Record<string, string> = {};
+      const secret = getSecret('CRON_SECRET');
+      if (secret) headers.Authorization = `Bearer ${secret}`;
+      const res = await fetch(`${baseUrl}/api/cron/topical-rebuild`, { headers });
+      const result = await res.json().catch(() => null);
+      if (!res.ok) {
+        return apiResponse(
+          { error: 'topical rebuild failed', result },
+          { status: 502 },
+        );
+      }
+      return apiResponse({ result });
+    }
+
+    if (action === 'seed') {
+      const { seedProgrammaticTopics } = await import('@/lib/programmatic-seo');
+      return apiResponse({ result: await seedProgrammaticTopics() });
+    }
+
+    if (action === 'promote') {
+      const { promotePendingTopics } = await import('@/lib/programmatic-seo');
+      const limit = typeof body.limit === 'number'
+        ? Math.min(100, Math.max(1, body.limit))
+        : 7;
+      return apiResponse({ result: await promotePendingTopics({ limit }) });
+    }
+
+    if (action === 'rebuild_clusters') {
+      const { rebuildAllClusters } = await import('@/lib/topical-authority');
+      return apiResponse({ result: await rebuildAllClusters() });
+    }
+
+    return apiResponse({ error: 'unknown action' }, { status: 400 });
+  } catch (err) {
+    return apiResponse(
+      { error: sanitizeDbError(err, '토픽 권위 작업 실패') },
+      { status: 500 },
+    );
   }
-
-  if (action === 'seed') {
-    const { seedProgrammaticTopics } = await import('@/lib/programmatic-seo');
-    return NextResponse.json({ result: await seedProgrammaticTopics() });
-  }
-
-  if (action === 'promote') {
-    const { promotePendingTopics } = await import('@/lib/programmatic-seo');
-    return NextResponse.json({ result: await promotePendingTopics({ limit: body.limit || 7 }) });
-  }
-
-  if (action === 'rebuild_clusters') {
-    const { rebuildAllClusters } = await import('@/lib/topical-authority');
-    return NextResponse.json({ result: await rebuildAllClusters() });
-  }
-
-  return NextResponse.json({ error: 'unknown action' }, { status: 400 });
 }
 
 export const GET = withAdminGuard(getHandler);

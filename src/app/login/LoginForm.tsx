@@ -6,6 +6,14 @@ import { PromiseTimeoutError, withTimeout } from '@/lib/promise-timeout';
 
 const LOGIN_TIMEOUT_MS = 12000;
 
+function getSafeRedirect(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
+    return '/admin';
+  }
+
+  return value;
+}
+
 function LoginFormInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -56,7 +64,7 @@ function LoginFormInner() {
         return;
       }
 
-      const redirect = searchParams.get('redirect') || '/admin';
+      const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
       window.location.href = redirect;
     } catch (err) {
       if (err instanceof PromiseTimeoutError) {

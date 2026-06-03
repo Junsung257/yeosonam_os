@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 
@@ -13,9 +14,7 @@ export const maxDuration = 60;
  */
 async function runAudit(request: NextRequest) {
   if (!isCronAuthorized(request)) {
-    const res = NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    res.headers.set('Cache-Control', 'no-store');
-    return res;
+    return cronUnauthorizedResponse();
   }
 
   if (!isSupabaseConfigured) {
@@ -32,7 +31,8 @@ async function runAudit(request: NextRequest) {
     .limit(800);
 
   if (error) {
-    return { ok: false, error: error.message, errors: [error.message] };
+    const safeError = sanitizeDbError(error);
+    return { ok: false, error: safeError, errors: [safeError] };
   }
 
   type Row = {
@@ -71,7 +71,7 @@ async function runAudit(request: NextRequest) {
         .select('id, slug')
         .in('id', creativeIds);
       if (ce) {
-        backfillErrors.push(ce.message);
+        backfillErrors.push(sanitizeDbError(ce));
       } else {
         for (const c of creatives || []) {
           const id = (c as { id: string }).id;
@@ -98,7 +98,7 @@ async function runAudit(request: NextRequest) {
       }
       if (Object.keys(patch).length === 0) continue;
       const { error: upErr } = await supabaseAdmin.from('bookings').update(patch).eq('id', r.id);
-      if (upErr) backfillErrors.push(`${r.id}: ${upErr.message}`);
+      if (upErr) backfillErrors.push(`${r.id}: ${sanitizeDbError(upErr)}`);
       else backfilled += 1;
     }
   }

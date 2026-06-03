@@ -149,6 +149,7 @@ declare module 'lucide-react' {
   export const ThumbsDown: LucideIcon;
   export const ThumbsUp: LucideIcon;
   export const Timer: LucideIcon;
+  export const TicketPercent: LucideIcon;
   export const Trash2: LucideIcon;
   export const TrendingDown: LucideIcon;
   export const TrendingUp: LucideIcon;
@@ -156,6 +157,7 @@ declare module 'lucide-react' {
   export const Twitter: LucideIcon;
   export const Unlink: LucideIcon;
   export const Upload: LucideIcon;
+  export const UserCircle: LucideIcon;
   export const UserPlus: LucideIcon;
   export const Users: LucideIcon;
   export const Users2: LucideIcon;

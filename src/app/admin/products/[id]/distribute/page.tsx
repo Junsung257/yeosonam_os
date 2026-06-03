@@ -11,7 +11,7 @@
  *   - 생성된 캡션/포스트 표시 + 복사 버튼
  *   - content_distributions 테이블 조회
  */
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { fmtDateISO } from '@/lib/admin-utils';
 
@@ -49,13 +49,31 @@ const PLATFORM_META: Record<string, { label: string; color: string; icon: string
   kakao_channel:     { label: 'Kakao Channel',   color: 'from-yellow-400 to-yellow-600', icon: 'KK', api: 'kakao-channel' },
 };
 
-export default function DistributePage() {
-  const params = useParams<{ id: string }>();
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
+function DistributePageFallback() {
+  return (
+    <div className="p-6 space-y-4 max-w-3xl">
+      <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DistributePageContent() {
+  const params = useParams<{ id?: string | string[] }>();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const id = params.id;
+  const id = getRouteParam(params?.id);
+  const encodedId = encodeURIComponent(id);
   // V2 Studio 에서 넘어올 때 ?card_news_id=XXX 로 들어옴. 상품이 없거나 고아 참조일 때 이 카드뉴스로 fallback.
-  const cardNewsIdFromQuery = searchParams?.get('card_news_id') ?? null;
+  const cardNewsIdFromQuery = searchParams?.get('card_news_id')?.trim() || null;
 
   const [product, setProduct] = useState<Product | null>(null);
   const [linkedCardNews, setLinkedCardNews] = useState<LinkedCardNews | null>(null);
@@ -73,8 +91,15 @@ export default function DistributePage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
+      if (!id) {
+        setProductMissing(true);
+        setDistributions([]);
+        setLinkedCardNews(null);
+        return;
+      }
+
       // 1. 상품 조회
-      const prodRes = await fetch(`/api/packages/${id}`);
+      const prodRes = await fetch(`/api/packages/${encodedId}`);
       let prodOk = false;
       if (prodRes.ok) {
         const d = await prodRes.json();
@@ -90,7 +115,7 @@ export default function DistributePage() {
       //    우선순위: URL ?card_news_id → product_id 로 가장 최근 CONFIRMED → 가장 최근 DRAFT
       let cardNews: LinkedCardNews | null = null;
       if (cardNewsIdFromQuery) {
-        const r = await fetch(`/api/card-news/${cardNewsIdFromQuery}`);
+        const r = await fetch(`/api/card-news/${encodeURIComponent(cardNewsIdFromQuery)}`);
         if (r.ok) {
           const d = await r.json();
           cardNews = d.card_news as LinkedCardNews;
@@ -98,13 +123,13 @@ export default function DistributePage() {
       }
       if (!cardNews) {
         // 상품 없어도 package_id 로 카드뉴스 먼저 찾아봄 (고아 참조 복구)
-        const r = await fetch(`/api/card-news?package_id=${id}&status=CONFIRMED&limit=1`);
+        const r = await fetch(`/api/card-news?package_id=${encodedId}&status=CONFIRMED&limit=1`);
         if (r.ok) {
           const d = await r.json();
           cardNews = (d.card_news?.[0] ?? null) as LinkedCardNews | null;
         }
         if (!cardNews) {
-          const r2 = await fetch(`/api/card-news?package_id=${id}&limit=1`);
+          const r2 = await fetch(`/api/card-news?package_id=${encodedId}&limit=1`);
           if (r2.ok) {
             const d2 = await r2.json();
             cardNews = (d2.card_news?.[0] ?? null) as LinkedCardNews | null;
@@ -114,7 +139,7 @@ export default function DistributePage() {
       setLinkedCardNews(cardNews);
 
       // 3. 배포 이력 조회
-      const distRes = await fetch(`/api/content/generate-all?product_id=${id}`);
+      const distRes = await fetch(`/api/content/generate-all?product_id=${encodedId}`);
       if (distRes.ok) {
         const d = await distRes.json();
         setDistributions(d.distributions ?? []);
@@ -124,7 +149,7 @@ export default function DistributePage() {
     } finally {
       setLoading(false);
     }
-  }, [id, cardNewsIdFromQuery]);
+  }, [id, encodedId, cardNewsIdFromQuery]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
@@ -176,16 +201,7 @@ export default function DistributePage() {
     showToast(`${label} 클립보드 복사`);
   }, [showToast]);
 
-  if (loading) return (
-    <div className="p-6 space-y-4 max-w-3xl">
-      <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
-      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
-        ))}
-      </div>
-    </div>
-  );
+  if (loading) return <DistributePageFallback />;
 
   // 상품도 카드뉴스도 없으면 완전 404
   if (!product && !linkedCardNews) {
@@ -261,7 +277,7 @@ export default function DistributePage() {
           </div>
           <button
             type="button"
-            onClick={() => router.push(`/admin/marketing/card-news/${linkedCardNews.id}/v2`)}
+            onClick={() => router.push(`/admin/marketing/card-news/${encodeURIComponent(linkedCardNews.id)}/v2`)}
             className="px-3 py-2 text-sm text-blue-700 border border-blue-300 rounded hover:bg-blue-50"
           >
             V2 Studio 열기 →
@@ -325,6 +341,14 @@ export default function DistributePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DistributePage() {
+  return (
+    <Suspense fallback={<DistributePageFallback />}>
+      <DistributePageContent />
+    </Suspense>
   );
 }
 

@@ -1,6 +1,8 @@
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { dismissMarketingRecommendation } from '@/lib/marketing/recommendation-ledger';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,18 +13,18 @@ async function postHandler(request: NextRequest) {
     const reason = typeof body?.reason === 'string' ? body.reason : undefined;
 
     if (!actionId) {
-      return NextResponse.json({ error: 'action_id is required' }, { status: 400 });
+      return apiResponse({ error: 'action_id is required' }, { status: 400 });
     }
 
     await dismissMarketingRecommendation(actionId, reason);
-    return NextResponse.json({
+    return apiResponse({
       dismissed_at: new Date().toISOString(),
       action_id: actionId,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Failed to dismiss marketing action';
+    const message = sanitizeDbError(err, 'Failed to dismiss marketing action');
     const status = message.includes('migration is not applied yet') ? 503 : 500;
-    return NextResponse.json(
+    return apiResponse(
       { error: message },
       { status },
     );

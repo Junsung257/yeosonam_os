@@ -20,11 +20,13 @@
  *   - 같은 rawEventId 는 parseRawEvent() 내에서 parse_attempts 증가로 자동 보호
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { parseRawEvent, MAX_PARSE_ATTEMPTS } from '@/lib/slack-ingest';
 import { logError } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -37,7 +39,9 @@ export async function GET(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
 
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ error: 'DB not configured' }, { status: 503 });
+  }
 
   const startedAt = Date.now();
   const summary = {
@@ -70,7 +74,7 @@ export async function GET(request: NextRequest) {
         else if (result.parseStatus === 'dead') summary.moved_to_dead++;
         else summary.still_failed++;
       } catch (e: any) {
-        summary.errors.push(`${row.id}: ${e?.message ?? String(e)}`);
+        summary.errors.push(`${row.id}: ${sanitizeDbError(e)}`);
       }
     }
 
@@ -99,9 +103,9 @@ export async function GET(request: NextRequest) {
       `moved_to_dead=${summary.moved_to_dead}`,
     );
 
-    return NextResponse.json({ ok: true, elapsed_ms: elapsed, ...summary });
+    return apiResponse({ ok: true, elapsed_ms: elapsed, ...summary });
   } catch (e: any) {
     logError('[cron/dlq-replay] replay failed', e);
-    return NextResponse.json({ error: e?.message ?? 'replay 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e, 'Replay failed') }, { status: 500 });
   }
 }

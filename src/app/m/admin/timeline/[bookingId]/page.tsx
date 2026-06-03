@@ -6,6 +6,10 @@ import TimelineClient from './_client';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
 export interface TimelineRow {
   id: string;
   event_type: string | null;
@@ -40,17 +44,21 @@ async function fetchLogs(bookingId: string): Promise<TimelineRow[]> {
 
 export default async function TimelinePage(
   props: {
-    params: Promise<{ bookingId: string }>;
+    params: Promise<{ bookingId?: string | string[] }>;
   }
 ) {
   const params = await props.params;
+  const bookingId = getRouteParam(params.bookingId);
+  if (!bookingId) notFound();
+
   const [meta, logs] = await Promise.all([
-    fetchBookingMeta(params.bookingId),
-    fetchLogs(params.bookingId),
+    fetchBookingMeta(bookingId),
+    fetchLogs(bookingId),
   ]);
   if (!meta) notFound();
 
   const metaAny = meta as unknown as { booking_no: string; customers: { name: string } | null };
+  const encodedBookingId = encodeURIComponent(bookingId);
 
   return (
     <>
@@ -58,9 +66,9 @@ export default async function TimelinePage(
         title="타임라인"
         subtitle={`${metaAny.booking_no ?? ''} · ${metaAny.customers?.name ?? ''}`}
         showBack
-        backHref={`/m/admin/bookings/${params.bookingId}`}
+        backHref={`/m/admin/bookings/${encodedBookingId}`}
       />
-      <TimelineClient bookingId={params.bookingId} rows={logs} />
+      <TimelineClient bookingId={bookingId} rows={logs} />
     </>
   );
 }

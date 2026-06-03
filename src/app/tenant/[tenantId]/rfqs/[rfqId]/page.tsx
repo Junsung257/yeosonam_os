@@ -88,6 +88,8 @@ const initialForm: ProposalForm = {
 };
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 // ── 카운트다운 ────────────────────────────────────────────────────────────────
 function Countdown({ deadline, onExpire }: { deadline: string; onExpire?: () => void }) {
@@ -200,8 +202,10 @@ function ChecklistRow({
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function TenantRfqDetailPage() {
   const params = useParams();
-  const tenantId = params.tenantId as string;
-  const rfqId    = params.rfqId    as string;
+  const tenantId = getRouteParam(params?.tenantId);
+  const rfqId    = getRouteParam(params?.rfqId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
+  const encodedRfqId = rfqId ? encodeURIComponent(rfqId) : '';
 
   const [rfq,         setRfq]         = useState<RfqDetail | null>(null);
   const [bid,         setBid]         = useState<BidInfo | null>(null);
@@ -215,8 +219,14 @@ export default function TenantRfqDetailPage() {
   const [form,        setForm]        = useState<ProposalForm>(initialForm);
 
   const fetchData = useCallback(async () => {
+    if (!tenantId || !rfqId) {
+      setError('테넌트 또는 RFQ ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`/api/tenant/rfqs/${rfqId}?tenant_id=${tenantId}`);
+      const res = await fetch(`/api/tenant/rfqs/${encodedRfqId}?tenant_id=${encodedTenantId}`);
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
       const data = await res.json();
       setRfq(data.rfq ?? data);
@@ -230,15 +240,17 @@ export default function TenantRfqDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [rfqId, tenantId]);
+  }, [encodedRfqId, encodedTenantId, rfqId, tenantId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
   // 입찰 참여 (선착순 슬롯 확보)
   async function claimBid() {
+    if (!tenantId || !rfqId) return;
+
     setClaiming(true);
     try {
-      const res = await fetch(`/api/rfq/${rfqId}/bid`, {
+      const res = await fetch(`/api/rfq/${encodedRfqId}/bid`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: tenantId }),
@@ -279,6 +291,11 @@ export default function TenantRfqDetailPage() {
     e.preventDefault();
     setSubmitError('');
 
+    if (!tenantId || !rfqId) {
+      setSubmitError('테넌트 또는 RFQ ID가 올바르지 않습니다.');
+      return;
+    }
+
     if (!bid) return;
 
     const cost  = Number(form.total_cost.replace(/,/g, ''));
@@ -308,7 +325,7 @@ export default function TenantRfqDetailPage() {
 
     setSubmitting(true);
     try {
-      const res = await fetch(`/api/rfq/${rfqId}/bid/${bid.id}/proposal`, {
+      const res = await fetch(`/api/rfq/${encodedRfqId}/bid/${encodeURIComponent(bid.id)}/proposal`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -342,7 +359,7 @@ export default function TenantRfqDetailPage() {
       <div className="p-8 text-center text-red-500 text-sm">
         {error || 'RFQ를 찾을 수 없습니다'}
         <div className="mt-4">
-          <Link href={`/tenant/${tenantId}/rfqs`} className="text-indigo-600 hover:underline text-sm">
+          <Link href={`/tenant/${encodedTenantId}/rfqs`} className="text-indigo-600 hover:underline text-sm">
             ← 목록으로
           </Link>
         </div>
@@ -356,7 +373,7 @@ export default function TenantRfqDetailPage() {
     <div className="max-w-2xl mx-auto p-6 space-y-6 pb-20">
       {/* 헤더 */}
       <div>
-        <Link href={`/tenant/${tenantId}/rfqs`} className="text-sm text-indigo-600 hover:underline">
+        <Link href={`/tenant/${encodedTenantId}/rfqs`} className="text-sm text-indigo-600 hover:underline">
           ← 입찰 목록
         </Link>
         <h1 className="text-2xl font-bold text-gray-900 mt-2">{rfq.destination}</h1>

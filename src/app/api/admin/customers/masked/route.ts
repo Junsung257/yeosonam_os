@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { maskPhone, maskEmail, type AdminRole } from '@/lib/pii-mask';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
@@ -15,7 +17,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
  */
 const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ data: [], role: 'cs_agent' });
+    return apiResponse({ data: [], role: 'cs_agent' });
   }
 
   try {
@@ -31,7 +33,7 @@ const getHandler = async (request: NextRequest) => {
     }
 
     if (!userId) {
-      return NextResponse.json({ error: '인증 필요' }, { status: 401 });
+      return apiResponse({ error: 'Authentication required' }, { status: 401 });
     }
 
     // ── 2. admin_users에서 role 조회 ───────────────────────────
@@ -92,7 +94,7 @@ const getHandler = async (request: NextRequest) => {
       email: maskEmail(c.email, role),
     }));
 
-    return NextResponse.json({
+    return apiResponse({
       data: maskedData,
       count,
       role,
@@ -100,8 +102,8 @@ const getHandler = async (request: NextRequest) => {
       limit,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '처리 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err, 'Failed to load masked customers') },
       { status: 500 },
     );
   }

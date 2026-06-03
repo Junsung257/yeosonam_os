@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -25,7 +26,7 @@ function normalizePlatforms(value: unknown): string[] {
 
 export const POST = withAdminGuard(async (request: Request) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -56,7 +57,7 @@ export const POST = withAdminGuard(async (request: Request) => {
     : await existingQuery.is('tenant_id', null);
 
   if (existingRes.error) {
-    return NextResponse.json({ ok: false, error: existingRes.error.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(existingRes.error) }, { status: 500 });
   }
 
   const existingId = existingRes.data?.[0]?.id;
@@ -74,8 +75,8 @@ export const POST = withAdminGuard(async (request: Request) => {
         .single();
 
   if (saveRes.error) {
-    return NextResponse.json({ ok: false, error: saveRes.error.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(saveRes.error) }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, policy: saveRes.data });
+  return apiResponse({ ok: true, policy: saveRes.data });
 });

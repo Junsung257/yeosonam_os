@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { sendConciergeCartRetarget } from '@/lib/kakao';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -26,7 +28,7 @@ export async function GET(request: NextRequest) {
     return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured || !supabaseAdmin) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB not configured' }, { status: 503 });
   }
 
   const now = new Date();
@@ -43,14 +45,14 @@ export async function GET(request: NextRequest) {
     .limit(1000);
 
   if (abandonError) {
-    return NextResponse.json({ error: abandonError.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(abandonError) }, { status: 500 });
   }
 
   const sessionIds = Array.from(
     new Set((abandonSignals ?? []).map((s: { session_id: string }) => s.session_id).filter(Boolean)),
   );
   if (sessionIds.length === 0) {
-    return NextResponse.json({ ok: true, sent: 0, reason: '이탈 신호 없음' });
+    return apiResponse({ ok: true, sent: 0, reason: '이탈 신호 없음' });
   }
 
   const [{ data: carts, error: cartsError }, { data: txns, error: txnsError }, { data: sentLogs, error: sentLogError }] =
@@ -75,9 +77,9 @@ export async function GET(request: NextRequest) {
         .gt('created_at', since),
     ]);
 
-  if (cartsError) return NextResponse.json({ error: cartsError.message }, { status: 500 });
-  if (txnsError) return NextResponse.json({ error: txnsError.message }, { status: 500 });
-  if (sentLogError) return NextResponse.json({ error: sentLogError.message }, { status: 500 });
+  if (cartsError) return apiResponse({ error: sanitizeDbError(cartsError) }, { status: 500 });
+  if (txnsError) return apiResponse({ error: sanitizeDbError(txnsError) }, { status: 500 });
+  if (sentLogError) return apiResponse({ error: sanitizeDbError(sentLogError) }, { status: 500 });
 
   const sentSet = new Set((sentLogs ?? []).map((r: { session_id: string }) => r.session_id));
 
@@ -93,7 +95,7 @@ export async function GET(request: NextRequest) {
     .filter(c => !sentSet.has(c.session_id));
 
   if (targets.length === 0) {
-    return NextResponse.json({ ok: true, sent: 0, reason: '발송 대상 없음', sessions: sessionIds.length });
+    return apiResponse({ ok: true, sent: 0, reason: '발송 대상 없음', sessions: sessionIds.length });
   }
 
   let sent = 0;
@@ -127,7 +129,7 @@ export async function GET(request: NextRequest) {
     await new Promise((r) => setTimeout(r, 250));
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     sent,
     failed,

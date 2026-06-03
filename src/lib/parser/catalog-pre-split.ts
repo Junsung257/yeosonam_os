@@ -158,6 +158,7 @@ export function countCatalogItineraryHeaders(raw: string): number {
   return Math.max(
     collectItineraryHeaderStarts(raw).length,
     collectVariantCatalogBlockStarts(raw).length,
+    collectPkgBlockStarts(raw).length,
   );
 }
 
@@ -229,13 +230,19 @@ export function extractBalancedJsonObjectSubstring(s: string): string | null {
 export function collectPkgBlockStarts(raw: string): number[] {
   const text = raw.replace(/\r\n/g, '\n');
   const starts: number[] = [];
-  const re = /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text)) !== null) {
-    const g1 = m[1];
-    if (!g1) continue;
-    const offsetInFull = m[0].indexOf(g1[0]);
-    starts.push(m.index + offsetInFull);
+  const patterns = [
+    /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g,
+    /(?:^|\n)([^\n]{2,80}出\s*[^\n]{2,80}PKG\s*\d+\s*박\s*\d+\s*일[^\n]{0,60})/g,
+  ];
+
+  for (const re of patterns) {
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text)) !== null) {
+      const g1 = m[1];
+      if (!g1) continue;
+      const offsetInFull = m[0].indexOf(g1[0]);
+      starts.push(m.index + offsetInFull);
+    }
   }
   return [...new Set(starts)].sort((a, b) => a - b);
 }
@@ -297,7 +304,13 @@ export function extractProductRawTextSection(
 export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult {
   const text = raw.replace(/\r\n/g, '\n');
   const variantStarts = collectVariantCatalogBlockStarts(text);
-  const starts = variantStarts.length >= 2 ? variantStarts : collectItineraryHeaderStarts(text);
+  const itineraryStarts = collectItineraryHeaderStarts(text);
+  const pkgStarts = collectPkgBlockStarts(text);
+  const starts = variantStarts.length >= 2
+    ? variantStarts
+    : itineraryStarts.length >= 2
+      ? itineraryStarts
+      : pkgStarts;
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };
