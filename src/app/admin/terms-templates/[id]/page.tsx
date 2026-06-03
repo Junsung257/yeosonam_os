@@ -45,6 +45,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   const params = use(props.params);
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
+  const encodedId = id ? encodeURIComponent(id) : '';
   const [isNew, setIsNew] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -81,14 +82,14 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
       setOperators((opsJson.operators ?? opsJson.data ?? []) as LandOperator[]);
 
       if (!isNew) {
-        const res = await fetch(`/api/terms-templates/${id}`);
+        const res = await fetch(`/api/terms-templates/${encodedId}`);
         const json = await res.json();
         if (json.data) setTpl(json.data);
       }
     } finally {
       setLoading(false);
     }
-  }, [id, isNew]);
+  }, [encodedId, id, isNew]);
 
   useEffect(() => { if (id) loadData(); }, [id, loadData]);
 
@@ -137,7 +138,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
     if (tpl.notices.length === 0) { alert('notice 블록이 최소 1개 필요합니다'); return; }
     setSaving(true);
     try {
-      const url = isNew ? '/api/terms-templates' : `/api/terms-templates/${id}`;
+      const url = isNew ? '/api/terms-templates' : `/api/terms-templates/${encodedId}`;
       const method = isNew ? 'POST' : 'PATCH';
       const res = await fetch(url, {
         method,
@@ -148,7 +149,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
       if (!res.ok) throw new Error(json.error ?? '저장 실패');
       alert('저장 완료');
       if (isNew && json.data?.id) {
-        router.push(`/admin/terms-templates/${json.data.id}`);
+        router.push(`/admin/terms-templates/${encodeURIComponent(json.data.id)}`);
       }
     } catch (e) {
       alert(e instanceof Error ? e.message : '저장 실패');
@@ -159,7 +160,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
 
   const softDelete = async () => {
     if (!confirm('비활성화(soft delete)합니다. 기존 예약 스냅샷은 유지됩니다. 계속?')) return;
-    const res = await fetch(`/api/terms-templates/${id}`, { method: 'DELETE' });
+    const res = await fetch(`/api/terms-templates/${encodedId}`, { method: 'DELETE' });
     if (res.ok) { alert('비활성화 완료'); router.push('/admin/terms-templates'); }
   };
 
