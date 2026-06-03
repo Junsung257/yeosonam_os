@@ -51,6 +51,7 @@ function getRouteParam(value: string | string[] | undefined): string {
 export default function CustomerDetailPage() {
   const params = useParams();
   const id = getRouteParam(params?.id);
+  const encodedId = id ? encodeURIComponent(id) : '';
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -88,15 +89,15 @@ export default function CustomerDetailPage() {
       return;
     }
     Promise.all([
-      fetch(`/api/customers?id=${id}`).then(r => r.json()),
+      fetch(`/api/customers?id=${encodedId}`).then(r => r.json()),
       fetch(`/api/bookings`).then(r => r.json()),
-      fetch(`/api/customers/${id}/notes`).then(r => r.json()).catch(() => ({ notes: [] })),
+      fetch(`/api/customers/${encodedId}/notes`).then(r => r.json()).catch(() => ({ notes: [] })),
     ]).then(([cd, bd, nd]) => {
       setCustomer(cd.customer);
       setBookings((bd.bookings || []).filter((b: { lead_customer_id?: string }) => b.lead_customer_id === id));
       setNotes(nd.notes || []);
     }).finally(() => setIsLoading(false));
-  }, [id]);
+  }, [id, encodedId]);
 
   const startEdit = () => {
     if (!customer) return;
@@ -119,7 +120,7 @@ export default function CustomerDetailPage() {
           tags: tags_str ? tags_str.split(',').map((t: string) => t.trim()).filter(Boolean) : [],
         }),
       });
-      const res = await fetch(`/api/customers?id=${id}`);
+      const res = await fetch(`/api/customers?id=${encodedId}`);
       const data = await res.json();
       setCustomer(data.customer);
       setEditing(false);
@@ -159,7 +160,7 @@ export default function CustomerDetailPage() {
     if (!content.trim()) return;
     setNoteSubmitting(true);
     try {
-      const res = await fetch(`/api/customers/${id}/notes`, {
+      const res = await fetch(`/api/customers/${encodedId}/notes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content }),
@@ -182,7 +183,7 @@ export default function CustomerDetailPage() {
 
   const handleDeleteNote = async (noteId: string) => {
     if (!id) return;
-    await fetch(`/api/customers/${id}/notes?noteId=${noteId}`, { method: 'DELETE' });
+    await fetch(`/api/customers/${encodedId}/notes?noteId=${encodeURIComponent(noteId)}`, { method: 'DELETE' });
     setNotes(prev => prev.filter(n => n.id !== noteId));
   };
 
@@ -311,7 +312,7 @@ export default function CustomerDetailPage() {
           <div className="lg:col-span-3 bg-white rounded-admin-md shadow-admin-xs p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-semibold text-admin-text">예약 히스토리</h2>
-              <Link href={`/admin/bookings/new?customerId=${customer.id}&customerName=${encodeURIComponent(customer.name)}`}
+              <Link href={`/admin/bookings/new?customerId=${encodeURIComponent(customer.id)}&customerName=${encodeURIComponent(customer.name)}`}
                 className="text-sm text-blue-600 hover:underline">+ 예약 등록</Link>
             </div>
             {bookings.length === 0 ? (
@@ -324,7 +325,7 @@ export default function CustomerDetailPage() {
                 {bookings.map(b => (
                   <Link
                     key={b.id}
-                    href={`/admin/bookings/${b.id}`}
+                    href={`/admin/bookings/${encodeURIComponent(b.id)}`}
                     className="flex items-center justify-between p-3 border border-admin-border rounded-lg hover:bg-blue-50 hover:border-blue-200 transition group"
                   >
                     <div className="flex-1 min-w-0">
