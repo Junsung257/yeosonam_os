@@ -9,6 +9,11 @@ export const dynamic = 'force-dynamic';
 const DEFAULT_REVIEW_TITLE = '후기 작성 | 여소남';
 const DEFAULT_REVIEW_DESCRIPTION = '여소남 여행 후기를 작성해주세요. 다른 여행자분들께 큰 도움이 됩니다.';
 
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
@@ -52,9 +57,15 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { booking_id: rawBookingId } = await params;
   const bookingId = getRouteParam(rawBookingId);
+  const canonical = `${siteBaseUrl()}/review/${encodeURIComponent(bookingId)}`;
 
   if (!isSupabaseConfigured || !bookingId) {
-    return { title: DEFAULT_REVIEW_TITLE };
+    return {
+      title: DEFAULT_REVIEW_TITLE,
+      description: DEFAULT_REVIEW_DESCRIPTION,
+      alternates: { canonical },
+      robots: { index: false, follow: false },
+    };
   }
 
   const { data } = await supabaseAdmin
@@ -69,7 +80,10 @@ export async function generateMetadata({
   return {
     title,
     description: DEFAULT_REVIEW_DESCRIPTION,
+    alternates: { canonical },
+    robots: { index: false, follow: false },
     openGraph: {
+      url: canonical,
       title,
       description: '여소남 여행 후기를 작성해주세요.',
     },
