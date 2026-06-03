@@ -1,11 +1,7 @@
-/**
- * Phase 2-G: B2B 패키지 단건 상세 API
- * GET /api/b2b/packages/{id}
- *
- * 인증: Authorization: Bearer {api_key} (목록 API와 동일)
- */
-import { NextRequest, NextResponse } from 'next/server';
 import { createHash } from 'crypto';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 function extractBearerKey(request: NextRequest): string | null {
@@ -33,7 +29,6 @@ async function authenticateB2bKey(
   if (!data?.[0]) return { ok: false, error: '유효하지 않은 API 키' };
   if (!data[0].is_active) return { ok: false, error: '비활성화된 API 키' };
 
-  // total_calls 증가 + last_used_at 갱신
   const { data: cur } = await supabaseAdmin
     .from('b2b_api_keys')
     .select('total_calls')
@@ -49,7 +44,7 @@ async function authenticateB2bKey(
       })
       .eq('id', data[0].id);
   } catch {
-    // API 키 호출 카운트 실패는 무시
+    // Non-blocking usage counter update.
   }
 
   return { ok: true, keyId: data[0].id as string };
@@ -60,12 +55,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   const rawKey = extractBearerKey(request);
   if (!rawKey) {
-    return NextResponse.json(
+    return apiResponse(
       { error: 'Authorization 헤더가 필요합니다 (Bearer {api_key})' },
       { status: 401 },
     );
@@ -73,12 +68,12 @@ export async function GET(
 
   const auth = await authenticateB2bKey(rawKey);
   if (!auth.ok) {
-    return NextResponse.json({ error: auth.error }, { status: 401 });
+    return apiResponse({ error: auth.error }, { status: 401 });
   }
 
   const { id } = await params;
   if (!id) {
-    return NextResponse.json({ error: '패키지 ID가 필요합니다' }, { status: 400 });
+    return apiResponse({ error: '패키지 ID가 필요합니다' }, { status: 400 });
   }
 
   try {
@@ -100,12 +95,11 @@ export async function GET(
 
     const pkg = data?.[0] ?? null;
     if (!pkg) {
-      return NextResponse.json({ error: '패키지를 찾을 수 없거나 미승인 상태입니다' }, { status: 404 });
+      return apiResponse({ error: '패키지를 찾을 수 없거나 미승인 상태입니다' }, { status: 404 });
     }
 
-    return NextResponse.json({ data: pkg });
+    return apiResponse({ data: pkg });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, '처리 실패') }, { status: 500 });
   }
 }
