@@ -34,6 +34,21 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function getNonEmptyString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+}
+
+function getFiniteNumber(value: unknown): number | undefined {
+  const normalized = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(normalized) ? normalized : undefined;
+}
+
+function getStringList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+}
+
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
 //   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
@@ -566,24 +581,35 @@ export default async function PackageDetailPage({
   }
 
   // JSON-LD Product + BreadcrumbList
-  const pkgJsonLd = normalizedPkg ? {
-    '@context': 'https://schema.org',
-    '@type': 'Product',
-    name: normalizedPkg.title,
-    description: normalizedPkg.product_summary || `${normalizedPkg.destination} 여행 패키지`,
-    category: normalizedPkg.destination,
-    offers: {
-      '@type': 'AggregateOffer',
-      priceCurrency: 'KRW',
-      lowPrice: (normalizedPkg as unknown as { price_min?: number }).price_min ?? undefined,
-      highPrice: (normalizedPkg as unknown as { price_max?: number }).price_max ?? undefined,
-      offerCount: normalizedPkg.price_dates?.length ?? undefined,
-      availability: 'https://schema.org/InStock',
-      url: getPackageUrl(id),
-      seller: { '@type': 'Organization', name: '여소남' },
-    },
-    ...(normalizedPkg.product_highlights?.length ? { award: normalizedPkg.product_highlights.slice(0, 3).map((h: string) => ({ '@type': 'Award', name: h })) } : {}),
-  } : null;
+  const pkgJsonLd = normalizedPkg ? (() => {
+    const highlights = getStringList((normalizedPkg as { product_highlights?: unknown }).product_highlights);
+    const priceDates = Array.isArray((normalizedPkg as { price_dates?: unknown }).price_dates)
+      ? (normalizedPkg as { price_dates: unknown[] }).price_dates
+      : [];
+
+    return {
+      '@context': 'https://schema.org',
+      '@type': 'Product',
+      name: getNonEmptyString(normalizedPkg.title) ?? '여소남 패키지 여행',
+      description:
+        getNonEmptyString(normalizedPkg.product_summary) ??
+        `${getNonEmptyString(normalizedPkg.destination) ?? '패키지'} 여행 패키지`,
+      category: getNonEmptyString(normalizedPkg.destination) ?? '패키지',
+      offers: {
+        '@type': 'AggregateOffer',
+        priceCurrency: 'KRW',
+        lowPrice: getFiniteNumber((normalizedPkg as { price_min?: unknown }).price_min),
+        highPrice: getFiniteNumber((normalizedPkg as { price_max?: unknown }).price_max),
+        offerCount: priceDates.length > 0 ? priceDates.length : undefined,
+        availability: 'https://schema.org/InStock',
+        url: getPackageUrl(id),
+        seller: { '@type': 'Organization', name: '여소남' },
+      },
+      ...(highlights.length > 0
+        ? { award: highlights.slice(0, 3).map((name) => ({ '@type': 'Award', name })) }
+        : {}),
+    };
+  })() : null;
   const clientPackage = normalizedPkg
     ? (() => {
         const {
