@@ -10,11 +10,12 @@
  *   - 시간당 최대 50개 source 처리 (rate limit + 비용 cap)
  *   - 24시간 윈도우만 (오래된 변경은 batch script 로 처리)
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { indexPackage, indexBlog, indexAttraction, indexPolicy } from '@/lib/jarvis/rag/indexer';
+import { apiResponse } from '@/lib/api-response';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -23,8 +24,8 @@ export const maxDuration = 300;
 const MAX_PER_RUN = 50;
 
 async function handle(req: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
   if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
+  if (!isSupabaseConfigured) return apiResponse({ skipped: true, reason: 'Supabase not configured' });
 
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
@@ -96,7 +97,7 @@ async function handle(req: NextRequest) {
     policyResult.failed += r.failed;
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     window_hours: 24,
     packages: { scanned: pkgs?.length ?? 0, ...pkgResult },
