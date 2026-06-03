@@ -78,12 +78,20 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
     );
   }
 
-  const { data: aff, error: affErr } = await supabaseAdmin
-    .from('affiliates')
-    .select('name, referral_code, logo_url, landing_intro, landing_pick_package_ids, landing_video_url')
-    .eq('referral_code', slug)
-    .eq('is_active', true)
-    .maybeSingle();
+  let aff: unknown = null;
+  let affErr: unknown = null;
+  try {
+    const result = await supabaseAdmin
+      .from('affiliates')
+      .select('name, referral_code, logo_url, landing_intro, landing_pick_package_ids, landing_video_url')
+      .eq('referral_code', slug)
+      .eq('is_active', true)
+      .maybeSingle();
+    aff = result.data;
+    affErr = result.error;
+  } catch {
+    affErr = true;
+  }
 
   if (affErr || !aff) notFound();
 
@@ -110,27 +118,35 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   }> = [];
 
   if (pickIds.length > 0) {
-    const { data: picked } = await supabaseAdmin
-      .from('travel_packages')
-      .select(PKG_CARD_FIELDS)
-      .in('id', pickIds)
-      .in('status', ['active', 'approved'])
-      .or('audit_status.is.null,audit_status.neq.blocked');
-    const order = new Map(pickIds.map((id, i) => [id, i]));
-    picks = (picked || []).sort(
-      (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
-    );
+    try {
+      const { data: picked } = await supabaseAdmin
+        .from('travel_packages')
+        .select(PKG_CARD_FIELDS)
+        .in('id', pickIds)
+        .in('status', ['active', 'approved'])
+        .or('audit_status.is.null,audit_status.neq.blocked');
+      const order = new Map(pickIds.map((id, i) => [id, i]));
+      picks = (picked || []).sort(
+        (a: { id: string }, b: { id: string }) => (order.get(a.id) ?? 99) - (order.get(b.id) ?? 99),
+      );
+    } catch {
+      picks = [];
+    }
   }
 
   if (picks.length === 0) {
-    const { data: fallback } = await supabaseAdmin
-      .from('travel_packages')
-      .select(PKG_CARD_FIELDS)
-      .in('status', ['active', 'approved'])
-      .or('audit_status.is.null,audit_status.neq.blocked')
-      .order('created_at', { ascending: false })
-      .limit(6);
-    picks = fallback || [];
+    try {
+      const { data: fallback } = await supabaseAdmin
+        .from('travel_packages')
+        .select(PKG_CARD_FIELDS)
+        .in('status', ['active', 'approved'])
+        .or('audit_status.is.null,audit_status.neq.blocked')
+        .order('created_at', { ascending: false })
+        .limit(6);
+      picks = fallback || [];
+    } catch {
+      picks = [];
+    }
   }
 
   const refQ = encodeURIComponent(row.referral_code);
