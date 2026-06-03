@@ -267,7 +267,7 @@ export default async function AffiliateCoBrandLandingPage(props: PageProps) {
                 return (
                   <li key={pkg.id}>
                     <Link
-                      href={`/packages/${pkg.id}?ref=${refQ}`}
+                      href={`/packages/${encodeURIComponent(pkg.id)}?ref=${refQ}`}
                       className="block h-full rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-emerald-400 hover:shadow-md"
                     >
                       <div className="text-xs font-medium text-emerald-700">
