@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { getPackageById } from '@/lib/supabase';
+import { isSafeImageSrc } from '@/lib/image-url';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -32,9 +33,12 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-function resolveOgImage(candidate: string | null) {
-  if (candidate && /^https?:\/\//i.test(candidate)) return candidate;
-  if (candidate?.startsWith('/')) return `${BASE_URL}${candidate}`;
+function resolveOgImage(candidate: unknown) {
+  if (isSafeImageSrc(candidate)) {
+    const imageUrl = candidate.trim();
+    return imageUrl.startsWith('//') ? `https:${imageUrl}` : imageUrl;
+  }
+  if (typeof candidate === 'string' && candidate.trim().startsWith('/')) return `${BASE_URL}${candidate.trim()}`;
   return `${BASE_URL}/og-image.png`;
 }
 
@@ -86,7 +90,7 @@ export async function generateMetadata({
         const items = Array.isArray(day?.schedule) ? day.schedule : (Array.isArray(day?.items) ? day.items : []);
         for (const it of items as Array<{ photo?: string; image?: string; hotel?: { image?: string } }>) {
           const photo = it?.photo || it?.image || it?.hotel?.image;
-          if (typeof photo === 'string' && photo.startsWith('http')) return photo;
+          if (isSafeImageSrc(photo)) return photo.trim();
         }
       }
     } catch { /* ignore */ }
