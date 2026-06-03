@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -64,15 +66,15 @@ const getHandler = async (
   ctx?: { params: Promise<{ id: string }> | { id: string } },
 ) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 503 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
 
   const params = await ctx?.params;
   const id = params?.id;
   const kindParam = request.nextUrl.searchParams.get('kind');
-  if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 });
+  if (!id) return apiResponse({ error: 'ID_REQUIRED' }, { status: 400 });
   if (!isMessageKind(kindParam)) {
-    return NextResponse.json({ error: 'invalid kind' }, { status: 400 });
+    return apiResponse({ error: 'INVALID_KIND' }, { status: 400 });
   }
 
   const { data: booking, error } = await supabaseAdmin
@@ -81,11 +83,11 @@ const getHandler = async (
     .eq('id', id)
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!booking) return NextResponse.json({ error: 'booking not found' }, { status: 404 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  if (!booking) return apiResponse({ error: 'BOOKING_NOT_FOUND' }, { status: 404 });
 
   const account = getSecret('COMPANY_ACCOUNT') || '[계좌번호 입력]';
-  return NextResponse.json({
+  return apiResponse({
     message: buildMessage(kindParam, booking as Record<string, unknown>, account),
   });
 };
