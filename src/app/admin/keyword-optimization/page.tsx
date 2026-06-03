@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
 interface OptimizationLog {
   id: string;
@@ -42,26 +41,14 @@ export default function KeywordOptimizationPage() {
       setError(null);
       try {
         const url = '/api/admin/optimization/logs' + (platform !== 'all' ? `?platform=${platform}&limit=${limit}` : `?limit=${limit}`);
-        // 우선 Supabase 직접 조회 (fallback)
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (supabaseUrl && supabaseKey) {
-          const supabase = createClient(supabaseUrl, supabaseKey);
-          let query = supabase
-            .from('optimization_log')
-            .select('*')
-            .order('ran_at', { ascending: false })
-            .limit(limit);
-          if (platform !== 'all') {
-            query = query.eq('platform', platform);
-          }
-          const { data, error: dbError } = await query;
-          if (dbError) {
-            setError(dbError.message);
-          } else {
-            setLogs((data ?? []) as OptimizationLog[]);
-          }
+        const response = await fetch(url, { credentials: 'same-origin' });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          setError(payload?.error ?? '최적화 로그를 불러오지 못했습니다.');
+          setLogs([]);
+          return;
         }
+        setLogs(Array.isArray(payload) ? payload : []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
