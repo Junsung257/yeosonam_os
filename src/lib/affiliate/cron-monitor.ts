@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 type FailureMeta = Record<string, unknown>;
 type SuccessMeta = Record<string, unknown>;
@@ -8,12 +9,10 @@ export async function reportAffiliateCronFailure(
   error: unknown,
   meta: FailureMeta = {},
 ): Promise<void> {
-  const message = error instanceof Error ? error.message : String(error || 'unknown');
-  const stack = error instanceof Error ? error.stack : null;
+  const message = sanitizeDbError(error, 'affiliate cron failed');
   const payload = {
     cron: cronName,
     message,
-    stack,
     meta,
     failed_at: new Date().toISOString(),
   };
@@ -29,7 +28,7 @@ export async function reportAffiliateCronFailure(
     status: 'pending',
   } as never).then(
     () => {},
-    (e: unknown) => console.error(`[cron-monitor] agent_actions insert failed for ${cronName}:`, (e as Error)?.message ?? e),
+    (e: unknown) => console.error(`[cron-monitor] agent_actions insert failed for ${cronName}:`, sanitizeDbError(e)),
   );
 
   await supabaseAdmin.from('audit_logs').insert({
@@ -40,7 +39,7 @@ export async function reportAffiliateCronFailure(
     after_value: payload as never,
   } as never).then(
     () => {},
-    (e: unknown) => console.error(`[cron-monitor] audit_logs insert failed for ${cronName}:`, (e as Error)?.message ?? e),
+    (e: unknown) => console.error(`[cron-monitor] audit_logs insert failed for ${cronName}:`, sanitizeDbError(e)),
   );
 }
 
@@ -62,7 +61,7 @@ export async function reportAffiliateCronSuccess(
     after_value: payload as never,
   } as never).then(
     () => {},
-    (e: unknown) => console.error(`[cron-monitor] audit_logs success insert failed for ${cronName}:`, (e as Error)?.message ?? e),
+    (e: unknown) => console.error(`[cron-monitor] audit_logs success insert failed for ${cronName}:`, sanitizeDbError(e)),
   );
 }
 
