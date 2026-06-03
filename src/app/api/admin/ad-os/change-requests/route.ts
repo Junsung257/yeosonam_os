@@ -40,6 +40,17 @@ const MUTABLE_TARGET_TABLES = new Set([
   'search_ad_keyword_plans',
   'ad_os_landing_evolution_queue',
   'blog_content_versions',
+  'ad_os_portfolio_budget_plans',
+  'ad_os_creative_asset_variants',
+  'ad_os_travel_intent_signals',
+  'tenant_ad_workspaces',
+  'ad_os_tenant_billing_profiles',
+]);
+const EXTERNAL_APPLY_ONLY_TYPES = new Set([
+  'publish_paused_keyword',
+  'activate_paused_keyword',
+  'sync_external_asset',
+  'upload_conversion_signal',
 ]);
 const BLOCKED_PATCH_FIELDS = new Set(['id', 'tenant_id', 'created_at', 'updated_at', 'approved_at', 'applied_at']);
 
@@ -69,14 +80,24 @@ async function updateMutableTarget(targetTable: string, targetId: string, patch:
       return supabaseAdmin.from('ad_os_landing_evolution_queue').update(patch as never).eq('id', targetId);
     case 'blog_content_versions':
       return supabaseAdmin.from('blog_content_versions').update(patch as never).eq('id', targetId);
+    case 'ad_os_portfolio_budget_plans':
+      return supabaseAdmin.from('ad_os_portfolio_budget_plans').update(patch as never).eq('id', targetId);
+    case 'ad_os_creative_asset_variants':
+      return supabaseAdmin.from('ad_os_creative_asset_variants').update(patch as never).eq('id', targetId);
+    case 'ad_os_travel_intent_signals':
+      return supabaseAdmin.from('ad_os_travel_intent_signals').update(patch as never).eq('id', targetId);
+    case 'tenant_ad_workspaces':
+      return supabaseAdmin.from('tenant_ad_workspaces').update(patch as never).eq('id', targetId);
+    case 'ad_os_tenant_billing_profiles':
+      return supabaseAdmin.from('ad_os_tenant_billing_profiles').update(patch as never).eq('id', targetId);
     default:
-      return { error: new Error('이 대상 테이블은 자동 적용 대상이 아닙니다.') };
+      return { error: new Error('Target table is not mutable by this endpoint.') };
   }
 }
 
 export const GET = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   const status = request.nextUrl.searchParams.get('status');
@@ -106,16 +127,16 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
   const requestType = String(body.request_type || '') as AdOsChangeRequestType;
   if (!REQUEST_TYPES.has(requestType)) {
-    return NextResponse.json({ ok: false, error: '지원하지 않는 request_type' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'Unsupported request_type' }, { status: 400 });
   }
   if (!body.target_table || !body.target_id) {
-    return NextResponse.json({ ok: false, error: 'target_table, target_id가 필요합니다.' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'target_table and target_id are required' }, { status: 400 });
   }
 
   const automationLevel = Math.max(0, Math.min(5, Math.round(Number(body.automation_level || 2))));
@@ -166,14 +187,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
 export const PATCH = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
   const id = String(body.id || '');
   const status = String(body.status || '');
   if (!id || !STATUS_UPDATES.has(status)) {
-    return NextResponse.json({ ok: false, error: 'id와 유효한 status가 필요합니다.' }, { status: 400 });
+    return NextResponse.json({ ok: false, error: 'Valid id and status are required.' }, { status: 400 });
   }
 
   const { data: current, error: currentError } = await supabaseAdmin
@@ -182,7 +203,7 @@ export const PATCH = withAdminGuard(async (request: NextRequest) => {
     .eq('id', id)
     .single();
   if (currentError || !current) {
-    return NextResponse.json({ ok: false, error: currentError?.message || '변경 요청을 찾을 수 없습니다.' }, { status: 404 });
+    return NextResponse.json({ ok: false, error: currentError?.message || 'Change request not found.' }, { status: 404 });
   }
 
   const patch: Record<string, unknown> = {
@@ -192,26 +213,30 @@ export const PATCH = withAdminGuard(async (request: NextRequest) => {
   if (status === 'approved') patch.approved_at = new Date().toISOString();
   if (status === 'applied') {
     if (current.approval_required && current.status !== 'approved') {
-      return NextResponse.json({ ok: false, error: '승인된 변경 요청만 적용할 수 있습니다.' }, { status: 409 });
+      return NextResponse.json({ ok: false, error: 'Only approved change requests can be applied.' }, { status: 409 });
     }
-    if (!MUTABLE_TARGET_TABLES.has(String(current.target_table))) {
-      return NextResponse.json({ ok: false, error: '이 대상 테이블은 자동 적용 대상이 아닙니다.' }, { status: 400 });
+    if (EXTERNAL_APPLY_ONLY_TYPES.has(String(current.request_type))) {
+      patch.applied_at = new Date().toISOString();
+    } else {
+      if (!MUTABLE_TARGET_TABLES.has(String(current.target_table))) {
+        return NextResponse.json({ ok: false, error: 'Target table is not mutable by this endpoint.' }, { status: 400 });
+      }
+      const targetPatch = asPatch(current.proposed_change);
+      if (Object.keys(targetPatch).length <= 1) {
+        return NextResponse.json({ ok: false, error: 'proposed_change has no applicable fields.' }, { status: 400 });
+      }
+      const { error: targetError } = await updateMutableTarget(String(current.target_table), String(current.target_id), targetPatch);
+      if (targetError) return NextResponse.json({ ok: false, error: targetError.message }, { status: 500 });
+      patch.applied_at = new Date().toISOString();
     }
-    const targetPatch = asPatch(current.proposed_change);
-    if (Object.keys(targetPatch).length <= 1) {
-      return NextResponse.json({ ok: false, error: '적용할 proposed_change가 없습니다.' }, { status: 400 });
-    }
-    const { error: targetError } = await updateMutableTarget(String(current.target_table), String(current.target_id), targetPatch);
-    if (targetError) return NextResponse.json({ ok: false, error: targetError.message }, { status: 500 });
-    patch.applied_at = new Date().toISOString();
   }
   if (status === 'rolled_back') {
     if (!MUTABLE_TARGET_TABLES.has(String(current.target_table))) {
-      return NextResponse.json({ ok: false, error: '이 대상 테이블은 자동 롤백 대상이 아닙니다.' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'Target table cannot be rolled back by this endpoint.' }, { status: 400 });
     }
     const rollbackPatch = asPatch(current.rollback_payload);
     if (Object.keys(rollbackPatch).length <= 1) {
-      return NextResponse.json({ ok: false, error: '적용할 rollback_payload가 없습니다.' }, { status: 400 });
+      return NextResponse.json({ ok: false, error: 'rollback_payload has no applicable fields.' }, { status: 400 });
     }
     const { error: rollbackError } = await updateMutableTarget(String(current.target_table), String(current.target_id), rollbackPatch);
     if (rollbackError) return NextResponse.json({ ok: false, error: rollbackError.message }, { status: 500 });

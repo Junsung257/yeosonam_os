@@ -572,3 +572,548 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - `/api/admin/ad-os/tenant-report` now includes keyword clusters and external mutation activity in the agency/SaaS report preview, and can persist a report draft.
 - `/admin/ad-os` exposes `Keyword Brain` and `Naver asset request` actions, plus result panels showing generated longtails and pending external asset requests.
 - Operating principle remains unchanged: recommendation and approval first, limited autopilot only inside tenant budget/risk guardrails, full autopilot off by default.
+
+## 35. 2026-06-02 Ad OS V26-V30 attribution and mutation audit slice
+
+- Added `/api/admin/ad-os/conversion-attribution` to roll clean `ad_os_conversion_events` into `ad_os_performance_facts` by date, platform, product, scenario, landing, creative, campaign, keyword, and search term.
+- Conversion attribution keeps quarantined/test/admin/bot events out of learning, then reports clicks, CTA clicks, bookings, spend, revenue, margin, CPA, and margin ROAS.
+- `/api/admin/ad-os/external-publish` now writes idempotent `ad_os_external_mutation_results` rows for approved change requests, including blocked/planned/requested status and external-spend=false evidence.
+- `/api/admin/ad-os/summary` now exposes conversion event counts, quarantine counts, performance fact counts, fact-level CPA, and fact-level margin ROAS for the last 30 days.
+- `/admin/ad-os` adds a `conversion attribution` action so operators can run booking-funnel sync, conversion attribution, then learning apply in order.
+- External ad spend is still not directly executed by this slice. This is the measurement and audit bridge needed before limited autopilot can safely turn on platform-specific publishers.
+
+## 36. 2026-06-02 Ad OS V31-V40 guarded execution and learning operators
+
+- Added a V31-V40 rules module for conversion-export packets, Naver execution gates, bid optimization candidates, and experiment run decisions.
+- Added `/api/admin/ad-os/conversion-export/google` and `/api/admin/ad-os/conversion-export/meta`.
+  - Both routes prepare upload-ready packets from clean conversion events.
+  - Both routes create approval-gated `upload_conversion_signal` change requests when `apply=true`.
+  - Neither route performs external upload yet; `external_api_write` is explicitly false.
+- Added `/api/admin/ad-os/publisher/naver/execute`.
+  - Reads approved Naver change requests.
+  - Checks credentials, permission readiness, campaign/ad group presence, budget readiness, and automation level.
+  - Writes idempotent mutation audit rows to `ad_os_external_mutation_results`.
+  - `paused_only` allows paused keyword preparation but blocks activation/bid mutations. `active_allowed` still requires limited-autopilot guardrails.
+- Added `/api/admin/ad-os/bid-optimizer/apply`.
+  - Turns performance facts into approval-gated pause, bid-scale, and landing/CTA improvement change requests.
+  - Uses CPA, margin ROAS, CTA rate, spend, and bounce signals before proposing action.
+- Added `/api/admin/ad-os/experiment-run`.
+  - Moves approved experiments to running.
+  - Completes running experiments when minimum sample is reached and writes result summaries.
+- Added `/api/admin/ad-os/blog-evolution/apply`.
+  - Converts approved blog content versions into explicit change requests by default.
+  - Direct application is available only when `create_change_requests=false`, but the admin UI uses approval-gated mode.
+- `/api/admin/ad-os/summary` now includes experiment and blog-version counts/samples.
+- `/admin/ad-os` now exposes V31-V40 operator buttons for Naver execution gate, Google/Meta conversion export, bid optimization, experiment execution, and blog evolution approval.
+- Change request PATCH now treats external-only requests (`publish_paused_keyword`, `activate_paused_keyword`, `sync_external_asset`, `upload_conversion_signal`) as audit/apply markers rather than trying to patch arbitrary platform payloads into internal tables.
+- Operating principle remains: no unapproved external spend, full-autopilot off by default, every platform mutation must be represented by a change request and mutation audit row.
+
+## 37. 2026-06-02 Ad OS V41-V60 enterprise control plane
+
+- Added server-only V41-V60 tables for platform jobs, conversion upload jobs, data-quality snapshots, portfolio budget plans, creative asset variants, travel intent signals, and tenant billing profiles.
+- Added `/api/admin/ad-os/platform-jobs/run`.
+  - Promotes approved `ad_os_external_mutation_results` into idempotent platform jobs.
+  - Requires `requested` mutation status, `change_request_id`, credentials, permission, campaign/ad group, budget, automation level, and kill-switch clearance.
+  - Still records `external_api_write=false`; actual write executors remain downstream.
+- Added `/api/admin/ad-os/conversion-upload/run` and `/api/admin/ad-os/data-quality`.
+  - Converts Google/Meta export packets into upload jobs.
+  - Blocks raw PII, denied consent, missing identifiers, quarantined events, and platform-specific invalid signals before any upload.
+  - Reports clean/blocked conversion coverage and attribution/margin coverage for the health dashboard.
+- Added `/api/admin/ad-os/optimizer/portfolio-plan` and `/api/admin/ad-os/optimizer/apply-approved`.
+  - Builds margin-ROAS/CPA/deadline/inventory-aware portfolio actions.
+  - Approved plans become change requests; they do not mutate external platforms directly.
+- Added `/api/admin/ad-os/creative-factory/asset-group`.
+  - Generates travel intent signals and draft creative asset variants for search ads, DKI, blog FAQ/CTA, Instagram carousel, and retargeting.
+  - Repeated destination products increase duplicate-content risk so operators can update hubs/CTAs/card news instead of mass-producing near-duplicate blog posts.
+- Added `/api/admin/ad-os/tenant-workspaces`.
+  - Creates agency/SaaS workspace defaults with monthly/daily/channel caps, max CPC, test-loss cap, automation level, approval requirement, full-auto disabled, and billing profile.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose the V41-V60 enterprise layer:
+  - platform job queue
+  - conversion upload quality
+  - portfolio optimizer
+  - creative factory
+  - travel intent duplicate risk
+  - tenant workspace/billing status
+- Change request PATCH can now apply/rollback V41-V60 internal plans/assets/workspaces after approval.
+- Industry alignment:
+  - Google AI Max/PMax style automation is mirrored as automation plus controls, not blind external writes.
+  - Google offline conversion and Meta CAPI quality checks are modeled as uploadable jobs with blocked reasons.
+  - Smartly-style creative scale is represented as draft creative variants with lifecycle/fatigue fields.
+  - Sojern/Skai-style travel optimization is represented through booked margin, deadlines, inventory, and tenant-level budget control.
+- Operating principle remains unchanged: recommendation and approval first; limited autopilot only inside tenant budgets and platform gates; full autopilot implemented as a disabled capability until data volume and explicit operating approval exist.
+
+## 38. 2026-06-02 Ad OS V61-V75 runtime verification layer
+
+- Added server-only V61-V75 tables for runtime readiness checks, guarded execution attempts, experiment templates, and tenant audit exports.
+- Extended tenant workspaces with approver/operator IDs, forbidden keywords, data-retention days, and audit-export enablement.
+- Extended conversion upload jobs with retry, freshness, and dedupe status so Google/Meta upload candidates can be promoted or blocked with explicit reasons.
+- Added `/api/admin/ad-os/runtime-readiness`.
+  - Checks whether V41-V75 tables are present, admin APIs can return JSON, full auto is disabled, live external writes are zero, and tenant workspace/queues exist.
+  - Can persist readiness checks for audit history when `apply=true`.
+- Added `/api/admin/ad-os/platform-jobs/execute`.
+  - Consumes approved/running platform jobs and writes dry-run execution attempts.
+  - Allows paused/draft style verification; blocks active keyword activation, bid changes, Google live publish, Meta campaign publish, Kakao adapter gaps, and any unexpected `external_api_write=true`.
+- Added `/api/admin/ad-os/conversion-upload/execute`.
+  - Promotes clean conversion upload jobs to dry-run uploaded status with synthetic upload IDs.
+  - Blocks consent-not-granted, low signal quality, stale/expired events, duplicate/collision dedupe states, and pre-blocked jobs.
+- Added `/api/admin/ad-os/experiments/standardize`.
+  - Seeds holdout, date split, landing A/B, creative A/B, and match-type A/B templates.
+  - Keeps auto-winner and budget redistribution disabled until sample thresholds and operator approval are met.
+- Added `/api/admin/ad-os/tenant-audit-export`.
+  - Creates a monthly agency/SaaS audit draft with budget caps, automation level, full-auto state, live-write count, execution counts, conversion jobs, portfolio plans, and next actions.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose V61-V75 runtime state:
+  - readiness checks
+  - executor attempts
+  - experiment standards
+  - tenant audit exports
+  - combined external-write count
+- Operating principle remains stricter than live automation: this layer verifies staging execution cycles end to end, but actual paid platform writes remain disabled unless a future channel adapter explicitly passes approval, budget, risk, kill-switch, and limited-autopilot gates.
+
+## 39. 2026-06-03 Ad OS V76-V85 channel adapter packet layer
+
+- Added server-only V76-V85 tables for channel adapter readiness and guarded platform write packets:
+  - `ad_os_channel_adapter_health`
+  - `ad_os_platform_write_packets`
+- Added channel adapter APIs:
+  - `GET/POST /api/admin/ad-os/channel-adapters/health`
+  - `POST /api/admin/ad-os/channel-adapters/naver/paused-keyword`
+  - `POST /api/admin/ad-os/channel-adapters/google/draft`
+  - `POST /api/admin/ad-os/channel-adapters/meta/capi-test`
+- Safety stance remains unchanged:
+  - Naver can prepare paused keyword packets when credentials, permission, campaign/ad group, budget, and approval-level automation are ready.
+  - Google is limited to campaign draft packets and conversion-action readiness checks. Live campaign publish stays disabled.
+  - Meta is limited to CAPI test event and creative seed packets. Campaign publish stays disabled.
+  - Every packet stores `dry_run=true` and `external_api_write=false`.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose:
+  - channel adapter snapshots by readiness state
+  - platform write packets by ready/blocked/dry-run state
+  - direct operator buttons for adapter health, Naver paused packets, Google draft packets, and Meta CAPI packets
+- Acceptance evidence for this layer:
+  - Operators can see whether each channel is missing credentials, blocked by permission, missing campaign, draft-ready, paused-write-ready, or executable.
+  - Staging can record a full non-spend packet cycle before any live external write adapter is enabled.
+
+## 40. 2026-06-03 Ad OS V86-V100 execution gate and rollback drill layer
+
+- Added server-only V86-V100 tables:
+  - `ad_os_adapter_execution_gates`
+  - `ad_os_rollback_drills`
+- Added APIs:
+  - `POST /api/admin/ad-os/channel-adapters/execution-gate`
+  - `POST /api/admin/ad-os/channel-adapters/rollback-drill`
+- Execution gate purpose:
+  - Evaluates whether a platform write packet can move toward limited autopilot.
+  - Naver paused keyword packets are the only initial limited-write candidate.
+  - Google and Meta remain draft/test-only and are blocked from limited write.
+  - Human approval, tenant automation level, monthly/daily budget caps, max CPC, test-loss cap, kill switch, adapter readiness, packet readiness, and full-auto policy are all checked before eligibility.
+- Rollback drill purpose:
+  - Verifies the rollback payload and operational steps before any limited write is considered operational.
+  - Naver rollback drill uses `pause_keyword` semantics and records dry-run verification steps.
+  - Google draft and Meta CAPI test packets stay no-live-publish and are marked not-required or manual-review rather than live rollback.
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose:
+  - execution gates by eligible/blocked/monitor-only/high-risk state
+  - rollback drills by ready/blocked/not-required state
+  - combined external write count across runtime, packets, gates, and drills
+- Operating principle remains:
+  - This layer does not spend money.
+  - It proves whether the system is safe enough to begin a future Naver limited-write pilot under explicit approval and budget caps.
+
+## 41. 2026-06-03 Ad OS V101-V120 Naver limited pilot control layer
+
+- Added server-only V101-V120 tables:
+  - `ad_os_limited_write_pilot_policies`
+  - `ad_os_limited_write_pilot_attempts`
+- Added API:
+  - `POST /api/admin/ad-os/channel-adapters/naver/limited-pilot`
+- Purpose:
+  - Promotes the V76-V100 packet/gate/rollback chain into an auditable Naver limited pilot ledger.
+  - Default policy is safe: `dry_run_only`, `live_external_write_enabled=false`, and `external_api_write=false`.
+  - Live paused-keyword writes require all of these before a future executor can be enabled:
+    - active pilot policy
+    - Naver ready packet
+    - eligible execution gate
+    - ready rollback drill
+    - human approval
+    - monthly/daily/max-CPC/test-loss budget caps
+    - explicit DB live-write flag
+    - explicit environment flag `AD_OS_NAVER_LIMITED_WRITE_ENABLED`
+- `/api/admin/ad-os/summary` and `/admin/ad-os` now expose:
+  - limited pilot policies
+  - dry-run succeeded attempts
+  - blocked/live-blocked attempts
+  - first blocker
+  - external API write count
+- Operating principle remains:
+  - This layer still does not spend money.
+  - It is the last staging/operations checklist before a future Naver paused-only external write executor is allowed.
+
+## 42. 2026-06-03 Ad OS V121-V140 legacy Naver publisher safety interlock
+
+- Added pure safety interlock logic for legacy Naver publisher routes:
+  - `src/lib/ad-os-v121-v140.ts`
+  - `src/lib/ad-os-v121-v140-db.ts`
+- Updated legacy routes so they no longer call Naver external mutation APIs directly:
+  - `POST /api/admin/ad-os/publish-naver-keywords`
+  - `POST /api/admin/ad-os/publisher/naver/activate-paused`
+- The old paused-keyword publisher now records decisions and can mark a keyword as eligible for the future audited executor, but it keeps `created_keywords=0` and `external_api_write=false`.
+- The old activation publisher now records active-spend readiness only. It does not flip Naver keyword `userLock=false`.
+- Any future legacy paused write requires all of these before it can be considered:
+  - limited pilot policy `active`
+  - policy level `live_paused_write`
+  - `live_external_write_enabled=true`
+  - monthly/daily/max-CPC/test-loss caps
+  - environment flag `AD_OS_NAVER_LIMITED_WRITE_ENABLED`
+  - request body `confirm_live_write=true`
+- Any future active keyword activation additionally requires:
+  - environment flag `AD_OS_NAVER_ACTIVE_KEYWORD_ENABLED`
+  - request body `confirm_active_spend=true`
+- Operating principle remains:
+  - Legacy routes are now inspection/delegation routes, not external writers.
+  - Real writes must go through a future audited executor that records packet, gate, rollback drill, policy, idempotency key, and mutation result in one chain.
+
+## 43. 2026-06-03 Ad OS V141-V160 conversion PII storage hardening
+
+- Added `sanitizeAdOsConversionPayload` for the conversion-event ingest path.
+- `/api/admin/ad-os/conversion-events` now removes raw email, phone, customer name, passport, resident id, and nested PII-like fields before writing `ad_os_conversion_events.raw_payload`.
+- The sanitizer keeps only SHA-256 first-party identifiers under `raw_payload.first_party_hashes`, plus a small `pii_redaction` evidence object.
+- `quality_flags` now records whether raw PII was removed and whether first-party hashes are present, so data-quality dashboards can distinguish safe hashed signal from missing signal.
+- Google/Meta conversion export packet builders now read `first_party_hashes` and can prepare upload candidates without requiring raw email or phone in `raw_payload`.
+- Unit coverage proves raw PII is absent from sanitized payloads, Google upload packets can use hashed email, Meta upload packets can use hashed phone, and no raw PII appears in generated conversion export packets.
+
+## 44. 2026-06-03 Ad OS V161-V180 external publish staging hardening
+
+- Added `decideExternalPublishStaging` to separate three states that were easy to confuse:
+  - approved internal change request,
+  - staged audit/platform-job candidate,
+  - externally confirmed applied result.
+- `/api/admin/ad-os/external-publish` now creates mutation audit rows only and keeps approved external change requests in `approved` status while `external_api_write=false`.
+- The route no longer marks approved requests as `applied` merely because channel gates pass. `applied` is reserved for a future audited executor that confirms an external mutation result.
+- Run summaries now include `staged_for_executor_requests`, `applied_requests=0`, and a `staging` block with blockers such as `external_api_write_not_performed`.
+- Unit coverage proves guarded apply can stage requests without marking them applied, dry-run remains unstaged, and explicit external result confirmation is required before applied semantics are allowed.
+
+## 45. 2026-06-03 Ad OS V181-V200 conversion upload staging hardening
+
+- Hardened `decideConversionUploadExecution` so dry-run conversion upload execution validates readiness but does not mark jobs as `uploaded`.
+- Clean Google/Meta upload candidates now stay `approved` with `external_upload_id=null`, `uploaded_at=null`, and a `dry_run_verification_id` in `response_payload`.
+- `/api/admin/ad-os/conversion-upload/execute` summary now separates `upload_ready_dry_run` from `uploaded_dry_run=0`.
+- `/admin/ad-os` copy now says “전환 upload 준비 검증” instead of implying platform upload completion.
+- Operating principle:
+  - `uploaded` is reserved for a future platform adapter that actually receives and records an external upload id.
+  - Dry-run readiness is useful evidence, but it is not an external upload result.
+
+## 46. 2026-06-03 Ad OS V201-V220 external result confirmation layer
+
+- Added `src/lib/ad-os-v201-v220.ts` and `POST /api/admin/ad-os/external-results/confirm`.
+- Purpose:
+  - Records an already-returned external platform result without calling Naver, Google, Meta, or Kakao from this route.
+  - Keeps the execution route separate from the confirmation route, so `applied` and `uploaded` are not inferred from a dry run.
+- Platform job confirmation:
+  - Requires `confirm_external_result=true`.
+  - Requires a linked `change_request_id`, `external_mutation_result_id`, and successful `external_resource_id`.
+  - Only then moves `ad_os_platform_jobs.status=succeeded`, `ad_os_external_mutation_results.status=succeeded`, and `ad_os_change_requests.status=applied`.
+  - Failed external results mark the platform job and mutation result failed, but keep the change request unapplied.
+- Conversion upload confirmation:
+  - Requires `confirm_external_result=true`.
+  - Requires an `external_upload_id` before moving `ad_os_conversion_upload_jobs.status=uploaded`.
+  - Failed upload confirmations mark the job failed and retain the blocked/error reason.
+- Safety principle:
+  - This route is confirmation-only and sets `external_api_write=false` because it does not execute external API writes itself.
+  - External spend remains disabled unless a separate audited executor is built and explicitly enabled behind tenant policy, budget caps, kill switch, and environment flags.
+
+## 47. 2026-06-03 Ad OS V221-V240 Naver paused-write executor gate
+
+- Added `src/lib/ad-os-v221-v240.ts` and `POST /api/admin/ad-os/channel-adapters/naver/paused-write-executor`.
+- Purpose:
+  - Converts approved Naver `create_paused_keyword` platform jobs into an audited executor path.
+  - Default mode is dry-run preflight. It checks payload, ad group id, automation level, and policy without calling Naver.
+- Live paused keyword creation is allowed only when all conditions pass:
+  - `requested_mode=live_paused_write`
+  - `apply=true`
+  - `confirm_live_write=true`
+  - platform job is `naver/create_paused_keyword` and `approved` or `running`
+  - keyword, bid, and `nccAdgroupId` are present
+  - automation level is at least 3
+  - latest Naver limited pilot policy is `active`, `pilot_level=live_paused_write`, and `live_external_write_enabled=true`
+  - monthly budget cap, daily cap, max CPC, and test loss cap are set
+  - environment flag, normally `AD_OS_NAVER_LIMITED_WRITE_ENABLED`, is enabled
+- If live execution succeeds:
+  - The route records an `ad_os_execution_attempts` row with `external_api_write=true`.
+  - The platform job stays pending external result confirmation rather than directly applying the change request.
+  - Operators must use `/api/admin/ad-os/external-results/confirm` with the returned Naver keyword id to mark the related change request as `applied`.
+- Safety principle:
+  - Active keyword activation and bid changes remain disabled in this executor.
+  - Google/Meta/Kakao live campaign writes remain disabled.
+  - A successful external write is not the same as applied semantics until confirmation records the external id.
+
+## 48. 2026-06-03 Ad OS V241-V260 Google/Meta conversion upload adapter gate
+
+- Added `src/lib/ad-os-v241-v260.ts` and `POST /api/admin/ad-os/conversion-upload/external-adapter`.
+- Purpose:
+  - Separates conversion upload readiness from actual Google/Meta external upload.
+  - Keeps `/api/admin/ad-os/conversion-upload/execute` as dry-run readiness validation.
+  - Uses the new external adapter only for the tightly gated upload step.
+- Live conversion upload is allowed only when all conditions pass:
+  - `requested_mode=live_upload`
+  - `apply=true`
+  - `confirm_external_upload=true`
+  - job status is `approved` or `running`
+  - consent is granted, signal quality is at least 60, event is fresh, dedupe is unique, and identifiers exist
+  - global env flag `AD_OS_CONVERSION_UPLOAD_ENABLED` is enabled
+  - platform env flag is enabled:
+    - Meta: `AD_OS_META_CAPI_UPLOAD_ENABLED`
+    - Google: `AD_OS_GOOGLE_CONVERSION_UPLOAD_ENABLED`
+  - platform credentials are present:
+    - Meta: pixel id plus CAPI/access token
+    - Google: developer token, customer id, access token, and conversion action id
+- If live upload succeeds:
+  - The route records an `ad_os_execution_attempts` row with `external_api_write=true`.
+  - The conversion job remains pending confirmation instead of immediately becoming `uploaded`.
+  - Operators must call `/api/admin/ad-os/external-results/confirm` with the returned external upload id to set `ad_os_conversion_upload_jobs.status=uploaded`.
+- Safety principle:
+  - No conversion job becomes `uploaded` from a dry-run or from a platform upload response alone.
+  - Google/Meta campaign publishing remains separate and disabled by default.
+
+## 49. 2026-06-03 Ad OS V261-V280 operations queue visibility
+
+- Extended `/api/admin/ad-os/summary` with an `ops_queues` layer derived from existing platform jobs, conversion upload jobs, and execution attempts.
+- Added three normalized operator queues:
+  - `ops_executor_queue`: approved/running platform jobs and conversion upload jobs that are ready for executor dry-run or gated live execution.
+  - `ops_confirmation_queue`: jobs that have an external mutation/upload result pending human confirmation before `applied` or `uploaded` semantics are granted.
+  - `ops_failed_queue`: blocked or failed platform jobs, conversion upload jobs, and executor attempts with blocker/next-action text.
+- `/admin/ad-os` now shows these queues inside the Enterprise Runtime Layer with counts for execution, confirmation, blocked/failed, and live writes.
+- Safety principle:
+  - Operators can see exactly whether Ad OS is waiting for an executor, waiting for external result confirmation, or blocked by policy/data quality.
+  - The UI does not introduce any new external write path; it only makes existing gates and pending states visible.
+
+## 50. 2026-06-03 Ad OS V281-V300 row-level operations queue actions
+
+- Added `POST /api/admin/ad-os/ops-queues/action` for row-level operator actions from `/admin/ad-os`.
+- Supported safe actions:
+  - `executor_dry_run`: validates one platform job or conversion upload job through the existing guarded runtime and writes an audit attempt when `apply=true`.
+  - `confirm_failed`: marks one pending external platform/conversion result as failed through the existing confirmation deciders; success confirmation still requires the explicit external result API with an external id.
+  - `acknowledge_blocker`: records that an operator reviewed a failed/blocked queue row without mutating external platforms.
+- `/admin/ad-os` queue rows now expose only the action appropriate for their queue:
+  - execution queue: `Dry-run`
+  - external confirmation queue: `실패 확정`
+  - failed/blocked queue: `차단 확인`
+- Safety principle:
+  - This layer still never calls Naver, Google, Meta, or Kakao.
+  - It does not add a live write path and does not allow success confirmation without an external resource/upload id.
+  - Live spend remains behind the dedicated channel adapter gates, tenant budgets, explicit confirmation flags, and environment flags.
+
+## 51. 2026-06-03 Ad OS V301-V320 staging E2E smoke fixture
+
+- Added `src/lib/ad-os-v301-v320.ts` and `src/lib/ad-os-v301-v320.test.ts`.
+- Purpose:
+  - Provides a deterministic Danang package smoke fixture for staging and CI.
+  - Proves one product can generate scenarios, longtail keyword candidates, travel intent signals, creative drafts, a guarded Naver paused-keyword platform job, a clean Google conversion upload job, a data-quality snapshot, and a margin-aware portfolio plan.
+  - Verifies the V281-V300 operations queue action policy only allows dry-run execution, failed-result confirmation, and blocker acknowledgement.
+- Safety principle:
+  - The fixture is pure TypeScript and does not read or write Supabase.
+  - It does not call Naver, Google, Meta, or Kakao.
+  - Every executor/conversion/ops action assertion requires `external_api_write=false`, so this becomes a regression tripwire before staging live-write pilots.
+
+## 52. 2026-06-03 Ad OS V321-V340 incident response layer
+
+- Added `src/lib/ad-os-v321-v340.ts` and `src/lib/ad-os-v321-v340.test.ts`.
+- Purpose:
+  - Converts existing platform jobs, conversion upload jobs, data-quality snapshots, execution attempts, and tenant workspaces into operator incident alerts.
+  - Detects critical live-write flags, full-auto workspaces, limited automation without budget caps, blocked conversion uploads, duplicate dedupe/data-quality blockers, executor failures, and platform job guardrail blockers.
+  - Exposes `enterprise_layer.incident_response` from `/api/admin/ad-os/summary` and shows it as the first Enterprise Runtime KPI on `/admin/ad-os`.
+- Safety principle:
+  - No new external write path is introduced.
+  - Critical incidents recommend kill-switch review before any additional approval.
+  - Degraded summary responses also surface as a critical runtime readiness incident, so operators do not mistake API failure for a clean system.
+
+## 53. 2026-06-03 Ad OS V341-V360 agency reporting package
+
+- Added `src/lib/ad-os-v341-v360.ts` and `src/lib/ad-os-v341-v360.test.ts`.
+- Purpose:
+  - Converts tenant workspaces, billing profiles, monthly tenant reports, audit exports, and incident status into a single agency/SaaS reporting readiness score.
+  - Exposes `enterprise_layer.agency_reporting` from `/api/admin/ad-os/summary`.
+  - Shows Agency Reporting as an Enterprise Runtime KPI on `/admin/ad-os` with report, audit, billing, readiness, and next-action status.
+- Safety principle:
+  - Client-facing report packaging is blocked when critical incidents or full-auto policy risks exist.
+  - Degraded summary responses mark agency reporting as blocked until the data plane is healthy.
+  - No external ad platform write path is introduced.
+
+## 54. 2026-06-03 Ad OS V361-V380 completion audit layer
+
+- Added `src/lib/ad-os-v361-v380.ts` and `src/lib/ad-os-v361-v380.test.ts`.
+- Purpose:
+  - Converts the Ad OS final-state requirements into a pass/warn/fail completion audit.
+  - Audits external write safety, full-auto default-off policy, tenant budget guardrails, channel adapter visibility, platform job queues, conversion quality, margin learning facts, duplicate-content control, experiment standards, agency reporting, incident response, and runtime readiness.
+  - Exposes `enterprise_layer.completion_audit` from `/api/admin/ad-os/summary`.
+  - Shows Completion Audit as an Enterprise Runtime KPI on `/admin/ad-os` with readiness score, pass/warn/fail counts, and the next blocker.
+- Safety principle:
+  - This is deliberately not a "complete" flag. It prevents premature completion claims by requiring current evidence for each platform-grade requirement.
+  - Degraded summary responses become blocked completion audits.
+  - No external ad platform write path or database mutation is introduced.
+
+## 55. 2026-06-03 Ad OS V381-V400 completion audit drilldown UX
+
+- Extended `/admin/ad-os` Completion Audit from a score-only card into a compact drilldown.
+- Purpose:
+  - Sorts fail, warn, pass requirements by urgency and shows the top four directly in the Enterprise Runtime Layer.
+  - Shows each requirement's status, evidence, and next action without opening raw JSON.
+  - Keeps the high-level card visible while making the unfinished requirements actionable for operators.
+- Safety principle:
+  - Read-only UI change.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+
+## 56. 2026-06-03 Ad OS V401-V420 completion audit API
+
+- Added `GET /api/admin/ad-os/completion-audit`.
+- Purpose:
+  - Makes the same completion audit shown on `/admin/ad-os` reusable by smoke tests, monitors, tenant report generators, and future agency dashboards.
+  - Reuses `/api/admin/ad-os/summary`'s `enterprise_layer.completion_audit` so the dashboard and API cannot drift into different completion criteria.
+  - Returns the full audit, compact summary, failed requirements, warning requirements, and explicit read-only safety metadata.
+- Safety principle:
+  - Read-only endpoint.
+  - No external ad platform write path or database mutation is introduced.
+  - Failure responses remain JSON and mark the endpoint as read-only with `external_api_write=false`.
+
+## 57. 2026-06-03 Ad OS V421-V440 completion audit API hardening
+
+- Hardened `GET /api/admin/ad-os/completion-audit` with an 8-second timeout around the shared summary builder.
+- Purpose:
+  - Prevents monitor calls from hanging when the summary data plane is slow.
+  - Keeps failure responses machine-readable with `status=blocked` and a recovery next action.
+- Safety principle:
+  - Read-only endpoint remains read-only.
+  - No external ad platform write path or database mutation is introduced.
+
+## 58. 2026-06-03 Ad OS V441-V460 marketing health integration
+
+- Extended `GET /api/admin/marketing/system-health` with read-only Ad OS completion checks.
+- Purpose:
+  - Makes the marketing System Health page show whether Ad OS is blocked, warning, or operationally ready using the same completion audit evidence as `/admin/ad-os`.
+  - Adds explicit checks for completion audit status, external spend safety, and full-auto default-off policy.
+  - Gives operators a direct next action instead of hiding Ad OS readiness behind raw JSON or a separate dashboard.
+- `/admin/marketing/system-health` now highlights:
+  - Ad OS completion score and top next action.
+  - Whether any live external API write signal exists.
+  - Whether full autopilot is still disabled by policy.
+- Safety principle:
+  - Read-only UI and API integration.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - The marketing health score now fails loudly when Ad OS completion evidence is unavailable, so operators cannot mistake a missing audit for a healthy system.
+
+## 59. 2026-06-03 Ad OS V461-V480 command center completion gate
+
+- Extended `/admin/marketing/command-center` with a read-only Ad OS Completion Gate.
+- Purpose:
+  - Shows completion audit status, readiness score, pass/warn/fail counts, and next action in the day-to-day marketing operations screen.
+  - Highlights the four operator-critical requirements: external write safety, full-auto default-off policy, tenant budget guardrails, and incident response.
+  - Links directly to `/admin/ad-os?panel=completion-audit` and `/admin/marketing/system-health` for drilldown.
+- Safety principle:
+  - UI-only change based on existing `/api/admin/ad-os/summary` data.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - The Command Center no longer treats product asset readiness as enough; Ad OS control-plane completion evidence is visible before operators scale campaigns.
+
+## 60. 2026-06-03 Ad OS V481-V500 marketing dashboard completion summary
+
+- Extended `/admin/marketing` with the same read-only completion audit summary used by Ad OS and the Command Center.
+- Purpose:
+  - Makes the first marketing dashboard screen show whether the advertising OS is ready, blocked, or needs attention.
+  - Shows readiness score, pass/warn/fail counts, and the next action next to channel execution and tenant guardrail status.
+  - Links operators to Command Center and System Health for action and evidence drilldown.
+- Safety principle:
+  - UI-only change based on existing `/api/admin/ad-os/summary` data.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - Marketing dashboard KPIs no longer imply that campaign scaling is safe unless Ad OS completion evidence is visible.
+
+## 61. 2026-06-03 Ad OS V501-V520 completion view SSOT
+
+- Added `src/lib/ad-os-completion-view.ts` and unit tests.
+- Purpose:
+  - Centralizes completion audit UI types, status-to-tone mapping, operator-critical requirement IDs, and fallback evidence.
+  - Prevents `/admin/marketing`, `/admin/marketing/command-center`, and `/api/admin/marketing/system-health` from drifting on which completion requirements matter most to operators.
+  - Keeps external write safety, full-auto default-off policy, tenant budget guardrails, and incident response as the shared first-screen requirements.
+- Safety principle:
+  - Pure TypeScript helper and UI/API refactor only.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - Completion display logic is now unit-tested so future UI changes cannot silently reinterpret blocked/ready states.
+
+## 62. 2026-06-03 Ad OS V521-V540 completion audit deep link
+
+- Added `/admin/ad-os?panel=completion-audit` handling.
+- Purpose:
+  - Makes links from Marketing Dashboard, Command Center, and System Health land directly on the Completion Audit evidence instead of only opening the top of Ad OS.
+  - Scrolls the Completion Audit card into view and highlights it when the panel query is present.
+- Safety principle:
+  - UI-only navigation improvement.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+
+## 63. 2026-06-03 Ad OS V541-V560 staging smoke API
+
+- Added `GET /api/admin/ad-os/staging-smoke` as a read-only operator smoke gate for the Ad OS control plane.
+- The route reuses the deterministic Danang package fixture from V301-V320 to prove one product can generate scenarios, ultra-longtail keywords, travel intent signals, creative variants, a paused Naver platform job, a clean Google conversion upload candidate, a portfolio plan, and safe ops queue decisions.
+- The response explicitly marks `read_only: true`, `fixture_only: true`, `database_mutation: false`, `external_api_write: false`, and `external_spend_krw: 0`.
+- This does not replace DB-backed staging tests. It gives operators a fast JSON regression proof before they run Supabase migrations or external-platform dry-run flows.
+
+## 64. 2026-06-03 Ad OS V561-V580 completion audit smoke UX
+
+- Surfaced the staging smoke gate inside `/admin/ad-os?panel=completion-audit` so operators can see control-plane fixture evidence next to the completion audit.
+- The UI shows pass/fail, assertion count, generated keyword count, creative variant count, external spend, and explicit DB/external-write off indicators.
+- Added a `Read-only smoke` action and direct JSON drilldown to `/api/admin/ad-os/staging-smoke`.
+- This remains a verification surface only. It does not mutate Supabase state, change automation level, or write to Naver/Google/Meta.
+
+## 65. 2026-06-03 Ad OS V581-V600 operating inventory API
+
+- Added `GET /api/admin/ad-os/operating-inventory` to turn the long Ad OS roadmap into a current operational inventory.
+- The inventory groups readiness into control plane safety, operator UX, channel execution, conversion quality, booked-margin learning, creative factory, tenant SaaS packaging, and live autopilot readiness.
+- Each area returns `operational`, `partial`, or `blocked`, plus evidence, next action, and risk level.
+- The route is read-only and reports `database_mutation: false`, `external_api_write: false`, and `live_spend_krw: 0`.
+- Surfaced the operating inventory inside `/admin/ad-os` so operators can see the top gap, score, area counts, per-area evidence, JSON drilldown, and live-spend safety next to the completion audit.
+
+## 66. 2026-06-03 Ad OS V601-V620 live spend preflight
+
+- Added `GET /api/admin/ad-os/live-spend-preflight` as a read-only paid-execution preflight.
+- The preflight checks staging smoke, completion audit, tenant policy, human approval, kill switch, automation level, monthly/daily/max CPC/test-loss caps, channel readiness, adapter readiness, rollback readiness, conversion blockers, and external write count.
+- The result can be `eligible`, `monitor_only`, or `blocked`, but `live_write_allowed` remains `false` and safety reports `external_api_write: false`, `database_mutation: false`, `live_spend_krw: 0`, and `full_auto_allowed: false`.
+- Active campaign paths such as Google publish, Meta publish, and Naver activation are blocked by default even if other guardrails pass.
+
+## 67. 2026-06-03 Ad OS V621-V640 learning evidence
+
+- Added `GET /api/admin/ad-os/learning-evidence` as a read-only proof surface for the performance learning loop.
+- The evidence summarizes clicks, CTA clicks, conversions, spend, revenue, margin, CPA, ROAS, margin ROAS, and bounce rate.
+- It also reports whether facts are tied to tenant, product, scenario, keyword, blog/landing, creative, and channel dimensions.
+- The route generates candidate reasons for waste pause, winner scaling, landing repair, or missing-dimension collection, but does not mutate DB state or external ads.
+
+## 68. 2026-06-03 Ad OS V641-V660 staging validation package
+
+- Added `GET /api/admin/ad-os/staging-validation` as a single read-only staging validation package.
+- The package combines fixture smoke, DB-backed completion audit, operating inventory, live-spend preflight, learning evidence, external-write safety, and full-auto safety into one pass/warn/fail response.
+- The live-spend preflight being blocked is treated as a safety pass when it proves `live_write_allowed=false`, `external_api_write=false`, `live_spend_krw=0`, and `full_auto_allowed=false`.
+- This gives operators one staging endpoint to confirm the current system is safe to inspect before browser QA or platform dry-run work.
+- The route does not mutate Supabase, does not call Naver/Google/Meta/Kakao, and does not enable any paid execution path.
+
+## 69. 2026-06-03 Ad OS V661-V680 staging validation UX
+
+- Surfaced the staging validation package in `/admin/ad-os`.
+- The card shows validation status, readiness score, pass/warn/fail counts, live spend, top blocker, next action, and the first six gate checks.
+- It includes a manual `Validation check` action and a direct JSON drilldown to `/api/admin/ad-os/staging-validation`.
+- The visible safety pill keeps DB write, external write, and full-auto state in the operator's first-screen evidence flow.
+- This is a read-only dashboard addition and does not change automation level, mutate Supabase, or write to any ad platform.
+
+## 70. 2026-06-03 Ad OS V681-V700 admin surface QA matrix
+
+- Added `GET /api/admin/ad-os/admin-surface-qa` as a read-only QA matrix for the six operator surfaces:
+  - `/admin/ad-os`
+  - `/admin/marketing`
+  - `/admin/search-ads`
+  - `/admin/blog/ads`
+  - `/admin/blog/rankings`
+  - `/admin/blog/topical`
+- The matrix ties each page to its required data sources, expected states, drilldown URL, current evidence, and next action.
+- It intentionally marks missing rank/visibility snapshots as `warn` because index request status is not the same as indexed/exposed/ranked.
+- It marks duplicate-content risk as a topical authority failure so repeated similar package uploads do not silently create low-quality blog growth.
+- The route reuses summary, staging validation, operating inventory, live-spend preflight, and learning evidence without mutating DB or writing to ad platforms.
+
+## 71. 2026-06-03 Ad OS V701-V720 admin surface QA UX
+
+- Surfaced the admin surface QA matrix in `/admin/ad-os`.
+- The card shows status, score, pass/warn/fail counts, live spend, top gap, next action, and all six surface rows with drilldown links.
+- Operators can manually refresh the matrix with `Surface QA` and inspect the raw JSON at `/api/admin/ad-os/admin-surface-qa`.
+- This turns the earlier UX QA requirement into a visible operating artifact instead of a one-off manual checklist.
+- It remains read-only and does not mutate Supabase, change automation level, or write to ad platforms.

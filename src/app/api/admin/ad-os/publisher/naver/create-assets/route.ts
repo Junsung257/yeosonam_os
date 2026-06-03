@@ -1,8 +1,6 @@
-import { NextRequest } from 'next/server';
-import { apiResponse } from '@/lib/api-response';
+import { NextRequest, NextResponse } from 'next/server';
 import { buildNaverExternalAssetPlan } from '@/lib/ad-os-v19-v25';
 import { withAdminGuard } from '@/lib/admin-guard';
-import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   fetchNaverAdgroups,
   fetchNaverBusinessChannels,
@@ -23,7 +21,7 @@ function slugPart(value: unknown): string {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -40,12 +38,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     })
     .select('id')
     .single();
-  if (runError || !run) {
-    return apiResponse(
-      { ok: false, error: sanitizeDbError(runError, 'External asset plan run create failed') },
-      { status: 500 },
-    );
-  }
+  if (runError) return NextResponse.json({ ok: false, error: runError.message }, { status: 500 });
 
   const [budgetRes, tenantPolicyRes, keywordRes, packageRes] = await Promise.all([
     supabaseAdmin
@@ -72,17 +65,6 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .limit(1)
       .maybeSingle(),
   ]);
-
-  const firstDbError = budgetRes.error || tenantPolicyRes.error || keywordRes.error || packageRes.error;
-  if (firstDbError) {
-    const safeError = sanitizeDbError(firstDbError);
-    await supabaseAdmin.from('ad_os_automation_runs').update({
-      status: 'failed',
-      finished_at: new Date().toISOString(),
-      errors: [{ message: safeError }],
-    }).eq('id', run.id);
-    return apiResponse({ ok: false, error: safeError }, { status: 500 });
-  }
 
   const config = getNaverAdsConfigStatus();
   const [campaignRes, adgroupRes, channelRes] = config.configured
@@ -160,15 +142,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('ad_os_change_requests')
       .insert(changeRows)
       .select('id, target_id');
-    if (requestError) {
-      const safeError = sanitizeDbError(requestError);
-      await supabaseAdmin.from('ad_os_automation_runs').update({
-        status: 'failed',
-        finished_at: new Date().toISOString(),
-        errors: [{ message: safeError }],
-      }).eq('id', run.id);
-      return apiResponse({ ok: false, error: safeError }, { status: 500 });
-    }
+    if (requestError) return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
     insertedChangeRequests = requestData?.length || 0;
 
     const mutationRows = plan.mutations.map((mutation, index) => ({
@@ -191,15 +165,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('ad_os_external_mutation_results')
       .insert(mutationRows)
       .select('id');
-    if (mutationError) {
-      const safeError = sanitizeDbError(mutationError);
-      await supabaseAdmin.from('ad_os_automation_runs').update({
-        status: 'failed',
-        finished_at: new Date().toISOString(),
-        errors: [{ message: safeError }],
-      }).eq('id', run.id);
-      return apiResponse({ ok: false, error: safeError }, { status: 500 });
-    }
+    if (mutationError) return NextResponse.json({ ok: false, error: mutationError.message }, { status: 500 });
     insertedMutationRows = mutationData?.length || 0;
   }
 
@@ -218,7 +184,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     },
   }).eq('id', run.id);
 
-  return apiResponse({
+  return NextResponse.json({
     ok: true,
     apply,
     run_id: run.id,

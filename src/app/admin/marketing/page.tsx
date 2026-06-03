@@ -10,6 +10,7 @@ import ConversionFunnel from '@/components/admin/marketing/ConversionFunnel';
 import BlendedTrendChart from '@/components/admin/marketing/BlendedTrendChart';
 import JarvisQuickAsk from '@/components/admin/JarvisQuickAsk';
 import type { AdCampaign } from '@/types/meta-ads';
+import { completionAuditTone, type CompletionAuditView } from '@/lib/ad-os-completion-view';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { getRoasGrade } from '@/lib/roas-calculator';
 
@@ -48,6 +49,9 @@ interface AdOsMainSummary {
     monthly_budget_cap_krw: number;
     risk_status: string;
     full_auto_enabled: boolean;
+  };
+  enterprise_layer?: {
+    completion_audit?: CompletionAuditView;
   };
 }
 
@@ -157,6 +161,7 @@ export default function MarketingDashboardPage() {
   [campaigns]);
   const adOsModes = new Map((adOsSummary?.active_automation_modes || []).map((mode) => [mode.platform, mode]));
   const adOsStates = Object.entries(adOsSummary?.channel_execution_states || {}).filter(([platform]) => ['naver', 'google'].includes(platform));
+  const completionAudit = adOsSummary?.enterprise_layer?.completion_audit;
 
   return (
     <div className="space-y-6">
@@ -284,6 +289,34 @@ export default function MarketingDashboardPage() {
                   <span className={`mt-3 inline-flex rounded-full px-2 py-0.5 text-admin-xs font-semibold ${adOsToneClass(adOsSummary?.tenant_policy?.configured ? 'good' : 'warn')}`}>
                     {adOsSummary?.tenant_policy?.configured ? '정책 설정됨' : '기본 정책'}
                   </span>
+                </div>
+                <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 lg:col-span-3">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-admin-sm font-semibold text-admin-text-2">Ad OS 완성도 감사</p>
+                        <span className={`rounded-full px-2 py-0.5 text-admin-xs font-semibold ${adOsToneClass(completionAuditTone(completionAudit?.status))}`}>
+                          {completionAudit?.status ?? 'checking'}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-admin-xs text-admin-muted">
+                        {completionAudit
+                          ? `${completionAudit.readiness_score}% 준비 | pass ${completionAudit.passed} / warn ${completionAudit.warnings} / fail ${completionAudit.failed}`
+                          : '완성도 감사 증거를 불러오는 중입니다.'}
+                      </p>
+                      <p className="mt-1 text-admin-xs text-admin-muted">
+                        {completionAudit?.next_action ?? 'System Health에서 Ad OS readiness를 확인하세요.'}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 flex-wrap gap-2">
+                      <Link href="/admin/marketing/command-center" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
+                        Command Center
+                      </Link>
+                      <Link href="/admin/marketing/system-health" className="rounded-lg border border-admin-border-strong bg-white px-3 py-2 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
+                        System Health
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

@@ -30,6 +30,7 @@ const GROUP_LABELS: Record<string, string> = {
   env: 'Environment',
   db: 'Database',
   cron: 'Automation',
+  ad_os: 'Ad OS control plane',
   probe: 'Live probes',
 };
 
@@ -79,6 +80,9 @@ export default function MarketingSystemHealthPage() {
     warn: data?.checks.filter((check) => check.status === 'warn').length ?? 0,
     fail: data?.checks.filter((check) => check.status === 'fail').length ?? 0,
   };
+  const adOsCompletion = data?.checks.find((check) => check.key === 'ad_os.completion_audit');
+  const adOsSafety = data?.checks.find((check) => check.key === 'ad_os.external_write_safety');
+  const adOsAutoPolicy = data?.checks.find((check) => check.key === 'ad_os.full_auto_policy');
 
   return (
     <div className="space-y-6">
@@ -103,6 +107,54 @@ export default function MarketingSystemHealthPage() {
       </div>
 
       {error && <div className="rounded-admin-md border border-red-200 bg-red-50 p-4 text-admin-sm text-red-700">Health check failed: {error}</div>}
+
+      <section className="rounded-admin-md border border-admin-border-mid bg-white p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-admin-base font-semibold text-admin-text-2">Ad OS 운영 가능성</h2>
+              <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase ${STATUS_CLASS[adOsCompletion?.status ?? 'warn']}`}>
+                {adOsCompletion?.status ?? 'checking'}
+              </span>
+            </div>
+            <p className="mt-1 text-admin-sm text-admin-text-2">
+              {adOsCompletion?.message ?? 'Completion audit evidence is loading.'}
+            </p>
+            <p className="mt-1 text-admin-xs text-admin-muted">
+              {typeof adOsCompletion?.detail?.next_action === 'string'
+                ? adOsCompletion.detail.next_action
+                : 'Ad OS summary evidence must be available before declaring the marketing OS complete.'}
+            </p>
+          </div>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Link href="/admin/ad-os" className="rounded-lg border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg">
+              Ad OS 열기
+            </Link>
+            <Link href="/admin/ad-os?panel=completion-audit" className="rounded-lg bg-blue-600 px-4 py-2 text-admin-sm font-semibold text-white hover:bg-blue-700">
+              감사 보기
+            </Link>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {[
+            { label: '완성도 감사', check: adOsCompletion },
+            { label: '외부 광고비 안전', check: adOsSafety },
+            { label: '완전자동 정책', check: adOsAutoPolicy },
+          ].map(({ label, check }) => (
+            <div key={label} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-admin-sm font-semibold text-admin-text-2">{label}</p>
+                <span className={`rounded-full border px-2 py-0.5 text-[11px] font-bold uppercase ${STATUS_CLASS[check?.status ?? 'warn']}`}>
+                  {check?.status ?? 'wait'}
+                </span>
+              </div>
+              <p className="mt-2 line-clamp-3 text-admin-xs text-admin-muted">
+                {check?.message ?? 'No evidence yet.'}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
 
       <div className="grid gap-3 md:grid-cols-4">
         <div className="rounded-admin-md border border-admin-border-mid bg-white p-4">
