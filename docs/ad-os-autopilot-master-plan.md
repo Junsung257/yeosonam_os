@@ -1079,3 +1079,11 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - The evidence summarizes clicks, CTA clicks, conversions, spend, revenue, margin, CPA, ROAS, margin ROAS, and bounce rate.
 - It also reports whether facts are tied to tenant, product, scenario, keyword, blog/landing, creative, and channel dimensions.
 - The route generates candidate reasons for waste pause, winner scaling, landing repair, or missing-dimension collection, but does not mutate DB state or external ads.
+
+## 68. 2026-06-03 Ad OS V641-V660 staging validation package
+
+- Added `GET /api/admin/ad-os/staging-validation` as a single read-only staging validation package.
+- The package combines fixture smoke, DB-backed completion audit, operating inventory, live-spend preflight, learning evidence, external-write safety, and full-auto safety into one pass/warn/fail response.
+- The live-spend preflight being blocked is treated as a safety pass when it proves `live_write_allowed=false`, `external_api_write=false`, `live_spend_krw=0`, and `full_auto_allowed=false`.
+- This gives operators one staging endpoint to confirm the current system is safe to inspect before browser QA or platform dry-run work.
+- The route does not mutate Supabase, does not call Naver/Google/Meta/Kakao, and does not enable any paid execution path.
