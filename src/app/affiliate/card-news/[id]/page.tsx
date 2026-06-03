@@ -27,9 +27,13 @@ interface CardNewsDetail {
   branding_level?: string;
 }
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 export default function AffiliateCardNewsDetailPage() {
   const router = useRouter();
   const params = useParams();
+  const cardNewsId = getRouteParam(params?.id);
   const [cardNews, setCardNews] = useState<CardNewsDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -37,6 +41,12 @@ export default function AffiliateCardNewsDetailPage() {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   const loadCardNews = useCallback(async () => {
+    if (!cardNewsId) {
+      setError('카드뉴스 ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     const token = localStorage.getItem('affiliate_token');
     if (!token) {
       router.replace('/affiliate/login');
@@ -44,7 +54,7 @@ export default function AffiliateCardNewsDetailPage() {
     }
 
     try {
-      const res = await fetch(`/api/affiliate/card-news/${params.id}`, {
+      const res = await fetch(`/api/affiliate/card-news/${cardNewsId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
@@ -59,14 +69,16 @@ export default function AffiliateCardNewsDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [params.id, router]);
+  }, [cardNewsId, router]);
 
   useEffect(() => {
     loadCardNews();
   }, [loadCardNews]);
 
   const handleShare = () => {
-    const shareUrl = `${window.location.origin}/share/card-news/${params.id}`;
+    if (!cardNewsId) return;
+
+    const shareUrl = `${window.location.origin}/share/card-news/${cardNewsId}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);

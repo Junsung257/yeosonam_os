@@ -10,13 +10,18 @@ interface Tenant {
   status: string;
 }
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 export default function TenantLayout({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
   const params    = useParams();
-  const tenantId  = params.tenantId as string;
+  const tenantId  = getRouteParam(params?.tenantId);
   const [tenant, setTenant] = useState<Tenant | null>(null);
 
   useEffect(() => {
+    if (!tenantId) return;
+
     fetch(`/api/tenants/${tenantId}`)
       .then(r => r.json())
       .then(d => setTenant(d.tenant ?? null))
@@ -62,7 +67,7 @@ export default function TenantLayout({ children }: { children: React.ReactNode }
                     key={item.href}
                     href={item.href}
                     className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                      pathname.startsWith(item.href)
+                      pathname?.startsWith(item.href)
                         ? 'bg-indigo-50 text-indigo-700'
                         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
                     }`}
