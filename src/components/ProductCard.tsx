@@ -30,19 +30,20 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
   const minPrice = getMinPrice(pkg);
   const nextDate = getNextDeparture(pkg);
   const airlineName = AIRLINES[pkg.airline || ''] || pkg.airline;
+  const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
 
   function handleClick() {
     trackEngagement({
       event_type: 'product_view',
       product_id: pkg.id,
       product_name: pkg.title,
-      page_url: `/packages/${pkg.id}`,
+      page_url: packageHref,
     });
   }
 
   return (
     <Link
-      href={`/packages/${pkg.id}`}
+      href={packageHref}
       onClick={handleClick}
       className="block bg-white rounded-2xl shadow-sm overflow-hidden hover:shadow-lg hover:border-violet-300 border border-gray-100 transition-all"
     >

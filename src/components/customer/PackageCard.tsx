@@ -174,6 +174,7 @@ export default function PackageCard({
   const duration = formatDuration(pkg);
   const nextDate = findNextDeparture(pkg);
   const hasComparisonSignal = Boolean(comparisonLabel || comparisonSummary);
+  const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
 
   useEffect(() => {
     if (!isRecommended && !hasComparisonSignal) return;
@@ -226,7 +227,7 @@ export default function PackageCard({
   if (variant === 'horizontal') {
     return (
       <Link
-        href={`/packages/${pkg.id}`}
+        href={packageHref}
         onClick={handleClick}
         className="block card-touch w-full min-w-0 max-w-full"
       >
@@ -264,7 +265,7 @@ export default function PackageCard({
 
   return (
     <Link
-      href={`/packages/${pkg.id}`}
+      href={packageHref}
       onClick={handleClick}
       className="group block bg-white rounded-[16px] overflow-hidden shadow-card md:hover:shadow-card-hover md:hover:-translate-y-1 transition-all duration-200 card-touch"
     >
