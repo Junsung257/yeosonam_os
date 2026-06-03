@@ -258,7 +258,7 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
             {data.packages.map((p) => (
               <Link
                 key={p.id}
-                href={`/packages/${p.id}`}
+                href={`/packages/${encodeURIComponent(p.id)}`}
                 className="block overflow-hidden rounded-lg border border-neutral-200 bg-white hover:shadow-md transition-shadow"
               >
                 {(() => {

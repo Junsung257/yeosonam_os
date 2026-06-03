@@ -169,6 +169,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
 export default async function RegionLandingPage({ params }: { params: Promise<{ region?: string | string[] }> }) {
   const { region: rawRegion } = await params;
   const slug = getRouteParam(rawRegion);
+  const encodedSlug = encodeURIComponent(slug);
   const region = getRegionBySlug(slug);
   if (!region) notFound();
 
@@ -195,7 +196,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                 '@type': 'CollectionPage',
                 name: `${region.label} 여행 패키지`,
                 description: region.tagline,
-                url: `${BASE_URL}/destinations/region/${slug}`,
+                url: `${BASE_URL}/destinations/region/${encodedSlug}`,
                 inLanguage: 'ko-KR',
               },
               {
@@ -203,7 +204,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
                 itemListElement: [
                   { '@type': 'ListItem', position: 1, name: '홈', item: BASE_URL },
                   { '@type': 'ListItem', position: 2, name: '여행지', item: `${BASE_URL}/destinations` },
-                  { '@type': 'ListItem', position: 3, name: region.label, item: `${BASE_URL}/destinations/region/${slug}` },
+                  { '@type': 'ListItem', position: 3, name: region.label, item: `${BASE_URL}/destinations/region/${encodedSlug}` },
                 ],
               },
             ],
@@ -269,7 +270,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
           <div className="border-b border-slate-200 bg-white sticky top-14 md:top-16 z-30">
             <div className="max-w-6xl mx-auto px-4 md:px-6 py-3 flex gap-2 overflow-x-auto scrollbar-hide">
               <Link
-                href={`/destinations/region/${slug}`}
+                href={`/destinations/region/${encodedSlug}`}
                 className="flex-shrink-0 text-sm bg-brand text-white px-3 py-1.5 rounded-md font-medium"
                 aria-current="page"
               >
@@ -363,7 +364,7 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
               <SectionHeader title={`${region.label} 여행 매거진`} subtitle="가이드 · 꿀팁 · 후기" />
               <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-4">
                 {data.posts.map(p => (
-                  <Link key={p.id} href={`/blog/${p.slug}`} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
+                  <Link key={p.id} href={`/blog/${encodeURIComponent(p.slug)}`} className="group bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition">
                     <SafeMagazineThumb url={p.og_image_url} title={p.seo_title || ''} />
                     <div className="p-4">
                       <h3 className="text-sm md:text-base font-bold text-slate-900 line-clamp-2 leading-snug min-h-[2.8em] group-hover:text-brand tracking-tight">
