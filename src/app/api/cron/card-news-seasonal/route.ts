@@ -20,12 +20,14 @@
  * 인증: x-vercel-cron 또는 CRON_SECRET.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronOrVercelAuthorized, cronUnauthorizedResponse, withCronGuard } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSeasonalContext } from '@/lib/card-news-html/seasonal';
 import { getPackageRawText } from '@/lib/packages/raw-text';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -39,11 +41,11 @@ const getHandler = async (request: NextRequest) => {
     return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
   if (!getSecret('DEEPSEEK_API_KEY')) {
-    return NextResponse.json(
-      { error: 'DEEPSEEK_API_KEY 미설정' },
+    return apiResponse(
+      { error: 'DeepSeek API key not configured' },
       { status: 503 },
     );
   }
@@ -65,7 +67,7 @@ const getHandler = async (request: NextRequest) => {
     .limit(50);
 
   if (candErr) {
-    return NextResponse.json({ error: candErr.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(candErr) }, { status: 500 });
   }
 
   // 2. 최근 14일 내 카드뉴스 만든 destination 제외
@@ -99,7 +101,7 @@ const getHandler = async (request: NextRequest) => {
   const selected = eligible.slice(0, MAX_GROUPS_PER_RUN);
 
   if (selected.length === 0) {
-    return NextResponse.json({
+    return apiResponse({
       season: ctx,
       eligible_count: 0,
       generated: [],
@@ -127,7 +129,7 @@ const getHandler = async (request: NextRequest) => {
         generated.push({
           package_id: pkg.id,
           title: pkg.title,
-          error: rawResult.error,
+          error: sanitizeDbError(rawResult.error),
         });
         continue;
       }
@@ -155,7 +157,7 @@ const getHandler = async (request: NextRequest) => {
         generated.push({
           package_id: pkg.id,
           title: pkg.title,
-          error: variantsData?.error ?? `HTTP ${variantsRes.status}`,
+          error: sanitizeDbError(variantsData?.error ?? `HTTP ${variantsRes.status}`),
         });
         continue;
       }
@@ -170,14 +172,14 @@ const getHandler = async (request: NextRequest) => {
       generated.push({
         package_id: pkg.id,
         title: pkg.title,
-        error: e instanceof Error ? e.message : String(e),
+        error: sanitizeDbError(e),
       });
     }
   }
 
   const totalCost = generated.reduce((sum, g) => sum + (g.totalCostUsd ?? 0), 0);
 
-  return NextResponse.json({
+  return apiResponse({
     season: ctx,
     eligible_count: eligible.length,
     generated,
