@@ -14,6 +14,7 @@ export const revalidate = 86400; // 1d
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 interface RegionEntry {
   region: string;
@@ -66,6 +67,19 @@ export const metadata: Metadata = {
   title: '여행지별 가볼만한 곳 — 운영팀 검증 명소',
   description: '아시아·유럽·미주 인기 여행지의 가볼만한 곳을 카테고리별로 정리. 여소남 운영팀이 직접 답사하고 검증한 명소만 모아 보여드립니다.',
   alternates: { canonical: `${BASE_URL}/things-to-do` },
+  openGraph: {
+    title: '여행지별 가볼만한 곳',
+    description: '여소남 운영팀이 직접 답사하고 검증한 여행지별 명소 모음.',
+    url: `${BASE_URL}/things-to-do`,
+    type: 'website',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '여행지별 가볼만한 곳',
+    description: '여소남 운영팀이 직접 답사하고 검증한 여행지별 명소 모음.',
+    images: [SOCIAL_IMAGE_URL],
+  },
 };
 
 export default async function ThingsToDoIndexPage() {
