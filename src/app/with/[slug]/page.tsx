@@ -89,20 +89,22 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
       name = slug;
     }
   }
+  const title = `${name} 제휴 여행`;
+  const socialTitle = `${name} x Yeosonam`;
   return {
-    title: `${name} × 여소남`,
+    title,
     description: `${name}님과 함께하는 여소남 패키지 여행. 제휴 혜택이 적용됩니다.`,
     robots: { index: false, follow: false },
     alternates: { canonical },
     openGraph: {
-      title: `${name} x Yeosonam`,
+      title: socialTitle,
       description: `${name} partner travel landing page.`,
       url: canonical,
       images: [{ url: imageUrl, width: 1200, height: 630 }],
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${name} x Yeosonam`,
+      title: socialTitle,
       description: `${name} partner travel landing page.`,
       images: [imageUrl],
     },
