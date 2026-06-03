@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
 import { logError, logWarning } from '@/lib/sentry-logger';
@@ -16,7 +16,7 @@ import { logError, logWarning } from '@/lib/sentry-logger';
 export const dynamic = 'force-dynamic';
 const getHandler = async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return apiResponse({ skipped: true, reason: 'Supabase not configured' });
   }
 
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -31,7 +31,7 @@ const getHandler = async () => {
 
     if (error) throw error;
     if (!packages || packages.length === 0) {
-      return NextResponse.json({ archivedCount: 0, message: '대상 상품 없음' });
+      return apiResponse({ archivedCount: 0, message: 'No packages to archive' });
     }
 
     const toArchive: string[] = [];
@@ -104,12 +104,12 @@ const getHandler = async () => {
       }
     }
 
-    console.log(`[auto-archive] ${archivedCount}개 상품 아카이브 완료`);
-    return NextResponse.json({ archivedCount, message: `${archivedCount}개 상품 아카이브` });
+    console.log(`[auto-archive] archived ${archivedCount} packages`);
+    return apiResponse({ archivedCount, message: `Archived ${archivedCount} packages` });
 
   } catch (err) {
     logError('[cron/auto-archive] archive failed', err);
-    return NextResponse.json({ error: '자동 아카이브 실패' }, { status: 500 });
+    return apiResponse({ error: 'Auto archive failed' }, { status: 500 });
   }
 }
 
