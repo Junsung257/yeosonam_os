@@ -439,6 +439,34 @@ type OperatingInventory = {
   };
 };
 
+type StagingValidation = {
+  ok: boolean;
+  generated_at: string;
+  validation: {
+    status: 'pass' | 'warn' | 'fail';
+    readiness_score: number;
+    passed: number;
+    warnings: number;
+    failed: number;
+    top_blocker: string | null;
+    next_action: string;
+    checks: Array<{
+      id: string;
+      label: string;
+      status: 'pass' | 'warn' | 'fail';
+      evidence: string;
+      next_action: string;
+    }>;
+    safety: {
+      read_only: boolean;
+      database_mutation: boolean;
+      external_api_write: boolean;
+      live_spend_krw: number;
+      full_auto_allowed: boolean;
+    };
+  };
+};
+
 type NaverSetupPacket = {
   existing_assets: {
     campaigns: number;
@@ -511,6 +539,13 @@ async function fetchOperatingInventory(): Promise<OperatingInventory> {
   const res = await fetch('/api/admin/ad-os/operating-inventory');
   const json = await res.json();
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
+
+async function fetchStagingValidation(): Promise<StagingValidation> {
+  const res = await fetch('/api/admin/ad-os/staging-validation');
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
 }
 
@@ -709,6 +744,7 @@ export default function AdOsPage() {
   const [runningLimitedPilot, setRunningLimitedPilot] = useState(false);
   const [checkingStagingSmoke, setCheckingStagingSmoke] = useState(false);
   const [checkingOperatingInventory, setCheckingOperatingInventory] = useState(false);
+  const [checkingStagingValidation, setCheckingStagingValidation] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [opsQueueActionId, setOpsQueueActionId] = useState<string | null>(null);
@@ -721,6 +757,7 @@ export default function AdOsPage() {
   const [naverAssetPlan, setNaverAssetPlan] = useState<Record<string, unknown> | null>(null);
   const [stagingSmoke, setStagingSmoke] = useState<StagingSmoke | null>(null);
   const [operatingInventory, setOperatingInventory] = useState<OperatingInventory | null>(null);
+  const [stagingValidation, setStagingValidation] = useState<StagingValidation | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -746,13 +783,15 @@ export default function AdOsPage() {
 
   useEffect(() => {
     let alive = true;
-    Promise.allSettled([fetchStagingSmoke(), fetchOperatingInventory()])
-      .then(([smokeResult, inventoryResult]) => {
+    Promise.allSettled([fetchStagingSmoke(), fetchOperatingInventory(), fetchStagingValidation()])
+      .then(([smokeResult, inventoryResult, validationResult]) => {
         if (!alive) return;
         if (smokeResult.status === 'fulfilled') setStagingSmoke(smokeResult.value);
         if (inventoryResult.status === 'fulfilled') setOperatingInventory(inventoryResult.value);
+        if (validationResult.status === 'fulfilled') setStagingValidation(validationResult.value);
         if (smokeResult.status === 'rejected') throw smokeResult.reason;
         if (inventoryResult.status === 'rejected') throw inventoryResult.reason;
+        if (validationResult.status === 'rejected') throw validationResult.reason;
       })
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : '스테이징 검증 조회 실패');
@@ -802,6 +841,24 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '운영 인벤토리 조회 실패');
     } finally {
       setCheckingOperatingInventory(false);
+    }
+  };
+
+  const runStagingValidation = async () => {
+    setCheckingStagingValidation(true);
+    setError(null);
+    try {
+      const json = await fetchStagingValidation();
+      setStagingValidation(json);
+      setAutomationMessage(
+        json.validation.status === 'pass'
+          ? '스테이징 검증 패키지가 통과했습니다. 외부 광고비 0원, full auto off 상태가 증거로 확인됐습니다.'
+          : `스테이징 검증 패키지의 다음 액션은 ${json.validation.next_action}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '스테이징 검증 패키지 조회 실패');
+    } finally {
+      setCheckingStagingValidation(false);
     }
   };
 
@@ -3350,6 +3407,90 @@ export default function AdOsPage() {
                   )) : (
                     <p className="border-t border-admin-border pt-2 text-admin-2xs text-admin-muted">No completion evidence loaded.</p>
                   )}
+                </div>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-admin-2xs font-semibold text-admin-muted">Staging Validation Package</p>
+                    <p className="mt-1 text-admin-xs font-semibold text-admin-text">
+                      {stagingValidation?.validation.top_blocker || '스테이징 검증 패키지를 조회하세요'}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                      {stagingValidation?.validation.next_action || 'Read-only smoke, DB-backed summary, 운영 인벤토리, live-spend preflight, 학습 증거, external write 0건, full auto off를 한 번에 확인합니다.'}
+                    </p>
+                  </div>
+                  <StatusPill tone={stagingValidation ? auditTone(stagingValidation.validation.status) : 'neutral'}>
+                    {stagingValidation?.validation.status || 'not checked'}
+                  </StatusPill>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Score</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(stagingValidation?.validation.readiness_score || 0).toLocaleString('ko-KR')}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Pass</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(stagingValidation?.validation.passed || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Warn</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(stagingValidation?.validation.warnings || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Fail</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(stagingValidation?.validation.failed || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Live spend</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {fmtWon(stagingValidation?.validation.safety.live_spend_krw || 0)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {(stagingValidation?.validation.checks || []).slice(0, 6).map((item) => (
+                    <div key={item.id} className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-admin-2xs font-semibold text-admin-text">{item.label}</p>
+                          <p className="mt-0.5 truncate text-admin-2xs text-admin-muted">{item.evidence}</p>
+                        </div>
+                        <StatusPill tone={auditTone(item.status)}>{item.status}</StatusPill>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">{item.next_action}</p>
+                    </div>
+                  ))}
+                  {!stagingValidation && (
+                    <p className="rounded-admin-xs bg-admin-surface-2 px-3 py-2 text-admin-2xs text-admin-muted md:col-span-2">
+                      검증 패키지를 조회하면 smoke, DB summary, live-spend safety, learning evidence가 한 묶음으로 표시됩니다.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={runStagingValidation} loading={checkingStagingValidation}>
+                    Validation check
+                  </Button>
+                  <Link href="/api/admin/ad-os/staging-validation" className="inline-flex items-center gap-1 text-admin-2xs font-semibold text-blue-700">
+                    JSON 보기 <ArrowRight className="h-3 w-3" />
+                  </Link>
+                  <StatusPill tone={
+                    stagingValidation?.validation.safety.external_api_write === false &&
+                    stagingValidation?.validation.safety.database_mutation === false &&
+                    stagingValidation?.validation.safety.full_auto_allowed === false
+                      ? 'good'
+                      : 'warn'
+                  }>
+                    DB write {stagingValidation?.validation.safety.database_mutation ? 'on' : 'off'} · external write {stagingValidation?.validation.safety.external_api_write ? 'on' : 'off'} · full auto {stagingValidation?.validation.safety.full_auto_allowed ? 'on' : 'off'}
+                  </StatusPill>
                 </div>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
