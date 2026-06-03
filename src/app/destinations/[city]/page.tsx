@@ -40,6 +40,7 @@ const BASE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ||
   'https://www.yeosonam.com'
 ).replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 function safeDecodePathSegment(value: string): string {
   try {
@@ -60,6 +61,25 @@ function clampRating(value: unknown): number | null {
 
 function getPositiveNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+async function getDestinationSocialImage(city: string): Promise<string> {
+  if (!isSupabaseConfigured) return SOCIAL_IMAGE_URL;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('destination_metadata')
+      .select('hero_image_url, photo_approved')
+      .eq('destination', city)
+      .maybeSingle();
+    if (error) return SOCIAL_IMAGE_URL;
+
+    const row = data as Pick<DestinationMeta, 'hero_image_url' | 'photo_approved'> | null;
+    const candidate = row?.photo_approved ? row.hero_image_url?.trim() : null;
+    return candidate && isSafeImageSrc(candidate) ? candidate : SOCIAL_IMAGE_URL;
+  } catch {
+    return SOCIAL_IMAGE_URL;
+  }
 }
 
 interface DestinationMeta {
@@ -270,17 +290,33 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
   const decoded = safeDecodePathSegment(city).trim();
   const encodedCity = encodeDestinationPathSegment(decoded);
   const canonical = encodedCity ? `${BASE_URL}/destinations/${encodedCity}` : `${BASE_URL}/destinations`;
+  const fallbackTitle = '여행지 가이드 | 여소남';
   if (!decoded) {
     return {
-      title: '여행지 가이드 | 여소남',
+      title: fallbackTitle,
       alternates: { canonical },
       robots: { index: false, follow: true },
+      openGraph: {
+        title: fallbackTitle,
+        url: canonical,
+        type: 'website',
+        images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: fallbackTitle,
+        images: [SOCIAL_IMAGE_URL],
+      },
     };
   }
 
+  const title = `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`;
+  const description = `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`;
+  const socialImage = await getDestinationSocialImage(decoded);
+
   return {
-    title: `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`,
-    description: `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`,
+    title,
+    description,
     alternates: {
       canonical,
       types: {
@@ -291,9 +327,16 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
     },
     openGraph: {
       title: `${decoded} 여행 완벽 가이드 | 여소남`,
-      description: `${decoded} 여행의 모든 것. 운영팀 검증 관광지와 엄선 패키지까지.`,
+      description,
       url: canonical,
       type: 'website',
+      images: [{ url: socialImage, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [socialImage],
     },
   };
 }
