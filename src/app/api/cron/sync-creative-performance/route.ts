@@ -5,8 +5,10 @@
  * 2. winning_patterns 업데이트 (학습 엔진)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 import { dailySync } from '@/lib/creative-engine/sync-performance';
 
 export const dynamic = 'force-dynamic';
@@ -17,12 +19,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    console.log('[CRON] sync-creative-performance 시작');
+    console.log('[CRON] sync-creative-performance start');
     const result = await dailySync();
 
-    console.log(`[CRON] 완료: Meta ${result.meta}건, Naver ${result.naver}건, Google ${result.google}건, 패턴 ${result.patterns.updated}건 업데이트`);
+    console.log(
+      `[CRON] sync-creative-performance complete: meta=${result.meta}, naver=${result.naver}, google=${result.google}, patterns=${result.patterns.updated}`,
+    );
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       timestamp: new Date().toISOString(),
       synced: {
@@ -33,9 +37,8 @@ export async function GET(request: NextRequest) {
       patterns: result.patterns,
     });
   } catch (error) {
-    console.error('[CRON] sync-creative-performance 실패:', error);
-    return NextResponse.json(
-      { ok: false, error: error instanceof Error ? error.message : '성과 수집 실패' },
+    return apiResponse(
+      { ok: false, error: logAndSanitize('cron sync-creative-performance', error, 'Performance sync failed') },
       { status: 500 }
     );
   }
