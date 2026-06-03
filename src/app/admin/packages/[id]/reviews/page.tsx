@@ -86,9 +86,14 @@ const DEFAULT_FORM = {
   pros_raw: '',
 };
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function PackageReviewsAdminPage() {
   const params = useParams();
-  const packageId = String(params?.id || '');
+  const packageId = getRouteParam(params?.id);
+  const packagePathId = encodeURIComponent(packageId);
 
   const [reviews, setReviews] = useState<ReviewRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,24 +108,30 @@ export default function PackageReviewsAdminPage() {
   };
 
   const load = useCallback(async () => {
+    if (!packageId) {
+      setReviews([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
-      const res = await fetch(`/api/packages/${packageId}/reviews`);
+      const res = await fetch(`/api/packages/${packagePathId}/reviews`);
       const json = await res.json();
       setReviews(json.data || []);
     } finally {
       setLoading(false);
     }
-  }, [packageId]);
+  }, [packageId, packagePathId]);
 
-  useEffect(() => { if (packageId) load(); }, [packageId, load]);
+  useEffect(() => { load(); }, [load]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!packageId) return;
     setSaving(true);
     try {
       const pros = form.pros_raw.split('\n').map(s => s.trim()).filter(Boolean);
-      const res = await fetch(`/api/packages/${packageId}/reviews`, {
+      const res = await fetch(`/api/packages/${packagePathId}/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -153,8 +164,9 @@ export default function PackageReviewsAdminPage() {
   };
 
   const toggleStatus = async (reviewId: string, current: string) => {
+    if (!packageId) return;
     const next = current === 'approved' ? 'rejected' : 'approved';
-    await fetch(`/api/packages/${packageId}/reviews`, {
+    await fetch(`/api/packages/${packagePathId}/reviews`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reviewId, status: next }),
@@ -164,8 +176,9 @@ export default function PackageReviewsAdminPage() {
   };
 
   const deleteReview = async (reviewId: string) => {
+    if (!packageId) return;
     if (!confirm('이 후기를 삭제하시겠습니까?')) return;
-    await fetch(`/api/packages/${packageId}/reviews?reviewId=${reviewId}`, { method: 'DELETE' });
+    await fetch(`/api/packages/${packagePathId}/reviews?reviewId=${encodeURIComponent(reviewId)}`, { method: 'DELETE' });
     showToast('🗑️ 삭제됨');
     load();
   };
@@ -187,9 +200,9 @@ export default function PackageReviewsAdminPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <a href={`/admin/packages?id=${packageId}`}
+          <a href={`/admin/packages?id=${encodeURIComponent(packageId)}`}
             className="px-3 py-1.5 bg-admin-surface-2 text-admin-text-2 text-sm rounded-lg hover:bg-slate-200">← 어드민</a>
-          <a href={`/packages/${packageId}`} target="_blank" rel="noopener"
+          <a href={`/packages/${packagePathId}`} target="_blank" rel="noopener"
             className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">고객 페이지 ↗</a>
         </div>
       </div>
