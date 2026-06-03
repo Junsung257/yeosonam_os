@@ -1,10 +1,16 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
-// GET /api/recommendations?customer_id=&destination=&algorithm=
+type RecommendationRow = {
+  package_id?: string;
+  [key: string]: unknown;
+};
+
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ success: true, algorithm: 'none', count: 0, recommendations: [] });
+    return apiResponse({ success: true, algorithm: 'none', count: 0, recommendations: [] });
   }
 
   try {
@@ -13,7 +19,7 @@ export async function GET(request: NextRequest) {
     const destination = searchParams.get('destination');
     const algorithm = searchParams.get('algorithm') || 'auto';
 
-    let recommendations: any[] = [];
+    let recommendations: RecommendationRow[] = [];
     let usedAlgorithm = 'trending';
 
     if (algorithm === 'auto') {
@@ -47,7 +53,6 @@ export async function GET(request: NextRequest) {
       usedAlgorithm = algorithm;
     }
 
-    // 추천 로그 저장 (fire-and-forget)
     const sessionId = request.cookies.get('ys_session_id')?.value;
     if (recommendations.length > 0) {
       try {
@@ -56,36 +61,40 @@ export async function GET(request: NextRequest) {
           .insert({
             session_id: sessionId || null,
             customer_id: customerId || null,
-            recommended_packages: recommendations.map((r: any) => r.package_id),
+            recommended_packages: recommendations.map((r: RecommendationRow) => r.package_id),
             algorithm: usedAlgorithm,
           });
-      } catch { /* fire-and-forget */ }
+      } catch {
+        // fire-and-forget
+      }
     }
 
-    return NextResponse.json({
-      success: true,
-      algorithm: usedAlgorithm,
-      count: recommendations.length,
-      recommendations,
-    }, {
-      headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600' },
-    });
+    return apiResponse(
+      {
+        success: true,
+        algorithm: usedAlgorithm,
+        count: recommendations.length,
+        recommendations,
+      },
+      {
+        headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=600' },
+      },
+    );
   } catch (error) {
-    console.error('[Recommendations] 오류:', error);
-    return NextResponse.json({ success: true, algorithm: 'error', count: 0, recommendations: [] });
+    console.error('[Recommendations] error:', sanitizeDbError(error));
+    return apiResponse({ success: true, algorithm: 'error', count: 0, recommendations: [] });
   }
 }
 
-// POST /api/recommendations — 추천 클릭 로깅
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   }
 
   try {
     const { sessionId, packageId } = await request.json();
     if (!sessionId || !packageId) {
-      return NextResponse.json({ success: true });
+      return apiResponse({ success: true });
     }
 
     await supabaseAdmin
@@ -95,8 +104,8 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: false })
       .limit(1);
 
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   } catch {
-    return NextResponse.json({ success: true });
+    return apiResponse({ success: true });
   }
 }
