@@ -407,7 +407,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                         item: {
                           '@type': 'Product',
                           name: p.title,
-                          url: `${BASE_URL}/packages/${p.id}`,
+                          url: `${BASE_URL}/packages/${encodeURIComponent(p.id)}`,
                           ...(p.avg_rating && p.review_count > 0
                             ? {
                                 aggregateRating: {
@@ -653,7 +653,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 {data.relatedPosts.map(p => (
                   <Link
                     key={p.id}
-                    href={`/blog/${p.slug}`}
+                    href={`/blog/${encodeURIComponent(p.slug)}`}
                     className="group bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow"
                   >
                     {p.og_image_url ? (
