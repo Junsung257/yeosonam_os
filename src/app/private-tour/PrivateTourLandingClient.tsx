@@ -4,6 +4,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trackLead } from '@/components/MetaPixel';
 
+declare global {
+  interface Window {
+    Kakao?: {
+      isInitialized: () => boolean;
+      Share: {
+        sendDefault: (config: Record<string, unknown>) => void;
+      };
+    };
+  }
+}
+
 // ─── 공유 섹션 컴포넌트 ──────────────────────────
 function ShareSection({ shareUrl }: { shareUrl: string }) {
   const [copied, setCopied] = useState(false);
@@ -202,7 +213,7 @@ export default function PrivateTourLandingClient() {
 
   // URL searchParams preset 오토필 (예: /private-tour?preset=가족여행)
   useEffect(() => {
-    const preset = searchParams.get('preset');
+    const preset = searchParams?.get('preset');
     if (preset) {
       const validTypes: GroupType[] = ['가족여행', '친구·모임', '회사 단체', '동호회·동문', '특별한 날', '혼자 여행'];
       if (validTypes.includes(preset as GroupType)) {
@@ -275,10 +286,10 @@ export default function PrivateTourLandingClient() {
 
     try {
       const utm = {
-        source: searchParams.get('utm_source'),
-        medium: searchParams.get('utm_medium'),
-        campaign: searchParams.get('utm_campaign'),
-        n_keyword: searchParams.get('n_keyword'),
+        source: searchParams?.get('utm_source') ?? null,
+        medium: searchParams?.get('utm_medium') ?? null,
+        campaign: searchParams?.get('utm_campaign') ?? null,
+        n_keyword: searchParams?.get('n_keyword') ?? null,
       };
 
       const payload = {

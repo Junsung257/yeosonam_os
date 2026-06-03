@@ -4,7 +4,8 @@ import GroupLandingClient from './GroupLandingClient';
 
 export const revalidate = 86400;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 export const metadata: Metadata = {
   title: '부산·경남 단체여행 전문 | 김해공항 바로 출발',
