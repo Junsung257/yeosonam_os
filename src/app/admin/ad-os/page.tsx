@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   ArrowRight,
@@ -558,6 +559,7 @@ function actionTone(tone: 'good' | 'warn' | 'bad' | 'neutral'): 'good' | 'warn' 
 }
 
 export default function AdOsPage() {
+  const searchParams = useSearchParams();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [budgetDrafts, setBudgetDrafts] = useState<BudgetDraft[]>([]);
   const [loading, setLoading] = useState(true);
@@ -2281,6 +2283,13 @@ export default function AdOsPage() {
       .sort((a, b) => rank[a.status] - rank[b.status])
       .slice(0, 4);
   }, [summary]);
+  const completionPanelRequested = searchParams.get('panel') === 'completion-audit';
+
+  useEffect(() => {
+    if (!completionPanelRequested || !summary) return;
+    const target = document.getElementById('completion-audit');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [completionPanelRequested, summary]);
 
   const totalMappingStatus = summary
     ? Object.values(summary.counts.mappings_by_status || {}).reduce((a, b) => a + b, 0)
@@ -3109,7 +3118,12 @@ export default function AdOsPage() {
                   {summary.enterprise_layer?.agency_reporting?.next_action || 'Generate tenant report drafts and audit exports.'}
                 </p>
               </div>
-              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
+              <div
+                id="completion-audit"
+                className={`rounded-admin-sm border bg-admin-surface p-3 md:col-span-2 ${
+                  completionPanelRequested ? 'border-blue-300 ring-2 ring-blue-100' : 'border-admin-border'
+                }`}
+              >
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-admin-2xs font-semibold text-admin-muted">Completion Audit</p>
                   <StatusPill tone={summary.enterprise_layer?.completion_audit?.status === 'ready' ? 'good' : summary.enterprise_layer?.completion_audit?.status === 'blocked' ? 'bad' : 'warn'}>

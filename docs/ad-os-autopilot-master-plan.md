@@ -1033,3 +1033,13 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - Pure TypeScript helper and UI/API refactor only.
   - No external ad platform write path, database mutation, or automation level change is introduced.
   - Completion display logic is now unit-tested so future UI changes cannot silently reinterpret blocked/ready states.
+
+## 62. 2026-06-03 Ad OS V521-V540 completion audit deep link
+
+- Added `/admin/ad-os?panel=completion-audit` handling.
+- Purpose:
+  - Makes links from Marketing Dashboard, Command Center, and System Health land directly on the Completion Audit evidence instead of only opening the top of Ad OS.
+  - Scrolls the Completion Audit card into view and highlights it when the panel query is present.
+- Safety principle:
+  - UI-only navigation improvement.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
