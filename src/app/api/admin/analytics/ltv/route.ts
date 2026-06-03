@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // LTV 코호트 분석 — UTM 채널별 평생 결제액 집계
 // bookings.utm_source 기준으로 cohort 분류
@@ -107,7 +108,7 @@ const getHandler = async () => {
     );
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }
