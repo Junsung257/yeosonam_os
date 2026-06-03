@@ -28,6 +28,7 @@ const getRouteParam = (value: string | string[] | undefined) =>
 export default function TenantSettlementsPage() {
   const params   = useParams();
   const tenantId = getRouteParam(params?.tenantId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
   const monthOptions = getMonthOptions();
 
   const [month,      setMonth]      = useState(monthOptions[0]);
@@ -42,12 +43,12 @@ export default function TenantSettlementsPage() {
     }
 
     setLoading(true);
-    const res  = await fetch(`/api/tenant/settlements?tenant_id=${tenantId}&month=${month}`);
+    const res  = await fetch(`/api/tenant/settlements?tenant_id=${encodedTenantId}&month=${encodeURIComponent(month)}`);
     const data = await res.json();
     setRows(data.rows ?? []);
     setTotalCost(data.total_cost ?? 0);
     setLoading(false);
-  }, [tenantId, month]);
+  }, [encodedTenantId, tenantId, month]);
 
   useEffect(() => { load(); }, [load]);
 

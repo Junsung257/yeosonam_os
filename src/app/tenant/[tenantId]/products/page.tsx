@@ -43,6 +43,7 @@ const EMPTY_FORM = {
 export default function TenantProductsPage() {
   const params   = useParams();
   const tenantId = getRouteParam(params?.tenantId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
 
   const [products, setProducts] = useState<TenantProduct[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -59,11 +60,11 @@ export default function TenantProductsPage() {
     }
 
     setLoading(true);
-    const res  = await fetch(`/api/tenant/products?tenant_id=${tenantId}`);
+    const res  = await fetch(`/api/tenant/products?tenant_id=${encodedTenantId}`);
     const data = await res.json();
     setProducts(data.products ?? []);
     setLoading(false);
-  }, [tenantId]);
+  }, [encodedTenantId, tenantId]);
 
   useEffect(() => { load(); }, [load]);
 
