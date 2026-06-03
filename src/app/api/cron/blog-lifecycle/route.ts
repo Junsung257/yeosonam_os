@@ -1,30 +1,19 @@
 import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
-/**
- * 블로그 라이프사이클 크론 — 매일 1:30 KST 실행
- *
- * 수행:
- *   1) status='published' AND product_id IS NOT NULL 인 블로그 스캔
- *   2) 연결된 travel_packages 가 archived 이거나 모든 출발일+발권기한 지났으면
- *      → content_creatives.status='archived' 전환
- *   3) ISR 캐시 무효화
- *
- * 설계 의도:
- *   상품 블로그는 상품 수명과 함께 죽는다.
- *   정보성 블로그(product_id IS NULL)는 절대 건드리지 않는다 (영구 SEO 자산).
- */
 export const dynamic = 'force-dynamic';
+
 const getHandler = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
   if (!isSupabaseConfigured) {
-    return { skipped: true, reason: 'Supabase 미설정' };
+    return { skipped: true, reason: 'Supabase not configured' };
   }
 
   const today = new Date().toISOString().split('T')[0];
@@ -32,7 +21,6 @@ const getHandler = async (request: NextRequest) => {
   const archived: Array<{ slug: string; reason: string }> = [];
 
   try {
-    // 상품 연결된 발행 글만 대상
     const { data: posts, error } = await supabaseAdmin
       .from('content_creatives')
       .select('id, slug, product_id, travel_packages(id, status, ticketing_deadline, price_dates)')
@@ -42,7 +30,7 @@ const getHandler = async (request: NextRequest) => {
 
     if (error) throw error;
     if (!posts || posts.length === 0) {
-      return { archivedCount: 0, message: '상품 연결 글 없음' };
+      return { archivedCount: 0, message: 'No product-linked posts' };
     }
 
     const toArchive: Array<{ id: string; slug: string; reason: string }> = [];
@@ -50,20 +38,17 @@ const getHandler = async (request: NextRequest) => {
     for (const post of posts) {
       const pkg = Array.isArray(post.travel_packages) ? post.travel_packages[0] : post.travel_packages;
       if (!pkg) {
-        // FK가 NULL로 세팅됐거나 상품이 지워짐 → 아카이브
         toArchive.push({ id: post.id, slug: post.slug, reason: 'linked_product_missing' });
         continue;
       }
 
-      // 상품 자체가 archived → 블로그도 archived
       if (pkg.status === 'archived' || pkg.status === 'rejected') {
         toArchive.push({ id: post.id, slug: post.slug, reason: `product_${pkg.status}` });
         continue;
       }
 
-      // 출발일 + 발권기한 모두 과거면 상품은 살아있어도 블로그 색인 가치 낮음
       const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates as Array<{ date?: string }> : [];
-      const futureDates = priceDates.filter(pd => pd.date && pd.date >= today);
+      const futureDates = priceDates.filter((priceDate) => priceDate.date && priceDate.date >= today);
       const deadlineAlive = pkg.ticketing_deadline && pkg.ticketing_deadline >= today;
 
       if (futureDates.length === 0 && !deadlineAlive && priceDates.length > 0) {
@@ -75,25 +60,25 @@ const getHandler = async (request: NextRequest) => {
       const { error: upErr } = await supabaseAdmin
         .from('content_creatives')
         .update({ status: 'archived' })
-        .in('id', toArchive.map(t => t.id));
+        .in('id', toArchive.map((post) => post.id));
 
       if (upErr) throw upErr;
 
-      // ISR 무효화 — 목록 + 각 슬러그
       try { revalidatePath('/blog'); } catch { /* noop */ }
-      for (const t of toArchive) {
-        try { revalidatePath(`/blog/${t.slug}`); } catch { /* noop */ }
-        archived.push({ slug: t.slug, reason: t.reason });
+      for (const post of toArchive) {
+        try { revalidatePath(`/blog/${post.slug}`); } catch { /* noop */ }
+        archived.push({ slug: post.slug, reason: post.reason });
       }
       archivedCount = toArchive.length;
     }
 
-    console.log(`[blog-lifecycle] ${archivedCount}개 블로그 아카이브`);
+    console.log(`[blog-lifecycle] archived ${archivedCount} blog posts`);
     return { archivedCount, archived, checkedAt: new Date().toISOString() };
   } catch (err) {
     logError('[cron/blog-lifecycle] lifecycle processing failed', err);
-    return { errors: [err instanceof Error ? err.message : '라이프사이클 처리 실패'] };
+    const msg = sanitizeDbError(err, 'blog lifecycle failed');
+    return { errors: [msg] };
   }
-}
+};
 
 export const GET = withCronLogging('blog-lifecycle', getHandler);
