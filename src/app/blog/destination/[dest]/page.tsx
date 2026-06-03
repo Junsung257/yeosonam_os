@@ -153,7 +153,7 @@ async function DestinationContent({ dest, destination }: { dest: string; destina
           <SectionHeader title={`${destination} 추천 패키지`} />
               <div className="grid gap-4 md:gap-6 sm:grid-cols-3">
                 {packages.map(pkg => (
-                  <Link key={pkg.id} href={`/packages/${pkg.id}`}
+                  <Link key={pkg.id} href={`/packages/${encodeURIComponent(pkg.id)}`}
                     className="rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-brand transition">
                     <p className="text-base font-bold text-slate-900 line-clamp-2 leading-snug tracking-tight">{pkg.title}</p>
                     {pkg.price && <p className="mt-2 text-lg md:text-xl font-black text-slate-900 tabular-nums">{pkg.price.toLocaleString()}원~</p>}

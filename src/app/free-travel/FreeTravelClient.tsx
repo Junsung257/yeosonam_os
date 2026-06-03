@@ -618,7 +618,7 @@ function DecoyComparison({
       {comparison.packages.length > 0 && (
         <div className="flex flex-col gap-2">
           {comparison.packages.map(p => (
-            <Link key={p.id} href={`/packages/${p.id}`}
+            <Link key={p.id} href={`/packages/${encodeURIComponent(p.id)}`}
               onClick={() => onPackageClick?.(p)}
               className="bg-white rounded-2xl p-4 flex items-center justify-between group hover:shadow-md transition-shadow">
               <div className="flex-1 min-w-0 pr-3">
@@ -807,6 +807,7 @@ export default function FreeTravelClient() {
 
   // 홈·챗 등에서 넘긴 쿼리만 초기 입력에 반영 (실제 플랜은 이 페이지에서 실행)
   useEffect(() => {
+    if (!searchParams) return;
     if (searchParams.get('session')?.trim()) return;
     if (urlPrefillApplied.current) return;
     const dest = searchParams.get('dest')?.trim();
@@ -830,6 +831,7 @@ export default function FreeTravelClient() {
 
   /** 저장된 세션 UUID로 견적 화면 복원 (`/free-travel?session=...`) */
   useEffect(() => {
+    if (!searchParams) return;
     if (sessionRestoreApplied.current) return;
     const sid = searchParams.get('session')?.trim();
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

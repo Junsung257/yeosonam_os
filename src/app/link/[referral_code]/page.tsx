@@ -218,7 +218,7 @@ export default function AffiliateLinkInBioPage() {
             }>).map((pkg) => (
               <a
                 key={pkg.id}
-                href={`/packages/${pkg.id}?ref=${a.referral_code}`}
+                href={`/packages/${encodeURIComponent(pkg.id)}?ref=${encodeURIComponent(a.referral_code)}`}
                 className="block bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
               >
                 {pkg.main_image ? (
@@ -258,7 +258,7 @@ export default function AffiliateLinkInBioPage() {
             {card_news.map((cn) => (
               <a
                 key={cn.id}
-                href={`/share/card-news/${cn.id}`}
+                href={`/share/card-news/${encodeURIComponent(cn.id)}`}
                 className="block bg-white rounded-xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
               >
                 {cn.thumbnail_url ? (

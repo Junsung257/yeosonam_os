@@ -142,7 +142,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
                 {recommendedPackages.map(pkg => (
                   <Link
                     key={pkg.id}
-                    href={`/packages/${pkg.id}`}
+                    href={`/packages/${encodeURIComponent(pkg.id)}`}
                     className="block rounded-xl border border-slate-200 bg-white p-5 hover:shadow-md hover:border-brand transition"
                   >
                     {pkg.destination && (
