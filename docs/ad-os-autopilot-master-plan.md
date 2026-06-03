@@ -1021,3 +1021,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - UI-only change based on existing `/api/admin/ad-os/summary` data.
   - No external ad platform write path, database mutation, or automation level change is introduced.
   - Marketing dashboard KPIs no longer imply that campaign scaling is safe unless Ad OS completion evidence is visible.
+
+## 61. 2026-06-03 Ad OS V501-V520 completion view SSOT
+
+- Added `src/lib/ad-os-completion-view.ts` and unit tests.
+- Purpose:
+  - Centralizes completion audit UI types, status-to-tone mapping, operator-critical requirement IDs, and fallback evidence.
+  - Prevents `/admin/marketing`, `/admin/marketing/command-center`, and `/api/admin/marketing/system-health` from drifting on which completion requirements matter most to operators.
+  - Keeps external write safety, full-auto default-off policy, tenant budget guardrails, and incident response as the shared first-screen requirements.
+- Safety principle:
+  - Pure TypeScript helper and UI/API refactor only.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - Completion display logic is now unit-tested so future UI changes cannot silently reinterpret blocked/ready states.

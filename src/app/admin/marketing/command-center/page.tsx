@@ -2,20 +2,17 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
+import {
+  buildCompletionFallbackRequirements,
+  completionAuditTone,
+  selectOperatorCriticalRequirements,
+  type CompletionAuditView,
+  type CompletionRequirementStatus,
+} from '@/lib/ad-os-completion-view';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 
 type Severity = 'critical' | 'high' | 'medium' | 'low';
 type AdOsMode = 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
-type CompletionStatus = 'ready' | 'needs_attention' | 'blocked';
-type CompletionRequirementStatus = 'pass' | 'warn' | 'fail';
-
-interface CompletionRequirement {
-  id: string;
-  label: string;
-  status: CompletionRequirementStatus;
-  evidence: string;
-  next_action: string;
-}
 
 interface MarketingNextAction {
   id: string;
@@ -115,16 +112,7 @@ interface AdOsSummary {
     detail: string;
   }>;
   enterprise_layer?: {
-    completion_audit?: {
-      status: CompletionStatus;
-      readiness_score: number;
-      passed: number;
-      warnings: number;
-      failed: number;
-      top_blocker: string;
-      next_action: string;
-      requirements?: CompletionRequirement[];
-    };
+    completion_audit?: CompletionAuditView;
   };
 }
 
@@ -171,13 +159,6 @@ function scoreClass(score: number) {
   if (score >= 80) return 'text-emerald-700';
   if (score >= 55) return 'text-amber-700';
   return 'text-red-700';
-}
-
-function completionTone(status?: CompletionStatus): 'good' | 'warn' | 'bad' | 'neutral' {
-  if (status === 'ready') return 'good';
-  if (status === 'blocked') return 'bad';
-  if (status === 'needs_attention') return 'warn';
-  return 'neutral';
 }
 
 function canCreateDraft(action: MarketingNextAction) {
@@ -313,16 +294,8 @@ export default function MarketingCommandCenterPage() {
   );
   const adOsModeByPlatform = new Map((adOs?.active_automation_modes ?? []).map((mode) => [mode.platform, mode]));
   const completionAudit = adOs?.enterprise_layer?.completion_audit;
-  const fallbackCompletionRequirements: CompletionRequirement[] = [{
-    id: 'empty',
-    label: 'Audit evidence',
-    status: adOsError ? 'fail' : 'warn',
-    evidence: adOsError || 'No completion requirements returned yet.',
-    next_action: 'Recover /api/admin/ad-os/summary and /api/admin/ad-os/completion-audit.',
-  }];
-  const completionRequirements = (completionAudit?.requirements ?? [])
-    .filter((requirement) => ['external_write_zero', 'full_auto_default_off', 'tenant_budget_guardrails', 'incident_response_clear'].includes(requirement.id))
-    .slice(0, 4);
+  const completionRequirements = selectOperatorCriticalRequirements(completionAudit);
+  const fallbackCompletionRequirements = buildCompletionFallbackRequirements(adOsError);
   const guardrailStatus = adOsError || !adOs
     ? 'warn'
     : adOs.tenant_guardrails?.some((guardrail) => guardrail.status === 'fail')
@@ -402,7 +375,7 @@ export default function MarketingCommandCenterPage() {
           <div>
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-admin-base font-semibold text-admin-text-2">Ad OS Completion Gate</h2>
-              <span className={`rounded-full px-2 py-1 text-admin-xs font-semibold ${STATUS_CLASS[completionTone(completionAudit?.status)]}`}>
+              <span className={`rounded-full px-2 py-1 text-admin-xs font-semibold ${STATUS_CLASS[completionAuditTone(completionAudit?.status)]}`}>
                 {completionAudit?.status ?? (adOsError ? 'unavailable' : 'checking')}
               </span>
             </div>

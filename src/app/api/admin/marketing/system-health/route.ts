@@ -4,6 +4,10 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { getSecret, type SecretKey } from '@/lib/secret-registry';
 import { runMarketingIntegrationProbes } from '@/lib/marketing/integration-probes';
 import { withTimeout } from '@/lib/promise-timeout';
+import {
+  COMPLETION_REQUIREMENT_EXTERNAL_WRITE_ZERO,
+  COMPLETION_REQUIREMENT_FULL_AUTO_DEFAULT_OFF,
+} from '@/lib/ad-os-completion-view';
 
 export const dynamic = 'force-dynamic';
 const SYSTEM_HEALTH_TIMEOUT_MS = 8000;
@@ -158,8 +162,8 @@ async function adOsCompletionChecks(request: NextRequest): Promise<Check[]> {
   const failed = Number(audit.failed || 0);
   const warnings = Number(audit.warnings || 0);
   const requirements = Array.isArray(audit.requirements) ? audit.requirements : [];
-  const externalSpendRequirement = requirements.find((row: { id?: string }) => row.id === 'external_write_zero');
-  const fullAutoRequirement = requirements.find((row: { id?: string }) => row.id === 'full_auto_default_off');
+  const externalSpendRequirement = requirements.find((row: { id?: string }) => row.id === COMPLETION_REQUIREMENT_EXTERNAL_WRITE_ZERO);
+  const fullAutoRequirement = requirements.find((row: { id?: string }) => row.id === COMPLETION_REQUIREMENT_FULL_AUTO_DEFAULT_OFF);
 
   return [
     {
@@ -181,7 +185,7 @@ async function adOsCompletionChecks(request: NextRequest): Promise<Check[]> {
       message: externalSpendRequirement?.evidence || 'No live external API write was detected in the Ad OS runtime layers.',
       detail: {
         next_action: externalSpendRequirement?.next_action || 'Keep all external writes behind approval, budget, and confirmation gates.',
-        source: 'completion_audit.requirements.external_write_zero',
+        source: `completion_audit.requirements.${COMPLETION_REQUIREMENT_EXTERNAL_WRITE_ZERO}`,
       },
     },
     {
@@ -191,7 +195,7 @@ async function adOsCompletionChecks(request: NextRequest): Promise<Check[]> {
       message: fullAutoRequirement?.evidence || 'Full autopilot remains disabled by default.',
       detail: {
         next_action: fullAutoRequirement?.next_action || 'Keep full auto disabled unless separate operational approval exists.',
-        source: 'completion_audit.requirements.full_auto_default_off',
+        source: `completion_audit.requirements.${COMPLETION_REQUIREMENT_FULL_AUTO_DEFAULT_OFF}`,
       },
     },
   ];

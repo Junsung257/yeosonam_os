@@ -10,6 +10,7 @@ import ConversionFunnel from '@/components/admin/marketing/ConversionFunnel';
 import BlendedTrendChart from '@/components/admin/marketing/BlendedTrendChart';
 import JarvisQuickAsk from '@/components/admin/JarvisQuickAsk';
 import type { AdCampaign } from '@/types/meta-ads';
+import { completionAuditTone, type CompletionAuditView } from '@/lib/ad-os-completion-view';
 import { fetchWithSessionRefresh } from '@/lib/fetch-with-session-refresh';
 import { getRoasGrade } from '@/lib/roas-calculator';
 
@@ -26,7 +27,6 @@ const STATUS_BADGE: Record<string, string> = {
 
 type MainTab = 'dashboard' | 'meta' | 'links' | 'optimize';
 type AdOsMode = 'recommendation' | 'approval' | 'limited_auto' | 'full_auto';
-type CompletionAuditStatus = 'ready' | 'needs_attention' | 'blocked';
 
 interface AdOsMainSummary {
   ok?: boolean;
@@ -51,15 +51,7 @@ interface AdOsMainSummary {
     full_auto_enabled: boolean;
   };
   enterprise_layer?: {
-    completion_audit?: {
-      status: CompletionAuditStatus;
-      readiness_score: number;
-      passed: number;
-      warnings: number;
-      failed: number;
-      top_blocker: string;
-      next_action: string;
-    };
+    completion_audit?: CompletionAuditView;
   };
 }
 
@@ -82,13 +74,6 @@ function adOsToneClass(tone: 'good' | 'warn' | 'bad' | 'neutral'): string {
   if (tone === 'warn') return 'bg-amber-50 text-amber-700';
   if (tone === 'bad') return 'bg-red-50 text-red-700';
   return 'bg-slate-100 text-slate-600';
-}
-
-function completionTone(status?: CompletionAuditStatus): 'good' | 'warn' | 'bad' | 'neutral' {
-  if (status === 'ready') return 'good';
-  if (status === 'blocked') return 'bad';
-  if (status === 'needs_attention') return 'warn';
-  return 'neutral';
 }
 
 export default function MarketingDashboardPage() {
@@ -310,7 +295,7 @@ export default function MarketingDashboardPage() {
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <p className="text-admin-sm font-semibold text-admin-text-2">Ad OS 완성도 감사</p>
-                        <span className={`rounded-full px-2 py-0.5 text-admin-xs font-semibold ${adOsToneClass(completionTone(completionAudit?.status))}`}>
+                        <span className={`rounded-full px-2 py-0.5 text-admin-xs font-semibold ${adOsToneClass(completionAuditTone(completionAudit?.status))}`}>
                           {completionAudit?.status ?? 'checking'}
                         </span>
                       </div>
