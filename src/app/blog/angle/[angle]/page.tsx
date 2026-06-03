@@ -28,6 +28,10 @@ interface BlogPost {
   travel_packages: { id: string; title: string; destination: string; price: number | null } | null;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 async function getPostsByAngle(angle: string): Promise<BlogPost[]> {
   if (!isSupabaseConfigured) return [];
   try {
@@ -50,24 +54,27 @@ export function generateStaticParams() {
   return Object.keys(ANGLE_META).map(angle => ({ angle }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ angle: string }> }): Promise<Metadata> {
-  const { angle } = await params;
+export async function generateMetadata({ params }: { params: Promise<{ angle?: string | string[] }> }): Promise<Metadata> {
+  const { angle: rawAngle } = await params;
+  const angle = getRouteParam(rawAngle);
+  const canonical = `${BASE_URL}/blog/angle/${encodeURIComponent(angle)}`;
   const meta = ANGLE_META[angle];
   if (!meta) return { title: '블로그' };
   return {
     title: `${meta.label} 여행 가이드 | 여소남`,
     description: `${meta.tagline}. 여소남이 엄선한 ${meta.label} 여행 콘텐츠 모음.`,
-    alternates: { canonical: `${BASE_URL}/blog/angle/${angle}` },
+    alternates: { canonical },
     openGraph: {
       title: `${meta.label} 여행 가이드 | 여소남`,
       description: meta.tagline,
-      url: `${BASE_URL}/blog/angle/${angle}`,
+      url: canonical,
     },
   };
 }
 
-export default async function AngleBlogPage({ params }: { params: Promise<{ angle: string }> }) {
-  const { angle } = await params;
+export default async function AngleBlogPage({ params }: { params: Promise<{ angle?: string | string[] }> }) {
+  const { angle: rawAngle } = await params;
+  const angle = getRouteParam(rawAngle);
   const meta = ANGLE_META[angle];
   if (!meta) notFound();
 

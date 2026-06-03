@@ -23,8 +23,22 @@ interface BlogPost {
   travel_packages: { id: string; title: string; destination: string; price: number | null; duration: string | null } | null;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[]; packages: { id: string; title: string; price: number | null }[] }> {
   if (!isSupabaseConfigured) return { posts: [], packages: [] };
+
+  const destination = safeDecodePathSegment(dest);
 
   try {
     // 블로그 글 (해당 목적지)
@@ -38,14 +52,14 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
       .limit(100);
 
     const posts = ((allPosts || []) as unknown as BlogPost[]).filter(
-      p => p.travel_packages?.destination?.includes(decodeURIComponent(dest))
+      p => p.travel_packages?.destination?.includes(destination)
     );
 
     // 관련 상품
     const { data: pkgData } = await supabaseAdmin
       .from('travel_packages')
       .select('id, title, price')
-      .ilike('destination', `%${decodeURIComponent(dest)}%`)
+      .ilike('destination', `%${destination}%`)
       .in('status', ['active', 'approved'])
       .order('price', { ascending: true })
       .limit(6);
@@ -56,24 +70,28 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
   }
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ dest: string }> }): Promise<Metadata> {
-  const { dest } = await params;
-  const destination = decodeURIComponent(dest);
+export async function generateMetadata({ params }: { params: Promise<{ dest?: string | string[] }> }): Promise<Metadata> {
+  const { dest: rawDest } = await params;
+  const dest = getRouteParam(rawDest);
+  const destination = safeDecodePathSegment(dest);
+  const canonical = `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`;
   return {
     title: `${destination} 여행 가이드`,
     description: `${destination} 여행의 모든 것. 가성비 패키지부터 럭셔리까지, 여소남이 엄선한 ${destination} 여행 정보를 만나보세요.`,
-    alternates: { canonical: `${BASE_URL}/blog/destination/${dest}` },
+    alternates: { canonical },
     openGraph: {
       title: `${destination} 여행 가이드 | 여소남`,
       description: `${destination} 여행 패키지 추천, 관광지 정보, 꿀팁 가이드`,
-      url: `${BASE_URL}/blog/destination/${dest}`,
+      url: canonical,
     },
   };
 }
 
-export default async function DestinationBlogPage({ params }: { params: Promise<{ dest: string }> }) {
-  const { dest } = await params;
-  const destination = decodeURIComponent(dest);
+export default async function DestinationBlogPage({ params }: { params: Promise<{ dest?: string | string[] }> }) {
+  const { dest: rawDest } = await params;
+  const dest = getRouteParam(rawDest);
+  const destination = safeDecodePathSegment(dest);
+  const canonical = `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`;
 
   return (
     <>
@@ -87,7 +105,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
             '@type': 'CollectionPage',
             name: `${destination} 여행 가이드`,
             description: `${destination} 여행 패키지 추천 및 관광 정보`,
-            url: `${BASE_URL}/blog/destination/${dest}`,
+            url: canonical,
             mainEntity: {
               '@type': 'ItemList',
               numberOfItems: 0,
