@@ -8,6 +8,7 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -77,7 +78,7 @@ const getHandler = async () => {
       entries: rows,
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : '처리 실패';
+    const message = sanitizeDbError(err);
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
