@@ -14,11 +14,11 @@
  *     }
  *   }
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 import { withAdminGuard } from '@/lib/admin-guard';
-import { getSecret } from '@/lib/secret-registry';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -81,9 +81,9 @@ function inferTenantId(payload: Record<string, unknown>): string | undefined {
   return undefined;
 }
 
-const getHandler = async (req: NextRequest) => {
+const getHandler = async (req: NextRequest): Promise<NextResponse> => {
   if (process.env.NODE_ENV !== 'production' && req.cookies.get('ys-dev-admin')?.value === '1') {
-    return NextResponse.json({
+    return apiResponse({
       user: {
         id: 'dev-admin',
         email: 'dev-admin@localhost',
@@ -94,7 +94,7 @@ const getHandler = async (req: NextRequest) => {
 
   const token = req.cookies.get('sb-access-token')?.value;
   if (!token) {
-    return NextResponse.json(
+    return apiResponse(
       { error: '세션 없음', user: null },
       { status: 401, headers: ADMIN_CACHE.noCache },
     );
@@ -102,7 +102,7 @@ const getHandler = async (req: NextRequest) => {
 
   const verified = await verifySupabaseAccessToken(token);
   if (!verified.ok || !verified.payload) {
-    return NextResponse.json(
+    return apiResponse(
       { error: '토큰 검증 실패', user: null },
       { status: 401, headers: ADMIN_CACHE.noCache },
     );
@@ -116,7 +116,7 @@ const getHandler = async (req: NextRequest) => {
     tenantId: inferTenantId(payload),
   };
 
-  return NextResponse.json({ user });
+  return apiResponse({ user });
 };
 
 export const GET = withAdminGuard(getHandler);
