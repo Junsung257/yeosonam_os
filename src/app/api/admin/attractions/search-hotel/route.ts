@@ -9,12 +9,14 @@
  * 결과 형식: { id, name, grade?, region?, photos[0]?.src_medium? }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const GET = withAdminGuard(async (req: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ hotels: [] });
+  if (!isSupabaseConfigured) return apiResponse({ hotels: [] });
 
   const { searchParams } = req.nextUrl;
   const q = (searchParams.get('q') ?? '').trim();
@@ -38,7 +40,7 @@ export const GET = withAdminGuard(async (req: NextRequest) => {
   }
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: error.message, hotels: [] }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error), hotels: [] }, { status: 500 });
 
   const hotels = ((data ?? []) as Array<{ id: string; name: string; short_desc: string | null; region: string | null; country: string | null; photos?: Array<{ src_medium?: string }>; aliases?: string[] }>)
     .map(h => ({
@@ -51,5 +53,5 @@ export const GET = withAdminGuard(async (req: NextRequest) => {
       aliases: h.aliases ?? [],
     }));
 
-  return NextResponse.json({ hotels });
+  return apiResponse({ hotels });
 });
