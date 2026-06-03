@@ -77,7 +77,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
   const slug = getRouteParam(rawRegion);
   const region = getRegionBySlug(slug);
   const canonical = slug ? `${BASE_URL}/destinations/region/${encodeURIComponent(slug)}` : `${BASE_URL}/destinations`;
-  if (!region) return { title: '여행지 | 여소남', alternates: { canonical }, robots: { index: false, follow: true } };
+  if (!region) return { title: '여행지', alternates: { canonical }, robots: { index: false, follow: true } };
   return {
     title: `${region.label} 여행 패키지 가이드`,
     description: `${region.label} 여행의 모든 것 — ${region.tagline}. ${region.featuredCities.slice(0, 4).join('·')} 등 운영팀 검증 패키지를 한곳에서.`,
