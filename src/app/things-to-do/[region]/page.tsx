@@ -23,6 +23,7 @@ export const dynamicParams = true;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 function safeDecodePathSegment(value: string): string {
   try {
@@ -170,7 +171,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
   const description = `${region} 여행 시 꼭 가봐야 할 명소 ${count}곳을 카테고리(자연·문화·먹거리·쇼핑)별로 정리. 운영팀이 검증한 추천 일정과 패키지까지 한 페이지에서.`;
   const firstAttraction = data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat()[0] : null;
   const firstImage = firstAttraction?.photos?.[0]?.src_large ?? firstAttraction?.photos?.[0]?.src_medium ?? null;
-  const ogImage = isSafeImageSrc(firstImage) ? firstImage.trim() : `${BASE_URL}/og-default.png`;
+  const ogImage = isSafeImageSrc(firstImage) ? firstImage.trim() : SOCIAL_IMAGE_URL;
   return {
     title,
     description,
