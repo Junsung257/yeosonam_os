@@ -45,6 +45,8 @@ const BID_STATUS_COLORS: Record<string, string> = {
 };
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 // ── 카운트다운 ────────────────────────────────────────────────────────────────
 function UnlockCountdown({ seconds }: { seconds: number }) {
@@ -78,7 +80,7 @@ function UnlockCountdown({ seconds }: { seconds: number }) {
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function TenantRfqsPage() {
   const params = useParams();
-  const tenantId = params.tenantId as string;
+  const tenantId = getRouteParam(params?.tenantId);
 
   const [rfqs, setRfqs] = useState<TenantRfq[]>([]);
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,12 @@ export default function TenantRfqsPage() {
   }, [tenantId]);
 
   async function fetchRfqs() {
+    if (!tenantId) {
+      setError('테넌트 ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/tenant/rfqs?tenant_id=${tenantId}`);
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');

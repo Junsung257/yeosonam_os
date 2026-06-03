@@ -88,6 +88,8 @@ const initialForm: ProposalForm = {
 };
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 // ── 카운트다운 ────────────────────────────────────────────────────────────────
 function Countdown({ deadline, onExpire }: { deadline: string; onExpire?: () => void }) {
@@ -200,8 +202,8 @@ function ChecklistRow({
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function TenantRfqDetailPage() {
   const params = useParams();
-  const tenantId = params.tenantId as string;
-  const rfqId    = params.rfqId    as string;
+  const tenantId = getRouteParam(params?.tenantId);
+  const rfqId    = getRouteParam(params?.rfqId);
 
   const [rfq,         setRfq]         = useState<RfqDetail | null>(null);
   const [bid,         setBid]         = useState<BidInfo | null>(null);
@@ -215,6 +217,12 @@ export default function TenantRfqDetailPage() {
   const [form,        setForm]        = useState<ProposalForm>(initialForm);
 
   const fetchData = useCallback(async () => {
+    if (!tenantId || !rfqId) {
+      setError('테넌트 또는 RFQ ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/tenant/rfqs/${rfqId}?tenant_id=${tenantId}`);
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
@@ -236,6 +244,8 @@ export default function TenantRfqDetailPage() {
 
   // 입찰 참여 (선착순 슬롯 확보)
   async function claimBid() {
+    if (!tenantId || !rfqId) return;
+
     setClaiming(true);
     try {
       const res = await fetch(`/api/rfq/${rfqId}/bid`, {
@@ -278,6 +288,11 @@ export default function TenantRfqDetailPage() {
   async function submitProposal(e: React.FormEvent) {
     e.preventDefault();
     setSubmitError('');
+
+    if (!tenantId || !rfqId) {
+      setSubmitError('테넌트 또는 RFQ ID가 올바르지 않습니다.');
+      return;
+    }
 
     if (!bid) return;
 
