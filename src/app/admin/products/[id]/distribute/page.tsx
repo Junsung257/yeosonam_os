@@ -49,11 +49,15 @@ const PLATFORM_META: Record<string, { label: string; color: string; icon: string
   kakao_channel:     { label: 'Kakao Channel',   color: 'from-yellow-400 to-yellow-600', icon: 'KK', api: 'kakao-channel' },
 };
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
 export default function DistributePage() {
-  const params = useParams<{ id: string }>();
+  const params = useParams<{ id?: string | string[] }>();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const id = typeof params?.id === 'string' ? params.id : '';
+  const id = getRouteParam(params?.id);
   const encodedId = encodeURIComponent(id);
   // V2 Studio 에서 넘어올 때 ?card_news_id=XXX 로 들어옴. 상품이 없거나 고아 참조일 때 이 카드뉴스로 fallback.
   const cardNewsIdFromQuery = searchParams?.get('card_news_id')?.trim() || null;
