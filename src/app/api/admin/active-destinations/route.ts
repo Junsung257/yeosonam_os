@@ -1,9 +1,10 @@
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 
 const getHandler = async () => {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+  if (!isSupabaseConfigured) return apiResponse({ data: [] });
 
   const { data, error } = await supabaseAdmin
     .from('active_destinations')
@@ -11,8 +12,8 @@ const getHandler = async () => {
     .order('package_count', { ascending: false })
     .limit(200);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ data });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ data });
 };
 
 export const GET = withAdminGuard(getHandler);
