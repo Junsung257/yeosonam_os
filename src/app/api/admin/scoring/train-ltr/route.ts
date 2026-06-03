@@ -1,55 +1,44 @@
-/**
- * POST /api/admin/scoring/train-ltr
- *
- * LTR (Learning to Rank) 학습 트리거.
- *
- * Phase 3 (목표): v_ltr_signals → LightFM/XGBoost listwise rerank 학습 → scoring_policies row 추가
- *
- * 외부 서비스 연동 옵션:
- *   1) **Vercel Sandbox** (추천) — Firecracker microVM에서 Python LightFM 실행
- *   2) **Vercel Workflow** — 학습 작업 durable orchestration
- *   3) **AWS SageMaker** — 본격 ML 인프라
- *   4) **Modal/Replicate** — Python 함수 SaaS
- *
- * 현재 stub — env LTR_TRAINING_SERVICE_URL 있으면 외부 호출, 없으면 데이터만 export.
- */
-import { NextResponse } from 'next/server';
-import { getSecret } from '@/lib/secret-registry';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { apiResponse } from '@/lib/api-response';
 import { postAlert } from '@/lib/admin-alerts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { getSecret } from '@/lib/secret-registry';
 import { logError } from '@/lib/sentry-logger';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
 const postHandler = async () => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'supabase 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
+  }
 
-  // 학습 데이터 양 체크
-  const { count } = await supabaseAdmin
+  const { count, error: countError } = await supabaseAdmin
     .from('v_ltr_signals')
     .select('*', { count: 'exact', head: true })
     .gte('label_relevant', 0);
 
+  if (countError) return apiResponse({ error: sanitizeDbError(countError) }, { status: 500 });
+
   const samples = count ?? 0;
   if (samples < 1000) {
-    return NextResponse.json({
-      error: 'LTR 학습 샘플 부족',
+    return apiResponse({
+      error: 'LTR_TRAINING_SAMPLES_INSUFFICIENT',
       have: samples,
       need: 1000,
-      message: '자비스/카드/뱃지 노출이 더 누적되어야 학습 가능. 매주 v_recommendation_funnel 모니터링.',
+      message: 'LTR training requires at least 1000 labeled samples.',
     }, { status: 400 });
   }
 
-  // 학습 데이터 export (LATERAL join으로 가벼운 셈플링)
-  const { data: signals } = await supabaseAdmin
+  const { data: signals, error: signalsError } = await supabaseAdmin
     .from('v_ltr_signals')
     .select('package_id, intent, recommended_rank, label_relevant, label_booking, list_price, effective_price, group_size, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, topsis_score')
     .order('recommended_at', { ascending: false })
     .limit(50000);
 
-  // 외부 학습 서비스 연동 (env 있을 때만)
+  if (signalsError) return apiResponse({ error: sanitizeDbError(signalsError) }, { status: 500 });
+
   const serviceUrl = process.env.LTR_TRAINING_SERVICE_URL;
   const ltrTrainingSecret = getSecret('LTR_TRAINING_SECRET');
   if (serviceUrl) {
@@ -62,46 +51,53 @@ const postHandler = async () => {
         },
         body: JSON.stringify({ signals: signals ?? [], target: 'lightfm' }),
       });
-      if (!res.ok) throw new Error(`LTR service ${res.status}: ${await res.text()}`);
+
+      if (!res.ok) throw new Error(`LTR_TRAINING_SERVICE_FAILED_${res.status}`);
+
       const result = await res.json() as { weights?: Record<string, number>; auc?: number };
-      // 학습된 가중치를 새 정책 row로 박제 (사장님이 활성 전환 결정)
       if (result.weights) {
         const newVersion = `ltr-v${Date.now()}`;
-        const { data: created } = await supabaseAdmin.from('scoring_policies').insert({
-          version: newVersion, is_active: false,
+        const { data: created, error: createError } = await supabaseAdmin.from('scoring_policies').insert({
+          version: newVersion,
+          is_active: false,
           weights: result.weights,
-          // base 정책의 hotel_premium 등 복사
-          hotel_premium: {}, flight_premium: { direct: 50000, transit: 0 },
-          hedonic_coefs: {}, market_rates: {}, fallback_rules: {},
-          notes: `LTR 학습 — samples ${samples}, AUC ${result.auc ?? 'N/A'}`,
+          hotel_premium: {},
+          flight_premium: { direct: 50000, transit: 0 },
+          hedonic_coefs: {},
+          market_rates: {},
+          fallback_rules: {},
+          notes: `LTR training samples ${samples}, AUC ${result.auc ?? 'N/A'}`,
         }).select('id, version').single();
+
+        if (createError) return apiResponse({ error: sanitizeDbError(createError) }, { status: 500 });
+
         await postAlert({
-          category: 'general', severity: 'warning',
-          title: `LTR 학습 완료: ${newVersion}`,
-          message: `${samples}건 학습. AUC ${result.auc ?? 'N/A'}. /admin/scoring 에서 검토 후 활성 전환.`,
-          ref_type: 'policy', ref_id: created?.id ?? '',
+          category: 'general',
+          severity: 'warning',
+          title: `LTR training complete: ${newVersion}`,
+          message: `${samples} samples trained. AUC ${result.auc ?? 'N/A'}. Review and activate from /admin/scoring.`,
+          ref_type: 'policy',
+          ref_id: created?.id ?? '',
           meta: { samples, auc: result.auc, weights: result.weights },
         });
-        return NextResponse.json({ ok: true, samples, new_policy: created, auc: result.auc });
+
+        return apiResponse({ ok: true, samples, new_policy: created, auc: result.auc });
       }
-      return NextResponse.json({ ok: true, samples, result });
+
+      return apiResponse({ ok: true, samples, result });
     } catch (e) {
       logError('[admin/scoring/train-ltr] training failed', e);
-      return NextResponse.json(
-        { error: e instanceof Error ? e.message : 'failed', samples },
-        { status: 500 },
-      );
+      return apiResponse({ error: sanitizeDbError(e), samples }, { status: 500 });
     }
   }
 
-  // 외부 서비스 미설정 — export only
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     stub: true,
     samples,
-    message: 'LTR_TRAINING_SERVICE_URL 미설정 — 학습 데이터 export만 반환. Vercel Sandbox/Workflow에 LightFM 서비스 띄우고 env 설정 시 자동 학습.',
+    message: 'LTR_TRAINING_SERVICE_URL is not configured; returning exported training data preview only.',
     signals_preview: (signals ?? []).slice(0, 5),
   });
-}
+};
 
 export const POST = withAdminGuard(postHandler);
