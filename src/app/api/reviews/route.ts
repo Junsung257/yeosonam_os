@@ -1,18 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-/**
- * 고객 리뷰 제출 API
- *   POST /api/reviews
- *   - booking_id 로 identity 검증 (bookings.lead_customer_id 와 매칭)
- *   - post_trip_reviews INSERT (status='pending' — 어드민 승인 후 노출)
- *   - 완료 후 refresh_package_rating RPC 로 avg_rating 캐시 갱신
- *
- * 익명 후기 허용 (고객명 부분 마스킹은 표시 단계에서).
- */
-
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
@@ -24,12 +16,11 @@ export async function POST(request: NextRequest) {
       would_recommend, would_book_again,
     } = body;
 
-    if (!booking_id) return NextResponse.json({ error: 'booking_id 필수' }, { status: 400 });
+    if (!booking_id) return apiResponse({ error: 'booking_id 필수' }, { status: 400 });
     if (!overall_rating || overall_rating < 1 || overall_rating > 5) {
-      return NextResponse.json({ error: '전체 평점 1~5 필수' }, { status: 400 });
+      return apiResponse({ error: '전체 평점 1~5 필수' }, { status: 400 });
     }
 
-    // booking 유효성 + 중복 후기 체크 병렬 (둘 다 booking_id에만 의존, 독립)
     const [bookingRes, existingRes] = await Promise.all([
       supabaseAdmin
         .from('bookings')
@@ -43,14 +34,13 @@ export async function POST(request: NextRequest) {
         .limit(1),
     ]);
 
-    if (!bookingRes.data?.[0]) return NextResponse.json({ error: '예약 없음' }, { status: 404 });
+    if (!bookingRes.data?.[0]) return apiResponse({ error: '예약 없음' }, { status: 404 });
     const b = bookingRes.data[0] as { id: string; product_id: string | null; lead_customer_id: string | null; status: string };
 
     if (existingRes.data && existingRes.data.length > 0) {
-      return NextResponse.json({ error: '이미 후기를 작성하셨습니다.' }, { status: 409 });
+      return apiResponse({ error: '이미 후기를 작성하셨습니다.' }, { status: 409 });
     }
 
-    // INSERT
     const { data, error } = await supabaseAdmin.from('post_trip_reviews').insert({
       booking_id,
       customer_id: b.lead_customer_id,
@@ -75,19 +65,18 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    // 평점 캐시 갱신은 어드민 승인 후에 하는 게 원칙이지만, 접수 즉시 예비 집계
     if (b.product_id) {
       void supabaseAdmin.rpc('refresh_package_rating', { p_package_id: b.product_id });
     }
 
-    return NextResponse.json({ ok: true, review_id: data?.[0]?.id }, { status: 201 });
+    return apiResponse({ ok: true, review_id: data?.[0]?.id }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '제출 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, '제출 실패') }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ reviews: [] });
+  if (!isSupabaseConfigured) return apiResponse({ reviews: [] });
 
   const { searchParams } = request.nextUrl;
   const packageId = searchParams.get('package_id');
@@ -107,10 +96,11 @@ export async function GET(request: NextRequest) {
 
     const { data, error } = await q;
     if (error) throw error;
-    return NextResponse.json({ reviews: data || [] }, {
-      headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' },
-    });
+    return apiResponse(
+      { reviews: data || [] },
+      { headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=600' } },
+    );
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, '조회 실패') }, { status: 500 });
   }
 }
