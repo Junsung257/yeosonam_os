@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withCronGuard } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
 
@@ -12,18 +14,15 @@ const TIER_BY_BOOKINGS = [
   { min: 10, tier: 2, reward: 30000 },
 ];
 
-export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, skipped: 'DB 미설정' });
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
-  }
+const getHandler = async (_request: NextRequest) => {
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, skipped: 'DB 미설정' });
   try {
 
     const { data: affiliates, error } = await supabaseAdmin
       .from('affiliates')
       .select('id, name, grade, booking_count, is_active')
       .eq('is_active', true);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
     let promoted = 0;
     const rewardEvents: Array<{ affiliate_id: string; to_tier: number; reward: number }> = [];
@@ -78,13 +77,15 @@ export async function GET(request: NextRequest) {
     }
 
     await reportAffiliateCronSuccess('affiliate-tier-rewards', { promoted });
-    return NextResponse.json({ ok: true, promoted, reward_events: rewardEvents });
+    return apiResponse({ ok: true, promoted, reward_events: rewardEvents });
   } catch (err) {
     await reportAffiliateCronFailure('affiliate-tier-rewards', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'affiliate tier rewards failed' },
+    return apiResponse(
+      { error: sanitizeDbError(err, 'affiliate tier rewards failed') },
       { status: 500 },
     );
   }
-}
+};
+
+export const GET = withCronGuard(getHandler);
 
