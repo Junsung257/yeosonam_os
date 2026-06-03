@@ -6,8 +6,10 @@
  * 사장님이 /admin/jarvis 결재함에서 승인하면
  * executor의 approve_monthly_settlement 핸들러가 settlements를 READY로 UPSERT.
  */
-import { NextResponse } from 'next/server';
-import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withCronGuard } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logError } from '@/lib/sentry-logger';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
@@ -17,12 +19,9 @@ import {
 } from '@/lib/affiliate/settlement-calc';
 
 export const dynamic = 'force-dynamic';
-export async function GET(request: Request) {
+const getHandler = async (_request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
-  }
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   try {
@@ -41,7 +40,7 @@ interface AffiliateRow {
     const affiliates = rawAffiliates as AffiliateRow[] | null;
 
     if (!affiliates || affiliates.length === 0) {
-      return NextResponse.json({ message: '활성 어필리에이트 없음', period });
+      return apiResponse({ message: '활성 어필리에이트 없음', period });
     }
 
     const drafted: string[] = [];
@@ -112,7 +111,7 @@ interface AffiliateRow {
       carried: carried.length,
       skipped: skipped.length,
     });
-    return NextResponse.json({
+    return apiResponse({
       period,
       drafted: drafted.length,
       carried: carried.length,
@@ -122,9 +121,11 @@ interface AffiliateRow {
   } catch (err) {
     logError('[cron/affiliate-settlement-draft] settlement draft failed', err);
     await reportAffiliateCronFailure('affiliate-settlement-draft', err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '정산 기안 크론 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err, '정산 기안 크론 실패') },
       { status: 500 },
     );
   }
-}
+};
+
+export const GET = withCronGuard(getHandler);
