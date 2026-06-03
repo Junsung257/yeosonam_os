@@ -18,6 +18,10 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
+interface ReviewMetadataBookingRow {
+  travel_packages: { title?: string | null } | null;
+}
+
 async function getBookingInfo(bookingId: string) {
   if (!isSupabaseConfigured) return null;
 
@@ -68,13 +72,24 @@ export async function generateMetadata({
     };
   }
 
-  const { data } = await supabaseAdmin
-    .from('bookings')
-    .select('travel_packages(title)')
-    .eq('id', bookingId)
-    .limit(1);
+  let data: ReviewMetadataBookingRow[] | null = null;
+  try {
+    const result = await supabaseAdmin
+      .from('bookings')
+      .select('travel_packages(title)')
+      .eq('id', bookingId)
+      .limit(1);
+    data = result.data as ReviewMetadataBookingRow[] | null;
+  } catch {
+    return {
+      title: DEFAULT_REVIEW_TITLE,
+      description: DEFAULT_REVIEW_DESCRIPTION,
+      alternates: { canonical },
+      robots: { index: false, follow: false },
+    };
+  }
 
-  const pkg = data?.[0]?.travel_packages as { title?: string } | null;
+  const pkg = data?.[0]?.travel_packages ?? null;
   const title = pkg?.title ? `${pkg.title} 후기 | 여소남` : DEFAULT_REVIEW_TITLE;
 
   return {
