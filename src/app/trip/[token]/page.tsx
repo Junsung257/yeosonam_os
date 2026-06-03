@@ -6,11 +6,16 @@ import GuestTripPortalClient from '@/components/booking/GuestTripPortalClient';
 
 export const dynamic = 'force-dynamic';
 
-export default async function GuestTripPage({ params }: { params: Promise<{ token: string }> }) {
-  const { token } = await params;
-  if (!isSupabaseConfigured || !token?.trim()) notFound();
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
 
-  const resolved = await resolveGuestPortalBookingId(token.trim());
+export default async function GuestTripPage({ params }: { params: Promise<{ token?: string | string[] }> }) {
+  const { token: rawToken } = await params;
+  const token = getRouteParam(rawToken);
+  if (!isSupabaseConfigured || !token) notFound();
+
+  const resolved = await resolveGuestPortalBookingId(token);
   if (!resolved) notFound();
 
   await touchGuestPortalToken(resolved.tokenRowId).catch(() => {});
@@ -39,7 +44,7 @@ export default async function GuestTripPage({ params }: { params: Promise<{ toke
 
   return (
     <GuestTripPortalClient
-      portalToken={token.trim()}
+      portalToken={token}
       snapshot={{
         booking_no: b.booking_no ?? null,
         package_title: b.package_title ?? null,
