@@ -1,5 +1,7 @@
-import { type NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { withTimeout } from '@/lib/promise-timeout';
 
@@ -25,14 +27,14 @@ function sum(values: number[]) {
   return values.reduce((total, value) => total + value, 0);
 }
 
-async function getHandler(request: NextRequest) {
+async function getHandler(request: NextRequest): Promise<NextResponse> {
   const days = Math.min(Math.max(Number(request.nextUrl.searchParams.get('days') ?? 14), 2), 60);
   const since = new Date();
   since.setDate(since.getDate() - days + 1);
   const sinceDate = since.toISOString().slice(0, 10);
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ snapshots: [], trend: [], skipped: 'Supabase is not configured' });
+    return apiResponse({ snapshots: [], trend: [], skipped: 'Supabase is not configured' });
   }
 
   const { data, error } = await withTimeout(
@@ -51,15 +53,16 @@ async function getHandler(request: NextRequest) {
   }));
 
   if (error) {
-    const missing = error.code === '42P01' || error.message.includes('marketing_asset_group_snapshots');
-    return NextResponse.json({
+    const safeError = sanitizeDbError(error, 'Failed to load marketing snapshots');
+    const missing = error.code === '42P01' || safeError.includes('marketing_asset_group_snapshots');
+    return apiResponse({
       checked_at: new Date().toISOString(),
       days,
       snapshots: [],
       trend: [],
       summary: null,
       degraded: true,
-      error: missing ? 'marketing_asset_group_snapshots migration is not applied yet' : error.message,
+      error: missing ? 'marketing_asset_group_snapshots migration is not applied yet' : safeError,
     });
   }
 
@@ -85,7 +88,7 @@ async function getHandler(request: NextRequest) {
   const first = trend[0];
   const latest = trend[trend.length - 1];
 
-  return NextResponse.json({
+  return apiResponse({
     checked_at: new Date().toISOString(),
     days,
     trend,
