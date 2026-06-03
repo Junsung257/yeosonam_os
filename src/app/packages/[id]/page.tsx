@@ -26,6 +26,14 @@ function getPackageUrl(id: string): string {
   return `${BASE_URL}/packages/${encodeURIComponent(id.trim())}`;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
 //   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
@@ -56,7 +64,10 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
       .in('status', ['active', 'approved'])
       .order('updated_at', { ascending: false })
       .limit(50);
-    return ((data ?? []) as Array<{ id: string }>).map((p) => ({ id: p.id }));
+    return ((data ?? []) as Array<{ id?: unknown }>)
+      .map((p) => (typeof p.id === 'string' ? p.id.trim() : ''))
+      .filter((id): id is string => id.length > 0)
+      .map((id) => ({ id }));
   } catch {
     return [];
   }
@@ -88,12 +99,12 @@ const DETAIL_FIELDS = `
 export async function generateMetadata({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id?: string | string[] }>;
 }): Promise<Metadata> {
   const { id: rawId } = await params;
-  const id = rawId.trim();
+  const id = getRouteParam(rawId);
   const canonical = getPackageUrl(id);
-  if (!id || !isSupabaseConfigured) {
+  if (!id || !isUuid(id) || !isSupabaseConfigured) {
     return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
   }
   const sb = supabaseAdmin;
@@ -141,11 +152,11 @@ export async function generateMetadata({
 export default async function PackageDetailPage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: Promise<{ id?: string | string[] }>;
 }) {
   const { id: rawId } = await params;
-  const id = rawId.trim();
-  if (!id) notFound();
+  const id = getRouteParam(rawId);
+  if (!id || !isUuid(id)) notFound();
   const sb = supabaseAdmin;
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.

@@ -33,6 +33,10 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
 function resolveOgImage(candidate: unknown) {
   if (isSafeImageSrc(candidate)) {
     const imageUrl = candidate.trim();
@@ -50,7 +54,7 @@ export async function generateMetadata({
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
   const canonical = getPackageUrl(id);
-  const pkg = id ? await safeGetPackage(id) : null;
+  const pkg = id && isUuid(id) ? await safeGetPackage(id) : null;
   if (!pkg) {
     return {
       title: '상품을 찾을 수 없습니다',
