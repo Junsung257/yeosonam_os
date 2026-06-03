@@ -46,7 +46,8 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
   const slug = getRouteParam(params.slug);
   const baseUrl = siteBaseUrl();
   if (!rawCode || !slug) {
-    const title = '여소남 추천 여행';
+    const title = '추천 여행';
+    const socialTitle = '여소남 추천 여행';
     const imageUrl = socialImageUrl();
     const canonical = rawCode
       ? `${baseUrl}/r/${encodeURIComponent(rawCode)}`
@@ -57,14 +58,14 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
       robots: { index: false, follow: false },
       alternates: { canonical },
       openGraph: {
-        title,
+        title: socialTitle,
         url: canonical,
         type: 'website',
         images: [{ url: imageUrl, width: 1200, height: 630 }],
       },
       twitter: {
         card: 'summary_large_image',
-        title,
+        title: socialTitle,
         images: [imageUrl],
       },
     };
@@ -78,7 +79,8 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
   const canonicalUrl = `${baseUrl}/r/${encodedCode}/${encodedSlug}`;
   const ogUrl = `${baseUrl}/api/og/affiliate?code=${encodeURIComponent(metadataCode)}&pkg=${encodedSlug}`;
 
-  let title = `여소남 추천 여행 — ${metadataCode}`;
+  let title = `추천 여행 — ${metadataCode}`;
+  let socialTitle = `여소남 추천 여행 — ${metadataCode}`;
   let description = '여소남 제휴 콘텐츠 · 추천 보상 포함 (광고)';
   if (isSupabaseConfigured) {
     try {
@@ -89,7 +91,9 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
         .maybeSingle();
       if (pkg) {
         const p = pkg as { title?: string; destination?: string; product_summary?: string };
-        title = `${p.title || title} · ${metadataCode} × 여소남`;
+        const packageTitle = p.title || title;
+        title = `${packageTitle} · ${metadataCode}`;
+        socialTitle = `${packageTitle} · ${metadataCode} × 여소남`;
         description = (p.product_summary || `${p.destination || ''} 여행 패키지`) + ' · 여소남 제휴 콘텐츠 (광고)';
       }
     } catch { /* */ }
@@ -99,7 +103,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
     title,
     description,
     openGraph: {
-      title,
+      title: socialTitle,
       description,
       images: [{ url: ogUrl, width: 1200, height: 630 }],
       url: canonicalUrl,
@@ -107,7 +111,7 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: socialTitle,
       description,
       images: [ogUrl],
     },
