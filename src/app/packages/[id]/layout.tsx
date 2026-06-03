@@ -1,7 +1,11 @@
 import type { Metadata } from 'next';
 import { getPackageById } from '@/lib/supabase';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://www.yeosonam.com'
+).replace(/\/+$/, '');
 
 // 2026-05-18 박제 (ERR-layout-page-source-drift):
 //   기존 fetch('/api/packages?id=...') 는 page.tsx 의 supabaseAdmin 직접 쿼리 와
@@ -11,14 +15,41 @@ async function getPackage(id: string) {
   return await getPackageById(id);
 }
 
+async function safeGetPackage(id: string) {
+  try {
+    return await getPackage(id);
+  } catch (error) {
+    console.error('[packages/layout] generateMetadata failed', { id, error });
+    return null;
+  }
+}
+
+function getPackageUrl(id: string) {
+  return `${BASE_URL}/packages/${encodeURIComponent(id)}`;
+}
+
+function resolveOgImage(candidate: string | null) {
+  if (candidate && /^https?:\/\//i.test(candidate)) return candidate;
+  if (candidate?.startsWith('/')) return `${BASE_URL}${candidate}`;
+  return `${BASE_URL}/og-image.png`;
+}
+
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  const { id } = await params;
-  const pkg = await getPackage(id);
-  if (!pkg) return { title: '상품을 찾을 수 없습니다' };
+  const { id: rawId } = await params;
+  const id = rawId.trim();
+  const canonical = getPackageUrl(id);
+  const pkg = id ? await safeGetPackage(id) : null;
+  if (!pkg) {
+    return {
+      title: '상품을 찾을 수 없습니다',
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
 
   // 제목: 랜드사명 제거, 여소남 브랜딩
   const rawTitle = (pkg.title ?? '여행 상품') as string;
@@ -60,9 +91,7 @@ export async function generateMetadata({
 
   const heroCandidate: string | null = firstItineraryPhoto;
 
-  const ogImage = heroCandidate
-    ? (heroCandidate.startsWith('http') ? heroCandidate : `${BASE_URL}${heroCandidate}`)
-    : `${BASE_URL}/og-image.png`;
+  const ogImage = resolveOgImage(heroCandidate);
 
   return {
     title,
@@ -70,7 +99,7 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
-      url: `${BASE_URL}/packages/${id}`,
+      url: canonical,
       siteName: '여소남',
       type: 'website',
       images: [{ url: ogImage, width: 1200, height: 630, alt: rawTitle }],
@@ -81,7 +110,7 @@ export async function generateMetadata({
       description,
       images: [ogImage],
     },
-    alternates: { canonical: `${BASE_URL}/packages/${id}` },
+    alternates: { canonical },
   };
 }
 
