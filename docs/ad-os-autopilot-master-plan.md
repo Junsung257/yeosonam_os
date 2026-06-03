@@ -1087,3 +1087,11 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - The live-spend preflight being blocked is treated as a safety pass when it proves `live_write_allowed=false`, `external_api_write=false`, `live_spend_krw=0`, and `full_auto_allowed=false`.
 - This gives operators one staging endpoint to confirm the current system is safe to inspect before browser QA or platform dry-run work.
 - The route does not mutate Supabase, does not call Naver/Google/Meta/Kakao, and does not enable any paid execution path.
+
+## 69. 2026-06-03 Ad OS V661-V680 staging validation UX
+
+- Surfaced the staging validation package in `/admin/ad-os`.
+- The card shows validation status, readiness score, pass/warn/fail counts, live spend, top blocker, next action, and the first six gate checks.
+- It includes a manual `Validation check` action and a direct JSON drilldown to `/api/admin/ad-os/staging-validation`.
+- The visible safety pill keeps DB write, external write, and full-auto state in the operator's first-screen evidence flow.
+- This is a read-only dashboard addition and does not change automation level, mutate Supabase, or write to any ad platform.
