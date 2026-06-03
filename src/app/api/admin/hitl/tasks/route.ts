@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // frozen agent_tasks + jarvis_pending_actions 목록 조회 (에스컬레이션 대시보드용)
 const getHandler = async (request: NextRequest) => {
@@ -59,7 +60,7 @@ const getHandler = async (request: NextRequest) => {
     return NextResponse.json({ tasks });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }

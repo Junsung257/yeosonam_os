@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 
 const RISK_EMOJI: Record<string, string> = {
   critical: '🚨',
@@ -43,7 +45,7 @@ const postHandler = async (request: NextRequest) => {
     }
 
     const emoji = RISK_EMOJI[riskLevel] ?? '⚠️';
-    const shortMsg = message ? message.slice(0, 200) : '(메시지 없음)';
+    const shortMsg = safeRawTextExcerpt(message, 200) ?? '(message omitted)';
 
     await sendSlackAlert(
       `${emoji} [JARVIS 에스컬레이션] 위험도: ${riskLevel.toUpperCase()} — 즉시 확인 필요`,
@@ -61,7 +63,7 @@ const postHandler = async (request: NextRequest) => {
     return NextResponse.json({ ok: true, notified: true });
   } catch (err) {
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }
