@@ -1,13 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildEnterpriseTenantReport } from '@/lib/ad-os-v19-v25';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 export const GET = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
@@ -48,7 +50,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
   const firstError = factsRes.error || budgetRes.error || searchTermRes.error || keywordClusterRes.error || mutationRes.error;
   if (firstError) {
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(firstError) }, { status: 500 });
   }
 
   const facts = factsRes.data || [];
@@ -70,7 +72,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
     keywordClusters: keywordClusters.length,
   });
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     tenant_id: tenantId || null,
     period: { from, to },
@@ -81,7 +83,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -102,7 +104,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     headers: request.headers,
   });
   const json = await getRes.json();
-  if (!getRes.ok || !json.ok) return NextResponse.json(json, { status: getRes.status });
+  if (!getRes.ok || !json.ok) return apiResponse(json, { status: getRes.status });
 
   const { data, error } = await supabaseAdmin
     .from('ad_os_tenant_reports')
@@ -122,8 +124,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .select('id')
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({
+  if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({
     ...json,
     persisted: true,
     report_id: data.id,
