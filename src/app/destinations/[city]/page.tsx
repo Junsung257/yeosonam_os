@@ -35,7 +35,19 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
   }
 }
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://www.yeosonam.com'
+).replace(/\/+$/, '');
+
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
 
 interface DestinationMeta {
   tagline: string | null;
@@ -241,13 +253,14 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ city: string }> }): Promise<Metadata> {
   const { city } = await params;
-  const decoded = decodeURIComponent(city);
+  const decoded = safeDecodePathSegment(city).trim();
   const encodedCity = encodeDestinationPathSegment(decoded);
+  const canonical = encodedCity ? `${BASE_URL}/destinations/${encodedCity}` : `${BASE_URL}/destinations`;
   return {
     title: `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`,
     description: `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`,
     alternates: {
-      canonical: `${BASE_URL}/destinations/${encodedCity}`,
+      canonical,
       types: {
         'application/rss+xml': [
           { url: `${BASE_URL}/destinations/${encodedCity}/rss.xml`, title: `${decoded} 여행 매거진 RSS` },
@@ -257,7 +270,7 @@ export async function generateMetadata({ params }: { params: Promise<{ city: str
     openGraph: {
       title: `${decoded} 여행 완벽 가이드 | 여소남`,
       description: `${decoded} 여행의 모든 것. 운영팀 검증 관광지와 엄선 패키지까지.`,
-      url: `${BASE_URL}/destinations/${encodedCity}`,
+      url: canonical,
       type: 'website',
     },
   };
@@ -274,7 +287,8 @@ async function renderPillarBody(md: string): Promise<string> {
 
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city: string }> }) {
   const { city } = await params;
-  const decoded = decodeURIComponent(city);
+  const decoded = safeDecodePathSegment(city).trim();
+  if (!decoded) notFound();
   const encodedCity = encodeDestinationPathSegment(decoded);
   let data: PillarData | null = null;
   try {
