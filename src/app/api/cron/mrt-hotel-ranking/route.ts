@@ -6,8 +6,9 @@
  * Vercel cron: 매주 월요일 11:00 KST (02:00 UTC)
  */
 
-import { NextResponse } from 'next/server';
 import { withCronGuard } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const TOP_CITIES = [
   '다낭', '나트랑', '방콕', '도쿄', '오사카',
@@ -31,9 +32,15 @@ const getHandler = async (request: Request) => {
           body: JSON.stringify({ city, tier, count: 5, publish: true }),
         });
         const json = await res.json() as { ok?: boolean; slug?: string; error?: string };
-        results.push({ city, tier, ok: !!json.ok, slug: json.slug, error: json.error });
+        results.push({
+          city,
+          tier,
+          ok: !!json.ok,
+          slug: json.slug,
+          error: json.error ? sanitizeDbError(json.error) : undefined,
+        });
       } catch (err) {
-        results.push({ city, tier, ok: false, error: err instanceof Error ? err.message : '실패' });
+        results.push({ city, tier, ok: false, error: sanitizeDbError(err, 'Hotel ranking failed') });
       }
       // Rate limit 방어
       await new Promise(r => setTimeout(r, 2000));
@@ -43,7 +50,7 @@ const getHandler = async (request: Request) => {
   const ok  = results.filter(r => r.ok).length;
   const err = results.filter(r => !r.ok).length;
 
-  return NextResponse.json({ ok, err, results });
+  return apiResponse({ ok, err, results });
 }
 
 export const GET = withCronGuard(getHandler);
