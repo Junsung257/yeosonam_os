@@ -5,10 +5,12 @@
  * utm_content(세션 ID) 기반으로 free_travel_sessions와 매칭.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getMrtRevenues } from '@/lib/mrt-partner-api';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const getHandler = async (request: NextRequest) => {
   const { searchParams } = request.nextUrl;
@@ -26,7 +28,7 @@ const getHandler = async (request: NextRequest) => {
     ]);
 
     if (!revenues) {
-      return NextResponse.json({ error: 'MRT API 조회 실패. API Key를 확인하세요.' }, { status: 502 });
+      return apiResponse({ error: 'MRT API 조회 실패. API Key를 확인하세요.' }, { status: 502 });
     }
 
     // utmContent(세션 ID)로 세션 매칭
@@ -36,7 +38,7 @@ const getHandler = async (request: NextRequest) => {
       session: item.utmContent ? (sessionMap.get(item.utmContent) ?? null) : null,
     }));
 
-    return NextResponse.json({
+    return apiResponse({
       items:      enriched,
       totalCount: revenues.totalCount,
       page:       revenues.page,
@@ -44,7 +46,7 @@ const getHandler = async (request: NextRequest) => {
       to:         endDate,
     });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '처리 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
 }
 
