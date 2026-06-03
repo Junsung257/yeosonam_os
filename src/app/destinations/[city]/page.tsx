@@ -49,6 +49,10 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 interface DestinationMeta {
   tagline: string | null;
   hero_tagline: string | null;
@@ -251,11 +255,20 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   };
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ city: string }> }): Promise<Metadata> {
-  const { city } = await params;
+export async function generateMetadata({ params }: { params: Promise<{ city?: string | string[] }> }): Promise<Metadata> {
+  const { city: rawCity } = await params;
+  const city = getRouteParam(rawCity);
   const decoded = safeDecodePathSegment(city).trim();
   const encodedCity = encodeDestinationPathSegment(decoded);
   const canonical = encodedCity ? `${BASE_URL}/destinations/${encodedCity}` : `${BASE_URL}/destinations`;
+  if (!decoded) {
+    return {
+      title: '여행지 가이드 | 여소남',
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
+
   return {
     title: `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`,
     description: `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`,
@@ -285,8 +298,9 @@ async function renderPillarBody(md: string): Promise<string> {
   return DOMPurify.sanitize(colored, { ADD_TAGS: ['mark', 'aside'], ADD_ATTR: ['class'] });
 }
 
-export default async function DestinationPillarPage({ params }: { params: Promise<{ city: string }> }) {
-  const { city } = await params;
+export default async function DestinationPillarPage({ params }: { params: Promise<{ city?: string | string[] }> }) {
+  const { city: rawCity } = await params;
+  const city = getRouteParam(rawCity);
   const decoded = safeDecodePathSegment(city).trim();
   if (!decoded) notFound();
   const encodedCity = encodeDestinationPathSegment(decoded);

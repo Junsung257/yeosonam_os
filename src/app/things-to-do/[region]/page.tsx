@@ -32,6 +32,10 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   sightseeing: '관광·명소',
   nature: '자연·풍경',
@@ -138,9 +142,19 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
   };
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ region: string }> }): Promise<Metadata> {
-  const { region: regionRaw } = await params;
+export async function generateMetadata({ params }: { params: Promise<{ region?: string | string[] }> }): Promise<Metadata> {
+  const { region: rawRegion } = await params;
+  const regionRaw = getRouteParam(rawRegion);
   const region = safeDecodePathSegment(regionRaw).trim();
+  const canonical = region ? `${BASE_URL}/things-to-do/${encodeURIComponent(region)}` : `${BASE_URL}/things-to-do`;
+  if (!region) {
+    return {
+      title: '여행지별 명소 | 여소남',
+      alternates: { canonical },
+      robots: { index: false, follow: true },
+    };
+  }
+
   const data = await getPageData(regionRaw);
   const count = data?.totalAttractions ?? 0;
   const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리 | 여소남`;
@@ -151,19 +165,20 @@ export async function generateMetadata({ params }: { params: Promise<{ region: s
   return {
     title,
     description,
-    alternates: { canonical: `${BASE_URL}/things-to-do/${encodeURIComponent(region)}` },
+    alternates: { canonical },
     openGraph: {
       title,
       description,
-      url: `${BASE_URL}/things-to-do/${encodeURIComponent(region)}`,
+      url: canonical,
       type: 'website',
       images: [{ url: ogImage }],
     },
   };
 }
 
-export default async function ThingsToDoRegionPage({ params }: { params: Promise<{ region: string }> }) {
-  const { region: regionRaw } = await params;
+export default async function ThingsToDoRegionPage({ params }: { params: Promise<{ region?: string | string[] }> }) {
+  const { region: rawRegion } = await params;
+  const regionRaw = getRouteParam(rawRegion);
   const data = await getPageData(regionRaw);
   if (!data) notFound();
 
