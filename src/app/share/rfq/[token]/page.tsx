@@ -8,7 +8,7 @@ interface Props {
 }
 
 const FALLBACK_METADATA: Metadata = {
-  title: '견적 공유 - 여소남',
+  title: '견적 공유',
   description: '여소남 단체 맞춤여행 견적 공유 링크입니다.',
   robots: { index: false, follow: false },
 };
@@ -33,7 +33,8 @@ function rfqShareCanonical(token: string): string {
 
 function withCanonical(metadata: Metadata, canonical: string): Metadata {
   const imageUrl = socialImageUrl();
-  const title = typeof metadata.title === 'string' ? metadata.title : '견적 공유 - 여소남';
+  const title = typeof metadata.title === 'string' ? metadata.title : '견적 공유';
+  const socialTitle = title.includes('여소남') ? title : `${title} | 여소남`;
   const description =
     typeof metadata.description === 'string'
       ? metadata.description
@@ -43,14 +44,14 @@ function withCanonical(metadata: Metadata, canonical: string): Metadata {
     ...metadata,
     alternates: { canonical },
     openGraph: {
-      title,
+      title: socialTitle,
       description,
       url: canonical,
       images: [{ url: imageUrl, width: 1200, height: 630 }],
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: socialTitle,
       description,
       images: [imageUrl],
     },
