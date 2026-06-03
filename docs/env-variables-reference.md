@@ -125,6 +125,9 @@
 | `META_ACCESS_TOKEN` | Meta Ads 광고 API (배포 상태) |
 | `META_AD_ACCOUNT_ID` | Meta 광고 계정 |
 | `META_PAGE_ID` | Meta 페이지 |
+| `THREADS_ACCESS_TOKEN` | Threads publish/insights 전용 토큰. 없으면 일부 경로에서 `META_ACCESS_TOKEN` fallback 사용 |
+| `THREADS_USER_ID` | Threads 발행 대상 운영 계정 ID. `/admin/marketing/system-health`의 Threads publish config에서 확인 |
+| `THREADS_KEYWORD_SEARCH_ENABLED` | `1`이면 keyword search scope 승인 완료로 간주해 운영 health에 표시. 승인 전에는 trend miner를 fallback/dry-run으로 운영 |
 | `GOOGLE_ADS_*` | Google Ads API. Developer Token/Customer ID/OAuth 값은 서버 전용 값이며 `NEXT_PUBLIC_*`로 노출 금지 |
 | `NAVER_ADS_*` | 네이버 검색광고 API. 서버 전용 값이며 `NEXT_PUBLIC_*`로 노출 금지 |
 

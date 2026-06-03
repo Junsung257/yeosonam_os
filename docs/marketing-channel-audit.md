@@ -83,7 +83,7 @@
 
 ### 자동 발행 조건
 
-마케팅 파이프라인이 `content_distributions`에 `platform='threads'`, `status='approved'`인 행을 만들면 자동 발행됩니다.
+마케팅 파이프라인이 `content_distributions`에 `platform='threads_post'`, `status='approved'`인 행을 만들면 자동 발행 후보가 됩니다.
 social_platform_configs가 활성화되었으므로, 다음에 크론이 돌 때 Threads 발행을 시도합니다.
 
 ---
