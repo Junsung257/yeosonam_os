@@ -10,8 +10,10 @@
  *
  * 현재는 stub — 데이터 누적 시작점.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { postAlert } from '@/lib/admin-alerts';
@@ -21,14 +23,14 @@ export const runtime = 'nodejs';
 export const maxDuration = 60;
 
 async function handle(req: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
   if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
+  if (!isSupabaseConfigured) return apiResponse({ skipped: true });
 
   const { data: funnel, error } = await supabaseAdmin
     .from('v_recommendation_funnel')
     .select('*')
     .order('exposures', { ascending: false });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
   // 학습 데이터 양 체크
   const { count: ltrCount } = await supabaseAdmin
@@ -54,7 +56,7 @@ async function handle(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     summary: {
       total_exposures: totalExposures,
