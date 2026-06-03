@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -26,7 +28,7 @@ function jsonState(value: Record<string, unknown>) {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -47,7 +49,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || '만료 정리 실행 로그 생성 실패' }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(runError, 'Expiry cleanup run create failed') }, { status: 500 });
   }
 
   const { data: packages, error: pkgError } = await supabaseAdmin
@@ -60,11 +62,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .limit(limit);
 
   if (pkgError) {
+    const safeError = sanitizeDbError(pkgError);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: pkgError.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: pkgError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const expiredPackages = (packages || []) as ExpiredPackage[];
@@ -90,11 +93,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const firstError = keywordRes.error || creativeRes.error;
   if (firstError) {
+    const safeError = sanitizeDbError(firstError);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: firstError.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const packageById = new Map(expiredPackages.map((pkg) => [pkg.id, pkg]));
@@ -126,11 +130,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     : { data: [], error: null };
 
   if (mappingRes.error) {
+    const safeError = sanitizeDbError(mappingRes.error);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: mappingRes.error.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: mappingRes.error.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const creativeById = new Map((creativeRes.data || []).map((creative) => [String(creative.id), creative]));
@@ -155,11 +160,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (decisions.length > 0) {
     const { error } = await supabaseAdmin.from('ad_os_decision_logs').insert(decisions);
     if (error) {
+      const safeError = sanitizeDbError(error);
       await supabaseAdmin
         .from('ad_os_automation_runs')
-        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] })
+        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
         .eq('id', run.id);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
   }
 
@@ -208,5 +214,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, decisions: decisions.slice(0, 30) });
+  return apiResponse({ ok: true, run_id: run.id, summary, decisions: decisions.slice(0, 30) });
 });
