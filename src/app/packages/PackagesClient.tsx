@@ -147,7 +147,9 @@ const EMPTY_SCORE_BY_PKG_ID: NonNullable<SearchResponse['scoreByPkgId']> = {};
 
 export default function PackagesClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const rawSearchParams = useSearchParams();
+  const searchParamsString = rawSearchParams?.toString() ?? '';
+  const searchParams = useMemo(() => new URLSearchParams(searchParamsString), [searchParamsString]);
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(null);
   const trackedRecommendViewsRef = useRef<Set<string>>(new Set());

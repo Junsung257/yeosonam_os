@@ -40,28 +40,32 @@ interface AttractionSample {
 async function getDestinations() {
   if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
 
-  const { data: stats } = await supabaseAdmin
-    .from('active_destinations')
-    .select('*')
-    .order('package_count', { ascending: false });
+  try {
+    const { data: stats } = await supabaseAdmin
+      .from('active_destinations')
+      .select('*')
+      .order('package_count', { ascending: false });
 
-  // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
-  const destinations = (stats as DestinationStat[] | null)?.map(s => s.destination) || [];
-  const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
-    .from('attractions')
-    .select('destination, name, photos')
-    .in('destination', destinations)
-    .not('photos', 'is', null)
-    .limit(4000) : { data: null };
+    // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
+    const destinations = (stats as DestinationStat[] | null)?.map(s => s.destination).filter(Boolean) || [];
+    const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
+      .from('attractions')
+      .select('destination, name, photos')
+      .in('destination', destinations)
+      .not('photos', 'is', null)
+      .limit(4000) : { data: null };
 
-  const attractionsByDest: Record<string, AttractionSample> = {};
-  (attractions as AttractionSample[] | null)?.forEach(a => {
-    if (a.destination && !attractionsByDest[a.destination]) {
-      attractionsByDest[a.destination] = a;
-    }
-  });
+    const attractionsByDest: Record<string, AttractionSample> = {};
+    (attractions as AttractionSample[] | null)?.forEach(a => {
+      if (a.destination && !attractionsByDest[a.destination]) {
+        attractionsByDest[a.destination] = a;
+      }
+    });
 
-  return { stats: (stats as DestinationStat[]) || [], attractionsByDest };
+    return { stats: (stats as DestinationStat[]) || [], attractionsByDest };
+  } catch {
+    return { stats: [], attractionsByDest: {} };
+  }
 }
 
 export default async function DestinationsIndexPage() {
