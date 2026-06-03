@@ -126,7 +126,7 @@ export default function LeadsPageClient() {
                   <td className="px-3 py-3 text-gray-700 tabular-nums">{maskPhone(r.phone, 'marketer') ?? '-'}</td>
                   <td className="px-3 py-3 max-w-md">
                     {r.product_id && r.product_title ? (
-                      <Link href={`/packages/${r.product_id}`} target="_blank" className="text-brand hover:underline">
+                      <Link href={`/packages/${encodeURIComponent(r.product_id)}`} target="_blank" className="text-brand hover:underline">
                         {r.product_title}
                       </Link>
                     ) : r.message ? (
