@@ -44,8 +44,13 @@ interface Note {
 const STATUS_LABEL = BOOKING_STATUS_LABEL;
 const STATUS_COLOR = BOOKING_STATUS_COLOR;
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function CustomerDetailPage() {
-  const { id } = useParams();
+  const params = useParams();
+  const id = getRouteParam(params?.id);
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
@@ -75,6 +80,13 @@ export default function CustomerDetailPage() {
   }
 
   useEffect(() => {
+    if (!id) {
+      setCustomer(null);
+      setBookings([]);
+      setNotes([]);
+      setIsLoading(false);
+      return;
+    }
     Promise.all([
       fetch(`/api/customers?id=${id}`).then(r => r.json()),
       fetch(`/api/bookings`).then(r => r.json()),
@@ -94,6 +106,7 @@ export default function CustomerDetailPage() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!id) return;
     setSaving(true);
     try {
       const { tags_str, ...rest } = form;
@@ -117,6 +130,7 @@ export default function CustomerDetailPage() {
   };
 
   const handleMileage = async () => {
+    if (!id) return;
     const delta = parseInt(mileageDelta);
     if (isNaN(delta) || delta === 0) return;
     setMileageSaving(true);
@@ -141,6 +155,7 @@ export default function CustomerDetailPage() {
   };
 
   const submitNote = async (content: string) => {
+    if (!id) return;
     if (!content.trim()) return;
     setNoteSubmitting(true);
     try {
@@ -166,6 +181,7 @@ export default function CustomerDetailPage() {
   };
 
   const handleDeleteNote = async (noteId: string) => {
+    if (!id) return;
     await fetch(`/api/customers/${id}/notes?noteId=${noteId}`, { method: 'DELETE' });
     setNotes(prev => prev.filter(n => n.id !== noteId));
   };
