@@ -1,9 +1,9 @@
 import PrintBar from './PrintBar';
-import { createClient } from '@supabase/supabase-js';
 import type { DaySchedule, TravelItinerary } from '@/types/itinerary';
 import type { PriceListItem } from '@/lib/parser';
 import { renderPackage } from '@/lib/render-contract';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
   PosterHeader,
   PosterPrice,
@@ -16,20 +16,10 @@ import {
   estimateHeights,
   type PriceTier,
 } from '@/components/itinerary/A4PosterLayout';
-import { getSecret } from '@/lib/secret-registry';
-
-// ── Supabase 서버사이드 클라이언트 (Service Role — RLS 우회) ────────────────
-function getSupabase() {
-  const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
-  const key = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-  if (!url || !key) return null;
-  return createClient(url, key);
-}
 
 async function loadPackage(id: string) {
-  const sb = getSupabase();
-  if (!sb) return null;
-  const { data } = await sb
+  if (!isSupabaseConfigured) return null;
+  const { data } = await supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions, min_participants')
     .eq('id', id)
