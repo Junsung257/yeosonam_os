@@ -1,6 +1,7 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 // ISR 10분 — Edge CDN + 프레임워크 캐시 둘 다 활용. force-dynamic 보다 cold start 빠름.
 export const revalidate = 600;
@@ -34,11 +35,15 @@ export async function GET() {
 }
 
 function buildFeed(posts: any[]): string {
-  const items = posts.map((post) => {
+  const items = posts.filter((post) => typeof post?.slug === 'string' && post.slug.trim()).map((post) => {
     const title = escXml(post.seo_title || post.travel_packages?.title || '여소남 블로그');
     const desc = escXml(post.seo_description || '');
-    const link = `${BASE_URL}/blog/${post.slug}`;
-    const pubDate = post.published_at ? new Date(post.published_at).toUTCString() : new Date().toUTCString();
+    const link = `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`;
+    const date = post.published_at ? new Date(post.published_at) : new Date();
+    const pubDate = Number.isFinite(date.getTime()) ? date.toUTCString() : new Date().toUTCString();
+    const imageUrl = typeof post.og_image_url === 'string' && /^https?:\/\//i.test(post.og_image_url.trim())
+      ? post.og_image_url.trim()
+      : null;
     // blog_html 안 가져오므로 seo_description 으로 fallback (이미 escape 된 desc 재사용).
     const snippet = desc;
 
@@ -48,8 +53,8 @@ function buildFeed(posts: any[]): string {
       <guid isPermaLink="true">${link}</guid>
       <description>${desc}</description>
       <content:encoded><![CDATA[${snippet}]]></content:encoded>
-      <pubDate>${pubDate}</pubDate>${post.og_image_url ? `
-      <enclosure url="${escXml(post.og_image_url)}" type="image/jpeg" />` : ''}
+      <pubDate>${pubDate}</pubDate>${imageUrl ? `
+      <enclosure url="${escXml(imageUrl)}" type="image/jpeg" />` : ''}
     </item>`;
   });
 
