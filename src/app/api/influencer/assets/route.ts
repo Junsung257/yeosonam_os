@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { authInfluencer } from '@/lib/affiliate/jwt-or-pin-auth';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -7,11 +9,11 @@ export async function GET(req: NextRequest) {
   try {
     const referral_code = req.nextUrl.searchParams.get('code');
     const packageId = req.nextUrl.searchParams.get('package_id');
-    if (!referral_code) return NextResponse.json({ error: '코드 필요' }, { status: 400 });
+    if (!referral_code) return apiResponse({ error: '코드 필요' }, { status: 400 });
 
     const auth = await authInfluencer(req, referral_code);
     if (!auth.ok) {
-      return NextResponse.json({ error: auth.error }, { status: auth.status });
+      return apiResponse({ error: auth.error }, { status: auth.status });
     }
 
     let cardNewsQuery = supabaseAdmin
@@ -62,8 +64,8 @@ export async function GET(req: NextRequest) {
       })),
     };
 
-    return NextResponse.json({ assets });
+    return apiResponse({ assets });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : 'Server error' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err, 'Server error') }, { status: 500 });
   }
 }
