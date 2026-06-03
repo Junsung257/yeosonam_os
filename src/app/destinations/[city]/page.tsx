@@ -53,6 +53,15 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
+function clampRating(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.min(5, Math.max(1, value));
+}
+
+function getPositiveNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
 interface DestinationMeta {
   tagline: string | null;
   hero_tagline: string | null;
@@ -337,6 +346,9 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       : `여소남 운영팀이 직접 검증한 ${decoded} 여행의 핵심 정보`);
 
   // 출발지가 1개면 필터 탭 의미 없음
+  const destinationRating = clampRating(data.avgRating);
+  const destinationReviewCount = getPositiveNumber(data.reviewCount);
+
   const showDepartureTabs = data.departureCities.length >= 2;
 
   // 출발월 분포 (climate 카드용)
@@ -366,12 +378,12 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 description: data.pillarPost?.seo_description || `${decoded} 여행 완벽 가이드`,
                 url: `${BASE_URL}/destinations/${encodedCity}`,
                 ...(heroImage ? { image: heroImage } : {}),
-                ...(data.avgRating
+                ...(destinationRating && destinationReviewCount
                   ? {
                       aggregateRating: {
                         '@type': 'AggregateRating',
-                        ratingValue: data.avgRating.toFixed(2),
-                        reviewCount: data.reviewCount || 1,
+                        ratingValue: destinationRating.toFixed(2),
+                        reviewCount: destinationReviewCount,
                       },
                     }
                   : {}),
@@ -401,25 +413,30 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                     {
                       '@type': 'ItemList',
                       name: `${decoded} 여행 상품`,
-                      itemListElement: data.packages.slice(0, 10).map((p, i) => ({
-                        '@type': 'ListItem',
-                        position: i + 1,
-                        item: {
-                          '@type': 'Product',
-                          name: p.title,
-                          url: `${BASE_URL}/packages/${encodeURIComponent(p.id)}`,
-                          ...(p.avg_rating && p.review_count > 0
-                            ? {
-                                aggregateRating: {
-                                  '@type': 'AggregateRating',
-                                  ratingValue: Number(p.avg_rating).toFixed(2),
-                                  reviewCount: p.review_count,
-                                },
-                              }
-                            : {}),
-                          ...(p.price ? { offers: { '@type': 'Offer', price: p.price, priceCurrency: 'KRW' } } : {}),
-                        },
-                      })),
+                      itemListElement: data.packages.slice(0, 10).map((p, i) => {
+                        const packageRating = clampRating(p.avg_rating);
+                        const packageReviewCount = getPositiveNumber(p.review_count);
+                        const packagePrice = getPositiveNumber(p.price);
+                        return {
+                          '@type': 'ListItem',
+                          position: i + 1,
+                          item: {
+                            '@type': 'Product',
+                            name: p.title,
+                            url: `${BASE_URL}/packages/${encodeURIComponent(p.id)}`,
+                            ...(packageRating && packageReviewCount
+                              ? {
+                                  aggregateRating: {
+                                    '@type': 'AggregateRating',
+                                    ratingValue: packageRating.toFixed(2),
+                                    reviewCount: packageReviewCount,
+                                  },
+                                }
+                              : {}),
+                            ...(packagePrice ? { offers: { '@type': 'Offer', price: packagePrice, priceCurrency: 'KRW' } } : {}),
+                          },
+                        };
+                      }),
                     },
                   ]
                 : []),
