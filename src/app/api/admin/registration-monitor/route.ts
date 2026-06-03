@@ -12,9 +12,11 @@
  *   - dailyTrend: 30일 일별 confidence 평균 + 등록 건수
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getRegistrationPolicy, invalidateRegistrationPolicyCache, type RegistrationPolicy } from '@/lib/registration-policy';
 import { refreshConformalPolicy } from '@/lib/conformal-calibration';
 import { evaluateSectionCacheCanary, type SectionCacheCanaryResult } from '@/lib/section-cache-canary';
@@ -88,7 +90,7 @@ interface MonitorResponse {
 
 const getHandler = async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
 
   try {
@@ -337,9 +339,9 @@ const getHandler = async () => {
       productRegistrationCorpus,
     };
 
-    return NextResponse.json(response);
+    return apiResponse(response);
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
 };
 
@@ -349,16 +351,21 @@ const getHandler = async () => {
  */
 const postHandler = async (req: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
   try {
-    const body = await req.json() as Partial<RegistrationPolicy> & { notes?: string; action?: string };
+    let body: Partial<RegistrationPolicy> & { notes?: string; action?: string };
+    try {
+      body = await req.json() as Partial<RegistrationPolicy> & { notes?: string; action?: string };
+    } catch {
+      return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
+    }
 
     // 액션 분기 — 강제 Conformal 재보정 (사장님 1-click)
     if (body.action === 'recalibrate_conformal') {
       const result = await refreshConformalPolicy();
       invalidateRegistrationPolicyCache();
-      return NextResponse.json({
+      return apiResponse({
         ok: true,
         action: 'recalibrate_conformal',
         threshold: result.threshold,
@@ -385,12 +392,12 @@ const postHandler = async (req: NextRequest) => {
       .from('registration_auto_policy')
       .update(patch)
       .eq('id', 1);
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
     invalidateRegistrationPolicyCache();
-    return NextResponse.json({ ok: true, patched: patch });
+    return apiResponse({ ok: true, patched: patch });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
 };
 
