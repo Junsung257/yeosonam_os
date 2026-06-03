@@ -9,6 +9,7 @@ import { computeAdaptiveThresholds, persistAdaptiveThresholds } from '@/lib/blog
 import { collectSystemHealth } from '@/lib/blog-content-orchestrator';
 import { autoFinalizeExperiments } from '@/lib/ab-test-engine';
 import { getSecret } from '@/lib/secret-registry';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
 export const dynamic = 'force-dynamic';
@@ -80,7 +81,7 @@ const handleBlogLearn = async (request: NextRequest) => {
     }
   } catch (err) {
     logWarning('[cron/blog-learn] featured reselection failed', err);
-    const msg = err instanceof Error ? err.message : 'unknown';
+    const msg = sanitizeDbError(err);
     result.featured_error = msg;
     errors.push(`featured: ${msg}`);
   }
@@ -91,7 +92,7 @@ const handleBlogLearn = async (request: NextRequest) => {
     result.ab_experiments_finalized = abResult;
   } catch (abErr) {
     logWarning('[cron/blog-learn] A/B autoFinalize 실패', abErr);
-    const msg = abErr instanceof Error ? abErr.message : 'unknown';
+    const msg = sanitizeDbError(abErr);
     result.ab_experiments_error = msg;
     errors.push(`ab_experiments: ${msg}`);
   }
@@ -106,7 +107,7 @@ const handleBlogLearn = async (request: NextRequest) => {
     const ct = optRes.headers.get('content-type') || '';
     if (!optRes.ok || !ct.includes('application/json')) {
       const body = await optRes.text();
-      result.prompt_learning = { step: 'analysis', status: 'unreachable', http_status: optRes.status, body: body.slice(0, 200) };
+      result.prompt_learning = { step: 'analysis', status: 'unreachable', http_status: optRes.status, body: sanitizeDbError(body) };
     } else {
       const optData = await optRes.json();
       if (optData.status !== 'suggestion_created') {
@@ -152,7 +153,7 @@ const handleBlogLearn = async (request: NextRequest) => {
     }
   } catch (err) {
     logError('[cron/blog-learn] learning failed', err);
-    const msg = err instanceof Error ? err.message : '학습 실패';
+    const msg = sanitizeDbError(err, 'Learning failed');
     result.prompt_learning = { error: msg };
     errors.push(`prompt_learning: ${msg}`);
   }
@@ -163,12 +164,12 @@ const handleBlogLearn = async (request: NextRequest) => {
     result.metrics_collected = {
       total: metricsResult.total,
       updated: metricsResult.updated,
-      errors: metricsResult.errors.length > 0 ? metricsResult.errors.slice(0, 3) : [],
+      errors: metricsResult.errors.length > 0 ? metricsResult.errors.slice(0, 3).map((me) => sanitizeDbError(me)) : [],
     };
-    for (const me of metricsResult.errors.slice(0, 3)) errors.push(`metrics: ${me}`);
+    for (const me of metricsResult.errors.slice(0, 3)) errors.push(`metrics: ${sanitizeDbError(me)}`);
   } catch (err) {
     logWarning('[cron/blog-learn] metrics collection failed', err);
-    const msg = err instanceof Error ? err.message : 'unknown';
+    const msg = sanitizeDbError(err);
     result.metrics_collected = { error: msg };
     errors.push(`metrics: ${msg}`);
   }
@@ -182,7 +183,7 @@ const handleBlogLearn = async (request: NextRequest) => {
       result.adaptive_thresholds = { applied: true, ...newThresholds };
     } catch (err) {
       logWarning('[cron/blog-learn] bayesian optimizer failed', err);
-      const msg = err instanceof Error ? err.message : 'unknown';
+      const msg = sanitizeDbError(err);
       result.adaptive_thresholds = { applied: false, error: msg };
       errors.push(`bayesian: ${msg}`);
     }
@@ -196,7 +197,7 @@ const handleBlogLearn = async (request: NextRequest) => {
     result.system_health = { healthy: health.healthy, cronStatuses: health.cronStatuses.map(cs => ({ name: cs.name, status: cs.status, consecutiveFailures: cs.consecutiveFailures })), queueFailed: health.queueHealth.failed, advice: health.strategicAdvice.slice(0, 3) };
   } catch (err) {
     logWarning('[cron/blog-learn] health check failed', err);
-    const msg = err instanceof Error ? err.message : 'unknown';
+    const msg = sanitizeDbError(err);
     result.system_health = { error: msg };
     errors.push(`health: ${msg}`);
   }
