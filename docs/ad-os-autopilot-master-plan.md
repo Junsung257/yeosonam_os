@@ -1043,3 +1043,10 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - UI-only navigation improvement.
   - No external ad platform write path, database mutation, or automation level change is introduced.
+
+## 63. 2026-06-03 Ad OS V541-V560 staging smoke API
+
+- Added `GET /api/admin/ad-os/staging-smoke` as a read-only operator smoke gate for the Ad OS control plane.
+- The route reuses the deterministic Danang package fixture from V301-V320 to prove one product can generate scenarios, ultra-longtail keywords, travel intent signals, creative variants, a paused Naver platform job, a clean Google conversion upload candidate, a portfolio plan, and safe ops queue decisions.
+- The response explicitly marks `read_only: true`, `fixture_only: true`, `database_mutation: false`, `external_api_write: false`, and `external_spend_krw: 0`.
+- This does not replace DB-backed staging tests. It gives operators a fast JSON regression proof before they run Supabase migrations or external-platform dry-run flows.
