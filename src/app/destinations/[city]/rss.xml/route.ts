@@ -38,9 +38,13 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
-export async function GET(_request: NextRequest, props: { params: Promise<{ city: string }> }) {
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value) ?? '';
+}
+
+export async function GET(_request: NextRequest, props: { params: Promise<{ city?: string | string[] }> }) {
   const params = await props.params;
-  const { city } = params;
+  const city = getRouteParam(params.city);
   const decoded = safeDecodePathSegment(city).trim();
   if (!decoded) {
     return new NextResponse('<error>missing destination</error>', { status: 404 });
