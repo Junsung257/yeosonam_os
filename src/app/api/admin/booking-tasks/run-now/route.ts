@@ -1,31 +1,24 @@
-/**
- * POST /api/admin/booking-tasks/run-now
- *   어드민이 룰 러너를 수동으로 즉시 실행 (테스트/디버깅용)
- *   Vercel Cron 을 기다리지 않고 즉시 검증 가능
- */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { runAllRules } from '@/lib/booking-tasks/runner';
-import { ALL_RULES } from '@/lib/booking-tasks/rules';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { ALL_RULES } from '@/lib/booking-tasks/rules';
+import { runAllRules } from '@/lib/booking-tasks/runner';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const maxDuration = 60;
 
 const postHandler = async (_request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
 
   try {
     const result = await runAllRules(ALL_RULES, { isForce: true });
-    return NextResponse.json({ ok: true, ...result });
+    return apiResponse({ ok: true, ...result });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'runner 실행 실패' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
-}
+};
 
 export const POST = withAdminGuard(postHandler);
