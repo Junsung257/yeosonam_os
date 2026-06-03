@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
 
 const LineChart = dynamic(() => import('recharts').then(m => ({ default: m.LineChart })), { ssr: false });
@@ -21,6 +20,11 @@ interface DailyRow {
   cpc: number;
   conversions: number;
   keyword_count: number;
+}
+
+interface KeywordStatsResponse {
+  data?: DailyRow[];
+  error?: string;
 }
 
 function fmtMoney(n: number | null | undefined): string {
@@ -43,30 +47,22 @@ export default function AdKpiWidget() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !supabaseKey) {
-          setError('Supabase not configured');
-          setLoading(false);
-          return;
-        }
-        const supabase = createClient(supabaseUrl, supabaseKey);
-
         // 최근 30일 데이터 조회
         const thirtyDaysAgo = new Date();
         thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const params = new URLSearchParams({
+          dateFrom: thirtyDaysAgo.toISOString().slice(0, 10),
+        });
+        const response = await fetch(`/api/admin/keyword-stats?${params}`, {
+          credentials: 'same-origin',
+        });
+        const payload = (await response.json().catch(() => null)) as KeywordStatsResponse | null;
 
-        const { data, error: dbError } = await supabase
-          .from('keyword_performance_daily')
-          .select('*')
-          .gte('date', thirtyDaysAgo.toISOString().slice(0, 10))
-          .order('date', { ascending: true });
-
-        if (dbError) {
-          setError(dbError.message);
-        } else {
-          setDaily((data ?? []) as DailyRow[]);
+        if (!response.ok) {
+          setError(payload?.error ?? '키워드 성과를 불러오지 못했습니다.');
+          return;
         }
+        setDaily((payload?.data ?? []).slice().sort((a, b) => a.date.localeCompare(b.date)));
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error');
       } finally {
