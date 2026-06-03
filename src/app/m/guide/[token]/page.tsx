@@ -58,9 +58,10 @@ function fallbackDayPlansFromVoucher(voucher: any): DayPlan[] {
 export default async function MobileGuidePage({
   params,
 }: {
-  params: Promise<{ token: string }>;
+  params: Promise<{ token?: string | string[] }>;
 }) {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = (Array.isArray(rawToken) ? rawToken[0] : rawToken)?.trim() ?? '';
   const payload = verifyGuidebookToken(token);
 
   if (!payload || !isSupabaseConfigured || !supabaseAdmin) {
