@@ -32,9 +32,28 @@ function rfqShareCanonical(token: string): string {
 }
 
 function withCanonical(metadata: Metadata, canonical: string): Metadata {
+  const imageUrl = socialImageUrl();
+  const title = typeof metadata.title === 'string' ? metadata.title : '견적 공유 - 여소남';
+  const description =
+    typeof metadata.description === 'string'
+      ? metadata.description
+      : '여소남 단체 맞춤여행 견적 공유 링크입니다.';
+
   return {
     ...metadata,
     alternates: { canonical },
+    openGraph: {
+      title,
+      description,
+      url: canonical,
+      images: [{ url: imageUrl, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title,
+      description,
+      images: [imageUrl],
+    },
   };
 }
 
