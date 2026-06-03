@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { sendAffiliateBookingCelebration } from '@/lib/kakao';
 import { reportAffiliateCronFailure, reportAffiliateCronSuccess } from '@/lib/affiliate/cron-monitor';
@@ -8,7 +9,7 @@ import { successResponse, errorResponse } from '@/lib/api-response';
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return successResponse({ ok: true, skipped: 'DB 미설정' });
+  if (!isSupabaseConfigured) return successResponse({ ok: true, skipped: 'DB not configured' });
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(200);
-    if (error) return errorResponse('DB_ERROR', error.message, 500);
+    if (error) return errorResponse('DB_ERROR', sanitizeDbError(error), 500);
 
     let notified = 0;
     for (const b of (bookings || []) as Array<{
@@ -47,24 +48,24 @@ export async function GET(request: NextRequest) {
         .maybeSingle();
       if (!aff) continue;
 
-      const a = aff as { id: string; name: string; phone: string | null };
-      if (!a.phone) continue;
+      const affiliate = aff as { id: string; name: string; phone: string | null };
+      if (!affiliate.phone) continue;
 
       await sendAffiliateBookingCelebration({
-        phone: a.phone,
-        affiliateName: a.name,
+        phone: affiliate.phone,
+        affiliateName: affiliate.name,
         packageTitle: b.package_title || '여행 상품',
         totalPrice: Number(b.total_price) || 0,
         commission: Number(b.influencer_commission) || 0,
-      }).catch((e: unknown) => {
-        console.warn('[Live Celebration] 카카오 알림 전송 실패:', e instanceof Error ? e.message : e);
+      }).catch((err: unknown) => {
+        console.warn('[Live Celebration] Kakao notification failed:', sanitizeDbError(err));
       });
 
       await void(supabaseAdmin.from('audit_logs').insert({
         action: 'AFFILIATE_LIVE_CELEBRATION_SENT',
         target_type: 'booking',
         target_id: b.id,
-        description: `affiliate=${a.id}`,
+        description: `affiliate=${affiliate.id}`,
       }));
       notified += 1;
     }
@@ -75,9 +76,8 @@ export async function GET(request: NextRequest) {
     await reportAffiliateCronFailure('affiliate-live-celebration', err, { since });
     return errorResponse(
       'CRON_FAILED',
-      err instanceof Error ? err.message : 'affiliate live celebration failed',
+      sanitizeDbError(err, 'affiliate live celebration failed'),
       500,
     );
   }
 }
-
