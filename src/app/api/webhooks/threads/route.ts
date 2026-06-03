@@ -23,6 +23,7 @@ import {
   type WebhookPayload,
 } from '@/lib/meta-webhook';
 import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
+import { apiResponse } from '@/lib/api-response';
 
 export const runtime = 'nodejs';
 
@@ -52,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const payload = JSON.parse(rawBody) as WebhookPayload;
-    if (!isSupabaseConfigured) return NextResponse.json({ ok: true });
+    if (!isSupabaseConfigured) return apiResponse({ ok: true });
 
     const rows: Array<Record<string, unknown>> = [];
     for (const entry of payload.entry ?? []) {
@@ -78,5 +79,5 @@ export async function POST(request: NextRequest) {
     console.error('[webhook:threads] 처리 에러:', err instanceof Error ? err.message : err);
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

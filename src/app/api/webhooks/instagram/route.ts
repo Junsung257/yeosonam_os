@@ -23,6 +23,7 @@ import {
   type WebhookPayload,
 } from '@/lib/meta-webhook';
 import { sanitizeWebhookPayload } from '@/lib/webhook-payload-sanitizer';
+import { apiResponse } from '@/lib/api-response';
 
 export const runtime = 'nodejs';
 
@@ -53,7 +54,7 @@ export async function POST(request: NextRequest) {
   // 1초 룰 준수 — DB insert 1회만
   try {
     const payload = JSON.parse(rawBody) as WebhookPayload;
-    if (!isSupabaseConfigured) return NextResponse.json({ ok: true }); // 그래도 200 반환
+    if (!isSupabaseConfigured) return apiResponse({ ok: true }); // 그래도 200 반환
 
     const rows: Array<Record<string, unknown>> = [];
     for (const entry of payload.entry ?? []) {
@@ -89,5 +90,5 @@ export async function POST(request: NextRequest) {
     console.error('[webhook:ig] 처리 에러 (응답은 200 유지):', err instanceof Error ? err.message : err);
   }
 
-  return NextResponse.json({ ok: true });
+  return apiResponse({ ok: true });
 }

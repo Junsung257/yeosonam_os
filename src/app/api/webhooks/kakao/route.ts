@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { getSecret } from '@/lib/secret-registry'
 import { supabaseAdmin } from '@/lib/supabase'
 import { logAndSanitize } from '@/lib/error-sanitizer'
 import { safeEqualString } from '@/lib/timing-safe'
+import { apiResponse } from '@/lib/api-response'
 import crypto from 'crypto'
 
 function verifyKakaoSignature(body: string, signature: string): boolean {
@@ -18,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   // 서명 검증 — KAKAO_CHANNEL_SECRET 설정 시 모든 환경에서 강제 (verifyKakaoSignature 내부에서 미설정 시 skip)
   if (!verifyKakaoSignature(rawBody, signature)) {
-    return NextResponse.json({ error: 'Invalid signature' }, { status: 401 })
+    return apiResponse({ error: 'Invalid signature' }, { status: 401 })
   }
 
   try {
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest) {
     const messageText = userRequest?.utterance || ''
 
     if (!kakaoUserId || !messageText) {
-      return NextResponse.json({ version: '2.0', template: { outputs: [] } })
+      return apiResponse({ version: '2.0', template: { outputs: [] } })
     }
 
     // 고객 자동 매칭 (카카오 ID로 기존 고객 찾기)
@@ -84,7 +85,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 카카오 자동 응답
-    return NextResponse.json({
+    return apiResponse({
       version: '2.0',
       template: {
         outputs: [{
@@ -96,7 +97,7 @@ export async function POST(req: NextRequest) {
     })
   } catch (error) {
     logAndSanitize('webhooks-kakao', error)
-    return NextResponse.json({
+    return apiResponse({
       version: '2.0',
       template: { outputs: [{ simpleText: { text: '죄송합니다. 잠시 후 다시 시도해주세요.' } }] }
     })
