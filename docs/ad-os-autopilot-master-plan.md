@@ -1109,3 +1109,11 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - It intentionally marks missing rank/visibility snapshots as `warn` because index request status is not the same as indexed/exposed/ranked.
 - It marks duplicate-content risk as a topical authority failure so repeated similar package uploads do not silently create low-quality blog growth.
 - The route reuses summary, staging validation, operating inventory, live-spend preflight, and learning evidence without mutating DB or writing to ad platforms.
+
+## 71. 2026-06-03 Ad OS V701-V720 admin surface QA UX
+
+- Surfaced the admin surface QA matrix in `/admin/ad-os`.
+- The card shows status, score, pass/warn/fail counts, live spend, top gap, next action, and all six surface rows with drilldown links.
+- Operators can manually refresh the matrix with `Surface QA` and inspect the raw JSON at `/api/admin/ad-os/admin-surface-qa`.
+- This turns the earlier UX QA requirement into a visible operating artifact instead of a one-off manual checklist.
+- It remains read-only and does not mutate Supabase, change automation level, or write to ad platforms.
