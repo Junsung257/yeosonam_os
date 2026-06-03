@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number);
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
     .order('departure_date', { ascending: true });
 
   if (error) {
-    return new NextResponse(error.message, { status: 500 });
+    return new NextResponse(sanitizeDbError(error, 'tax export failed'), { status: 500 });
   }
 
   const bookings = data ?? [];
