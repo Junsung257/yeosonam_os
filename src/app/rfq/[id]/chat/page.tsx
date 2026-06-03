@@ -24,7 +24,7 @@ export default function RfqChatPage() {
   const searchParams = useSearchParams();
   const id = getRouteParam(params?.id);
   const encodedId = id ? encodeURIComponent(id) : '';
-  const proposalId = searchParams?.get('proposal_id') ?? '';
+  const proposalId = searchParams?.get('proposal_id')?.trim() ?? '';
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<RfqMessage[]>([]);
