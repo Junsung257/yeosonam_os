@@ -1065,3 +1065,10 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Each area returns `operational`, `partial`, or `blocked`, plus evidence, next action, and risk level.
 - The route is read-only and reports `database_mutation: false`, `external_api_write: false`, and `live_spend_krw: 0`.
 - Surfaced the operating inventory inside `/admin/ad-os` so operators can see the top gap, score, area counts, per-area evidence, JSON drilldown, and live-spend safety next to the completion audit.
+
+## 66. 2026-06-03 Ad OS V601-V620 live spend preflight
+
+- Added `GET /api/admin/ad-os/live-spend-preflight` as a read-only paid-execution preflight.
+- The preflight checks staging smoke, completion audit, tenant policy, human approval, kill switch, automation level, monthly/daily/max CPC/test-loss caps, channel readiness, adapter readiness, rollback readiness, conversion blockers, and external write count.
+- The result can be `eligible`, `monitor_only`, or `blocked`, but `live_write_allowed` remains `false` and safety reports `external_api_write: false`, `database_mutation: false`, `live_spend_krw: 0`, and `full_auto_allowed: false`.
+- Active campaign paths such as Google publish, Meta publish, and Naver activation are blocked by default even if other guardrails pass.
