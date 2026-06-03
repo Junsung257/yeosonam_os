@@ -158,6 +158,7 @@ function ChecklistDots({ checklist }: { checklist: Record<string, ChecklistItem>
 export default function RfqDetailPage() {
   const params = useParams();
   const id = getRouteParam(params?.id);
+  const encodedId = id ? encodeURIComponent(id) : '';
 
   const [rfq, setRfq] = useState<GroupRfq | null>(null);
   const [proposals, setProposals] = useState<RfqProposal[]>([]);
@@ -170,7 +171,7 @@ export default function RfqDetailPage() {
   useEffect(() => {
     fetchAll();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [id]);
+  }, [id, encodedId]);
 
   async function fetchAll() {
     if (!id) {
@@ -182,8 +183,8 @@ export default function RfqDetailPage() {
     setLoading(true);
     try {
       const [rfqRes, bidRes] = await Promise.all([
-        fetch(`/api/rfq/${id}`),
-        fetch(`/api/rfq/${id}/bid`),
+        fetch(`/api/rfq/${encodedId}`),
+        fetch(`/api/rfq/${encodedId}/bid`),
       ]);
       if (!rfqRes.ok) throw new Error('RFQ를 불러올 수 없습니다');
       const rfqData = await rfqRes.json();
@@ -196,8 +197,8 @@ export default function RfqDetailPage() {
 
       if (rfqData.status === 'awaiting_selection' || rfqData.status === 'contracted') {
         const [propRes, analyzeRes] = await Promise.all([
-          fetch(`/api/rfq/${id}/proposals`),
-          fetch(`/api/rfq/${id}/analyze`),
+          fetch(`/api/rfq/${encodedId}/proposals`),
+          fetch(`/api/rfq/${encodedId}/analyze`),
         ]);
         if (propRes.ok) {
           const propData = await propRes.json();
@@ -220,7 +221,7 @@ export default function RfqDetailPage() {
 
     setSelecting(proposalId);
     try {
-      const res = await fetch(`/api/rfq/${id}/select`, {
+      const res = await fetch(`/api/rfq/${encodedId}/select`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ proposal_id: proposalId }),
@@ -313,13 +314,13 @@ export default function RfqDetailPage() {
             </div>
             <div className="flex gap-2">
               <Link
-                href={`/rfq/${id}/contract`}
+                href={`/rfq/${encodedId}/contract`}
                 className="flex-1 text-center bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
               >
                 📄 계약서 보기
               </Link>
               <Link
-                href={`/rfq/${id}/chat`}
+                href={`/rfq/${encodedId}/chat`}
                 className="flex-1 text-center border border-green-300 text-green-700 hover:bg-green-50 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
               >
                 💬 채팅하기
