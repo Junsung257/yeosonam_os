@@ -24,7 +24,7 @@ const PKG_CARD_FIELDS =
   'id, title, destination, country, price, display_title, product_summary, product_highlights, status';
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ slug?: string | string[] }>;
 }
 
 function siteBaseUrl(): string {
@@ -40,10 +40,16 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const params = await props.params;
-  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(params.slug));
+  const rawSlug = getRouteParam(params.slug);
+  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(rawSlug));
   const base = siteBaseUrl();
+  const canonical = `${base}/with/${encodeURIComponent(slug)}`;
   if (!looksLikeReferralCode(slug)) {
     return { title: '제휴 랜딩', robots: { index: false, follow: false } };
   }
@@ -66,13 +72,14 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
     title: `${name} × 여소남`,
     description: `${name}님과 함께하는 여소남 패키지 여행. 제휴 혜택이 적용됩니다.`,
     robots: { index: false, follow: false },
-    alternates: { canonical: `${base}/with/${encodeURIComponent(slug)}` },
+    alternates: { canonical },
   };
 }
 
 export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   const params = await props.params;
-  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(params.slug));
+  const rawSlug = getRouteParam(params.slug);
+  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(rawSlug));
   if (!looksLikeReferralCode(slug)) notFound();
 
   if (!isSupabaseConfigured) {

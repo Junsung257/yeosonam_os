@@ -16,22 +16,28 @@ export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export async function generateStaticParams() {
   return REGIONS.map(r => ({ region: r.slug }));
 }
 
-export async function generateMetadata({ params }: { params: Promise<{ region: string }> }): Promise<Metadata> {
-  const { region: slug } = await params;
+export async function generateMetadata({ params }: { params: Promise<{ region?: string | string[] }> }): Promise<Metadata> {
+  const { region: rawRegion } = await params;
+  const slug = getRouteParam(rawRegion);
   const region = getRegionBySlug(slug);
-  if (!region) return {};
+  const canonical = slug ? `${BASE_URL}/destinations/region/${encodeURIComponent(slug)}` : `${BASE_URL}/destinations`;
+  if (!region) return { title: '여행지 | 여소남', alternates: { canonical }, robots: { index: false, follow: true } };
   return {
     title: `${region.label} 여행 패키지 가이드`,
     description: `${region.label} 여행의 모든 것 — ${region.tagline}. ${region.featuredCities.slice(0, 4).join('·')} 등 운영팀 검증 패키지를 한곳에서.`,
-    alternates: { canonical: `${BASE_URL}/destinations/region/${slug}` },
+    alternates: { canonical },
     openGraph: {
       title: `${region.label} 여행 가이드 | 여소남`,
       description: region.tagline,
-      url: `${BASE_URL}/destinations/region/${slug}`,
+      url: canonical,
       type: 'website',
     },
   };
@@ -160,8 +166,9 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   };
 }
 
-export default async function RegionLandingPage({ params }: { params: Promise<{ region: string }> }) {
-  const { region: slug } = await params;
+export default async function RegionLandingPage({ params }: { params: Promise<{ region?: string | string[] }> }) {
+  const { region: rawRegion } = await params;
+  const slug = getRouteParam(rawRegion);
   const region = getRegionBySlug(slug);
   if (!region) notFound();
 
