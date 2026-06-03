@@ -923,3 +923,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - No new external write path is introduced.
   - Critical incidents recommend kill-switch review before any additional approval.
   - Degraded summary responses also surface as a critical runtime readiness incident, so operators do not mistake API failure for a clean system.
+
+## 53. 2026-06-03 Ad OS V341-V360 agency reporting package
+
+- Added `src/lib/ad-os-v341-v360.ts` and `src/lib/ad-os-v341-v360.test.ts`.
+- Purpose:
+  - Converts tenant workspaces, billing profiles, monthly tenant reports, audit exports, and incident status into a single agency/SaaS reporting readiness score.
+  - Exposes `enterprise_layer.agency_reporting` from `/api/admin/ad-os/summary`.
+  - Shows Agency Reporting as an Enterprise Runtime KPI on `/admin/ad-os` with report, audit, billing, readiness, and next-action status.
+- Safety principle:
+  - Client-facing report packaging is blocked when critical incidents or full-auto policy risks exist.
+  - Degraded summary responses mark agency reporting as blocked until the data plane is healthy.
+  - No external ad platform write path is introduced.
