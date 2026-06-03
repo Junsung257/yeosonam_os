@@ -4,6 +4,14 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { getSupabaseClient } from '@/lib/supabase';
 
+function getSafeRedirect(value: string | null): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//') || value.includes('\\')) {
+    return '/m/admin';
+  }
+
+  return value;
+}
+
 function MobileLoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -17,7 +25,7 @@ function MobileLoginForm() {
       .split('; ')
       .some(r => r.startsWith('sb-access-token='));
     if (hasAccess) {
-      const redirect = searchParams.get('redirect') || '/m/admin';
+      const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
       router.replace(redirect);
     }
   }, [router, searchParams]);
@@ -57,7 +65,7 @@ function MobileLoginForm() {
         return;
       }
 
-      const redirect = searchParams.get('redirect') || '/m/admin';
+      const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
       window.location.href = redirect;
     } catch {
       setError('로그인 중 오류가 발생했습니다.');
