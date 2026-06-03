@@ -239,7 +239,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
   const canonical = region ? `${BASE_URL}/things-to-do/${encodeURIComponent(region)}` : `${BASE_URL}/things-to-do`;
   if (!region) {
     return {
-      title: '여행지별 명소 | 여소남',
+      title: '여행지별 명소',
       alternates: { canonical },
       robots: { index: false, follow: true },
     };
@@ -247,7 +247,8 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
 
   const data = await getPageData(regionRaw);
   const count = data?.totalAttractions ?? 0;
-  const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리 | 여소남`;
+  const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리`;
+  const socialTitle = `${title} | 여소남`;
   const description = `${region} 여행 시 꼭 가봐야 할 명소 ${count}곳을 카테고리(자연·문화·먹거리·쇼핑)별로 정리. 운영팀이 검증한 추천 일정과 패키지까지 한 페이지에서.`;
   const firstAttraction = data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat()[0] : null;
   const firstImage = firstAttraction?.photos?.[0]?.src_large ?? firstAttraction?.photos?.[0]?.src_medium ?? null;
@@ -257,7 +258,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
     description,
     alternates: { canonical },
     openGraph: {
-      title,
+      title: socialTitle,
       description,
       url: canonical,
       type: 'website',
@@ -265,7 +266,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
     },
     twitter: {
       card: 'summary_large_image',
-      title,
+      title: socialTitle,
       description,
       images: [ogImage],
     },
