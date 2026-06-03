@@ -1064,3 +1064,4 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - The inventory groups readiness into control plane safety, operator UX, channel execution, conversion quality, booked-margin learning, creative factory, tenant SaaS packaging, and live autopilot readiness.
 - Each area returns `operational`, `partial`, or `blocked`, plus evidence, next action, and risk level.
 - The route is read-only and reports `database_mutation: false`, `external_api_write: false`, and `live_spend_krw: 0`.
+- Surfaced the operating inventory inside `/admin/ad-os` so operators can see the top gap, score, area counts, per-area evidence, JSON drilldown, and live-spend safety next to the completion audit.
