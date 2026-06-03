@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 function maskName(name: string, code: string): string {
@@ -8,13 +10,16 @@ function maskName(name: string, code: string): string {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ data: [] });
+  if (!isSupabaseConfigured) return apiResponse({ data: [] });
 
   try {
     const { searchParams } = request.nextUrl;
     const period = searchParams.get('period') || new Date().toISOString().slice(0, 7);
     const anonymized = searchParams.get('anonymized') === 'true';
-    const limit = Math.min(Number(searchParams.get('limit') || '10'), 50);
+    const requestedLimit = Number(searchParams.get('limit') || '10');
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.min(50, Math.max(1, requestedLimit))
+      : 10;
 
     const { data: settlements, error } = await supabaseAdmin
       .from('settlements')
@@ -26,12 +31,13 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
 
     const affiliateIds = (settlements || []).map((s: any) => s.affiliate_id);
-    const { data: affiliates } = affiliateIds.length
+    const { data: affiliates, error: affiliatesError } = affiliateIds.length
       ? await supabaseAdmin
           .from('affiliates')
           .select('id, name, referral_code, grade, logo_url')
           .in('id', affiliateIds)
-      : { data: [] };
+      : { data: [], error: null };
+    if (affiliatesError) throw affiliatesError;
 
     const affMap = new Map<string, any>();
     (affiliates || []).forEach((a: any) => affMap.set(a.id, a));
@@ -53,10 +59,10 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json({ period, anonymized, data: rows });
+    return apiResponse({ period, anonymized, data: rows });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err, '조회 실패') },
       { status: 500 },
     );
   }
