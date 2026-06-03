@@ -19,10 +19,12 @@
  *   { ok: false, drift_count: N, sample: [{ booking_id, account, drift }, ...] }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronGuard } from '@/lib/cron-auth';
 import { logError } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -37,8 +39,8 @@ interface DriftRow {
 }
 
 const getHandler = async (_request: NextRequest) => {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 503 });
   }
 
   const startedAt = Date.now();
@@ -48,8 +50,8 @@ const getHandler = async (_request: NextRequest) => {
 
   if (error) {
     logError('[cron/ledger-reconcile] RPC failed', error);
-    return NextResponse.json(
-      { ok: false, error: error.message, code: error.code },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(error) },
       { status: 500 },
     );
   }
@@ -60,7 +62,7 @@ const getHandler = async (_request: NextRequest) => {
 
   if (driftCount === 0) {
     console.log(`[ledger-reconcile] ok — drift 0건 (${elapsedMs}ms)`);
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       drift_count: 0,
       elapsed_ms: elapsedMs,
@@ -114,7 +116,7 @@ const getHandler = async (_request: NextRequest) => {
     /* slack 실패는 무시 */
   }
 
-  return NextResponse.json(
+  return apiResponse(
     {
       ok: false,
       drift_count: driftCount,
