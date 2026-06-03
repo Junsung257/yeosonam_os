@@ -1,4 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
 import { transitionAgentTask } from '@/lib/agent/tasking';
 import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard';
@@ -7,7 +9,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const params = await props.params;
   try {
     if (!(await isAdminRequest(request))) {
-      return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+      return apiResponse({ error: 'admin 권한 필요' }, { status: 403 });
     }
 
     const approvalId = params.id;
@@ -23,10 +25,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       .maybeSingle();
     if (approvalErr) throw approvalErr;
     if (!approval) {
-      return NextResponse.json({ error: '승인 요청을 찾을 수 없습니다.' }, { status: 404 });
+      return apiResponse({ error: '승인 요청을 찾을 수 없습니다.' }, { status: 404 });
     }
     if (approval.status !== 'pending') {
-      return NextResponse.json({ error: '이미 처리된 승인 요청입니다.' }, { status: 409 });
+      return apiResponse({ error: '이미 처리된 승인 요청입니다.' }, { status: 409 });
     }
 
     const nextStatus = action === 'approve' ? 'approved' : 'rejected';
@@ -62,15 +64,15 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       approvalId,
       status: nextStatus,
       taskId: approval.task_id,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : '승인 처리 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(error, '승인 처리 실패') },
       { status: 500 },
     );
   }
