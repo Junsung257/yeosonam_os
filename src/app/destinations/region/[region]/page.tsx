@@ -29,6 +29,13 @@ interface RegionDestination {
   total_reviews: number | null;
 }
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+
+interface AttractionImageSample {
+  region: string;
+  photos: GalleryPhoto[] | null;
+}
+
 function getFiniteNumber(value: unknown): number | null {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value !== 'string' || value.trim() === '') return null;
@@ -65,6 +72,23 @@ function normalizeActiveDestination(row: unknown): RegionDestination | null {
     min_price: getPositiveNumber(record.min_price),
     avg_rating: getPositiveNumber(record.avg_rating),
     total_reviews: getNullableNonNegativeInteger(record.total_reviews),
+  };
+}
+
+function normalizeAttractionImageSample(row: unknown): AttractionImageSample | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const region = typeof record.region === 'string' ? record.region.trim() : '';
+  if (!region) return null;
+
+  const photos = Array.isArray(record.photos)
+    ? record.photos.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object')
+    : null;
+
+  return {
+    region,
+    photos: photos && photos.length > 0 ? photos : null,
   };
 }
 
@@ -172,11 +196,11 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const blogPosts = blogRes.data;
 
   const imgByDest: Record<string, string> = {};
-  ((attrs as Array<{ region: string; photos: Array<{ src_medium?: string; src_large?: string }> | null }> | null) ?? []).forEach(a => {
-    const key = a.region;
-    if (key && !imgByDest[key]) {
-      const u = pickAttractionPhotoUrl(a.photos ?? undefined);
-      if (u) imgByDest[key] = u;
+  ((attrs as unknown[] | null) ?? []).forEach((row) => {
+    const sample = normalizeAttractionImageSample(row);
+    if (sample && !imgByDest[sample.region]) {
+      const u = pickAttractionPhotoUrl(sample.photos);
+      if (u) imgByDest[sample.region] = u;
     }
   });
 
