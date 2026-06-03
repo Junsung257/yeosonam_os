@@ -18,6 +18,13 @@ export const metadata: Metadata = {
       '기업 워크샵·협회 연수·치목 골프·패밀리여행, 김해공항 출발 단체여행 견적을 실시간으로.',
     url: `${BASE_URL}/group`,
     type: 'website',
+    images: [{ url: `${BASE_URL}/og/group.png`, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '부산·경남 단체여행 전문',
+    description: '기업 워크숍, 연수, 골프, 친목 단체여행 견적을 빠르게 받아보세요.',
+    images: [`${BASE_URL}/og/group.png`],
   },
 };
 

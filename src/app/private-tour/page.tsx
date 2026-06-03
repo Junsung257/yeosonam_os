@@ -22,6 +22,12 @@ export const metadata: Metadata = {
     type: 'website',
     images: [{ url: `${BASE_URL}/og/private-tour.png`, width: 1200, height: 630 }],
   },
+  twitter: {
+    card: 'summary_large_image',
+    title: '오롯이, 우리끼리 | 단독맞춤여행',
+    description: '2명부터 가능한 프라이빗 맞춤여행. 일정·차량·가이드까지 여소남이 설계합니다.',
+    images: [`${BASE_URL}/og/private-tour.png`],
+  },
 };
 
 // ─── 단독 세그먼트 6카드 ─────────────────────────────────
