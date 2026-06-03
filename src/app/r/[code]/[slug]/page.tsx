@@ -24,6 +24,10 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function socialImageUrl(): string {
+  return `${siteBaseUrl()}/og-image.png`;
+}
+
 function safeDecodePathSegment(value: string): string {
   try {
     return decodeURIComponent(value);
@@ -40,14 +44,35 @@ export async function generateMetadata(props: Params): Promise<Metadata> {
   const params = await props.params;
   const rawCode = getRouteParam(params.code);
   const slug = getRouteParam(params.slug);
+  const baseUrl = siteBaseUrl();
   if (!rawCode || !slug) {
-    return { title: '여소남 추천 여행', robots: { index: false, follow: false } };
+    const title = '여소남 추천 여행';
+    const imageUrl = socialImageUrl();
+    const canonical = rawCode
+      ? `${baseUrl}/r/${encodeURIComponent(rawCode)}`
+      : `${baseUrl}/r`;
+
+    return {
+      title,
+      robots: { index: false, follow: false },
+      alternates: { canonical },
+      openGraph: {
+        title,
+        url: canonical,
+        type: 'website',
+        images: [{ url: imageUrl, width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        images: [imageUrl],
+      },
+    };
   }
 
   const code = normalizeAffiliateReferralCode(safeDecodePathSegment(rawCode));
   const metadataCode = code || rawCode;
   const decodedSlug = safeDecodePathSegment(slug);
-  const baseUrl = siteBaseUrl();
   const encodedCode = encodeURIComponent(metadataCode);
   const encodedSlug = encodeURIComponent(decodedSlug);
   const canonicalUrl = `${baseUrl}/r/${encodedCode}/${encodedSlug}`;
