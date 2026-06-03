@@ -1,28 +1,28 @@
-import { NextResponse } from 'next/server';
-import { isSupabaseConfigured } from '@/lib/supabase';
+import { type NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withCronGuard } from '@/lib/cron-auth';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { refreshSegmentCampaignLog } from '@/lib/rfm-email-campaign';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const handler = async (): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
-      { success: false, message: 'Supabase가 구성되지 않았습니다.' },
+    return apiResponse(
+      { success: false, message: 'Supabase가 설정되지 않았습니다.' },
       { status: 503 },
     );
   }
 
   try {
     await refreshSegmentCampaignLog();
-    return NextResponse.json({ success: true, message: '캠페인 로그 정리 완료 (90일 초과 삭제)' });
+    return apiResponse({ success: true, message: '캠페인 로그 정리가 완료되었습니다.' });
   } catch (err) {
-    return NextResponse.json(
-      {
-        success: false,
-        message: `로그 정리 중 오류: ${err instanceof Error ? err.message : '알 수 없음'}`,
-      },
+    console.error('[marketing/cleanup-campaign-logs] failed:', sanitizeDbError(err));
+    return apiResponse(
+      { success: false, message: '캠페인 로그 정리 중 오류가 발생했습니다.' },
       { status: 500 },
     );
   }
