@@ -5,6 +5,7 @@ export const revalidate = 86400;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 export const metadata: Metadata = {
   title: '여소남 소개 — 여행을 잇는 플랫폼',
@@ -19,11 +20,13 @@ export const metadata: Metadata = {
     siteName: '여소남',
     locale: 'ko_KR',
     type: 'website',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
   },
   twitter: {
     card: 'summary_large_image',
     title: '여소남 소개',
     description: '랜드사와 여행사를 연결하는 B2B2C 여행 플랫폼',
+    images: [SOCIAL_IMAGE_URL],
   },
 };
 
