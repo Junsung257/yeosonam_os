@@ -26,6 +26,15 @@ interface CardNewsDetail {
   } | null;
 }
 
+function getString(value: unknown): string {
+  return typeof value === 'string' ? value : '';
+}
+
+function getNullableString(value: unknown): string | null {
+  const text = getString(value).trim();
+  return text ? text : null;
+}
+
 function safeImageUrl(input?: string | null): string | null {
   const value = input?.trim();
   if (!value) return null;
@@ -39,6 +48,61 @@ function getRouteParam(value: string | string[] | undefined): string {
 function getAffiliateHref(code?: string | null): string | null {
   const value = code?.trim();
   return value ? `/link/${encodeURIComponent(value)}` : null;
+}
+
+function normalizeCardNewsDetail(value: unknown): CardNewsDetail | null {
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  const id = getString(record.id).trim();
+  const title = getString(record.title).trim();
+  if (!id || !title) return null;
+
+  const rawSlides = Array.isArray(record.slides) ? record.slides : [];
+  const slides = rawSlides.flatMap(slide => {
+    if (!slide || typeof slide !== 'object') return [];
+
+    const slideRecord = slide as Record<string, unknown>;
+    const heading = getString(slideRecord.heading).trim();
+    const body = getString(slideRecord.body).trim();
+    if (!heading && !body) return [];
+
+    return [{
+      heading,
+      body,
+      image_url: safeImageUrl(getString(slideRecord.image_url)) ?? undefined,
+    }];
+  });
+
+  const affiliateRecord = record.affiliate && typeof record.affiliate === 'object'
+    ? record.affiliate as Record<string, unknown>
+    : null;
+  const affiliateName = getString(affiliateRecord?.name).trim();
+  const referralCode = getString(affiliateRecord?.referral_code).trim();
+
+  return {
+    id,
+    title,
+    status: getString(record.status),
+    slides,
+    ig_slide_urls: Array.isArray(record.ig_slide_urls)
+      ? record.ig_slide_urls.map(safeImageUrl).filter((url): url is string => url != null)
+      : null,
+    template_family: getNullableString(record.template_family),
+    variant_angle: getNullableString(record.variant_angle),
+    engagement_score: typeof record.engagement_score === 'number' && Number.isFinite(record.engagement_score)
+      ? record.engagement_score
+      : null,
+    created_at: getString(record.created_at),
+    created_by_affiliate_id: getNullableString(record.created_by_affiliate_id),
+    affiliate: affiliateName && referralCode
+      ? {
+          name: affiliateName,
+          referral_code: referralCode,
+          logo_url: safeImageUrl(getString(affiliateRecord?.logo_url)),
+        }
+      : null,
+  };
 }
 
 export default function SharedCardNewsPage() {
@@ -57,7 +121,9 @@ export default function SharedCardNewsPage() {
         const res = await fetch(`/api/card-news/${encodeURIComponent(cardNewsId)}`);
         if (!res.ok) throw new Error('카드뉴스를 찾을 수 없습니다');
         const json = await res.json();
-        setData(json);
+        const normalized = normalizeCardNewsDetail(json);
+        if (!normalized) throw new Error('카드뉴스 데이터가 올바르지 않습니다');
+        setData(normalized);
         setCurrentSlide(0);
 
         // 조회수 증가 (조용히)
