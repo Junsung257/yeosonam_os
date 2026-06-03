@@ -64,15 +64,16 @@ export async function generateMetadata(
   }
 
   const fallbackTitle = data.destination ? `${data.destination} 패키지` : '여소남 패키지 여행';
+  const defaultMessage = data.customMessage?.default;
   const plainTitle =
-    (data.customMessage.default.headline || fallbackTitle)
+    (defaultMessage?.headline || fallbackTitle)
       .replace(/\s*\n\s*/g, ' ')
       .trim() || fallbackTitle;
   const rawTitle =
     plainTitle.length > 55 ? `${plainTitle.slice(0, 52)}... | 여소남` : `${plainTitle} | 여소남`;
   const title = { absolute: rawTitle };
   const desc =
-    (data.customMessage.default.subline || fallbackTitle).slice(0, 160) || rawTitle;
+    (defaultMessage?.subline || fallbackTitle).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
   const socialImage = hero && isSafeImageSrc(hero) ? hero : defaultSocialImage();
 
