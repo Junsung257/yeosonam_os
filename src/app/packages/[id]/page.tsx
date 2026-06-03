@@ -16,7 +16,15 @@ import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_BASE_URL ||
+  process.env.NEXT_PUBLIC_SITE_URL ||
+  'https://www.yeosonam.com'
+).replace(/\/+$/, '');
+
+function getPackageUrl(id: string): string {
+  return `${BASE_URL}/packages/${encodeURIComponent(id.trim())}`;
+}
 
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
@@ -82,8 +90,12 @@ export async function generateMetadata({
 }: {
   params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  const { id } = await params;
-  if (!isSupabaseConfigured) return { title: '상품 상세' };
+  const { id: rawId } = await params;
+  const id = rawId.trim();
+  const canonical = getPackageUrl(id);
+  if (!id || !isSupabaseConfigured) {
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
+  }
   const sb = supabaseAdmin;
   let data: {
     title?: string | null;
@@ -100,15 +112,15 @@ export async function generateMetadata({
       .single();
     data = result.data;
   } catch {
-    return { title: '상품 상세' };
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
   }
 
   // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
-  if (!data) return { title: '상품 상세' };
+  if (!data) return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
   if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
-    return { title: '상품 상세', robots: { index: false, follow: false } };
+    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: false } };
   }
   const title = String(data.title || data.destination || '여소남 패키지 여행');
   const destination = String(data.destination || '패키지');
@@ -120,7 +132,9 @@ export async function generateMetadata({
     openGraph: {
       title,
       description,
+      url: canonical,
     },
+    alternates: { canonical },
   };
 }
 
@@ -129,7 +143,9 @@ export default async function PackageDetailPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = await params;
+  const { id: rawId } = await params;
+  const id = rawId.trim();
+  if (!id) notFound();
   const sb = supabaseAdmin;
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
@@ -552,7 +568,7 @@ export default async function PackageDetailPage({
       highPrice: (normalizedPkg as unknown as { price_max?: number }).price_max ?? undefined,
       offerCount: normalizedPkg.price_dates?.length ?? undefined,
       availability: 'https://schema.org/InStock',
-      url: `${BASE_URL}/packages/${id}`,
+      url: getPackageUrl(id),
       seller: { '@type': 'Organization', name: '여소남' },
     },
     ...(normalizedPkg.product_highlights?.length ? { award: normalizedPkg.product_highlights.slice(0, 3).map((h: string) => ({ '@type': 'Award', name: h })) } : {}),
