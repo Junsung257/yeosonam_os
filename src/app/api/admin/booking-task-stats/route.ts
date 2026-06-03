@@ -5,7 +5,9 @@
  * 박제 (2026-05-13): booking_task_resolution_stats VIEW 응답 + summary 통계.
  */
 
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -21,13 +23,13 @@ interface TaskStat {
   last_update: string | null;
 }
 
-export async function GET() {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+async function getHandler() {
+  if (!isSupabaseConfigured) return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   try {
     const { data, error } = await supabaseAdmin
       .from('booking_task_resolution_stats')
       .select('*');
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
     const stats = (data ?? []) as TaskStat[];
 
     const grandTotal = stats.reduce((s, r) => s + r.total_tasks, 0);
@@ -38,7 +40,7 @@ export async function GET() {
       ? Math.round((grandAuto / (grandAuto + grandManual)) * 1000) / 10
       : 0;
 
-    return NextResponse.json({
+    return apiResponse({
       summary: {
         total: grandTotal,
         auto_resolved: grandAuto,
@@ -49,6 +51,8 @@ export async function GET() {
       by_rule: stats,
     });
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
