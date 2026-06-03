@@ -12,7 +12,8 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 86400; // 24시간 캐시
 
 export async function GET() {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
   const lines: string[] = [];
 
   lines.push('# 여소남');
@@ -54,7 +55,7 @@ export async function GET() {
         lines.push('## 최근 블로그 글');
         for (const post of recentPosts) {
           const title = post.seo_title || `${post.destination || ''} 여행 가이드`;
-          lines.push(`- [${title}](${baseUrl}/blog/${post.slug})`);
+          lines.push(`- [${title}](${baseUrl}/blog/${encodeURIComponent(String(post.slug).trim())})`);
         }
         lines.push('');
       }
