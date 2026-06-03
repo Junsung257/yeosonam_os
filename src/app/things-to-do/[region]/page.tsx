@@ -49,6 +49,8 @@ const CATEGORY_LABELS: Record<string, string> = {
   museum: '박물관·전시',
 };
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+
 interface AttractionRow {
   id: string;
   name: string;
@@ -56,7 +58,7 @@ interface AttractionRow {
   long_desc: string | null;
   category: string | null;
   badge_type: string | null;
-  photos: Array<{ src_medium?: string; src_large?: string }> | null;
+  photos: GalleryPhoto[] | null;
   emoji: string | null;
   region: string;
 }
@@ -69,7 +71,7 @@ interface PackageRow {
   nights: number | null;
   price: number | null;
   airline: string | null;
-  photos: Array<{ src_medium?: string; src_large?: string }> | null;
+  photos: GalleryPhoto[] | null;
   photo_urls: string[] | null;
 }
 
@@ -78,6 +80,79 @@ interface PageData {
   attractionsByCategory: Record<string, AttractionRow[]>;
   packages: PackageRow[];
   totalAttractions: number;
+}
+
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function getNullableTrimmedString(value: unknown): string | null {
+  return value == null ? null : getTrimmedString(value);
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPositiveNumber(value: unknown): number | null {
+  const number = getFiniteNumber(value);
+  return number != null && number > 0 ? number : null;
+}
+
+function getPhotoList(value: unknown): GalleryPhoto[] | null {
+  if (!Array.isArray(value)) return null;
+  const photos = value.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object');
+  return photos.length > 0 ? photos : null;
+}
+
+function normalizeAttractionRow(row: unknown, fallbackRegion: string): AttractionRow | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const name = getTrimmedString(record.name);
+  if (!id || !name) return null;
+
+  return {
+    id,
+    name,
+    short_desc: getNullableTrimmedString(record.short_desc),
+    long_desc: getNullableTrimmedString(record.long_desc),
+    category: getNullableTrimmedString(record.category),
+    badge_type: getNullableTrimmedString(record.badge_type),
+    photos: getPhotoList(record.photos),
+    emoji: getNullableTrimmedString(record.emoji),
+    region: getTrimmedString(record.region) ?? fallbackRegion,
+  };
+}
+
+function normalizePackageRow(row: unknown): PackageRow | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const title = getTrimmedString(record.title);
+  if (!id || !title) return null;
+
+  return {
+    id,
+    title,
+    destination: getNullableTrimmedString(record.destination),
+    duration: getPositiveNumber(record.duration),
+    nights: getPositiveNumber(record.nights),
+    price: getPositiveNumber(record.price),
+    airline: getNullableTrimmedString(record.airline),
+    photos: getPhotoList(record.photos),
+    photo_urls: Array.isArray(record.photo_urls)
+      ? record.photo_urls.filter((url): url is string => typeof url === 'string' && url.trim().length > 0)
+      : null,
+  };
 }
 
 function pickPackageCoverUrl(p: PackageRow): string | null {
@@ -135,10 +210,13 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .limit(8),
   ]).catch(() => [{ data: null }, { data: null }]);
 
-  if (!attractions || attractions.length === 0) return null;
+  const normalizedAttractions = ((attractions as unknown[] | null) ?? [])
+    .map((row) => normalizeAttractionRow(row, region))
+    .filter((row): row is AttractionRow => row != null);
+  if (normalizedAttractions.length === 0) return null;
 
   const grouped: Record<string, AttractionRow[]> = {};
-  for (const a of attractions as AttractionRow[]) {
+  for (const a of normalizedAttractions) {
     const cat = a.category ?? 'sightseeing';
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(a);
@@ -147,8 +225,10 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
   return {
     region,
     attractionsByCategory: grouped,
-    packages: (packages ?? []) as PackageRow[],
-    totalAttractions: attractions.length,
+    packages: ((packages as unknown[] | null) ?? [])
+      .map(normalizePackageRow)
+      .filter((row): row is PackageRow => row != null),
+    totalAttractions: normalizedAttractions.length,
   };
 }
 
