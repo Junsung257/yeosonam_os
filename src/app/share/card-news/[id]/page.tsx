@@ -32,9 +32,18 @@ function safeImageUrl(input?: string | null): string | null {
   return /^https?:\/\//i.test(value) || value.startsWith('/') ? value : null;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
+function getAffiliateHref(code?: string | null): string | null {
+  const value = code?.trim();
+  return value ? `/link/${encodeURIComponent(value)}` : null;
+}
+
 export default function SharedCardNewsPage() {
-  const params = useParams<{ id: string }>();
-  const cardNewsId = typeof params?.id === 'string' ? params.id : '';
+  const params = useParams<{ id?: string | string[] }>();
+  const cardNewsId = getRouteParam(params?.id);
   const [data, setData] = useState<CardNewsDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -95,15 +104,16 @@ export default function SharedCardNewsPage() {
   const current = slides[currentSlideIndex] ?? null;
   const currentImageUrl = safeImageUrl(current?.image_url);
   const affiliateLogoUrl = safeImageUrl(data.affiliate?.logo_url);
+  const affiliateHref = getAffiliateHref(data.affiliate?.referral_code);
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center py-6 px-4">
       {/* 헤더 */}
       <div className="w-full max-w-md mb-4">
         <h1 className="text-lg font-bold text-gray-800">{data.title}</h1>
-        {data.affiliate && (
+        {data.affiliate && affiliateHref && (
           <Link
-            href={`/link/${data.affiliate.referral_code}`}
+            href={affiliateHref}
             className="inline-flex items-center gap-1.5 mt-1 text-xs text-indigo-600 hover:text-indigo-800"
           >
             {affiliateLogoUrl && (
@@ -196,9 +206,9 @@ export default function SharedCardNewsPage() {
 
       {/* 푸터 */}
       <div className="mt-6 text-center">
-        {data.affiliate ? (
+        {data.affiliate && affiliateHref ? (
           <Link
-            href={`/link/${data.affiliate.referral_code}`}
+            href={affiliateHref}
             className="text-xs text-indigo-600 hover:text-indigo-800"
           >
             🔗 {data.affiliate.name}님의 다른 콘텐츠 보기
