@@ -176,6 +176,26 @@ type Summary = {
       blocked: number;
       external_api_write_count: number;
     };
+    incident_response?: {
+      total: number;
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+      open: number;
+      watch: number;
+      kill_switch_recommended: boolean;
+      top_next_action: string;
+      alerts: Array<{
+        id: string;
+        severity: 'critical' | 'high' | 'medium' | 'low';
+        status: 'open' | 'watch';
+        category: string;
+        title: string;
+        reason: string;
+        next_action: string;
+      }>;
+    };
     experiment_standards?: {
       templates: number;
       active: number;
@@ -3017,6 +3037,23 @@ export default function AdOsPage() {
               </StatusPill>
             </div>
             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2">
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <p className="text-admin-2xs font-semibold text-admin-muted">Incident Response</p>
+                  <StatusPill tone={(summary.enterprise_layer?.incident_response?.critical || 0) > 0 ? 'bad' : (summary.enterprise_layer?.incident_response?.high || 0) > 0 ? 'warn' : 'good'}>
+                    {summary.enterprise_layer?.incident_response?.kill_switch_recommended ? 'Kill switch 권고' : '정상 감시'}
+                  </StatusPill>
+                </div>
+                <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">
+                  {Number(summary.enterprise_layer?.incident_response?.open || 0).toLocaleString('ko-KR')}
+                </p>
+                <p className="mt-1 text-admin-2xs text-admin-muted">
+                  critical {Number(summary.enterprise_layer?.incident_response?.critical || 0).toLocaleString('ko-KR')} / high {Number(summary.enterprise_layer?.incident_response?.high || 0).toLocaleString('ko-KR')}
+                </p>
+                <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                  {summary.enterprise_layer?.incident_response?.top_next_action || 'No incidents detected.'}
+                </p>
+              </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">플랫폼 실행 큐</p>
                 <p className="mt-1 admin-num text-admin-xl font-bold text-admin-text">{Number(summary.enterprise_layer?.platform_job_queue.total || 0).toLocaleString('ko-KR')}</p>
