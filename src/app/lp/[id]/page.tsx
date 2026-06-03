@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { loadLpPackageForPage } from '@/lib/load-lp-package';
 import { resolveTermsForPackage, formatCancellationDates, type NoticeBlock } from '@/lib/standard-terms';
+import { isSafeImageSrc } from '@/lib/image-url';
 import { LandingClient } from './LandingClient';
 import { LpRouteSkeleton } from './LpRouteSkeleton';
 
@@ -59,7 +60,7 @@ export async function generateMetadata(
     (data.customMessage.default.subline || fallbackTitle).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
   const ogImages =
-    hero && /^https?:\/\//i.test(hero)
+    hero && isSafeImageSrc(hero)
       ? [{ url: hero, alt: data.destination || fallbackTitle }]
       : undefined;
 
