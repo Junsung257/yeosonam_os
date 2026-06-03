@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { cacheHeader } from '@/lib/api-response'
+import { NextRequest } from 'next/server'
+import { apiResponse, cacheHeader } from '@/lib/api-response'
+import { withAdminGuard } from '@/lib/admin-guard'
+import { sanitizeDbError } from '@/lib/error-sanitizer'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { isValidTransition } from '@/lib/agent-action-machine'
 import { executeAction } from '@/lib/agent-action-executor'
@@ -12,7 +14,7 @@ const VALID_PRIORITIES = ['low', 'normal', 'high', 'critical'] as const
 // ── GET: 액션 목록 조회 ─────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ actions: [], total: 0 })
+    return apiResponse({ actions: [], total: 0 })
   }
 
   try {
@@ -31,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (compact && status === 'pending' && !agentType && page === 1 && countMode === null) {
       const { data, error } = await supabaseAdmin.rpc('get_pending_agent_actions_compact', { p_limit: limit })
       if (!error && data) {
-        return NextResponse.json(data, { headers: cacheHeader(60) })
+        return apiResponse(data, { headers: cacheHeader(60) })
       }
     }
 
@@ -58,15 +60,15 @@ export async function GET(request: NextRequest) {
     const { data, count, error } = await query
     if (error) throw error
 
-    return NextResponse.json({
+    return apiResponse({
       actions: data ?? [],
       total: count ?? 0,
       page,
       limit,
     }, { headers: cacheHeader(60) })
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '조회 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     )
   }
@@ -77,15 +79,15 @@ export async function POST(request: NextRequest) {
   // 인증 게이트 — 에이전트 액션 제출은 인증된 세션만 허용 (S2 보안 강화)
   const token = request.cookies.get('sb-access-token')?.value
   if (!token) {
-    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 })
+    return apiResponse({ error: '인증이 필요합니다.' }, { status: 401 })
   }
   const verified = await verifySupabaseAccessToken(token)
   if (!verified.ok) {
-    return NextResponse.json({ error: '세션이 유효하지 않습니다.' }, { status: 401 })
+    return apiResponse({ error: '세션이 유효하지 않습니다.' }, { status: 401 })
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
+    return apiResponse(
       { error: 'Supabase가 설정되지 않았습니다.' },
       { status: 500 },
     )
@@ -97,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     // 필수 필드 검증
     if (!agent_type || !action_type || !summary) {
-      return NextResponse.json(
+      return apiResponse(
         { error: 'agent_type, action_type, summary는 필수입니다.' },
         { status: 400 },
       )
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
 
     // agent_type 검증
     if (!VALID_AGENT_TYPES.includes(agent_type)) {
-      return NextResponse.json(
+      return apiResponse(
         { error: `잘못된 agent_type: ${agent_type}` },
         { status: 400 },
       )
@@ -113,7 +115,7 @@ export async function POST(request: NextRequest) {
 
     // priority 검증
     if (priority && !VALID_PRIORITIES.includes(priority)) {
-      return NextResponse.json(
+      return apiResponse(
         { error: `잘못된 priority: ${priority}` },
         { status: 400 },
       )
@@ -136,19 +138,19 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json({ action: data?.[0], success: true })
+    return apiResponse({ action: data?.[0], success: true })
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '등록 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     )
   }
 }
 
 // ── PATCH: 상태 변경 (승인/반려) ────────────────────────────────────
-export async function PATCH(request: NextRequest) {
+const patchHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json(
+    return apiResponse(
       { error: 'Supabase가 설정되지 않았습니다.' },
       { status: 500 },
     )
@@ -159,7 +161,7 @@ export async function PATCH(request: NextRequest) {
     const { action_id, action, reject_reason, reviewed_by } = body
 
     if (!action_id || !action) {
-      return NextResponse.json(
+      return apiResponse(
         { error: 'action_id와 action(approve|reject)은 필수입니다.' },
         { status: 400 },
       )
@@ -174,7 +176,7 @@ export async function PATCH(request: NextRequest) {
 
     const current = existing?.[0]
     if (!current) {
-      return NextResponse.json({ error: '액션을 찾을 수 없습니다.' }, { status: 404 })
+      return apiResponse({ error: '액션을 찾을 수 없습니다.' }, { status: 404 })
     }
 
     // 전이 대상 상태 결정
@@ -182,7 +184,7 @@ export async function PATCH(request: NextRequest) {
 
     // 전이 유효성 검증
     if (!isValidTransition(current.status, targetStatus)) {
-      return NextResponse.json(
+      return apiResponse(
         { error: `${current.status} → ${targetStatus} 전이가 허용되지 않습니다.` },
         { status: 400 },
       )
@@ -217,11 +219,13 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json({ action: data?.[0], success: true })
+    return apiResponse({ action: data?.[0], success: true })
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '상태 변경 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     )
   }
 }
+
+export const PATCH = withAdminGuard(patchHandler)
