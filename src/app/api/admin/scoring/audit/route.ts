@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -81,7 +82,7 @@ function buildWarnings(input: {
 
 const getHandler = async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ configured: false });
+    return apiResponse({ configured: false });
   }
 
   const [pkgCountRes, scoreCountRes, packagesRes, scoresRes, hotelIntelRes] = await Promise.all([
@@ -105,10 +106,10 @@ const getHandler = async () => {
   ]);
 
   if (packagesRes.error) {
-    return NextResponse.json({ error: packagesRes.error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(packagesRes.error) }, { status: 500 });
   }
   if (scoresRes.error) {
-    return NextResponse.json({ error: scoresRes.error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(scoresRes.error) }, { status: 500 });
   }
 
   const packages = (packagesRes.data ?? []) as PackageAuditRow[];
@@ -171,7 +172,7 @@ const getHandler = async () => {
   const optionMissingRate = pct(optionMissingRows.length, scoreRowsForVisiblePackages.length);
   const hotelIntelMatchedRate = pct(hotelIntelMatchedCount, activeLikePackages.length);
 
-  return NextResponse.json({
+  return apiResponse({
     configured: true,
     sampled: {
       packageLimit: SAMPLE_LIMIT,
