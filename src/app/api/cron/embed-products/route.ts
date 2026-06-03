@@ -14,12 +14,14 @@
  *   Authorization: Bearer $CRON_SECRET (설정 시)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { embedBatch } from '@/lib/embeddings';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -58,17 +60,17 @@ function buildEmbeddingText(p: any): string {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미구성' }, { status: 500 });
+  if (!isCronAuthorized(request)) {
+    return cronUnauthorizedResponse();
+  }
+
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const apiKey = getSecret('GOOGLE_AI_API_KEY');
   if (!apiKey) {
-    return NextResponse.json({ error: 'GOOGLE_AI_API_KEY 없음' }, { status: 500 });
-  }
-
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
+    return apiResponse({ error: 'Google AI API key not configured' }, { status: 503 });
   }
 
   let totalEmbedded = 0;
@@ -89,7 +91,7 @@ export async function GET(request: NextRequest) {
       .limit(BATCH_SIZE);
 
     if (error) {
-      errors.push(`fetch: ${error.message}`);
+      errors.push(`fetch: ${sanitizeDbError(error)}`);
       break;
     }
     if (!packages || packages.length === 0) break;
@@ -110,7 +112,7 @@ export async function GET(request: NextRequest) {
         .eq('id', pkg.id);
       if (updateErr) {
         totalFailed++;
-        errors.push(`update ${String(pkg.id).slice(0, 8)}: ${updateErr.message}`);
+        errors.push(`update ${String(pkg.id).slice(0, 8)}: ${sanitizeDbError(updateErr)}`);
       } else {
         totalEmbedded++;
       }
@@ -122,7 +124,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({
+  return apiResponse({
     target_table: 'travel_packages',
     embedded: totalEmbedded,
     failed: totalFailed,
