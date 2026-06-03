@@ -11,6 +11,7 @@ export const revalidate = 600;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 export const metadata: Metadata = {
   title: '여행지 완벽 가이드 | 목적지별 총정리',
@@ -21,6 +22,13 @@ export const metadata: Metadata = {
     description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
     url: `${BASE_URL}/destinations`,
     type: 'website',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '여행지 완벽 가이드',
+    description: '여소남이 엄선한 여행지별 완벽 가이드. 목적지 Pillar Page.',
+    images: [SOCIAL_IMAGE_URL],
   },
 };
 
