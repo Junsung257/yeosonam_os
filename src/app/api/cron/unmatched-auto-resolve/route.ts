@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
@@ -6,6 +6,8 @@ import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/
 import { cleanActivity } from '@/lib/unmatched-suggest';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { canCreateAttractionRecord } from '@/lib/attraction-policy';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,11 +23,11 @@ export const dynamic = 'force-dynamic';
  *   - match/alias/unmatched review 흐름만 자동화
  */
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: true, scanned: 0, resolved: 0 });
-
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
+
+  if (!isSupabaseConfigured) return apiResponse({ ok: true, scanned: 0, resolved: 0 });
 
   try {
     const minScore = parseFloat(process.env.UNMATCHED_AUTO_RESOLVE_MIN_SCORE || '75');
@@ -80,7 +82,7 @@ export async function GET(request: NextRequest) {
             .update({ aliases: [...aliases, newAlias] })
             .eq('id', top.id);
           if (aliasErr) {
-            errors.push(aliasErr.message);
+            errors.push(sanitizeDbError(aliasErr, 'Failed to update attraction alias'));
             continue;
           }
         }
@@ -96,7 +98,7 @@ export async function GET(request: NextRequest) {
           })
           .eq('id', u.id);
         if (updErr) {
-          errors.push(updErr.message);
+          errors.push(sanitizeDbError(updErr, 'Failed to resolve unmatched activity'));
           continue;
         }
         resolved++;
@@ -206,11 +208,14 @@ export async function GET(request: NextRequest) {
         const r = await reEnrichAffectedPackages([...affectedAttractionIds], { maxPackages: 200 });
         reenrich = { scanned_packages: r.scanned_packages, updated_packages: r.updated_packages, revalidated_paths: r.revalidated_paths };
       } catch (e) {
-        console.warn('[cron unmatched-auto-resolve] re-enrich 실패:', e instanceof Error ? e.message : e);
+        console.warn(
+          '[cron unmatched-auto-resolve] re-enrich failed:',
+          sanitizeDbError(e, 're-enrich failed'),
+        );
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       scanned,
       resolved,
@@ -220,6 +225,9 @@ export async function GET(request: NextRequest) {
       errors: errors.slice(0, 20),
     });
   } catch (e) {
-    return NextResponse.json({ ok: false, error: e instanceof Error ? e.message : 'failed' }, { status: 500 });
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(e, 'failed') },
+      { status: 500 },
+    );
   }
 }
