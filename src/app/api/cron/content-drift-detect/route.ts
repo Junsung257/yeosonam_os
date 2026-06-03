@@ -3,6 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 60;
 
@@ -27,7 +28,7 @@ interface KeywordStat {
 
 async function runContentDriftDetect(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return { skipped: true };
+  if (!isSupabaseConfigured) return { skipped: true, reason: 'Supabase not configured' };
 
   try {
     const now = new Date();
@@ -132,7 +133,7 @@ async function runContentDriftDetect(request: NextRequest) {
       topDrifts,
     };
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = sanitizeDbError(err);
     await sendSlackAlert(`[content-drift-detect] 크론 실패: ${msg}`);
     return { errors: [msg] };
   }
