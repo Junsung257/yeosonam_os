@@ -38,6 +38,8 @@ export async function generateMetadata({ params }: PageProps) {
   return {
     title: '여행 추억 릴스',
     description: `여소남과 함께한 여행 추억을 공유하세요`,
+    alternates: { canonical: url },
+    robots: { index: false, follow: false },
     openGraph: {
       title: '여행 추억 릴스',
       description: '여소남과 함께한 특별한 여행 순간들',
