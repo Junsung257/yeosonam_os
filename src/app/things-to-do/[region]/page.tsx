@@ -75,16 +75,20 @@ function pickPackageCoverUrl(p: PackageRow): string | null {
 
 export async function generateStaticParams() {
   if (!isSupabaseConfigured) return [];
-  const { data } = await supabaseAdmin
-    .from('attractions')
-    .select('region')
-    .not('region', 'is', null);
-  if (!data) return [];
-  const set = new Set<string>();
-  for (const r of data) {
-    if (r.region) set.add(r.region);
+  try {
+    const { data } = await supabaseAdmin
+      .from('attractions')
+      .select('region')
+      .not('region', 'is', null);
+    if (!data) return [];
+    const set = new Set<string>();
+    for (const r of data) {
+      if (typeof r.region === 'string' && r.region.trim()) set.add(r.region.trim());
+    }
+    return Array.from(set).map((region) => ({ region }));
+  } catch {
+    return [];
   }
-  return Array.from(set).map((region) => ({ region: encodeURIComponent(region) }));
 }
 
 async function getPageData(regionRaw: string): Promise<PageData | null> {
@@ -105,7 +109,7 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
       .in('status', ['approved', 'active'])
       .order('price', { ascending: true })
       .limit(8),
-  ]);
+  ]).catch(() => [{ data: null }, { data: null }]);
 
   if (!attractions || attractions.length === 0) return null;
 
@@ -131,6 +135,9 @@ export async function generateMetadata({ params }: { params: Promise<{ region: s
   const count = data?.totalAttractions ?? 0;
   const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리 | 여소남`;
   const description = `${region} 여행 시 꼭 가봐야 할 명소 ${count}곳을 카테고리(자연·문화·먹거리·쇼핑)별로 정리. 운영팀이 검증한 추천 일정과 패키지까지 한 페이지에서.`;
+  const firstAttraction = data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat()[0] : null;
+  const firstImage = firstAttraction?.photos?.[0]?.src_large ?? firstAttraction?.photos?.[0]?.src_medium ?? null;
+  const ogImage = isSafeImageSrc(firstImage) ? firstImage.trim() : `${BASE_URL}/og-default.png`;
   return {
     title,
     description,
@@ -140,9 +147,7 @@ export async function generateMetadata({ params }: { params: Promise<{ region: s
       description,
       url: `${BASE_URL}/things-to-do/${encodeURIComponent(region)}`,
       type: 'website',
-      images: data?.attractionsByCategory ? Object.values(data.attractionsByCategory).flat().slice(0, 1).map(a => ({
-        url: a.photos?.[0]?.src_large ?? a.photos?.[0]?.src_medium ?? `${BASE_URL}/og-default.png`,
-      })) : undefined,
+      images: [{ url: ogImage }],
     },
   };
 }
