@@ -2,12 +2,13 @@
  * Threads 연동 상태 확인 (GET)
  * /api/admin/check-threads
  */
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { isThreadsConfigured, getThreadsConfig } from '@/lib/threads-publisher';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function getHandler() {
   const configured = isThreadsConfigured();
   let config = null;
   let testResult = null;
@@ -26,10 +27,12 @@ export async function GET() {
     }
   }
 
-  return NextResponse.json({
+  return apiResponse({
     configured,
     threadsUserId: config?.threadsUserId ?? null,
     hasAccessToken: !!config?.accessToken,
     testResult,
   });
 }
+
+export const GET = withAdminGuard(getHandler);
