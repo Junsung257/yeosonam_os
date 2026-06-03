@@ -1,16 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
+    return apiResponse({ error: 'DB not configured' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => null) as { id?: string } | null;
   const id = body?.id;
   if (!id) {
-    return NextResponse.json({ error: 'id required' }, { status: 400 });
+    return apiResponse({ error: 'id required' }, { status: 400 });
   }
 
   const { data, error } = await supabaseAdmin
@@ -20,13 +22,13 @@ const postHandler = async (request: NextRequest) => {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
   if (!data) {
-    return NextResponse.json({ error: 'not found' }, { status: 404 });
+    return apiResponse({ error: 'not found' }, { status: 404 });
   }
 
-  return NextResponse.json({ rawText: String((data as { raw_text?: string | null }).raw_text ?? '') });
+  return apiResponse({ rawText: String((data as { raw_text?: string | null }).raw_text ?? '') });
 };
 
 export const POST = withAdminGuard(postHandler);

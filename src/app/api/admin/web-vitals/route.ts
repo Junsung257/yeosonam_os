@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -23,12 +25,9 @@ function getPeriod(value: string | null): Period {
   return value === 'week' ? 'week' : 'day';
 }
 
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+async function getHandler(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
 
   const { searchParams } = new URL(request.url);
@@ -44,7 +43,7 @@ export async function GET(request: NextRequest) {
     .gte('created_at', since);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   const byMetric: Record<string, number[]> = {};
@@ -68,5 +67,7 @@ export async function GET(request: NextRequest) {
     };
   }
 
-  return NextResponse.json({ stats });
+  return apiResponse({ stats });
 }
+
+export const GET = withAdminGuard(getHandler);
