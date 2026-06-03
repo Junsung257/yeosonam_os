@@ -81,7 +81,25 @@ export async function POST(request: NextRequest) {
       payload: post,
       status: 'draft',
       generation_agent: 'threads-post-v1',
-      generation_config: { brief, style: body.style ?? null, trendKeywords: body.trendKeywords, angleType: body.angleType },
+      generation_config: {
+        brief,
+        style: body.style ?? null,
+        trendKeywords: body.trendKeywords,
+        angleType: body.angleType,
+        hook_type: post.trend_sources?.[0]?.hook_type ?? null,
+        predicted_er: post.predicted_er,
+        risk_flags: post.risk_flags,
+        why_this_will_work: post.why_this_will_work,
+        trend_sources: post.trend_sources,
+        learning_mode: post.learning_mode,
+        trend_confidence: post.trend_confidence,
+      },
+      engagement: {
+        predicted_er: post.predicted_er,
+        risk_flags: post.risk_flags,
+        learning_mode: post.learning_mode,
+        trend_confidence: post.trend_confidence,
+      },
       updated_at: now,
     };
 

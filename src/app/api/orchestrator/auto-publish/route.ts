@@ -30,6 +30,7 @@ import { generateKakaoChannelMessage } from '@/lib/content-pipeline/agents/kakao
 import { generateGoogleAdsRSA } from '@/lib/content-pipeline/agents/google-ads-rsa';
 import { recommendPublishSlot } from '@/lib/best-time-engine';
 import { getSecret } from '@/lib/secret-registry';
+import { publishDistribution, type ScheduledDistributionRow } from '@/lib/social-publishing/distribution-publisher';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -141,9 +142,8 @@ export async function POST(request: NextRequest) {
   // 3) 에이전트 병렬 실행 + 발행 슬롯 사전 계산
   const slotPromises = platforms.map((p) => {
     if (publishNow) {
-      // 즉시 발행: 다음 cron 실행을 보장하기 위해 1분 뒤로 (publish-scheduled 주기 = 1h)
       return Promise.resolve({
-        scheduledFor: new Date(Date.now() + 60 * 1000),
+        scheduledFor: new Date(),
         source: 'now' as const,
       });
     }
@@ -204,6 +204,7 @@ export async function POST(request: NextRequest) {
   const distRows = agentResults
     .filter((r) => r.payload && !r.error)
     .map((r) => {
+      const threadsPayload = r.platform === 'threads_post' ? r.payload! : null;
       const base: Record<string, unknown> = {
         product_id: product.id,
         platform: r.platform,
@@ -211,7 +212,28 @@ export async function POST(request: NextRequest) {
         status: dryRun ? 'draft' : 'scheduled',
         scheduled_for: dryRun ? null : (slotByPlatform.get(r.platform)?.scheduledFor.toISOString() ?? new Date(Date.now() + 60 * 60 * 1000).toISOString()),
         generation_agent: `${r.platform}-orchestrator-v1`,
-        generation_config: { brief_h1: brief.h1, slot_source: slotByPlatform.get(r.platform)?.source ?? 'unknown' },
+        generation_config: {
+          brief_h1: brief.h1,
+          brief,
+          slot_source: slotByPlatform.get(r.platform)?.source ?? 'unknown',
+          ...(threadsPayload ? {
+            hook_type: (threadsPayload.trend_sources as Array<Record<string, unknown>> | undefined)?.[0]?.hook_type ?? null,
+            predicted_er: threadsPayload.predicted_er ?? null,
+            risk_flags: threadsPayload.risk_flags ?? [],
+            why_this_will_work: threadsPayload.why_this_will_work ?? null,
+            trend_sources: threadsPayload.trend_sources ?? [],
+            learning_mode: threadsPayload.learning_mode ?? 'fallback_curated',
+            trend_confidence: threadsPayload.trend_confidence ?? 0,
+          } : {}),
+        },
+        ...(threadsPayload ? {
+          engagement: {
+            predicted_er: threadsPayload.predicted_er ?? null,
+            risk_flags: threadsPayload.risk_flags ?? [],
+            learning_mode: threadsPayload.learning_mode ?? 'fallback_curated',
+            trend_confidence: threadsPayload.trend_confidence ?? 0,
+          },
+        } : {}),
       };
       if (tenantId) base.tenant_id = tenantId;
       return base;
@@ -230,6 +252,33 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
     insertedDistributions = (insRows ?? []) as Array<{ id: string; platform: string; scheduled_for: string | null; payload: Record<string, unknown> }>;
+  }
+
+  const immediateResults: Array<{ id: string; platform: string; status: string; error?: string }> = [];
+  if (publishNow && !dryRun && insertedDistributions.length > 0) {
+    for (const dist of insertedDistributions) {
+      if (!['threads_post', 'meta_ads'].includes(dist.platform)) continue;
+      const row: ScheduledDistributionRow = {
+        id: dist.id,
+        product_id: product.id,
+        card_news_id: null,
+        blog_post_id: null,
+        platform: dist.platform,
+        payload: dist.payload,
+        scheduled_for: dist.scheduled_for ?? new Date().toISOString(),
+        engagement: {},
+        tenant_id: tenantId,
+        retry_count: 0,
+        max_retries: 3,
+      };
+      const publishResult = await publishDistribution(row);
+      immediateResults.push({
+        id: dist.id,
+        platform: dist.platform,
+        status: publishResult.status,
+        error: publishResult.error ?? publishResult.reason,
+      });
+    }
   }
 
   // 모든 에이전트가 실패한 경우 207 (다중 상태) + ok:false
@@ -335,6 +384,7 @@ export async function POST(request: NextRequest) {
       slot_source: slotByPlatform.get(d.platform)?.source ?? 'unknown',
       payload: d.payload,
     })),
+    immediate_results: immediateResults,
     blog_queue_id: blogQueueId,
     blog_scheduled_for: slotByPlatform.get('blog_body')?.scheduledFor.toISOString() ?? null,
     card_news_variants: cardNewsVariantTrigger,

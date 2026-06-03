@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: '현재 threads만 지원' }, { status: 400 });
   }
 
-  const appId = getSecret('META_APP_ID');
+  const appId = getSecret('THREADS_APP_ID') || getSecret('META_APP_ID');
   if (!appId) {
     return NextResponse.json({ error: 'META_APP_ID 미설정' }, { status: 503 });
   }
@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
   const sig = createHmac('sha256', stateSecret).update(payload).digest('hex').slice(0, 16);
   const state = `${payload}.${sig}`;
 
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com';
   const redirectUri = `${siteUrl}/api/auth/meta-callback`;
 
   // Threads API v1.0 OAuth URL

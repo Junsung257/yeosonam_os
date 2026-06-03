@@ -5,6 +5,7 @@ import { extractTrendFeatures, scrubPII } from '@/lib/trend-feature-extractor';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { detectDestination } from '@/lib/keyword-research';
+import { refreshThreadsTrendLearning } from '@/lib/threads-trend-learner';
 
 /**
  * Threads Trend Miner — 매일 06:30 KST (21:30 UTC)
@@ -76,11 +77,13 @@ async function runThreadsTrendMiner(request: NextRequest) {
   const upsertRows: Array<Record<string, unknown>> = [];
   let totalPosts = 0;
   let errorKeywords = 0;
+  let permissionMissing = false;
 
   for (const { keyword, result } of searchResults) {
     if (!result.ok) {
       errors.push(`${keyword}: ${result.error}`);
       errorKeywords += 1;
+      if (isThreadsPermissionError(result.error)) permissionMissing = true;
       continue;
     }
     const dest = detectDestination(keyword) || null;
@@ -100,6 +103,16 @@ async function runThreadsTrendMiner(request: NextRequest) {
       const er = views > 0
         ? (likes + replies + reposts + quotes + shares) / views
         : null;
+      const performanceScore = scoreThreadsTrendPost({
+        views,
+        likes,
+        replies,
+        reposts,
+        quotes,
+        shares,
+        publishedAt: post.timestamp ?? null,
+        hasDestinationMatch: Boolean(dest),
+      });
 
       upsertRows.push({
         platform: 'threads',
@@ -123,7 +136,7 @@ async function runThreadsTrendMiner(request: NextRequest) {
         shares,
         views,
         engagement_rate: er,
-        performance_score: er,                           // 일차 — PR-4에서 정규화
+        performance_score: performanceScore,
         personal_data_present: piiDetected,
         post_published_at: post.timestamp ?? null,
         raw_response: {
@@ -153,15 +166,66 @@ async function runThreadsTrendMiner(request: NextRequest) {
     .lt('expires_at', new Date().toISOString());
   if (delErr) errors.push(`expire 정리 실패: ${delErr.message}`);
 
+  let learning: Awaited<ReturnType<typeof refreshThreadsTrendLearning>> | null = null;
+  try {
+    learning = await refreshThreadsTrendLearning();
+  } catch (err) {
+    errors.push(`trend learning refresh failed: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
   return {
+    mode: permissionMissing ? 'fallback_learning' : 'keyword_search',
+    permission_status: permissionMissing ? 'threads_keyword_search_missing' : 'ok',
     keywords: keywords.length,
     error_keywords: errorKeywords,
     posts_fetched: totalPosts,
     upserted: inserted,
     expired_deleted: delCount ?? 0,
+    learning,
     errors,
     ranAt: new Date().toISOString(),
   };
 }
 
 export const GET = withCronLogging('threads-trend-miner', runThreadsTrendMiner);
+
+function scoreThreadsTrendPost(args: {
+  views: number;
+  likes: number;
+  replies: number;
+  reposts: number;
+  quotes: number;
+  shares: number;
+  publishedAt: string | null;
+  hasDestinationMatch: boolean;
+}): number | null {
+  const { views, likes, replies, reposts, quotes, shares, publishedAt, hasDestinationMatch } = args;
+  const weighted = likes + replies * 2 + reposts * 5 + quotes * 4 + shares * 3;
+  if (weighted <= 0 && views <= 0) return null;
+
+  const viewDenom = Math.max(views, 50);
+  const erScore = Math.min(0.75, weighted / viewDenom);
+  const volumeScore = Math.min(0.15, Math.log10(Math.max(views, 1)) / 40);
+  const destinationBoost = hasDestinationMatch ? 0.05 : 0;
+  const freshnessBoost = publishedAt ? computeFreshnessBoost(publishedAt) : 0;
+
+  return Math.max(0, Math.min(1, Number((erScore + volumeScore + destinationBoost + freshnessBoost).toFixed(4))));
+}
+
+function computeFreshnessBoost(publishedAt: string): number {
+  const ts = new Date(publishedAt).getTime();
+  if (Number.isNaN(ts)) return 0;
+  const ageHours = Math.max(0, (Date.now() - ts) / (60 * 60 * 1000));
+  if (ageHours <= 24) return 0.05;
+  if (ageHours <= 72) return 0.03;
+  if (ageHours <= 168) return 0.01;
+  return 0;
+}
+
+function isThreadsPermissionError(error: string | undefined): boolean {
+  const normalized = (error || '').toLowerCase();
+  return normalized.includes('permission')
+    || normalized.includes('code 10')
+    || normalized.includes('does not have permission')
+    || normalized.includes('threads_keyword_search');
+}

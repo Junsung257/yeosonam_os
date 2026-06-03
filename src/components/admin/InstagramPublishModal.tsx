@@ -52,7 +52,7 @@ export default function InstagramPublishModal({
       };
       if (tab === 'scheduled') {
         // datetime-local 입력값 (로컬 시간) → ISO (UTC). 브라우저가 로컬 TZ 를 적용.
-        // publish-scheduled 크론이 매시간 정각 실행 → 예약 시각 도래 후 최대 1시간 이내 발행
+        // publish-scheduled 크론이 15분마다 실행 → 예약 시각 도래 후 보통 15분 이내 발행
         const parsed = new Date(scheduledAt);
         if (isNaN(parsed.getTime())) {
           throw new Error('예약 시각 파싱 실패');
@@ -150,7 +150,7 @@ export default function InstagramPublishModal({
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
                 />
                 <p className="text-[11px] text-admin-muted-2 mt-1">
-                  크론이 매시간 정각에 확인해 도래 후 최대 1시간 이내 발행됩니다. 실 발행 시각 오차 ±60분.
+                  크론이 15분마다 확인해 도래 후 보통 15분 이내 발행됩니다. 실 발행 시각 오차 ±15분.
                 </p>
               </div>
             )}

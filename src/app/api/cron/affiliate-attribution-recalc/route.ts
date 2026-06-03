@@ -100,12 +100,10 @@ export async function GET(request: NextRequest) {
         .eq('is_active', true)
         .maybeSingle();
       if (!aff) return;
-      const affiliateId = (aff as { id: string }).id;
 
       const { error: upErr } = await supabaseAdmin
         .from('bookings')
         .update({
-          affiliate_id: affiliateId,
           referral_code: chosenRef,
           attribution_model: model,
           attribution_split: split,

@@ -34,6 +34,7 @@ import {
   THREADS_HOOK_MAX_WORDS,
   THREADS_HOOK_SWEET_SPOT_MAX,
 } from './card-news/tokens';
+import { verifyThreadsPostOwnership } from './threads-api';
 
 const GRAPH_API_BASE = 'https://graph.threads.net/v1.0';
 
@@ -74,6 +75,9 @@ export interface PublishThreadsInput {
 export interface ThreadsPublishResult {
   ok: boolean;
   postId?: string;           // threads_post_id (shortcode)
+  permalink?: string;
+  verified?: boolean;
+  verificationError?: string;
   replyPostIds?: string[];   // 답글 ID 배열 (replyThreads 순서와 동일)
   error?: string;
   step?: string;
@@ -228,7 +232,7 @@ export async function publishToThreads(input: PublishThreadsInput): Promise<Thre
       }
     }
 
-    return { ok: true, postId: mainResult.postId, replyPostIds };
+    return { ...mainResult, ok: true, postId: mainResult.postId, replyPostIds };
   } catch (err) {
     return { ok: false, step: 'unexpected', error: err instanceof Error ? err.message : String(err) };
   }
@@ -248,7 +252,15 @@ async function publishFromContainer(
   if (!res.ok || !data.id) {
     return { ok: false, step: 'threads_publish', error: data?.error?.message || JSON.stringify(data) };
   }
-  return { ok: true, postId: data.id as string };
+  const postId = data.id as string;
+  const verification = await verifyThreadsPostOwnership(postId, accessToken);
+  return {
+    ok: true,
+    postId,
+    permalink: verification.permalink,
+    verified: verification.verified,
+    verificationError: verification.verificationError,
+  };
 }
 
 async function pollContainerStatus(
