@@ -97,9 +97,13 @@ function getGradeProgress(grade: number, bookingCount: number) {
   return Math.min(100, Math.round(((bookingCount - current) / (next - current)) * 100));
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function InfluencerDashboard() {
   const params = useParams();
-  const code = params.code as string;
+  const code = getRouteParam(params?.code);
   const { affiliate: authAffiliate, authenticated, setAuth, clearAuth } = useInfluencerAuth();
 
   const [pin, setPin] = useState('');
@@ -111,6 +115,10 @@ export default function InfluencerDashboard() {
 
   // PIN 인증 → JWT 발급
   const handlePinLogin = useCallback(async (enteredPin: string) => {
+    if (!code) {
+      setPinError('추천인 코드가 올바르지 않습니다');
+      return;
+    }
     setLoading(true);
     setPinError('');
     try {
@@ -135,6 +143,11 @@ export default function InfluencerDashboard() {
   }, [code, setAuth]);
 
   const fetchDashboard = useCallback(async () => {
+    if (!code) {
+      setData(null);
+      setPinError('추천인 코드가 올바르지 않습니다');
+      return;
+    }
     setLoading(true);
     setPinError('');
     try {
@@ -437,7 +450,7 @@ export default function InfluencerDashboard() {
               <h2 className="font-bold text-gray-900">내가 만든 콘텐츠 성과</h2>
               <p className="text-xs text-gray-500">총 {contents.length}개 콘텐츠 / {totalContentBookings}건 예약 / ₩{totalContentRevenue.toLocaleString()}</p>
             </div>
-            <a href={`/influencer/${aff.referral_code}/create-content`} className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100">
+            <a href={`/influencer/${encodeURIComponent(aff.referral_code)}/create-content`} className="text-xs px-3 py-1.5 bg-blue-50 text-blue-700 rounded-lg font-medium hover:bg-blue-100">
               + 새 콘텐츠
             </a>
           </div>
