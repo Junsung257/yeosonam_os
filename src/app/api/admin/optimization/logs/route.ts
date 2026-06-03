@@ -38,6 +38,11 @@ type OptimizationLogSummary = {
   created_at: string;
 };
 
+type LegacyOptimizationLogRow = Partial<OptimizationLogSummary> & {
+  created_at?: string | null;
+  error?: string | null;
+};
+
 function parseAmount(value: string | null): number {
   if (!value) return 0;
   const normalized = Number(value.replace(/[^\d.-]/g, ''));
@@ -66,6 +71,44 @@ function summarizeLog(row: OptimizationLogRow): OptimizationLogSummary {
     duration_ms: 0,
     created_at: ranAt,
   };
+}
+
+function toNumber(value: unknown): number {
+  const normalized = typeof value === 'number' ? value : Number(value);
+  return Number.isFinite(normalized) ? normalized : 0;
+}
+
+function normalizeStatus(value: unknown): OptimizationLogSummary['status'] {
+  return value === 'partial' || value === 'error' || value === 'success' ? value : 'success';
+}
+
+function summarizeLegacyLog(row: LegacyOptimizationLogRow, index: number): OptimizationLogSummary {
+  const ranAt = row.ran_at ?? row.created_at ?? new Date(0).toISOString();
+  const errorList = Array.isArray(row.errors)
+    ? row.errors.filter((error): error is string => typeof error === 'string' && error.length > 0)
+    : typeof row.error === 'string' && row.error.length > 0
+      ? [row.error]
+      : null;
+
+  return {
+    id: typeof row.id === 'string' ? row.id : `legacy-${index}`,
+    ran_at: ranAt,
+    platform: typeof row.platform === 'string' ? row.platform : 'unknown',
+    status: normalizeStatus(row.status),
+    keywords_analyzed: toNumber(row.keywords_analyzed),
+    bids_adjusted: toNumber(row.bids_adjusted),
+    negative_keywords_added: toNumber(row.negative_keywords_added),
+    suggestions_added: toNumber(row.suggestions_added),
+    total_spend_before: toNumber(row.total_spend_before),
+    total_spend_after: toNumber(row.total_spend_after),
+    errors: errorList && errorList.length > 0 ? errorList : null,
+    duration_ms: toNumber(row.duration_ms),
+    created_at: row.created_at ?? ranAt,
+  };
+}
+
+function isMissingRelationError(error: { code?: string; message?: string } | null): boolean {
+  return error?.code === 'PGRST205' || /Could not find the table|relation .* does not exist/i.test(error?.message ?? '');
 }
 
 export async function GET(request: NextRequest) {
@@ -104,6 +147,27 @@ export async function GET(request: NextRequest) {
     }
 
     const { data, error } = await query;
+    if (isMissingRelationError(error)) {
+      const legacyQuery = supabase
+        .from('optimization_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      const legacyResult = platform && platform !== 'all'
+        ? await legacyQuery.eq('platform', platform)
+        : await legacyQuery;
+
+      if (isMissingRelationError(legacyResult.error)) {
+        return apiResponse([]);
+      }
+      if (legacyResult.error) {
+        return apiResponse({ error: sanitizeDbError(legacyResult.error) }, { status: 500 });
+      }
+
+      const legacyRows = (legacyResult.data ?? []) as unknown as LegacyOptimizationLogRow[];
+      return apiResponse(legacyRows.map(summarizeLegacyLog));
+    }
     if (error) {
       return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
     }
