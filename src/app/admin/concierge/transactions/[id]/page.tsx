@@ -80,6 +80,7 @@ export default function TransactionDetailPage() {
   const params  = useParams();
   const router  = useRouter();
   const id      = getRouteParam(params?.id);
+  const encodedId = encodeURIComponent(id);
 
   const [txn, setTxn]           = useState<Transaction | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -96,7 +97,7 @@ export default function TransactionDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const res  = await fetch(`/api/concierge/transactions/${id}`);
+      const res  = await fetch(`/api/concierge/transactions/${encodedId}`);
       const data = await res.json();
       setTxn(data.transaction ?? null);
     } catch {
@@ -104,7 +105,7 @@ export default function TransactionDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [encodedId, id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -114,7 +115,7 @@ export default function TransactionDetailPage() {
     setRefunding(true);
     setError('');
     try {
-      const res  = await fetch(`/api/concierge/transactions/${id}`, {
+      const res  = await fetch(`/api/concierge/transactions/${encodedId}`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ action: 'refund' }),
