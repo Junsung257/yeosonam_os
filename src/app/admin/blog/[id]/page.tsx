@@ -18,10 +18,13 @@ interface CardNewsRow {
   created_at: string;
 }
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 export default function BlogEditPage() {
   const router = useRouter();
   const params = useParams();
-  const id = params.id as string;
+  const id = getRouteParam(params?.id);
 
   const [blogHtml, setBlogHtml] = useState('');
   const [slug, setSlug] = useState('');
@@ -46,7 +49,11 @@ export default function BlogEditPage() {
 
   // 기존 글 로드
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      showToast('블로그 ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
     fetch(`/api/blog?id=${id}`)
       .then(r => r.json())
       .then(d => {
@@ -134,6 +141,7 @@ export default function BlogEditPage() {
   const grade = seoScore ? getSeoGrade(seoScore.overall) : null;
 
   const handleSave = useCallback(async (targetStatus: 'draft' | 'published') => {
+    if (!id) { showToast('블로그 ID가 올바르지 않습니다.'); return; }
     if (!blogHtml.trim()) { showToast('본문을 입력하세요'); return; }
     if (!slug.trim()) { showToast('URL 슬러그를 입력하세요'); return; }
 
@@ -170,6 +178,8 @@ export default function BlogEditPage() {
   }, [id, blogHtml, slug, seoTitle, seoDescription, ogImageUrl]);
 
   const handleReindex = async () => {
+    if (!id) { showToast('블로그 ID가 올바르지 않습니다.'); return; }
+
     if (!confirm('이 글의 색인 요청을 검색엔진에 다시 보내시겠습니까?\n\n- Google Indexing API\n- IndexNow (Bing/Yandex 등)\n- Bing sitemap ping')) return;
     setReindexing(true);
     try {
