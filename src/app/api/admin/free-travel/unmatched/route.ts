@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { requireAdminApiToken } from '@/lib/api-auth';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const ResolveSchema = z.object({
   unmatchedId: z.string().uuid(),
@@ -14,7 +16,7 @@ const getHandler = async (request: NextRequest) => {
   const unauthorized = requireAdminApiToken(request);
   if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
-    return NextResponse.json({ unmatched: [] });
+    return apiResponse({ unmatched: [] });
   }
 
   const { data, error } = await supabaseAdmin
@@ -24,7 +26,7 @@ const getHandler = async (request: NextRequest) => {
     .order('created_at', { ascending: false })
     .limit(100);
   if (error) {
-    return NextResponse.json({ code: 'UNMATCHED_FETCH_FAILED', error: error.message }, { status: 500 });
+    return apiResponse({ code: 'UNMATCHED_FETCH_FAILED', error: sanitizeDbError(error) }, { status: 500 });
   }
 
   const unmatched = await Promise.all((data ?? []).map(async (row: any) => {
@@ -47,20 +49,20 @@ const getHandler = async (request: NextRequest) => {
     };
   }));
 
-  return NextResponse.json({ unmatched });
+  return apiResponse({ unmatched });
 }
 
 const postHandler = async (request: NextRequest) => {
   const unauthorized = requireAdminApiToken(request);
   if (unauthorized) return unauthorized;
   if (!isSupabaseConfigured || !supabaseAdmin) {
-    return NextResponse.json({ code: 'DB_NOT_CONFIGURED', error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ code: 'DB_NOT_CONFIGURED', error: 'DB not configured' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => null);
   const parsed = ResolveSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ code: 'VALIDATION_ERROR', error: 'unmatchedId/targetCommissionId를 확인해주세요.' }, { status: 400 });
+    return apiResponse({ code: 'VALIDATION_ERROR', error: 'unmatchedId/targetCommissionId를 확인해주세요.' }, { status: 400 });
   }
   const { unmatchedId, targetCommissionId, reason } = parsed.data;
 
@@ -73,7 +75,7 @@ const postHandler = async (request: NextRequest) => {
     .limit(1);
   const unmatched = unmatchedRows?.[0];
   if (!unmatched) {
-    return NextResponse.json({ code: 'UNMATCHED_NOT_FOUND', error: '대상 unmatched를 찾을 수 없습니다.' }, { status: 404 });
+    return apiResponse({ code: 'UNMATCHED_NOT_FOUND', error: '대상 unmatched를 찾을 수 없습니다.' }, { status: 404 });
   }
 
   const { error: targetErr } = await supabaseAdmin
@@ -87,7 +89,7 @@ const postHandler = async (request: NextRequest) => {
     .eq('id', targetCommissionId)
     .in('status', ['pending', 'reported']);
   if (targetErr) {
-    return NextResponse.json({ code: 'TARGET_UPDATE_FAILED', error: targetErr.message }, { status: 500 });
+    return apiResponse({ code: 'TARGET_UPDATE_FAILED', error: sanitizeDbError(targetErr) }, { status: 500 });
   }
 
   const { error: unmatchedErr } = await supabaseAdmin
@@ -101,10 +103,10 @@ const postHandler = async (request: NextRequest) => {
     .eq('id', unmatchedId)
     .eq('status', 'unmatched');
   if (unmatchedErr) {
-    return NextResponse.json({ code: 'UNMATCHED_RESOLVE_FAILED', error: unmatchedErr.message }, { status: 500 });
+    return apiResponse({ code: 'UNMATCHED_RESOLVE_FAILED', error: sanitizeDbError(unmatchedErr) }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, resolvedAt: now, matchReason: 'manual' });
+  return apiResponse({ ok: true, resolvedAt: now, matchReason: 'manual' });
 }
 
 export const GET = withAdminGuard(getHandler);
