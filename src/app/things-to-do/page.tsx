@@ -22,6 +22,19 @@ interface RegionEntry {
   cover: string | null;
 }
 
+interface AttractionPhoto {
+  src_medium?: string;
+  src_large?: string;
+}
+
+function normalizeRegionName(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+function isAttractionPhotoArray(value: unknown): value is AttractionPhoto[] {
+  return Array.isArray(value);
+}
+
 async function getRegions(): Promise<RegionEntry[]> {
   if (!isSupabaseConfigured) return [];
   try {
@@ -43,18 +56,20 @@ async function getRegions(): Promise<RegionEntry[]> {
 
     const map = new Map<string, RegionEntry>();
     for (const r of regionRows) {
-      if (!r.region) continue;
-      if (!map.has(r.region)) map.set(r.region, { region: r.region, count: 0, cover: null });
-      const e = map.get(r.region)!;
+      const region = normalizeRegionName(r.region);
+      if (!region) continue;
+      if (!map.has(region)) map.set(region, { region, count: 0, cover: null });
+      const e = map.get(region)!;
       e.count += 1;
     }
 
     for (const r of coverRows ?? []) {
-      if (!r.region) continue;
-      const e = map.get(r.region);
+      const region = normalizeRegionName(r.region);
+      if (!region) continue;
+      const e = map.get(region);
       if (!e || e.cover) continue;
-      const photos = r.photos as Array<{ src_medium?: string; src_large?: string }> | null;
-      const u = pickAttractionPhotoUrl(photos ?? undefined);
+      const photos = isAttractionPhotoArray(r.photos) ? r.photos : undefined;
+      const u = pickAttractionPhotoUrl(photos);
       if (u) e.cover = u;
     }
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
