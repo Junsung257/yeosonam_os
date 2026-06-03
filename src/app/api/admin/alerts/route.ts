@@ -4,14 +4,16 @@
  * /admin/alerts 페이지 데이터 — 알림 목록 + 통계 카드.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const getHandler = async (req: NextRequest): Promise<NextResponse> => {
-  if (!isSupabaseConfigured) return NextResponse.json({ alerts: [], stats: null });
+  if (!isSupabaseConfigured) return apiResponse({ alerts: [], stats: null });
 
   const showAcked = req.nextUrl.searchParams.get('showAcked') === 'true';
   const refId = req.nextUrl.searchParams.get('refId')?.trim() || null;
@@ -31,7 +33,8 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
     supabaseAdmin.from('admin_alerts').select('category, severity, acknowledged_at, created_at'),
   ]);
 
-  if (alertsRes.error) return NextResponse.json({ error: alertsRes.error.message }, { status: 500 });
+  if (alertsRes.error) return apiResponse({ error: sanitizeDbError(alertsRes.error) }, { status: 500 });
+  if (allRes.error) return apiResponse({ error: sanitizeDbError(allRes.error) }, { status: 500 });
 
   const all = allRes.data ?? [];
   const weekAgo = new Date(Date.now() - 7 * 86400000).toISOString();
@@ -42,7 +45,7 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
     by_severity: countBy(all.filter((a: Record<string, unknown>) => (a.created_at as string) >= weekAgo), 'severity'),
   };
 
-  return NextResponse.json({ alerts: alertsRes.data ?? [], stats });
+  return apiResponse({ alerts: alertsRes.data ?? [], stats });
 };
 
 export const GET = withAdminGuard(getHandler);
