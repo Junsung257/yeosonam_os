@@ -13,6 +13,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { resolvePreviousPeriod, computeSettlementDraft } from './settlement-calc';
 import type { BookingForSettlement, PendingAdjustment } from './settlement-calc';
 
@@ -82,6 +84,19 @@ describe('resolvePreviousPeriod', () => {
     expect(r.period).toMatch(/^\d{4}-\d{2}$/);
     expect(r.periodStart).toMatch(/^\d{4}-\d{2}-01$/);
     expect(r.periodEnd).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('calculateDraftForAffiliate DB query contract', () => {
+  it('selects settlement candidates by return_date period, not departure_date', () => {
+    const file = readFileSync(join(process.cwd(), 'src/lib/affiliate/settlement-calc.ts'), 'utf8');
+    const bookingsQueryStart = file.indexOf(".from('bookings')");
+    const bookingsQuery = file.slice(bookingsQueryStart, file.indexOf('supabaseAdmin', bookingsQueryStart + 1));
+
+    expect(bookingsQuery).toContain(".gte('return_date', periodStart)");
+    expect(bookingsQuery).toContain(".lte('return_date', periodEnd)");
+    expect(bookingsQuery).not.toContain(".gte('departure_date', periodStart)");
+    expect(bookingsQuery).not.toContain(".lte('departure_date', periodEnd)");
   });
 });
 

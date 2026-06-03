@@ -109,6 +109,11 @@ export async function createBooking(data: {
   utm_content?: string | null;
   utm_attributed_campaign_id?: string | null;
   referral_code?: string | null;
+  promo_code?: string | null;
+  promo_affiliate_id?: string | null;
+  attribution_model?: string | null;
+  attribution_split?: Record<string, unknown> | null;
+  attribution_snapshot?: Record<string, unknown> | null;
 }) {
   try {
     const { initialDepositNoticeBlockedForNewBooking } = await import('@/lib/booking-automation-policy');
@@ -193,6 +198,11 @@ export async function createBooking(data: {
         ? { utm_attributed_campaign_id: data.utm_attributed_campaign_id }
         : {}),
       ...(data.referral_code ? { referral_code: data.referral_code } : {}),
+      ...(data.promo_code ? { promo_code: data.promo_code } : {}),
+      ...(data.promo_affiliate_id ? { promo_affiliate_id: data.promo_affiliate_id } : {}),
+      ...(data.attribution_model ? { attribution_model: data.attribution_model } : {}),
+      ...(data.attribution_split ? { attribution_split: data.attribution_split } : {}),
+      ...(data.attribution_snapshot ? { attribution_snapshot: data.attribution_snapshot } : {}),
     }] as unknown[]).select();
     if (error) throw error;
     const bookingId = booking?.[0]?.id;

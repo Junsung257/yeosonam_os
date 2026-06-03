@@ -176,6 +176,14 @@ function sanitizeLandingVideoUrl(raw: unknown): string | null {
 
 // PATCH: 어필리에이트 정보 수정
 export async function PATCH(request: NextRequest) {
+  const isAdmin = await isAdminRequest(request);
+  if (!isAdmin) {
+    return NextResponse.json(
+      { error: '관리자 권한이 필요합니다.' },
+      { status: 401 }
+    );
+  }
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
   }

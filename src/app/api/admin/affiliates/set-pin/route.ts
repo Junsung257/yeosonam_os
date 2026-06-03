@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { hashAffiliatePin } from '@/lib/affiliate/auth-service';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
@@ -27,7 +28,7 @@ async function postHandler(request: NextRequest) {
 
   const { error } = await supabaseAdmin
     .from('affiliates')
-    .update({ portal_pin: pin })
+    .update({ portal_pin: pin, pin_hash: hashAffiliatePin(pin) } as never)
     .eq('id', affiliateId);
 
   if (error) {

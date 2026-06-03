@@ -140,8 +140,8 @@ export async function calculateDraftForAffiliate(
       .select('id, influencer_commission, return_date, status, self_referral_flag')
       .eq('affiliate_id', affiliate.id)
       .in('status', ['confirmed', 'completed', 'fully_paid'])
-      .gte('departure_date', periodStart)
-      .lte('departure_date', periodEnd)
+      .gte('return_date', periodStart)
+      .lte('return_date', periodEnd)
       .lte('return_date', todayIso)
       .or('is_deleted.is.null,is_deleted.eq.false'),
     supabaseAdmin
