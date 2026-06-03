@@ -125,17 +125,91 @@ async function cronChecks(): Promise<Check[]> {
   });
 }
 
-async function getHandler(_request: NextRequest) {
+async function adOsCompletionChecks(request: NextRequest): Promise<Check[]> {
+  const auditUrl = new URL('/api/admin/ad-os/completion-audit', request.url);
+  const response = await fetch(auditUrl, {
+    cache: 'no-store',
+    headers: {
+      cookie: request.headers.get('cookie') || '',
+      authorization: request.headers.get('authorization') || '',
+    },
+  });
+  const payload = await response.json().catch(() => ({}));
+  const audit = payload?.audit;
+
+  if (!response.ok || !audit) {
+    return [{
+      key: 'ad_os.completion_audit',
+      label: 'Ad OS completion audit',
+      status: 'fail',
+      message: payload?.error
+        ? `Completion audit is unavailable: ${payload.error}`
+        : 'Completion audit is unavailable. Run /api/admin/ad-os/completion-audit and inspect the JSON response.',
+      detail: {
+        next_action: payload?.next_action || 'Recover the Ad OS completion audit endpoint before using marketing health as the final readiness monitor.',
+        source: '/api/admin/ad-os/completion-audit',
+        read_only: true,
+        external_api_write: false,
+        database_mutation: false,
+      },
+    }];
+  }
+
+  const failed = Number(audit.failed || 0);
+  const warnings = Number(audit.warnings || 0);
+  const requirements = Array.isArray(audit.requirements) ? audit.requirements : [];
+  const externalSpendRequirement = requirements.find((row: { id?: string }) => row.id === 'external_write_zero');
+  const fullAutoRequirement = requirements.find((row: { id?: string }) => row.id === 'full_auto_default_off');
+
+  return [
+    {
+      key: 'ad_os.completion_audit',
+      label: 'Ad OS completion audit',
+      status: failed > 0 || audit.status === 'blocked' ? 'fail' : warnings > 0 ? 'warn' : 'ok',
+      message: `status ${audit.status || 'unknown'} | score ${Number(audit.readiness_score || 0)}% | pass ${Number(audit.passed || 0)} / warn ${warnings} / fail ${failed}`,
+      detail: {
+        top_blocker: audit.top_blocker || 'No blocker',
+        next_action: audit.next_action || 'Collect current evidence before declaring Ad OS complete.',
+        source: '/api/admin/ad-os/completion-audit',
+        read_only: true,
+      },
+    },
+    {
+      key: 'ad_os.external_write_safety',
+      label: 'External spend safety',
+      status: externalSpendRequirement?.status === 'fail' ? 'fail' : externalSpendRequirement?.status === 'warn' ? 'warn' : 'ok',
+      message: externalSpendRequirement?.evidence || 'No live external API write was detected in the Ad OS runtime layers.',
+      detail: {
+        next_action: externalSpendRequirement?.next_action || 'Keep all external writes behind approval, budget, and confirmation gates.',
+        source: 'completion_audit.requirements.external_write_zero',
+      },
+    },
+    {
+      key: 'ad_os.full_auto_policy',
+      label: 'Full auto policy',
+      status: fullAutoRequirement?.status === 'fail' ? 'fail' : fullAutoRequirement?.status === 'warn' ? 'warn' : 'ok',
+      message: fullAutoRequirement?.evidence || 'Full autopilot remains disabled by default.',
+      detail: {
+        next_action: fullAutoRequirement?.next_action || 'Keep full auto disabled unless separate operational approval exists.',
+        source: 'completion_audit.requirements.full_auto_default_off',
+      },
+    },
+  ];
+}
+
+async function getHandler(request: NextRequest) {
   const baseChecks = SECRET_GROUPS.map(secretCheck);
   let db: Check[] = [];
   let cron: Check[] = [];
+  let adOs: Check[] = [];
   let probes: Awaited<ReturnType<typeof runMarketingIntegrationProbes>> = [];
 
   try {
-    [db, cron, probes] = await withTimeout(
+    [db, cron, adOs, probes] = await withTimeout(
       Promise.all([
         dbChecks(),
         cronChecks(),
+        adOsCompletionChecks(request),
         runMarketingIntegrationProbes(),
       ]),
       SYSTEM_HEALTH_TIMEOUT_MS,
@@ -145,6 +219,13 @@ async function getHandler(_request: NextRequest) {
     const message = error instanceof Error ? error.message : 'Marketing system health unavailable';
     db = [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message }];
     cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Skipped because Supabase health check timed out.' }];
+    adOs = [{
+      key: 'ad_os.completion_audit',
+      label: 'Ad OS completion audit',
+      status: 'fail',
+      message: 'Skipped because marketing system health timed out before Ad OS completion audit finished.',
+      detail: { read_only: true, external_api_write: false, database_mutation: false },
+    }];
     probes = [];
   }
 
@@ -156,7 +237,7 @@ async function getHandler(_request: NextRequest) {
     detail: { probe_status: probe.status, ...(probe.detail ?? {}) },
   }));
 
-  const checks = [...baseChecks, ...db, ...cron, ...probeChecks];
+  const checks = [...baseChecks, ...db, ...cron, ...adOs, ...probeChecks];
   const score = Math.round((checks.filter((check) => check.status === 'ok').length / Math.max(checks.length, 1)) * 100);
 
   return NextResponse.json({

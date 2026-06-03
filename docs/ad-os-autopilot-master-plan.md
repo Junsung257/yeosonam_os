@@ -981,3 +981,19 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - Read-only endpoint remains read-only.
   - No external ad platform write path or database mutation is introduced.
+
+## 58. 2026-06-03 Ad OS V441-V460 marketing health integration
+
+- Extended `GET /api/admin/marketing/system-health` with read-only Ad OS completion checks.
+- Purpose:
+  - Makes the marketing System Health page show whether Ad OS is blocked, warning, or operationally ready using the same completion audit evidence as `/admin/ad-os`.
+  - Adds explicit checks for completion audit status, external spend safety, and full-auto default-off policy.
+  - Gives operators a direct next action instead of hiding Ad OS readiness behind raw JSON or a separate dashboard.
+- `/admin/marketing/system-health` now highlights:
+  - Ad OS completion score and top next action.
+  - Whether any live external API write signal exists.
+  - Whether full autopilot is still disabled by policy.
+- Safety principle:
+  - Read-only UI and API integration.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - The marketing health score now fails loudly when Ad OS completion evidence is unavailable, so operators cannot mistake a missing audit for a healthy system.
