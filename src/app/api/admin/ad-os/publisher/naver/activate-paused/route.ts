@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { activateNaverKeyword, getNaverAdsConfigStatus } from '@/lib/search-ads-api';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -15,7 +17,7 @@ type KeywordRow = {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -37,7 +39,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || 'run create failed' }, { status: 500 });
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(runError, 'Naver activation run create failed') },
+      { status: 500 },
+    );
   }
 
   const [budgetRes, accountRes, keywordRes, requestRes] = await Promise.all([
@@ -70,11 +75,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const firstError = budgetRes.error || accountRes.error || keywordRes.error || requestRes.error;
   if (firstError) {
+    const safeError = sanitizeDbError(firstError);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: firstError.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const budget = budgetRes.data as {
@@ -196,5 +202,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: failed.length === 0, run_id: run.id, summary, decisions: decisions.slice(0, 30), failed });
+  return apiResponse({ ok: failed.length === 0, run_id: run.id, summary, decisions: decisions.slice(0, 30), failed });
 });
