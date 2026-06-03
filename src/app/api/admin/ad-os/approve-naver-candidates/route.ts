@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -21,7 +23,7 @@ function jsonState(value: Record<string, unknown>) {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -42,7 +44,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || 'Failed to create automation run' }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(runError, 'Failed to create automation run') }, { status: 500 });
   }
 
   const [budgetRes, keywordRes] = await Promise.all([
@@ -66,11 +68,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const firstError = budgetRes.error || keywordRes.error;
   if (firstError) {
+    const safeError = sanitizeDbError(firstError);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: firstError.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const budget = budgetRes.data as { status?: string | null; max_cpc_krw?: number | null } | null;
@@ -115,11 +118,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (decisions.length > 0) {
     const { error } = await supabaseAdmin.from('ad_os_decision_logs').insert(decisions);
     if (error) {
+      const safeError = sanitizeDbError(error);
       await supabaseAdmin
         .from('ad_os_automation_runs')
-        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] })
+        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
         .eq('id', run.id);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
   }
 
@@ -139,11 +143,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .in('id', eligibleRows.map((row) => row.id));
 
     if (error) {
+      const safeError = sanitizeDbError(error);
       await supabaseAdmin
         .from('ad_os_automation_runs')
-        .update({ status: 'failed', finished_at: now, errors: [{ message: error.message }] })
+        .update({ status: 'failed', finished_at: now, errors: [{ message: safeError }] })
         .eq('id', run.id);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
 
     approvedCount = eligibleRows.length;
@@ -169,5 +174,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, decisions: decisions.slice(0, 30) });
+  return apiResponse({ ok: true, run_id: run.id, summary, decisions: decisions.slice(0, 30) });
 });
