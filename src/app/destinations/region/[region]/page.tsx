@@ -21,6 +21,53 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
+interface RegionDestination {
+  destination: string;
+  package_count: number;
+  min_price: number | null;
+  avg_rating: number | null;
+  total_reviews: number | null;
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPositiveNumber(value: unknown): number | null {
+  const number = getFiniteNumber(value);
+  return number != null && number > 0 ? number : null;
+}
+
+function getNonNegativeInteger(value: unknown): number {
+  const number = getFiniteNumber(value);
+  return number != null ? Math.max(0, Math.round(number)) : 0;
+}
+
+function getNullableNonNegativeInteger(value: unknown): number | null {
+  if (value == null) return null;
+  return getNonNegativeInteger(value);
+}
+
+function normalizeActiveDestination(row: unknown): RegionDestination | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const destination = typeof record.destination === 'string' ? record.destination.trim() : '';
+  if (!destination) return null;
+
+  return {
+    destination,
+    package_count: getNonNegativeInteger(record.package_count),
+    min_price: getPositiveNumber(record.min_price),
+    avg_rating: getPositiveNumber(record.avg_rating),
+    total_reviews: getNullableNonNegativeInteger(record.total_reviews),
+  };
+}
+
 export async function generateStaticParams() {
   return REGIONS.map(r => ({ region: r.slug }));
 }
@@ -85,8 +132,9 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .limit(500);
 
   // 이 region 에 속하는 도시만 필터 — 토큰화 매칭(cityInRegion)으로 멀티시티 "북경/홍콩" false-positive 방지.
-  const regionDests = ((allDests as Array<{ destination: string; package_count: number; min_price: number | null; avg_rating: number | null; total_reviews: number | null }> | null) ?? [])
-    .filter(d => cityInRegion(d.destination, slug));
+  const regionDests = ((allDests as unknown[] | null) ?? [])
+    .map(normalizeActiveDestination)
+    .filter((d): d is RegionDestination => d != null && cityInRegion(d.destination, slug));
 
   const dests = regionDests.map(d => d.destination);
 
@@ -149,10 +197,10 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
     .sort((a, b) => (b.package_count ?? 0) - (a.package_count ?? 0))
     .map(d => ({
       destination: d.destination,
-      package_count: d.package_count ?? 0,
-      min_price: d.min_price ?? null,
-      avg_rating: d.avg_rating != null ? Number(d.avg_rating) : null,
-      total_reviews: d.total_reviews ?? null,
+      package_count: d.package_count,
+      min_price: d.min_price,
+      avg_rating: d.avg_rating,
+      total_reviews: d.total_reviews,
       image: imgByDest[d.destination] ?? null,
     }));
 
