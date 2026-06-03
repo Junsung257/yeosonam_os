@@ -3,7 +3,8 @@ import Link from 'next/link';
 
 export const revalidate = 86400;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 export const metadata: Metadata = {
   title: '여소남 소개 — 여행을 잇는 플랫폼',
