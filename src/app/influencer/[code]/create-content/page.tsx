@@ -41,9 +41,14 @@ const PLATFORMS: { key: Platform; label: string; icon: string; desc: string }[] 
   { key: 'threads_post', label: '스레드 포스트', icon: '🧵', desc: '메인 + 스레드 시퀀스' },
 ];
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function CreateContentPage() {
   const params = useParams();
-  const code = params.code as string;
+  const code = getRouteParam(params?.code);
+  const encodedCode = encodeURIComponent(code);
   const { authenticated, affiliate } = useInfluencerAuth();
 
   const [packages, setPackages] = useState<Package[]>([]);
@@ -82,6 +87,10 @@ export default function CreateContentPage() {
   );
 
   const handleGenerate = async () => {
+    if (!code) {
+      showToast('추천인 코드가 올바르지 않습니다');
+      return;
+    }
     if (!selected) return;
     setGenerating(true);
     setResult(null);
@@ -135,7 +144,7 @@ export default function CreateContentPage() {
         </div>
         {result && (
           <a
-            href={`/api/settlements?affiliate_referral_code=${code}`}
+            href={`/api/settlements?affiliate_referral_code=${encodedCode}`}
             className="text-xs text-gray-400 hover:text-gray-600"
             onClick={e => { e.preventDefault(); window.scrollTo({ top: 0, behavior: 'smooth' }); }}
           >
