@@ -40,10 +40,12 @@ interface DestinationStat {
   min_price: number | null;
 }
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+
 interface AttractionSample {
   destination: string;
   name: string;
-  photos: Array<{ src_medium?: string; src_large?: string }> | null;
+  photos: GalleryPhoto[] | null;
 }
 
 function toFiniteNumber(value: unknown): number | null {
@@ -65,6 +67,24 @@ function normalizeDestinationStat(row: Partial<DestinationStat> | null | undefin
     avg_rating: toFiniteNumber(row?.avg_rating),
     total_reviews: Math.max(0, Math.trunc(toFiniteNumber(row?.total_reviews) ?? 0)),
     min_price: toFiniteNumber(row?.min_price),
+  };
+}
+
+function normalizeAttractionSample(row: unknown): AttractionSample | null {
+  if (!row || typeof row !== 'object') return null;
+  const record = row as Record<string, unknown>;
+  const destination = typeof record.destination === 'string' ? record.destination.trim() : '';
+  const name = typeof record.name === 'string' ? record.name.trim() : '';
+  if (!destination || !name) return null;
+
+  const photos = Array.isArray(record.photos)
+    ? record.photos.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object')
+    : null;
+
+  return {
+    destination,
+    name,
+    photos: photos && photos.length > 0 ? photos : null,
   };
 }
 
@@ -90,9 +110,10 @@ async function getDestinations() {
       .limit(4000) : { data: null };
 
     const attractionsByDest: Record<string, AttractionSample> = {};
-    (attractions as AttractionSample[] | null)?.forEach(a => {
-      if (a.destination && !attractionsByDest[a.destination]) {
-        attractionsByDest[a.destination] = a;
+    ((attractions as unknown[] | null) ?? []).forEach((row) => {
+      const sample = normalizeAttractionSample(row);
+      if (sample && !attractionsByDest[sample.destination]) {
+        attractionsByDest[sample.destination] = sample;
       }
     });
 
