@@ -74,6 +74,8 @@ const RANK_COLORS: Record<number, string> = {
 const AGENCY_LABELS: Record<number, string> = { 1: 'A사', 2: 'B사', 3: 'C사' };
 
 const fmt = (n: number) => n.toLocaleString('ko-KR');
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
 
 // ── 상태 타임라인 ─────────────────────────────────────────────────────────────
 function StatusTimeline({ status }: { status: string }) {
@@ -155,7 +157,7 @@ function ChecklistDots({ checklist }: { checklist: Record<string, ChecklistItem>
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 export default function RfqDetailPage() {
   const params = useParams();
-  const id = params.id as string;
+  const id = getRouteParam(params?.id);
 
   const [rfq, setRfq] = useState<GroupRfq | null>(null);
   const [proposals, setProposals] = useState<RfqProposal[]>([]);
@@ -171,6 +173,12 @@ export default function RfqDetailPage() {
   }, [id]);
 
   async function fetchAll() {
+    if (!id) {
+      setError('RFQ ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
       const [rfqRes, bidRes] = await Promise.all([
@@ -208,6 +216,8 @@ export default function RfqDetailPage() {
   }
 
   async function selectProposal(proposalId: string) {
+    if (!id) return;
+
     setSelecting(proposalId);
     try {
       const res = await fetch(`/api/rfq/${id}/select`, {

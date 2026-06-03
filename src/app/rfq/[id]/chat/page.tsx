@@ -4,6 +4,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 // ── 타입 정의 ────────────────────────────────────────────────────────────────
 interface RfqMessage {
   id: string;
@@ -19,8 +22,8 @@ interface RfqMessage {
 export default function RfqChatPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const id = params.id as string;
-  const proposalId = searchParams.get('proposal_id') ?? '';
+  const id = getRouteParam(params?.id);
+  const proposalId = searchParams?.get('proposal_id') ?? '';
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const [messages, setMessages] = useState<RfqMessage[]>([]);
@@ -48,6 +51,12 @@ export default function RfqChatPage() {
   }, [messages]);
 
   async function fetchMessages() {
+    if (!id) {
+      setError('RFQ ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     try {
       const res = await fetch(`/api/rfq/${id}/messages?viewAs=customer`);
       if (!res.ok) throw new Error('메시지를 불러올 수 없습니다');
@@ -62,7 +71,7 @@ export default function RfqChatPage() {
 
   async function sendMessage() {
     const text = input.trim();
-    if (!text || sending) return;
+    if (!id || !text || sending) return;
     setSending(true);
     setInput('');
 

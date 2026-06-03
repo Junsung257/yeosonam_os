@@ -5,9 +5,12 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import DOMPurify from 'dompurify';
 
+const getRouteParam = (value: string | string[] | undefined) =>
+  (Array.isArray(value) ? value[0] : value ?? '').trim();
+
 export default function ContractPage() {
   const params  = useParams();
-  const rfqId   = params.id as string;
+  const rfqId   = getRouteParam(params?.id);
 
   const [html,    setHtml]    = useState('');
   const [loading, setLoading] = useState(true);
@@ -15,6 +18,12 @@ export default function ContractPage() {
   const [printed, setPrinted] = useState(false);
 
   useEffect(() => {
+    if (!rfqId) {
+      setError('RFQ ID가 올바르지 않습니다.');
+      setLoading(false);
+      return;
+    }
+
     fetch(`/api/rfq/${rfqId}/contract`)
       .then(r => {
         if (!r.ok) return r.json().then(d => { throw new Error(d.error ?? '조회 실패'); });
