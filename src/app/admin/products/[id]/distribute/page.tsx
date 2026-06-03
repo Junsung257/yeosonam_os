@@ -53,9 +53,10 @@ export default function DistributePage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
-  const id = params.id;
+  const id = typeof params?.id === 'string' ? params.id : '';
+  const encodedId = encodeURIComponent(id);
   // V2 Studio 에서 넘어올 때 ?card_news_id=XXX 로 들어옴. 상품이 없거나 고아 참조일 때 이 카드뉴스로 fallback.
-  const cardNewsIdFromQuery = searchParams?.get('card_news_id') ?? null;
+  const cardNewsIdFromQuery = searchParams?.get('card_news_id')?.trim() || null;
 
   const [product, setProduct] = useState<Product | null>(null);
   const [linkedCardNews, setLinkedCardNews] = useState<LinkedCardNews | null>(null);
@@ -73,8 +74,15 @@ export default function DistributePage() {
   const fetchAll = useCallback(async () => {
     setLoading(true);
     try {
+      if (!id) {
+        setProductMissing(true);
+        setDistributions([]);
+        setLinkedCardNews(null);
+        return;
+      }
+
       // 1. 상품 조회
-      const prodRes = await fetch(`/api/packages/${id}`);
+      const prodRes = await fetch(`/api/packages/${encodedId}`);
       let prodOk = false;
       if (prodRes.ok) {
         const d = await prodRes.json();
@@ -90,7 +98,7 @@ export default function DistributePage() {
       //    우선순위: URL ?card_news_id → product_id 로 가장 최근 CONFIRMED → 가장 최근 DRAFT
       let cardNews: LinkedCardNews | null = null;
       if (cardNewsIdFromQuery) {
-        const r = await fetch(`/api/card-news/${cardNewsIdFromQuery}`);
+        const r = await fetch(`/api/card-news/${encodeURIComponent(cardNewsIdFromQuery)}`);
         if (r.ok) {
           const d = await r.json();
           cardNews = d.card_news as LinkedCardNews;
@@ -98,13 +106,13 @@ export default function DistributePage() {
       }
       if (!cardNews) {
         // 상품 없어도 package_id 로 카드뉴스 먼저 찾아봄 (고아 참조 복구)
-        const r = await fetch(`/api/card-news?package_id=${id}&status=CONFIRMED&limit=1`);
+        const r = await fetch(`/api/card-news?package_id=${encodedId}&status=CONFIRMED&limit=1`);
         if (r.ok) {
           const d = await r.json();
           cardNews = (d.card_news?.[0] ?? null) as LinkedCardNews | null;
         }
         if (!cardNews) {
-          const r2 = await fetch(`/api/card-news?package_id=${id}&limit=1`);
+          const r2 = await fetch(`/api/card-news?package_id=${encodedId}&limit=1`);
           if (r2.ok) {
             const d2 = await r2.json();
             cardNews = (d2.card_news?.[0] ?? null) as LinkedCardNews | null;
@@ -114,7 +122,7 @@ export default function DistributePage() {
       setLinkedCardNews(cardNews);
 
       // 3. 배포 이력 조회
-      const distRes = await fetch(`/api/content/generate-all?product_id=${id}`);
+      const distRes = await fetch(`/api/content/generate-all?product_id=${encodedId}`);
       if (distRes.ok) {
         const d = await distRes.json();
         setDistributions(d.distributions ?? []);
@@ -124,7 +132,7 @@ export default function DistributePage() {
     } finally {
       setLoading(false);
     }
-  }, [id, cardNewsIdFromQuery]);
+  }, [id, encodedId, cardNewsIdFromQuery]);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
 
