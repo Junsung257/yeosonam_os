@@ -32,12 +32,13 @@ export async function generateMetadata(
   const params = await props.params;
   const base = siteBaseUrl();
   const encodedId = encodeURIComponent(params.id.trim());
+  const canonical = `${base}/lp/${encodedId}`;
   const data = await safeLoadLpPackage(params.id);
   if (!data) {
     return {
       title: '상품 | 여소남',
       robots: { index: false, follow: true },
-      alternates: { canonical: `${base}/lp/${encodedId}` },
+      alternates: { canonical },
     };
   }
 
@@ -60,10 +61,11 @@ export async function generateMetadata(
   return {
     title,
     description: desc,
-    alternates: { canonical: `${base}/lp/${encodedId}` },
+    alternates: { canonical },
     openGraph: {
       title: rawTitle,
       description: desc,
+      url: canonical,
       type: 'website',
       ...(ogImages ? { images: ogImages } : {}),
     },
