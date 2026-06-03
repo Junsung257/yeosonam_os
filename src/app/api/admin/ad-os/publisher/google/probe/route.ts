@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { classifyProbeMessageStatus, upsertTenantAdAccountProbe } from '@/lib/ad-os-tenant-ad-accounts';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { resolveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
 import { getGoogleAdsConfigStatus } from '@/lib/search-ads-api';
@@ -75,7 +77,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       });
 
       if (!res.ok) {
-        const text = await res.text();
+        const text = sanitizeDbError(await res.text(), 'Google Ads API request failed');
         const permissionDenied = res.status === 403 || /PERMISSION_DENIED/i.test(text);
         probe = {
           platform: 'google',
@@ -126,7 +128,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     persistedAccount = saveRes.data || null;
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     probe,
     channel_state: probe.status === 'ready' ? 'integration_ready' : probe.status,
