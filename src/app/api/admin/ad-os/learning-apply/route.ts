@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { decidePerformanceAction } from '@/lib/ad-os-v3-v7';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -35,7 +37,7 @@ function requestTypeForAction(action: ReturnType<typeof decidePerformanceAction>
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = (await request.json().catch(() => ({}))) as LearningApplyBody;
@@ -56,7 +58,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || 'run create failed' }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(runError, 'Run create failed') }, { status: 500 });
   }
 
   const { data: facts, error } = await supabaseAdmin
@@ -66,11 +68,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .limit(limit);
 
   if (error) {
+    const safeError = sanitizeDbError(error);
     await supabaseAdmin
       .from('ad_os_automation_runs')
-      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] })
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
       .eq('id', run.id);
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const decisions = (facts || []).map((fact: any) => {
@@ -124,11 +127,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (decisionRows.length > 0) {
     const { error: decisionError } = await supabaseAdmin.from('ad_os_decision_logs').insert(decisionRows);
     if (decisionError) {
+      const safeError = sanitizeDbError(decisionError);
       await supabaseAdmin
         .from('ad_os_automation_runs')
-        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: decisionError.message }] })
+        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
         .eq('id', run.id);
-      return NextResponse.json({ ok: false, error: decisionError.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
   }
 
@@ -176,11 +180,12 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (apply && changeRequests.length > 0) {
     const { error: requestError } = await supabaseAdmin.from('ad_os_change_requests').insert(changeRequests);
     if (requestError) {
+      const safeError = sanitizeDbError(requestError);
       await supabaseAdmin
         .from('ad_os_automation_runs')
-        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: requestError.message }] })
+        .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
         .eq('id', run.id);
-      return NextResponse.json({ ok: false, error: requestError.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
   }
 
@@ -217,5 +222,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, decisions: decisions.slice(0, 30) });
+  return apiResponse({ ok: true, run_id: run.id, summary, decisions: decisions.slice(0, 30) });
 });
