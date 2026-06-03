@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifySlack } from '@/lib/slack-notifier';
 import { withCronGuard } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * GET /api/cron/payment-stale-alert
@@ -13,7 +15,7 @@ import { withCronGuard } from '@/lib/cron-auth';
 export const dynamic = 'force-dynamic';
 const getHandler = async (_req: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ ok: false, error: 'Supabase not configured' }, { status: 500 });
   }
 
   try {
@@ -43,7 +45,7 @@ const getHandler = async (_req: NextRequest) => {
     const totalAmount = rows.reduce((s: number, r: Record<string, unknown>) => s + Math.abs(Number(r.amount)), 0);
 
     if (rows.length === 0) {
-      return NextResponse.json({ ok: true, total: 0, sent: false, reason: 'no stale tx' });
+      return apiResponse({ ok: true, total: 0, sent: false, reason: 'no stale tx' });
     }
 
     const oldest = rows[0];
@@ -57,12 +59,12 @@ const getHandler = async (_req: NextRequest) => {
       {
         입금: `${inflow.length}건`,
         출금: `${outflow.length}건`,
-        가장_오래된: `${oldestDays}일 (${oldest.counterparty_name ?? '?'})`,
+        가장_오래된: `${oldestDays}일`,
         링크: '/admin/payments',
       },
     );
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       total: rows.length,
       inflow: inflow.length,
@@ -72,8 +74,8 @@ const getHandler = async (_req: NextRequest) => {
       reason: result.reason,
     });
   } catch (err) {
-    return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : 'stale alert 실패' },
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(err, 'Stale alert failed') },
       { status: 500 },
     );
   }
