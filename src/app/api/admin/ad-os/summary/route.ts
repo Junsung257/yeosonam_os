@@ -9,6 +9,7 @@ import {
 import { buildTenantAdReadiness } from '@/lib/ad-os-tenant-readiness';
 import { buildAdOsIncidentSummary } from '@/lib/ad-os-v321-v340';
 import { buildAgencyReportingSummary } from '@/lib/ad-os-v341-v360';
+import { buildAdOsCompletionAuditSummary } from '@/lib/ad-os-v361-v380';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { withTimeout } from '@/lib/promise-timeout';
 import { getSecret } from '@/lib/secret-registry';
@@ -481,6 +482,17 @@ function buildDegradedSummary(error: unknown) {
         missing: ['data_plane'],
         next_action: 'Supabase 연결 회복 후 테넌트 리포트와 audit export 상태를 다시 계산하세요.',
       },
+      completion_audit: buildAdOsCompletionAuditSummary({
+        platformJobQueue: { total: 0, blocked: 1, external_api_write_count: 0 },
+        runtimeExecution: { total: 0, blocked: 1, external_api_write_count: 0 },
+        channelAdapters: { snapshots: 0, blocked: 1, external_api_write_count: 0 },
+        conversionDataQuality: { status: 'blocked', uploadable_conversions: 0, blocked_conversions: 1 },
+        learningLoop: { status: { attribution_ready: false, margin_learning_ready: false } },
+        tenantPolicy: { configured: false, full_auto_enabled: false },
+        incidentResponse: { critical: 1, high: 0, open: 1, kill_switch_recommended: true },
+        agencyReporting: { status: 'blocked', readiness_score: 0, full_auto_enabled: 0 },
+        runtimeReadiness: { checks: 0, blocked_or_failed: 1, critical: 1 },
+      }),
     },
     tenant_policy: {
       configured: false,
@@ -1486,6 +1498,94 @@ async function buildSummaryResponse() {
         full_auto_enabled: false,
         risk_status: 'watch',
       };
+  const completionAudit = buildAdOsCompletionAuditSummary({
+    platformJobQueue: {
+      total: platformJobs.length,
+      blocked: platformJobs.filter((row) => row.status === 'blocked' || row.guardrail_status === 'blocked').length,
+      approved_or_running: platformJobs.filter((row) => ['approved', 'running'].includes(row.status || '')).length,
+      external_api_write_count: platformJobs.filter((row) => row.external_api_write).length,
+    },
+    runtimeExecution: {
+      total: executionAttempts.length,
+      blocked: executionAttempts.filter((row) => row.status === 'blocked').length,
+      external_api_write_count:
+        executionAttempts.filter((row) => row.external_api_write).length +
+        platformJobs.filter((row) => row.external_api_write).length,
+    },
+    channelAdapters: {
+      snapshots: channelAdapterHealth.length,
+      paused_write_ready: channelAdapterHealth.filter((row) => row.adapter_state === 'paused_write_ready').length,
+      draft_ready: channelAdapterHealth.filter((row) => row.adapter_state === 'draft_ready').length,
+      executable: channelAdapterHealth.filter((row) => row.adapter_state === 'executable').length,
+      blocked: channelAdapterHealth.filter((row) => ['missing_credentials', 'permission_denied', 'blocked'].includes(row.adapter_state || '')).length,
+      external_api_write_count: channelAdapterHealth.filter((row) => row.external_api_write).length,
+    },
+    writePackets: {
+      total: platformWritePackets.length,
+      blocked: platformWritePackets.filter((row) => row.lifecycle_status === 'blocked').length,
+      external_api_write_count: platformWritePackets.filter((row) => row.external_api_write).length,
+    },
+    executionGates: {
+      total: adapterExecutionGates.length,
+      blocked: adapterExecutionGates.filter((row) => row.gate_status === 'blocked').length,
+      external_api_write_count: adapterExecutionGates.filter((row) => row.external_api_write).length,
+    },
+    rollbackDrills: {
+      total: rollbackDrills.length,
+      blocked: rollbackDrills.filter((row) => row.drill_status === 'blocked').length,
+      external_api_write_count: rollbackDrills.filter((row) => row.external_api_write).length,
+    },
+    limitedWritePilot: {
+      total: limitedWritePilotAttempts.length,
+      blocked: limitedWritePilotAttempts.filter((row) => ['blocked', 'live_write_blocked'].includes(row.attempt_status || '')).length,
+      external_api_write_count: limitedWritePilotAttempts.filter((row) => row.external_api_write).length,
+    },
+    conversionDataQuality: dataQualitySnapshots[0] ? {
+      status: dataQualitySnapshots[0].status || 'unknown',
+      uploadable_conversions: Number(dataQualitySnapshots[0].upload_ready_events || 0),
+      blocked_conversions: Number(dataQualitySnapshots[0].blocked_upload_events || 0),
+      attribution_coverage: Number(dataQualitySnapshots[0].attribution_coverage_pct || 0) / 100,
+    } : {
+      status: conversionUploadJobs.some((row) => row.status === 'blocked') ? 'warning' : 'unknown',
+      uploadable_conversions: conversionUploadJobs.filter((row) => row.status === 'planned').length,
+      blocked_conversions: conversionUploadJobs.filter((row) => row.status === 'blocked').length,
+      attribution_coverage: performanceFacts.length > 0 && conversionEvents.length > 0
+        ? Math.round((performanceFacts.length / conversionEvents.length) * 1000) / 1000
+        : 0,
+    },
+    learningLoop: {
+      status: {
+        attribution_ready: performanceFacts.length > 0,
+        margin_learning_ready: factMarginKrw !== 0 || factRevenueKrw > 0,
+      },
+      metrics: {
+        fact_clicks_30d: factClicks,
+        fact_cta_clicks_30d: factCtaClicks,
+        fact_conversions_30d: factConversions,
+        fact_spend_krw_30d: factSpendKrw,
+        fact_margin_krw_30d: factMarginKrw,
+      },
+    },
+    tenantPolicy,
+    tenantGuardrails,
+    tenantAdReadiness,
+    incidentResponse,
+    agencyReporting,
+    experimentStandards: {
+      templates: experimentTemplates.length,
+      active: experimentTemplates.filter((row) => row.status === 'active').length,
+      types: Object.keys(byKey(experimentTemplates, (row) => row.experiment_type || 'unknown')).length,
+    },
+    runtimeReadiness: {
+      checks: runtimeReadinessChecks.length,
+      blocked_or_failed: runtimeReadinessChecks.filter((row) => ['blocked', 'fail'].includes(row.status || '')).length,
+      critical: runtimeReadinessChecks.filter((row) => row.severity === 'critical').length,
+    },
+    creativeFactory: {
+      variants: creativeAssetVariants.length,
+      duplicate_content_risks: travelIntentSignals.filter((row) => Number(row.duplicate_content_risk || 0) >= 60).length,
+    },
+  });
 
   return NextResponse.json({
     ok: true,
@@ -1778,6 +1878,7 @@ async function buildSummaryResponse() {
       },
       incident_response: incidentResponse,
       agency_reporting: agencyReporting,
+      completion_audit: completionAudit,
       experiment_standards: {
         templates: experimentTemplates.length,
         active: experimentTemplates.filter((row) => row.status === 'active').length,

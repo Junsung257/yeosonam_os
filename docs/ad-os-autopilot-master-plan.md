@@ -935,3 +935,16 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - Client-facing report packaging is blocked when critical incidents or full-auto policy risks exist.
   - Degraded summary responses mark agency reporting as blocked until the data plane is healthy.
   - No external ad platform write path is introduced.
+
+## 54. 2026-06-03 Ad OS V361-V380 completion audit layer
+
+- Added `src/lib/ad-os-v361-v380.ts` and `src/lib/ad-os-v361-v380.test.ts`.
+- Purpose:
+  - Converts the Ad OS final-state requirements into a pass/warn/fail completion audit.
+  - Audits external write safety, full-auto default-off policy, tenant budget guardrails, channel adapter visibility, platform job queues, conversion quality, margin learning facts, duplicate-content control, experiment standards, agency reporting, incident response, and runtime readiness.
+  - Exposes `enterprise_layer.completion_audit` from `/api/admin/ad-os/summary`.
+  - Shows Completion Audit as an Enterprise Runtime KPI on `/admin/ad-os` with readiness score, pass/warn/fail counts, and the next blocker.
+- Safety principle:
+  - This is deliberately not a "complete" flag. It prevents premature completion claims by requiring current evidence for each platform-grade requirement.
+  - Degraded summary responses become blocked completion audits.
+  - No external ad platform write path or database mutation is introduced.
