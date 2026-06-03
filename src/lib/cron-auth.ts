@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { safeEqualString } from '@/lib/timing-safe';
+import { apiResponse } from '@/lib/api-response';
 
 /**
  * Vercel Cron은 `Authorization: Bearer ${CRON_SECRET}` 를 붙이고,
@@ -27,7 +28,10 @@ export function isCronOrVercelAuthorized(request: NextRequest | Request): boolea
 }
 
 export function cronUnauthorizedResponse(): NextResponse {
-  const res = NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const res = apiResponse(
+    { ok: false, error: { code: 'UNAUTHORIZED', message: 'Unauthorized' } },
+    { status: 401 },
+  );
   res.headers.set('Cache-Control', 'no-store');
   return res;
 }
@@ -40,9 +44,9 @@ export function requireCronBearer(request: NextRequest): NextResponse | null {
   const secret = getSecret('CRON_SECRET');
   if (!secret) {
     if (process.env.NODE_ENV === 'production') {
-      const res = NextResponse.json(
-        { error: 'CRON_SECRET 미설정 — 프로덕션 크론 비활성' },
-        { status: 500 },
+      const res = apiResponse(
+        { ok: false, error: { code: 'CRON_UNAVAILABLE', message: 'Cron endpoint unavailable' } },
+        { status: 503 },
       );
       res.headers.set('Cache-Control', 'no-store');
       return res;
