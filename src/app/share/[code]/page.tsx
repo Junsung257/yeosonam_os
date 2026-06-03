@@ -41,14 +41,22 @@ interface SharedItinerary {
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
+}
+
+function fmtDateLabel(value?: string | null): string {
+  return typeof value === 'string' && value.length >= 10 ? value.slice(0, 10) : '-';
+}
+
 const PRODUCT_TYPE_LABELS: Record<string, string> = {
   HOTEL: '🏨 호텔', ACTIVITY: '🎫 액티비티', CRUISE: '🛳 크루즈',
 };
 
 export default function SharePage() {
-  const params  = useParams<{ code: string }>();
+  const params  = useParams<{ code?: string | string[] }>();
   const router  = useRouter();
-  const code    = typeof params?.code === 'string' ? params.code : '';
+  const code    = getRouteParam(params?.code);
 
   const [shared,     setShared]     = useState<SharedItinerary | null>(null);
   const [loading,    setLoading]    = useState(true);
@@ -83,7 +91,7 @@ export default function SharePage() {
             const today = new Date().toISOString().slice(0, 10);
             fetch(`/api/packages/${encodeURIComponent(d.shared.product_id)}/inventory?from=${today}`)
               .then(r => r.json())
-              .then(inv => setBlocks(inv.blocks ?? []))
+              .then(inv => setBlocks(Array.isArray(inv.blocks) ? inv.blocks : []))
               .catch(() => {});
           }
         }
@@ -210,7 +218,7 @@ export default function SharePage() {
               : (shared.product_name ?? '패키지 상품')}
           </h1>
           <p className="text-xs text-gray-400 mt-1">
-            공유일: {shared.created_at.slice(0, 10)} · 만료: {shared.expires_at.slice(0, 10)}
+            공유일: {fmtDateLabel(shared.created_at)} · 만료: {fmtDateLabel(shared.expires_at)}
           </p>
         </div>
 
