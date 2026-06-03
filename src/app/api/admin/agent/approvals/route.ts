@@ -1,19 +1,17 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const ALLOWED_STATUS = new Set(['pending', 'approved', 'rejected', 'expired', 'cancelled']);
 
-export async function GET(req: NextRequest) {
-  if (!(await isAdminRequest(req))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
-
+async function getHandler(req: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ approvals: [], total: 0 });
+    return apiResponse({ approvals: [], total: 0 });
   }
 
   try {
@@ -36,17 +34,16 @@ export async function GET(req: NextRequest) {
     const { data, error, count } = await q;
     if (error) throw error;
 
-    return NextResponse.json({
+    return apiResponse({
       approvals: data ?? [],
       total: count ?? 0,
       limit,
       offset,
     });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'agent approvals 조회 실패' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(error, 'agent approvals 조회 실패') }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
 
