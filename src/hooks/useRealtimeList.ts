@@ -67,6 +67,7 @@ export function useRealtimeList<T>(
       .toString(36)
       .slice(2, 8)}`;
 
+    let removed = false;
     let channel = supabase.channel(channelName);
     for (const evt of events) {
       channel = channel.on(
@@ -88,15 +89,16 @@ export function useRealtimeList<T>(
     channel.subscribe();
 
     function onVisibility() {
-      if (document.visibilityState === 'hidden') {
-        supabase!.removeChannel(channel);
+      if (document.visibilityState === 'hidden' && !removed) {
+        removed = true;
+        supabase.removeChannel(channel);
       }
     }
     document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
       document.removeEventListener('visibilitychange', onVisibility);
-      supabase.removeChannel(channel);
+      if (!removed) supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, schema, filter, events.join(','), applyDelete, applyUpsert, transform]);
