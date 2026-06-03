@@ -5,9 +5,33 @@ import type { BankTransaction, BookingFull } from './PaymentsPageClient';
 
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
+function PaymentsPageFallback() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <div className="h-7 w-28 rounded bg-admin-surface-2" />
+          <div className="mt-2 h-4 w-72 rounded bg-admin-surface-2" />
+        </div>
+        <div className="h-9 w-24 rounded bg-admin-surface-2" />
+      </div>
+      <div className="grid gap-3 md:grid-cols-4">
+        {[...Array(4)].map((_, index) => (
+          <div key={index} className="h-24 rounded-admin-md border border-admin-border bg-admin-surface" />
+        ))}
+      </div>
+      <div className="h-96 rounded-admin-md border border-admin-border bg-admin-surface" />
+    </div>
+  );
+}
+
 export default async function PaymentsPage() {
   if (!isSupabaseConfigured) {
-    return <Suspense><PaymentsPageClient /></Suspense>;
+    return (
+      <Suspense fallback={<PaymentsPageFallback />}>
+        <PaymentsPageClient />
+      </Suspense>
+    );
   }
 
   const txSelect = `
@@ -67,7 +91,7 @@ export default async function PaymentsPage() {
   };
 
   return (
-    <Suspense>
+    <Suspense fallback={<PaymentsPageFallback />}>
       <PaymentsPageClient
         initialTransactions={mergedTxs as unknown as BankTransaction[]}
         initialTrashTxs={(excludedResult.data ?? []) as unknown as BankTransaction[]}
