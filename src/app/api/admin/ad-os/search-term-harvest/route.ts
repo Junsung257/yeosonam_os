@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { buildSearchTermHarvestRows } from '@/lib/ad-os-v8-v12';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { fetchGoogleSearchTerms } from '@/lib/search-ads-api';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -12,7 +14,7 @@ function json(value: unknown) {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -34,7 +36,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || '검색어 수확 실행 로그 생성 실패' }, { status: 500 });
+    return apiResponse(
+      { ok: false, error: sanitizeDbError(runError, 'Search term harvest run create failed') },
+      { status: 500 },
+    );
   }
 
   const { data: keywordRows, error: keywordError } = await supabaseAdmin
@@ -45,12 +50,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .limit(200);
 
   if (keywordError) {
+    const safeError = sanitizeDbError(keywordError);
     await supabaseAdmin.from('ad_os_automation_runs').update({
       status: 'failed',
       finished_at: new Date().toISOString(),
-      errors: [{ message: keywordError.message }],
+      errors: [{ message: safeError }],
     }).eq('id', run.id);
-    return NextResponse.json({ ok: false, error: keywordError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const externalIds = (keywordRows || [])
@@ -71,12 +77,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .upsert(rows, { onConflict: 'platform,search_term,action' })
       .select('id');
     if (error) {
+      const safeError = sanitizeDbError(error);
       await supabaseAdmin.from('ad_os_automation_runs').update({
         status: 'failed',
         finished_at: new Date().toISOString(),
-        errors: [{ message: error.message }],
+        errors: [{ message: safeError }],
       }).eq('id', run.id);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
     inserted = data?.length || 0;
 
@@ -102,12 +109,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .upsert(legacyRows, { onConflict: 'platform,search_term,action' })
       .select('id');
     if (legacyError) {
+      const safeError = sanitizeDbError(legacyError);
       await supabaseAdmin.from('ad_os_automation_runs').update({
         status: 'failed',
         finished_at: new Date().toISOString(),
-        errors: [{ message: legacyError.message }],
+        errors: [{ message: safeError }],
       }).eq('id', run.id);
-      return NextResponse.json({ ok: false, error: legacyError.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
     legacyInserted = legacy?.length || 0;
   }
@@ -134,12 +142,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (changeRequests.length > 0) {
     const { error } = await supabaseAdmin.from('ad_os_change_requests').insert(changeRequests);
     if (error) {
+      const safeError = sanitizeDbError(error);
       await supabaseAdmin.from('ad_os_automation_runs').update({
         status: 'failed',
         finished_at: new Date().toISOString(),
-        errors: [{ message: error.message }],
+        errors: [{ message: safeError }],
       }).eq('id', run.id);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
   }
 
@@ -159,5 +168,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, samples: rows.slice(0, 20) });
+  return apiResponse({ ok: true, run_id: run.id, summary, samples: rows.slice(0, 20) });
 });
