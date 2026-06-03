@@ -34,6 +34,7 @@ export default function AffiliateCardNewsDetailPage() {
   const router = useRouter();
   const params = useParams();
   const cardNewsId = getRouteParam(params?.id);
+  const encodedCardNewsId = cardNewsId ? encodeURIComponent(cardNewsId) : '';
   const [cardNews, setCardNews] = useState<CardNewsDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -54,7 +55,7 @@ export default function AffiliateCardNewsDetailPage() {
     }
 
     try {
-      const res = await fetch(`/api/affiliate/card-news/${cardNewsId}`, {
+      const res = await fetch(`/api/affiliate/card-news/${encodedCardNewsId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
@@ -69,7 +70,7 @@ export default function AffiliateCardNewsDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [cardNewsId, router]);
+  }, [cardNewsId, encodedCardNewsId, router]);
 
   useEffect(() => {
     loadCardNews();
@@ -78,7 +79,7 @@ export default function AffiliateCardNewsDetailPage() {
   const handleShare = () => {
     if (!cardNewsId) return;
 
-    const shareUrl = `${window.location.origin}/share/card-news/${cardNewsId}`;
+    const shareUrl = `${window.location.origin}/share/card-news/${encodedCardNewsId}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
@@ -241,7 +242,7 @@ export default function AffiliateCardNewsDetailPage() {
               {copied ? '링크 복사됨!' : '공유 링크 복사'}
             </button>
             <a
-              href={`/share/card-news/${cardNews.id}`}
+              href={`/share/card-news/${encodeURIComponent(cardNews.id)}`}
               target="_blank"
               className="px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors"
             >
