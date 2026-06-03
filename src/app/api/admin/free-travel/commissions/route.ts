@@ -3,16 +3,15 @@
  * 자유여행 커미션 현황 조회 (어드민 전용).
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
 
-export async function GET(request: NextRequest) {
-  if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
-  }
+async function getHandler(request: NextRequest) {
   if (!isSupabaseConfigured || !supabaseAdmin) {
-    return NextResponse.json({ commissions: [] });
+    return apiResponse({ commissions: [] });
   }
 
   const { searchParams } = request.nextUrl;
@@ -30,8 +29,10 @@ export async function GET(request: NextRequest) {
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
-  return NextResponse.json({ commissions: data ?? [] });
+  return apiResponse({ commissions: data ?? [] });
 }
+
+export const GET = withAdminGuard(getHandler);
