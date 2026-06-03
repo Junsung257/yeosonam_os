@@ -1,68 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { getSecret } from '@/lib/secret-registry';
-import { earnMileage } from '@/lib/mileage-service';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { signGuidebookToken } from '@/lib/guidebook-token';
 import { sendGuidebookReadyAlimtalk } from '@/lib/kakao';
+import { earnMileage } from '@/lib/mileage-service';
+import { getSecret } from '@/lib/secret-registry';
+import { isSupabaseConfigured } from '@/lib/supabase';
+
+interface CheckoutCompleteBody {
+  session_id: string;
+  booking_id: string;
+  user_id?: string;
+  final_sales_price: number;
+  base_cost: number;
+  customer_phone?: string;
+  raw_voucher_data?: Record<string, unknown>;
+}
 
 /**
  * POST /api/checkout/complete
  *
- * 결제 완료 후 프론트엔드에서 호출하는 통합 처리 엔드포인트.
- *
- * 처리 순서:
- *   1. ConversionLog 기록 (/api/tracking — session + UTM 포함)
- *   2. 마일리지 자동 적립 (net_profit × 5%)
- *   3. Voucher 생성 트리거 (/api/voucher)
- *
- * 프론트엔드 호출 예시 (결제 완료 페이지에서):
- * ```ts
- * await fetch('/api/checkout/complete', {
- *   method: 'POST',
- *   body: JSON.stringify({
- *     session_id,           // tracker.getSessionId()
- *     booking_id,
- *     user_id,
- *     final_sales_price,    // 판매가 (고객 결제액)
- *     base_cost,            // 원가 (서버 계산값 — 클라이언트 미노출)
- *     raw_voucher_data,     // VoucherGenerator용 원시 데이터 (선택)
- *     customer_phone,       // 알림톡 발송용 (선택)
- *   })
- * });
- * ```
- *
- * ※ base_cost(원가)는 서버에서만 처리하며 클라이언트 응답에 절대 포함되지 않는다.
+ * Handles post-payment tracking, mileage, voucher generation, and guidebook notification.
+ * Cost fields are used server-side only and are not returned to the client.
  */
-export async function POST(request: NextRequest): Promise<NextResponse> {
-  let body: {
-    session_id: string;
-    booking_id: string;
-    user_id?: string;
-    final_sales_price: number;
-    base_cost: number;           // 원가 — 서버 전용, 응답에 미포함
-    customer_phone?: string;
-    raw_voucher_data?: Record<string, unknown>;
-  };
+export async function POST(request: NextRequest) {
+  let body: CheckoutCompleteBody;
 
   try {
-    body = await request.json();
+    body = await request.json() as CheckoutCompleteBody;
   } catch {
-    return NextResponse.json({ error: 'invalid json' }, { status: 400 });
+    return apiResponse({ error: 'invalid json' }, { status: 400 });
   }
 
   const { session_id, booking_id, user_id, final_sales_price, base_cost } = body;
 
   if (!session_id || !booking_id || !final_sales_price || base_cost === undefined) {
-    return NextResponse.json(
-      { error: 'session_id, booking_id, final_sales_price, base_cost 는 필수입니다' },
-      { status: 400 }
+    return apiResponse(
+      { error: 'session_id, booking_id, final_sales_price, base_cost are required' },
+      { status: 400 },
     );
   }
 
-  // ── STEP 1. ConversionLog 기록 (광고 UTM + 순수익 자동 계산) ──
-
   let netProfit = 0;
-  let allocatedAdSpend = 0;
   let attributedSource = 'organic';
 
   try {
@@ -81,19 +60,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (trackRes.ok) {
       const trackData = await trackRes.json();
-      // API가 계산한 net_profit 수신
-      netProfit        = trackData.net_profit ?? (final_sales_price - base_cost);
-      allocatedAdSpend = final_sales_price - base_cost - netProfit;
+      netProfit = trackData.net_profit ?? (final_sales_price - base_cost);
       attributedSource = trackData.attributed_source ?? 'organic';
     } else {
-      // fallback: 광고비 차감 없이 단순 계산
       netProfit = final_sales_price - base_cost;
     }
-  } catch {
+  } catch (error) {
+    console.warn('[checkout/complete] tracking failed:', sanitizeDbError(error));
     netProfit = final_sales_price - base_cost;
   }
-
-  // ── STEP 2. 마일리지 자동 적립 (net_profit의 5%) ──────────────
 
   let mileageResult: { earned: number; transaction_id: string } | null = null;
 
@@ -105,12 +80,10 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         netProfit,
         sellingPrice: final_sales_price,
       });
-    } catch (err) {
-      console.error('[checkout/complete] 마일리지 적립 실패', err);
+    } catch (error) {
+      console.error('[checkout/complete] mileage earn failed:', sanitizeDbError(error));
     }
   }
-
-  // ── STEP 3. Voucher 생성 (원시 데이터 제공 시) ────────────────
 
   let voucherId: string | null = null;
   let guidebookUrl: string | null = null;
@@ -125,7 +98,6 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
             ...body.raw_voucher_data,
             booking_id,
             total_selling_price: final_sales_price,
-            // total_cost(원가)는 Voucher 내부 계산용으로만 전달 — PDF에 미포함
             total_cost: base_cost,
           },
           customer_id: user_id,
@@ -133,11 +105,11 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         }),
       });
       if (voucherRes.ok) {
-        const vData = await voucherRes.json();
-        voucherId = vData.voucher?.id ?? null;
+        const voucherData = await voucherRes.json();
+        voucherId = voucherData.voucher?.id ?? null;
       }
-    } catch (err) {
-      console.error('[checkout/complete] Voucher 생성 실패', err);
+    } catch (error) {
+      console.error('[checkout/complete] voucher creation failed:', sanitizeDbError(error));
     }
   }
 
@@ -155,39 +127,33 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       productTitle: String(body.raw_voucher_data.product_title ?? body.raw_voucher_data.destination ?? '여행 상품'),
       departureDate: String(body.raw_voucher_data.departure_date ?? ''),
       guidebookUrl,
+    }).catch((error) => {
+      console.warn('[checkout/complete] guidebook alimtalk failed:', sanitizeDbError(error));
     });
   }
 
-  // ── STEP 4. Naver 전환추적 포스트백 (fire-and-forget) ──────
   if (attributedSource === 'naver') {
     const naverAnalyticsId = getSecret('NEXT_PUBLIC_NAVER_ANALYTICS_ID');
     if (naverAnalyticsId) {
       const naverConvUrl = `https://wcs.naver.net/wcsc.con?wo=${naverAnalyticsId}&co=${final_sales_price}&rc=100&gr=booking`;
       fetch(naverConvUrl, { signal: AbortSignal.timeout(5000) })
-        .then(() => console.log('[checkout/complete] Naver 전환추적 완료'))
-        .catch(e => console.warn('[checkout/complete] Naver 전환추적 실패:', e instanceof Error ? e.message : e));
+        .then(() => console.log('[checkout/complete] Naver conversion tracked'))
+        .catch((error) => console.warn('[checkout/complete] Naver conversion failed:', sanitizeDbError(error)));
     }
   }
 
-  // ── 브라우저 픽셀 Purchase 이벤트 신호용 응답 ───────────────
-  // 클라이언트는 이 응답을 받으면 Meta Pixel/Kakao Pixel Purchase 이벤트를 발화
-
-  // ── 응답 — 원가(base_cost) 절대 미포함 ───────────────────────
-
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     booking_id,
     attributed_source: attributedSource,
     purchase_event: {
       value: final_sales_price,
       booking_id,
-      // 클라이언트가 픽셀 Purchase 이벤트를 발화할 수 있도록 신호 제공
     },
     mileage: mileageResult
       ? { earned: mileageResult.earned, transaction_id: mileageResult.transaction_id }
       : null,
     voucher_id: voucherId,
     guidebook_url: guidebookUrl,
-    // net_profit, base_cost, allocated_ad_spend → 클라이언트 응답 미포함 (서버 내부 전용)
   });
 }
