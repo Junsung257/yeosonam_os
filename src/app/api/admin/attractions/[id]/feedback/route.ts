@@ -8,23 +8,25 @@
  * Reflexion 인프라 일부 — 시드 패턴 학습 (다음 PR 에서 강화).
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { revalidatePath } from 'next/cache';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const POST = withAdminGuard(async (req: NextRequest, ctx?: { params?: Promise<{ id: string }> }) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'no_db' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'no_db' }, { status: 503 });
   const params = await ctx?.params;
   const id = params?.id;
-  if (!id) return NextResponse.json({ error: 'missing_id' }, { status: 400 });
+  if (!id) return apiResponse({ error: 'missing_id' }, { status: 400 });
 
   let body: { verdict?: string; note?: string };
   try { body = await req.json(); }
-  catch { return NextResponse.json({ error: 'invalid_json' }, { status: 400 }); }
+  catch { return apiResponse({ error: 'invalid_json' }, { status: 400 }); }
 
   if (body.verdict !== 'accurate' && body.verdict !== 'inaccurate') {
-    return NextResponse.json({ error: 'verdict must be accurate|inaccurate' }, { status: 400 });
+    return apiResponse({ error: 'verdict must be accurate|inaccurate' }, { status: 400 });
   }
 
   // 1) 현재 attraction 조회
@@ -33,7 +35,7 @@ export const POST = withAdminGuard(async (req: NextRequest, ctx?: { params?: Pro
     .select('id, name, confidence_score')
     .eq('id', id)
     .maybeSingle();
-  if (fetchErr || !existing) return NextResponse.json({ error: 'not_found' }, { status: 404 });
+  if (fetchErr || !existing) return apiResponse({ error: 'not_found' }, { status: 404 });
 
   // 2) feedback row INSERT (audit trail)
   await supabaseAdmin.from('attraction_feedback').insert({
@@ -61,10 +63,10 @@ export const POST = withAdminGuard(async (req: NextRequest, ctx?: { params?: Pro
     .from('attractions')
     .update(updatePayload)
     .eq('id', id);
-  if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+  if (upErr) return apiResponse({ error: sanitizeDbError(upErr) }, { status: 500 });
 
   revalidatePath('/packages', 'layout');
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     verdict: body.verdict,
     confidence_score: nextConf,
