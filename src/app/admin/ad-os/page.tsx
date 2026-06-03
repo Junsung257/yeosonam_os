@@ -411,6 +411,34 @@ type StagingSmoke = {
   };
 };
 
+type OperatingInventory = {
+  ok: boolean;
+  generated_at: string;
+  inventory: {
+    status: 'operational' | 'partial' | 'blocked';
+    readiness_score: number;
+    operational: number;
+    partial: number;
+    blocked: number;
+    top_gap: string;
+    next_action: string;
+    items: Array<{
+      id: string;
+      label: string;
+      status: 'operational' | 'partial' | 'blocked';
+      evidence: string;
+      next_action: string;
+      risk: 'low' | 'medium' | 'high';
+    }>;
+    safety: {
+      read_only: boolean;
+      database_mutation: boolean;
+      external_api_write: boolean;
+      live_spend_krw: number;
+    };
+  };
+};
+
 type NaverSetupPacket = {
   existing_assets: {
     campaigns: number;
@@ -474,6 +502,13 @@ async function fetchSummary(): Promise<Summary> {
 
 async function fetchStagingSmoke(): Promise<StagingSmoke> {
   const res = await fetch('/api/admin/ad-os/staging-smoke');
+  const json = await res.json();
+  if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
+
+async function fetchOperatingInventory(): Promise<OperatingInventory> {
+  const res = await fetch('/api/admin/ad-os/operating-inventory');
   const json = await res.json();
   if (!res.ok || !json.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
@@ -595,6 +630,13 @@ function auditTone(status: 'pass' | 'warn' | 'fail'): 'good' | 'warn' | 'bad' {
   return 'bad';
 }
 
+function inventoryTone(status?: 'operational' | 'partial' | 'blocked'): 'good' | 'warn' | 'bad' | 'neutral' {
+  if (status === 'operational') return 'good';
+  if (status === 'partial') return 'warn';
+  if (status === 'blocked') return 'bad';
+  return 'neutral';
+}
+
 function actionTone(tone: 'good' | 'warn' | 'bad' | 'neutral'): 'good' | 'warn' | 'bad' | 'neutral' {
   return tone;
 }
@@ -666,6 +708,7 @@ export default function AdOsPage() {
   const [runningRollbackDrill, setRunningRollbackDrill] = useState(false);
   const [runningLimitedPilot, setRunningLimitedPilot] = useState(false);
   const [checkingStagingSmoke, setCheckingStagingSmoke] = useState(false);
+  const [checkingOperatingInventory, setCheckingOperatingInventory] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [opsQueueActionId, setOpsQueueActionId] = useState<string | null>(null);
@@ -677,6 +720,7 @@ export default function AdOsPage() {
   const [keywordBrainResult, setKeywordBrainResult] = useState<Record<string, unknown> | null>(null);
   const [naverAssetPlan, setNaverAssetPlan] = useState<Record<string, unknown> | null>(null);
   const [stagingSmoke, setStagingSmoke] = useState<StagingSmoke | null>(null);
+  const [operatingInventory, setOperatingInventory] = useState<OperatingInventory | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -702,12 +746,16 @@ export default function AdOsPage() {
 
   useEffect(() => {
     let alive = true;
-    fetchStagingSmoke()
-      .then((json) => {
-        if (alive) setStagingSmoke(json);
+    Promise.allSettled([fetchStagingSmoke(), fetchOperatingInventory()])
+      .then(([smokeResult, inventoryResult]) => {
+        if (!alive) return;
+        if (smokeResult.status === 'fulfilled') setStagingSmoke(smokeResult.value);
+        if (inventoryResult.status === 'fulfilled') setOperatingInventory(inventoryResult.value);
+        if (smokeResult.status === 'rejected') throw smokeResult.reason;
+        if (inventoryResult.status === 'rejected') throw inventoryResult.reason;
       })
       .catch((err) => {
-        if (alive) setError(err instanceof Error ? err.message : '스테이징 스모크 조회 실패');
+        if (alive) setError(err instanceof Error ? err.message : '스테이징 검증 조회 실패');
       });
     return () => {
       alive = false;
@@ -736,6 +784,24 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '스테이징 스모크 조회 실패');
     } finally {
       setCheckingStagingSmoke(false);
+    }
+  };
+
+  const runOperatingInventory = async () => {
+    setCheckingOperatingInventory(true);
+    setError(null);
+    try {
+      const json = await fetchOperatingInventory();
+      setOperatingInventory(json);
+      setAutomationMessage(
+        json.inventory.status === 'operational'
+          ? 'Ad OS 운영 인벤토리가 operational입니다. 그래도 live/full auto는 별도 승인 전까지 꺼진 상태를 유지합니다.'
+          : `Ad OS 운영 인벤토리의 최우선 갭은 ${json.inventory.top_gap}입니다.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '운영 인벤토리 조회 실패');
+    } finally {
+      setCheckingOperatingInventory(false);
     }
   };
 
@@ -3284,6 +3350,78 @@ export default function AdOsPage() {
                   )) : (
                     <p className="border-t border-admin-border pt-2 text-admin-2xs text-admin-muted">No completion evidence loaded.</p>
                   )}
+                </div>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-admin-2xs font-semibold text-admin-muted">Operating Inventory</p>
+                    <p className="mt-1 text-admin-xs font-semibold text-admin-text">
+                      {operatingInventory?.inventory.top_gap || 'Ad OS 운영 갭을 조회하세요'}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                      {operatingInventory?.inventory.next_action || 'Control plane, UX, 채널 실행, 전환 품질, 학습 루프, 소재 공장, SaaS, autopilot readiness를 한 번에 점검합니다.'}
+                    </p>
+                  </div>
+                  <StatusPill tone={inventoryTone(operatingInventory?.inventory.status)}>
+                    {operatingInventory?.inventory.status || 'not checked'}
+                  </StatusPill>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Score</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(operatingInventory?.inventory.readiness_score || 0).toLocaleString('ko-KR')}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Operational</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(operatingInventory?.inventory.operational || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Partial</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(operatingInventory?.inventory.partial || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Blocked</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(operatingInventory?.inventory.blocked || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2">
+                  {(operatingInventory?.inventory.items || []).slice(0, 8).map((item) => (
+                    <div key={item.id} className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-admin-2xs font-semibold text-admin-text">{item.label}</p>
+                          <p className="mt-0.5 truncate text-admin-2xs text-admin-muted">{item.evidence}</p>
+                        </div>
+                        <StatusPill tone={inventoryTone(item.status)}>{item.status}</StatusPill>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">{item.next_action}</p>
+                    </div>
+                  ))}
+                  {!operatingInventory && (
+                    <p className="rounded-admin-xs bg-admin-surface-2 px-3 py-2 text-admin-2xs text-admin-muted md:col-span-2">
+                      운영 인벤토리를 조회하면 8개 핵심 영역의 완성/부분/차단 상태가 표시됩니다.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={runOperatingInventory} loading={checkingOperatingInventory}>
+                    Inventory check
+                  </Button>
+                  <Link href="/api/admin/ad-os/operating-inventory" className="inline-flex items-center gap-1 text-admin-2xs font-semibold text-blue-700">
+                    JSON 보기 <ArrowRight className="h-3 w-3" />
+                  </Link>
+                  <StatusPill tone={operatingInventory?.inventory.safety.external_api_write === false && operatingInventory?.inventory.safety.database_mutation === false ? 'good' : 'warn'}>
+                    live spend {fmtWon(operatingInventory?.inventory.safety.live_spend_krw || 0)}
+                  </StatusPill>
                 </div>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
