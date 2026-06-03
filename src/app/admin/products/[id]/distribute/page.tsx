@@ -273,7 +273,7 @@ export default function DistributePage() {
           </div>
           <button
             type="button"
-            onClick={() => router.push(`/admin/marketing/card-news/${linkedCardNews.id}/v2`)}
+            onClick={() => router.push(`/admin/marketing/card-news/${encodeURIComponent(linkedCardNews.id)}/v2`)}
             className="px-3 py-2 text-sm text-blue-700 border border-blue-300 rounded hover:bg-blue-50"
           >
             V2 Studio 열기 →
