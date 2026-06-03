@@ -3,7 +3,9 @@
  * 매일 1회 실행 — open.er-api.com (무료, 키 불필요) 에서 USD→KRW 환율 조회 후
  * fx_rate_snapshots 테이블에 upsert.
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
@@ -17,7 +19,7 @@ export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ skipped: true, reason: 'Supabase 미설정' });
+    return apiResponse({ skipped: true, reason: 'Supabase 미설정' });
   }
 
   const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
@@ -58,15 +60,15 @@ export async function GET(request: NextRequest) {
 
     await sendSlackAlert(`[fx-rate-sync] ${today} USD→KRW ${usdToKrw.toLocaleString('ko-KR')} 저장 완료`);
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       date: today,
       usd_to_krw: usdToKrw,
       source: 'open-exchange',
     });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = sanitizeDbError(err, 'FX rate sync failed');
     await sendSlackAlert(`[fx-rate-sync] 실패: ${message}`, { date: today });
-    return NextResponse.json({ ok: false, error: message }, { status: 500 });
+    return apiResponse({ ok: false, error: message }, { status: 500 });
   }
 }
