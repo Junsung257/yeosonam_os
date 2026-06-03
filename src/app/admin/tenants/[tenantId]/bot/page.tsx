@@ -61,6 +61,7 @@ export default function TenantBotProfilePage(props: { params: Promise<Promise<{ 
     ? use(params as Promise<{ tenantId: string }>)
     : (params as { tenantId: string })
   const { tenantId } = resolved
+  const encodedTenantId = encodeURIComponent(tenantId)
   const [profile, setProfile] = useState<BotProfile | null>(null)
   const [usage, setUsage] = useState<UsageData | null>(null)
   const [saving, setSaving] = useState(false)
@@ -69,8 +70,8 @@ export default function TenantBotProfilePage(props: { params: Promise<Promise<{ 
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/admin/jarvis/bot-profile?tenantId=${tenantId}`).then(r => r.json()),
-      fetch(`/api/admin/jarvis/usage?tenantId=${tenantId}&months=6`).then(r => r.json()),
+      fetch(`/api/admin/jarvis/bot-profile?tenantId=${encodedTenantId}`).then(r => r.json()),
+      fetch(`/api/admin/jarvis/usage?tenantId=${encodedTenantId}&months=6`).then(r => r.json()),
     ]).then(([p, u]) => {
       setProfile(p.profile ?? createDefaultProfile())
       setUsage(u)
@@ -79,7 +80,7 @@ export default function TenantBotProfilePage(props: { params: Promise<Promise<{ 
       setMessage(`로드 실패: ${err.message}`)
       setLoading(false)
     })
-  }, [tenantId])
+  }, [encodedTenantId])
 
   async function handleSave() {
     if (!profile) return
