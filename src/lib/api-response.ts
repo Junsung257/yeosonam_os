@@ -41,6 +41,23 @@ export function cacheHeader(seconds: number): Record<string, string> {
   };
 }
 
+export function apiResponse<T>(
+  body: T,
+  init?: ResponseInit & { cacheSeconds?: number }
+) {
+  const { cacheSeconds, headers, ...responseInit } = init ?? {};
+  const responseHeaders = new Headers(headers);
+
+  if (cacheSeconds !== undefined && !responseHeaders.has('Cache-Control')) {
+    responseHeaders.set('Cache-Control', cacheHeader(cacheSeconds)['Cache-Control']);
+  }
+
+  return NextResponse.json<T>(body, {
+    ...responseInit,
+    headers: responseHeaders,
+  });
+}
+
 export function successResponse<T>(data: T, status: number = 200, cacheSeconds?: number) {
   return NextResponse.json<ApiSuccessResponse<T>>(
     {

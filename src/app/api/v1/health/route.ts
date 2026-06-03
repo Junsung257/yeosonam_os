@@ -20,6 +20,7 @@
 
 import { NextRequest } from 'next/server'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { apiResponse } from '@/lib/api-response'
 
 const START_TIME = Date.now()
 
@@ -28,7 +29,7 @@ export async function GET(_request: NextRequest) {
 
   const status = dbOk ? 'healthy' : 'degraded'
 
-  return Response.json({
+  return apiResponse({
     ok: true,
     data: {
       status,

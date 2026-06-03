@@ -36,6 +36,7 @@ import { withApiKey } from '@/lib/api-key-middleware'
 import { transcribeSpeech, synthesizeSpeech, type VoiceChatRequest } from '@/lib/multimodal-sdk'
 import { createV1QaChatStream } from '@/lib/qa-chat-engine'
 import { redactKoreanPII } from '@/lib/pii-redactor'
+import { apiResponse, ApiErrors } from '@/lib/api-response'
 
 export const maxDuration = 60
 
@@ -47,27 +48,18 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json()
   } catch {
-    return Response.json(
-      { ok: false, error: { code: 'INVALID_JSON', message: 'JSON 형식이 올바르지 않습니다' } },
-      { status: 400 },
-    )
+    return ApiErrors.badRequest('JSON 형식이 올바르지 않습니다')
   }
 
   if (!body.audio || !body.mimeType) {
-    return Response.json(
-      { ok: false, error: { code: 'MISSING_AUDIO', message: 'audio 와 mimeType 은 필수입니다' } },
-      { status: 400 },
-    )
+    return ApiErrors.badRequest('audio 와 mimeType 은 필수입니다')
   }
 
   // 1. STT: 음성 → 텍스트
   const audioBuffer = Uint8Array.from(Buffer.from(body.audio, 'base64')).buffer
   const transcription = await transcribeSpeech(audioBuffer, body.mimeType)
   if (!transcription) {
-    return Response.json(
-      { ok: false, error: { code: 'STT_FAILED', message: '음성 인식에 실패했습니다' } },
-      { status: 500 },
-    )
+    return ApiErrors.internalError('음성 인식에 실패했습니다')
   }
 
   // 2. QA 채팅: 텍스트 → AI 응답 (stream)
@@ -104,16 +96,13 @@ export async function POST(request: NextRequest) {
   // 3. TTS: AI 응답 → 음성
   const audioResponse = await synthesizeSpeech(fullText)
   if (!audioResponse) {
-    return Response.json(
-      { ok: false, error: { code: 'TTS_FAILED', message: '음성 합성에 실패했습니다' } },
-      { status: 500 },
-    )
+    return ApiErrors.internalError('음성 합성에 실패했습니다')
   }
 
   const audioBase64 = Buffer.from(audioResponse).toString('base64')
   const safeTranscript = redactKoreanPII(transcription.text).redacted
 
-  return Response.json({
+  return apiResponse({
     ok: true,
     data: {
       audio: audioBase64,

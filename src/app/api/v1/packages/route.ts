@@ -21,7 +21,7 @@
 import { NextRequest } from 'next/server'
 import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
-import { ApiErrors } from '@/lib/api-response'
+import { apiResponse, ApiErrors } from '@/lib/api-response'
 
 export const maxDuration = 30
 
@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error
 
-    return Response.json({
+    return apiResponse({
       ok: true,
       data: data ?? [],
       pagination: { total: count ?? 0, limit, offset },
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error
 
-    return Response.json({
+    return apiResponse({
       ok: true,
       data: data ?? [],
       pagination: { total: count ?? 0, limit: 10, offset: 0 },

@@ -22,6 +22,7 @@
 import { NextRequest } from 'next/server'
 import { withApiKey } from '@/lib/api-key-middleware'
 import { createV1QaChatStream } from '@/lib/qa-chat-engine'
+import { ApiErrors } from '@/lib/api-response'
 
 export const maxDuration = 60
 
@@ -35,17 +36,11 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json()
   } catch {
-    return Response.json(
-      { ok: false, error: { code: 'INVALID_JSON', message: 'JSON 형식이 올바르지 않습니다' } },
-      { status: 400 },
-    )
+    return ApiErrors.badRequest('JSON 형식이 올바르지 않습니다')
   }
 
   if (!body.message?.trim()) {
-    return Response.json(
-      { ok: false, error: { code: 'MISSING_MESSAGE', message: 'message 필드는 필수입니다' } },
-      { status: 400 },
-    )
+    return ApiErrors.badRequest('message 필드는 필수입니다')
   }
 
   // 3. V1 QA 채팅 스트림 호출 (tenant_id 전달)
