@@ -1009,3 +1009,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - UI-only change based on existing `/api/admin/ad-os/summary` data.
   - No external ad platform write path, database mutation, or automation level change is introduced.
   - The Command Center no longer treats product asset readiness as enough; Ad OS control-plane completion evidence is visible before operators scale campaigns.
+
+## 60. 2026-06-03 Ad OS V481-V500 marketing dashboard completion summary
+
+- Extended `/admin/marketing` with the same read-only completion audit summary used by Ad OS and the Command Center.
+- Purpose:
+  - Makes the first marketing dashboard screen show whether the advertising OS is ready, blocked, or needs attention.
+  - Shows readiness score, pass/warn/fail counts, and the next action next to channel execution and tenant guardrail status.
+  - Links operators to Command Center and System Health for action and evidence drilldown.
+- Safety principle:
+  - UI-only change based on existing `/api/admin/ad-os/summary` data.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - Marketing dashboard KPIs no longer imply that campaign scaling is safe unless Ad OS completion evidence is visible.
