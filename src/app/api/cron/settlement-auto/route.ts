@@ -6,10 +6,11 @@
  * 출발일이 전월이고 귀국일이 지난 예약만 대상.
  * Vercel Cron 또는 수동 호출 가능.
  */
-import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
 import { withCronGuard } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
 
@@ -20,10 +21,10 @@ const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, P
  */
 export const dynamic = 'force-dynamic';
 const getHandler = async () => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured || !supabaseAdmin) return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
 
   if (process.env.ENABLE_DIRECT_SETTLEMENT !== 'true') {
-    return NextResponse.json({
+    return apiResponse({
       skipped: true,
       message: '자비스 기안 모드 활성. /api/cron/affiliate-settlement-draft를 사용하세요.',
     });
@@ -48,13 +49,13 @@ const getHandler = async () => {
       .eq('is_active', true);
 
     if (!affiliates || affiliates.length === 0) {
-      return NextResponse.json({ message: '활성 어필리에이트 없음', period });
+      return apiResponse({ message: '활성 어필리에이트 없음', period });
     }
 
     let processed = 0;
     let qualified = 0;
     let carried = 0;
-    const results: { name: string; status: string; amount: number }[] = [];
+    const results: { affiliate_ref: string; status: string; amount: number }[] = [];
 
     for (const aff of affiliates) {
       // 이미 정산 완료된 건 스킵
@@ -117,7 +118,7 @@ const getHandler = async () => {
           }, { onConflict: 'affiliate_id,settlement_period' });
 
         carried++;
-        results.push({ name: aff.name, status: 'PENDING (이월)', amount: totalAmount });
+        results.push({ affiliate_ref: String(aff.id).slice(0, 8), status: 'PENDING (이월)', amount: totalAmount });
       } else {
         // 정산 확정
         const finalTotal = totalAmount + prevCarryover;
@@ -145,7 +146,7 @@ const getHandler = async () => {
           .eq('id', aff.id);
 
         qualified++;
-        results.push({ name: aff.name, status: 'READY', amount: finalPayout });
+        results.push({ affiliate_ref: String(aff.id).slice(0, 8), status: 'READY', amount: finalPayout });
       }
       processed++;
     }
@@ -160,10 +161,11 @@ const getHandler = async () => {
 
     console.log(`[정산 크론] 완료: ${processed}명 (확정 ${qualified}, 이월 ${carried})`);
 
-    return NextResponse.json({ period, processed, qualified, carried, results });
+    return apiResponse({ period, processed, qualified, carried, results });
   } catch (err) {
-    console.error('[정산 크론 실패]', err);
-    return NextResponse.json({ error: err instanceof Error ? err.message : '정산 크론 실패' }, { status: 500 });
+    const message = sanitizeDbError(err, 'Settlement cron failed');
+    console.error('[정산 크론 실패]', message);
+    return apiResponse({ error: message }, { status: 500 });
   }
 }
 
