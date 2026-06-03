@@ -86,6 +86,15 @@ function pickPackageCoverUrl(p: PackageRow): string | null {
   return isSafeImageSrc(raw) ? raw.trim() : null;
 }
 
+function toAttractionListItem(a: AttractionRow, index: number) {
+  return {
+    '@type': 'ListItem',
+    position: index + 1,
+    name: a.name,
+    ...(a.short_desc ? { description: a.short_desc } : {}),
+  };
+}
+
 export async function generateStaticParams() {
   if (!isSupabaseConfigured) return [];
   try {
@@ -300,12 +309,7 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
             '@type': 'ItemList',
             name: `${data.region} 가볼만한 곳`,
             numberOfItems: data.totalAttractions,
-            itemListElement: Object.values(data.attractionsByCategory).flat().slice(0, 20).map((a, i) => ({
-              '@type': 'ListItem',
-              position: i + 1,
-              name: a.name,
-              description: a.short_desc ?? undefined,
-            })),
+            itemListElement: Object.values(data.attractionsByCategory).flat().slice(0, 20).map(toAttractionListItem),
           }),
         }}
       />
