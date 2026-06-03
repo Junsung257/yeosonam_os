@@ -959,3 +959,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - Read-only UI change.
   - No external ad platform write path, database mutation, or automation level change is introduced.
+
+## 56. 2026-06-03 Ad OS V401-V420 completion audit API
+
+- Added `GET /api/admin/ad-os/completion-audit`.
+- Purpose:
+  - Makes the same completion audit shown on `/admin/ad-os` reusable by smoke tests, monitors, tenant report generators, and future agency dashboards.
+  - Reuses `/api/admin/ad-os/summary`'s `enterprise_layer.completion_audit` so the dashboard and API cannot drift into different completion criteria.
+  - Returns the full audit, compact summary, failed requirements, warning requirements, and explicit read-only safety metadata.
+- Safety principle:
+  - Read-only endpoint.
+  - No external ad platform write path or database mutation is introduced.
+  - Failure responses remain JSON and mark the endpoint as read-only with `external_api_write=false`.
