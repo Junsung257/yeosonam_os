@@ -171,15 +171,29 @@ export default function SharePage() {
   const [addingToCart, setAddingToCart] = useState(false);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let isActive = true;
+
+    setLoading(true);
+    setError('');
+    setShared(null);
+    setBlocks([]);
+    setSelectedDate('');
+    setRefreshedPrices(new Map());
+
     if (!code) {
       setError('공유 코드가 올바르지 않습니다.');
       setLoading(false);
-      return;
+      return () => {
+        isActive = false;
+        controller.abort();
+      };
     }
 
-    fetch(`/api/share?code=${encodeURIComponent(code)}`)
+    fetch(`/api/share?code=${encodeURIComponent(code)}`, { signal: controller.signal })
       .then(r => r.json())
       .then(d => {
+        if (!isActive) return;
         if (d.error) setError(d.error);
         else if (!d.shared || typeof d.shared !== 'object') setError('공유 정보를 찾을 수 없습니다.');
         else {
@@ -193,15 +207,29 @@ export default function SharePage() {
           // FIXED: 재고 조회
           if (normalizedShared.share_type === 'FIXED' && normalizedShared.product_id) {
             const today = new Date().toISOString().slice(0, 10);
-            fetch(`/api/packages/${encodeURIComponent(normalizedShared.product_id)}/inventory?from=${today}`)
+            fetch(`/api/packages/${encodeURIComponent(normalizedShared.product_id)}/inventory?from=${today}`, {
+              signal: controller.signal,
+            })
               .then(r => r.json())
-              .then(inv => setBlocks(normalizeInventoryBlocks(inv.blocks)))
+              .then(inv => {
+                if (isActive) setBlocks(normalizeInventoryBlocks(inv.blocks));
+              })
               .catch(() => {});
           }
         }
       })
-      .catch(() => setError('공유 정보를 불러오는 데 실패했습니다.'))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!isActive || controller.signal.aborted) return;
+        setError('공유 정보를 불러오는 데 실패했습니다.');
+      })
+      .finally(() => {
+        if (isActive) setLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [code]);
 
   // DYNAMIC: 오늘의 가격으로 재조회
