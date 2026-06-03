@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import {
   buildBudgetOpsDecision,
   buildCreativeFactoryDrafts,
@@ -10,6 +11,7 @@ import {
 } from '@/lib/ad-os-v13-v18';
 import { riskForChangeRequest, titleForChangeRequest, type AdOsChangeRequestType } from '@/lib/ad-os-change-request';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -90,7 +92,7 @@ function changeRequestRow(input: {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -154,7 +156,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     searchTermRes.error ||
     conversionRes.error ||
     scenarioRes.error;
-  if (firstError) return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+  if (firstError) return apiResponse({ ok: false, error: sanitizeDbError(firstError) }, { status: 500 });
 
   const pkg = packageRes.data as PackageRow | null;
   const keywords = (keywordRes.data || []) as KeywordRow[];
@@ -324,11 +326,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   let inserted = 0;
   if (apply && proposedRequests.length > 0) {
     const { data, error } = await supabaseAdmin.from('ad_os_change_requests').insert(proposedRequests).select('id');
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
     inserted = data?.length || 0;
   }
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     applied: apply,
     inserted_change_requests: inserted,
