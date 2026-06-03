@@ -1,13 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { cacheHeader } from '@/lib/api-response';
+import { NextRequest } from 'next/server';
+import { apiResponse, cacheHeader } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 
 // GET: 감사 로그 타임라인 조회
-export async function GET(request: NextRequest) {
+const getHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
   const { searchParams } = new URL(request.url);
   const targetType = searchParams.get('targetType'); // 'booking' | 'affiliate' | 'settlement'
@@ -29,26 +29,16 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    return NextResponse.json({ logs: data || [] }, { headers: cacheHeader(60) });
+    return apiResponse({ logs: data || [] }, { headers: cacheHeader(60) });
   } catch (err) {
-    return NextResponse.json({ error: logAndSanitize('audit-logs-get', err, '조회 실패') }, { status: 500 });
+    return apiResponse({ error: logAndSanitize('audit-logs-get', err, '조회 실패') }, { status: 500 });
   }
-}
+};
 
 // POST: 감사 로그 기록
-export async function POST(request: NextRequest) {
-  // 인증 게이트 — 감사 로그 위조 방지 (S2 보안 강화)
-  const token = request.cookies.get('sb-access-token')?.value;
-  if (!token) {
-    return NextResponse.json({ error: '인증이 필요합니다.' }, { status: 401 });
-  }
-  const verified = await verifySupabaseAccessToken(token);
-  if (!verified.ok) {
-    return NextResponse.json({ error: '세션이 유효하지 않습니다.' }, { status: 401 });
-  }
-
+const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 503 });
   }
   const supabase = supabaseAdmin;
 
@@ -56,7 +46,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action, targetType, targetId, description, beforeValue, afterValue, userId } = body;
 
-    if (!action) return NextResponse.json({ error: 'action이 필요합니다.' }, { status: 400 });
+    if (!action) return apiResponse({ error: 'action이 필요합니다.' }, { status: 400 });
 
     const { data, error } = await supabase
       .from('audit_logs')
@@ -74,8 +64,11 @@ export async function POST(request: NextRequest) {
 
     if (error) throw error;
 
-    return NextResponse.json({ log: data }, { status: 201 });
+    return apiResponse({ log: data }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: logAndSanitize('audit-logs-post', err, '로그 기록 실패') }, { status: 500 });
+    return apiResponse({ error: logAndSanitize('audit-logs-post', err, '로그 기록 실패') }, { status: 500 });
   }
-}
+};
+
+export const GET = withAdminGuard(getHandler);
+export const POST = withAdminGuard(postHandler);
