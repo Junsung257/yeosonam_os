@@ -1,20 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { logWarning } from '@/lib/sentry-logger';
+import { apiResponse } from '@/lib/api-response';
 
 // 어드민이 AI 제어권을 가져와 직접 대응할 때 호출
-const postHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ ok: false });
-
-  const token =
-    request.cookies.get('sb-access-token')?.value ??
-    request.headers.get('Authorization')?.replace('Bearer ', '');
-  const { data: userData } = await supabaseAdmin.auth.getUser(token ?? '');
-  if (!userData?.user?.id) {
-    return NextResponse.json({ error: '인증 필요' }, { status: 401 });
-  }
+const postHandler = async (request: NextRequest): Promise<NextResponse> => {
+  if (!isSupabaseConfigured) return apiResponse({ ok: false });
 
   try {
     const { taskId, adminId, note } = await request.json() as {
@@ -24,7 +17,7 @@ const postHandler = async (request: NextRequest) => {
     };
 
     if (!taskId) {
-      return NextResponse.json({ error: 'taskId required' }, { status: 400 });
+      return apiResponse({ error: 'taskId required' }, { status: 400 });
     }
 
     // agent_tasks: frozen → resumed, assigned_to = human
@@ -59,9 +52,9 @@ const postHandler = async (request: NextRequest) => {
     });
     if (incidentErr) logWarning('[admin/hitl/takeover] agent_incidents insert failed', incidentErr);
 
-    return NextResponse.json({ ok: true, taskId, status: 'resumed' });
+    return apiResponse({ ok: true, taskId, status: 'resumed' });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: logAndSanitize('admin-hitl-takeover', err, '처리 실패') },
       { status: 500 },
     );
