@@ -114,15 +114,24 @@ export default function SharedCardNewsPage() {
   const [currentSlide, setCurrentSlide] = useState(0);
 
   useEffect(() => {
+    const controller = new AbortController();
+    let isActive = true;
+
     async function load() {
+      setLoading(true);
+      setError(null);
+
       try {
         if (!cardNewsId) throw new Error('카드뉴스 ID가 올바르지 않습니다');
 
-        const res = await fetch(`/api/card-news/${encodeURIComponent(cardNewsId)}`);
+        const res = await fetch(`/api/card-news/${encodeURIComponent(cardNewsId)}`, {
+          signal: controller.signal,
+        });
         if (!res.ok) throw new Error('카드뉴스를 찾을 수 없습니다');
         const json = await res.json();
         const normalized = normalizeCardNewsDetail(json);
         if (!normalized) throw new Error('카드뉴스 데이터가 올바르지 않습니다');
+        if (!isActive) return;
         setData(normalized);
         setCurrentSlide(0);
 
@@ -133,12 +142,18 @@ export default function SharedCardNewsPage() {
           body: JSON.stringify({ _track_view: true }),
         }).catch(() => {});
       } catch (err) {
+        if (!isActive || controller.signal.aborted) return;
         setError(err instanceof Error ? err.message : '로드 실패');
       } finally {
-        setLoading(false);
+        if (isActive) setLoading(false);
       }
     }
     load();
+
+    return () => {
+      isActive = false;
+      controller.abort();
+    };
   }, [cardNewsId]);
 
   if (loading) {
