@@ -26,6 +26,7 @@
 
 import crypto from 'node:crypto'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
+import { sanitizeDbError } from '@/lib/error-sanitizer'
 
 const KEY_PREFIX = 'ysn_'
 const KEY_BYTE_LENGTH = 32 // 256-bit
@@ -100,7 +101,7 @@ export async function createApiKey(params: CreateApiKeyParams): Promise<CreateAp
       },
     }
   } catch (err) {
-    console.warn('[api-key-service] 키 생성 실패:', err)
+    console.warn('[api-key-service] 키 생성 실패:', sanitizeDbError(err))
     return null
   }
 }
@@ -181,7 +182,7 @@ export async function verifyApiKey(authHeader: string | null): Promise<VerifyRes
       scopes: data.scopes as string[],
     }
   } catch (err) {
-    console.warn('[api-key-service] 키 검증 실패:', err)
+    console.warn('[api-key-service] 키 검증 실패:', sanitizeDbError(err))
     return { valid: false, reason: '검증 중 오류' }
   }
 }
@@ -220,7 +221,7 @@ export async function trackApiUsage(params: TrackUsageParams): Promise<void> {
       p_key_id: params.apiKeyId,
     })
   } catch (err) {
-    console.warn('[api-key-service] 사용량 기록 실패:', err)
+    console.warn('[api-key-service] 사용량 기록 실패:', sanitizeDbError(err))
   }
 }
 
@@ -270,7 +271,7 @@ export async function listApiKeys(tenantId: string): Promise<Array<{
       createdAt: r.created_at,
     }))
   } catch (err) {
-    console.warn('[api-key-service] 키 목록 조회 실패:', err)
+    console.warn('[api-key-service] 키 목록 조회 실패:', sanitizeDbError(err))
     return []
   }
 }
@@ -291,7 +292,7 @@ export async function toggleApiKey(params: {
     if (error) throw error
     return true
   } catch (err) {
-    console.warn('[api-key-service] 키 상태 변경 실패:', err)
+    console.warn('[api-key-service] 키 상태 변경 실패:', sanitizeDbError(err))
     return false
   }
 }
@@ -309,7 +310,7 @@ export async function deleteApiKey(keyId: string): Promise<boolean> {
     if (error) throw error
     return true
   } catch (err) {
-    console.warn('[api-key-service] 키 삭제 실패:', err)
+    console.warn('[api-key-service] 키 삭제 실패:', sanitizeDbError(err))
     return false
   }
 }
