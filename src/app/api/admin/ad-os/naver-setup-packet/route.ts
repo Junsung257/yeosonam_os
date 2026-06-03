@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   fetchNaverAdgroups,
   fetchNaverBusinessChannels,
@@ -47,7 +48,7 @@ function buildCsv(rows: KeywordPlan[]): string {
 
 export const POST = withAdminGuard(async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const config = getNaverAdsConfigStatus();
@@ -70,7 +71,7 @@ export const POST = withAdminGuard(async () => {
 
   const firstError = budgetRes.error || keywordRes.error;
   if (firstError) {
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(firstError) }, { status: 500 });
   }
 
   const keywords = (keywordRes.data || []) as KeywordPlan[];
@@ -135,7 +136,7 @@ export const POST = withAdminGuard(async () => {
     ? 'Create the missing Naver campaign/business channel/ad group using this packet, then run Naver asset auto-save.'
     : 'Naver assets exist. Run Naver asset auto-save, then run launch audit.';
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     config,
     existing_assets: {
