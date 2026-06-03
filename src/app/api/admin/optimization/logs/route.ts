@@ -1,46 +1,38 @@
-/**
- * ══════════════════════════════════════════════════════════
- * 최적화 로그 API
- * ══════════════════════════════════════════════════════════
- *
- * GET /api/admin/optimization/logs
- *   - 최적화 실행 로그 목록 (최신순)
- *   - 쿼리: platform, limit (기본 50)
- *   - 인증: 관리자 세션 또는 CRON_SECRET/SUPABASE_SERVICE_ROLE_KEY Bearer
- */
-
-import { NextRequest, NextResponse } from 'next/server';
-import { getSecret } from '@/lib/secret-registry';
 import { createClient } from '@supabase/supabase-js';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { getSecret } from '@/lib/secret-registry';
+import { safeEqualString } from '@/lib/timing-safe';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
-  // 인증
   const authHeader = request.headers.get('authorization') ?? '';
   const cronSecret = getSecret('CRON_SECRET');
   const serviceKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
   const isBearerAuthorized =
     authHeader.startsWith('Bearer ') &&
-    (authHeader.slice(7) === cronSecret || authHeader.slice(7) === serviceKey);
+    (safeEqualString(authHeader.slice(7), cronSecret) || safeEqualString(authHeader.slice(7), serviceKey));
 
   if (!isBearerAuthorized && !(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return apiResponse({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const { searchParams } = new URL(request.url);
   const platform = searchParams.get('platform');
-  const limit = Math.min(parseInt(searchParams.get('limit') ?? '50'), 200);
+  const parsedLimit = Number.parseInt(searchParams.get('limit') ?? '50', 10);
+  const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 50, 1), 200);
 
   try {
     const url = getSecret('NEXT_PUBLIC_SUPABASE_URL');
     const key = getSecret('SUPABASE_SERVICE_ROLE_KEY');
     if (!url || !key) {
-      return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
+      return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
     }
-    const supabase = createClient(url, key);
 
+    const supabase = createClient(url, key);
     let query = supabase
       .from('optimization_log')
       .select('*')
@@ -52,14 +44,12 @@ export async function GET(request: NextRequest) {
     }
 
     const { data, error } = await query;
-
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
     }
 
-    return NextResponse.json(data ?? []);
+    return apiResponse(data ?? []);
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error';
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
 }
