@@ -2274,6 +2274,13 @@ export default function AdOsPage() {
     if (summary.recent_decisions.length > 0) score += 15;
     return Math.min(100, score);
   }, [summary]);
+  const completionDrilldown = useMemo(() => {
+    const requirements = summary?.enterprise_layer?.completion_audit?.requirements || [];
+    const rank = { fail: 0, warn: 1, pass: 2 };
+    return [...requirements]
+      .sort((a, b) => rank[a.status] - rank[b.status])
+      .slice(0, 4);
+  }, [summary]);
 
   const totalMappingStatus = summary
     ? Object.values(summary.counts.mappings_by_status || {}).reduce((a, b) => a + b, 0)
@@ -3102,7 +3109,7 @@ export default function AdOsPage() {
                   {summary.enterprise_layer?.agency_reporting?.next_action || 'Generate tenant report drafts and audit exports.'}
                 </p>
               </div>
-              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-admin-2xs font-semibold text-admin-muted">Completion Audit</p>
                   <StatusPill tone={summary.enterprise_layer?.completion_audit?.status === 'ready' ? 'good' : summary.enterprise_layer?.completion_audit?.status === 'blocked' ? 'bad' : 'warn'}>
@@ -3118,6 +3125,22 @@ export default function AdOsPage() {
                 <p className="mt-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
                   {summary.enterprise_layer?.completion_audit?.next_action || 'Collect current evidence before declaring Ad OS complete.'}
                 </p>
+                <div className="mt-3 space-y-2">
+                  {completionDrilldown.length > 0 ? completionDrilldown.map((item) => (
+                    <div key={item.id} className="grid gap-2 border-t border-admin-border pt-2 md:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="min-w-0">
+                        <p className="truncate text-admin-2xs font-semibold text-admin-text">{item.label}</p>
+                        <p className="mt-0.5 truncate text-admin-2xs text-admin-muted">{item.evidence}</p>
+                      </div>
+                      <StatusPill tone={item.status === 'pass' ? 'good' : item.status === 'fail' ? 'bad' : 'warn'}>
+                        {item.status}
+                      </StatusPill>
+                      <p className="md:col-span-2 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">{item.next_action}</p>
+                    </div>
+                  )) : (
+                    <p className="border-t border-admin-border pt-2 text-admin-2xs text-admin-muted">No completion evidence loaded.</p>
+                  )}
+                </div>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
                 <p className="text-admin-2xs font-semibold text-admin-muted">플랫폼 실행 큐</p>

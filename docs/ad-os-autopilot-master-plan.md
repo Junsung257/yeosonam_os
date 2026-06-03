@@ -948,3 +948,14 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - This is deliberately not a "complete" flag. It prevents premature completion claims by requiring current evidence for each platform-grade requirement.
   - Degraded summary responses become blocked completion audits.
   - No external ad platform write path or database mutation is introduced.
+
+## 55. 2026-06-03 Ad OS V381-V400 completion audit drilldown UX
+
+- Extended `/admin/ad-os` Completion Audit from a score-only card into a compact drilldown.
+- Purpose:
+  - Sorts fail, warn, pass requirements by urgency and shows the top four directly in the Enterprise Runtime Layer.
+  - Shows each requirement's status, evidence, and next action without opening raw JSON.
+  - Keeps the high-level card visible while making the unfinished requirements actionable for operators.
+- Safety principle:
+  - Read-only UI change.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
