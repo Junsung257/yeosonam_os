@@ -8,10 +8,16 @@ import type { AffiliateInfo } from './auth-context';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function InfluencerLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const pathname = usePathname();
-  const code = params.code as string;
+  const code = getRouteParam(params?.code);
+  const encodedCode = encodeURIComponent(code);
+  const displayCode = code || 'partner';
 
   const [affiliate, setAffiliate] = useState<AffiliateInfo | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
@@ -56,11 +62,11 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
   };
 
   const navItems = [
-    { href: `/influencer/${code}`, label: '대시보드', icon: '📊' },
-    { href: `/influencer/${code}/products`, label: '상품 & 링크', icon: '🔗' },
-    { href: `/influencer/${code}/create-content`, label: '콘텐츠 생성', icon: '✨' },
-    { href: `/influencer/${code}/assets`, label: '마케팅 소재', icon: '🎨' },
-    { href: `/influencer/${code}/playbook`, label: '성공사례/CS', icon: '📚' },
+    { href: `/influencer/${encodedCode}`, label: '대시보드', icon: '📊' },
+    { href: `/influencer/${encodedCode}/products`, label: '상품 & 링크', icon: '🔗' },
+    { href: `/influencer/${encodedCode}/create-content`, label: '콘텐츠 생성', icon: '✨' },
+    { href: `/influencer/${encodedCode}/assets`, label: '마케팅 소재', icon: '🎨' },
+    { href: `/influencer/${encodedCode}/playbook`, label: '성공사례/CS', icon: '📚' },
   ];
 
   return (
@@ -81,17 +87,17 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
                   loading="lazy"
                   fallback={
                     <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
-                      {affiliate?.name?.[0] || code[0]}
+                      {affiliate?.name?.[0] || displayCode[0]}
                     </div>
                   }
                 />
               ) : (
                 <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-sm">
-                  {affiliate?.name?.[0] || code[0]}
+                  {affiliate?.name?.[0] || displayCode[0]}
                 </div>
               )}
               <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-900 text-sm">{affiliate?.name || code}</span>
+                <span className="font-bold text-gray-900 text-sm">{affiliate?.name || displayCode}</span>
                 {affiliate && (
                   <span className={`text-[10px] text-white px-1.5 py-0.5 rounded-full font-bold ${GRADE_COLORS[affiliate.grade] || 'bg-gray-400'}`}>
                     {affiliate.grade_label}
