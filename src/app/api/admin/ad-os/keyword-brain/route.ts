@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildEnterpriseKeywordBrain } from '@/lib/ad-os-v19-v25';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
@@ -34,7 +36,7 @@ function utmUrl(packageId: string, keyword: string, platform: string): string {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -53,7 +55,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .select('id')
     .single();
 
-  if (runError) return NextResponse.json({ ok: false, error: runError.message }, { status: 500 });
+  if (runError) return apiResponse({ ok: false, error: sanitizeDbError(runError) }, { status: 500 });
 
   let packageQuery = supabaseAdmin
     .from('travel_packages')
@@ -79,12 +81,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   } | undefined;
 
   if (packageError || !pkg) {
+    const safeError = packageError ? sanitizeDbError(packageError) : 'No eligible package found.';
     await supabaseAdmin.from('ad_os_automation_runs').update({
       status: 'failed',
       finished_at: new Date().toISOString(),
-      summary: { apply, error: packageError?.message || 'No eligible package found.' },
+      summary: { apply, error: safeError },
     }).eq('id', run.id);
-    return NextResponse.json({ ok: false, error: packageError?.message || 'No eligible package found.' }, { status: 404 });
+    return apiResponse({ ok: false, error: safeError }, { status: packageError ? 500 : 404 });
   }
 
   const [existingRes, termsRes, budgetRes] = await Promise.all([
@@ -159,7 +162,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('ad_os_keyword_clusters')
       .upsert(clusterRows, { onConflict: 'platform,product_id,keyword_text,match_type', ignoreDuplicates: false })
       .select('id');
-    if (clusterError) return NextResponse.json({ ok: false, error: clusterError.message }, { status: 500 });
+    if (clusterError) return apiResponse({ ok: false, error: sanitizeDbError(clusterError) }, { status: 500 });
     insertedClusters = clusterData?.length || 0;
 
     const landingUrl = `${appUrl()}/packages/${pkg.id}`;
@@ -197,7 +200,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('search_ad_keyword_plans')
       .upsert(planRows, { onConflict: 'package_id,platform,keyword_text,match_type', ignoreDuplicates: false })
       .select('id');
-    if (planError) return NextResponse.json({ ok: false, error: planError.message }, { status: 500 });
+    if (planError) return apiResponse({ ok: false, error: sanitizeDbError(planError) }, { status: 500 });
     insertedPlans = planData?.length || 0;
   }
 
@@ -214,7 +217,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     },
   }).eq('id', run.id);
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     apply,
     run_id: run.id,
