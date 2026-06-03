@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { classifyAdOsConversionSignal } from '@/lib/ad-os-v8-v12';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +13,7 @@ function json(value: unknown) {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -72,7 +74,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (error || !data) {
-    return NextResponse.json({ ok: false, error: error?.message || 'conversion event insert failed' }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(error, 'Conversion event insert failed') }, { status: 500 });
   }
 
   if (classification.quarantineStatus !== 'clean') {
@@ -89,5 +91,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     });
   }
 
-  return NextResponse.json({ ok: true, event: data, classification });
+  return apiResponse({ ok: true, event: data, classification });
 });
