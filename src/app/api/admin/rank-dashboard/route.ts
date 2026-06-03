@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 순위 대시보드 데이터 API
@@ -11,7 +13,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
  */
 
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
+  if (!isSupabaseConfigured) return apiResponse({ items: [] });
 
   const sp = request.nextUrl.searchParams;
   const view = sp.get('view') || 'summary';
@@ -27,13 +29,14 @@ const getHandler = async (request: NextRequest) => {
 
   try {
     if (view === 'alerts') {
-      const { data } = await supabaseAdmin
+      const { data, error } = await supabaseAdmin
         .from('rank_alerts')
         .select('*')
         .is('resolved_at', null)
         .order('detected_at', { ascending: false })
         .limit(50);
-      return NextResponse.json({ alerts: data || [] });
+      if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+      return apiResponse({ alerts: data || [] });
     }
 
     if (sp.get('slug')) {
@@ -45,8 +48,9 @@ const getHandler = async (request: NextRequest) => {
         .gte('date', sinceStr)
         .order('date', { ascending: true });
       if (source !== 'all') historyQuery = historyQuery.eq('source', source);
-      const { data } = await historyQuery;
-      return NextResponse.json({ slug, source, history: data || [] });
+      const { data, error } = await historyQuery;
+      if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+      return apiResponse({ slug, source, history: data || [] });
     }
 
     if (view === 'top_movers') {
@@ -57,7 +61,8 @@ const getHandler = async (request: NextRequest) => {
         .gte('date', sinceStr)
         .order('date', { ascending: true });
       if (source !== 'all') moversQuery = moversQuery.eq('source', source);
-      const { data } = await moversQuery;
+      const { data, error } = await moversQuery;
+      if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
       const groups = new Map<string, Array<{ date: string; position: number; clicks: number; impressions: number }>>();
       const historyRows = (data ?? []) as unknown as Array<{ slug: string; query: string; date: string; position: number; clicks: number; impressions: number }>;
@@ -97,7 +102,7 @@ const getHandler = async (request: NextRequest) => {
       const ups = movers.filter(m => m.delta < -1).sort((a, b) => a.delta - b.delta).slice(0, 20);
       const downs = movers.filter(m => m.delta > 1).sort((a, b) => b.delta - a.delta).slice(0, 20);
 
-      return NextResponse.json({ source, ups, downs, total_tracked: movers.length });
+      return apiResponse({ source, ups, downs, total_tracked: movers.length });
     }
 
     // summary view: 최근 N일 누적 + Top performers
@@ -106,7 +111,8 @@ const getHandler = async (request: NextRequest) => {
       .select('slug, query, position, clicks, impressions, date, source')
       .gte('date', sinceStr);
     if (source !== 'all') summaryQuery = summaryQuery.eq('source', source);
-    const { data: history } = await summaryQuery;
+    const { data: history, error } = await summaryQuery;
+    if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
     const slugMap = new Map<string, { clicks: number; impressions: number; positions: number[]; queries: Set<string> }>();
     const sourceCounts: Record<string, number> = {};
@@ -139,9 +145,9 @@ const getHandler = async (request: NextRequest) => {
       tracked_slugs: slugMap.size,
     };
 
-    return NextResponse.json({ days, since: sinceStr, source, source_counts: sourceCounts, totals, top });
+    return apiResponse({ days, since: sinceStr, source, source_counts: sourceCounts, totals, top });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(err) }, { status: 500 });
   }
 }
 
