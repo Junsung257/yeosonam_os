@@ -100,6 +100,9 @@ interface ClimateData {
   seasonal_signals: unknown;
 }
 
+type GalleryPhoto = { src_medium?: string | null; src_large?: string | null };
+type PackagePriceDate = { date?: string };
+
 interface PillarData {
   destination: string;
   packageCount: number;
@@ -110,7 +113,7 @@ interface PillarData {
     id: string;
     name: string;
     short_desc: string | null;
-    photos: Array<{ src_medium?: string }> | null;
+    photos: GalleryPhoto[] | null;
     badge_type: string | null;
   }>;
   packages: Array<{
@@ -124,7 +127,7 @@ interface PillarData {
     departure_airport: string | null;
     avg_rating: number | null;
     review_count: number;
-    price_dates: Array<{ date?: string }> | null;
+    price_dates: PackagePriceDate[] | null;
   }>;
   relatedPosts: Array<{
     id: string;
@@ -150,6 +153,81 @@ interface PillarData {
 
 function extractDepartureCity(airport: string): string {
   return airport.split('(')[0].trim();
+}
+
+function getTrimmedString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+function getNullableTrimmedString(value: unknown): string | null {
+  return value == null ? null : getTrimmedString(value);
+}
+
+function getFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string' || value.trim() === '') return null;
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getPhotoList(value: unknown): GalleryPhoto[] | null {
+  if (!Array.isArray(value)) return null;
+  const photos = value.filter((photo): photo is GalleryPhoto => photo != null && typeof photo === 'object');
+  return photos.length > 0 ? photos : null;
+}
+
+function getPriceDateList(value: unknown): PackagePriceDate[] | null {
+  if (!Array.isArray(value)) return null;
+
+  const priceDates = value
+    .filter((item): item is Record<string, unknown> => item != null && typeof item === 'object')
+    .map((item) => ({ date: getTrimmedString(item.date) ?? undefined }));
+
+  return priceDates.length > 0 ? priceDates : null;
+}
+
+function normalizeAttractionRow(row: unknown): PillarData['attractions'][number] | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const name = getTrimmedString(record.name);
+  if (!id || !name) return null;
+
+  return {
+    id,
+    name,
+    short_desc: getNullableTrimmedString(record.short_desc),
+    photos: getPhotoList(record.photos),
+    badge_type: getNullableTrimmedString(record.badge_type),
+  };
+}
+
+function normalizePackageRow(row: unknown): PillarData['packages'][number] | null {
+  if (!row || typeof row !== 'object') return null;
+
+  const record = row as Record<string, unknown>;
+  const id = getTrimmedString(record.id);
+  const title = getTrimmedString(record.title);
+  const destination = getTrimmedString(record.destination);
+  if (!id || !title || !destination) return null;
+
+  return {
+    id,
+    title,
+    destination,
+    duration: getFiniteNumber(record.duration),
+    nights: getFiniteNumber(record.nights),
+    price: getFiniteNumber(record.price),
+    airline: getNullableTrimmedString(record.airline),
+    departure_airport: getNullableTrimmedString(record.departure_airport),
+    avg_rating: getFiniteNumber(record.avg_rating),
+    review_count: Math.max(0, Math.trunc(getFiniteNumber(record.review_count) ?? 0)),
+    price_dates: getPriceDateList(record.price_dates),
+  };
 }
 
 async function getPillarData(city: string): Promise<PillarData | null> {
@@ -237,11 +315,14 @@ async function getPillarData(city: string): Promise<PillarData | null> {
   if (!stats || stats.length === 0) return null;
   const stat = stats[0];
 
-  const alivePkgs = (packages || []).filter(p => {
-    const pd = (p.price_dates || []) as unknown as Array<{ date?: string }>;
-    if (pd.length === 0) return true;
-    return pd.some(d => d.date && d.date >= today);
-  });
+  const alivePkgs = ((packages as unknown[] | null) ?? [])
+    .map(normalizePackageRow)
+    .filter((p): p is PillarData['packages'][number] => p !== null)
+    .filter((p) => {
+      const pd = p.price_dates ?? [];
+      if (pd.length === 0) return true;
+      return pd.some((d) => d.date && d.date >= today);
+    });
 
   let siblingCities: string[] = [];
   if (region && allDests) {
@@ -273,7 +354,9 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     avgRating: stat.avg_rating ? Number(stat.avg_rating) : null,
     reviewCount: stat.total_reviews || 0,
     minPrice: stat.min_price || null,
-    attractions: (attractions || []) as unknown as PillarData['attractions'],
+    attractions: ((attractions as unknown[] | null) ?? [])
+      .map(normalizeAttractionRow)
+      .filter((row): row is PillarData['attractions'][number] => row !== null),
     packages: alivePkgs,
     relatedPosts: (posts || []) as unknown as PillarData['relatedPosts'],
     pillarPost: (pillarRow as unknown as PillarData['pillarPost'][] | null)?.[0] || null,
@@ -374,7 +457,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
       : null;
   const fromAttr =
     (data.attractions ?? [])
-      .map(a => pickAttractionPhotoUrl(a.photos as { src_medium?: string; src_large?: string }[] | null))
+      .map(a => pickAttractionPhotoUrl(a.photos))
       .find(Boolean) ?? null;
   const heroImage = fromMeta || fromAttr;
 
@@ -653,7 +736,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
               />
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-5">
                 {data.attractions.map(a => {
-                  const img = a.photos?.[0]?.src_medium;
+                  const img = pickAttractionPhotoUrl(a.photos);
                   return (
                     <div
                       key={a.id}
