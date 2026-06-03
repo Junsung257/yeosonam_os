@@ -7,27 +7,57 @@ interface Props {
   params: Promise<{ token: string }>;
 }
 
+const FALLBACK_METADATA: Metadata = {
+  title: '견적 공유 - 여소남',
+  robots: { index: false, follow: false },
+};
+
+async function safeGetSharedRfq(token: string) {
+  const normalizedToken = token.trim();
+  if (!normalizedToken) return null;
+
+  try {
+    return await getSharedRfq(normalizedToken);
+  } catch {
+    return null;
+  }
+}
+
+async function safeGetRfqReactions(rfqId: string) {
+  try {
+    return await getRfqReactions(rfqId);
+  } catch {
+    return [];
+  }
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { token } = await params;
-  const data = await getSharedRfq(token);
-  if (!data) return { title: '견적 공유 - 여소남' };
+  const data = await safeGetSharedRfq(token);
+  if (!data) return FALLBACK_METADATA;
+
+  const customerName = data.customer_name?.trim() || '고객';
+  const destination = data.destination?.trim() || '여행지';
+  const travelerCount = (Number(data.adult_count) || 0) + (Number(data.child_count) || 0);
+  const nights = data.duration_nights ?? '문의';
 
   return {
-    title: `${data.customer_name}님의 단독맞춤여행 견적`,
-    description: `${data.destination} · ${data.adult_count + data.child_count}명 · ${data.duration_nights ?? '문의'}박`,
+    title: `${customerName}님의 단독맞춤여행 견적`,
+    description: `${destination} · ${travelerCount || '문의'}명 · ${nights}박`,
+    robots: { index: false, follow: false },
     openGraph: {
-      title: `${data.customer_name}님의 여행 견적`,
-      description: `함께 떠날 ${data.destination} 여행 견적을 확인해보세요!`,
+      title: `${customerName}님의 여행 견적`,
+      description: `함께 떠날 ${destination} 여행 견적을 확인해보세요.`,
     },
   };
 }
 
 export default async function RfqSharePage({ params }: Props) {
   const { token } = await params;
-  const data = await getSharedRfq(token);
+  const data = await safeGetSharedRfq(token);
   if (!data) notFound();
 
-  const reactions = await getRfqReactions(data.id);
+  const reactions = await safeGetRfqReactions(data.id);
 
   const reactionCounts = {
     like: reactions.filter(r => r.reaction_type === 'like').length,
@@ -41,7 +71,7 @@ export default async function RfqSharePage({ params }: Props) {
     <RfqShareClient
       rfq={data}
       reactionCounts={reactionCounts}
-      shareToken={token}
+      shareToken={token.trim()}
     />
   );
 }
