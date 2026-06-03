@@ -1072,3 +1072,10 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - The preflight checks staging smoke, completion audit, tenant policy, human approval, kill switch, automation level, monthly/daily/max CPC/test-loss caps, channel readiness, adapter readiness, rollback readiness, conversion blockers, and external write count.
 - The result can be `eligible`, `monitor_only`, or `blocked`, but `live_write_allowed` remains `false` and safety reports `external_api_write: false`, `database_mutation: false`, `live_spend_krw: 0`, and `full_auto_allowed: false`.
 - Active campaign paths such as Google publish, Meta publish, and Naver activation are blocked by default even if other guardrails pass.
+
+## 67. 2026-06-03 Ad OS V621-V640 learning evidence
+
+- Added `GET /api/admin/ad-os/learning-evidence` as a read-only proof surface for the performance learning loop.
+- The evidence summarizes clicks, CTA clicks, conversions, spend, revenue, margin, CPA, ROAS, margin ROAS, and bounce rate.
+- It also reports whether facts are tied to tenant, product, scenario, keyword, blog/landing, creative, and channel dimensions.
+- The route generates candidate reasons for waste pause, winner scaling, landing repair, or missing-dimension collection, but does not mutate DB state or external ads.
