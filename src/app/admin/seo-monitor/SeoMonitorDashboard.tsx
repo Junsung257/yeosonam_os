@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { createClient } from '@supabase/supabase-js';
 
 interface DailySnapshot {
   date: string;
@@ -20,6 +19,12 @@ interface SeoAlert {
   message: string;
   metrics: Record<string, number>;
   created_at: string;
+}
+
+interface SeoMonitorResponse {
+  snapshots?: DailySnapshot[];
+  alerts?: SeoAlert[];
+  error?: string;
 }
 
 const SEVERITY_STYLES: Record<string, string> = {
@@ -45,34 +50,18 @@ export default function SeoMonitorDashboard() {
       setLoading(true);
       setError(null);
       try {
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-        if (!supabaseUrl || !supabaseKey) {
-          setError('Supabase 환경변수가 설정되지 않았습니다');
-          setLoading(false);
+        const response = await fetch('/api/admin/seo-monitor', {
+          credentials: 'same-origin',
+        });
+        const payload = (await response.json().catch(() => null)) as SeoMonitorResponse | null;
+        if (!response.ok) {
+          setError(payload?.error ?? '데이터 로딩 실패');
+          setSnapshots([]);
+          setAlerts([]);
           return;
         }
-        const supabase = createClient(supabaseUrl, supabaseKey);
-
-        // 최근 14일 스냅샷
-        const { data: snapData, error: snapError } = await supabase
-          .from('seo_daily_snapshots')
-          .select('*')
-          .order('date', { ascending: false })
-          .limit(14);
-
-        if (snapError) throw snapError;
-        setSnapshots(snapData || []);
-
-        // 최근 30일 알림
-        const { data: alertData, error: alertError } = await supabase
-          .from('seo_alerts')
-          .select('*')
-          .order('created_at', { ascending: false })
-          .limit(30);
-
-        if (alertError) throw alertError;
-        setAlerts(alertData || []);
+        setSnapshots(payload?.snapshots ?? []);
+        setAlerts(payload?.alerts ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : '데이터 로딩 실패');
       } finally {
