@@ -72,7 +72,7 @@ export default function DestinationCuration({ destination, products }: Props) {
           return (
             <Link
               key={p.id}
-              href={`/packages/${p.id}`}
+              href={`/packages/${encodeURIComponent(p.id)}`}
               className="group relative flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-brand/40 hover:shadow-md transition"
             >
               {/* 이미지 */}

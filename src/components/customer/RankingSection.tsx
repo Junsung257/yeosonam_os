@@ -73,7 +73,7 @@ function RankCard({ item, rank }: { item: RankingItem; rank: number }) {
 
   return (
     <Link
-      href={`/packages/${item.id}`}
+      href={`/packages/${encodeURIComponent(item.id)}`}
       className="snap-start flex-shrink-0 w-[160px] md:w-[190px] rounded-[16px] overflow-hidden shadow-card bg-white card-touch hover:shadow-card-hover transition-shadow"
     >
       {/* 이미지 + 랭킹 번호 오버레이 */}
