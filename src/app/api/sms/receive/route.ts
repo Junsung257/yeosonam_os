@@ -1,20 +1,6 @@
-/**
- * 신한은행 SMS 수신 웹훅
- *
- * Android "SMS Forwarder" 앱에서 다음과 같이 설정:
- *   URL: https://your-domain.com/api/sms/receive
- *   Method: POST
- *   Header: x-webhook-secret: {SMS_WEBHOOK_SECRET}
- *   Body: { "message": "SMS 원문", "from": "발신번호", "receivedAt": "ISO날짜" }
- *
- * 처리 흐름:
- *   1. SMS 파싱 (신한은행 입금 메시지만 처리)
- *   2. 예약 매칭 알고리즘 실행
- *   3. sms_payments 테이블에 저장
- *   4. 신뢰도 90%↑ → 예약 자동 완료 처리
- */
-
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { parseShinhanSMS } from '@/lib/sms-parser';
@@ -22,39 +8,35 @@ import { matchPaymentToBookings, classifyMatch, BookingCandidate } from '@/lib/p
 import { safeEqualString } from '@/lib/timing-safe';
 
 export async function POST(request: NextRequest) {
-  // 웹훅 시크릿 검증
   const secret = request.headers.get('x-webhook-secret');
   const expected = getSecret('SMS_WEBHOOK_SECRET');
   if (!expected || !safeEqualString(secret, expected)) {
-    return NextResponse.json({ error: '인증 실패' }, { status: 401 });
+    return apiResponse({ error: '인증 실패' }, { status: 401 });
   }
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
+    return apiResponse({ error: 'Supabase 미설정' }, { status: 500 });
   }
 
   let body: { message?: string; from?: string; receivedAt?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: '잘못된 요청 형식' }, { status: 400 });
+    return apiResponse({ error: '잘못된 요청 형식' }, { status: 400 });
   }
 
   const rawSms = body.message || '';
   if (!rawSms) {
-    return NextResponse.json({ error: 'message 필드 필요' }, { status: 400 });
+    return apiResponse({ error: 'message 필드 필요' }, { status: 400 });
   }
 
-  // SMS 파싱
   const receivedAt = body.receivedAt ? new Date(body.receivedAt) : new Date();
   const parsed = parseShinhanSMS(rawSms, receivedAt);
 
   if (!parsed.isDeposit || !parsed.amount) {
-    // 입금 메시지가 아니면 저장하지 않고 OK 반환
-    return NextResponse.json({ status: 'ignored', reason: '입금 메시지 아님' });
+    return apiResponse({ status: 'ignored', reason: '입금 메시지 아님' });
   }
 
-  // 매칭 대상 예약 조회 (pending, confirmed 상태)
   const { data: bookingsRaw } = await supabase
     .from('bookings')
     .select('id, booking_no, package_title, total_price, status, customers!lead_customer_id(name)')
@@ -65,12 +47,11 @@ export async function POST(request: NextRequest) {
     booking_no: b.booking_no as string | undefined,
     package_title: b.package_title as string | undefined,
     total_price: b.total_price as number | undefined,
-    paid_amount: 0, // TODO: 기입금 tracking 추가 시 반영
+    paid_amount: 0,
     status: b.status as string,
     customer_name: ((b.customers as { name?: string } | null)?.name) ?? undefined,
   }));
 
-  // 매칭 실행
   const matches = matchPaymentToBookings({
     amount: parsed.amount,
     senderName: parsed.senderName,
@@ -81,7 +62,6 @@ export async function POST(request: NextRequest) {
   const confidence = bestMatch?.confidence || 0;
   const matchClass = bestMatch ? classifyMatch(confidence) : 'unmatched';
 
-  // sms_payments 테이블에 저장
   const { data: payment, error: paymentError } = await supabase
     .from('sms_payments')
     .insert([{
@@ -97,11 +77,9 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (paymentError) {
-    console.error('[SMS 수신] 저장 실패:', paymentError);
-    // 테이블 없어도 매칭 결과는 반환
+    console.error('[SMS receive] save failed:', sanitizeDbError(paymentError));
   }
 
-  // 자동 매칭 (신뢰도 90%↑) → Phase 2a update_booking_ledger RPC 로 atomic + ledger 이중쓰기
   if (matchClass === 'auto' && bestMatch && parsed.amount) {
     const idem = payment?.id ? `sms:${payment.id}` : `sms:${bestMatch.booking.id}:${parsed.receivedAt.toISOString()}`;
     const { error: rpcErr } = await supabase.rpc('update_booking_ledger', {
@@ -115,13 +93,13 @@ export async function POST(request: NextRequest) {
       p_created_by: 'sms',
     });
     if (rpcErr) {
-      console.error('[SMS 자동매칭] update_booking_ledger 실패:', rpcErr.message);
+      console.error('[SMS auto-match] update_booking_ledger failed:', sanitizeDbError(rpcErr));
     } else {
-      console.log(`[SMS 자동매칭] 예약 ${bestMatch.booking.booking_no?.slice(0, 4)}**** 연결 완료 (신뢰도 ${Math.round(confidence * 100)}%)`);
+      console.log(`[SMS auto-match] booking ${bestMatch.booking.booking_no?.slice(0, 4)}**** linked (${Math.round(confidence * 100)}%)`);
     }
   }
 
-  return NextResponse.json({
+  return apiResponse({
     status: 'processed',
     parsed: {
       senderName: parsed.senderName,
