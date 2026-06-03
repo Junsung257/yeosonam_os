@@ -11,6 +11,11 @@ import { supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
+function maskExternalId(id: string): string {
+  if (id.length <= 6) return '***';
+  return `${id.slice(0, 3)}***${id.slice(-3)}`;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -48,11 +53,13 @@ export async function POST(request: NextRequest) {
 
     const userId = payload.user_id ?? payload.user?.id;
     if (!userId) {
-      console.warn('[meta-deauthorize] user_id 없음', payload);
+      console.warn('[meta-deauthorize] user_id 없음', {
+        keys: Object.keys(payload),
+      });
       return NextResponse.json({ error: 'no user_id' }, { status: 400 });
     }
 
-    console.log(`[meta-deauthorize] 사용자 ${userId} 가 앱 접근을 해제했습니다.`);
+    console.log(`[meta-deauthorize] user ${maskExternalId(userId)} deauthorized app access.`);
 
     // 관련 system_secrets 정리 (해당 사용자의 토큰이 맞다면)
     await supabaseAdmin

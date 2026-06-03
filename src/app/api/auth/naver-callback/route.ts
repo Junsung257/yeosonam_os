@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
 import { saveOAuthToken } from '@/lib/marketing-pipeline/token-resolver';
 import { getSecret } from '@/lib/secret-registry';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 /**
  * 네이버 OAuth 콜백
@@ -78,7 +79,10 @@ export async function GET(request: NextRequest) {
 
   if (!tokenRes.ok) {
     const detail = await tokenRes.text();
-    console.error('[naver-callback] 토큰 교환 실패:', detail);
+    console.error('[naver-callback] 토큰 교환 실패:', {
+      status: tokenRes.status,
+      detail: sanitizeDbError(detail, 'token exchange failed'),
+    });
     return NextResponse.json({ error: '토큰 교환 실패' }, { status: 502 });
   }
 
@@ -91,7 +95,11 @@ export async function GET(request: NextRequest) {
   };
 
   if (tokenJson.error || !tokenJson.access_token) {
-    console.error('[naver-callback] 네이버 토큰 오류:', tokenJson);
+    console.error('[naver-callback] 네이버 토큰 오류:', {
+      error: tokenJson.error ?? 'missing_access_token',
+      hasRefreshToken: Boolean(tokenJson.refresh_token),
+      expiresIn: tokenJson.expires_in,
+    });
     return NextResponse.json(
       { error: tokenJson.error_description ?? '토큰 교환 실패' },
       { status: 502 },
