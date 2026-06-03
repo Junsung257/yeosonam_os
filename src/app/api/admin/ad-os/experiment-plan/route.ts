@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildAdOsExperimentPlan } from '@/lib/ad-os-v8-v12';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +13,7 @@ function json(value: unknown) {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -32,7 +34,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .single();
 
   if (runError || !run) {
-    return NextResponse.json({ ok: false, error: runError?.message || '실험 계획 실행 로그 생성 실패' }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(runError, 'Experiment plan run create failed') }, { status: 500 });
   }
 
   let factsQuery = supabaseAdmin
@@ -43,12 +45,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   if (productId) factsQuery = factsQuery.eq('product_id', productId);
   const { data: facts, error: factsError } = await factsQuery;
   if (factsError) {
+    const safeError = sanitizeDbError(factsError);
     await supabaseAdmin.from('ad_os_automation_runs').update({
       status: 'failed',
       finished_at: new Date().toISOString(),
-      errors: [{ message: factsError.message }],
+      errors: [{ message: safeError }],
     }).eq('id', run.id);
-    return NextResponse.json({ ok: false, error: factsError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
   const rows = facts || [];
@@ -88,12 +91,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       })))
       .select('id');
     if (error) {
+      const safeError = sanitizeDbError(error);
       await supabaseAdmin.from('ad_os_automation_runs').update({
         status: 'failed',
         finished_at: new Date().toISOString(),
-        errors: [{ message: error.message }],
+        errors: [{ message: safeError }],
       }).eq('id', run.id);
-      return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      return apiResponse({ ok: false, error: safeError }, { status: 500 });
     }
     inserted = data?.length || 0;
   }
@@ -109,5 +113,5 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .update({ status: 'completed', finished_at: new Date().toISOString(), summary })
     .eq('id', run.id);
 
-  return NextResponse.json({ ok: true, run_id: run.id, summary, experiments: plans });
+  return apiResponse({ ok: true, run_id: run.id, summary, experiments: plans });
 });
