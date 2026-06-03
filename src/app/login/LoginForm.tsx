@@ -56,7 +56,7 @@ function LoginFormInner() {
         return;
       }
 
-      const redirect = searchParams.get('redirect') || '/admin';
+      const redirect = searchParams?.get('redirect') || '/admin';
       window.location.href = redirect;
     } catch (err) {
       if (err instanceof PromiseTimeoutError) {
