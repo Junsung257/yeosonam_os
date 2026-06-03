@@ -40,9 +40,14 @@ interface PromoCode {
   uses_count: number;
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 export default function InfluencerProducts() {
   const params = useParams();
-  const code = params.code as string;
+  const code = getRouteParam(params?.code);
+  const encodedCode = encodeURIComponent(code);
   const { authenticated } = useInfluencerAuth();
 
   const [packages, setPackages] = useState<Package[]>([]);
@@ -59,6 +64,13 @@ export default function InfluencerProducts() {
   const [savingPromo, setSavingPromo] = useState(false);
 
   const load = useCallback(async () => {
+    if (!code) {
+      setPackages([]);
+      setLinks([]);
+      setPromoCodes([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     try {
       const [pkgRes, linkRes, promoRes] = await Promise.all([
@@ -83,6 +95,7 @@ export default function InfluencerProducts() {
 
   // 링크 생성
   const createLink = async (pkg: Package) => {
+    if (!code) return;
     setCreating(pkg.id);
     try {
       const res = await fetch('/api/influencer/links', {
@@ -113,6 +126,7 @@ export default function InfluencerProducts() {
   };
 
   const savePromo = async () => {
+    if (!code) return;
     if (!newPromo.code.trim()) return;
     setSavingPromo(true);
     try {
@@ -341,7 +355,7 @@ export default function InfluencerProducts() {
                       <button
                         onClick={() => {
                           const baseUrl = window.location.origin;
-                          const short = `${baseUrl}/r/${code}/${pkg.id}`;
+                          const short = `${baseUrl}/r/${encodedCode}/${encodeURIComponent(pkg.id)}`;
                           copyLink(short, pkg.id);
                         }}
                         className="px-2 py-1.5 bg-amber-50 text-amber-800 rounded text-[11px] font-medium hover:bg-amber-100 transition-colors"
@@ -352,7 +366,7 @@ export default function InfluencerProducts() {
                       <button
                         onClick={() => {
                           const baseUrl = window.location.origin;
-                          const embed = `<iframe src="${baseUrl}/embed/pkg/${pkg.id}?ref=${code}" width="100%" height="300" frameborder="0" loading="lazy" style="border:0;border-radius:12px;"></iframe>`;
+                          const embed = `<iframe src="${baseUrl}/embed/pkg/${encodeURIComponent(pkg.id)}?ref=${encodedCode}" width="100%" height="300" frameborder="0" loading="lazy" style="border:0;border-radius:12px;"></iframe>`;
                           copyLink(embed, pkg.id);
                           setToast('임베드 코드가 복사되었습니다 (블로그 HTML에 붙여넣기)');
                         }}
