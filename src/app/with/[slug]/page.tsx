@@ -32,9 +32,17 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const params = await props.params;
-  const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
+  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(params.slug));
   const base = siteBaseUrl();
   if (!looksLikeReferralCode(slug)) {
     return { title: '제휴 랜딩', robots: { index: false, follow: false } };
@@ -64,7 +72,7 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
 
 export default async function AffiliateCoBrandLandingPage(props: PageProps) {
   const params = await props.params;
-  const slug = normalizeAffiliateReferralCode(decodeURIComponent(params.slug));
+  const slug = normalizeAffiliateReferralCode(safeDecodePathSegment(params.slug));
   if (!looksLikeReferralCode(slug)) notFound();
 
   if (!isSupabaseConfigured) {

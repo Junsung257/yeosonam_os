@@ -24,10 +24,18 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export async function generateMetadata(props: Params): Promise<Metadata> {
   const params = await props.params;
   const { code: rawCode, slug } = params;
-  const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
+  const code = normalizeAffiliateReferralCode(safeDecodePathSegment(rawCode));
   const baseUrl = siteBaseUrl();
   const encodedCode = encodeURIComponent(rawCode);
   const encodedSlug = encodeURIComponent(slug);
@@ -75,7 +83,7 @@ export default async function AffiliateShortLinkPage(props: Params) {
   const searchParams = await props.searchParams;
   const params = await props.params;
   const { code: rawCode, slug } = params;
-  const code = normalizeAffiliateReferralCode(decodeURIComponent(rawCode));
+  const code = normalizeAffiliateReferralCode(safeDecodePathSegment(rawCode));
   const subRaw =
     typeof searchParams?.sub === 'string'
       ? searchParams.sub.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 40)
