@@ -1095,3 +1095,17 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - It includes a manual `Validation check` action and a direct JSON drilldown to `/api/admin/ad-os/staging-validation`.
 - The visible safety pill keeps DB write, external write, and full-auto state in the operator's first-screen evidence flow.
 - This is a read-only dashboard addition and does not change automation level, mutate Supabase, or write to any ad platform.
+
+## 70. 2026-06-03 Ad OS V681-V700 admin surface QA matrix
+
+- Added `GET /api/admin/ad-os/admin-surface-qa` as a read-only QA matrix for the six operator surfaces:
+  - `/admin/ad-os`
+  - `/admin/marketing`
+  - `/admin/search-ads`
+  - `/admin/blog/ads`
+  - `/admin/blog/rankings`
+  - `/admin/blog/topical`
+- The matrix ties each page to its required data sources, expected states, drilldown URL, current evidence, and next action.
+- It intentionally marks missing rank/visibility snapshots as `warn` because index request status is not the same as indexed/exposed/ranked.
+- It marks duplicate-content risk as a topical authority failure so repeated similar package uploads do not silently create low-quality blog growth.
+- The route reuses summary, staging validation, operating inventory, live-spend preflight, and learning evidence without mutating DB or writing to ad platforms.
