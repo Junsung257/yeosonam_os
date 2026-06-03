@@ -30,10 +30,21 @@ function esc(s: string): string {
     .replace(/'/g, '&apos;');
 }
 
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 export async function GET(_request: NextRequest, props: { params: Promise<{ city: string }> }) {
   const params = await props.params;
   const { city } = params;
-  const decoded = decodeURIComponent(city);
+  const decoded = safeDecodePathSegment(city).trim();
+  if (!decoded) {
+    return new NextResponse('<error>missing destination</error>', { status: 404 });
+  }
 
   if (!isSupabaseConfigured) {
     return new NextResponse('<error>db not configured</error>', { status: 503 });

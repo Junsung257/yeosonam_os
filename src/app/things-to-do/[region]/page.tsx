@@ -24,6 +24,14 @@ export const dynamicParams = true;
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 const CATEGORY_LABELS: Record<string, string> = {
   sightseeing: '관광·명소',
   nature: '자연·풍경',
@@ -94,7 +102,8 @@ export async function generateStaticParams() {
 
 async function getPageData(regionRaw: string): Promise<PageData | null> {
   if (!isSupabaseConfigured) return null;
-  const region = decodeURIComponent(regionRaw);
+  const region = safeDecodePathSegment(regionRaw).trim();
+  if (!region) return null;
 
   const [{ data: attractions }, { data: packages }] = await Promise.all([
     supabaseAdmin
@@ -131,7 +140,7 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
 
 export async function generateMetadata({ params }: { params: Promise<{ region: string }> }): Promise<Metadata> {
   const { region: regionRaw } = await params;
-  const region = decodeURIComponent(regionRaw);
+  const region = safeDecodePathSegment(regionRaw).trim();
   const data = await getPageData(regionRaw);
   const count = data?.totalAttractions ?? 0;
   const title = `${region} 가볼만한 곳 ${count}곳 — 카테고리별 정리 | 여소남`;
