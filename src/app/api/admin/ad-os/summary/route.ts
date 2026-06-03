@@ -7,6 +7,7 @@ import {
   classifyChannelExecutionState,
 } from '@/lib/ad-os-governance';
 import { buildTenantAdReadiness } from '@/lib/ad-os-tenant-readiness';
+import { buildAdOsIncidentSummary } from '@/lib/ad-os-v321-v340';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { withTimeout } from '@/lib/promise-timeout';
 import { getSecret } from '@/lib/secret-registry';
@@ -442,6 +443,29 @@ function buildDegradedSummary(error: unknown) {
         message,
       },
     ],
+    enterprise_layer: {
+      incident_response: {
+        total: 1,
+        critical: 1,
+        high: 0,
+        medium: 0,
+        low: 0,
+        open: 1,
+        watch: 0,
+        kill_switch_recommended: true,
+        top_next_action: 'Supabase 연결 회복 전에는 외부 광고 집행을 승인하지 마세요.',
+        alerts: [{
+          id: 'summary_degraded',
+          severity: 'critical',
+          status: 'open',
+          category: 'runtime_readiness',
+          title: 'Ad OS summary degraded',
+          reason: message,
+          next_action: 'Supabase 연결과 admin API 응답을 복구한 뒤 다시 점검하세요.',
+          evidence: { degraded: true },
+        }],
+      },
+    },
     tenant_policy: {
       configured: false,
       error: message,
@@ -975,6 +999,7 @@ async function buildSummaryResponse() {
     clean_events: number | null;
     upload_ready_events: number | null;
     blocked_upload_events: number | null;
+    duplicate_dedupe_keys?: number | null;
     attribution_coverage_pct: number | null;
     margin_coverage_pct: number | null;
   }>;
@@ -1076,6 +1101,8 @@ async function buildSummaryResponse() {
     automation_level: number | null;
     require_human_approval: boolean | null;
     full_auto_enabled: boolean | null;
+    monthly_budget_cap_krw?: number | null;
+    daily_budget_cap_krw?: number | null;
     risk_status: string | null;
     billing_plan: string | null;
   }>;
@@ -1086,6 +1113,13 @@ async function buildSummaryResponse() {
     managed_spend_fee_pct: number | null;
     performance_fee_pct: number | null;
   }>;
+  const incidentResponse = buildAdOsIncidentSummary({
+    platformJobs,
+    conversionUploadJobs,
+    dataQualitySnapshots,
+    executionAttempts,
+    tenantWorkspaces,
+  });
 
   const platformConfirmationJobs = platformJobs.filter((row) =>
     row.status === 'running' &&
@@ -1711,6 +1745,7 @@ async function buildSummaryResponse() {
           executionAttempts.filter((row) => row.external_api_write).length +
           platformJobs.filter((row) => row.external_api_write).length,
       },
+      incident_response: incidentResponse,
       experiment_standards: {
         templates: experimentTemplates.length,
         active: experimentTemplates.filter((row) => row.status === 'active').length,

@@ -911,3 +911,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - The fixture is pure TypeScript and does not read or write Supabase.
   - It does not call Naver, Google, Meta, or Kakao.
   - Every executor/conversion/ops action assertion requires `external_api_write=false`, so this becomes a regression tripwire before staging live-write pilots.
+
+## 52. 2026-06-03 Ad OS V321-V340 incident response layer
+
+- Added `src/lib/ad-os-v321-v340.ts` and `src/lib/ad-os-v321-v340.test.ts`.
+- Purpose:
+  - Converts existing platform jobs, conversion upload jobs, data-quality snapshots, execution attempts, and tenant workspaces into operator incident alerts.
+  - Detects critical live-write flags, full-auto workspaces, limited automation without budget caps, blocked conversion uploads, duplicate dedupe/data-quality blockers, executor failures, and platform job guardrail blockers.
+  - Exposes `enterprise_layer.incident_response` from `/api/admin/ad-os/summary` and shows it as the first Enterprise Runtime KPI on `/admin/ad-os`.
+- Safety principle:
+  - No new external write path is introduced.
+  - Critical incidents recommend kill-switch review before any additional approval.
+  - Degraded summary responses also surface as a critical runtime readiness incident, so operators do not mistake API failure for a clean system.
