@@ -11,7 +11,7 @@
  *   - 생성된 캡션/포스트 표시 + 복사 버튼
  *   - content_distributions 테이블 조회
  */
-import { useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { fmtDateISO } from '@/lib/admin-utils';
 
@@ -53,7 +53,20 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value)?.trim() ?? '';
 }
 
-export default function DistributePage() {
+function DistributePageFallback() {
+  return (
+    <div className="p-6 space-y-4 max-w-3xl">
+      <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
+      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DistributePageContent() {
   const params = useParams<{ id?: string | string[] }>();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -188,16 +201,7 @@ export default function DistributePage() {
     showToast(`${label} 클립보드 복사`);
   }, [showToast]);
 
-  if (loading) return (
-    <div className="p-6 space-y-4 max-w-3xl">
-      <div className="h-6 bg-admin-surface-2 rounded animate-pulse w-48" />
-      <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-5 space-y-3">
-        {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="h-10 bg-admin-bg rounded-lg animate-pulse" />
-        ))}
-      </div>
-    </div>
-  );
+  if (loading) return <DistributePageFallback />;
 
   // 상품도 카드뉴스도 없으면 완전 404
   if (!product && !linkedCardNews) {
@@ -337,6 +341,14 @@ export default function DistributePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function DistributePage() {
+  return (
+    <Suspense fallback={<DistributePageFallback />}>
+      <DistributePageContent />
+    </Suspense>
   );
 }
 
