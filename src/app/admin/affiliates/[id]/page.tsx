@@ -821,7 +821,7 @@ function ContentInsightSection({
 
   const handleMarkRead = async (insightId: string) => {
     try {
-      await fetch(`/api/affiliate/insights/${insightId}/read`, {
+      await fetch(`/api/affiliate/insights/${encodeURIComponent(insightId)}/read`, {
         method: 'PATCH',
       });
       setInsights((prev) =>
