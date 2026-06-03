@@ -4,6 +4,7 @@ import type { PriceListItem } from '@/lib/parser';
 import { renderPackage } from '@/lib/render-contract';
 import { getLegalNoticeLinesOrDefault } from '@/lib/legal-notice';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { isValidUuid } from '@/lib/supabase-filter-safe';
 import {
   PosterHeader,
   PosterPrice,
@@ -18,11 +19,12 @@ import {
 } from '@/components/itinerary/A4PosterLayout';
 
 async function loadPackage(id: string) {
-  if (!isSupabaseConfigured) return null;
+  const normalizedId = id.trim();
+  if (!isSupabaseConfigured || !isValidUuid(normalizedId)) return null;
   const { data } = await supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions, min_participants')
-    .eq('id', id)
+    .eq('id', normalizedId)
     .single();
   return data as {
     id: string;
@@ -97,6 +99,10 @@ function parseTourPrices(price: string | null): { price_usd: number | null; pric
   };
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 // ── A4 페이지 컨테이너 ────────────────────────────────────────────────────
 function A4Page({ children }: { children: React.ReactNode }) {
   return (
@@ -121,22 +127,23 @@ function A4Page({ children }: { children: React.ReactNode }) {
 // ── 메인 컴포넌트 ────────────────────────────────────────────────────────
 export default async function PrintPage(
   props: {
-    params: Promise<{ id: string }>;
-    searchParams: Promise<{ mode?: string; date?: string }>;
+    params: Promise<{ id?: string | string[] }>;
+    searchParams: Promise<{ mode?: string | string[]; date?: string | string[] }>;
   }
 ) {
   const searchParams = await props.searchParams;
   const params = await props.params;
-  const departureDate = searchParams.date || null;
+  const id = getRouteParam(params.id);
+  const departureDate = getRouteParam(searchParams.date) || null;
 
-  const pkg = await loadPackage(params.id);
+  const pkg = await loadPackage(id);
   if (!pkg || !pkg.itinerary_data) {
     // itinerary_data 없으면 빈 안내
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
         <div className="text-center">
           <p className="text-lg font-bold text-gray-700 mb-2">일정표 데이터 없음</p>
-          <p className="text-sm text-gray-400">상품 ID: {params.id}</p>
+          <p className="text-sm text-gray-400">상품 ID: {id || 'unknown'}</p>
         </div>
       </div>
     );
