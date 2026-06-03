@@ -39,6 +39,17 @@ const TYPE_LABELS: Record<string, string> = {
   algorithm_update: '알고리즘 업데이트',
 };
 
+function normalizeSnapshots(snapshots: DailySnapshot[] | undefined): DailySnapshot[] {
+  return (snapshots ?? []).map((snapshot) => ({
+    ...snapshot,
+    total_clicks: Number.isFinite(snapshot.total_clicks) ? snapshot.total_clicks : 0,
+    total_impressions: Number.isFinite(snapshot.total_impressions) ? snapshot.total_impressions : 0,
+    avg_ctr: Number.isFinite(snapshot.avg_ctr) ? snapshot.avg_ctr : 0,
+    avg_position: Number.isFinite(snapshot.avg_position) ? snapshot.avg_position : 0,
+    top_keywords: Array.isArray(snapshot.top_keywords) ? snapshot.top_keywords : [],
+  }));
+}
+
 export default function SeoMonitorDashboard() {
   const [snapshots, setSnapshots] = useState<DailySnapshot[]>([]);
   const [alerts, setAlerts] = useState<SeoAlert[]>([]);
@@ -60,7 +71,7 @@ export default function SeoMonitorDashboard() {
           setAlerts([]);
           return;
         }
-        setSnapshots(payload?.snapshots ?? []);
+        setSnapshots(normalizeSnapshots(payload?.snapshots));
         setAlerts(payload?.alerts ?? []);
       } catch (e) {
         setError(e instanceof Error ? e.message : '데이터 로딩 실패');
@@ -139,9 +150,9 @@ export default function SeoMonitorDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {snapshots.map((s) => {
-                  const prev = snapshots[snapshots.indexOf(s) + 1];
-                  const clickDiff = prev
+                {snapshots.map((s, index) => {
+                  const prev = snapshots[index + 1];
+                  const clickDiff = prev && prev.total_clicks > 0
                     ? ((s.total_clicks - prev.total_clicks) / prev.total_clicks * 100).toFixed(1)
                     : null;
                   return (
@@ -168,7 +179,7 @@ export default function SeoMonitorDashboard() {
       )}
 
       {/* Top 키워드 (가장 최근 스냅샷) */}
-      {snapshots.length > 0 && snapshots[0].top_keywords.length > 0 && (
+      {(snapshots[0]?.top_keywords?.length ?? 0) > 0 && (
         <div>
           <h2 className="text-lg font-semibold mb-3">
             Top 20 키워드 ({snapshots[0].date})
