@@ -997,3 +997,15 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - Read-only UI and API integration.
   - No external ad platform write path, database mutation, or automation level change is introduced.
   - The marketing health score now fails loudly when Ad OS completion evidence is unavailable, so operators cannot mistake a missing audit for a healthy system.
+
+## 59. 2026-06-03 Ad OS V461-V480 command center completion gate
+
+- Extended `/admin/marketing/command-center` with a read-only Ad OS Completion Gate.
+- Purpose:
+  - Shows completion audit status, readiness score, pass/warn/fail counts, and next action in the day-to-day marketing operations screen.
+  - Highlights the four operator-critical requirements: external write safety, full-auto default-off policy, tenant budget guardrails, and incident response.
+  - Links directly to `/admin/ad-os?panel=completion-audit` and `/admin/marketing/system-health` for drilldown.
+- Safety principle:
+  - UI-only change based on existing `/api/admin/ad-os/summary` data.
+  - No external ad platform write path, database mutation, or automation level change is introduced.
+  - The Command Center no longer treats product asset readiness as enough; Ad OS control-plane completion evidence is visible before operators scale campaigns.
