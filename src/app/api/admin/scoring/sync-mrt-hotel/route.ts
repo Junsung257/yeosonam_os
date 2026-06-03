@@ -1,27 +1,22 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import {
   syncPackageHotelIntel,
   syncPackageHotelIntelByPackageId,
   syncStaleMrtHotelIntel,
 } from '@/lib/mrt-hotel-intel';
-import { pickPackageRepresentativeDate } from '@/lib/scoring/extract-features';
-import type { RawPackageRow } from '@/lib/scoring/extract-features';
-import { withAdminGuard } from '@/lib/admin-guard';
+import { pickPackageRepresentativeDate, type RawPackageRow } from '@/lib/scoring/extract-features';
 import { logError } from '@/lib/sentry-logger';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
-/**
- * POST /api/admin/scoring/sync-mrt-hotel
- * body: { package_id?: string, departure_date?: string, limit?: number, stale_only?: boolean }
- * - package_id 있으면 해당 패키지만 (departure_date 없으면 price_dates 대표일)
- * - stale_only true + limit → 오래된 패키지 일괄 갱신 (크론과 동일 로직)
- */
 const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
   }
 
   let body: {
@@ -41,7 +36,7 @@ const postHandler = async (request: NextRequest) => {
       const r = await syncStaleMrtHotelIntel({
         maxPackages: typeof body.limit === 'number' ? body.limit : 30,
       });
-      return NextResponse.json({ ok: true, mode: 'stale', ...r });
+      return apiResponse({ ok: true, mode: 'stale', ...r });
     }
 
     if (typeof body.package_id === 'string' && body.package_id) {
@@ -51,14 +46,16 @@ const postHandler = async (request: NextRequest) => {
           .select('id, destination, duration, itinerary_data, price_dates')
           .eq('id', body.package_id)
           .limit(1);
-        if (error || !data?.[0]) {
-          return NextResponse.json({ error: '패키지 없음' }, { status: 404 });
-        }
+
+        if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
+        if (!data?.[0]) return apiResponse({ error: 'PACKAGE_NOT_FOUND' }, { status: 404 });
+
         const r = await syncPackageHotelIntel(data[0] as RawPackageRow, body.departure_date);
-        return NextResponse.json({ ok: true, mode: 'single', package_id: body.package_id, ...r });
+        return apiResponse({ ok: true, mode: 'single', package_id: body.package_id, ...r });
       }
+
       await syncPackageHotelIntelByPackageId(body.package_id);
-      return NextResponse.json({ ok: true, mode: 'single', package_id: body.package_id });
+      return apiResponse({ ok: true, mode: 'single', package_id: body.package_id });
     }
 
     const lim = typeof body.limit === 'number' ? body.limit : 15;
@@ -79,14 +76,11 @@ const postHandler = async (request: NextRequest) => {
       synced++;
     }
 
-    return NextResponse.json({ ok: true, mode: 'batch', attempted: (pkgs ?? []).length, synced });
+    return apiResponse({ ok: true, mode: 'batch', attempted: (pkgs ?? []).length, synced });
   } catch (e) {
     logError('[admin/scoring/sync-mrt-hotel] sync failed', e);
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
-}
+};
 
 export const POST = withAdminGuard(postHandler);
