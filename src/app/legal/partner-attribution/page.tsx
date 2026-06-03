@@ -1,8 +1,30 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+const PAGE_URL = `${BASE_URL}/legal/partner-attribution`;
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
+
 export const metadata: Metadata = {
   title: '제휴·추천 링크 안내',
+  description: '여소남 제휴 및 추천 링크의 쿠키 저장, 유입 구분, 커미션 적용 방식을 안내합니다.',
+  alternates: { canonical: PAGE_URL },
+  openGraph: {
+    title: '제휴·추천 링크 안내',
+    description: '여소남 제휴 및 추천 링크의 쿠키 저장, 유입 구분, 커미션 적용 방식을 안내합니다.',
+    url: PAGE_URL,
+    siteName: '여소남',
+    locale: 'ko_KR',
+    type: 'article',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '제휴·추천 링크 안내',
+    description: '여소남 제휴 및 추천 링크의 쿠키 저장, 유입 구분, 커미션 적용 방식을 안내합니다.',
+    images: [SOCIAL_IMAGE_URL],
+  },
   robots: { index: true, follow: true },
 };
 
