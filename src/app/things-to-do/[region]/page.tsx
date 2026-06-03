@@ -21,7 +21,8 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 const CATEGORY_LABELS: Record<string, string> = {
   sightseeing: '관광·명소',
