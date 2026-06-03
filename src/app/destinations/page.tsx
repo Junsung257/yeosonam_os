@@ -46,6 +46,28 @@ interface AttractionSample {
   photos: Array<{ src_medium?: string; src_large?: string }> | null;
 }
 
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function normalizeDestinationStat(row: Partial<DestinationStat> | null | undefined): DestinationStat | null {
+  const destination = typeof row?.destination === 'string' ? row.destination.trim() : '';
+  if (!destination) return null;
+
+  return {
+    destination,
+    package_count: Math.max(0, Math.trunc(toFiniteNumber(row?.package_count) ?? 0)),
+    avg_rating: toFiniteNumber(row?.avg_rating),
+    total_reviews: Math.max(0, Math.trunc(toFiniteNumber(row?.total_reviews) ?? 0)),
+    min_price: toFiniteNumber(row?.min_price),
+  };
+}
+
 async function getDestinations() {
   if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
 
@@ -56,7 +78,10 @@ async function getDestinations() {
       .order('package_count', { ascending: false });
 
     // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
-    const destinations = (stats as DestinationStat[] | null)?.map(s => s.destination).filter(Boolean) || [];
+    const normalizedStats = ((stats as Array<Partial<DestinationStat>> | null) ?? [])
+      .map(normalizeDestinationStat)
+      .filter((stat): stat is DestinationStat => stat !== null);
+    const destinations = normalizedStats.map(s => s.destination);
     const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
       .from('attractions')
       .select('destination, name, photos')
@@ -71,7 +96,7 @@ async function getDestinations() {
       }
     });
 
-    return { stats: (stats as DestinationStat[]) || [], attractionsByDest };
+    return { stats: normalizedStats, attractionsByDest };
   } catch {
     return { stats: [], attractionsByDest: {} };
   }
