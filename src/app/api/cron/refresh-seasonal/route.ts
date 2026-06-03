@@ -22,7 +22,7 @@
  *   - Naver chunk 5개씩, 호출 사이 500ms sleep
  *   - 한 destination이 실패해도 나머지 진행
  */
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
@@ -30,6 +30,8 @@ import {
   fetchNaverTrend, fetchWikiPageviews, synthesizeSignals,
   type SeasonalSignal,
 } from '@/lib/seasonal-signals';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 // SSOT: destination별 Naver/Wikipedia 검색 키워드. db/build_seasonal.js와 공유.
 import KEYWORD_MAP_JSON from '@/lib/seasonal-keyword-map.json';
 
@@ -52,16 +54,17 @@ function rangeForLast12Months() {
 }
 
 async function handleRefresh(req: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'supabase 미설정' }, { status: 500 });
-
   if (!isCronAuthorized(req)) {
     return cronUnauthorizedResponse();
+  }
+  if (!isSupabaseConfigured || !supabaseAdmin) {
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const { data: rows, error } = await supabaseAdmin
     .from('destination_climate')
     .select('destination, primary_city, fitness_scores');
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
   // primary_city별 그룹
   const byCity = new Map<string, { primary_city: string; members: { destination: string; fitness_scores: unknown }[] }>();
@@ -121,7 +124,7 @@ async function handleRefresh(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, updated, failed, cities: groups.length });
+  return apiResponse({ ok: true, updated, failed, cities: groups.length });
 }
 
 export const GET = withCronLogging('refresh-seasonal', handleRefresh);
