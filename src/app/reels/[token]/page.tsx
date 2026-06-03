@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import ReelsShareClient from './ReelsShareClient';
+import type { Metadata } from 'next';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,14 +28,24 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function reelsCanonical(token: string): string {
+  const baseUrl = siteBaseUrl();
+  return token ? `${baseUrl}/reels/${encodeURIComponent(token)}` : `${baseUrl}/reels`;
+}
+
+function socialImageUrl(): string {
+  return `${siteBaseUrl()}/og-image.png`;
+}
+
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-export async function generateMetadata({ params }: PageProps) {
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { token: rawToken } = await params;
   const token = getRouteParam(rawToken);
-  const url = `${siteBaseUrl()}/reels/${encodeURIComponent(token)}`;
+  const url = reelsCanonical(token);
+  const imageUrl = socialImageUrl();
   return {
     title: '여행 추억 릴스',
     description: `여소남과 함께한 여행 추억을 공유하세요`,
@@ -44,6 +55,13 @@ export async function generateMetadata({ params }: PageProps) {
       title: '여행 추억 릴스',
       description: '여소남과 함께한 특별한 여행 순간들',
       url,
+      images: [{ url: imageUrl, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: 'Travel memory reels',
+      description: 'Share your travel memories with Yeosonam.',
+      images: [imageUrl],
     },
   };
 }
