@@ -35,7 +35,7 @@ interface Message {
 
 export default function JarvisPage() {
   const searchParams = useSearchParams()
-  const initialTab = searchParams.get('tab') === 'actions' ? 'actions' : 'chat'
+  const initialTab = searchParams?.get('tab') === 'actions' ? 'actions' : 'chat'
   const [activeTab, setActiveTab] = useState<'chat' | 'actions'>(initialTab)
   const [pendingCount, setPendingCount] = useState(0)
   const [messages, setMessages] = useState<Message[]>([

@@ -16,7 +16,7 @@ interface PackageOption {
 
 export default function BookingGuidePage() {
   const search = useSearchParams();
-  const initialPkgId = search.get('pkg') ?? '';
+  const initialPkgId = search?.get('pkg') ?? '';
 
   const [packages, setPackages] = useState<PackageOption[]>([]);
   const [selectedPkgId, setSelectedPkgId] = useState(initialPkgId);

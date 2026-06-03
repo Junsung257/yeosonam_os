@@ -37,8 +37,8 @@ interface NewBookingFormClientProps {
 export function NewBookingFormClient({ initialPackages, initialCustomers, initialAffiliates, initialExchangeRate }: NewBookingFormClientProps = {}) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const initCustomerId = searchParams.get('customerId') || '';
-  const initCustomerName = searchParams.get('customerName') || '';
+  const initCustomerId = searchParams?.get('customerId') || '';
+  const initCustomerName = searchParams?.get('customerName') || '';
 
   const [packages, setPackages] = useState<Package[]>(initialPackages ?? []);
   const [customers, setCustomers] = useState<Customer[]>(initialCustomers ?? []);
