@@ -39,6 +39,27 @@ const GOOD_THRESHOLDS: Record<string, number> = {
   TTFB: 800,
 };
 
+function getFiniteNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clampPercent(value: unknown): number {
+  return Math.min(100, Math.max(0, getFiniteNumber(value)));
+}
+
+function normalizeStats(stats: WebVitalsResponse['stats']): Record<string, MetricStats> {
+  return Object.fromEntries(
+    Object.entries(stats ?? {}).map(([name, metric]) => [
+      name,
+      {
+        p75: getFiniteNumber(metric?.p75),
+        goodPct: clampPercent(metric?.goodPct),
+        count: Math.max(0, Math.round(getFiniteNumber(metric?.count))),
+      },
+    ])
+  );
+}
+
 export default function WebVitalsDashboard() {
   const [stats, setStats] = useState<Record<string, MetricStats> | null>(null);
   const [period, setPeriod] = useState<Period>('day');
@@ -58,9 +79,10 @@ export default function WebVitalsDashboard() {
         setStats({});
         return;
       }
-      setStats(payload?.stats ?? {});
+      setStats(normalizeStats(payload?.stats));
     } catch (e) {
       setError(e instanceof Error ? e.message : '데이터 로딩 실패');
+      setStats({});
     } finally {
       setLoading(false);
     }
