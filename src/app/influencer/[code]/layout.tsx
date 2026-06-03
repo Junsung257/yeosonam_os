@@ -15,6 +15,7 @@ function getRouteParam(value: string | string[] | undefined): string {
 export default function InfluencerLayout({ children }: { children: React.ReactNode }) {
   const params = useParams();
   const pathname = usePathname();
+  const currentPath = pathname || '';
   const code = getRouteParam(params?.code);
   const encodedCode = encodeURIComponent(code);
   const displayCode = code || 'partner';
@@ -110,7 +111,7 @@ export default function InfluencerLayout({ children }: { children: React.ReactNo
             {authenticated && (
               <nav className="flex gap-1">
                 {navItems.map(item => {
-                  const isActive = pathname === item.href;
+                  const isActive = currentPath === item.href;
                   return (
                     <Link
                       key={item.href}
