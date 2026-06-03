@@ -81,6 +81,7 @@ function UnlockCountdown({ seconds }: { seconds: number }) {
 export default function TenantRfqsPage() {
   const params = useParams();
   const tenantId = getRouteParam(params?.tenantId);
+  const encodedTenantId = tenantId ? encodeURIComponent(tenantId) : '';
 
   const [rfqs, setRfqs] = useState<TenantRfq[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +92,7 @@ export default function TenantRfqsPage() {
     const interval = setInterval(fetchRfqs, 30000);
     return () => clearInterval(interval);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
-  }, [tenantId]);
+  }, [tenantId, encodedTenantId]);
 
   async function fetchRfqs() {
     if (!tenantId) {
@@ -101,7 +102,7 @@ export default function TenantRfqsPage() {
     }
 
     try {
-      const res = await fetch(`/api/tenant/rfqs?tenant_id=${tenantId}`);
+      const res = await fetch(`/api/tenant/rfqs?tenant_id=${encodedTenantId}`);
       if (!res.ok) throw new Error('데이터를 불러올 수 없습니다');
       const data = await res.json();
       setRfqs(Array.isArray(data) ? data : []);
@@ -225,14 +226,14 @@ export default function TenantRfqsPage() {
               {/* 액션 */}
               {rfq.is_unlocked && !rfq.my_bid ? (
                 <Link
-                  href={`/tenant/${tenantId}/rfqs/${rfq.id}`}
+                  href={`/tenant/${encodedTenantId}/rfqs/${encodeURIComponent(rfq.id)}`}
                   className="block w-full text-center bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   입찰하기
                 </Link>
               ) : rfq.is_unlocked && rfq.my_bid ? (
                 <Link
-                  href={`/tenant/${tenantId}/rfqs/${rfq.id}`}
+                  href={`/tenant/${encodedTenantId}/rfqs/${encodeURIComponent(rfq.id)}`}
                   className="block w-full text-center border border-indigo-300 text-indigo-700 hover:bg-indigo-50 py-2.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   상세 보기
