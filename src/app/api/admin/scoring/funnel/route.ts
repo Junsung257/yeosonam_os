@@ -3,7 +3,8 @@
  *
  * v_recommendation_funnel + v_ltr_signals 집계 → /admin/scoring/funnel UI 데이터.
  */
-import { NextResponse } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
 
 const getHandler = async () => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ funnel: [], summary: null });
+    return apiResponse({ funnel: [], summary: null });
   }
   try {
     const [funnelRes, ltrCountRes, abRes, alertsRes] = await Promise.all([
@@ -27,7 +28,7 @@ const getHandler = async () => {
     const totalExposures = funnel.reduce((s: number, r: Record<string, unknown>) => s + (Number(r.exposures) || 0), 0);
     const totalBookings = funnel.reduce((s: number, r: Record<string, unknown>) => s + (Number(r.bookings) || 0), 0);
 
-    return NextResponse.json({
+    return apiResponse({
       funnel,
       ab_results: abRes.data ?? [],
       alerts: alertsRes.data ?? [],
@@ -40,11 +41,8 @@ const getHandler = async () => {
       },
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: e instanceof Error ? e.message : 'failed' },
-      { status: 500 },
-    );
+    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
   }
-}
+};
 
 export const GET = withAdminGuard(getHandler);
