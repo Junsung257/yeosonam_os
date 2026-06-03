@@ -18,10 +18,12 @@
  * 모두 CRON_SECRET Bearer 인증 필요
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
 import { createClient } from '@supabase/supabase-js';
 import { isAdminRequest } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // ── Supabase 클라이언트 (서버 전용) ───────────────────────
 
@@ -55,12 +57,12 @@ interface QueryParams {
 
 export async function GET(req: NextRequest) {
   if (!(await verifyCronOrAdmin(req))) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return apiResponse({ error: 'Unauthorized' }, { status: 401 });
   }
 
   const supabase = getAdminClient();
   if (!supabase) {
-    return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
+    return apiResponse({ error: 'Supabase not configured' }, { status: 503 });
   }
 
   const { searchParams } = new URL(req.url);
@@ -98,7 +100,7 @@ async function handleKeywordStats(
   const { data, error } = await query.order('date', { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   // 집계
@@ -110,7 +112,7 @@ async function handleKeywordStats(
   // 고유 키워드 수
   const uniqueKeywords = new Set(data?.map((r) => r.keyword) ?? []);
 
-  return NextResponse.json({
+  return apiResponse({
     summary: {
       totalRows: data?.length ?? 0,
       uniqueKeywords: uniqueKeywords.size,
@@ -139,7 +141,7 @@ async function handleTopKeywords(
 
   const allowedOrder = ['clicks', 'impressions', 'spend', 'roas', 'conversions', 'ctr', 'cpc'];
   if (!allowedOrder.includes(orderBy)) {
-    return NextResponse.json({ error: `Invalid orderBy. Allowed: ${allowedOrder.join(', ')}` }, { status: 400 });
+    return apiResponse({ error: `Invalid orderBy. Allowed: ${allowedOrder.join(', ')}` }, { status: 400 });
   }
 
   let query = supabase!.from('keyword_performance_daily').select('*');
@@ -149,7 +151,7 @@ async function handleTopKeywords(
   const { data, error } = await query.order(orderBy, { ascending: false }).limit(limit);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   // 키워드별 집계
@@ -180,7 +182,7 @@ async function handleTopKeywords(
     })
     .slice(0, limit);
 
-  return NextResponse.json({
+  return apiResponse({
     orderBy,
     top: ranked,
     bottom: ranked.slice().reverse().slice(0, Math.min(5, ranked.length)),
@@ -211,7 +213,7 @@ async function handleSearchTerms(
     .limit(500);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   // negative 키워드 추천 (전환 0, 노출↑)
@@ -225,7 +227,7 @@ async function handleSearchTerms(
     .sort((a, b) => b.totalImpressions - a.totalImpressions)
     .slice(0, 30);
 
-  return NextResponse.json({
+  return apiResponse({
     totalSearchTerms: data?.length ?? 0,
     negativeCandidates,
     searchTerms: data,
