@@ -25,6 +25,7 @@ export default function BlogEditPage() {
   const router = useRouter();
   const params = useParams();
   const id = getRouteParam(params?.id);
+  const encodedId = id ? encodeURIComponent(id) : '';
 
   const [blogHtml, setBlogHtml] = useState('');
   const [slug, setSlug] = useState('');
@@ -54,7 +55,7 @@ export default function BlogEditPage() {
       setLoading(false);
       return;
     }
-    fetch(`/api/blog?id=${id}`)
+    fetch(`/api/blog?id=${encodedId}`)
       .then(r => r.json())
       .then(d => {
         const post = d.post;
@@ -75,7 +76,7 @@ export default function BlogEditPage() {
       })
       .catch(() => showToast('글을 불러오지 못했습니다'))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, encodedId]);
 
   // 같은 상품의 기존 카드뉴스 목록 로드 (productId 확정된 후).
   // 이미지가 1장 이상 있는 카드뉴스만 표시 — 첨부 가능한 항목만 노출해 UX 혼란 방지.
@@ -85,7 +86,7 @@ export default function BlogEditPage() {
       return;
     }
     setCardNewsLoading(true);
-    fetch(`/api/card-news?package_id=${productId}&limit=30`)
+    fetch(`/api/card-news?package_id=${encodeURIComponent(productId)}&limit=30`)
       .then(r => r.json())
       .then(d => {
         const all = (d.card_news || []) as CardNewsRow[];
@@ -241,7 +242,7 @@ export default function BlogEditPage() {
                 className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-admin-xs rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
                 {reindexing ? '요청 중...' : '🔄 재색인 요청'}
               </button>
-              <a href={`/blog/${slug}`} target="_blank" rel="noopener noreferrer"
+              <a href={`/blog/${encodeURIComponent(slug)}`} target="_blank" rel="noopener noreferrer"
                 className="px-4 py-2 bg-white border border-blue-300 text-blue-600 text-admin-xs rounded-lg hover:bg-blue-50 transition">
                 ↗ 보기
               </a>
@@ -339,7 +340,7 @@ export default function BlogEditPage() {
               </p>
             </div>
             <Link
-              href={`/admin/marketing/card-news/new?package_id=${productId}${angleType ? `&angle=${angleType}` : ''}`}
+              href={`/admin/marketing/card-news/new?package_id=${encodeURIComponent(productId)}${angleType ? `&angle=${encodeURIComponent(angleType)}` : ''}`}
               className="px-3 py-1.5 bg-blue-600 text-white text-[11px] font-semibold rounded-lg hover:bg-blue-700 transition"
             >
               + 이 글로 새 카드뉴스 만들기
