@@ -15,6 +15,7 @@ export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
@@ -39,6 +40,13 @@ export async function generateMetadata({ params }: { params: Promise<{ region?: 
       description: region.tagline,
       url: canonical,
       type: 'website',
+      images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+    },
+    twitter: {
+      card: 'summary_large_image',
+      title: `${region.label} 여행 가이드 | 여소남`,
+      description: region.tagline,
+      images: [SOCIAL_IMAGE_URL],
     },
   };
 }
