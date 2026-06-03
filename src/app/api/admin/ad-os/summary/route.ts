@@ -536,7 +536,7 @@ function buildDegradedSummary(error: unknown) {
   };
 }
 
-async function buildSummaryResponse() {
+export async function buildSummaryResponse() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
   }
