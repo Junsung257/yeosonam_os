@@ -1,6 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { buildVisibilityLabel, visibilityFromRank, type VisibilityPlatform } from '@/lib/ad-os-v3-v7';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
@@ -28,7 +30,7 @@ function latestByPlatform(rows: VisibilityRow[]): Record<VisibilityPlatform, Vis
 
 export const GET = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const slug = request.nextUrl.searchParams.get('slug');
@@ -58,7 +60,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
   const firstError = contentRes.error || snapshotRes.error || rankRes.error;
   if (firstError) {
-    return NextResponse.json({ ok: false, error: firstError.message }, { status: 500 });
+    return apiResponse({ ok: false, error: sanitizeDbError(firstError) }, { status: 500 });
   }
 
   const contents = (contentRes.data || []).filter((row: any) => !slug || row.slug === slug);
@@ -140,7 +142,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
     };
   });
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     generated_at: new Date().toISOString(),
     summary: {
@@ -156,7 +158,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -164,7 +166,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const url = String(body.url || '');
   const platform = body.platform === 'naver' ? 'naver' : 'google';
   if (!slug || !url) {
-    return NextResponse.json({ ok: false, error: 'slug and url are required' }, { status: 400 });
+    return apiResponse({ ok: false, error: 'slug and url are required' }, { status: 400 });
   }
 
   const row = {
@@ -187,6 +189,6 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .select('*')
     .single();
 
-  if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, snapshot: data });
+  if (error) return apiResponse({ ok: false, error: sanitizeDbError(error) }, { status: 500 });
+  return apiResponse({ ok: true, snapshot: data });
 });
