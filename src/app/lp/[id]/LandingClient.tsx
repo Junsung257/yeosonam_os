@@ -323,7 +323,7 @@ export function LandingClient({
     <div className="min-h-screen bg-[var(--bg-section)] text-[var(--text-primary)] max-w-[430px] mx-auto relative pb-36">
 
       <div className="flex justify-end px-4 py-2.5 border-b border-[var(--border-mid)] bg-white/90 backdrop-blur-sm sticky top-0 z-30">
-        <Link href={`/packages/${data.id}`} className="text-xs font-semibold text-[var(--brand)] hover:underline">
+        <Link href={`/packages/${encodeURIComponent(data.id)}`} className="text-xs font-semibold text-[var(--brand)] hover:underline">
           전체 일정·약관 보기
         </Link>
       </div>
@@ -401,7 +401,7 @@ export function LandingClient({
               카카오로 바로 문의
             </button>
             <Link
-              href={`/packages/${data.id}`}
+              href={`/packages/${encodeURIComponent(data.id)}`}
               className="flex items-center justify-center px-4 py-3 rounded-xl border border-white/50 text-sm font-semibold text-white bg-black/25 backdrop-blur-md hover:bg-black/35"
             >
               상세

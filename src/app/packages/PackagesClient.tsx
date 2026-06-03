@@ -683,10 +683,10 @@ function SimpleCompareModal({
         </div>
         <div className="overflow-y-auto px-4 py-4 space-y-3">
           <div className="grid grid-cols-2 gap-3 mb-2">
-            <Link href={`/packages/${a.id}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
+            <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {a.display_title || a.title}
             </Link>
-            <Link href={`/packages/${b.id}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
+            <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {b.display_title || b.title}
             </Link>
           </div>
@@ -702,10 +702,10 @@ function SimpleCompareModal({
           })}
         </div>
         <div className="grid grid-cols-2 gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
-          <Link href={`/packages/${a.id}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
+          <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
             상세보기
           </Link>
-          <Link href={`/packages/${b.id}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
+          <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
             상세보기
           </Link>
         </div>

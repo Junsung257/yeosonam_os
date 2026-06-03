@@ -250,7 +250,7 @@ function ReviewSummaryStrip({
           <span className="text-sm text-[var(--text-muted)] truncate">({fmt(count)}건)</span>
         </div>
         <Link
-          href={`/packages/${packageId}`}
+          href={`/packages/${encodeURIComponent(packageId)}`}
           className="text-sm font-semibold text-[var(--brand)] shrink-0 hover:underline"
         >
           상세·후기 →
