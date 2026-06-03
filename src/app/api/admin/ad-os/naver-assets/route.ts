@@ -1,5 +1,5 @@
-import { NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
 import {
   fetchNaverAdgroups,
   fetchNaverBusinessChannels,
@@ -13,12 +13,12 @@ export const POST = withAdminGuard(async () => {
   const config = getNaverAdsConfigStatus();
 
   if (!config.configured) {
-    return NextResponse.json({
+    return apiResponse({
       ok: false,
-      error: '네이버 검색광고 API 키가 부족합니다.',
+      error: 'Naver Ads API is not configured.',
       config,
       assets: { campaigns: [], adgroups: [], channels: [] },
-      next_action: 'NAVER_ADS_API_KEY, NAVER_ADS_SECRET_KEY, NAVER_ADS_CUSTOMER_ID를 먼저 설정하세요.',
+      next_action: 'Configure NAVER_ADS_API_KEY, NAVER_ADS_SECRET_KEY, and NAVER_ADS_CUSTOMER_ID first.',
     }, { status: 400 });
   }
 
@@ -30,9 +30,9 @@ export const POST = withAdminGuard(async () => {
 
   const firstError = campaignRes.error || adgroupRes.error || channelRes.error;
   if (firstError) {
-    return NextResponse.json({
+    return apiResponse({
       ok: false,
-      error: firstError,
+      error: 'Naver Ads API asset lookup failed.',
       config,
       assets: {
         campaigns: campaignRes.campaigns,
@@ -43,14 +43,14 @@ export const POST = withAdminGuard(async () => {
   }
 
   const nextAction = adgroupRes.adgroups[0]?.nccAdgroupId
-    ? `외부 그룹 ID에 ${adgroupRes.adgroups[0].nccAdgroupId}를 저장하면 정지 키워드 업로드를 점검할 수 있습니다.`
+    ? `Store ad group ID ${adgroupRes.adgroups[0].nccAdgroupId} to enable policy-driven uploads.`
     : campaignRes.campaigns.length === 0
-      ? '네이버 광고센터에서 검색광고 캠페인을 먼저 만들어야 합니다.'
+      ? 'Create a Naver SearchAd campaign in Naver Ads Manager first.'
       : channelRes.channels.length === 0
-        ? '네이버 광고센터에서 웹사이트 비즈채널을 먼저 등록/검수해야 합니다.'
-        : '캠페인과 비즈채널은 있으나 광고그룹이 없습니다. 네이버 광고센터에서 광고그룹을 만들거나 API 생성 단계를 추가해야 합니다.';
+        ? 'Register or verify a business channel in Naver Ads Manager first.'
+        : 'Campaigns and business channels exist, but no ad groups were found. Create an ad group in Naver Ads Manager or add the API creation step.';
 
-  return NextResponse.json({
+  return apiResponse({
     ok: true,
     config,
     counts: {
