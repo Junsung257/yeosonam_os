@@ -56,10 +56,22 @@ export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const canonical = slug ? `${base}/with/${encodeURIComponent(slug)}` : `${base}/with`;
   const imageUrl = socialImageUrl();
   if (!looksLikeReferralCode(slug)) {
+    const title = '제휴 랜딩';
     return {
-      title: '제휴 랜딩',
+      title,
       robots: { index: false, follow: false },
       alternates: { canonical },
+      openGraph: {
+        title,
+        url: canonical,
+        type: 'website',
+        images: [{ url: imageUrl, width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title,
+        images: [imageUrl],
+      },
     };
   }
   let name = slug;
