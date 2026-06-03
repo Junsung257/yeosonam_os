@@ -6,6 +6,12 @@ import {
 } from '@/lib/source-evidence';
 import { type PublishGateFailedCheck } from '@/lib/product-publish-gate';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
+import {
+  collectStandardNoticesFromLedger,
+  evaluateV3CustomerNoticeGate,
+  loadLatestV3DraftForPackage,
+} from '@/lib/product-registration-v3/customer-payload';
+import { collectStructuredFactsFromLedger } from '@/lib/product-registration-v3/structured-facts';
 
 type RouteContext = { params?: Promise<{ id: string }> };
 
@@ -61,6 +67,8 @@ export const GET = withAdminGuard(async (_req: NextRequest, ctx?: RouteContext) 
     sourceEvidence,
     requireCompletedAudit: true,
   });
+  const latestV3Draft = await loadLatestV3DraftForPackage(supabaseAdmin, id);
+  const v3Gate = evaluateV3CustomerNoticeGate(id, latestV3Draft);
 
   return NextResponse.json({
     ok: true,
@@ -85,6 +93,18 @@ export const GET = withAdminGuard(async (_req: NextRequest, ctx?: RouteContext) 
           }
         : null,
       publish_gate: delivery.publishGate,
+      v3_draft: latestV3Draft
+        ? {
+            id: latestV3Draft.id,
+            status: v3Gate.draftStatus,
+            created_at: latestV3Draft.created_at,
+            gate_result: latestV3Draft.gate_result,
+            standard_notices: collectStandardNoticesFromLedger(latestV3Draft.ledger),
+            structured_facts: collectStructuredFactsFromLedger(latestV3Draft.ledger),
+            blocks_approval: v3Gate.blocksApproval,
+            block_reasons: v3Gate.blockReasons,
+          }
+        : null,
     },
   });
 });

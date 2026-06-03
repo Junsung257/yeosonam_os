@@ -304,3 +304,54 @@ PKG
     });
   });
 });
+
+describe('inline PKG catalog headers', () => {
+  it('splits 출발지出 + PKG + duration product titles', () => {
+    const raw = `공통 가격표
+출발일
+실속
+고품격(노옵션)
+5/31
+679,000
+969,000
+
+부산出 푸꾸옥 실속 PKG 3박5일 이스타항공(ZE)
+출 발 날 짜
+2026년 3월29일 ~ 10월24일
+일 자
+제1일
+본문 A
+
+부산出 푸꾸옥 실속 PKG 4박6일 이스타항공(ZE)
+출 발 날 짜
+2026년 3월29일 ~ 10월24일
+일 자
+제1일
+본문 B
+
+부산出 푸꾸옥 고품격(노옵션) PKG 3박5일 이스타항공(ZE)
+출 발 날 짜
+2026년 3월29일 ~ 10월24일
+일 자
+제1일
+본문 C
+
+부산出 푸꾸옥 고품격(노옵션) PKG 4박6일 이스타항공(ZE)
+출 발 날 짜
+2026년 3월29일 ~ 10월24일
+일 자
+제1일
+본문 D`;
+
+    expect(collectPkgBlockStarts(raw)).toHaveLength(4);
+    expect(countCatalogItineraryHeaders(raw)).toBe(4);
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+    expect(sharedPrefix).toContain('공통 가격표');
+    expect(sections).toHaveLength(4);
+    expect(sections[0]).toContain('실속 PKG 3박5일');
+    expect(sections[1]).toContain('실속 PKG 4박6일');
+    expect(sections[2]).toContain('고품격(노옵션) PKG 3박5일');
+    expect(sections[3]).toContain('고품격(노옵션) PKG 4박6일');
+  });
+});

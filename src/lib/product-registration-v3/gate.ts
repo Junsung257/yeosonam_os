@@ -76,6 +76,14 @@ export function evaluateProductRegistrationV3Gate(
       'critical',
       'high-risk standard notices must have required values and review status',
     );
+    const highRiskFacts = (variant.structured_facts ?? []).filter(fact => fact.risk_level === 'high');
+    check(
+      checks,
+      `${variant.variant_key}.high_risk_structured_fact_values`,
+      highRiskFacts.every(fact => fact.review_status !== 'review_needed'),
+      'critical',
+      'high-risk structured facts must have values or an explicit safe state',
+    );
   }
 
   if (matchSummary) {

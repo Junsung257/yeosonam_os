@@ -56,13 +56,17 @@ import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 import { isStandardProductMarkdown, parseStandardProductMarkdown } from '@/lib/standard-product-markdown';
+import { buildUploadRegisterReport, type UploadRegisterReportPackage, type UploadRegisterReportRow } from '@/lib/product-registration-register-report';
+import { parseUploadSourceMetadata, type UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import { analyzeUploadInputText, type UploadInputAnalysis } from '@/lib/product-registration-input-guard';
+import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
 import {
   buildSupplierRawDeterministicItinerary,
   canUseSupplierRawDeterministicPreflight,
   extractSupplierRawDeterministicFacts,
 } from '@/lib/supplier-raw-deterministic-facts';
 import { planProductRegistrationV2, runProductRegistrationV2 } from '@/lib/product-registration-v2';
-import { persistProductRegistrationDraftV3, runProductRegistrationV3 } from '@/lib/product-registration-v3';
+import { createSourceLineIndex, persistProductRegistrationDraftV3, planProductRegistrationV3, runProductRegistrationV3 } from '@/lib/product-registration-v3';
 
 function safeAfter(task: () => Promise<void> | void): void {
   try {
@@ -173,6 +177,37 @@ function scheduleUploadReviewInsert(row: {
     .then(({ error }: { error: { message: string } | null }) => {
       if (error) console.warn('[Upload API] upload_review_queue 적재 실패(비중단):', error.message);
     });
+}
+
+function buildUploadInputQualityError(analysis: UploadInputAnalysis, sourceType: 'text' | 'file') {
+  const primary = analysis.issues.find(issue => issue.severity === 'block') ?? analysis.issues[0];
+  const code = primary?.code === 'encoding_corrupted'
+    ? 'INPUT_ENCODING_CORRUPTED'
+    : primary?.code === 'web_page_copy'
+      ? 'INPUT_WEB_PAGE_COPY'
+      : primary?.code === 'non_product_prompt'
+        ? 'INPUT_NOT_PRODUCT_SOURCE'
+        : 'INPUT_QUALITY_BLOCKED';
+
+  return {
+    success: false,
+    code,
+    error: primary?.message ?? 'Upload input did not pass source quality checks.',
+    suggestion: sourceType === 'text'
+      ? 'Paste only the original supplier product text. Remove copied UI chrome, menus, CTAs, and work instructions.'
+      : 'The extracted file text is too corrupted or does not look like supplier product source text.',
+    inputQuality: {
+      blocked: analysis.blocked,
+      needsReview: analysis.needsReview,
+      issues: analysis.issues.map(issue => ({
+        code: issue.code,
+        severity: issue.severity,
+        message: issue.message,
+        evidence: issue.evidence,
+      })),
+      metrics: analysis.metrics,
+    },
+  };
 }
 
 // ─── 민감정보 마스킹 (raw_extracted_text → 블로그/카드뉴스용) ─────────────────
@@ -545,15 +580,44 @@ const postHandler = async (request: NextRequest) => {
     const contentType = request.headers.get('content-type') || '';
     let file: File | null = null;
     let directRawText: string | null = null;
+    let uploadSourceMetadata: UploadSourceMetadataResult | null = null;
+    let textSourceLabel: string | null = null;
+    let inputAnalysisForTrust: UploadInputAnalysis | null = null;
 
     if (contentType.includes('application/json')) {
       // 텍스트 직접 붙여넣기 모드
       const body = await request.json();
-      directRawText = body.rawText;
+      directRawText = typeof body.rawText === 'string' ? body.rawText : '';
+      textSourceLabel = typeof body.sourceLabel === 'string' ? body.sourceLabel : null;
+      uploadSourceMetadata = parseUploadSourceMetadata({
+        rawText: directRawText,
+        sourceLabel: textSourceLabel,
+        explicitLandOperator: typeof body.landOperator === 'string' ? body.landOperator : undefined,
+        explicitCommissionRate: typeof body.commissionRate !== 'undefined' ? body.commissionRate : undefined,
+        defaultCommissionRate: 10,
+      });
+      const invalidCommission = uploadSourceMetadata.issues.find(issue => issue.code === 'commission_rate_out_of_range');
+      if (invalidCommission?.severity === 'error') {
+        return NextResponse.json({
+          success: false,
+          code: 'COMMISSION_RATE_OUT_OF_RANGE',
+          error: invalidCommission.message,
+          uploadMetadata: {
+            landOperator: uploadSourceMetadata.landOperator,
+            commissionRate: uploadSourceMetadata.commissionRate,
+            issues: uploadSourceMetadata.issues,
+          },
+        }, { status: 422 });
+      }
+      directRawText = uploadSourceMetadata.parserRawText ?? directRawText;
       if (!directRawText || directRawText.trim().length < 50) {
         return NextResponse.json({ error: '텍스트가 너무 짧습니다. 최소 50자 이상 입력하세요.' }, { status: 400 });
       }
-      console.log('[Upload API] 텍스트 모드:', directRawText.length, '자');
+      console.log('[Upload API] text mode:', directRawText.length, 'chars', {
+        landOperator: uploadSourceMetadata.landOperator,
+        commissionRate: uploadSourceMetadata.commissionRate,
+        source: uploadSourceMetadata.source,
+      });
     } else {
       // 기존 파일 업로드 모드
       const formData = await request.formData();
@@ -576,9 +640,14 @@ const postHandler = async (request: NextRequest) => {
 
     let buffer: Buffer;
     let fileHash: string;
-    const fileName = file?.name || '텍스트입력.txt';
+    const fileName = file?.name || uploadSourceMetadata?.cleanSourceLabel || textSourceLabel || 'text-input.txt';
 
     if (directRawText) {
+      const inputAnalysis = analyzeUploadInputText(directRawText);
+      inputAnalysisForTrust = inputAnalysis;
+      if (inputAnalysis.blocked) {
+        return NextResponse.json(buildUploadInputQualityError(inputAnalysis, 'text'), { status: 422 });
+      }
       // 텍스트 모드: 텍스트 자체를 buffer/hash로 변환
       buffer = Buffer.from(directRawText, 'utf-8');
       fileHash = createHash('sha256').update(buffer).digest('hex');
@@ -694,7 +763,20 @@ const postHandler = async (request: NextRequest) => {
 
     // ── [D] 파일명 파싱 ──────────────────────────────────────────────────────
 
-    const filenameRule = parseFilename(fileName);
+    if (!uploadSourceMetadata) {
+      uploadSourceMetadata = parseUploadSourceMetadata({
+        fileName,
+        defaultCommissionRate: 10,
+      });
+    }
+
+    const parsedFilenameRule = parseFilename(fileName);
+    const filenameRule = {
+      ...parsedFilenameRule,
+      supplierRaw: uploadSourceMetadata.landOperator ?? parsedFilenameRule.supplierRaw,
+      marginRate: uploadSourceMetadata.marginRate ?? parsedFilenameRule.marginRate,
+      cleanName: uploadSourceMetadata.cleanSourceLabel ?? parsedFilenameRule.cleanName,
+    };
     const supplierCode = resolveSupplierCode(filenameRule.supplierRaw);
     const marginRate   = filenameRule.marginRate ?? 0.10;
 
@@ -1078,6 +1160,7 @@ const postHandler = async (request: NextRequest) => {
     const savedConfidences: number[]   = [];
     const saveErrors: { title: string; error: string }[] = [];
     let   totalPriceRowsSaved = 0;
+    const savedPriceRowsByPackageId = new Map<string, number>();
     const unmatchedRowsToInsert: {
       activity: string;
       package_id: string;
@@ -1095,6 +1178,25 @@ const postHandler = async (request: NextRequest) => {
     let activeAttractions: AttractionData[] = [];
     if (isSupabaseConfigured && !bulkMode) {
       activeAttractions = await loadActiveAttractionsForUpload();
+    }
+
+    const v3StructurePlanForUpload = planProductRegistrationV3(createSourceLineIndex(parsedDocument.rawText ?? ''));
+    const preSaveV3Result = await runProductRegistrationV3(parsedDocument.rawText ?? '', {
+      attractions: activeAttractions,
+      sourceType: parsedDocument.fileType,
+    });
+    if (
+      v3StructurePlanForUpload.expected_products >= 2
+      && productsToSave.length !== v3StructurePlanForUpload.expected_products
+    ) {
+      return NextResponse.json({
+        success: false,
+        code: 'PRODUCT_COUNT_MISMATCH',
+        error: 'V3 expected product count does not match parsed product count. Review product splitting before saving.',
+        expectedProductCount: v3StructurePlanForUpload.expected_products,
+        actualProductCount: productsToSave.length,
+        v3Gate: preSaveV3Result.gate_result,
+      }, { status: 422 });
     }
 
     for (let productIndex = 0; productIndex < productsToSave.length; productIndex++) {
@@ -1796,6 +1898,10 @@ JSON 배열로 응답:
           productStatus = 'REVIEW_NEEDED';
           pkgStatus = 'pending';
         }
+        if (!preSaveV3Result.gate_result.customer_publishable) {
+          productStatus = 'REVIEW_NEEDED';
+          pkgStatus = 'pending';
+        }
         if (l1Gate.reasons.length > 0) {
           console.warn('[Upload API] L1 Gate BLOCK:', l1Gate.codes.join(','), '—', l1Gate.reasons.join('; '));
         } else if (l1Gate.warnings.length > 0) {
@@ -1979,6 +2085,7 @@ JSON 배열로 응답:
             savedIds.push(pkgResult.id);
             savedTitles.push(title);
             savedConfidences.push(confidenceV3);
+            savedPriceRowsByPackageId.set(pkgResult.id, priceRows.length);
 
             // ── G8.5. ai_quality_log 적재 — V2 + leak incidents + LLM 메타 (P11-4)
             const llmMeta = (ed as { _llm_meta?: Record<string, unknown> })._llm_meta ?? {};
@@ -2469,29 +2576,36 @@ JSON 배열로 응답:
 
     // X3 박제 (2026-05-15 SKILL.md Step 7-C): 한 화면 표준 리포트.
     // 사장님이 PDF 만 붙여넣고 어드민 UI 에서 즉시 확인 가능한 풀 상태 (short_code / 가격 / 출발일 / 항공편 / status / 모바일 URL).
-    let registerReport: Array<Record<string, unknown>> = [];
+    let registerReport: UploadRegisterReportRow[] = [];
     if (isSupabaseConfigured && savedIds.length > 0) {
       try {
         const { data: pkgs } = await supabaseAdmin
           .from('travel_packages')
-          .select('id, internal_code, title, price, airline, status, departure_days')
+          .select('id, internal_code, title, price, airline, status, departure_days, commission_rate, land_operator, price_dates, itinerary_data')
           .in('id', savedIds);
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? '';
-        registerReport = ((pkgs ?? []) as Array<{ id: string; internal_code: string; title: string; price: number | null; airline: string | null; status: string; departure_days: string | null }>).map(p => ({
-          short_code:   p.internal_code,
-          title:        p.title,
-          price:        p.price,
-          airline:      p.airline,
-          status:       p.status,
-          departure_days: p.departure_days,
-          mobile_url:   baseUrl ? `${baseUrl}/packages/${p.id}` : `/packages/${p.id}`,
-          lp_url:       baseUrl ? `${baseUrl}/lp/${p.id}` : `/lp/${p.id}`,
-          a4_url:       baseUrl ? `${baseUrl}/admin/packages/${p.id}/poster` : `/admin/packages/${p.id}/poster`,
-        }));
+        registerReport = buildUploadRegisterReport((pkgs ?? []) as UploadRegisterReportPackage[], baseUrl, {
+          priceRowsByPackageId: savedPriceRowsByPackageId,
+        });
       } catch (e) {
         console.warn('[upload] register report 생성 실패 (무시):', e instanceof Error ? e.message : String(e));
       }
     }
+
+    const trustScore = calculateProductRegistrationTrustScore({
+      inputBlocked: inputAnalysisForTrust?.blocked ?? false,
+      inputNeedsReview: inputAnalysisForTrust?.needsReview ?? false,
+      inputIssueCodes: inputAnalysisForTrust?.issues.map(issue => issue.code) ?? [],
+      actualProductCount: productCount,
+      savedProductCount: successCount,
+      priceRowsSaved: totalPriceRowsSaved,
+      priceDatesCount: registerReport.reduce((sum, row) => sum + row.price_dates_count, 0),
+      itineraryDaysCount: registerReport.reduce((sum, row) => sum + row.itinerary_days_count, 0),
+      rawNoticeLeakRisk: false,
+      v3Status: preSaveV3Result.gate_result.status,
+      unmatchedActivitiesCount: attractionStats.unmatched,
+      renderAuditStatus: 'unknown',
+    });
 
     return NextResponse.json({
       success: successCount > 0 || !isSupabaseConfigured,
@@ -2511,8 +2625,17 @@ JSON 배열로 응답:
       fileHash:        fileHash.slice(0, 12) + '...',
       classification,
       gate:            overallGate,
+      trustScore,
       tokenUsage:      tokenInfo,
       attractionStats,
+      uploadMetadata: {
+        landOperator: uploadSourceMetadata?.landOperator ?? filenameRule.supplierRaw ?? null,
+        commissionRate: uploadSourceMetadata?.commissionRate ?? Math.round(marginRate * 10000) / 100,
+        marginRate,
+        sourceLabel: uploadSourceMetadata?.cleanSourceLabel ?? fileName,
+        metadataOnlyLineRemoved: uploadSourceMetadata?.metadataOnlyLineRemoved ?? false,
+        issues: uploadSourceMetadata?.issues ?? [],
+      },
       // X3 박제 (2026-05-15): SKILL.md Step 7-C 표준 한 화면 리포트
       registerReport,
       ...(saveErrors.length > 0 && { errors: saveErrors }),

@@ -27,7 +27,7 @@ export function buildStandardNoticeCustomerSavePayload(
 ): { ok: true; payload: StandardNoticeCustomerSavePayload } | { ok: false; error: string } {
   const invalid = rows.find(row => row.values_valid === false);
   if (invalid) {
-    return { ok: false, error: `추출값 JSON을 확인하세요: ${invalid.category}` };
+    return { ok: false, error: `추출값 JSON을 확인해 주세요: ${invalid.category}` };
   }
 
   const publishableRows = rows.filter(row =>
@@ -38,7 +38,7 @@ export function buildStandardNoticeCustomerSavePayload(
   const notices_parsed = publishableRows.map(row => ({
     type: row.risk_level === 'high' ? 'CRITICAL' as const : row.risk_level === 'medium' ? 'POLICY' as const : 'INFO' as const,
     title: '유의사항',
-    text: `• ${row.standard_text}`,
+    text: `※ ${row.standard_text}`,
     category: row.category,
     values: row.values,
     template_key: row.template_key,

@@ -25,6 +25,12 @@ import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attracti
 import { getSecret } from '@/lib/secret-registry';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
+import {
+  evaluateV3CustomerNoticeGate,
+  hasSupplierRemarkRawLeakRisk,
+  hasUnsafeCustomerNoticeMutation,
+  loadLatestV3DraftForPackage,
+} from '@/lib/product-registration-v3/customer-payload';
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   const ids = new Set<string>();
@@ -42,6 +48,53 @@ function collectAttractionIds(itineraryData: unknown): string[] {
 function stripSupplierRemarkFields<T extends Record<string, unknown>>(row: T): Omit<T, 'special_notes'> {
   const { special_notes: _supplierRemark, ...safe } = row;
   return safe;
+}
+
+function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
+  return Object.prototype.hasOwnProperty.call(input, 'notices_parsed')
+    || Object.prototype.hasOwnProperty.call(input, 'customer_notes');
+}
+
+async function assertPackageV3NoticePatchAllowed(packageId: string, input: Record<string, unknown>) {
+  if (!includesCustomerNoticeFields(input)) return null;
+  const latestDraft = await loadLatestV3DraftForPackage(supabaseAdmin, packageId);
+  if (!latestDraft) {
+    if (hasSupplierRemarkRawLeakRisk(input)) {
+      return ApiErrors.conflict('랜드사 REMARK 원문성 안내문은 고객 필드에 직접 저장할 수 없습니다.', {
+        code: 'SUPPLIER_REMARK_RAW_LEAK_RISK',
+      });
+    }
+    return null;
+  }
+  if (hasUnsafeCustomerNoticeMutation(input)) {
+    return ApiErrors.conflict('V3 상품의 고객 안내문은 여소남 표준 notice payload만 저장할 수 있습니다.', {
+      code: 'UNSAFE_CUSTOMER_NOTICE_MUTATION',
+    });
+  }
+  const gate = evaluateV3CustomerNoticeGate(packageId, latestDraft);
+  if (gate.blocksApproval) {
+    return ApiErrors.conflict('최신 V3 draft가 검수 대기/차단 상태라 고객 안내문 직접 저장을 막았습니다.', {
+      code: 'V3_DRAFT_BLOCKS_CUSTOMER_NOTICE_PATCH',
+      draft_status: gate.draftStatus,
+      reasons: gate.blockReasons,
+    });
+  }
+  return null;
+}
+
+async function assertPackageV3ApprovalAllowed(packageId: string) {
+  const latestDraft = await loadLatestV3DraftForPackage(supabaseAdmin, packageId);
+  if (!latestDraft) return null;
+  const gate = evaluateV3CustomerNoticeGate(packageId, latestDraft);
+  if (gate.blocksApproval || gate.payloadError) {
+    return ApiErrors.conflict('최신 V3 draft가 고객 공개 조건을 통과하지 못해 승인을 막았습니다.', {
+      code: gate.payloadError ? 'V3_NOTICE_PAYLOAD_INVALID' : 'V3_DRAFT_BLOCKS_APPROVAL',
+      draft_status: gate.draftStatus,
+      reasons: gate.blockReasons,
+      payload_error: gate.payloadError,
+    });
+  }
+  return null;
 }
 
 // ── 상품코드 자동생성 매핑 ──────────────────────────────────────
@@ -491,6 +544,15 @@ export async function POST(request: NextRequest) {
         ? tiersToDatePrices(body.price_tiers)
         : [];
 
+    if (hasSupplierRemarkRawLeakRisk({
+      notices_parsed: body.notices_parsed,
+      customer_notes: body.customer_notes,
+    })) {
+      return ApiErrors.conflict('수동 상품 생성 시 랜드사 REMARK 원문성 안내문은 고객 필드에 직접 저장할 수 없습니다.', {
+        code: 'SUPPLIER_REMARK_RAW_LEAK_RISK',
+      });
+    }
+
     const result = await saveTravelPackage({
       title: body.title,
       destination: body.destination,
@@ -576,6 +638,26 @@ export async function PATCH(request: NextRequest) {
       const { packageIds } = body;
       if (!Array.isArray(packageIds) || packageIds.length === 0) {
         return ApiErrors.badRequest('packageIds 배열이 필요합니다.');
+      }
+      const approvalBlocks = [];
+      for (const id of packageIds) {
+        const latestDraft = await loadLatestV3DraftForPackage(supabaseAdmin, id);
+        if (!latestDraft) continue;
+        const gate = evaluateV3CustomerNoticeGate(id, latestDraft);
+        if (gate.blocksApproval || gate.payloadError) {
+          approvalBlocks.push({
+            packageId: id,
+            draft_status: gate.draftStatus,
+            reasons: gate.blockReasons,
+            payload_error: gate.payloadError,
+          });
+        }
+      }
+      if (approvalBlocks.length > 0) {
+        return ApiErrors.conflict('V3 draft가 검수 대기/차단 상태인 상품이 있어 일괄 승인을 막았습니다.', {
+          code: 'V3_DRAFT_BLOCKS_BULK_APPROVAL',
+          blocked: approvalBlocks,
+        });
       }
       const now = new Date().toISOString();
       const { error } = await supabaseAdmin
@@ -680,6 +762,8 @@ export async function PATCH(request: NextRequest) {
 
     // 단건 상태 변경
     if (action === 'approve') {
+      const v3ApprovalBlock = await assertPackageV3ApprovalAllowed(packageId);
+      if (v3ApprovalBlock) return v3ApprovalBlock;
       const result = await approvePackage(packageId);
       let searchAds: { saved: number; keywords: number; scenarios?: number; blog_actions?: number } | null = null;
       try {
@@ -752,6 +836,9 @@ export async function PATCH(request: NextRequest) {
     if (sanitized.price_tiers && !sanitized.price_dates) {
       sanitized.price_dates = tiersToDatePrices(sanitized.price_tiers as unknown as import('@/lib/parser').PriceTier[]);
     }
+
+    const v3NoticePatchBlock = await assertPackageV3NoticePatchAllowed(packageId, sanitized);
+    if (v3NoticePatchBlock) return v3NoticePatchBlock;
 
     // ─── Reflexion 자동 추적용: 변경 전 값 보존 ─────────────────────
     //   사장님 인라인 편집 = AI 정정 → extractions_corrections 자동 INSERT 로 영구 학습 자료化

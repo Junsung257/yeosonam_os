@@ -27,6 +27,48 @@ export interface EnrichResult {
 }
 
 const SKIP_TYPES = new Set(['flight', 'hotel', 'shopping', 'meal']);
+const DIRECT_SCAN_EXCLUDED_CATEGORIES = new Set(['accommodation', 'mrt_product']);
+const DIRECT_SCAN_STOP_TERMS = new Set([
+  '호텔 투숙',
+  '쇼핑센터',
+  '가이드 미팅',
+  '전용차량',
+  '90분',
+]);
+
+function normalizeDirectTerm(value: string | null | undefined): string {
+  return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
+}
+
+function isDirectScanEligibleTerm(term: string, attraction: AttractionData): boolean {
+  const clean = term.trim();
+  if (clean.length < 2 || clean.length > 24) return false;
+  if (DIRECT_SCAN_STOP_TERMS.has(clean)) return false;
+  if (attraction.category && DIRECT_SCAN_EXCLUDED_CATEGORIES.has(attraction.category)) return false;
+  return true;
+}
+
+function findRegisteredAttractionTermsInText(
+  text: string,
+  attractions: AttractionData[],
+): AttractionData[] {
+  const normalizedText = normalizeDirectTerm(text);
+  if (normalizedText.length < 2) return [];
+
+  const found = new Map<string, AttractionData>();
+  const sorted = attractions.slice().sort((a, b) => normalizeDirectTerm(b.name).length - normalizeDirectTerm(a.name).length);
+  for (const attraction of sorted) {
+    for (const term of [attraction.name, ...(attraction.aliases ?? [])]) {
+      if (!isDirectScanEligibleTerm(term, attraction)) continue;
+      if (!normalizedText.includes(normalizeDirectTerm(term))) continue;
+      found.set(String(attraction.id ?? attraction.name), attraction);
+      break;
+    }
+    if (found.size >= 5) break;
+  }
+
+  return [...found.values()];
+}
 
 function isGenericNonAttractionActivity(activity: string): boolean {
   const text = activity.replace(/\s+/g, ' ').trim();
@@ -70,7 +112,7 @@ export function enrichItineraryWithAttractionReferences(
 
   const days = itineraryData.days.map((day) => {
     const schedule = (day.schedule ?? []).map((item) => {
-      if (!shouldAttemptAttractionMatch(item)) return item;
+      if (item.type && SKIP_TYPES.has(item.type)) return item;
       const existingIds = Array.isArray(item.attraction_ids)
         ? item.attraction_ids.map(id => String(id)).filter(Boolean)
         : [];
@@ -89,6 +131,24 @@ export function enrichItineraryWithAttractionReferences(
         unmatched.push({ activity: item.activity, day_number: day.day ?? 0 });
         return { ...item, attraction_ids: [] };
       }
+
+      const directMatches = findRegisteredAttractionTermsInText(
+        [item.activity, item.note ?? ''].filter(Boolean).join(' '),
+        attractions,
+      );
+      if (directMatches.length > 0) {
+        const values = directMatches;
+        matchedScheduleItemCount++;
+        values.forEach(v => matchedNames.add(v.name));
+        return {
+          ...item,
+          attraction_ids: values.map(v => v.id).filter(Boolean),
+          attraction_names: values.map(v => v.name),
+          attraction_note: values[0]?.short_desc ?? item.note ?? null,
+        };
+      }
+
+      if (!shouldAttemptAttractionMatch(item)) return item;
       const candidates = extractAttractionCandidates(item.activity, item.note);
       if (candidates.length === 0) return item;
 

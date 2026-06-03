@@ -39,7 +39,21 @@ export { applyProductRegistrationV3Matching } from './matcher';
 export { evaluateProductRegistrationV3Gate } from './gate';
 export { ledgerToRenderPackageInputs } from './render-contract-adapter';
 export { persistProductRegistrationDraftV3 } from './persist';
+export {
+  buildV3StandardNoticePayload,
+  buildV3StandardNoticeFields,
+  collectStandardNoticesFromLedger,
+  evaluateV3CustomerNoticeGate,
+  getV3DraftGateStatus,
+  isV3DraftBlockingCustomerPublish,
+  loadLatestV3DraftForPackage,
+  sanitizeCustomerVisibleNotices,
+} from './customer-payload';
 export { STANDARD_NOTICE_TEMPLATES, extractStandardNoticesFromRemarkLines } from './standard-notices';
+export {
+  collectStructuredFactsFromLedger,
+  extractStructuredFactsFromSupplierText,
+} from './structured-facts';
 export type {
   V3DraftLedger,
   V3Evidence,
@@ -49,3 +63,4 @@ export type {
   V3SourceLine,
   V3StructurePlan,
 } from './types';
+export type { StructuredFact, StructuredFactCategory } from './structured-facts';

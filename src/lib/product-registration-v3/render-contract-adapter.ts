@@ -1,4 +1,5 @@
-import type { DayInput, HotelInfo, MealInfo, RenderPackageInput } from '@/lib/render-contract';
+﻿import type { DayInput, HotelInfo, MealInfo, RenderPackageInput } from '@/lib/render-contract';
+import { isPublishableStandardNoticeDraft } from './customer-payload';
 import type { V3DraftLedger } from './types';
 
 function renderMeal(value: Record<string, unknown>): { enabled: boolean; note: string | null } {
@@ -17,6 +18,7 @@ function renderHotel(value: Record<string, unknown>): HotelInfo {
 
 export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackageInput[] {
   return ledger.variants.map(variant => {
+    const publishableNotices = variant.standard_notices.filter(isPublishableStandardNoticeDraft);
     const title = variant.title_parts[0] || variant.variant_key;
     const outbound = variant.flight_segments.find(segment => segment.leg === 'outbound') ?? variant.flight_segments[0];
     const inbound = variant.flight_segments.find(segment => segment.leg === 'inbound') ?? variant.flight_segments[1];
@@ -56,13 +58,15 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
       airline: outbound?.code.slice(0, 2) ?? inbound?.code.slice(0, 2) ?? null,
       inclusions: variant.inclusions.map(item => item.value),
       excludes: variant.exclusions.map(item => item.value),
-      notices_parsed: variant.standard_notices.map(notice => ({
+      notices_parsed: publishableNotices.map(notice => ({
         type: notice.risk_level === 'high' ? 'CRITICAL' : notice.risk_level === 'medium' ? 'POLICY' : 'INFO',
         title: '유의사항',
         text: `• ${notice.standard_text}`,
+        category: notice.category,
+        template_key: notice.template_key,
+        review_status: notice.review_status,
       })),
-      customer_notes: variant.standard_notices
-        .filter(notice => notice.visibility === 'customer_visible')
+      customer_notes: publishableNotices
         .map(notice => notice.standard_text)
         .join('\n'),
       optional_tours: variant.options.map(option => ({

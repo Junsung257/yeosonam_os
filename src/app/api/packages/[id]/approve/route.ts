@@ -9,13 +9,19 @@ import { sendVaContentPackage } from '@/lib/va-email';
 import { getSecret } from '@/lib/secret-registry';
 import type { SourceEvidenceMap } from '@/lib/source-evidence';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
+import {
+  evaluateV3CustomerNoticeGate,
+  hasSupplierRemarkRawLeakRisk,
+  loadLatestV3DraftForPackage,
+} from '@/lib/product-registration-v3/customer-payload';
+import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
 
 interface ApproveBody {
   action: 'approve' | 'reject';
   title?: string;
   summary?: string;
   selectedCopyType?: string;
-  /** audit_status === 'warnings' 상품을 강제 승인할 때 true */
+  /** audit_status === 'warnings' ?곹뭹??媛뺤젣 ?뱀씤????true */
   force?: boolean;
 }
 
@@ -24,23 +30,23 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
   const { id } = params;
 
   if (!id) {
-    return NextResponse.json({ error: 'id 파라미터가 필요합니다.' }, { status: 400 });
+    return NextResponse.json({ error: 'id ?뚮씪誘명꽣媛 ?꾩슂?⑸땲??' }, { status: 400 });
   }
 
   let body: ApproveBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: '요청 본문이 유효하지 않습니다.' }, { status: 400 });
+    return NextResponse.json({ error: '?붿껌 蹂몃Ц???좏슚?섏? ?딆뒿?덈떎.' }, { status: 400 });
   }
 
   const { action, title, summary, selectedCopyType } = body;
 
   if (action !== 'approve' && action !== 'reject') {
-    return NextResponse.json({ error: 'action은 approve 또는 reject여야 합니다.' }, { status: 400 });
+    return NextResponse.json({ error: 'action? approve ?먮뒗 reject?ъ빞 ?⑸땲??' }, { status: 400 });
   }
 
-  // ── 현재 패키지 조회 (internal_code + marketing_copies 필요) ────────────────
+  // ?? ?꾩옱 ?⑦궎吏 議고쉶 (internal_code + marketing_copies ?꾩슂) ????????????????
 
   const { data: pkg, error: fetchError } = await supabaseAdmin
     .from('travel_packages')
@@ -50,12 +56,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   if (fetchError || !pkg) {
     return NextResponse.json(
-      { error: fetchError?.message ?? '상품을 찾을 수 없습니다.' },
+      { error: fetchError?.message ?? '?곹뭹??李얠쓣 ???놁뒿?덈떎.' },
       { status: 404 },
     );
   }
 
-  // ── 승인 처리 ─────────────────────────────────────────────────────────────
+  // ?? ?뱀씤 泥섎━ ?????????????????????????????????????????????????????????????
 
   if (action === 'approve') {
     const force = body.force === true;
@@ -86,11 +92,77 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       sourceEvidence,
       requireCompletedAudit: true,
     });
+    const latestV3Draft = await loadLatestV3DraftForPackage(supabaseAdmin, id);
+    const v3NoticeGate = evaluateV3CustomerNoticeGate(id, latestV3Draft);
+    const latestLedger = latestV3Draft?.ledger;
+    const latestVariants = Array.isArray(latestLedger?.variants) ? latestLedger.variants : [];
+    const countLatestV3Rows = (key: 'standard_notices' | 'structured_facts') =>
+      latestVariants.reduce((sum, variant) => {
+        const rows = (variant as unknown as Record<string, unknown>)[key];
+        return sum + (Array.isArray(rows) ? rows.length : 0);
+      }, 0);
+    const approvalTrustScore = calculateProductRegistrationTrustScore({
+      savedProductCount: 1,
+      priceDatesCount: Array.isArray((pkg as { price_dates?: unknown }).price_dates) ? ((pkg as { price_dates: unknown[] }).price_dates).length : 0,
+      priceRowsSaved: Array.isArray((pkg as { price_tiers?: unknown }).price_tiers) ? ((pkg as { price_tiers: unknown[] }).price_tiers).length : 0,
+      itineraryDaysCount: Array.isArray((pkg as { itinerary_data?: { days?: unknown[] } }).itinerary_data?.days)
+        ? (pkg as { itinerary_data: { days: unknown[] } }).itinerary_data.days.length
+        : 0,
+      standardNoticeCount: countLatestV3Rows('standard_notices'),
+      structuredFactCount: countLatestV3Rows('structured_facts'),
+      rawNoticeLeakRisk: hasSupplierRemarkRawLeakRisk(pkg),
+      v3Status: v3NoticeGate.draftStatus ?? 'none',
+      highRiskReviewNeededCount: v3NoticeGate.blockReasons.length,
+      renderAuditStatus: delivery.publishGate.decision === 'block' ? 'fail' : delivery.publishGate.decision === 'force_required' ? 'warn' : 'pass',
+    });
+    if (v3NoticeGate.blocksApproval) {
+      return NextResponse.json(
+        {
+          error: 'Product Registration V3 gate is not ready. Review the latest draft before approval.',
+          trust_score: approvalTrustScore,
+          v3_gate: {
+            draft_id: latestV3Draft?.id ?? null,
+            status: v3NoticeGate.draftStatus,
+            reasons: v3NoticeGate.blockReasons,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    if (v3NoticeGate.payloadError) {
+      return NextResponse.json(
+        {
+          error: 'Product Registration V3 standard notice payload could not be built.',
+          trust_score: approvalTrustScore,
+          v3_gate: {
+            draft_id: latestV3Draft?.id ?? null,
+            status: v3NoticeGate.draftStatus,
+            payload_error: v3NoticeGate.payloadError,
+          },
+        },
+        { status: 409 },
+      );
+    }
+    if (!latestV3Draft && hasSupplierRemarkRawLeakRisk(pkg)) {
+      return NextResponse.json(
+        {
+          error: 'Supplier REMARK-like notice text is not allowed in customer-visible fields. Re-run Product Registration V3 or approve standard notices first.',
+          trust_score: approvalTrustScore,
+          v3_gate: {
+            draft_id: null,
+            status: 'missing',
+            reasons: ['customer notice fields contain supplier REMARK-like text without V3 standard notice metadata'],
+          },
+        },
+        { status: 409 },
+      );
+    }
     const publishGate = delivery.publishGate;
     if (publishGate.decision === 'block') {
       return NextResponse.json(
         {
-          error: '출판 게이트 차단 상태입니다. 원문/품질 검증 실패를 수정한 뒤 재검증해야 승인할 수 있습니다.',
+          error: '異쒗뙋 寃뚯씠??李⑤떒 ?곹깭?낅땲?? ?먮Ц/?덉쭏 寃利??ㅽ뙣瑜??섏젙?????ш?利앺빐???뱀씤?????덉뒿?덈떎.',
+          trust_score: approvalTrustScore,
           publish_gate: publishGate,
           render_claim_coverage: {
             total: delivery.renderClaimCoverage.total,
@@ -110,7 +182,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
     if (publishGate.decision === 'force_required' && !force) {
       return NextResponse.json(
         {
-          error: '경고가 있는 상품입니다. 감사/품질 리포트를 확인한 뒤 force=true 로 재호출하세요.',
+          error: '寃쎄퀬媛 ?덈뒗 ?곹뭹?낅땲?? 媛먯궗/?덉쭏 由ы룷?몃? ?뺤씤????force=true 濡??ы샇異쒗븯?몄슂.',
+          trust_score: approvalTrustScore,
           publish_gate: publishGate,
           audit_status: (pkg as { audit_status?: string | null }).audit_status ?? null,
           audit_report: publishGate.auditReport ?? null,
@@ -118,7 +191,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         { status: 409 },
       );
     }
-    // marketing_copies에 selected 플래그 업데이트
+    // marketing_copies??selected ?뚮옒洹??낅뜲?댄듃
     const updatedCopies: MarketingCopy[] = Array.isArray(pkg.marketing_copies)
       ? (pkg.marketing_copies as MarketingCopy[]).map(c => ({
           ...c,
@@ -132,6 +205,10 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         status:           'active',
         title:            title?.trim() || pkg.title,
         product_summary:  summary?.trim() ?? null,
+        ...(v3NoticeGate.payload ? {
+          notices_parsed: v3NoticeGate.payload.notices_parsed,
+          customer_notes: v3NoticeGate.payload.customer_notes,
+        } : {}),
         marketing_copies: updatedCopies,
         updated_at:       new Date().toISOString(),
       })
@@ -139,12 +216,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
     if (pkgError) {
       return NextResponse.json(
-        { error: `travel_packages 업데이트 실패: ${pkgError.message}` },
+        { error: `travel_packages ?낅뜲?댄듃 ?ㅽ뙣: ${pkgError.message}` },
         { status: 500 },
       );
     }
 
-    // products 테이블도 active로 동기화 (FK 연결된 경우)
+    // products ?뚯씠釉붾룄 active濡??숆린??(FK ?곌껐??寃쎌슦)
     if (pkg.internal_code) {
       const { error: productError } = await supabaseAdmin
         .from('products')
@@ -152,24 +229,24 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         .eq('internal_code', pkg.internal_code);
 
       if (productError) {
-        // products 업데이트 실패는 경고만 — travel_packages 배포는 유지
-        console.warn('[Approve API] products 상태 업데이트 실패 (비중단):', productError.message);
+        // products ?낅뜲?댄듃 ?ㅽ뙣??寃쎄퀬留???travel_packages 諛고룷???좎?
+        console.warn('[Approve API] products ?곹깭 ?낅뜲?댄듃 ?ㅽ뙣 (鍮꾩쨷??:', productError.message);
       }
     }
 
-    // 2026-05-18 박제 (ERR-approve-silent-fail): post-approve fail-soft 단계를 admin_alerts 로 가시화.
-    //   PR #119 가 upload backfill 만 박았고 approve 후속 처리(MRT/점수/RAG) 는 silent 였음.
-    //   사장님이 "승인 OK 인 줄 알았는데 RAG 0건" 같은 거짓 신호 받던 사고 영구 차단.
+    // 2026-05-18 諛뺤젣 (ERR-approve-silent-fail): post-approve fail-soft ?④퀎瑜?admin_alerts 濡?媛?쒗솕.
+    //   PR #119 媛 upload backfill 留?諛뺤븯怨?approve ?꾩냽 泥섎━(MRT/?먯닔/RAG) ??silent ???
+    //   ?ъ옣?섏씠 "?뱀씤 OK ??以??뚯븯?붾뜲 RAG 0嫄? 媛숈? 嫄곗쭞 ?좏샇 諛쏅뜕 ?ш퀬 ?곴뎄 李⑤떒.
     const postApproveWarnings: Array<{ phase: string; message: string }> = [];
     async function alertWarn(phase: string, e: unknown): Promise<void> {
       const msg = e instanceof Error ? e.message : String(e);
-      console.warn(`[Approve API] ${phase} 실패 (비중단):`, msg);
+      console.warn(`[Approve API] ${phase} ?ㅽ뙣 (鍮꾩쨷??:`, msg);
       postApproveWarnings.push({ phase, message: msg.slice(0, 500) });
       if (!isSupabaseConfigured) return;
       await supabaseAdmin.from('admin_alerts').insert({
         category: 'approve-post-processing',
         severity: 'warning',
-        title: `${phase} 실패: ${id.slice(0, 8)}`,
+        title: `${phase} ?ㅽ뙣: ${id.slice(0, 8)}`,
         message: msg.slice(0, 500),
         ref_type: 'travel_package',
         ref_id: id,
@@ -177,8 +254,8 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       }).then(() => {}, () => {});
     }
 
-    // ── MRT 호텔 인텔 동기화 (일정 호텔만 — 점수·자비스 FAQ용 DB 캐시) ──
-    //   2026-05-18 박제: 중복 호출(2회) 제거.
+    // ?? MRT ?명뀛 ?명뀛 ?숆린??(?쇱젙 ?명뀛留????먯닔쨌?먮퉬??FAQ??DB 罹먯떆) ??
+    //   2026-05-18 諛뺤젣: 以묐났 ?몄텧(2?? ?쒓굅.
     try {
       const { syncPackageHotelIntelByPackageId } = await import('@/lib/mrt-hotel-intel');
       await syncPackageHotelIntelByPackageId(id);
@@ -186,18 +263,18 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       await alertWarn('mrt-hotel-sync', e);
     }
 
-    // ── 점수 그룹 자동 재계산 (신상품 등록 시 기존 상품 점수 자동 하락 보장) ──
+    // ?? ?먯닔 洹몃９ ?먮룞 ?ш퀎??(?좎긽???깅줉 ??湲곗〈 ?곹뭹 ?먯닔 ?먮룞 ?섎씫 蹂댁옣) ??
     let scoreInfo: { group_size: number; group_key: string } | null = null;
     try {
       const result = await recomputeGroupForPackage(id);
       scoreInfo = { group_size: result.group_size, group_key: result.group_key };
     } catch (e) {
-      // 점수 산출 실패해도 approve 자체는 성공 (안전망: 새벽 cron 이 처리)
+      // ?먯닔 ?곗텧 ?ㅽ뙣?대룄 approve ?먯껜???깃났 (?덉쟾留? ?덈꼍 cron ??泥섎━)
       await alertWarn('score-recompute', e);
     }
 
-    // ── 🆕 자비스 RAG 자동 인덱싱 (v5, 2026-04-30) ──
-    // 상품 승인 즉시 자비스가 학습. 실패해도 approve 자체 흐름 막지 않음 (cron 보호)
+    // ?? ?넅 ?먮퉬??RAG ?먮룞 ?몃뜳??(v5, 2026-04-30) ??
+    // ?곹뭹 ?뱀씤 利됱떆 ?먮퉬?ㅺ? ?숈뒿. ?ㅽ뙣?대룄 approve ?먯껜 ?먮쫫 留됱? ?딆쓬 (cron 蹂댄샇)
     let ragInfo: { inserted: number; skipped: number; failed: number } | null = null;
     try {
       ragInfo = await indexPackage(id);
@@ -205,7 +282,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       await alertWarn('rag-index', e);
     }
 
-    // ISR 캐시 즉시 무효화 — 모바일 /packages 즉시 반영
+    // ISR 罹먯떆 利됱떆 臾댄슚????紐⑤컮??/packages 利됱떆 諛섏쁺
     try {
       revalidatePath('/packages');
       revalidatePath(`/packages/${id}`);
@@ -217,7 +294,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       await alertWarn('revalidate-path', e);
     }
 
-    // ── 🆕 정책 기반 자동 트리거 ──
+    // ?? ?넅 ?뺤콉 湲곕컲 ?먮룞 ?몃━嫄???
     let dripInfo: { queued: number; angles: string[] } | null = null;
     let cardNewsInfo: { triggered: boolean; reason?: string } | null = null;
     let orchestratorInfo: { triggered: boolean; reason?: string } | null = null;
@@ -230,11 +307,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       reason?: string;
     } | null = null;
 
-    // 정책 조회
+    // ?뺤콉 議고쉶
     const { getBlogPublishingPolicy } = await import('@/lib/blog-scheduler');
     const policy = await getBlogPublishingPolicy('global').catch(() => null);
 
-    // 1) Multi-angle drip (정책과 무관 — 항상 ON, 가성비 좋음)
+    // 1) Multi-angle drip (?뺤콉怨?臾닿? ????긽 ON, 媛?깅퉬 醫뗭쓬)
     try {
       const { enqueueMultiAngleDrip } = await import('@/lib/multi-angle-drip');
       const drip = await enqueueMultiAngleDrip(id);
@@ -248,9 +325,9 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       await alertWarn('multi-angle-drip', e);
     }
 
-    // 2) 카드뉴스 자동 변형 (정책 ON 시 + DEEPSEEK_API_KEY 있을 때)
-    // HTTP로 /api/card-news/generate-variants 를 치면 rawText 필수 + 어드민 인증이 필요해 항상 실패함.
-    // 오케스트레이터와 동일: agent_actions 에 적재 → /api/cron/agent-executor 가 executeGenerateVariantsJob 실행.
+    // 2) 移대뱶?댁뒪 ?먮룞 蹂??(?뺤콉 ON ??+ DEEPSEEK_API_KEY ?덉쓣 ??
+    // HTTP濡?/api/card-news/generate-variants 瑜?移섎㈃ rawText ?꾩닔 + ?대뱶誘??몄쬆???꾩슂????긽 ?ㅽ뙣??
+    // ?ㅼ??ㅽ듃?덉씠?곗? ?숈씪: agent_actions ???곸옱 ??/api/cron/agent-executor 媛 executeGenerateVariantsJob ?ㅽ뻾.
     if (policy?.auto_trigger_card_news && getSecret('DEEPSEEK_API_KEY')) {
       try {
         const { data: pkgRow, error: pkgRowErr } = await supabaseAdmin
@@ -260,7 +337,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
           .single();
 
         if (pkgRowErr || !pkgRow) {
-          cardNewsInfo = { triggered: false, reason: pkgRowErr?.message ?? '상품 재조회 실패' };
+          cardNewsInfo = { triggered: false, reason: pkgRowErr?.message ?? '?곹뭹 ?ъ“???ㅽ뙣' };
         } else {
           const rawText = [
             pkgRow.title,
@@ -272,7 +349,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
             .join('\n\n');
 
           if (!rawText.trim()) {
-            cardNewsInfo = { triggered: false, reason: '카드뉴스용 원문이 비어 있음(제목·요약·하이라이트)' };
+            cardNewsInfo = { triggered: false, reason: '移대뱶?댁뒪???먮Ц??鍮꾩뼱 ?덉쓬(?쒕ぉ쨌?붿빟쨌?섏씠?쇱씠??' };
           } else {
             const { error: actionErr } = await supabaseAdmin.from('agent_actions').insert({
               agent_type: 'package_approval',
@@ -295,14 +372,14 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         cardNewsInfo = { triggered: false, reason: e instanceof Error ? e.message : 'unknown' };
       }
     } else if (policy && !policy.auto_trigger_card_news) {
-      cardNewsInfo = { triggered: false, reason: 'policy disabled — /admin/blog/policy에서 활성' };
+      cardNewsInfo = { triggered: false, reason: 'policy disabled ??/admin/blog/policy?먯꽌 ?쒖꽦' };
     }
 
-    // 3) 7플랫폼 orchestrator (정책 ON 시 + GOOGLE_AI_API_KEY 있을 때 — 건당 ~$0.02)
+    // 3) 7?뚮옯??orchestrator (?뺤콉 ON ??+ GOOGLE_AI_API_KEY ?덉쓣 ????嫄대떦 ~$0.02)
     if (policy?.auto_trigger_orchestrator && getSecret('GOOGLE_AI_API_KEY')) {
       try {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
-        // 비동기 트리거 — 응답 안 기다림 (orchestrator는 30~120s 소요)
+        // 鍮꾨룞湲??몃━嫄????묐떟 ??湲곕떎由?(orchestrator??30~120s ?뚯슂)
         fetch(`${baseUrl}/api/orchestrator/auto-publish`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -313,11 +390,11 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
         orchestratorInfo = { triggered: false, reason: e instanceof Error ? e.message : 'unknown' };
       }
     } else if (policy && !policy.auto_trigger_orchestrator) {
-      orchestratorInfo = { triggered: false, reason: 'policy disabled — /admin/blog/policy에서 활성' };
+      orchestratorInfo = { triggered: false, reason: 'policy disabled ??/admin/blog/policy?먯꽌 ?쒖꽦' };
     }
 
-    // 4) Ad OS product autopilot: 시나리오, 블로그 진화 큐, 검색광고 키워드 플랜 자동 생성.
-    //    guarded+apply는 내부 DB 후보만 만들고 외부 광고비를 쓰지 않는다.
+    // 4) Ad OS product autopilot: ?쒕굹由ъ삤, 釉붾줈洹?吏꾪솕 ?? 寃?됯킅怨??ㅼ썙???뚮옖 ?먮룞 ?앹꽦.
+    //    guarded+apply???대? DB ?꾨낫留?留뚮뱾怨??몃? 愿묎퀬鍮꾨? ?곗? ?딅뒗??
     try {
       const { runAdOsProductAutopilot } = await import('@/lib/ad-os-product-autopilot');
       const plan = await runAdOsProductAutopilot({
@@ -338,7 +415,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       await alertWarn('ad-os-product-autopilot', e);
     }
 
-    // VA 이메일 알림 — fire-and-forget (비중단)
+    // VA ?대찓???뚮┝ ??fire-and-forget (鍮꾩쨷??
     const vaNotification = await sendVaContentPackage(id).catch(e => {
       console.warn('[Approve] VA email failed (non-blocking):', e instanceof Error ? e.message : e);
       return { sent: false, reason: 'error' };
@@ -355,12 +432,12 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       orchestrator: orchestratorInfo,
       search_ads: searchAdsInfo,
       va_notification: vaNotification,
-      // 2026-05-18 박제: post-approve fail-soft 단계 실패 가시화 (admin_alerts 와 일치)
+      // 2026-05-18 諛뺤젣: post-approve fail-soft ?④퀎 ?ㅽ뙣 媛?쒗솕 (admin_alerts ? ?쇱튂)
       warnings: postApproveWarnings.length > 0 ? postApproveWarnings : undefined,
     });
   }
 
-  // ── 반려 처리 ─────────────────────────────────────────────────────────────
+  // ?? 諛섎젮 泥섎━ ?????????????????????????????????????????????????????????????
 
   const { error: rejectError } = await supabaseAdmin
     .from('travel_packages')
@@ -372,7 +449,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   if (rejectError) {
     return NextResponse.json(
-      { error: `반려 처리 실패: ${rejectError.message}` },
+      { error: `諛섎젮 泥섎━ ?ㅽ뙣: ${rejectError.message}` },
       { status: 500 },
     );
   }
@@ -384,7 +461,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       .eq('internal_code', pkg.internal_code);
   }
 
-  // ── reject: 점수 캐시에서 즉시 제거 (그룹 내 다른 상품들 다음 cron에서 자동 재계산) ──
+  // ?? reject: ?먯닔 罹먯떆?먯꽌 利됱떆 ?쒓굅 (洹몃９ ???ㅻⅨ ?곹뭹???ㅼ쓬 cron?먯꽌 ?먮룞 ?ш퀎?? ??
   try {
     await supabaseAdmin.from('package_scores').delete().eq('package_id', id);
     revalidatePath('/packages');
@@ -393,7 +470,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
       (pkg as { short_code?: string | null }).short_code ?? null,
     );
   } catch (e) {
-    console.warn('[Reject API] 점수 캐시 정리 실패 (비중단):', e instanceof Error ? e.message : e);
+    console.warn('[Reject API] ?먯닔 罹먯떆 ?뺣━ ?ㅽ뙣 (鍮꾩쨷??:', e instanceof Error ? e.message : e);
   }
 
   return NextResponse.json({ ok: true, status: 'draft' });

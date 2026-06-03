@@ -1,5 +1,10 @@
 import type { V3SourceLine, V3StructurePlan } from './types';
 import { V3StructurePlanSchema } from './plan-schema';
+import {
+  collectItineraryHeaderStarts,
+  collectPkgBlockStarts,
+  collectVariantCatalogBlockStarts,
+} from '@/lib/parser/catalog-pre-split';
 
 const FLIGHT_CODE_RE = /\b[A-Z0-9]{2}\s*\d{3,4}\b/g;
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -14,7 +19,49 @@ function compact(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
 
+function lineNumberForCharOffset(lines: V3SourceLine[], offset: number): number {
+  const found = [...lines].reverse().find(line => line.charStart <= offset);
+  return found?.lineNumber ?? 1;
+}
+
+function titleHintFromBoundary(lines: V3SourceLine[], startLine: number, endLine: number): string {
+  return compact(
+    lines
+      .slice(startLine - 1, endLine)
+      .map(line => line.quote.trim())
+      .find(Boolean) ?? 'Untitled product',
+  );
+}
+
+function collectCatalogBoundaryStarts(raw: string): number[] {
+  const variantStarts = collectVariantCatalogBlockStarts(raw);
+  const itineraryStarts = collectItineraryHeaderStarts(raw);
+  const pkgStarts = collectPkgBlockStarts(raw);
+  const starts = variantStarts.length >= 2
+    ? variantStarts
+    : itineraryStarts.length >= 2
+      ? itineraryStarts
+      : pkgStarts;
+  return [...new Set(starts)].sort((a, b) => a - b);
+}
+
 function collectBoundaries(lines: V3SourceLine[]): V3StructurePlan['product_boundaries'] {
+  const raw = lines.map(line => line.quote).join('\n');
+  const catalogStarts = collectCatalogBoundaryStarts(raw);
+  if (catalogStarts.length >= 2) {
+    return catalogStarts.map((start, index) => {
+      const startLine = lineNumberForCharOffset(lines, start);
+      const nextStart = catalogStarts[index + 1];
+      const endLine = nextStart == null ? lines.length : Math.max(startLine, lineNumberForCharOffset(lines, nextStart) - 1);
+      return {
+        index,
+        line_start: startLine,
+        line_end: endLine,
+        title_hint: titleHintFromBoundary(lines, startLine, endLine),
+      };
+    });
+  }
+
   const starts = lines.filter(line => PRODUCT_HEADER_RE.test(line.quote.trim()));
   if (starts.length <= 1) {
     return [{

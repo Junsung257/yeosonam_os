@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { evidenceFromLines } from './source-line-index';
 import { extractStandardNoticesFromRemarkLines } from './standard-notices';
+import { extractStructuredFactsFromSupplierText } from './structured-facts';
 
 const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
@@ -27,7 +28,7 @@ const OPTION_RE = /option|optional|\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9
 const SHOPPING_RE = /shopping|\uc1fc\ud551|\uba74\uc138|\uc13c\ud130/i;
 const FREE_TIME_RE = /free\s*time|\uc790\uc720\s*\uc2dc\uac04|\ud734\uc2dd/i;
 const NOTICE_RE = /include|exclude|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ucd5c\uc18c|\uc8fc\uc758|\uc548\ub0b4|notice/i;
-const REMARK_RE = /비고|주의사항|remark|안내|공지|싱글\s*차지|여권|전자담배|룸배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동|공항미팅|관광지\s*방문|현지\s*가이드|차량에서\s*대체/i;
+const REMARK_RE = /비고|주의\s*사항|remark|안내|공지|싱글\s*차지|여권|전자\s*담배|룸\s*배정|객실\s*배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동|공항\s*미팅|관광지\s*방문|현지\s*가이드|차량에서\s*설명|가이드|기사\s*팁|쇼핑|선택\s*관광|노\s*옵션|노\s*쇼핑|노\s*팁/i;
 const ATTRACTION_DECOY_RE = PRODUCT_HEADER_RE;
 
 function normalizePrice(token: string): number {
@@ -130,7 +131,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   let inRemarkSection = false;
   for (const line of sectionLines) {
     const trimmed = line.quote.trim();
-    if (/^(REMARK|비고|주의사항|공지사항)\s*$/i.test(trimmed)) {
+    if (/^(REMARK|비고|주의\s*사항|공지\s*사항)\s*$/i.test(trimmed)) {
       inRemarkSection = true;
       continue;
     }
@@ -200,6 +201,18 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     .filter(line => REMARK_RE.test(line.quote))
     .map(line => ({ text: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
   const standard_notices = extractStandardNoticesFromRemarkLines(remarkLines);
+  const structured = extractStructuredFactsFromSupplierText({
+    lines: sectionLines,
+    title: boundary.title_hint,
+    rawText: sectionLines.map(line => line.quote).join('\n'),
+  });
+  const mergedStandardNotices = [...standard_notices];
+  for (const notice of structured.standardNotices) {
+    const key = `${notice.category}:${notice.template_key}:${notice.standard_text}`;
+    if (!mergedStandardNotices.some(existing => `${existing.category}:${existing.template_key}:${existing.standard_text}` === key)) {
+      mergedStandardNotices.push(notice);
+    }
+  }
   const minDepartureLine = sectionLines.find(line => /minimum|min\.?|\ucd5c\uc18c/i.test(line.quote) && /\d+/.test(line.quote));
   const minimum_departure = minDepartureLine
     ? {
@@ -228,7 +241,8 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     exclusions,
     options,
     shopping,
-    standard_notices,
+    structured_facts: structured.structuredFacts,
+    standard_notices: mergedStandardNotices,
     minimum_departure,
     evidence_coverage: {
       price: prices.length > 0,
