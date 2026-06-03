@@ -57,14 +57,20 @@ export default function SeoMonitorDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const controller = new AbortController();
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
       try {
         const response = await fetch('/api/admin/seo-monitor', {
           credentials: 'same-origin',
+          signal: controller.signal,
         });
         const payload = (await response.json().catch(() => null)) as SeoMonitorResponse | null;
+        if (controller.signal.aborted) {
+          return;
+        }
         if (!response.ok) {
           setError(payload?.error ?? '데이터 로딩 실패');
           setSnapshots([]);
@@ -74,13 +80,22 @@ export default function SeoMonitorDashboard() {
         setSnapshots(normalizeSnapshots(payload?.snapshots));
         setAlerts(payload?.alerts ?? []);
       } catch (e) {
+        if (controller.signal.aborted) {
+          return;
+        }
         setError(e instanceof Error ? e.message : '데이터 로딩 실패');
+        setSnapshots([]);
+        setAlerts([]);
       } finally {
-        setLoading(false);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchData();
+
+    return () => controller.abort();
   }, []);
 
   if (loading) {
