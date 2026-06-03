@@ -5,16 +5,17 @@
  * 최근 30일 ledger_entries 중 currency != 'KRW' 항목 집계
  * 반환: 총 환차익 / 환차손 / 순 환차손익
  */
-import { NextResponse } from 'next/server';
+import { type NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const dynamic = 'force-dynamic';
 
-const getHandler = async () => {
+const getHandler = async (): Promise<NextResponse> => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ data: null, reason: 'Supabase 미설정' });
+    return apiResponse({ data: null, reason: 'Supabase 미설정' });
   }
 
   try {
@@ -61,7 +62,7 @@ const getHandler = async () => {
       byCurrency[cur].total_foreign += Number(row.foreign_amount ?? 0);
     }
 
-    return NextResponse.json({
+    return apiResponse({
       period: {
         since,
         until: new Date().toISOString(),
@@ -79,7 +80,7 @@ const getHandler = async () => {
     });
   } catch (err) {
     const message = sanitizeDbError(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return apiResponse({ error: message }, { status: 500 });
   }
 }
 
