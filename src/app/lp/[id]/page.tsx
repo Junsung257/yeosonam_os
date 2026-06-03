@@ -14,6 +14,10 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function defaultSocialImage(): string {
+  return `${siteBaseUrl()}/og-image.png`;
+}
+
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
@@ -45,6 +49,17 @@ export async function generateMetadata(
       title: '상품 | 여소남',
       robots: { index: false, follow: true },
       alternates: { canonical },
+      openGraph: {
+        title: '상품 | 여소남',
+        url: canonical,
+        type: 'website',
+        images: [{ url: defaultSocialImage(), width: 1200, height: 630 }],
+      },
+      twitter: {
+        card: 'summary_large_image',
+        title: '상품 | 여소남',
+        images: [defaultSocialImage()],
+      },
     };
   }
 
@@ -59,10 +74,7 @@ export async function generateMetadata(
   const desc =
     (data.customMessage.default.subline || fallbackTitle).slice(0, 160) || rawTitle;
   const hero = data.heroImageA?.trim();
-  const ogImages =
-    hero && isSafeImageSrc(hero)
-      ? [{ url: hero, alt: data.destination || fallbackTitle }]
-      : undefined;
+  const socialImage = hero && isSafeImageSrc(hero) ? hero : defaultSocialImage();
 
   return {
     title,
@@ -73,13 +85,13 @@ export async function generateMetadata(
       description: desc,
       url: canonical,
       type: 'website',
-      ...(ogImages ? { images: ogImages } : {}),
+      images: [{ url: socialImage, width: 1200, height: 630, alt: data.destination || fallbackTitle }],
     },
     twitter: {
-      card: ogImages ? 'summary_large_image' : 'summary',
+      card: 'summary_large_image',
       title: rawTitle,
       description: desc,
-      ...(ogImages ? { images: [ogImages[0].url] } : {}),
+      images: [socialImage],
     },
   };
 }
