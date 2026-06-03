@@ -8,9 +8,11 @@
  * GET /api/cron/legacy-sections-backfill?dry=1  (후보 목록만)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { withCronGuard } from '@/lib/cron-auth';
 import { runLegacySectionsBackfillBatch } from '@/lib/legacy-sections-backfill-batch';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -21,17 +23,17 @@ const getHandler = async (request: NextRequest) => {
 
   try {
     const batch = await runLegacySectionsBackfillBatch({ dryRun: dry });
-    return NextResponse.json({
+    return apiResponse({
       ...batch,
       ok: true,
       dryRun: dry,
       elapsed_ms: Date.now() - start,
     });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       {
         ok: false,
-        error: err instanceof Error ? err.message : 'legacy-sections-backfill 실패',
+        error: sanitizeDbError(err, 'Legacy sections backfill failed'),
         elapsed_ms: Date.now() - start,
       },
       { status: 500 },
