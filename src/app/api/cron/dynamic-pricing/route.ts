@@ -1,7 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const maxDuration = 120;
 
@@ -44,7 +46,7 @@ interface PkgRow {
 
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
-  if (!isSupabaseConfigured) return NextResponse.json({ skipped: true });
+  if (!isSupabaseConfigured || !supabaseAdmin) return apiResponse({ skipped: true, reason: 'Supabase not configured' });
 
   try {
     const today = new Date();
@@ -60,7 +62,7 @@ export async function GET(request: NextRequest) {
       .eq('status', 'approved');
 
     if (pkgErr) throw pkgErr;
-    if (!packages?.length) return NextResponse.json({ processed: 0 });
+    if (!packages?.length) return apiResponse({ processed: 0 });
 
     // 2. D-90 이내 출발 패키지 필터
     const upcoming = (packages as PkgRow[]).filter((pkg) =>
@@ -129,7 +131,7 @@ export async function GET(request: NextRequest) {
           view_count_weekly_snap: snapOutdated ? pkg.view_count : pkg.view_count_weekly_snap,
           view_count_snap_at: snapOutdated ? nowIso : pkg.view_count_snap_at!,
         });
-        applied.push(`${pkg.title}(${pkg.destination}) +${Math.round(matched.markup * 100)}% [${matched.reason}]`);
+        applied.push(`pkg:${pkg.id.slice(0, 8)} +${Math.round(matched.markup * 100)}% [${matched.reason}]`);
       } else {
         // 조건 해소 시 마크업 초기화
         updates.push({
@@ -165,7 +167,7 @@ export async function GET(request: NextRequest) {
         ),
       );
       results.forEach((res, idx) => {
-        if (res.error) updateErrors.push(`${chunk[idx].id}: ${res.error.message}`);
+        if (res.error) updateErrors.push(`pkg:${chunk[idx].id.slice(0, 8)} ${sanitizeDbError(res.error)}`);
       });
     }
     if (updateErrors.length > 0) {
@@ -180,7 +182,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({
+    return apiResponse({
       checked: packages.length,
       upcoming: upcoming.length,
       markupApplied: applied.length,
@@ -188,8 +190,8 @@ export async function GET(request: NextRequest) {
       applied,
     });
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+    const msg = sanitizeDbError(err, 'Dynamic pricing failed');
     await sendSlackAlert(`[dynamic-pricing] 크론 실패: ${msg}`);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    return apiResponse({ error: msg }, { status: 500 });
   }
 }
