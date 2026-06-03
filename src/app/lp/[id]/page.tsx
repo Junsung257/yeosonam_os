@@ -13,6 +13,10 @@ function siteBaseUrl(): string {
     .replace(/\/+$/, '');
 }
 
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
+}
+
 async function safeLoadLpPackage(id: string) {
   const normalizedId = id.trim();
   if (!normalizedId) return null;
@@ -26,14 +30,15 @@ async function safeLoadLpPackage(id: string) {
 
 export async function generateMetadata(
   props: {
-    params: Promise<{ id: string }>;
+    params: Promise<{ id?: string | string[] }>;
   }
 ): Promise<Metadata> {
   const params = await props.params;
   const base = siteBaseUrl();
-  const encodedId = encodeURIComponent(params.id.trim());
+  const id = getRouteParam(params.id);
+  const encodedId = encodeURIComponent(id);
   const canonical = `${base}/lp/${encodedId}`;
-  const data = await safeLoadLpPackage(params.id);
+  const data = await safeLoadLpPackage(id);
   if (!data) {
     return {
       title: '상품 | 여소남',
@@ -78,9 +83,10 @@ export async function generateMetadata(
   };
 }
 
-export default async function LpPage(props: { params: Promise<{ id: string }> }) {
+export default async function LpPage(props: { params: Promise<{ id?: string | string[] }> }) {
   const params = await props.params;
-  const data = await safeLoadLpPackage(params.id);
+  const id = getRouteParam(params.id);
+  const data = await safeLoadLpPackage(id);
   if (!data) notFound();
 
   let initialNotices: NoticeBlock[] = [];
