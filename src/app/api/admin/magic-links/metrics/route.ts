@@ -14,8 +14,10 @@
  * 데이터: magic_action_tokens 만 사용 (created_at 기준 N일 윈도우)
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const GET = withAdminGuard(async (req: NextRequest) => {
@@ -30,7 +32,7 @@ export const GET = withAdminGuard(async (req: NextRequest) => {
     .limit(10_000);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
 
   type Row = {
@@ -67,7 +69,7 @@ export const GET = withAdminGuard(async (req: NextRequest) => {
     byChannel[ch] = (byChannel[ch] ?? 0) + 1;
   }
 
-  return NextResponse.json({
+  return apiResponse({
     windowDays: days,
     since,
     mintedCount,

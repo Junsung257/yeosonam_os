@@ -5,8 +5,10 @@
  * 검색 옵션: bookingId. 없으면 최근 발급 50개.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin } from '@/lib/supabase';
 
 export const GET = withAdminGuard(async (req: NextRequest) => {
@@ -26,7 +28,7 @@ export const GET = withAdminGuard(async (req: NextRequest) => {
 
   const { data, error } = await q;
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
   }
-  return NextResponse.json({ tokens: data ?? [] });
+  return apiResponse({ tokens: data ?? [] });
 });
