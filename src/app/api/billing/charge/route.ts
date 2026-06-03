@@ -1,19 +1,19 @@
 /**
  * POST /api/billing/charge
  *
- * 빌링키로 자동결제 실행 (Inngest monthly cron에서 호출).
- * 한 테넌트에 대해 한 달치 요금 청구.
+ * Runs a TossPayments billing-key charge for an active tenant subscription.
+ * Intended callers are trusted schedulers or admin automation with ADMIN_API_TOKEN.
  *
- * Body: { tenant_id, amount_krw, order_id?, order_name? }
- *
- * 환경변수: TOSS_SECRET_KEY
+ * Body: { tenant_id, amount_krw?, order_id?, order_name? }
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
+import { isValidAdminApiToken } from '@/lib/api-auth';
+import { decrypt } from '@/lib/encryption';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { decrypt } from '@/lib/encryption';
-import { isValidAdminApiToken } from '@/lib/api-auth';
 
 const TOSS_BASE = 'https://api.tosspayments.com/v1';
 
@@ -24,34 +24,50 @@ interface SubscriptionRow {
   plan_type: string;
 }
 
+interface ChargeRequestBody {
+  tenant_id?: string;
+  amount_krw?: number;
+  order_id?: string;
+  order_name?: string;
+}
+
+interface TossBillingResponse {
+  paymentKey?: string;
+  status?: string;
+  message?: string;
+  code?: string;
+}
+
 export async function POST(request: NextRequest) {
-  // Inngest 또는 ADMIN_API_TOKEN 인증 필수 (청구 권한)
   if (!isValidAdminApiToken(request)) {
-    return NextResponse.json(
-      { error: '권한이 없습니다 (x-admin-token 필수)' },
-      { status: 401 }
+    return apiResponse(
+      { error: '관리자 API 토큰이 필요합니다.' },
+      { status: 401 },
     );
   }
 
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'DB가 설정되지 않았습니다.' }, { status: 503 });
+  }
 
   const secretKey = getSecret('TOSS_SECRET_KEY');
-  if (!secretKey) return NextResponse.json({ error: 'TOSS_SECRET_KEY 미설정' }, { status: 503 });
+  if (!secretKey) {
+    return apiResponse({ error: '결제 설정이 완료되지 않았습니다.' }, { status: 503 });
+  }
 
-  let body: { tenant_id?: string; amount_krw?: number; order_id?: string; order_name?: string };
+  let body: ChargeRequestBody;
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: 'JSON 파싱 실패' }, { status: 400 });
+    return apiResponse({ error: 'JSON 파싱에 실패했습니다.' }, { status: 400 });
   }
 
   const { tenant_id, amount_krw: overrideAmount, order_id, order_name } = body;
 
   if (!tenant_id) {
-    return NextResponse.json({ error: 'tenant_id 필수' }, { status: 400 });
+    return apiResponse({ error: 'tenant_id는 필수입니다.' }, { status: 400 });
   }
 
-  // 구독 정보 조회
   const { data: sub, error: subErr } = await supabaseAdmin
     .from('tenant_subscriptions')
     .select('toss_billing_key, toss_customer_key, monthly_price_krw, plan_type')
@@ -59,23 +75,30 @@ export async function POST(request: NextRequest) {
     .eq('status', 'active')
     .maybeSingle();
 
-  if (subErr) return NextResponse.json({ error: subErr.message }, { status: 500 });
-  if (!sub) return NextResponse.json({ error: '활성 구독 없음' }, { status: 404 });
+  if (subErr) {
+    console.error('[billing/charge] subscription lookup failed:', sanitizeDbError(subErr));
+    return apiResponse({ error: '구독 조회에 실패했습니다.' }, { status: 500 });
+  }
+
+  if (!sub) {
+    return apiResponse({ error: '활성 구독이 없습니다.' }, { status: 404 });
+  }
 
   const { toss_billing_key, toss_customer_key, monthly_price_krw } = sub as SubscriptionRow;
   if (!toss_billing_key || !toss_customer_key) {
-    return NextResponse.json({ error: '빌링키 미등록' }, { status: 422 });
+    return apiResponse({ error: '빌링키가 등록되지 않았습니다.' }, { status: 422 });
   }
 
   const amount = overrideAmount ?? monthly_price_krw ?? 0;
-  if (amount <= 0) return NextResponse.json({ error: '결제 금액 0원 이하' }, { status: 400 });
+  if (amount <= 0) {
+    return apiResponse({ error: '결제 금액은 0보다 커야 합니다.' }, { status: 400 });
+  }
 
   const billingKey = decrypt(toss_billing_key);
   const now = new Date();
   const chargeOrderId = order_id ?? `${tenant_id.slice(0, 8)}-${now.toISOString().slice(0, 7)}`;
-  const chargeOrderName = order_name ?? `여소남 OS 구독 (${now.toISOString().slice(0, 7)})`;
+  const chargeOrderName = order_name ?? `여소남OS 구독 (${now.toISOString().slice(0, 7)})`;
 
-  // TossPayments 자동결제 실행
   let tossRes: Response;
   try {
     tossRes = await fetch(`${TOSS_BASE}/billing/${billingKey}`, {
@@ -93,21 +116,13 @@ export async function POST(request: NextRequest) {
       }),
     });
   } catch (fetchErr) {
-    const msg = fetchErr instanceof Error ? fetchErr.message : 'Toss 네트워크 오류';
-    console.error('[billing/charge] Toss fetch 실패:', msg);
-    return NextResponse.json({ error: msg }, { status: 502 });
+    console.error('[billing/charge] Toss fetch failed:', sanitizeDbError(fetchErr));
+    return apiResponse({ error: '결제사 호출에 실패했습니다.' }, { status: 502 });
   }
 
-  const tossJson = await tossRes.json() as {
-    paymentKey?: string;
-    status?: string;
-    message?: string;
-    code?: string;
-  };
-
+  const tossJson = await tossRes.json() as TossBillingResponse;
   const billedStatus = tossRes.ok && tossJson.status === 'DONE' ? 'done' : 'failed';
 
-  // 결제 이력 기록
   await supabaseAdmin.from('billing_history').insert({
     tenant_id,
     toss_payment_key: tossJson.paymentKey ?? null,
@@ -117,7 +132,6 @@ export async function POST(request: NextRequest) {
   });
 
   if (billedStatus === 'done') {
-    // 다음 결제일 업데이트 (+1개월)
     const nextBilling = new Date(now);
     nextBilling.setMonth(nextBilling.getMonth() + 1);
 
@@ -126,7 +140,7 @@ export async function POST(request: NextRequest) {
       .update({ next_billing_date: nextBilling.toISOString().slice(0, 10) })
       .eq('tenant_id', tenant_id);
 
-    return NextResponse.json({
+    return apiResponse({
       ok: true,
       payment_key: tossJson.paymentKey,
       amount,
@@ -134,14 +148,14 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // 결제 실패 → past_due 상태로 전환
   await supabaseAdmin
     .from('tenant_subscriptions')
     .update({ status: 'past_due' })
     .eq('tenant_id', tenant_id);
 
-  return NextResponse.json(
-    { error: tossJson.message ?? '자동결제 실패', code: tossJson.code },
+  console.error('[billing/charge] Toss billing failed:', sanitizeDbError(tossJson.message ?? tossJson.code));
+  return apiResponse(
+    { error: '자동결제에 실패했습니다.', code: tossJson.code },
     { status: 502 },
   );
 }
