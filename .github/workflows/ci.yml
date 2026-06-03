@@ -32,6 +32,8 @@ jobs:
 
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
 
       - name: ESLint (non-blocking legacy debt)
         continue-on-error: true

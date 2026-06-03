@@ -150,9 +150,12 @@ function extractRows(rawText: string, options: VerticalGradePriceOptions = {}): 
 }
 
 function weekdayForIso(date: string): string | null {
-  const d = new Date(`${date}T00:00:00+09:00`);
+  const parts = date.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(part => !Number.isFinite(part))) return null;
+  const [year, month, day] = parts;
+  const d = new Date(Date.UTC(year, month - 1, day));
   if (Number.isNaN(d.getTime())) return null;
-  return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getDay()] ?? null;
+  return ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'][d.getUTCDay()] ?? null;
 }
 
 function inferDurationDaysFromText(text?: string | null): number | null {
