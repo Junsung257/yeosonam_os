@@ -971,3 +971,13 @@ Ad OS V1 완료는 다음 증거로 판단한다.
   - Read-only endpoint.
   - No external ad platform write path or database mutation is introduced.
   - Failure responses remain JSON and mark the endpoint as read-only with `external_api_write=false`.
+
+## 57. 2026-06-03 Ad OS V421-V440 completion audit API hardening
+
+- Hardened `GET /api/admin/ad-os/completion-audit` with an 8-second timeout around the shared summary builder.
+- Purpose:
+  - Prevents monitor calls from hanging when the summary data plane is slow.
+  - Keeps failure responses machine-readable with `status=blocked` and a recovery next action.
+- Safety principle:
+  - Read-only endpoint remains read-only.
+  - No external ad platform write path or database mutation is introduced.
