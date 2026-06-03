@@ -1,30 +1,38 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { logAndSanitize } from '@/lib/error-sanitizer';
+import { NextRequest } from 'next/server';
+import { apiResponse } from '@/lib/api-response';
 import { withAdminGuard } from '@/lib/admin-guard';
+import { logAndSanitize } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
+import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
-// POST: 분쟁 플래그 토글
 const postHandler = async (
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) {
+    return apiResponse({ error: 'SUPABASE_NOT_CONFIGURED' }, { status: 503 });
+  }
 
   try {
     const { id } = params;
-    const body = await request.json();
-    const { dispute_flag, dispute_note } = body;
-
-    if (typeof dispute_flag !== 'boolean') {
-      return NextResponse.json({ error: 'dispute_flag (boolean) 필수' }, { status: 400 });
+    let body: { dispute_flag?: unknown; dispute_note?: unknown };
+    try {
+      body = await request.json();
+    } catch {
+      return apiResponse({ error: 'INVALID_JSON' }, { status: 400 });
     }
 
+    const { dispute_flag, dispute_note } = body;
+    if (typeof dispute_flag !== 'boolean') {
+      return apiResponse({ error: 'DISPUTE_FLAG_REQUIRED' }, { status: 400 });
+    }
+
+    const note = typeof dispute_note === 'string' ? dispute_note : null;
     const { data, error } = await supabaseAdmin
       .from('bookings')
       .update({
         dispute_flag,
-        dispute_note: dispute_note || null,
+        dispute_note: note || null,
       })
       .eq('id', id)
       .select('id, dispute_flag, dispute_note')
@@ -32,24 +40,23 @@ const postHandler = async (
 
     if (error) throw error;
 
-    // 감사 로그
     await supabaseAdmin.from('audit_logs').insert({
       action: dispute_flag ? 'DISPUTE_FLAG_ON' : 'DISPUTE_FLAG_OFF',
       target_type: 'booking',
       target_id: id,
       description: dispute_flag
-        ? `분쟁 플래그 설정: ${dispute_note || '사유 없음'}`
-        : '분쟁 플래그 해제',
+        ? 'dispute flag set'
+        : 'dispute flag cleared',
     });
 
-    return NextResponse.json({ booking: data });
+    return apiResponse({ booking: data });
   } catch (error) {
     logError('[admin/bookings/dispute] flag toggle failed', error);
-    return NextResponse.json(
-      { error: logAndSanitize('admin-bookings-dispute', error, '처리 실패') },
-      { status: 500 }
+    return apiResponse(
+      { error: logAndSanitize('admin-bookings-dispute', error, 'REQUEST_FAILED') },
+      { status: 500 },
     );
   }
-}
+};
 
 export const POST = withAdminGuard(postHandler);
