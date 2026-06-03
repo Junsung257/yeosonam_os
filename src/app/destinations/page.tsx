@@ -9,7 +9,8 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 600;
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 export const metadata: Metadata = {
   title: '여행지 완벽 가이드 | 목적지별 총정리',
