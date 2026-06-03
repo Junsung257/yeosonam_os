@@ -19,24 +19,37 @@ interface ReelRecord {
 }
 
 interface PageProps {
-  params: Promise<{ token: string }>;
+  params: Promise<{ token?: string | string[] }>;
+}
+
+function siteBaseUrl(): string {
+  return (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+    .replace(/\/+$/, '');
+}
+
+function getRouteParam(value: string | string[] | undefined): string {
+  return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
 export async function generateMetadata({ params }: PageProps) {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = getRouteParam(rawToken);
+  const url = `${siteBaseUrl()}/reels/${encodeURIComponent(token)}`;
   return {
     title: '여행 추억 릴스',
     description: `여소남과 함께한 여행 추억을 공유하세요`,
     openGraph: {
       title: '여행 추억 릴스',
       description: '여소남과 함께한 특별한 여행 순간들',
-      url: `https://yeosonam.com/reels/${token}`,
+      url,
     },
   };
 }
 
 export default async function ReelsTokenPage({ params }: PageProps) {
-  const { token } = await params;
+  const { token: rawToken } = await params;
+  const token = getRouteParam(rawToken);
+  if (!token) notFound();
 
   if (!isSupabaseConfigured) {
     return (
