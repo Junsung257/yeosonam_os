@@ -1,23 +1,10 @@
 /**
- * 여소남 OS — 외부 REST API 키 미들웨어
- *
- * 모든 /api/v1/* 엔드포인트에 적용한다.
- * Authorization: Bearer <key> 헤더를 검증하고 tenant/scopes 를 context 에 설정한다.
- *
- * 사용:
- *   import { withApiKey } from '@/lib/api-key-middleware'
- *   import { verifyApiKey, trackApiUsage } from '@/lib/api-key-service'
- *
- *   export async function GET(request: NextRequest) {
- *     const auth = await withApiKey(request, { requiredScopes: ['qa:read'] })
- *     if (!auth.valid) return auth.response
- *     // auth.tenantId, auth.apiKeyId 사용 가능
- *   }
+ * API key middleware for /api/v1/* routes.
  */
 
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyApiKey, trackApiUsage } from '@/lib/api-key-service'
-import { ApiErrors } from '@/lib/api-response'
+import { apiResponse } from '@/lib/api-response'
 
 export interface ApiKeyContext {
   valid: true
@@ -38,16 +25,28 @@ export interface ApiKeyRejected {
 export type WithApiKeyResult = ApiKeyContext | ApiKeyRejected
 
 export interface WithApiKeyOptions {
-  /** 필요한 스코프 (하나라도 일치해야 통과) */
   requiredScopes?: string[]
-  /** 사용량 추적 비활성화 */
   skipTracking?: boolean
 }
 
+function rejectedApiKeyResponse(
+  code: 'UNAUTHORIZED' | 'FORBIDDEN',
+  message: string,
+  status: 401 | 403,
+): NextResponse {
+  const response = apiResponse(
+    {
+      ok: false,
+      error: { code, message },
+    },
+    { status },
+  )
+  response.headers.set('Cache-Control', 'no-store')
+  return response
+}
+
 /**
- * API 키를 검증하고 컨텍스트를 반환한다.
- *
- * Authorization 헤더에서 키 추출 → verifyApiKey → scope 체크 → 사용량 추적
+ * Verifies the API key, checks scopes, and returns the tenant context.
  */
 export async function withApiKey(
   request: NextRequest,
@@ -59,41 +58,30 @@ export async function withApiKey(
   if (!verification.valid) {
     return {
       valid: false,
-      response: NextResponse.json(
-        {
-          ok: false,
-          error: {
-            code: 'UNAUTHORIZED',
-            message: verification.reason ?? 'API 키가 유효하지 않습니다',
-          },
-        },
-        { status: 401 },
+      response: rejectedApiKeyResponse(
+        'UNAUTHORIZED',
+        verification.reason ?? 'API 키가 유효하지 않습니다',
+        401,
       ),
     }
   }
 
-  // scope 체크
   if (options.requiredScopes && options.requiredScopes.length > 0) {
     const userScopes = new Set(verification.scopes ?? [])
-    const hasAnyScope = options.requiredScopes.some((s) => userScopes.has(s))
+    const hasAnyScope = options.requiredScopes.some((scope) => userScopes.has(scope))
+
     if (!hasAnyScope) {
       return {
         valid: false,
-        response: NextResponse.json(
-          {
-            ok: false,
-            error: {
-              code: 'FORBIDDEN',
-              message: `필요한 스코프: ${options.requiredScopes.join(', ')}`,
-            },
-          },
-          { status: 403 },
+        response: rejectedApiKeyResponse(
+          'FORBIDDEN',
+          `필요한 스코프: ${options.requiredScopes.join(', ')}`,
+          403,
         ),
       }
     }
   }
 
-  // 사용량 추적 (비동기, fail-open)
   if (!options.skipTracking && verification.apiKeyId) {
     void trackApiUsage({
       apiKeyId: verification.apiKeyId,
