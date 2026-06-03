@@ -13,7 +13,8 @@ import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemot
 export const revalidate = 600;
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
 
-const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
 
 export async function generateStaticParams() {
   return REGIONS.map(r => ({ region: r.slug }));
@@ -53,11 +54,15 @@ interface RegionData {
   minPrice: number | null;
 }
 
+function getEmptyRegionData(): RegionData {
+  return { cities: [], packages: [], posts: [], totalPackages: 0, minPrice: null };
+}
+
 async function getRegionData(slug: string): Promise<RegionData | null> {
   const region = getRegionBySlug(slug);
   if (!region) return null;
   if (!isSupabaseConfigured) {
-    return { cities: [], packages: [], posts: [], totalPackages: 0, minPrice: null };
+    return getEmptyRegionData();
   }
 
   const { data: allDests } = await supabaseAdmin
@@ -160,7 +165,12 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
   const region = getRegionBySlug(slug);
   if (!region) notFound();
 
-  const data = await getRegionData(slug);
+  let data: RegionData | null = null;
+  try {
+    data = await getRegionData(slug);
+  } catch {
+    data = getEmptyRegionData();
+  }
   if (!data) notFound();
 
   const heroImage = data.cities.find(c => c.image)?.image ?? null;
