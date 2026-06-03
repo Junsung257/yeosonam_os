@@ -9,10 +9,12 @@
  * 2026-05-14 Sprint 1 후속 — 누적된 537건의 unmatched 를 새 매칭기로 자동 해소.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
+import { apiResponse } from '@/lib/api-response';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 interface UnmatchedRow {
   id: number;
@@ -23,7 +25,7 @@ interface UnmatchedRow {
 }
 
 const postHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB not configured' }, { status: 503 });
 
   try {
     const url = new URL(request.url);
@@ -91,7 +93,7 @@ const postHandler = async (request: NextRequest) => {
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       attractions_loaded: attractions.length,
       unmatched_processed: rows.length,
       resolved,
@@ -99,8 +101,8 @@ const postHandler = async (request: NextRequest) => {
       sample_matches: sampleMatches,
     });
   } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : '검토 실패' },
+    return apiResponse(
+      { error: sanitizeDbError(err) },
       { status: 500 },
     );
   }
