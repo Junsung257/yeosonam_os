@@ -467,6 +467,37 @@ type StagingValidation = {
   };
 };
 
+type AdminSurfaceQa = {
+  ok: boolean;
+  generated_at: string;
+  qa: {
+    status: 'pass' | 'warn' | 'fail';
+    readiness_score: number;
+    passed: number;
+    warnings: number;
+    failed: number;
+    top_gap: string | null;
+    next_action: string;
+    surfaces: Array<{
+      id: string;
+      path: string;
+      label: string;
+      status: 'pass' | 'warn' | 'fail';
+      evidence: string;
+      data_sources: string[];
+      expected_states: string[];
+      drilldown_url: string;
+      next_action: string;
+    }>;
+    safety: {
+      read_only: boolean;
+      database_mutation: boolean;
+      external_api_write: boolean;
+      live_spend_krw: number;
+    };
+  };
+};
+
 type NaverSetupPacket = {
   existing_assets: {
     campaigns: number;
@@ -544,6 +575,13 @@ async function fetchOperatingInventory(): Promise<OperatingInventory> {
 
 async function fetchStagingValidation(): Promise<StagingValidation> {
   const res = await fetch('/api/admin/ad-os/staging-validation');
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
+  return json;
+}
+
+async function fetchAdminSurfaceQa(): Promise<AdminSurfaceQa> {
+  const res = await fetch('/api/admin/ad-os/admin-surface-qa');
   const json = await res.json();
   if (!res.ok) throw new Error(json.error || `HTTP ${res.status}`);
   return json;
@@ -745,6 +783,7 @@ export default function AdOsPage() {
   const [checkingStagingSmoke, setCheckingStagingSmoke] = useState(false);
   const [checkingOperatingInventory, setCheckingOperatingInventory] = useState(false);
   const [checkingStagingValidation, setCheckingStagingValidation] = useState(false);
+  const [checkingAdminSurfaceQa, setCheckingAdminSurfaceQa] = useState(false);
   const [keywordActionId, setKeywordActionId] = useState<string | null>(null);
   const [changeRequestActionId, setChangeRequestActionId] = useState<string | null>(null);
   const [opsQueueActionId, setOpsQueueActionId] = useState<string | null>(null);
@@ -758,6 +797,7 @@ export default function AdOsPage() {
   const [stagingSmoke, setStagingSmoke] = useState<StagingSmoke | null>(null);
   const [operatingInventory, setOperatingInventory] = useState<OperatingInventory | null>(null);
   const [stagingValidation, setStagingValidation] = useState<StagingValidation | null>(null);
+  const [adminSurfaceQa, setAdminSurfaceQa] = useState<AdminSurfaceQa | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -783,15 +823,17 @@ export default function AdOsPage() {
 
   useEffect(() => {
     let alive = true;
-    Promise.allSettled([fetchStagingSmoke(), fetchOperatingInventory(), fetchStagingValidation()])
-      .then(([smokeResult, inventoryResult, validationResult]) => {
+    Promise.allSettled([fetchStagingSmoke(), fetchOperatingInventory(), fetchStagingValidation(), fetchAdminSurfaceQa()])
+      .then(([smokeResult, inventoryResult, validationResult, surfaceQaResult]) => {
         if (!alive) return;
         if (smokeResult.status === 'fulfilled') setStagingSmoke(smokeResult.value);
         if (inventoryResult.status === 'fulfilled') setOperatingInventory(inventoryResult.value);
         if (validationResult.status === 'fulfilled') setStagingValidation(validationResult.value);
+        if (surfaceQaResult.status === 'fulfilled') setAdminSurfaceQa(surfaceQaResult.value);
         if (smokeResult.status === 'rejected') throw smokeResult.reason;
         if (inventoryResult.status === 'rejected') throw inventoryResult.reason;
         if (validationResult.status === 'rejected') throw validationResult.reason;
+        if (surfaceQaResult.status === 'rejected') throw surfaceQaResult.reason;
       })
       .catch((err) => {
         if (alive) setError(err instanceof Error ? err.message : '스테이징 검증 조회 실패');
@@ -859,6 +901,24 @@ export default function AdOsPage() {
       setError(err instanceof Error ? err.message : '스테이징 검증 패키지 조회 실패');
     } finally {
       setCheckingStagingValidation(false);
+    }
+  };
+
+  const runAdminSurfaceQa = async () => {
+    setCheckingAdminSurfaceQa(true);
+    setError(null);
+    try {
+      const json = await fetchAdminSurfaceQa();
+      setAdminSurfaceQa(json);
+      setAutomationMessage(
+        json.qa.status === 'pass'
+          ? '어드민 표면 QA가 통과했습니다. 6개 운영 화면의 증거와 drilldown이 정리됐습니다.'
+          : `어드민 표면 QA의 최우선 갭은 ${json.qa.top_gap || '확인 필요'}입니다. 다음 액션: ${json.qa.next_action}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '어드민 표면 QA 조회 실패');
+    } finally {
+      setCheckingAdminSurfaceQa(false);
     }
   };
 
@@ -3407,6 +3467,97 @@ export default function AdOsPage() {
                   )) : (
                     <p className="border-t border-admin-border pt-2 text-admin-2xs text-admin-muted">No completion evidence loaded.</p>
                   )}
+                </div>
+              </div>
+              <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <p className="text-admin-2xs font-semibold text-admin-muted">Admin Surface QA</p>
+                    <p className="mt-1 text-admin-xs font-semibold text-admin-text">
+                      {adminSurfaceQa?.qa.top_gap || '6개 운영 화면 QA를 조회하세요'}
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">
+                      {adminSurfaceQa?.qa.next_action || '/admin/ad-os, /admin/marketing, /admin/search-ads, /admin/blog/ads, /admin/blog/rankings, /admin/blog/topical의 증거·상태·drilldown을 한 번에 점검합니다.'}
+                    </p>
+                  </div>
+                  <StatusPill tone={adminSurfaceQa ? auditTone(adminSurfaceQa.qa.status) : 'neutral'}>
+                    {adminSurfaceQa?.qa.status || 'not checked'}
+                  </StatusPill>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Score</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(adminSurfaceQa?.qa.readiness_score || 0).toLocaleString('ko-KR')}%
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Pass</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(adminSurfaceQa?.qa.passed || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Warn</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(adminSurfaceQa?.qa.warnings || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Fail</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {Number(adminSurfaceQa?.qa.failed || 0).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-admin-2xs text-admin-muted">Live spend</p>
+                    <p className="admin-num text-admin-sm font-semibold text-admin-text">
+                      {fmtWon(adminSurfaceQa?.qa.safety.live_spend_krw || 0)}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+                  {(adminSurfaceQa?.qa.surfaces || []).map((surface) => (
+                    <div key={surface.id} className="rounded-admin-xs bg-admin-surface-2 px-3 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-admin-2xs font-semibold text-admin-text">{surface.label}</p>
+                          <p className="mt-0.5 truncate text-admin-2xs text-admin-muted">{surface.path} · {surface.evidence}</p>
+                        </div>
+                        <StatusPill tone={auditTone(surface.status)}>{surface.status}</StatusPill>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-admin-2xs leading-5 text-admin-muted">{surface.next_action}</p>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <Link href={surface.drilldown_url} className="inline-flex items-center gap-1 text-admin-2xs font-semibold text-blue-700">
+                          화면 보기 <ArrowRight className="h-3 w-3" />
+                        </Link>
+                        <span className="truncate text-admin-2xs text-admin-muted">
+                          {surface.expected_states.slice(0, 3).join(' / ')}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                  {!adminSurfaceQa && (
+                    <p className="rounded-admin-xs bg-admin-surface-2 px-3 py-2 text-admin-2xs text-admin-muted lg:col-span-2">
+                      QA 매트릭스를 조회하면 6개 화면의 데이터 소스, 기대 상태, 다음 액션이 표시됩니다.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="secondary" onClick={runAdminSurfaceQa} loading={checkingAdminSurfaceQa}>
+                    Surface QA
+                  </Button>
+                  <Link href="/api/admin/ad-os/admin-surface-qa" className="inline-flex items-center gap-1 text-admin-2xs font-semibold text-blue-700">
+                    JSON 보기 <ArrowRight className="h-3 w-3" />
+                  </Link>
+                  <StatusPill tone={
+                    adminSurfaceQa?.qa.safety.external_api_write === false &&
+                    adminSurfaceQa?.qa.safety.database_mutation === false
+                      ? 'good'
+                      : 'warn'
+                  }>
+                    DB write {adminSurfaceQa?.qa.safety.database_mutation ? 'on' : 'off'} · external write {adminSurfaceQa?.qa.safety.external_api_write ? 'on' : 'off'}
+                  </StatusPill>
                 </div>
               </div>
               <div className="rounded-admin-sm border border-admin-border bg-admin-surface p-3 md:col-span-2">
