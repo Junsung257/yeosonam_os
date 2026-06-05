@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { getBookings, getBookingById, createBooking, updateBookingStatus, updateBooking, isSupabaseConfigured, supabase, supabaseAdmin } from '@/lib/supabase';
 import { sendBalanceNotice } from '@/lib/kakao';
 import { matchPaymentToBookings, applyDuplicateNameGuard, classifyMatch, calcPaymentStatus } from '@/lib/payment-matcher';
@@ -186,8 +186,8 @@ async function tryRetroactiveMatch(bookingId: string, leadCustomerId: string | n
 }
 
 export async function GET(request: NextRequest) {
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
@@ -654,8 +654,8 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
   const rl = await rateLimitMutation(request);
   if (rl) return rl;

@@ -3,8 +3,12 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { isValidTransition, ALLOWED_TRANSITIONS } from '@/lib/booking-state-machine';
 import { getNotificationAdapter } from '@/lib/notification-adapter';
 import { dispatchPushAsync } from '@/lib/push-dispatcher';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });

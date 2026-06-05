@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { successResponse, ApiErrors } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 interface LandSettlementRow {
   id: string;
@@ -47,6 +48,9 @@ interface LandSettlementRow {
  * Query: status (all|pending|confirmed|reversed), limit (default 50), operator_id
  */
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return successResponse({ settlements: [] });
   }

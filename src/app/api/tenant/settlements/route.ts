@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTenantSettlements, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 // GET /api/tenant/settlements?tenant_id=&month=YYYY-MM
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ rows: [], total_cost: 0 });
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
   const month    = request.nextUrl.searchParams.get('month') ?? new Date().toISOString().slice(0, 7);

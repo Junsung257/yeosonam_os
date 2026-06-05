@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ApiErrors } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * GET /api/payments/export?type=settlements&from=YYYY-MM-DD&to=YYYY-MM-DD&status=all
@@ -31,6 +32,9 @@ const HEADERS = [
 ] as const;
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }

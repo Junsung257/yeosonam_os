@@ -5,9 +5,10 @@ import {
   applyDuplicateNameGuard,
   type BookingCandidate,
 } from '@/lib/payment-matcher';
-import { successResponse, errorResponse, ApiErrors } from '@/lib/api-response';
+import { successResponse, ApiErrors } from '@/lib/api-response';
 import { operatorScore } from '@/lib/payment-command-resolver';
 import { findSubsetSum } from '@/lib/subset-sum';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * GET /api/payments/auto-suggest?transactionId=UUID
@@ -25,6 +26,9 @@ import { findSubsetSum } from '@/lib/subset-sum';
 const TOLERANCE = 5_000;
 
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return successResponse({ candidates: [] });
   }

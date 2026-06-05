@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /** GET /api/customers/[id]/mileage-history */
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   try {
     const params = await props.params;
     if (!isSupabaseConfigured) return successResponse({ history: [] });
@@ -29,6 +33,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
  * body: { delta: number, reason: string }
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 

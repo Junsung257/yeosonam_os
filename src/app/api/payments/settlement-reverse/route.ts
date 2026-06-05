@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminContext } from '@/lib/admin-context';
 import { notifySlack } from '@/lib/slack-notifier';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { successResponse, errorResponse } from '@/lib/api-response';
 
 /**
@@ -21,8 +21,8 @@ export async function POST(req: NextRequest) {
   }
 
   // P0 보안: admin 인증 필수
-  const guard = await requireAuthenticatedRoute(req);
-  if (guard instanceof NextResponse) return guard;
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
 
   let body: Record<string, unknown>;
   try {

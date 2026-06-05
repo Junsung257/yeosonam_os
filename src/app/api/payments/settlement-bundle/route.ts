@@ -2,7 +2,8 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { FEE_TOLERANCE } from '@/lib/payment-matcher';
 import { getAdminContext } from '@/lib/admin-context';
-import { successResponse, errorResponse, ApiErrors } from '@/lib/api-response';
+import { successResponse, ApiErrors } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * POST /api/payments/settlement-bundle
@@ -20,6 +21,9 @@ import { successResponse, errorResponse, ApiErrors } from '@/lib/api-response';
  * 정책: transaction_type='출금' 만 받음. 입금이면 RPC 가 거부.
  */
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }

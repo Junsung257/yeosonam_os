@@ -10,7 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { creditMileageForBooking } from '@/lib/mileage-service';
-import { requireAuthenticatedRoute } from '@/lib/session-guard';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import {
   matchPaymentToBookings,
   applyDuplicateNameGuard,
@@ -221,6 +221,9 @@ async function applyToBooking(
 // ─── GET ──────────────────────────────────────────────────────────────────────
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500, headers: { 'Cache-Control': 'no-store' } });
 
   const { searchParams } = new URL(request.url);
@@ -325,8 +328,8 @@ export async function GET(request: NextRequest) {
 export async function PUT(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
   try {
     // 미매칭 건 전체 로드
@@ -386,8 +389,8 @@ export async function PUT(request: NextRequest) {
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
   try {
     const body = await request.json();
@@ -772,8 +775,8 @@ interface BulkRow {
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
-  const guard = await requireAuthenticatedRoute(request);
-  if (guard instanceof NextResponse) return guard;
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
 
   try {
     const body = await request.json();

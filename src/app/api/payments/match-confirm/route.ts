@@ -6,6 +6,7 @@ import {
   buildPatternSignature,
   type MatchBranch,
 } from '@/lib/payment-command-resolver';
+import { requireAdminRequest } from '@/lib/admin-guard';
 import { getAdminContext } from '@/lib/admin-context';
 import { successResponse, ApiErrors } from '@/lib/api-response';
 
@@ -20,6 +21,9 @@ import { successResponse, ApiErrors } from '@/lib/api-response';
  *  - audit log 는 best-effort (실패해도 매칭 유지)
  */
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }

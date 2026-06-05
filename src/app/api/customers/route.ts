@@ -3,7 +3,7 @@ import { successResponse, ApiErrors } from '@/lib/api-response';
 import { getCustomers, getCustomerById, upsertCustomer, deleteCustomer, restoreCustomer, findDuplicateCustomers, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import { normalizePhone } from '@/lib/customer-name';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
-import { isAdminRequest } from '@/lib/admin-guard';
+import { isAdminRequest, requireAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(request: NextRequest) {
   try {
@@ -205,6 +205,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
@@ -242,6 +245,9 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다.');
   }
