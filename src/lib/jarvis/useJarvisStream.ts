@@ -55,6 +55,7 @@ export interface UseJarvisStreamResult {
   engine: 'v2' | 'v1' | null
   send: (message: string) => Promise<void>
   reset: () => void
+  clearSession: () => void
   abort: () => void
 }
 
@@ -91,6 +92,13 @@ export function useJarvisStream(options: UseJarvisStreamOptions = {}): UseJarvis
     abortRef.current?.abort()
     setStreaming(false)
   }, [])
+
+  const clearSession = useCallback(() => {
+    abortRef.current?.abort()
+    setSessionId(null)
+    setStreaming(false)
+    reset()
+  }, [reset])
 
   const fallbackToV1 = useCallback(async (message: string, sid: string | null) => {
     setEngine('v1')
@@ -183,7 +191,7 @@ export function useJarvisStream(options: UseJarvisStreamOptions = {}): UseJarvis
   return {
     streaming, text, toolsUsed, agent, sessionId, cacheHit,
     pendingAction, error, events, latencyMs, engine,
-    send, reset, abort,
+    send, reset, clearSession, abort,
   }
 }
 

@@ -1,0 +1,31 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": ".tsbuildinfo.jarvis-readiness"
+  },
+  "include": [
+    "next-env.d.ts",
+    "src/types/**/*.d.ts",
+    "src/app/api/admin/jarvis/**/*.ts",
+    "src/app/api/jarvis/**/*.ts",
+    "src/app/admin/jarvis/**/*.ts",
+    "src/app/admin/jarvis/**/*.tsx",
+    "src/components/admin/JarvisReadinessCard.tsx",
+    "src/components/admin/JarvisReadinessCard.test.tsx",
+    "src/components/admin/JarvisRagStatusCard.tsx",
+    "src/components/admin/JarvisRagStatusCard.test.tsx",
+    "src/lib/jarvis/**/*.ts",
+    "src/lib/guardrails/prompt-injection.ts",
+    "src/lib/security/prompt-injection.test.ts",
+    "scripts/audit-jarvis-rag.ts",
+    "scripts/eval-jarvis-golden.ts",
+    "scripts/verify-jarvis-readiness.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    ".next",
+    ".next-build-codex",
+    "db/_archive"
+  ]
+}
