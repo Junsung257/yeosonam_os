@@ -1,0 +1,66 @@
+import { describe, expect, it } from 'vitest';
+import { buildUploadPersistenceRows } from './persistence-rows';
+
+describe('buildUploadPersistenceRows', () => {
+  it('fills customer selling prices for product price rows before persistence', () => {
+    const rows = buildUploadPersistenceRows({
+      registration: {
+        extractedData: {
+          title: 'Cebu hotel matrix',
+          destination: 'Cebu',
+          duration: 5,
+          price: 859000,
+          rawText: 'raw',
+        },
+      } as never,
+      finalized: {
+        draftRow: {
+          inclusions: [],
+          excludes: [],
+          notices_parsed: [],
+          itinerary_data: { days: [{ day: 1, schedule: [] }] },
+        },
+        confidenceV3: 0.9,
+        productStatus: 'REVIEW_NEEDED',
+        pkgStatus: 'pending',
+      } as never,
+      title: 'Cebu hotel matrix',
+      internalCode: 'PUS-ETC-CEB-05-0001',
+      departureRegion: 'Busan',
+      supplierCode: 'ETC',
+      netPrice: 859000,
+      marginRate: 0.09,
+      sourceFilename: 'cebu.txt',
+      landOperatorId: null,
+      departingLocationId: null,
+      fileType: 'txt',
+      productRawText: 'raw',
+      documentRawText: 'raw',
+      priceRows: [
+        {
+          target_date: '2026-07-24',
+          day_of_week: null,
+          net_price: 859000,
+          adult_selling_price: null,
+          child_price: null,
+          note: 'Solea',
+        },
+      ],
+      priceDates: [{ date: '2026-07-24', price: 859000, confirmed: false }],
+      marketingCopies: [],
+      catalogGroupId: null,
+    });
+
+    expect(rows.productPriceRows).toEqual([
+      {
+        product_id: 'PUS-ETC-CEB-05-0001',
+        target_date: '2026-07-24',
+        day_of_week: null,
+        net_price: 859000,
+        adult_selling_price: 859000,
+        child_price: null,
+        note: 'Solea',
+      },
+    ]);
+  });
+});

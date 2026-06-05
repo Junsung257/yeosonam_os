@@ -101,6 +101,18 @@ vi.mock('@/lib/parser/attraction-category', () => ({
 
 import { PATCH } from './route';
 
+function createAdminPatchRequest(body: Record<string, unknown>) {
+  const req = new Request('http://localhost/api/unmatched', {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }) as Request & { cookies: { get: (name: string) => { value: string } | undefined } };
+  req.cookies = {
+    get: (name: string) => (name === 'ys-dev-admin' ? { value: '1' } : undefined),
+  };
+  return req as never;
+}
+
 describe('PATCH /api/unmatched policy guard', () => {
   beforeEach(() => {
     mocked.rateLimitMutationMock.mockReset();
@@ -125,11 +137,7 @@ describe('PATCH /api/unmatched policy guard', () => {
     ]);
     mocked.canCreateMock.mockReturnValue(false);
 
-    const req = new Request('http://localhost/api/unmatched', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'u1', action: 'reconcile_auto_insert' }),
-    }) as never;
+    const req = createAdminPatchRequest({ id: 'u1', action: 'reconcile_auto_insert' });
 
     const res = await PATCH(req);
     expect(res.status).toBe(403);
@@ -154,11 +162,7 @@ describe('PATCH /api/unmatched policy guard', () => {
     ]);
     mocked.canCreateMock.mockReturnValue(false);
 
-    const req = new Request('http://localhost/api/unmatched', {
-      method: 'PATCH',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ id: 'u1', action: 'reconcile_auto_insert' }),
-    }) as never;
+    const req = createAdminPatchRequest({ id: 'u1', action: 'reconcile_auto_insert' });
     const res = await PATCH(req);
     const json = await res.json();
 

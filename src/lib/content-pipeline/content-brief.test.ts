@@ -72,7 +72,9 @@ describe('content brief customer remark safety', () => {
     const packagesRouteSource = readFileSync(path.join(repoRoot, 'src/app/api/packages/route.ts'), 'utf8');
 
     expect(packagesRouteSource).toContain('function stripSupplierRemarkFields');
-    expect(packagesRouteSource).toContain('package: stripSupplierRemarkFields');
-    expect(packagesRouteSource).toContain('...stripSupplierRemarkFields(row)');
+    expect(packagesRouteSource).toContain('function stripPublicPackageFields');
+    expect(packagesRouteSource).toContain('sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row))');
+    expect(packagesRouteSource).toContain(': stripPublicPackageFields(pkg as Record<string, unknown>)');
+    expect(packagesRouteSource).toContain(': stripPublicPackageFields(row)');
   });
 });

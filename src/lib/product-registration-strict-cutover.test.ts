@@ -11,22 +11,28 @@ function source(file: string): string {
 describe('product registration strict cutover policy', () => {
   it('runs upload input quality checks before duplicate handling and parsing work', () => {
     const upload = source('src/app/api/upload/route.ts');
-    const qualityIndex = upload.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
-    const duplicateIndex = upload.indexOf("from('document_hashes')");
-    const parseIndex = upload.indexOf('let parsedDocument =');
+    const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
+    const intake = source('src/lib/product-registration/upload-request-intake.ts');
+    const intakeCallIndex = upload.indexOf('const intake = await prepareUploadRequestIntake(request)');
+    const qualityIndex = intake.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
+    const pipelineCallIndex = upload.indexOf('const result = await runUploadRegistrationPipeline({');
+    const duplicateIndex = pipeline.indexOf('const initialDuplicate = await checkInitialUploadDuplicate({');
+    const parseIndex = pipeline.indexOf('const parsedForRegistration = await parseUploadDocumentForRegistration({');
 
+    expect(intakeCallIndex).toBeGreaterThanOrEqual(0);
+    expect(pipelineCallIndex).toBeGreaterThan(intakeCallIndex);
     expect(qualityIndex).toBeGreaterThanOrEqual(0);
-    expect(duplicateIndex).toBeGreaterThan(qualityIndex);
-    expect(parseIndex).toBeGreaterThan(qualityIndex);
-    expect(upload).toContain('INPUT_ENCODING_CORRUPTED');
-    expect(upload).toContain('INPUT_WEB_PAGE_COPY');
-    expect(upload).toContain('INPUT_NOT_PRODUCT_SOURCE');
+    expect(duplicateIndex).toBeGreaterThanOrEqual(0);
+    expect(parseIndex).toBeGreaterThan(duplicateIndex);
+    expect(intake).toContain('INPUT_ENCODING_CORRUPTED');
+    expect(intake).toContain('INPUT_WEB_PAGE_COPY');
+    expect(intake).toContain('INPUT_NOT_PRODUCT_SOURCE');
   });
 
   it('does not let force reprocess bypass contaminated direct text', () => {
-    const upload = source('src/app/api/upload/route.ts');
-    const qualityIndex = upload.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
-    const forceIndex = upload.indexOf('const forceReprocess');
+    const intake = source('src/lib/product-registration/upload-request-intake.ts');
+    const qualityIndex = intake.indexOf('const inputAnalysis = analyzeUploadInputText(directRawText)');
+    const forceIndex = intake.indexOf('const forceReprocess');
 
     expect(qualityIndex).toBeGreaterThanOrEqual(0);
     expect(forceIndex).toBeGreaterThan(qualityIndex);
@@ -34,25 +40,82 @@ describe('product registration strict cutover policy', () => {
 
   it('blocks catalog product-count mismatches instead of saving partial products', () => {
     const upload = source('src/app/api/upload/route.ts');
-    const expectedIndex = upload.indexOf('v3StructurePlanForUpload.expected_products');
-    const mismatchCodeIndex = upload.indexOf('PRODUCT_COUNT_MISMATCH');
-    const loopIndex = upload.indexOf('for (let productIndex = 0; productIndex < productsToSave.length; productIndex++)');
+    const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
+    const runner = source('src/lib/product-registration/upload-product-runner.ts');
+    const preparation = source('src/lib/product-registration/upload-registration-preparation.ts');
+    const preflight = source('src/lib/product-registration/upload-preflight.ts');
+    const expectedIndex = preflight.indexOf('const expectedProductCount = structurePlan.expected_products');
+    const preparationCallIndex = pipeline.indexOf('const preparedRegistrationProducts = await prepareUploadRegistrationProducts({');
+    const preflightCallIndex = preparation.indexOf('const v3CatalogPreflight = await runUploadV3CatalogPreflight({');
+    const mismatchCodeIndex = preparation.indexOf('PRODUCT_COUNT_MISMATCH');
+    const runnerCallIndex = pipeline.indexOf('const registrationProductsResult = await processUploadRegistrationProducts({');
+    const loopIndex = runner.indexOf('for (let productIndex = 0; productIndex < input.productsToSave.length; productIndex++)');
 
     expect(expectedIndex).toBeGreaterThanOrEqual(0);
-    expect(mismatchCodeIndex).toBeGreaterThan(expectedIndex);
-    expect(loopIndex).toBeGreaterThan(mismatchCodeIndex);
+    expect(preparationCallIndex).toBeGreaterThanOrEqual(0);
+    expect(preflightCallIndex).toBeGreaterThanOrEqual(0);
+    expect(mismatchCodeIndex).toBeGreaterThan(preflightCallIndex);
+    expect(runnerCallIndex).toBeGreaterThan(preparationCallIndex);
+    expect(loopIndex).toBeGreaterThanOrEqual(0);
   });
 
   it('keeps upload-created packages in review when V3 is missing or not publishable', () => {
     const upload = source('src/app/api/upload/route.ts');
-    const v3Index = upload.indexOf('preSaveV3Result');
-    const reviewStatusIndex = upload.indexOf("productStatus = 'REVIEW_NEEDED'", v3Index);
-    const pendingIndex = upload.indexOf("pkgStatus = 'pending'", v3Index);
+    const runner = source('src/lib/product-registration/upload-product-runner.ts');
+    const finalizer = source('src/lib/product-registration/finalize-registration.ts');
+    const finalizerCallIndex = runner.indexOf('finalizeUploadRegistration({');
+    const gateIndex = finalizer.indexOf("if (uploadGate === 'BLOCKED')");
+    const reviewStatusIndex = finalizer.indexOf("productStatus = 'REVIEW_NEEDED'", gateIndex);
+    const pendingIndex = finalizer.indexOf("pkgStatus = 'pending'", gateIndex);
 
-    expect(v3Index).toBeGreaterThanOrEqual(0);
-    expect(reviewStatusIndex).toBeGreaterThan(v3Index);
-    expect(pendingIndex).toBeGreaterThan(v3Index);
+    expect(finalizerCallIndex).toBeGreaterThanOrEqual(0);
+    expect(gateIndex).toBeGreaterThanOrEqual(0);
+    expect(reviewStatusIndex).toBeGreaterThan(gateIndex);
+    expect(pendingIndex).toBeGreaterThan(gateIndex);
     expect(upload).not.toMatch(/status:\s*'active'[\s\S]{0,200}source_filename/);
+  });
+
+  it('centralizes missing destination resolution before internal code generation', () => {
+    const upload = source('src/app/api/upload/route.ts');
+    const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
+    const runner = source('src/lib/product-registration/upload-product-runner.ts');
+    const registrationIndex = runner.indexOf('const registrationResult: StandardProductRegistrationObject = await registerProductFromRaw({');
+    const gateIndex = runner.indexOf('const deliverability = registrationResult.deliverability', registrationIndex);
+    const resolutionIndex = runner.indexOf('const destinationResolution = registrationResult.destination', gateIndex);
+    const internalCodeIndex = runner.indexOf('issueUploadInternalCode({', resolutionIndex);
+
+    expect(registrationIndex).toBeGreaterThanOrEqual(0);
+    expect(gateIndex).toBeGreaterThan(registrationIndex);
+    expect(resolutionIndex).toBeGreaterThan(gateIndex);
+    expect(internalCodeIndex).toBeGreaterThan(resolutionIndex);
+    expect(upload).toContain('runUploadRegistrationPipeline');
+    expect(upload).not.toContain('processUploadRegistrationProducts');
+    expect(pipeline).toContain('processUploadRegistrationProducts');
+    expect(pipeline).toContain('resolveUploadSourceForRegistration');
+    expect(upload).not.toContain('extractUploadDestinationFromFilename');
+    expect(upload).not.toContain('resolveUploadDestinationAndCodes({');
+    expect(upload).not.toContain('applyDeterministicExtractedDataFixes(ed)');
+    expect(upload).not.toContain('destination fallback applied before code generation');
+    expect(upload).not.toContain('destination 본문 fallback 적용');
+    expect(upload).not.toContain('resolveCode(ed.destination');
+  });
+
+  it('centralizes malformed price tier rescue before customer deliverable blocking', () => {
+    const upload = source('src/app/api/upload/route.ts');
+    const runner = source('src/lib/product-registration/upload-product-runner.ts');
+    const recoveryIndex = runner.indexOf('const registrationResult: StandardProductRegistrationObject = await registerProductFromRaw({');
+    const priceRowsIndex = runner.indexOf('const priceRows = registrationResult.pricing.productPrices', recoveryIndex);
+    const priceDatesIndex = runner.indexOf('const projectedPriceDates = registrationResult.pricing.priceDates', recoveryIndex);
+    const gateIndex = runner.indexOf('const deliverability = registrationResult.deliverability');
+
+    expect(recoveryIndex).toBeGreaterThanOrEqual(0);
+    expect(priceRowsIndex).toBeGreaterThanOrEqual(0);
+    expect(priceDatesIndex).toBeGreaterThan(priceRowsIndex);
+    expect(gateIndex).toBeGreaterThan(priceDatesIndex);
+    expect(upload).not.toContain('recoverUploadPriceData(ed');
+    expect(upload).not.toContain('evaluateUploadDeliverability({');
+    expect(upload).not.toContain('malformed/empty price gate');
+    expect(upload).not.toContain('let priceRows = priceTiersToRows(ed)');
   });
 
   it('keeps approval blocked by latest V3 draft even when force approval is requested', () => {
@@ -71,10 +134,25 @@ describe('product registration strict cutover policy', () => {
 
   it('keeps upload registration free of automatic attraction inserts', () => {
     const upload = source('src/app/api/upload/route.ts');
+    const pipeline = source('src/lib/product-registration/upload-registration-pipeline.ts');
+    const runner = source('src/lib/product-registration/upload-product-runner.ts');
+    const completion = source('src/lib/product-registration/upload-registration-completion.ts');
+    const queue = source('src/lib/product-registration/unmatched-queue.ts');
 
     expect(upload).not.toMatch(/from\(['"]attractions['"]\)\s*\.\s*(insert|upsert)/);
-    expect(upload).toContain("from('unmatched_activities').upsert");
-    expect(upload).toContain('shouldAttemptAttractionMatch');
+    expect(upload).not.toContain('flushUploadAttractionReviewQueue');
+    expect(completion).toContain('flushUploadAttractionReviewQueue');
+    expect(upload).not.toContain('queueUploadAttractionReviewCandidates({');
+    expect(upload).not.toContain("from('unmatched_activities').upsert");
+    expect(queue).toContain('queueUploadAttractionReviewCandidates(input)');
+    expect(queue).toContain("from('unmatched_activities').upsert");
+    expect(queue).toContain("onConflict: 'unmatched_scope_key,activity'");
+    expect(upload).not.toContain('processUploadRegistrationProducts');
+    expect(pipeline).toContain('processUploadRegistrationProducts');
+    expect(runner).toContain('registerProductFromRaw');
+    expect(upload).not.toContain('normalizeUploadItinerary({');
+    expect(upload).not.toContain('shouldAttemptAttractionMatch');
+    expect(upload).not.toContain('extractAttractionCandidates');
   });
 
   it('blocks unsafe manual customer notice mutations outside the V3 review save API', () => {

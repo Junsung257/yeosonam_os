@@ -78,6 +78,36 @@ function cleanToken(token: string): string {
     .trim();
 }
 
+const KNOWN_MINIMUM_UNIT_PATTERNS: RegExp[] = [
+  /\uC138\uBD80\s*\uB514\uC2A4\uCEE4\uBC84\uB9AC\s*\uD22C\uC5B4/g,
+  /\uB514\uC2A4\uCEE4\uBC84\uB9AC\s*\uD22C\uC5B4/g,
+  /\uC7AC\uB798\uC2DC\uC7A5/g,
+  /\uC5F4\uB300\uACFC\uC77C\s*\uC0C1\uC810/g,
+  /\uC2A4\uCFE0\uBC84\s*\uB2E4\uC774\uBE59\s*\uAC15\uC2B5/g,
+  /\uC2A4\uCFE0\uBC84\s*\uB2E4\uC774\uBE59/g,
+  /\uD544\uB9AC\uD540\s*\uC804\uD1B5\s*\uC624\uC77C\s*\uB9C8\uC0AC\uC9C0/g,
+  /\uC624\uC77C\s*\uB9C8\uC0AC\uC9C0/g,
+  /\uC544\uC77C\uB79C\uB4DC\s*\uD638\uD551\s*\uD22C\uC5B4/g,
+  /\uD638\uD551\s*\uD22C\uC5B4/g,
+  /\uC138\uBD80\s*\uB9C9\uD0C4\s*\uC2DC\uB0B4\uAD00\uAD11/g,
+  /\uB9C9\uD0C4\s*\uC288\uB77C\uC778/g,
+  /\uB9C9\uD0C4\s*\uC0B0\uD1A0\uB2C8\uB1E8\s*\uC131\uB2F9/g,
+  /\uC0B0\uD1A0\uB2C8\uB1E8\s*\uC131\uB2F9/g,
+  /\uAE30\uB150\uD488\s*\uBC0F\s*\uD1A0\uC0B0\uD488\s*\uAD00\uAD11/g,
+  /\uD1A0\uC0B0\uD488\s*\uAD00\uAD11/g,
+];
+
+function extractKnownMinimumUnits(text: string): string[] {
+  const out: string[] = [];
+  for (const pattern of KNOWN_MINIMUM_UNIT_PATTERNS) {
+    pattern.lastIndex = 0;
+    for (const match of text.matchAll(pattern)) {
+      if (match[0]) out.push(match[0]);
+    }
+  }
+  return out;
+}
+
 /**
  * 일정 activity/note 원문에서 "관광지 후보 키워드"만 추출한다.
  * - 이동/식사/투숙류 라인은 제외
@@ -126,6 +156,7 @@ export function extractAttractionCandidates(activity: string, note?: string | nu
   for (const line of lines) {
     if (NON_ATTRACTION_PREFIX.test(line)) continue;
     if (NON_ATTRACTION_INLINE.test(line)) continue;
+    for (const unit of extractKnownMinimumUnits(line)) push(unit);
     for (const inner of extractBracketAliases(line)) push(inner);
     const noBullet = line.replace(/^[▶•\-\s]+/, '').trim();
     // 한국어 패키지 일정 표현 보강 (2026-05-15): "X 후 Y", "X 거쳐 Y", "X → Y", "X 들러 Y" 도 분리.

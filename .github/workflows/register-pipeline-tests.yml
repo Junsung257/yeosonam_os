@@ -4,8 +4,24 @@ on:
   pull_request:
     paths:
       - 'scripts/eval-product-registration-corpus.ts'
+      - 'scripts/audit-product-mobile-landing-readiness.mjs'
+      - 'scripts/check-doc-automation-contract.mjs'
+      - 'docs/ai-agent-doc-automation.md'
+      - 'docs/audits/README.md'
+      - 'docs/product-registration-current-ssot.md'
+      - 'db/error-registry.md'
+      - 'AGENTS.md'
+      - '.claude/CLAUDE.md'
+      - '.claude/commands/**'
+      - 'package.json'
+      - 'src/app/packages/[id]/**'
+      - 'src/lib/customer-package-payload.ts'
+      - 'src/lib/customer-package-payload.test.ts'
+      - 'src/lib/customer-package-price-options.ts'
+      - 'src/lib/customer-package-price-options.test.ts'
       - 'src/lib/product-registration-evaluator.ts'
       - 'src/lib/product-registration-golden-fixtures.ts'
+      - 'src/lib/product-registration/**'
       - 'src/lib/supplier-raw-deterministic-facts.ts'
       - 'src/lib/supplier-format-fingerprint.ts'
       - 'src/lib/intake-section-cache.ts'
@@ -26,6 +42,20 @@ permissions:
   contents: read
 
 jobs:
+  doc-automation-contract:
+    name: documentation automation contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - run: npm run check:doc-automation:ci
+        env:
+          CI: true
+
   product-registration-golden-corpus:
     name: product registration golden corpus
     runs-on: ubuntu-latest
@@ -53,6 +83,21 @@ jobs:
       - run: npx vitest run src/lib/upload-verify.test.ts
         env:
           CI: true
+
+  customer-render-contract:
+    name: customer render price contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx vitest run src/lib/customer-package-payload.test.ts src/lib/customer-package-price-options.test.ts src/lib/product-registration/persistence-rows.test.ts src/lib/product-registration/upload-persistence.test.ts src/lib/product-registration/upload-route-boundary.test.ts
+        env:
+          CI: true
+      - run: node --check scripts/audit-product-mobile-landing-readiness.mjs
 
   parser-typecheck:
     name: parser.ts type check

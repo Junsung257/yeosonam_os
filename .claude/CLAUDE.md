@@ -1,5 +1,19 @@
 @../AGENTS.md
 
+## 2026-06-05 Product Registration SSOT
+
+For supplier upload registration, mobile landing, and A4 readiness, read `docs/product-registration-current-ssot.md` first.
+
+Current rule: one active SSOT, not many competing plans. Audit docs are evidence/history. Legacy `.claude/commands/register-product.md` and `.claude/commands/assemble-product.md` are manual references only unless the user explicitly asks for manual script insertion.
+
+Never patch a new supplier case directly into `src/app/api/upload/route.ts`. Fix through fixture -> parser/IR or registration-object improvement -> price recovery -> deliverability gate -> persistence/audit.
+
+## 2026-06-05 Documentation Automation
+
+For repeated mistakes, SSOT cleanup, and "do we need a doc update?" decisions, read `docs/ai-agent-doc-automation.md`.
+
+Close meaningful work by naming the durable artifact: fixture/test, current SSOT rule, error-registry entry, audit note, or "no doc update needed because behavior did not change."
+
 # 여소남 OS — AI 개발 하네스 (Harness Guide)
 
 > **공통 진입점:** 위 `@../AGENTS.md` 가 자동 로드됨 (Claude Code는 AGENTS.md를 직접 읽지 않으므로 import 필수). 이 파일은 **심층 레시피·유틸 카탈로그·Claude Code 토큰 규칙** 전용이다.

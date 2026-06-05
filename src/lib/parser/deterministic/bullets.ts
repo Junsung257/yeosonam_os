@@ -102,6 +102,12 @@ export function extractBullets(rawText: string): ExtractedBullets {
           const c = cleanItem(sub);
           if (c.length >= 2 && c.length <= 200) items.push(c);
         }
+      } else if (!foundAnyBullet && /^[\p{L}A-Za-z0-9]/u.test(line)) {
+        const subItems = splitByCommaSafe(line);
+        for (const sub of subItems) {
+          const c = cleanItem(sub);
+          if (c.length >= 2 && c.length <= 200) items.push(c);
+        }
       } else if (foundAnyBullet && /^[가-힣A-Za-z0-9]/.test(line)) {
         if (SECTION_END_RE.test(line)) break;
         // 이전 항목의 연결줄 (들여쓰기) — 단 새 섹션 키워드면 stop

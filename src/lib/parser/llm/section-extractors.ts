@@ -21,9 +21,7 @@ import { llmCall } from '../../llm-gateway';
 import { callWithZodValidation } from '../../llm-validate-retry';
 import { KOREAN_DESTINATION_TO_ISO } from '../../destination-iso';
 import { looksLikeCommaSplitBroken } from '../deterministic/comma-split-signature';
-import { extractPriceMatrix } from '../deterministic/price-matrix';
-import { extractPriceTable } from '../deterministic/price-table';
-import { extractVerticalGradePriceTable } from '../deterministic/vertical-grade-price-table';
+import { extractPriceIR } from '../deterministic/price-ir';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  공통 헬퍼
@@ -312,44 +310,13 @@ JSON: {"rows":[{"date":"${year}-05-07","adult_price":779000,"note":"일~화"}, .
 
 /** L1 deterministic: 매트릭스 → 월별 카탈로그 순. 토큰 0. */
 function extractPriceDeterministicL1(rawText: string): PriceRow[] {
-  const matrix = extractPriceMatrix(rawText);
-  if (matrix.length > 0) {
-    return matrix.map(r => ({
-      date: r.date,
-      adult_price: r.adult_price,
-      child_price: r.child_price ?? null,
-      note: r.note ?? null,
-      status: r.status ?? 'available',
-    }));
-  }
-  const tiers = extractPriceTable(rawText);
-  const rows: PriceRow[] = [];
-  for (const t of tiers) {
-    for (const d of t.departure_dates ?? []) {
-      rows.push({
-        date: d,
-        adult_price: t.adult_price,
-        child_price: t.child_price ?? null,
-        note: t.note ?? t.period_label ?? null,
-        status: t.status ?? 'available',
-      });
-    }
-  }
-  if (rows.length > 0) return rows;
-
-  const verticalTiers = extractVerticalGradePriceTable(rawText);
-  for (const t of verticalTiers) {
-    for (const d of t.departure_dates ?? []) {
-      rows.push({
-        date: d,
-        adult_price: t.adult_price,
-        child_price: t.child_price ?? null,
-        note: t.note ?? t.period_label ?? null,
-        status: t.status ?? 'available',
-      });
-    }
-  }
-  return rows;
+  return extractPriceIR(rawText).rows.map(r => ({
+    date: r.date,
+    adult_price: r.adult_price,
+    child_price: r.child_price ?? null,
+    note: r.note ?? null,
+    status: r.status ?? 'available',
+  }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

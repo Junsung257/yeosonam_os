@@ -1,6 +1,76 @@
 import { describe, expect, it } from 'vitest';
 import { parseDayTable } from './day-table';
 
+describe('parseDayTable HOTEL markers', () => {
+  it('uses HOTEL marker lines before loose hotel text', () => {
+    const result = parseDayTable(`
+제1일
+클락 공항 도착 후 현지인 기사 미팅하여 호텔로 이동
+HOTEL: 휴젠 풀빌라 또는 동급 *1베드
+제2일
+석식 후 호텔 투숙 및 휴식
+HOTEL: 휴젠 풀빌라 또는 동급 *1베드
+`);
+
+    expect(result.days[0]?.hotel.name).toBe('휴젠 풀빌라 또는 동급 *1베드');
+    expect(result.days[1]?.hotel.name).toBe('휴젠 풀빌라 또는 동급 *1베드');
+  });
+
+  it('clears hotels after the package night count', () => {
+    const result = parseDayTable(`
+클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일
+제1일
+HOTEL: 휴젠 풀빌라 또는 동급 *1베드
+제5일
+석식 후 클락 공항으로 이동
+제6일
+필리핀 호텔
+클락 국제공항 출발
+`);
+
+    expect(result.days[0]?.hotel.name).toBe('휴젠 풀빌라 또는 동급 *1베드');
+    expect(result.days[1]?.day).toBe(5);
+    expect(result.days[1]?.hotel.name).toBeNull();
+    expect(result.days[2]?.hotel.name).toBeNull();
+  });
+
+  it('does not leak cancellation or cash receipt sections into the final day schedule', () => {
+    const result = parseDayTable(`
+제1일
+부 산
+클 락
+LJ 065
+22:10
+00:40
+부산 김해 국제공항 출발
+클락 국제공항 도착
+HOTEL: 신축 풀빌라 또는 동급 *1인1실
+제2일
+클 락
+LJ 066
+01:45
+06:25
+클락 국제공항 출발
+부산 김해 국제공항 도착
+* 상기 일정은 현지 사정, 천재지변으로 인해 변경될 수 있습니다.
+
+필리핀 골프상품 취소규정 안내
+취소시기
+수수료
+1인 300,000원씩 공제 후 환불
+[현금영수증 발급 안내 드립니다]
+현금영수증은 항공요금과 행사비로 나눠서 발급해드립니다.
+`);
+
+    const activities = result.days[1]?.schedule.map(item => item.activity).join('\n') ?? '';
+    expect(activities).toContain('클락 국제공항 출발');
+    expect(activities).toContain('상기 일정은 현지 사정');
+    expect(activities).not.toContain('취소규정');
+    expect(activities).not.toContain('현금영수증');
+    expect(activities).not.toContain('300,000');
+  });
+});
+
 // 청도 사고 (2026-05-15 ERR-KWL) 회귀 fixture — Phase 2 LLM 실패 시 deterministic 폴백 보장
 const QINGDAO_3D5N = `
 제1일
@@ -187,5 +257,43 @@ describe('parseDayTable (보홀 슬림팩 DAY1 항공 시간)', () => {
     expect(guide?.time).toBeUndefined();
     expect(dep).toMatchObject({ time: '20:40', type: 'flight', transport: '7C2157' });
     expect(arr).toMatchObject({ time: '00:30', type: 'flight', transport: '7C2157' });
+  });
+});
+
+describe('parseDayTable (Cebu semi package tail notices)', () => {
+  it('keeps passport and entry notices out of itinerary day schedules', () => {
+    const raw = [
+      '부산出 세부 세미 PKG 3박 5일 진에어(LJ)',
+      '제1일',
+      '세   부',
+      'LJ 061',
+      '(+1)',
+      '부산 출발 / 세부 향발',
+      '세부 국제 공항 도착 후 가이드 미팅',
+      '리조트 이동 투숙 및 휴식',
+      'HOTEL : 상기 호텔 또는 동급',
+      '제5일',
+      '세   부',
+      '부   산',
+      'LJ 062',
+      '세부 출발 / 부산 향발',
+      '부산 국제 공항 도착 후 해산',
+      '살펴보기',
+      '♣ 여권 유효기간은 6개월 이상 남아 있어야 합니다.',
+      '♣ 필리핀 입국시 이트래블 QR코드 필수입니다.',
+      '♣ 만 15세미만 승객 입국시, 반드시 부모 혹은 보호자 동반 해야합니다.',
+    ].join('\n');
+
+    const result = parseDayTable(raw);
+    const flattened = result.days.flatMap(day => day.schedule.map(item => item.activity));
+
+    expect(result.days).toHaveLength(2);
+    expect(flattened).toContain('부산 출발 / 세부 향발');
+    expect(flattened).toContain('세부 출발 / 부산 향발');
+    expect(flattened).not.toContain('(+1)');
+    expect(flattened).not.toContain('살펴보기');
+    expect(flattened.some(line => line.includes('여권'))).toBe(false);
+    expect(flattened.some(line => line.includes('이트래블'))).toBe(false);
+    expect(flattened.some(line => line.includes('15세미만'))).toBe(false);
   });
 });

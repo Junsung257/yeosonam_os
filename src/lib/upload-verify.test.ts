@@ -108,6 +108,115 @@ describe('evaluateVerifyChecks — clean baseline (3박 5일 정상 케이스)',
 });
 
 describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {
+  it('C12 blocks shared price-table column mismatches', () => {
+    const rawText = `
+출발일
+요일
+실속 알뜰3색
+단독골프
+더비스타 품격2색
+풀빌라 / 단독골프
+스팟특가
+6/20,21,28
+999,-
+1,159,-
+7/2,9
+1,139,-
+1,259,-
+6/4~6/30
+토,일(4박)
+1,189,-
+1,349,-
+수
+1,169,-
+1,289,-
+목
+1,249,-
+1,369,-
+
+PKG
+클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일
+출 발 일
+6/1~10/24 (수,목)
+`;
+    const r = evaluateVerifyChecks({
+      id: 'pkg-clark-wrong-column',
+      title: '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일',
+      duration: 5,
+      raw_text: rawText,
+      accommodations: ['신축 풀빌라 또는 동급 *1인1실'],
+      departure_days: '수,목',
+      price_dates: [
+        { date: '2026-07-02', price: 1139000 },
+        { date: '2026-07-09', price: 1139000 },
+      ],
+    });
+
+    expect(findCheck(r, 'C12')?.status).toBe('fail');
+    expect(findCheck(r, 'C12')?.detail).toMatch(/불일치/);
+  });
+
+  it('C12 blocks extra departure dates not present in the selected product table', () => {
+    const rawText = `
+출발일
+요일
+실속 알뜰3색
+단독골프
+더비스타 품격2색
+풀빌라 / 단독골프
+스팟특가
+7/2,9
+1,139,-
+1,259,-
+
+PKG
+클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일
+출 발 일
+6/1~10/24 (수,목)
+`;
+    const r = evaluateVerifyChecks({
+      id: 'pkg-clark-extra-date',
+      title: '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일',
+      duration: 5,
+      raw_text: rawText,
+      accommodations: ['신축 풀빌라 또는 동급 *1인1실'],
+      departure_days: '수,목',
+      price_dates: [
+        { date: '2026-07-02', price: 1259000 },
+        { date: '2026-07-09', price: 1259000 },
+        { date: '2026-06-20', price: 1259000 },
+      ],
+    });
+
+    expect(findCheck(r, 'C12')?.status).toBe('fail');
+    expect(findCheck(r, 'C12')?.detail).toMatch(/원문에 없는 출발일/);
+  });
+
+  it('C12 expands month/day raw prices using the DB price_date year', () => {
+    const rawText = `
+spot
+7/2,9
+999,-
+1,159,-
+
+PKG
+premium villa golf package 3n5d
+`;
+    const r = evaluateVerifyChecks({
+      id: 'pkg-future-year',
+      title: 'premium villa golf package 3n5d',
+      duration: 5,
+      raw_text: rawText,
+      accommodations: ['villa'],
+      price_dates: [
+        { date: '2027-07-02', price: 1159000 },
+        { date: '2027-07-09', price: 1159000 },
+      ],
+    });
+
+    expect(findCheck(r, 'C12')?.status).toBe('pass');
+  });
+
   it('C1 일차 불일치 warn (원문 5일 vs DB 4일)', () => {
     const r = evaluateVerifyChecks({
       id: 'pkg-bad-days',
@@ -155,6 +264,26 @@ describe('evaluateVerifyChecks — fail/warn 회귀 차단', () => {
       },
     });
     expect(findCheck(r, 'C9')?.status).toBe('warn');
+  });
+
+  it('C9 ignores duplicated optional golf detail headings', () => {
+    const r = evaluateVerifyChecks({
+      id: 'pkg-option-detail-dup',
+      itinerary_data: {
+        days: [
+          {
+            schedule: [
+              { activity: '\uD638\uD154 \uC870\uC2DD \uD6C4 \uC804\uC77C \uC790\uC720\uC77C\uC815' },
+              { activity: '1. \uACE8\uD504\uC7A5 \uC815\uBCF4' },
+              { activity: '\uCF54\uC2A4\uC815\uBCF4: 18\uD640/72\uD30C/7224\uC57C\uB4DC' },
+              { activity: '1. \uACE8\uD504\uC7A5 \uC815\uBCF4' },
+              { activity: '\uD734\uC2DD \uBC0F \uC790\uC720\uC77C\uC815' },
+            ],
+          },
+        ],
+      },
+    });
+    expect(findCheck(r, 'C9')?.status).toBe('pass');
   });
 
   it('C10 옵션 가격 음수 warn', () => {

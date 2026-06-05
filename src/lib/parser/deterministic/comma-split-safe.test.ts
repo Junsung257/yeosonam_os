@@ -31,6 +31,10 @@ describe('looksLikeCommaSplitBroken', () => {
     expect(looksLikeCommaSplitBroken(['개인경비', '3', '4일차중식', '석식'])).toBe(true);
   });
 
+  it('detects split thousands amounts', () => {
+    expect(looksLikeCommaSplitBroken(['개인경비', '주말골프 추가금 18홀/15', '000원/인'])).toBe(true);
+  });
+
   it('정상 excludes 는 false', () => {
     expect(looksLikeCommaSplitBroken(['개인경비', '3·4일차 중식, 석식', '5일차 석식'])).toBe(false);
   });

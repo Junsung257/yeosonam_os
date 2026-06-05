@@ -1,4 +1,22 @@
 ---
+#
+# 2026-06-05 CURRENT UPLOAD REGISTRATION GATE
+#
+# Before using the legacy validation steps below, read:
+# docs/product-registration-current-ssot.md
+#
+# For upload-registered products, validation is customer-deliverability validation:
+# - price_tiers alone is not success.
+# - price_dates alone is not success.
+# - success requires product_prices.length > 0 and price_dates.length > 0.
+# - every price_dates.date must have at least one matching product_prices.target_date.
+# - same-date hotel/grade options must remain as separate product_prices rows.
+# - every positive customer option row must have adult_selling_price.
+# - customer mobile/A4 payloads must not expose internal net_price.
+# - A4/mobile readiness is mandatory for customer deliverables.
+#
+# Use scripts/audit-product-mobile-landing-readiness.mjs for the current customer-facing readiness contract.
+# Use npx tsx for execution; node --check is only a syntax check.
 name: validate-product
 description: 등록된 상품의 원문 ↔ DB ↔ A4 ↔ 모바일 4자 대조 검증. /register 이후 또는 기존 상품 회귀 검증. 발견된 이슈는 보고만 하고 사용자 승인 후 수정. 검증·validate·대조·audit 키워드에서 자동 활성화.
 argument-hint: [short_code 또는 package_id]

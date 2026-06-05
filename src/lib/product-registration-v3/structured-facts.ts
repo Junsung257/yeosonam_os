@@ -142,6 +142,21 @@ function parseKrw(text: string): number | null {
   return won ? Number(won[1].replace(/,/g, '')) : null;
 }
 
+function isIncludedCostLine(source: string): boolean {
+  return /포함사항|왕복항공료|유류할증료|숙박|식사|그린피|여행자보험|단독차량/.test(source)
+    && !/불포함|별도|추가|현지\s*지불|고객이\s*직접\s*페이/.test(source);
+}
+
+function isCancellationOrPaymentPolicyLine(source: string): boolean {
+  return /취소|캔슬|환불|수수료|예약금|파이널|확정\s*후|예약\s*인원|최종\s*출발\s*인원|현금영수증/.test(source);
+}
+
+function isConditionalMinPaxSurchargeLine(source: string): boolean {
+  return /(?:최소\s*)?(?:성인\s*)?\d+\s*(?:명|인)\s*이상|인원\s*충족|인원충족|예약\s*조건/.test(source)
+    && /추가\s*요금|추가요금|추가금/.test(source)
+    && !/(?:\d{2,3}(?:,\d{3})+|\d+\s*만원|\$\s*\d+)/.test(source);
+}
+
 function formatGuideTip(values: Record<string, unknown>): string {
   if (values.included) return '가이드/기사 팁은 포함되어 있습니다.';
   if (typeof values.amount === 'number') return `가이드/기사 팁은 1인 기준 $${values.amount} 현지 지불입니다.`;
@@ -473,16 +488,25 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
       }));
     }
 
-    if (/유류\s*할증료|추가\s*(요금|비용|금액)|별도\s*(비용|요금)|불포함\s*(비용|요금|금액)|입장료|관광세|리조트피|비자비|환경세/i.test(source)) {
+    if (
+      /유류\s*할증료|추가\s*(요금|비용|금액)|별도\s*(비용|요금)|불포함\s*(비용|요금|금액)|입장료|관광세|리조트피|비자비|환경세/i.test(source)
+      && !isIncludedCostLine(source)
+      && !isCancellationOrPaymentPolicyLine(source)
+    ) {
       const amount = parseKrw(source) ?? parseUsd(source);
+      const conditionalMinPax = isConditionalMinPaxSurchargeLine(source);
       const currency = /\$|USD/i.test(source) ? 'USD' : amount ? '원' : null;
       addFact(facts, makeFact({
         category: 'surcharge',
         values: { label: source.slice(0, 80), amount, currency },
         evidence,
-        risk_level: 'high',
-        review_status: amount ? 'auto_clean' : 'review_needed',
-        standard_text: amount ? `${source.slice(0, 40)}은 별도 비용으로 발생할 수 있습니다.` : '별도 비용 항목은 예약 시 확인이 필요합니다.',
+        risk_level: amount || !conditionalMinPax ? 'high' : 'medium',
+        review_status: amount || conditionalMinPax ? 'auto_clean' : 'review_needed',
+        standard_text: amount
+          ? `${source.slice(0, 40)}은 별도 비용으로 발생할 수 있습니다.`
+          : conditionalMinPax
+            ? '기준 인원 미충족 시 추가요금이 발생할 수 있어 예약 시 확인이 필요합니다.'
+            : '별도 비용 항목은 예약 시 확인이 필요합니다.',
       }));
     }
   }

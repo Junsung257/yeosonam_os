@@ -39,6 +39,21 @@ const baseIr: NormalizedIntake = {
 };
 
 describe('applySupplierRawDeterministicFacts', () => {
+  it('extracts PKG-following product titles before notice sections', () => {
+    const facts = extractSupplierRawDeterministicFacts(`
+26.5.19배포
+PKG
+BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일
+2026.5.19
+출 발 일
+매일출발
+[현금영수증 발급 안내 드립니다]
+현금영수증은 항공요금(항공사)+행사비(랜드사)로 나눠서 발급해드립니다.
+`);
+
+    expect(facts.title).toBe('BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일');
+  });
+
   it.each(SUPPLIER_RAW_GOLDEN_FIXTURES)(
     'pins the supplier golden corpus fast path: $id',
     fixture => {

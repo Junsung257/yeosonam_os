@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { extractAttractionCandidates } from './itinerary-attraction-candidates';
 
 describe('extractAttractionCandidates', () => {
+  it('splits Cebu supplier bundled activity lines into minimum attraction units', () => {
+    const c = extractAttractionCandidates(
+      '\u25B6\uC138\uBD80 \uB9C9\uD0C4 \uC2DC\uB0B4\uAD00\uAD11 (\uB9C9\uD0C4\uC288\uB77C\uC778, \uB9C9\uD0C4 \uC0B0\uD1A0\uB2C8\uB1E8 \uC131\uB2F9)',
+      '\u25B6\uC138\uBD80 \uB514\uC2A4\uCEE4\uBC84\uB9AC \uD22C\uC5B4(\uC7AC\uB798\uC2DC\uC7A5, \uC5F4\uB300\uACFC\uC77C \uC0C1\uC810 \uBC29\uBB38)',
+    );
+
+    expect(c).toEqual(expect.arrayContaining([
+      '\uB9C9\uD0C4\uC288\uB77C\uC778',
+      '\uB9C9\uD0C4 \uC0B0\uD1A0\uB2C8\uB1E8 \uC131\uB2F9',
+      '\uC7AC\uB798\uC2DC\uC7A5',
+      '\uC5F4\uB300\uACFC\uC77C \uC0C1\uC810',
+    ]));
+  });
+
   it('이동/관광 혼합 라인에서 관광지 키만 분리', () => {
     const c = extractAttractionCandidates(
       '▶도이인타논으로 이동 [1시간 소요]',

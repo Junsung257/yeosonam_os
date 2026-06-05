@@ -49,7 +49,7 @@ async function queueUnmatchedAttractions(
         normalizer_version: 'product-registration-v3',
         confidence: 0.6,
         note: input.draftId ? `Queued from product_registration_drafts ${input.draftId}` : 'Queued from product_registration_v3',
-      }, { onConflict: 'activity' });
+      }, { onConflict: 'unmatched_scope_key,activity' });
     if (error) return { saved, error: error.message };
     saved++;
   }

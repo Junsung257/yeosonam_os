@@ -177,6 +177,7 @@ type StandardNoticeDraft = {
 | Command | Purpose |
 | --- | --- |
 | `npm run audit:product-mobile-readiness -- --days=3 --limit=20 --json` | 최근 상품의 V3 draft, 가격, 일정, raw leak, unmatched 상태를 감사한다. |
+| `npm run audit:product-mobile-readiness:ci` | 최근 상품 감사에서 스키마 미적용, 가격/렌더/UNK, V3 blocked, raw leak이 있으면 non-zero로 실패한다. |
 | `npm run audit:product-structured-keywords -- 20` | 최근 상품 원문/필드에서 가이드, 팁, 쇼핑, 호텔, 식사, 차량 등 정형 키워드 후보와 저장률을 확인한다. |
 | `npm run backfill:product-v3-structured-facts -- --days=3 --limit=20` | 기존 draft에 structured facts/standard notices를 재생성할 수 있는지 dry-run으로 확인한다. |
 | `npm run backfill:product-v3-structured-facts -- --days=3 --limit=20 --apply` | dry-run 결과 확인 후 최신 draft ledger에만 structured facts/standard notices를 반영한다. 고객 공개 상태는 자동 변경하지 않는다. |

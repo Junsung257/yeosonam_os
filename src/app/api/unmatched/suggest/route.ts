@@ -22,6 +22,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
 import { escapePostgrestFilterValue } from '@/lib/supabase-filter-safe';
 import { suggestFromWikidata, type WikidataSuggestion } from '@/lib/wikidata-suggest';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,6 +30,9 @@ export const dynamic = 'force-dynamic';
 //  GET handler
 // ═══════════════════════════════════════════════════════════════════════════
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ suggestions: [] });
 
   try {

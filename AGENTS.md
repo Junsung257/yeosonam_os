@@ -11,10 +11,11 @@
 | 작업 성격 | 먼저 Read (필요한 구간만) |
 |-----------|---------------------------|
 | **도메인·DB·RLS·제휴·PII·학습 데이터·자비스** | `CURRENT_STATUS.md`, 아래 **§docs/ 주제별** 표에서 파일 고른 뒤 필요한 구간만 Read, `.claude/CLAUDE.md` 해당 절 |
-| **상품 등록·A4/모바일 렌더·관광지** | `.claude/CLAUDE.md` §도메인별 강제 진입점 + `.claude/commands/*.md` |
+| **상품 등록·A4/모바일 렌더·관광지** | `docs/product-registration-current-ssot.md` 먼저 Read + `.claude/CLAUDE.md` §도메인별 강제 진입점 + 필요한 `.claude/commands/*.md` |
 | **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md` (생성 예정), `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
 | **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
 | **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
+| **반복 실수·문서 자동 정리·SSOT 정리** | `docs/ai-agent-doc-automation.md` + `db/error-registry.md` |
 | **오타·import 한 줄·사용자가 지정한 단일 파일 기계적 수정** | 생략 가능 (프로젝트 규칙은 `.cursor/rules` 참고) |
 
 사용자가 「CLAUDE 읽고」「상태 확인」이라고 하면 해당 턴에서 위 문서를 **실제로 연 뒤** 진행한다.
@@ -40,6 +41,7 @@
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
 | AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
+| AI 에이전트 문서 자동화·하네스 | `docs/ai-agent-doc-automation.md` |
 | Git 커밋 핸드오프 | `docs/git-commit-handoff.md` |
 | 자유여행 100 시나리오 스펙 | `docs/free-travel-100-scenarios-spec.md` |
 | 자유여행 AI 플래너 운영 | `docs/free-travel-planner-runbook.md` |
@@ -51,6 +53,7 @@
 | Threads 자동화 운영 런북 | `docs/threads-autopilot-runbook.md` |
 | Threads 운영 투입 체크리스트 | `docs/threads-go-live-checklist.md` |
 | 등록 파이프라인 개선 (TOP 10) | `docs/registration-improvement-plan.md` |
+| **상품등록 현재 SSOT·통합엔진 계약** | **`docs/product-registration-current-ssot.md`** |
 | 상품 등록 정확도·토큰 절감 플랜 | `docs/product-registration-accuracy-plan.md` |
 | **상품등록 V3 표준언어·REMARK·검수 UI SSOT** | **`docs/product-registration-v3-standard-language.md`** |
 | 추천·비교 V1 개발 실행서 | `docs/recommendation-comparison-v1-plan.md` |
@@ -59,9 +62,9 @@
 | 마일리지 시스템 개요 | `docs/mileage-system-overview.md` |
 | 검색광고 자동화 리서치 | `docs/search-ads-automation-research.md` |
 | Ad OS 완전자동화 마스터플랜 | `docs/ad-os-autopilot-master-plan.md` |
-| 일회성 페이지 감사 로그 | `docs/audits/` |
+| 일회성 감사 로그 인덱스 | `docs/audits/README.md` |
 
-*새 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로.*
+*새 현재 문서를 `docs/`에 추가하면 이 표에 한 줄 반영할 것. 일회성 감사 로그(YYYY-MM-DD 패턴)는 `docs/audits/` 서브폴더로 넣고 `docs/audits/README.md`에만 한 줄 추가한다. 현재 규칙 검색 시에는 먼저 `docs/audits/**`를 제외한다.*
 
 ---
 

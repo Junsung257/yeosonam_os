@@ -84,7 +84,25 @@ function splitByDay(text: string): Array<{ day: number; body: string }> {
   for (let i = 0; i < matches.length; i++) {
     matches[i].end = i + 1 < matches.length ? matches[i + 1].start : text.length;
   }
-  return matches.map(x => ({ day: x.day, body: text.slice(x.start, x.end) }));
+  return matches.map(x => ({ day: x.day, body: trimDayBodyTail(text.slice(x.start, x.end)) }));
+}
+
+function trimDayBodyTail(body: string): string {
+  const markers = [
+    '골프상품 취소규정 안내',
+    '여행상품 취소규정 안내',
+    '취소규정 안내',
+    '기간에 따른 취소 수수료',
+    '취소시기',
+    '[현금영수증',
+    '현금영수증 발급 안내',
+  ];
+  let end = body.length;
+  for (const marker of markers) {
+    const idx = body.indexOf(marker);
+    if (idx >= 0 && idx < end) end = idx;
+  }
+  return body.slice(0, end);
 }
 
 function extractTimes(body: string): string[] {
@@ -136,6 +154,14 @@ function extractHotel(body: string): DayTableDay['hotel'] {
   // " 󰆹 " 마커 또는 "호텔 또는 동급" 패턴 라인
   const lines = body.split('\n');
   for (const line of lines) {
+    const marker = line.match(/^\s*(?:HOTEL|호텔)\s*:\s*(.+?)\s*$/i);
+    if (!marker?.[1]) continue;
+    const name = marker[1].replace(/\s+/g, ' ').trim();
+    if (name.length >= 2 && !/조식|중식|석식|체크인|체크아웃|이동/.test(name)) {
+      return { name, grade: HOTEL_GRADE_RE.exec(line)?.[1] ?? null };
+    }
+  }
+  for (const line of lines) {
     if (!/또는\s*동급/.test(line) || !/(호텔|리조트|레스)/.test(line)) continue;
     const cleaned = line
       .replace(/^[^가-힣A-Za-z0-9]+/, '')
@@ -165,6 +191,13 @@ function extractSchedule(body: string, dayFlightCode: string | null, dayTimes: s
   const arrTime = dayTimes[1] ?? null;
   const shouldSkipNoiseLine = (line: string): boolean => {
     const normalizedKoLine = line.replace(/\s+/g, '');
+    const cleanedKoLine = normalizedKoLine.replace(/^[▶●•·◆◇■□★☆+\-○▪◦*♣]+/, '');
+    if (/^\(\+\d+\)$/.test(normalizedKoLine)) return true;
+    if (/여권|입국|이트래블|eTravel|만15세미만/i.test(normalizedKoLine)) return true;
+    if (/^(?:살펴보기|여권|입국|이트래블|eTravel|만15세미만)/i.test(normalizedKoLine)) return true;
+    if (/^(?:살펴보기|여권|입국|이트래블|eTravel|만15세미만)/i.test(cleanedKoLine)) return true;
+    if (/^(?:부산|세부|클락|푸꾸옥|다낭|나트랑|호치민|방콕)$/.test(normalizedKoLine)) return true;
+    if (/^[A-Z0-9]{2}\d{3,4}$/.test(normalizedKoLine)) return true;
     return REGION_ONLY_KO.has(normalizedKoLine)
       || MEAL_FRAGMENT_RE.test(line.replace(/\s+/g, ' ').trim())
       || /(호텔|리조트|레지던스).*(또는\s*동급)/.test(line);
@@ -240,6 +273,12 @@ export function parseDayTable(rawText: string): DayTableResult {
       hotel: extractHotel(body),
     };
   });
+  const nights = Number(rawText.match(/(\d+)\s*박\s*\d+\s*일/)?.[1] ?? 0);
+  if (nights > 0) {
+    for (const day of days) {
+      if (day.day > nights) day.hotel = { name: null, grade: null };
+    }
+  }
 
   // 첫 블록의 항공편 = flight_out, 마지막 블록 = flight_in
   const firstCode = extractFlightCode(blocks[0].body);

@@ -1,0 +1,13 @@
+{
+  "title": "BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일",
+  "destination": "후쿠오카",
+  "destinationCode": "FUK",
+  "minPrice": 969000,
+  "specificDate": "2026-07-14",
+  "specificDatePrice": 969000,
+  "priceRowsMinCount": 118,
+  "priceDatesMinCount": 90,
+  "forbiddenPrices": [6000, 1100, 2200, 550, 3000, 200000],
+  "itineraryDaysValid": true,
+  "customerDeliverableBlocked": false
+}

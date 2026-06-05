@@ -15,6 +15,7 @@ import { POSTPROCESS_VERSION, postProcessPackageRow } from '@/lib/package-post-p
 import { pickRepresentativeMonths } from '@/lib/travel-fitness-score';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
+import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -305,10 +306,21 @@ export default async function PackageDetailPage({
         products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
       }
     : null;
+  let productPriceRows: Array<{ target_date: string | null; adult_selling_price: number | null; note: string | null }> = [];
+  const priceProductCode = pkgWithRaw?.products?.internal_code ?? (pkgWithRaw as { internal_code?: string | null } | null)?.internal_code ?? null;
+  if (priceProductCode) {
+    const { data: priceRows } = await sb
+      .from('product_prices')
+      .select('target_date, adult_selling_price, note')
+      .eq('product_id', priceProductCode)
+      .order('target_date', { ascending: true })
+      .order('adult_selling_price', { ascending: true, nullsFirst: false });
+    productPriceRows = (priceRows ?? []) as typeof productPriceRows;
+  }
   const normalizedPkg = pkgWithRaw
     ? writeTimeProcessed
-      ? pkgWithRaw
-      : postProcessPackageRow(pkgWithRaw)
+      ? { ...pkgWithRaw, product_prices: productPriceRows }
+      : { ...postProcessPackageRow(pkgWithRaw), product_prices: productPriceRows }
     : null;
 
   // 관련 블로그 글 조회 (1) — 이 상품을 홍보하는 글 (product_id 직접 매칭)
@@ -610,24 +622,7 @@ export default async function PackageDetailPage({
         : {}),
     };
   })() : null;
-  const clientPackage = normalizedPkg
-    ? (() => {
-        const {
-          raw_text: _rawText,
-          internal_notes: _internalNotes,
-          land_operator_id: _landOperatorId,
-          audit_status: _auditStatus,
-          parser_version: _parserVersion,
-          ...publicPackage
-        } = normalizedPkg as typeof normalizedPkg & Record<string, unknown>;
-        void _rawText;
-        void _internalNotes;
-        void _landOperatorId;
-        void _auditStatus;
-        void _parserVersion;
-        return publicPackage as React.ComponentProps<typeof DetailClient>['initialPackage'];
-      })()
-    : null;
+  const clientPackage = sanitizeCustomerPackageForClient(normalizedPkg) as React.ComponentProps<typeof DetailClient>['initialPackage'];
 
   return (
     <>

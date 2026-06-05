@@ -13,17 +13,16 @@
 
 > **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
 
-1. **ERR-blog-encoded-slug@2026-05-16** — `/blog/[slug]` 정보성 블로그 25건 일괄 404 (5월 1~16일 발행 전부 사망). 원인: Next.js dynamic route가 한글 slug를 URL-encoded(`%EC%84%9D…`) 상태로 page handler에 전달했는데 `getPost(slug)`가 그대로 `.eq('slug', param)` → DB의 한글 원본과 매칭 0건 → `notFound()`. 다른 route(`destination/[dest]`)는 이미 `decodeURIComponent` 호출하고 있었으나 `[slug]` 만 누락. → `src/lib/decode-slug.ts` 의 `safeDecodeSlug()` 박제 + `page.tsx`/`opengraph-image.tsx` 둘 다 적용 + `getPost` error 분기에 `admin_alerts` 적재(silent fail 차단). 회귀 fixture: `tests/unit/lib/decode-slug.spec.ts` 5건.
-2. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
-2. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
-3. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
-4. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.
-5. **ERR-HSN-render-bundle@2026-04-21** (line 676) — 황산 송백CC 2건 렌더링 6가지 오류. → flight 1 activity + `→` 토큰, inclusions 콤마 없는 개별 토큰, 호텔 activity 고정 문구.
-6. **ERR-date-confusion** (line 582) — 원문 날짜 의미 혼동 (배포일 vs 발권기한). → `ticketing_deadline` 명시적 라벨 매칭.
-7. **ERR-FUK-customer-leaks** (line 554) — 내부 메모 고객 화면 노출 + 숫자 콤마 split + 항공편 파싱 실패 (복합 4건). → `internal_notes` vs `customer_notes` 분리 강제.
-8. **ERR-KUL-safe-replace** (line 537) — 중복 감지 시 자동 아카이브의 사일런트 사고. → 중복 감지 후 사용자 확인 분기.
-9. **ERR-KUL-05** (line 516) — 렌더링 계약 분리 구조 (패턴 A 재발). → `renderPackage()` view.* 만 소비, pkg 직접 파싱 금지.
-10. **ERR-KUL-04** (line 495) — `optional_tours` "(싱가포르)" 지역 라벨 A4/모바일 불일치. → `normalizeOptionalTourName()` 공통 사용.
+1. **ERR-product-prices-customer-options@2026-06-05** — 업로드는 성공했지만 고객 모바일/A4 옵션 가격이 깨질 수 있는 상태. 원인: 과거 문서와 검증이 `price_dates` 중심이라 `product_prices` 저장 실패, 동일 날짜 호텔 옵션 보존, `adult_selling_price` 누락을 blocker로 보지 못함. → 현재 SSOT는 `docs/product-registration-current-ssot.md`; 성공 기준은 `product_prices + price_dates + adult_selling_price`; 저장 실패는 rollback/blocker; golden corpus와 live readiness audit 필수.
+2. **ERR-blog-encoded-slug@2026-05-16** — `/blog/[slug]` 정보성 블로그 25건 일괄 404 (5월 1~16일 발행 전부 사망). 원인: Next.js dynamic route가 한글 slug를 URL-encoded(`%EC%84%9D…`) 상태로 page handler에 전달했는데 `getPost(slug)`가 그대로 `.eq('slug', param)` → DB의 한글 원본과 매칭 0건 → `notFound()`. 다른 route(`destination/[dest]`)는 이미 `decodeURIComponent` 호출하고 있었으나 `[slug]` 만 누락. → `src/lib/decode-slug.ts` 의 `safeDecodeSlug()` 박제 + `page.tsx`/`opengraph-image.tsx` 둘 다 적용 + `getPost` error 분기에 `admin_alerts` 적재(silent fail 차단). 회귀 fixture: `tests/unit/lib/decode-slug.spec.ts` 5건.
+3. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
+4. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
+5. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
+6. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.
+7. **ERR-HSN-render-bundle@2026-04-21** (line 676) — 황산 송백CC 2건 렌더링 6가지 오류. → flight 1 activity + `→` 토큰, inclusions 콤마 없는 개별 토큰, 호텔 activity 고정 문구.
+8. **ERR-date-confusion** (line 582) — 원문 날짜 의미 혼동 (배포일 vs 발권기한). → `ticketing_deadline` 명시적 라벨 매칭.
+9. **ERR-FUK-customer-leaks** (line 554) — 내부 메모 고객 화면 노출 + 숫자 콤마 split + 항공편 파싱 실패 (복합 4건). → `internal_notes` vs `customer_notes` 분리 강제.
+10. **ERR-KUL-safe-replace** (line 537) — 중복 감지 시 자동 아카이브의 사일런트 사고. → 중복 감지 후 사용자 확인 분기.
 
 > **신규 ERR 추가 시**: 가장 오래된 항목(현재 #10)을 체크리스트에서 제거하고 새 항목을 #1로 prepend. 본문은 그대로 유지(append-only).
 
@@ -46,6 +45,26 @@
 - **상태**: OPEN | IN_PROGRESS | FIXED
 - **재발 방지**: ...
 ```
+
+---
+
+## ERR-product-prices-customer-options@2026-06-05: product_prices/customer option readiness가 검증 밖에 있던 문제
+
+- **발견일**: 2026-06-05
+- **발생 상품**: 세부 호텔 옵션 가격표, 후쿠오카 골프 가격표, 공개 모바일/A4 readiness 감사 대상
+- **원문 vs 결과**: 원문은 동일 날짜에 호텔/등급별 복수 가격 옵션이 있었으나, 과거 검증은 `price_dates` 최소가만 주로 확인해 고객 옵션 행 누락·고객가 누락을 늦게 발견할 수 있었음.
+- **카테고리**: 데이터스키마 | 검증 | 렌더링 | 프로세스
+- **근본 원인**: 문서와 감사 기준이 오래된 `price_tiers`/`price_dates` 중심 성공 정의에 머물러 있었고, `product_prices` 저장 실패가 warning으로 처리될 수 있었으며, 고객 화면이 쓰는 `adult_selling_price` 누락이 최종 blocker가 아니었음.
+- **해결책**:
+  - 즉시: `docs/product-registration-current-ssot.md`를 현재 SSOT로 지정.
+  - 즉시: 성공 기준을 `product_prices.length > 0 + price_dates.length > 0 + adult_selling_price`로 격상.
+  - 구조적: `product_prices` 저장 실패는 blocker/rollback.
+  - 구조적: DB migration `20260605121000_product_prices_customer_selling_price_guard.sql`로 positive customer price row의 `adult_selling_price` 누락 방지.
+  - 구조적: golden corpus expected에 product price row count와 same-date option prices 포함.
+  - 구조적: `scripts/audit-product-mobile-landing-readiness.mjs` strict audit에 customer option mismatch와 price storage mismatch 포함.
+- **검증 규칙**: `docs/product-registration-current-ssot.md` Required Verification.
+- **상태**: FIXED
+- **재발 방지**: 새 가격표 실패는 route 패치 금지. `fixture -> parser/IR or registration object -> recovery -> deliverability -> persistence/audit` 순서로만 처리.
 
 ---
 

@@ -1,0 +1,13 @@
+{
+  "title": "[부산출발][가족여행] 푸꾸옥 뉴월드 풀빌라 자유여행 5일",
+  "destination": "푸꾸옥",
+  "destinationCode": "PQC",
+  "minPrice": 969000,
+  "specificDate": "2026-07-01",
+  "specificDatePrice": 1009000,
+  "priceRowsMinCount": 50,
+  "priceDatesMinCount": 35,
+  "forbiddenPrices": [50000, 40000],
+  "itineraryDaysValid": true,
+  "customerDeliverableBlocked": false
+}

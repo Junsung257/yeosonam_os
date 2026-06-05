@@ -24,9 +24,12 @@ describe('attraction-policy SSOT', () => {
 
   it('keeps the upload registration pipeline free of attraction inserts', () => {
     const uploadRoute = readFileSync(path.join(process.cwd(), 'src/app/api/upload/route.ts'), 'utf8');
+    const unmatchedQueue = readFileSync(path.join(process.cwd(), 'src/lib/product-registration/unmatched-queue.ts'), 'utf8');
 
     expect(uploadRoute).not.toMatch(/from\(['"]attractions['"]\)\s*\.\s*insert/);
     expect(uploadRoute).not.toContain('ALLOW_AUTO_ATTRACTION_INSERT');
-    expect(uploadRoute).toContain("from('unmatched_activities').upsert");
+    expect(unmatchedQueue).toContain('queueUploadAttractionReviewCandidates');
+    expect(unmatchedQueue).toContain("from('unmatched_activities').upsert");
+    expect(unmatchedQueue).not.toMatch(/from\(['"]attractions['"]\)\s*\.\s*insert/);
   });
 });

@@ -1,4 +1,15 @@
 ---
+#
+# 2026-06-05 CURRENT UPLOAD REGISTRATION GATE
+#
+# This command is legacy assembler guidance for old regional/manual workflows.
+# Normal supplier upload registration must use the centralized engine documented in:
+# docs/product-registration-current-ssot.md
+#
+# Do not use db/sample.txt + db/assembler_* as the default upload path.
+# Current success requires product_prices + price_dates + customer adult_selling_price readiness.
+# New supplier failures must be fixed through fixtures, price IR/registration-object logic,
+# deliverability gates, and persistence/audit verification.
 name: assemble-product
 description: 어셈블러 상품 등록 — 서안·장가계·나트랑 등 블록 정의 지역에서 dry-run으로 조립 → 검증 → INSERT. 부수효과 큼, 사용자 명시 호출만.
 argument-hint: [원문 텍스트]

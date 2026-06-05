@@ -27,6 +27,53 @@ const GOLF_NO_OPTIONAL_TOURS = `
 후쿠오카 도착 — 골프 라운딩
 `;
 
+const CEBU_THREE_HOTEL_MATRIX = `
+부산出 세부 세미 PKG 3박 5일 진에어(LJ)
+★ 여름휴가 ★
+출발일
+ 요일
+솔레아[준특급]
+두짓타니[특급]
+제이파크[특급]
+7/24~8/7
+토일월화
+859,000
+1,029,000
+1,079,000
+수목금
+889,000
+1,079,000
+1,119,000
+포 함 사 항
+ 항공요금+유류/텍스, 여행자보험, 전 일정 호텔(2인1실), 조식 및 일정상 식사
+제1일
+부산
+세부
+`;
+
+const CEBU_SPACED_HEADER_INLINE_PRICE_MATRIX = `
+부산出 세부 세미 PKG 3박 5일 진에어(LJ)
+출 발 일
+요 일
+솔레아 [준특급]
+두짓타니 [특급]
+제이파크 [특급]
+7/24~8/7
+토 일 월 화
+859,000
+1,029,000
+1,079,000
+수 목 금 889,000
+1,079,000
+1,119,000
+포 함 사 항
+항공요금+유류/텍스, 여행자보험
+일 자
+제1일
+부산
+세부
+`;
+
 describe('extractBullets (RC1 — no optional tours section)', () => {
   it('inclusions/excludes 는 6건 이하 (콤마 split 폭주 없음)', () => {
     const { inclusions, excludes } = extractBullets(GOLF_NO_OPTIONAL_TOURS);
@@ -55,5 +102,41 @@ describe('extractPriceMatrix (RC3 — period×DOW grid)', () => {
     expect(rows.length).toBeGreaterThan(50);
     expect(rows.some(r => r.adult_price === 1209000)).toBe(true);
     expect(rows.some(r => r.adult_price === 1309000)).toBe(true);
+  });
+
+  it('세부 3호텔 가격 컬럼에서 준특급/솔레아 가격만 선택한다', () => {
+    const rows = extractPriceMatrix(CEBU_THREE_HOTEL_MATRIX, 2026, {
+      title: '준특급 · 세부 · 3박 5일 · 진에어',
+      accommodations: ['솔레아[준특급]'],
+    });
+
+    expect(rows).toHaveLength(15);
+    expect(rows.find(r => r.date === '2026-07-25')?.adult_price).toBe(859000);
+    expect(rows.find(r => r.date === '2026-07-29')?.adult_price).toBe(889000);
+    expect(rows.some(r => r.adult_price === 1029000 || r.adult_price === 1079000)).toBe(false);
+  });
+
+  it('세부 3호텔 가격 컬럼에서 호텔명 힌트로 두짓타니 가격을 선택한다', () => {
+    const rows = extractPriceMatrix(CEBU_THREE_HOTEL_MATRIX, 2026, {
+      title: '두짓타니 특급 세부 3박 5일 진에어',
+      accommodations: ['두짓타니[특급]'],
+    });
+
+    expect(rows).toHaveLength(15);
+    expect(rows.find(r => r.date === '2026-07-25')?.adult_price).toBe(1029000);
+    expect(rows.find(r => r.date === '2026-07-29')?.adult_price).toBe(1079000);
+    expect(rows.some(r => r.adult_price === 859000 || r.adult_price === 1119000)).toBe(false);
+  });
+
+  it('세부 가로 요금표의 띄어쓴 헤더와 요일+첫가격 같은 줄도 처리한다', () => {
+    const rows = extractPriceMatrix(CEBU_SPACED_HEADER_INLINE_PRICE_MATRIX, 2026, {
+      title: '준특급 세부 3박 5일 진에어',
+      accommodations: ['솔레아[준특급]'],
+    });
+
+    expect(rows).toHaveLength(15);
+    expect(rows.find(r => r.date === '2026-07-25')?.adult_price).toBe(859000);
+    expect(rows.find(r => r.date === '2026-07-29')?.adult_price).toBe(889000);
+    expect(rows.some(r => r.adult_price === 1029000 || r.adult_price === 1079000)).toBe(false);
   });
 });

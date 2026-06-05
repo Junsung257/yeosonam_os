@@ -11,6 +11,7 @@ export type V3EventType =
   | 'meeting'
   | 'transfer'
   | 'attraction'
+  | 'activity'
   | 'meal'
   | 'hotel'
   | 'option'
