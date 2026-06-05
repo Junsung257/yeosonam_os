@@ -48,7 +48,7 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
     const { data: allFeedback, error: statsError } = await sb
       .from('platform_learning_events')
       .select('id, created_at, source, session_id, payload')
-      .eq('source', 'qa_chat')
+      .in('source', ['qa_chat', 'jarvis_v1', 'jarvis_v2_stream'])
       .filter('payload->>event', 'eq', 'feedback')
       .order('created_at', { ascending: false });
 

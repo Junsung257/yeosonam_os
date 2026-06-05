@@ -46,6 +46,9 @@
 | 자유여행 100 시나리오 스펙 | `docs/free-travel-100-scenarios-spec.md` |
 | 자유여행 AI 플래너 운영 | `docs/free-travel-planner-runbook.md` |
 | 자비스 오케스트레이션 | `docs/jarvis-orchestration.md` |
+| 자비스 RAG 감사 운영 | `docs/jarvis-rag-audit-runbook.md` |
+| 자비스 출시 준비 게이트 | `docs/jarvis-readiness-gate.md` |
+| 자비스 100점 점수표·로드맵 | `docs/jarvis-100-scorecard-and-roadmap.md` |
 | 플랫폼 AI·학습 로드맵 | `docs/platform-ai-roadmap.md` |
 | Solapi 리뷰 요청 템플릿 | `docs/solapi-review-template-guide.md` |
 | **/register 변경 이력 (P0~P1·결정)** | **`docs/register-changelog.md`** |
