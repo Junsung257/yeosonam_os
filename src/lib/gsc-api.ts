@@ -1,4 +1,5 @@
 import { google } from 'googleapis';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * Google Search Console API — 색인 상태 + 페이지 단위 평균 순위 헬퍼
@@ -17,10 +18,23 @@ import { google } from 'googleapis';
 
 function readServiceAccountCredentialsRaw(): string | null {
   return (
-    process.env.GSC_SERVICE_ACCOUNT_JSON
-    || process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-    || null
+    getSecret('GSC_SERVICE_ACCOUNT_JSON')
+    || getSecret('GOOGLE_SERVICE_ACCOUNT_JSON')
   );
+}
+
+function parseServiceAccountJson(raw: string) {
+  let normalized = raw.trim();
+  try {
+    return JSON.parse(normalized);
+  } catch {
+    normalized = normalized.replace(
+      /("private_key"\s*:\s*")([\s\S]*?)(",\s*"client_email")/,
+      (_match, prefix: string, key: string, suffix: string) =>
+        `${prefix}${key.replace(/\r?\n/g, '\\n')}${suffix}`,
+    );
+    return JSON.parse(normalized);
+  }
 }
 
 export function isGSCApiConfigured(): boolean {
@@ -31,7 +45,7 @@ function buildAuth(scopes: string[]) {
   const raw = readServiceAccountCredentialsRaw();
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw);
+    const parsed = parseServiceAccountJson(raw);
     if (parsed.private_key && typeof parsed.private_key === 'string') {
       parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
     }

@@ -17,6 +17,7 @@
  *   - blog-learn cron 내에서 호출되어 주간 전략 보고서 생성
  */
 import { supabaseAdmin } from './supabase';
+import { slugifyTopic } from './slug-utils';
 
 /** 크론 1회 실행 기록 */
 interface CronRunRecord {
@@ -262,28 +263,84 @@ export async function autoHealQueue(): Promise<{
 }> {
   const details: string[] = [];
   let recovered = 0;
+  const now = new Date().toISOString();
 
   // blog_topic_queue 에서 failed 상태 + 재시도 3회 미만 → queued 로 복구
   const { data: failedItems } = await supabaseAdmin
     .from('blog_topic_queue')
-    .select('id, topic, attempts, error_message')
+    .select('id, topic, attempts, last_error, meta')
     .eq('status', 'failed')
     .lt('attempts', 3);
 
+  const duplicateSlugSet = new Set<string>();
   if (failedItems && failedItems.length > 0) {
-    for (const item of (failedItems as Array<{ id: string; topic: string; attempts: number; error_message: string | null }>)) {
+    const { data: existingBlogs } = await supabaseAdmin
+      .from('content_creatives')
+      .select('slug')
+      .eq('channel', 'naver_blog')
+      .in('status', ['published', 'scheduled', 'draft']);
+    for (const row of existingBlogs || []) {
+      const slug = (row as { slug?: string | null }).slug;
+      if (slug) duplicateSlugSet.add(slug);
+    }
+  }
+
+  if (failedItems && failedItems.length > 0) {
+    for (const item of (failedItems as Array<{ id: string; topic: string; attempts: number; last_error: string | null; meta?: unknown }>)) {
+      const meta = typeof item.meta === 'object' && item.meta !== null && !Array.isArray(item.meta)
+        ? { ...(item.meta as Record<string, unknown>) }
+        : {};
+      const exactDuplicateSlug = item.last_error?.match(/동일 slug 이미 존재:\s*([a-z0-9-]+)/i)?.[1] ?? null;
+      const topicSlug = slugifyTopic(item.topic || '');
+      const canonicalSlug = duplicateSlugSet.has(topicSlug)
+        ? topicSlug
+        : exactDuplicateSlug && duplicateSlugSet.has(exactDuplicateSlug)
+          ? exactDuplicateSlug
+          : null;
+      if (canonicalSlug) {
+        const { error } = await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            status: 'skipped',
+            last_error: `duplicate content skipped ${now}: canonical slug ${canonicalSlug}`,
+            meta: {
+              ...meta,
+              skipped_duplicate: true,
+              canonical_slug: canonicalSlug,
+              duplicate_skipped_at: now,
+            } as never,
+          })
+          .eq('id', item.id);
+        if (!error) {
+          details.push(`중복 스킵: ${item.topic} → ${canonicalSlug}`);
+        }
+        continue;
+      }
+
+      const expectedSlug = typeof meta.expected_slug === 'string' ? meta.expected_slug.trim() : '';
+      if (expectedSlug.startsWith('-')) {
+        meta.recovered_bad_expected_slug = expectedSlug;
+        delete meta.expected_slug;
+      }
+
       const { error } = await supabaseAdmin
         .from('blog_topic_queue')
         .update({
           status: 'queued',
-          attempts: (item.attempts || 0) + 1,
-          error_message: `재시도 #${(item.attempts || 0) + 1}: ${item.error_message ?? ''}`,
+          attempts: 0,
+          last_error: `self-heal requeued ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+          target_publish_at: now,
+          meta: {
+            ...meta,
+            recovered_at: now,
+            recovered_from_attempts: item.attempts || 0,
+          } as never,
         })
         .eq('id', item.id);
 
       if (!error) {
         recovered++;
-        details.push(`복구: ${item.topic} (시도 ${(item.attempts || 0) + 1}/3)`);
+        details.push(`복구: ${item.topic} (시도 초기화, 이전 ${item.attempts || 0}회)`);
       }
     }
   }
@@ -293,13 +350,13 @@ export async function autoHealQueue(): Promise<{
     .from('blog_topic_queue')
     .select('id, topic')
     .eq('status', 'skipped')
-    .like('error_message', '%bulk_archive_package%');
+    .like('last_error', '%bulk_archive_package%');
 
   if (autoArchiveItems && autoArchiveItems.length > 0) {
     const skipIds = (autoArchiveItems as Array<{ id: string }>).map(i => i.id);
     await supabaseAdmin
       .from('blog_topic_queue')
-      .update({ status: 'archived', error_message: `auto_archived_package — self-heal ${new Date().toISOString()}` })
+      .update({ status: 'archived', last_error: `auto_archived_package — self-heal ${now}` })
       .in('id', skipIds);
     details.push(`아카이브 정리: ${skipIds.length}건 skipped→archived 변환`);
   }

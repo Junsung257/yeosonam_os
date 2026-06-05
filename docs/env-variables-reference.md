@@ -107,7 +107,10 @@
 | 키 | 용도 |
 |---|---|
 | `INDEXNOW_KEY` | Bing/Yandex/Seznam IndexNow 키 (색인 요청). `indexing.ts` 참조 |
-| `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Indexing API / Search Console 서비스 계정 JSON |
+| `GSC_SERVICE_ACCOUNT_JSON` | Google Search Console 서비스 계정 JSON. 블로그 일반 글은 이 키로 Sitemap API 제출·URL Inspection·GSC 지표 수집을 수행 |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | 레거시 Google 서비스 계정 JSON. `GSC_SERVICE_ACCOUNT_JSON` 없을 때 fallback |
+| `GSC_SITE_URL` | Search Console에 등록된 정확한 속성 URL (`https://yeosonam.com/` 등). www 유무 불일치 방지 |
+| `GOOGLE_INDEXING_API_FOR_BLOGS` | `true`일 때만 일반 블로그에도 Google Indexing API 직접 호출을 허용. 기본은 미사용(공식 지원 범위가 JobPosting/BroadcastEvent 중심) |
 | `SLACK_WEBHOOK_URL` | Slack 범용 웹훅 (폴백·운영 알림 등) |
 | `SLACK_ALERT_WEBHOOK_URL` | 운영 경고 (`slack-alert`, payment-heartbeat 등) |
 | `SLACK_ALERTS_WEBHOOK` | 어드민 알림 큐 critical/warning 푸시 (`admin-alerts`) |
@@ -116,6 +119,8 @@
 | `SLACK_CHANNEL_ID` | `slack-gap-fill` 크론이 스캔할 Slack 채널 ID (`C…`) |
 | `GOOGLE_ADS_CLIENT_ID` | Google Ads / Analytics OAuth 클라이언트 ID |
 | `REVALIDATE_SECRET` | ISR 강제 무효화 시크릿 |
+
+주의: 서버 비밀값이 `""` 또는 `''`처럼 빈 따옴표로 내려오면 `getSecret()`은 미설정으로 처리한다. Vercel에는 키 이름뿐 아니라 실제 값이 들어 있는지 확인한다.
 
 ## 📊 트래킹 · 광고 (선택)
 
@@ -199,7 +204,7 @@
 | `META_GRAPH_API_VERSION` | Optional Meta Graph API version for CAPI calls. Defaults to `v23.0`; bump this when Meta deprecates old versions. |
 | `META_PIXEL_ID` | Server-side CAPI Pixel ID. Falls back to `NEXT_PUBLIC_META_PIXEL_ID` when unset. |
 | `NEXT_PUBLIC_META_PIXEL_ID` | Browser Meta Pixel ID and fallback Pixel ID for server CAPI. |
-| `GSC_SITE_URL` | Exact Google Search Console property URL used by GSC page metrics and URL Inspection. |
+| `GSC_SITE_URL` | Exact Google Search Console property URL used by GSC sitemap submit, page metrics, and URL Inspection. |
 | `GSC_SERVICE_ACCOUNT_JSON` | Dedicated Search Console service account JSON. Falls back to `GOOGLE_SERVICE_ACCOUNT_JSON`. |
 
 New DB migrations that must be applied for full persistence:

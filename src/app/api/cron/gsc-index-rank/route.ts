@@ -39,6 +39,15 @@ function toDateString(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
+function getGscInspectionBaseUrl(siteUrl: string): string {
+  try {
+    const parsed = new URL(siteUrl);
+    return `${parsed.protocol}//${parsed.hostname}`.replace(/\/+$/, '');
+  } catch {
+    return 'https://yeosonam.com';
+  }
+}
+
 async function runGscIndexRank(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -133,7 +142,7 @@ async function runGscIndexRank(request: NextRequest) {
     .filter((r) => !seenSlugs.has(r.slug))
     .slice(0, MAX_INSPECT_PER_RUN);
 
-  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/+$/, '');
+  const baseUrl = getGscInspectionBaseUrl(siteUrl);
   let inspected = 0;
   let notIndexed = 0;
   const inspectionResults: Array<Record<string, unknown>> = [];

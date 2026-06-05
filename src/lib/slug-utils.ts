@@ -52,6 +52,19 @@ const ROMAN_MAP: Record<string, string> = {
   '부산': 'busan', '서울': 'seoul', '제주': 'jeju', '인천': 'incheon',
 };
 
+const TOPIC_TERM_MAP: Array<[RegExp, string]> = [
+  [/여행\s*준비물\s*완벽\s*체크리스트|준비물\s*완벽\s*체크리스트|여행\s*준비물|준비물|체크리스트/g, ' preparation '],
+  [/월별\s*날씨와\s*옷차림|월별\s*날씨|날씨와\s*옷차림|날씨|옷차림|기온/g, ' weather '],
+  [/화폐\s*환전\s*팁\s*문화|화폐|환전|팁\s*문화/g, ' currency '],
+  [/여행\s*완벽\s*가이드|완벽\s*가이드/g, ' complete guide '],
+  [/추천\s*일정|일정|코스/g, ' itinerary '],
+  [/비자|입국\s*서류|입국/g, ' visa '],
+  [/예상\s*총비용|총비용|절약\s*팁|비용/g, ' budget '],
+  [/현지\s*맛집|맛집|음식|미식/g, ' food '],
+  [/교통수단|교통|이동\s*방법/g, ' transport '],
+  [/자주\s*묻는\s*질문|질문|FAQ/gi, ' faq '],
+];
+
 /**
  * topic 문자열에서 가장 가능성 높은 destination 토큰 추출.
  * slug-utils SSOT — generate/route.ts 와 blog-publisher 공유.
@@ -92,12 +105,17 @@ export function slugifyTopic(topic: string): string {
   for (const [kr, en] of sorted) {
     slug = slug.replace(new RegExp(kr, 'g'), en);
   }
-  // 2) 남은 한글/특수문자 제거
+  for (const [pattern, en] of TOPIC_TERM_MAP) {
+    slug = slug.replace(pattern, en);
+  }
+  // 2) 남은 한글/특수문자는 단어 경계를 보존하도록 하이픈으로 치환
+  //    예: "시모노세키/후쿠오카/벳부 준비물" → "shimonoseki-fukuoka-beppu-preparation"
   slug = slug
-    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '-')
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
+    .replace(/-(preparation|currency|weather|visa|budget|food|faq|itinerary|transport|guide)(?:-\1)+(?=-|$)/g, '-$1')
     .replace(/^-|-$/g, '')
     .substring(0, 80)
     .replace(/-+$/, '');
