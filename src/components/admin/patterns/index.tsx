@@ -27,7 +27,7 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, breadcrumb, actions, badge }: PageHeaderProps) {
   return (
-    <div className="flex items-start justify-between gap-4 mb-6">
+    <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
       <div className="min-w-0 flex-1">
         {breadcrumb && breadcrumb.length > 0 && (
           <div className="flex items-center gap-1 text-admin-xs text-admin-muted mb-1.5">
@@ -51,7 +51,7 @@ export function PageHeader({ title, subtitle, breadcrumb, actions, badge }: Page
         </div>
         {subtitle && <p className="mt-1 text-admin-sm text-admin-muted">{subtitle}</p>}
       </div>
-      {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end">{actions}</div>}
     </div>
   );
 }

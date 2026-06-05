@@ -22,6 +22,10 @@ import {
 } from '@/lib/payment-matcher';
 import { learnAlias } from '@/lib/slack-ingest';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import {
+  buildBankTransactionFingerprint,
+  scoreBankTransactionSimilarity,
+} from '@/lib/bank-transaction-fingerprint';
 
 // 매칭 성공 후 counterparty_name ↔ customer 매핑 학습 (best-effort)
 async function learnAliasForMatch(bookingId: string, counterpartyName: string | undefined | null) {
@@ -54,6 +58,18 @@ interface BankTxRow {
   booking_id: string | null;
 }
 
+interface ExistingBankTxCandidate {
+  id: string;
+  amount: number;
+  transaction_type: string;
+  counterparty_name: string | null;
+  received_at: string;
+  booking_id: string | null;
+  match_status: string | null;
+  source?: string | null;
+  source_metadata?: Record<string, unknown> | null;
+}
+
 interface BookingWithCustomer {
   id: string;
   booking_no: string;
@@ -78,6 +94,88 @@ function nameSim(a: string, b: string): number {
   if (an.includes(bn) || bn.includes(an)) return 0.7;
   if (an[0] === bn[0]) return 0.3;
   return 0;
+}
+
+async function findExistingBankTransaction(input: {
+  tenantId?: string | null;
+  receivedAt: string;
+  txType: string;
+  amount: number;
+  counterpartyName: string;
+  fingerprint: string;
+}): Promise<{ kind: 'exact' | 'probable' | null; row: ExistingBankTxCandidate | null; confidence: number }> {
+  const exact = await supabaseAdmin
+    .from('bank_transactions')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source')
+    .eq('transaction_fingerprint', input.fingerprint)
+    .maybeSingle();
+
+  if (exact.data) {
+    return { kind: 'exact', row: exact.data as ExistingBankTxCandidate, confidence: 1 };
+  }
+
+  const center = new Date(input.receivedAt);
+  if (Number.isNaN(center.getTime())) return { kind: null, row: null, confidence: 0 };
+
+  const from = new Date(center.getTime() - 60 * 60_000).toISOString();
+  const to = new Date(center.getTime() + 60 * 60_000).toISOString();
+  let query = supabaseAdmin
+    .from('bank_transactions')
+    .select('id, amount, transaction_type, counterparty_name, received_at, booking_id, match_status, source')
+    .eq('transaction_type', input.txType)
+    .eq('amount', input.amount)
+    .gte('received_at', from)
+    .lte('received_at', to)
+    .neq('status', 'excluded')
+    .limit(20);
+
+  if (input.tenantId) query = query.eq('tenant_id', input.tenantId) as typeof query;
+  else query = query.is('tenant_id', null) as typeof query;
+
+  const { data } = await query;
+  let best: ExistingBankTxCandidate | null = null;
+  let bestScore = 0;
+  for (const row of (data ?? []) as ExistingBankTxCandidate[]) {
+    const score = scoreBankTransactionSimilarity(row, input);
+    if (score > bestScore) {
+      best = row;
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.9
+    ? { kind: 'probable', row: best, confidence: bestScore }
+    : { kind: null, row: bestScore >= 0.65 ? best : null, confidence: bestScore };
+}
+
+async function attachBulkImportEvidence(existingId: string, input: {
+  fingerprint: string;
+  row: BulkRow;
+  eventId: string;
+}) {
+  const { data: existing } = await supabaseAdmin
+    .from('bank_transactions')
+    .select('source_metadata')
+    .eq('id', existingId)
+    .maybeSingle();
+  const previousMetadata = ((existing as { source_metadata?: Record<string, unknown> } | null)?.source_metadata ?? {}) as Record<string, unknown>;
+
+  await supabaseAdmin
+    .from('bank_transactions')
+    .update({
+      transaction_fingerprint: input.fingerprint,
+      source_metadata: {
+        ...previousMetadata,
+        bulk_import: {
+          event_id: input.eventId,
+          received_at: input.row.receivedAt,
+          counterparty_name: input.row.counterpartyName,
+          memo: input.row.memo,
+          imported_at: new Date().toISOString(),
+        },
+      },
+    } as Record<string, unknown>)
+    .eq('id', existingId);
 }
 
 interface BookingRow {
@@ -804,6 +902,19 @@ export async function POST(request: NextRequest) {
       const amount    = isDeposit ? row.depositAmount : row.withdrawAmount;
       const txType: '입금' | '출금' = isDeposit ? '입금' : '출금';
       const parsed = parseBulkMemo(row.memo);
+      const fingerprint = buildBankTransactionFingerprint({
+        receivedAt: row.receivedAt,
+        txType,
+        amount,
+        counterpartyName: row.counterpartyName,
+      });
+      const duplicate = await findExistingBankTransaction({
+        receivedAt: row.receivedAt,
+        txType,
+        amount,
+        counterpartyName: row.counterpartyName,
+        fingerprint,
+      });
 
       let matchedBooking: typeof bookings[0] | null = null;
       let confidence = 0;
@@ -824,7 +935,12 @@ export async function POST(request: NextRequest) {
       const matchStatus: 'auto' | 'review' | 'unmatched' =
         confidence >= 0.85 ? 'auto' : confidence >= 0.5 ? 'review' : 'unmatched';
 
-      const eventId = `bulk_${row.receivedAt}_${row.counterpartyName}_${amount}`.replace(/\s+/g, '_');
+      const eventId = `bulk_${fingerprint.replace(/^sha256:/, '')}`;
+      const importAction =
+        duplicate.kind === 'exact' ? 'already_processed' :
+        duplicate.kind === 'probable' ? 'merge_candidate' :
+        duplicate.row && duplicate.confidence >= 0.65 ? 'duplicate_review' :
+        'insert';
 
       const previewRow = {
         receivedAt: row.receivedAt, type: txType, amount,
@@ -832,14 +948,36 @@ export async function POST(request: NextRequest) {
         matchStatus, confidence: Math.round(confidence * 100), matchReasons,
         bookingNo: matchedBooking?.booking_no, bookingId: matchedBooking?.id,
         customerName: matchedBooking?.customer_name, eventId,
+        transactionFingerprint: fingerprint,
+        importAction,
+        existingTxId: duplicate.row?.id ?? null,
+        existingMatchStatus: duplicate.row?.match_status ?? null,
+        duplicateConfidence: Math.round(duplicate.confidence * 100),
       };
 
       if (preview) { results.push(previewRow); continue; }
+
+      if ((duplicate.kind === 'exact' || duplicate.kind === 'probable') && duplicate.row) {
+        await attachBulkImportEvidence(duplicate.row.id, { fingerprint, row, eventId });
+        results.push({ ...previewRow, status: 'merged', txId: duplicate.row.id });
+        continue;
+      }
 
       const { data: inserted, error: insertError } = await supabaseAdmin
         .from('bank_transactions')
         .insert([{
           slack_event_id: eventId, raw_message: `[일괄등록] ${row.memo}`,
+          transaction_fingerprint: fingerprint,
+          source: 'bulk_import',
+          source_metadata: {
+            bulk_import: {
+              event_id: eventId,
+              received_at: row.receivedAt,
+              counterparty_name: row.counterpartyName,
+              memo: row.memo,
+              imported_at: new Date().toISOString(),
+            },
+          },
           transaction_type: txType, amount,
           counterparty_name: row.counterpartyName, memo: row.memo,
           received_at: row.receivedAt,
@@ -848,7 +986,7 @@ export async function POST(request: NextRequest) {
           match_status: matchStatus, match_confidence: confidence,
           matched_by: matchStatus === 'auto' ? 'retroactive' : null,
           matched_at: matchStatus === 'auto' ? new Date().toISOString() : null,
-        }])
+        } as Record<string, unknown>])
         .select('id').single();
 
       if (insertError?.code === '23505') { results.push({ ...previewRow, status: 'duplicate' }); continue; }
@@ -876,6 +1014,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       inserted:   results.filter(r => r.status === 'inserted').length,
       duplicates: results.filter(r => r.status === 'duplicate').length,
+      merged:     results.filter(r => r.status === 'merged').length,
       errors:     results.filter(r => r.status === 'error').length,
       matched:    results.filter(r => r.status === 'inserted' && r.matchStatus === 'auto').length,
       firstError: (results.find(r => r.status === 'error') as { error?: string } | undefined)?.error || null,

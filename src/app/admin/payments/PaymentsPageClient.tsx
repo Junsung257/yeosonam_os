@@ -11,11 +11,12 @@ const PaymentCommandBar = dynamic(() => import('./_components/PaymentCommandBar'
 import SettlementBundleModal from './_components/SettlementBundleModal';
 import AutoSuggestChip from './_components/AutoSuggestChip';
 import LedgerStatusChip from './_components/LedgerStatusChip';
+import { calcSettlementAccounting } from '@/lib/settlement-accounting';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
 export interface ErpStats {
-  totalPrice: number; totalCost: number; totalPaid: number;
+  totalPrice: number; totalCost: number; totalPaid: number; totalPaidOut: number;
   remaining: number; margin: number; bookingCount: number;
 }
 
@@ -30,7 +31,7 @@ export interface BankTransaction {
   status?: string; deleted_at?: string | null;
   bookings?: {
     id: string; booking_no?: string; package_title?: string;
-    total_price?: number; paid_amount?: number; total_paid_out?: number;
+    total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number;
     departure_date?: string;
     customers?: { name?: string };
   };
@@ -98,6 +99,13 @@ const MATCH_COLORS: Record<string, string> = {
   manual: 'bg-sky-50 text-sky-700',
   error: 'bg-red-100 text-red-700',
 };
+
+function importActionBadge(action?: ImportRow['importAction']) {
+  if (action === 'already_processed') return { label: '이미 처리됨', cls: 'bg-slate-100 text-slate-700 border-slate-200' };
+  if (action === 'merge_candidate') return { label: '같은 거래 병합', cls: 'bg-blue-50 text-blue-700 border-blue-200' };
+  if (action === 'duplicate_review') return { label: '중복 의심', cls: 'bg-amber-50 text-amber-700 border-amber-200' };
+  return { label: '신규', cls: 'bg-emerald-50 text-emerald-700 border-emerald-200' };
+}
 
 // ─── SmartCombobox ─────────────────────────────────────────────────────────────
 
@@ -217,6 +225,8 @@ interface ImportRow {
   receivedAt: string; depositAmount: number; withdrawAmount: number;
   counterpartyName: string; memo: string;
   matchStatus?: string; confidence?: number; bookingNo?: string; customerName?: string;
+  importAction?: 'insert' | 'already_processed' | 'merge_candidate' | 'duplicate_review';
+  existingTxId?: string | null; existingMatchStatus?: string | null; duplicateConfidence?: number;
   include?: boolean;
 }
 
@@ -308,7 +318,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importStep, setImportStep] = useState<'paste' | 'preview' | 'done'>('paste');
   const [pasteText, setPasteText] = useState('');
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
-  const [importResult, setImportResult] = useState<{ inserted: number; duplicates: number; errors: number; matched: number; firstError?: string } | null>(null);
+  const [importResult, setImportResult] = useState<{ inserted: number; duplicates: number; merged?: number; errors: number; matched: number; firstError?: string } | null>(null);
   const [importing, setImporting] = useState(false);
 
   function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
@@ -322,12 +332,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     try {
       const res = await fetch('/api/bookings');
       const data = await res.json();
-      type B = { status?: string; total_price?: number; total_cost?: number; paid_amount?: number };
+      type B = { status?: string; total_price?: number; total_cost?: number; paid_amount?: number; total_paid_out?: number };
       const active: B[] = (data.bookings || []).filter((b: B) => b.status !== 'cancelled');
       const totalPrice = active.reduce((s, b) => s + (b.total_price || 0), 0);
       const totalCost  = active.reduce((s, b) => s + (b.total_cost  || 0), 0);
       const totalPaid  = active.reduce((s, b) => s + (b.paid_amount || 0), 0);
-      setErp({ totalPrice, totalCost, totalPaid, remaining: totalPrice - totalPaid, margin: totalPrice - totalCost, bookingCount: active.length });
+      const totalPaidOut = active.reduce((s, b) => s + (b.total_paid_out || 0), 0);
+      setErp({ totalPrice, totalCost, totalPaid, totalPaidOut, remaining: totalPrice - totalPaid, margin: totalPrice - totalCost, bookingCount: active.length });
     } catch { /* non-critical */ }
   }, []);
 
@@ -423,6 +434,19 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     erp ? Math.max(0, erp.totalPrice - erp.totalPaid) : 0,
     [erp]
   );
+  const paidOutRate = useMemo(() =>
+    erp ? Math.min(100, Math.round((erp.totalPaidOut / Math.max(erp.totalCost, 1)) * 100)) : 0,
+    [erp]
+  );
+  const ownerNumbers = useMemo(() => {
+    const totals = calcSettlementAccounting({
+      totalPrice: erp?.totalPrice,
+      totalCost: erp?.totalCost,
+      paidAmount: erp?.totalPaid,
+      totalPaidOut: erp?.totalPaidOut,
+    });
+    return { ...totals, payables: totals.payable };
+  }, [erp]);
   const unmatchedAmount = useMemo(() =>
     transactions.filter(t => t.match_status === 'unmatched' || t.match_status === 'error')
       .reduce((s, t) => s + t.amount, 0),
@@ -583,7 +607,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       const data = await res.json();
       setImportRows((data.rows || []).map((r: any, i: number) => ({
         ...rows[i], matchStatus: r.matchStatus, confidence: r.confidence,
-        bookingNo: r.bookingNo, customerName: r.customerName, include: true,
+        bookingNo: r.bookingNo, customerName: r.customerName,
+        importAction: r.importAction,
+        existingTxId: r.existingTxId,
+        existingMatchStatus: r.existingMatchStatus,
+        duplicateConfidence: r.duplicateConfidence,
+        include: r.importAction === 'insert',
       })));
       setImportStep('preview');
     } finally { setImporting(false); }
@@ -726,77 +755,31 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         </div>
       </div>
 
-      {/* ── BI 통계 (2컬럼) ─────────────────────────────────────────────────── */}
-      <div className="grid grid-cols-[1fr_320px] gap-4 mb-5">
-
-        {/* 좌: 매출 vs 수금 현황 */}
-        <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] p-5">
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-admin-base font-semibold text-admin-text-2">매출 vs 수금 현황</span>
-            <span className="text-[11px] text-admin-muted-2">취소 제외 {erp?.bookingCount ?? 0}건</span>
-          </div>
-
-          {/* 총 판매가 */}
-          <div className="flex items-baseline gap-2 mb-3">
-            <span className="text-[11px] text-admin-muted-2">총 판매가</span>
-            <span className="text-xl font-bold text-admin-text-2 tabular-nums">
-              {erp ? `${(erp.totalPrice / 10000).toFixed(0)}만원` : '—'}
-            </span>
-          </div>
-
-          {/* 수금률 Progress Bar */}
-          <div className="mb-3">
-            <div className="flex justify-between text-[11px] text-admin-muted mb-1.5">
-              <span>수금률</span>
-              <span className="font-semibold text-brand">{collectionRate}%</span>
+      {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5">
+        <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-5">
+          <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-admin-base font-semibold text-admin-text-2">오늘 봐야 할 정산</h2>
+              <p className="text-admin-xs text-admin-muted mt-1">취소 제외 {erp?.bookingCount ?? 0}건 기준</p>
             </div>
-            <div className="h-2 bg-admin-surface-2 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-blue-600 rounded-full transition-all duration-700"
-                style={{ width: `${collectionRate}%` }}
-              />
-            </div>
-          </div>
-
-          {/* 매칭 완료 / 미입금 잔액 */}
-          <div className="grid grid-cols-2 gap-3 mt-4">
-            <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] px-3 py-2.5">
-              <p className="text-[11px] text-admin-muted font-medium mb-0.5">매칭 완료</p>
-              <p className="text-admin-base font-bold text-brand tabular-nums">
-                {erp ? `${(erp.totalPaid / 10000).toFixed(0)}만원` : '—'}
-              </p>
-            </div>
-            <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] px-3 py-2.5">
-              <p className="text-[11px] text-admin-muted font-medium mb-0.5">미입금 잔액</p>
-              <p className="text-admin-base font-bold text-red-600 tabular-nums">
-                {erp ? `${(safeRemaining / 10000).toFixed(0)}만원` : '—'}
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* 우: Date Filter + 예상마진 + 미매칭 잔액 */}
-        <div className="flex flex-col gap-3">
-
-          {/* Date Filter 드롭다운 */}
-          <div className="relative self-end flex items-center gap-2">
-            {tab === 'unmatched' && (
-              <span className="px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[11px] font-medium whitespace-nowrap">
-                전체 기간의 미매칭 내역입니다
-              </span>
-            )}
-            <div className="relative">
+            <div className="relative flex items-center gap-2">
+              {tab === 'unmatched' && (
+                <span className="px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[11px] font-medium whitespace-nowrap">
+                  전체 기간 미매칭
+                </span>
+              )}
               <button
                 onClick={() => { if (tab !== 'unmatched') setDateDropdown(o => !o); }}
                 disabled={tab === 'unmatched'}
-                className={`flex items-center gap-1.5 px-3 py-1.5 bg-white border border-admin-border-mid rounded text-admin-sm transition
+                className={`flex items-center gap-1.5 px-3 py-1.5 bg-white border border-admin-border-mid rounded-admin-sm text-admin-sm transition
                   ${tab === 'unmatched' ? 'opacity-40 cursor-not-allowed text-admin-muted-2' : 'text-admin-text-2 hover:bg-admin-bg'}`}
               >
                 <span>{tab === 'unmatched' ? '전체' : dateFilter}</span>
                 <span className="text-admin-muted-2 text-[11px]">▾</span>
               </button>
               {dateDropdown && tab !== 'unmatched' && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded z-20 py-1 min-w-[110px]">
+                <div className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded-admin-sm z-20 py-1 min-w-[110px]">
                   {DATE_FILTERS.map(f => (
                     <button key={f} onClick={() => { setDateFilter(f); setDateDropdown(false); }}
                       className={`w-full text-left px-3 py-1.5 text-admin-sm hover:bg-admin-bg transition
@@ -809,29 +792,67 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </div>
           </div>
 
-          {/* 예상 마진 카드 */}
-          <div className="bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] px-4 py-3 flex-1">
-            <p className="text-[11px] text-admin-muted font-semibold mb-1">예상 마진</p>
-            <p className="text-xl font-bold text-emerald-600 tabular-nums leading-tight">
-              {erp ? `${(erp.margin / 10000).toFixed(0)}만원` : '—'}
-            </p>
-            <p className="text-[11px] text-admin-muted-2 mt-1">
-              {erp ? `총 원가 ${(erp.totalCost / 10000).toFixed(0)}만원` : '데이터 로드 중'}
-            </p>
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="border border-admin-border-mid rounded-admin-md p-4 bg-white">
+              <p className="text-[11px] text-admin-muted font-medium">고객에게 받은 돈</p>
+              <p className="mt-1 text-xl font-bold text-brand tabular-nums">{erp ? fmt만(erp.totalPaid) : '—'}</p>
+              <div className="mt-3 h-1.5 bg-admin-surface-2 rounded-full overflow-hidden">
+                <div className="h-full bg-blue-600 rounded-full" style={{ width: `${collectionRate}%` }} />
+              </div>
+              <p className="mt-1 text-[11px] text-admin-muted-2">전체 상품가 {erp ? fmt만(erp.totalPrice) : '—'} 중 {collectionRate}%</p>
+            </div>
+            <div className="border border-admin-border-mid rounded-admin-md p-4 bg-white">
+              <p className="text-[11px] text-admin-muted font-medium">랜드사에 보낸 돈</p>
+              <p className="mt-1 text-xl font-bold text-orange-600 tabular-nums">{erp ? fmt만(erp.totalPaidOut) : '—'}</p>
+              <div className="mt-3 h-1.5 bg-admin-surface-2 rounded-full overflow-hidden">
+                <div className="h-full bg-orange-500 rounded-full" style={{ width: `${paidOutRate}%` }} />
+              </div>
+              <p className="mt-1 text-[11px] text-admin-muted-2">남은 송금 예정 {erp ? fmt만(ownerNumbers.payables) : '—'}</p>
+            </div>
+            <div className={`border rounded-admin-md p-4 bg-white ${ownerNumbers.cashProfit < 0 ? 'border-red-200' : 'border-emerald-200'}`}>
+              <p className="text-[11px] text-admin-muted font-medium">현재 남은 돈</p>
+              <p className={`mt-1 text-xl font-bold tabular-nums ${ownerNumbers.cashProfit < 0 ? 'text-red-600' : 'text-emerald-700'}`}>
+                {erp ? fmt만(ownerNumbers.cashProfit) : '—'}
+              </p>
+              <p className="mt-3 text-[11px] text-admin-muted-2">받은 돈 - 랜드사 송금액</p>
+            </div>
           </div>
 
-          {/* 미매칭 잔액 경고 카드 */}
-          <div className={`border rounded-lg px-4 py-3 flex-1 bg-white ${unmatchedAmount > 0 ? 'border-amber-300' : 'border-admin-border-mid'}`}>
-            <p className={`text-[11px] font-semibold mb-1 ${unmatchedAmount > 0 ? 'text-amber-600' : 'text-admin-muted'}`}>
-              미매칭 잔액
-            </p>
-            <p className={`text-xl font-bold tabular-nums leading-tight ${unmatchedAmount > 0 ? 'text-amber-600' : 'text-admin-muted-2'}`}>
-              {(unmatchedAmount / 10000).toFixed(0)}만원
-            </p>
-            <p className={`text-[11px] mt-1 ${unmatchedAmount > 0 ? 'text-amber-500' : 'text-admin-muted-2'}`}>
-              주인을 찾아야 할 금액
-            </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            {[
+              { label: '미수', value: erp ? fmt만(safeRemaining) : '—', tone: 'text-red-600', hint: '아직 고객에게 받아야 할 돈' },
+              { label: '예상 우리수익', value: erp ? fmt만(ownerNumbers.grossProfit) : '—', tone: 'text-emerald-700', hint: '상품가 - 랜드사 예정액' },
+              { label: '예상 세금', value: erp ? fmt만(ownerNumbers.taxEstimate) : '—', tone: 'text-admin-text-2', hint: '간편 추정 10%' },
+              { label: '예상 순수익', value: erp ? fmt만(ownerNumbers.netProfit) : '—', tone: 'text-brand', hint: '우리수익 - 예상세금' },
+            ].map(item => (
+              <div key={item.label} className="border border-admin-border-mid rounded-admin-md bg-white px-3 py-3">
+                <p className="text-[11px] text-admin-muted font-medium">{item.label}</p>
+                <p className={`mt-1 text-admin-base font-bold tabular-nums ${item.tone}`}>{item.value}</p>
+                <p className="mt-1 text-[10px] text-admin-muted-2">{item.hint}</p>
+              </div>
+            ))}
           </div>
+        </div>
+
+        <div className="grid gap-3">
+          <button
+            onClick={() => setTab('unmatched')}
+            className={`text-left border rounded-admin-md p-4 bg-white transition ${unmatchedAmount > 0 ? 'border-amber-300 hover:bg-amber-50' : 'border-admin-border-mid hover:bg-admin-bg'}`}
+          >
+            <p className={`text-[11px] font-semibold ${unmatchedAmount > 0 ? 'text-amber-700' : 'text-admin-muted'}`}>미매칭 잔액</p>
+            <p className={`mt-1 text-2xl font-bold tabular-nums ${unmatchedAmount > 0 ? 'text-amber-700' : 'text-admin-muted-2'}`}>
+              {fmt만(unmatchedAmount)}
+            </p>
+            <p className="mt-2 text-[11px] text-admin-muted-2">통장에는 있는데 예약 주인을 못 찾은 금액</p>
+          </button>
+          <button
+            onClick={() => { setTab('outflow'); setOutflowSubTab('unmatched'); }}
+            className="text-left border border-admin-border-mid rounded-admin-md p-4 bg-white hover:bg-admin-bg transition"
+          >
+            <p className="text-[11px] font-semibold text-admin-muted">출금 확인 필요</p>
+            <p className="mt-1 text-2xl font-bold text-orange-600 tabular-nums">{outflowUnmatchedCount}건</p>
+            <p className="mt-2 text-[11px] text-admin-muted-2">랜드사 송금/환불 중 아직 예약과 묶지 않은 건</p>
+          </button>
         </div>
       </div>
 
@@ -1001,8 +1022,27 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                           {tx.bookings.package_title || '상품 미지정'}
                           {tx.bookings.booking_no && ` · ${tx.bookings.booking_no}`}
                         </div>
+                        {(() => {
+                          const price = tx.bookings.total_price ?? 0;
+                          const paid = tx.bookings.paid_amount ?? 0;
+                          const cost = tx.bookings.total_cost ?? 0;
+                          const bookingNumbers = calcSettlementAccounting({
+                            totalPrice: price,
+                            totalCost: cost,
+                            paidAmount: paid,
+                            totalPaidOut: tx.bookings.total_paid_out,
+                          });
+                          return (
+                            <div className="mt-1 flex flex-wrap gap-1 max-w-[360px] text-[10px]">
+                              <span className="rounded-admin-sm bg-admin-surface-2 px-1.5 py-0.5 text-admin-muted whitespace-nowrap">상품 {fmt만(price)}</span>
+                              <span className="rounded-admin-sm bg-blue-50 px-1.5 py-0.5 text-blue-700 whitespace-nowrap">입금 {fmt만(paid)}</span>
+                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.receivable > 0 ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-700'}`}>미수 {fmt만(bookingNumbers.receivable)}</span>
+                              <span className={`rounded-admin-sm px-1.5 py-0.5 whitespace-nowrap ${bookingNumbers.grossProfit >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>수익 {fmt만(bookingNumbers.grossProfit)}</span>
+                            </div>
+                          );
+                        })()}
                         {/* Hover 프리뷰 (B-4) */}
-                        <div className="hidden group-hover:block absolute left-0 top-full mt-1 z-10 bg-white rounded-[16px] shadow-[0_2px_12px_rgba(0,0,0,0.06)] shadow-admin-md p-3 min-w-[260px] text-admin-xs">
+                        <div className="hidden group-hover:block absolute left-0 top-full mt-1 z-10 bg-white rounded-admin-md shadow-admin-md p-3 min-w-[260px] text-admin-xs">
                           <div className="font-semibold text-admin-text-2 mb-1">
                             {tx.bookings.customers?.name} · {tx.bookings.package_title || '미지정'}
                           </div>
@@ -1012,9 +1052,20 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                             {tx.bookings.total_price != null && (
                               <div>💰 판매가: {tx.bookings.total_price.toLocaleString()}원</div>
                             )}
+                            {tx.bookings.total_cost != null && (
+                              <div>랜드사 예정액: {tx.bookings.total_cost.toLocaleString()}원</div>
+                            )}
+                            {tx.bookings.total_paid_out != null && (
+                              <div>랜드사 송금액: {tx.bookings.total_paid_out.toLocaleString()}원</div>
+                            )}
                             {tx.bookings.paid_amount != null && tx.bookings.total_price != null && (
                               <div>잔금: <strong className={(tx.bookings.total_price - tx.bookings.paid_amount) > 0 ? 'text-red-600' : 'text-emerald-600'}>
                                 {Math.max(0, tx.bookings.total_price - tx.bookings.paid_amount).toLocaleString()}원
+                              </strong></div>
+                            )}
+                            {tx.bookings.total_price != null && tx.bookings.total_cost != null && (
+                              <div>예상 우리수익: <strong className={(tx.bookings.total_price - tx.bookings.total_cost) >= 0 ? 'text-emerald-600' : 'text-red-600'}>
+                                {(tx.bookings.total_price - tx.bookings.total_cost).toLocaleString()}원
                               </strong></div>
                             )}
                           </div>
@@ -1537,6 +1588,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         <th className="px-3 py-2 text-right text-admin-muted">금액</th>
                         <th className="px-3 py-2 text-left text-admin-muted">적요</th>
                         <th className="px-3 py-2 text-left text-admin-muted">메모</th>
+                        <th className="px-3 py-2 text-left text-admin-muted">가져오기</th>
                         <th className="px-3 py-2 text-left text-admin-muted">매칭 예약</th>
                         <th className="px-3 py-2 text-center text-admin-muted">신뢰도</th>
                       </tr>
@@ -1557,6 +1609,23 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                           <td className="px-3 py-2 text-right font-medium text-admin-text-2">{(r.depositAmount || r.withdrawAmount).toLocaleString()}원</td>
                           <td className="px-3 py-2 text-admin-text-2">{r.counterpartyName}</td>
                           <td className="px-3 py-2 text-admin-muted">{r.memo}</td>
+                          <td className="px-3 py-2">
+                            {(() => {
+                              const badge = importActionBadge(r.importAction);
+                              return (
+                                <div>
+                                  <span className={`px-1.5 py-0.5 rounded-full border text-[11px] font-medium ${badge.cls}`}>
+                                    {badge.label}
+                                  </span>
+                                  {r.importAction === 'duplicate_review' && r.duplicateConfidence ? (
+                                    <div className="mt-1 text-[10px] text-admin-muted">
+                                      유사도 {r.duplicateConfidence}%
+                                    </div>
+                                  ) : null}
+                                </div>
+                              );
+                            })()}
+                          </td>
                           <td className="px-3 py-2">{r.bookingNo ? <span className="text-emerald-700 font-medium">{r.bookingNo} · {r.customerName}</span> : <span className="text-admin-muted-2">미매칭</span>}</td>
                           <td className="px-3 py-2 text-center">
                             {r.matchStatus && r.matchStatus !== 'unmatched'
@@ -1584,9 +1653,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             {importStep === 'done' && importResult && (
               <div className="p-8 text-center">
                 <p className="text-admin-lg font-semibold text-admin-text-2 mb-4">등록 완료</p>
-                <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="grid grid-cols-5 gap-4 mb-6">
                   {[
                     { label: '신규 등록', val: importResult.inserted, cls: 'bg-white border-emerald-200 text-emerald-700' },
+                    { label: '기존 병합', val: importResult.merged ?? 0, cls: 'bg-white border-slate-200 text-slate-700' },
                     { label: '자동 매칭', val: importResult.matched,  cls: 'bg-white border-blue-200 text-blue-700' },
                     { label: '중복 스킵', val: importResult.duplicates, cls: 'bg-white border-admin-border-mid text-admin-muted' },
                     { label: '오류',     val: importResult.errors,   cls: 'bg-white border-red-200 text-red-600' },

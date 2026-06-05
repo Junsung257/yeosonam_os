@@ -3,6 +3,7 @@ import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { sumSettlementAccounting } from '@/lib/settlement-accounting';
 
 function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number);
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
     .from('bookings')
     .select(`
       id, booking_no, package_title, land_operator,
-      total_price, total_cost, paid_amount,
+      total_price, total_cost, paid_amount, total_paid_out,
       departure_date, booking_date, payment_date, notes, status,
       transfer_status, transfer_receipt_url, has_tax_invoice, customer_receipt_status,
       customers!lead_customer_id(id, name, phone)
@@ -54,10 +55,12 @@ export async function GET(request: NextRequest) {
 
   const bookings = data ?? [];
 
-  const total_price = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_price as number | null) ?? 0)), 0);
-  const total_cost = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_cost as number | null) ?? 0)), 0);
-  const net_sales = total_price - total_cost;
-  const vat_estimate = Math.floor(net_sales * 0.1);
+  const summary = sumSettlementAccounting(bookings.map((b: Record<string, unknown>) => ({
+    totalPrice: b.total_price as number | null,
+    totalCost: b.total_cost as number | null,
+    paidAmount: b.paid_amount as number | null,
+    totalPaidOut: b.total_paid_out as number | null,
+  })));
 
   const pending_transfers = bookings.filter(
     (b: Record<string, unknown>) => b.transfer_status === 'PENDING' && b.status !== 'cancelled',
@@ -68,7 +71,17 @@ export async function GET(request: NextRequest) {
 
   return apiResponse({
     bookings,
-    kpis: { total_price, total_cost, net_sales, vat_estimate },
+    kpis: {
+      total_price: summary.totalPrice,
+      total_cost: summary.totalCost,
+      total_paid: summary.paidAmount,
+      total_paid_out: summary.totalPaidOut,
+      receivable: summary.receivable,
+      payable: summary.payable,
+      net_sales: summary.grossProfit,
+      vat_estimate: summary.taxEstimate,
+      net_profit_estimate: summary.netProfit,
+    },
     todos: { pending_transfers, not_issued_receipts },
   }, { headers: NO_STORE_HEADERS });
 }
