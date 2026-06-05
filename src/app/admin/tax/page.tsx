@@ -6,6 +6,7 @@ import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Download, Wallet, Coins, TrendingUp, Receipt, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { calcSettlementAccounting } from '@/lib/settlement-accounting';
 
 interface TaxBooking {
   id:                      string;
@@ -14,6 +15,8 @@ interface TaxBooking {
   land_operator:           string | null;
   total_price:             number;
   total_cost:              number;
+  paid_amount:             number;
+  total_paid_out:          number;
   departure_date:          string;
   booking_date:            string | null;
   payment_date:            string | null;
@@ -29,8 +32,13 @@ interface TaxBooking {
 interface Kpis {
   total_price:  number;
   total_cost:   number;
+  total_paid:   number;
+  total_paid_out: number;
+  receivable:   number;
+  payable:      number;
   net_sales:    number;
   vat_estimate: number;
+  net_profit_estimate: number;
 }
 
 interface Todos {
@@ -153,35 +161,35 @@ export default function TaxPage() {
         }
       />
 
-      {/* KPI 카드 4개 */}
+      {/* KPI 카드 */}
       {kpis && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
           <KpiCard
-            label="총 입금액 (판매가)"
-            value={`₩${fmt(kpis.total_price)}`}
+            label="고객에게 받은 돈"
+            value={`₩${fmt(kpis.total_paid)}`}
             icon={Wallet}
             tone="positive"
-            hint="출발일 기준"
+            hint={`미수 ₩${fmt(kpis.receivable)}`}
           />
           <KpiCard
-            label="총 송금액 (원가)"
-            value={`₩${fmt(kpis.total_cost)}`}
+            label="랜드사에 보낸 돈"
+            value={`₩${fmt(kpis.total_paid_out)}`}
             icon={Coins}
             tone="negative"
-            hint="랜드사 지불 원가"
+            hint={`미송금 ₩${fmt(kpis.payable)}`}
           />
           <KpiCard
-            label="순매출"
+            label="예상 우리수익"
             value={`₩${fmt(kpis.net_sales)}`}
             icon={TrendingUp}
             tone="positive"
-            hint="판매가 − 원가"
+            hint="상품가 − 랜드사 예정액"
           />
           <KpiCard
-            label="예상 부가세 (10%)"
-            value={`₩${fmt(kpis.vat_estimate)}`}
+            label="예상 순수익"
+            value={`₩${fmt(kpis.net_profit_estimate)}`}
             icon={Receipt}
-            hint="순매출 × 10% 절사"
+            hint={`세금 추정 ₩${fmt(kpis.vat_estimate)}`}
           />
         </div>
       )}
@@ -255,7 +263,8 @@ export default function TaxPage() {
             <thead>
               <tr>
                 {[
-                  '출발일', '예약번호', '예약자', '판매가', '원가', '순매출',
+                  '출발일', '예약번호', '예약자', '판매가', '입금', '미수',
+                  '랜드사 예정', '송금액', '미송금', '우리수익',
                   '랜드사', '랜드사 송금', '세금계산서', '고객 영수증', '송금증',
                 ].map(h => (
                   <th key={h} className="whitespace-nowrap">{h}</th>
@@ -265,13 +274,18 @@ export default function TaxPage() {
             <tbody>
               {bookings.length === 0 && !loading ? (
                 <tr>
-                  <td colSpan={11} className="px-3 py-10 text-center text-admin-muted text-admin-sm" style={{ height: 'auto' }}>
+                  <td colSpan={15} className="px-3 py-10 text-center text-admin-muted text-admin-sm" style={{ height: 'auto' }}>
                     <span className="admin-num">{month}</span>에 출발하는 예약이 없습니다.
                   </td>
                 </tr>
               ) : (
                 bookings.map(b => {
-                  const net = b.total_price - b.total_cost;
+                  const accounting = calcSettlementAccounting({
+                    totalPrice: b.total_price,
+                    totalCost: b.total_cost,
+                    paidAmount: b.paid_amount,
+                    totalPaidOut: b.total_paid_out,
+                  });
                   const isSaving = saving[b.id];
                   return (
                     <tr key={b.id} className={`border-b border-admin-border-mid hover:bg-admin-bg ${isSaving ? 'opacity-60' : ''}`}>
@@ -297,14 +311,34 @@ export default function TaxPage() {
                         ₩{fmt(b.total_price)}
                       </td>
 
-                      {/* 원가 */}
+                      {/* 입금 */}
+                      <td className="px-3 py-2 text-right font-semibold text-blue-700 whitespace-nowrap">
+                        ₩{fmt(b.paid_amount || 0)}
+                      </td>
+
+                      {/* 미수 */}
+                      <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${accounting.receivable > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        ₩{fmt(accounting.receivable)}
+                      </td>
+
+                      {/* 랜드사 예정 */}
                       <td className="px-3 py-2 text-right text-orange-600 whitespace-nowrap">
                         ₩{fmt(b.total_cost)}
                       </td>
 
-                      {/* 순매출 */}
-                      <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${net >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        ₩{fmt(net)}
+                      {/* 송금액 */}
+                      <td className="px-3 py-2 text-right text-orange-700 whitespace-nowrap">
+                        ₩{fmt(b.total_paid_out || 0)}
+                      </td>
+
+                      {/* 미송금 */}
+                      <td className={`px-3 py-2 text-right font-semibold whitespace-nowrap ${accounting.payable > 0 ? 'text-red-600' : 'text-green-600'}`}>
+                        ₩{fmt(accounting.payable)}
+                      </td>
+
+                      {/* 우리수익 */}
+                      <td className={`px-3 py-2 text-right font-bold whitespace-nowrap ${accounting.grossProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        ₩{fmt(accounting.grossProfit)}
                       </td>
 
                       {/* 랜드사 */}
@@ -404,12 +438,16 @@ export default function TaxPage() {
                 <tr className="border-t-2 border-admin-border-mid bg-admin-bg font-bold text-admin-sm">
                   <td className="px-3 py-2 text-admin-text-2" colSpan={3}>합계 ({bookings.length}건)</td>
                   <td className="px-3 py-2 text-right text-indigo-700">₩{fmt(kpis.total_price)}</td>
+                  <td className="px-3 py-2 text-right text-blue-700">₩{fmt(kpis.total_paid)}</td>
+                  <td className="px-3 py-2 text-right text-red-600">₩{fmt(kpis.receivable)}</td>
                   <td className="px-3 py-2 text-right text-orange-600">₩{fmt(kpis.total_cost)}</td>
+                  <td className="px-3 py-2 text-right text-orange-700">₩{fmt(kpis.total_paid_out)}</td>
+                  <td className="px-3 py-2 text-right text-red-600">₩{fmt(kpis.payable)}</td>
                   <td className={`px-3 py-2 text-right ${kpis.net_sales >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                     ₩{fmt(kpis.net_sales)}
                   </td>
                   <td colSpan={5} className="px-3 py-2 text-[11px] text-admin-muted font-normal">
-                    예상 부가세: ₩{fmt(kpis.vat_estimate)}
+                    예상 부가세: ₩{fmt(kpis.vat_estimate)} / 예상 순수익: ₩{fmt(kpis.net_profit_estimate)}
                   </td>
                 </tr>
               </tfoot>
@@ -421,8 +459,10 @@ export default function TaxPage() {
       {/* 범례 */}
       <div className="text-[11px] text-admin-muted flex flex-wrap gap-4">
         <span>모든 금액은 출발일(행사일) 기준으로 집계됩니다.</span>
-        <span>순매출 = 판매가 - 원가</span>
-        <span>예상 부가세 = 순매출 x 10% (원 단위 절사)</span>
+        <span>미수 = 판매가 - 고객 입금액</span>
+        <span>미송금 = 랜드사 예정액 - 송금액</span>
+        <span>우리수익 = 판매가 - 랜드사 예정액</span>
+        <span>예상 순수익 = 우리수익 - 예상 부가세</span>
       </div>
     </div>
   );

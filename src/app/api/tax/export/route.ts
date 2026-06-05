@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { calcSettlementAccounting, sumSettlementAccounting } from '@/lib/settlement-accounting';
 
 function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number);
@@ -46,7 +47,8 @@ export async function GET(request: NextRequest) {
     .from('bookings')
     .select(`
       booking_no, package_title, land_operator,
-      total_price, total_cost,
+      total_price, total_cost, paid_amount, total_paid_out,
+      commission_rate, commission_amount,
       departure_date, booking_date, payment_date, notes, status,
       transfer_status, has_tax_invoice, customer_receipt_status,
       customers!lead_customer_id(name)
@@ -68,10 +70,19 @@ export async function GET(request: NextRequest) {
     '결제일자',
     '예약자명',
     '예약번호',
+    '상품명',
     '총 판매가',
+    '고객 입금액',
+    '고객 미수금',
     '랜드사명',
-    '송금한 원가',
-    '순매출',
+    '랜드사 예정액',
+    '랜드사 송금액',
+    '랜드사 미송금',
+    '커미션율(%)',
+    '커미션액',
+    '우리수익',
+    '예상 부가세',
+    '예상 순수익',
     '랜드사 송금완료(O/X)',
     '세금계산서 수취(O/X)',
     '고객 현금영수증 발행(O/X)',
@@ -82,7 +93,14 @@ export async function GET(request: NextRequest) {
     const customer = (b as { customers?: { name?: string } }).customers;
     const totalPrice_ = (b.total_price as number | null) ?? 0;
     const totalCost_  = (b.total_cost  as number | null) ?? 0;
-    const net_sales = totalPrice_ - totalCost_;
+    const paidAmount_ = (b.paid_amount as number | null) ?? 0;
+    const paidOut_ = (b.total_paid_out as number | null) ?? 0;
+    const accounting = calcSettlementAccounting({
+      totalPrice: totalPrice_,
+      totalCost: totalCost_,
+      paidAmount: paidAmount_,
+      totalPaidOut: paidOut_,
+    });
     const payment_dt = (b.payment_date ?? b.booking_date ?? '') as string;
 
     return [
@@ -90,10 +108,19 @@ export async function GET(request: NextRequest) {
       payment_dt ? payment_dt.slice(0, 10) : '',
       customer?.name ?? '',
       b.booking_no ?? '',
+      b.package_title ?? '',
       totalPrice_,
+      paidAmount_,
+      accounting.receivable,
       b.land_operator ?? '',
       totalCost_,
-      net_sales,
+      paidOut_,
+      accounting.payable,
+      b.commission_rate ?? '',
+      b.commission_amount ?? '',
+      accounting.grossProfit,
+      accounting.taxEstimate,
+      accounting.netProfit,
       b.transfer_status === 'COMPLETED' ? 'O' : 'X',
       b.has_tax_invoice ? 'O' : 'X',
       receiptLabel((b.customer_receipt_status as string | null) ?? null),
@@ -102,16 +129,26 @@ export async function GET(request: NextRequest) {
   });
 
   // 합계 행
-  const totalPrice   = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_price as number | null) ?? 0)), 0);
-  const totalCost    = bookings.reduce((s: number, b: Record<string, unknown>) => s + (((b.total_cost  as number | null) ?? 0)), 0);
-  const totalNet     = totalPrice - totalCost;
+  const summary = sumSettlementAccounting(bookings.map((b: Record<string, unknown>) => ({
+    totalPrice: b.total_price as number | null,
+    totalCost: b.total_cost as number | null,
+    paidAmount: b.paid_amount as number | null,
+    totalPaidOut: b.total_paid_out as number | null,
+  })));
   const summaryRow   = [
     `${month} 합계`,
-    '', '', '',
-    totalPrice,
+    '', '', '', '',
+    summary.totalPrice,
+    summary.paidAmount,
+    summary.receivable,
     '',
-    totalCost,
-    totalNet,
+    summary.totalCost,
+    summary.totalPaidOut,
+    summary.payable,
+    '', '',
+    summary.grossProfit,
+    summary.taxEstimate,
+    summary.netProfit,
     '', '', '', '',
   ].map(escapeCSV).join(',');
 
