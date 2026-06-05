@@ -2,6 +2,7 @@ import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number);
@@ -14,6 +15,9 @@ function monthRange(month: string): { from: string; to: string } {
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store' };
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return apiResponse(
       { bookings: [], kpis: {}, todos: {} },

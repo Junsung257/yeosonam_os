@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * POST /api/bookings/:id/companions/invite
@@ -17,6 +18,9 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * }
  */
 export async function POST(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * GET /api/bookings/unsettled?landOperatorId=UUID
@@ -10,6 +11,9 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
  * SettlementBundleModal 의 booking 후보 제공.
  */
 export async function GET(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ bookings: [] });
   }

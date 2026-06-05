@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ notes: [] });
 
@@ -16,6 +20,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
@@ -33,6 +40,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 }
 
 export async function DELETE(req: NextRequest, _ctx: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   const { searchParams } = new URL(req.url);

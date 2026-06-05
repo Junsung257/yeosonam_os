@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getAdminContext } from '@/lib/admin-context';
 import { successResponse, ApiErrors } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * POST /api/payments/settlement-confirm
@@ -10,6 +11,9 @@ import { successResponse, ApiErrors } from '@/lib/api-response';
  * 재무 마감 후에는 reverse 가능 여부에 영향 없음 — 단순 라벨링.
  */
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return ApiErrors.unavailable('Supabase가 설정되지 않았습니다');
   }

@@ -5,6 +5,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 function monthRange(month: string): { from: string; to: string } {
   const [y, m] = month.split('-').map(Number);
@@ -29,6 +30,9 @@ function receiptLabel(status: string | null): string {
 }
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return new NextResponse('Supabase 미설정', { status: 503 });
   }

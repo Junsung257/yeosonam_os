@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ margin: null });
   }
@@ -32,6 +36,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
   }

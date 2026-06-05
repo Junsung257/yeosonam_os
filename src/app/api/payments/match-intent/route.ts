@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { parseCommandInput } from '@/lib/payment-command-parser';
 import { resolvePaymentCommand } from '@/lib/payment-command-resolver';
 import { successResponse, ApiErrors } from '@/lib/api-response';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 /**
  * POST /api/payments/match-intent
@@ -15,6 +16,9 @@ import { successResponse, ApiErrors } from '@/lib/api-response';
  * 정책: 출금 자동매칭 절대 금지. 이 API 는 후보 제시까지만, 확정은 별도 엔드포인트.
  */
 export async function POST(req: NextRequest) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   try {
     const body = await req.json().catch(() => ({}));
     const input = typeof body?.input === 'string' ? body.input : '';

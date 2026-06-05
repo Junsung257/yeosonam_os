@@ -13,6 +13,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 // ── 수정 허용 필드 화이트리스트 ──────────────────────────────────────────────
 // total_cost / is_manual_cost 는 DB 마이그레이션(manual_cost_override_v1.sql)
@@ -47,7 +48,10 @@ type PatchField = typeof PATCH_FIELDS[number];
 
 // ── GET ───────────────────────────────────────────────────────────────────────
 
-export async function GET(_req: NextRequest, props: { params: Promise<{ id: string }> }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(req);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json(
@@ -81,6 +85,9 @@ export async function GET(_req: NextRequest, props: { params: Promise<{ id: stri
 // ── PATCH ─────────────────────────────────────────────────────────────────────
 
 export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json(
