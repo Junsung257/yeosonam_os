@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { recordPlatformLearningEvent } from '@/lib/platform-learning';
 import { recordAgentIncident } from '@/lib/agent/tasking';
+import { apiResponse } from '@/lib/api-response';
 import {
   recordResponseFeedback,
   promoteToNegativeExample,
@@ -14,6 +15,14 @@ export async function POST(request: NextRequest) {
     const rating = body?.rating === 'down' ? 'down' : body?.rating === 'up' ? 'up' : null;
     const reason = typeof body?.reason === 'string' ? body.reason : null;
     const responseText = typeof body?.responseText === 'string' ? body.responseText : null;
+    const source =
+      body?.source === 'jarvis_v2_stream' ? 'jarvis_v2_stream'
+      : body?.source === 'jarvis_v1' ? 'jarvis_v1'
+      : 'qa_chat';
+    const responseFeedbackSource =
+      source === 'jarvis_v2_stream' ? 'jarvis_v2'
+      : source === 'jarvis_v1' ? 'jarvis_v1'
+      : 'qa_chat';
     const raterType: 'customer' | 'admin' | 'partner' =
       body?.raterType === 'admin' ? 'admin'
       : body?.raterType === 'partner' ? 'partner'
@@ -24,12 +33,12 @@ export async function POST(request: NextRequest) {
       typeof body?.leadSource === 'string' ? body.leadSource : 'unknown';
 
     if (!rating) {
-      return NextResponse.json({ error: 'rating 값이 필요합니다. (up/down)' }, { status: 400 });
+      return apiResponse({ error: 'rating 값이 필요합니다. (up/down)' }, { status: 400 });
     }
 
     if (isSupabaseConfigured) {
       recordPlatformLearningEvent({
-        source: 'qa_chat',
+        source,
         sessionId,
         affiliateId: null,
         tenantId: null,
@@ -44,14 +53,14 @@ export async function POST(request: NextRequest) {
 
       // 새 response_feedback 테이블에 적재 (학습 신호 본체)
       void recordResponseFeedback({
-        source: 'qa_chat',
+        source: responseFeedbackSource,
         sessionId,
         conversationId: sessionId,
         reply: responseText ?? '',
         rating: rating === 'up' ? 1 : -1,
         raterType,
         reasonCategory: reason,
-        metadata: { legacy: true, leadSource },
+        metadata: { legacy: source === 'qa_chat', leadSource },
       });
 
       if (rating === 'down') {
@@ -76,9 +85,9 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true });
+    return apiResponse({ ok: true });
   } catch (error) {
-    return NextResponse.json(
+    return apiResponse(
       { error: error instanceof Error ? error.message : '피드백 저장 실패' },
       { status: 500 },
     );

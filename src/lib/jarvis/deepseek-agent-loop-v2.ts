@@ -43,11 +43,12 @@ async function logIncident(
   details: Record<string, unknown>,
 ) {
   try {
+    const normalizedCategory = category === 'tool_timeout' ? 'timeout' : category;
     await supabaseAdmin.from('agent_incidents').insert({
       session_id: sessionId ?? null,
       tenant_id: ctx.tenantId ?? null,
-      severity: 'warning',
-      category,
+      severity: 'warn',
+      category: normalizedCategory,
       message,
       details,
       detected_by: 'deepseek-agent-loop-v2',

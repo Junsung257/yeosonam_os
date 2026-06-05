@@ -1,18 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server'
+import type { NextRequest } from 'next/server'
+import { apiResponse } from '@/lib/api-response'
 import { supabaseAdmin } from '@/lib/supabase'
 import { executeAction } from '@/lib/agent-action-executor'
-import { isAdminRequest } from '@/lib/admin-guard'
+import { isAdminRequest, resolveAdminActorLabel } from '@/lib/admin-guard'
+import { buildHitlFailurePayload, decideHitlReviewStatus } from '@/lib/jarvis/hitl-execution'
 
 export async function POST(req: NextRequest) {
   try {
     if (!(await isAdminRequest(req))) {
-      return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 })
+      return apiResponse({ error: 'admin 권한 필요' }, { status: 403 })
     }
+    const reviewer = await resolveAdminActorLabel(req)
 
     const { pendingActionId, approved } = await req.json()
 
     if (!pendingActionId) {
-      return NextResponse.json({ error: 'pendingActionId 필수' }, { status: 400 })
+      return apiResponse({ error: 'pendingActionId 필수' }, { status: 400 })
     }
 
     // pending_action 가져오기
@@ -25,16 +28,21 @@ export async function POST(req: NextRequest) {
 
     const action = pending?.[0]
     if (!action) {
-      return NextResponse.json({ error: '대기 중인 작업을 찾을 수 없습니다' }, { status: 404 })
+      return apiResponse({ error: '대기 중인 작업을 찾을 수 없습니다' }, { status: 404 })
     }
 
     if (!approved) {
       // 거절
+      const decision = decideHitlReviewStatus({ approved: false })
       await supabaseAdmin
         .from('jarvis_pending_actions')
-        .update({ status: 'rejected', approved_at: new Date().toISOString() })
+        .update({
+          status: decision.nextStatus,
+          approved_at: new Date().toISOString(),
+          approved_by: reviewer,
+        })
         .eq('id', pendingActionId)
-      return NextResponse.json({ message: '취소되었습니다.' })
+      return apiResponse({ message: decision.message, retryable: decision.retryable })
     }
 
     // 승인 → 공통 실행 모듈로 위임
@@ -45,13 +53,19 @@ export async function POST(req: NextRequest) {
         throw new Error(result.error || '실행 실패')
       }
 
+      const decision = decideHitlReviewStatus({ approved: true, executionSuccess: true })
       await supabaseAdmin
         .from('jarvis_pending_actions')
-        .update({ status: 'approved', approved_at: new Date().toISOString() })
+        .update({
+          status: decision.nextStatus,
+          approved_at: new Date().toISOString(),
+          approved_by: reviewer,
+        })
         .eq('id', pendingActionId)
 
       await void(supabaseAdmin.from('jarvis_tool_logs').insert({
         session_id: action.session_id,
+        tenant_id: action.tenant_id ?? null,
         agent_type: action.agent_type,
         tool_name: action.tool_name,
         tool_args: action.tool_args,
@@ -67,38 +81,36 @@ export async function POST(req: NextRequest) {
         after_value: action.tool_args,
       })
 
-      return NextResponse.json({ message: '실행 완료되었습니다.', result: result.data })
+      return apiResponse({ message: decision.message, retryable: decision.retryable, result: result.data })
     } catch (err: any) {
-      // 실행 실패 시 pending_action status를 failed로 마킹 + 실패 로그 기록
+      // 실행 실패 시 pending_action 은 pending 으로 유지해 재시도 가능하게 둔다.
       const errorMessage = err instanceof Error ? err.message : String(err)
-      try {
-        await supabaseAdmin
-          .from('jarvis_pending_actions')
-          .update({ status: 'rejected', approved_at: new Date().toISOString() })
-          .eq('id', pendingActionId);
-      } catch { /* fire-and-forget */ }
+      const decision = decideHitlReviewStatus({ approved: true, executionSuccess: false })
       await supabaseAdmin.from('jarvis_tool_logs').insert({
         session_id: action.session_id,
+        tenant_id: action.tenant_id ?? null,
         agent_type: action.agent_type,
         tool_name: action.tool_name,
         tool_args: action.tool_args,
-        result: { error: errorMessage },
+        result: {
+          error: errorMessage,
+          retryable: decision.retryable,
+          next_status: decision.nextStatus,
+        },
         is_hitl: true,
         pending_action_id: pendingActionId,
       })
 
-      return NextResponse.json({
+      return apiResponse(buildHitlFailurePayload({
         error: errorMessage,
-        errorDetails: {
-          toolName: action.tool_name,
-          toolArgs: action.tool_args,
-          pendingActionId,
-        },
-      }, { status: 500 })
+        toolName: action.tool_name,
+        toolArgs: action.tool_args,
+        pendingActionId,
+      }), { status: 500 })
     }
   } catch (error) {
     console.error('[자비스 승인] 오류:', error)
-    return NextResponse.json(
+    return apiResponse(
       {
         error: error instanceof Error ? error.message : '처리 실패',
         errorDetails: { stage: 'approve_route_outer_catch' },

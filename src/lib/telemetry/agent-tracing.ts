@@ -1,5 +1,15 @@
 import { supabaseAdmin } from '@/lib/supabase';
 
+export function mergeTraceMetadata(
+  existing: Record<string, unknown> | null | undefined,
+  next: Record<string, unknown> | null | undefined,
+): Record<string, unknown> {
+  return {
+    ...(existing ?? {}),
+    ...(next ?? {}),
+  };
+}
+
 export async function startTraceSpan(params: {
   traceId: string;
   spanName: string;
@@ -32,13 +42,26 @@ export async function endTraceSpan(params: {
   const started = new Date(params.startedAt).getTime();
   const endedAt = new Date();
   const duration = Number.isFinite(started) ? Math.max(0, endedAt.getTime() - started) : null;
+  let metadata = params.metadata;
+
+  if (params.metadata) {
+    const { data } = await supabaseAdmin
+      .from('agent_trace_spans')
+      .select('metadata')
+      .eq('id', params.id)
+      .maybeSingle();
+    metadata = mergeTraceMetadata(
+      data?.metadata as Record<string, unknown> | null | undefined,
+      params.metadata,
+    );
+  }
 
   await supabaseAdmin
     .from('agent_trace_spans')
     .update({
       ended_at: endedAt.toISOString(),
       duration_ms: duration,
-      ...(params.metadata ? { metadata: params.metadata } : {}),
+      ...(metadata ? { metadata } : {}),
     })
     .eq('id', params.id);
 }

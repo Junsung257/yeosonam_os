@@ -16,7 +16,8 @@ interface BotProfile {
   bot_name: string
   greeting: string | null
   persona_prompt: string | null
-  allowed_agents: string[]
+  allowed_agents: string[] | null
+  allowed_tools?: string[] | null
   guardrails: {
     max_discount_pct?: number
     forbidden_phrases?: string[]
@@ -41,7 +42,7 @@ async function fetchProfile(tenantId: string): Promise<BotProfile | null> {
 
   const { data, error } = await supabaseAdmin
     .from('tenant_bot_profiles')
-    .select('bot_name, greeting, persona_prompt, allowed_agents, guardrails, knowledge_scope, monthly_token_quota, is_active')
+    .select('bot_name, greeting, persona_prompt, allowed_agents, allowed_tools, guardrails, knowledge_scope, monthly_token_quota, is_active')
     .eq('tenant_id', tenantId)
     .eq('is_active', true)
     .maybeSingle()
@@ -105,11 +106,50 @@ export async function buildTenantSystemPrompt(
 }
 
 /** 테넌트가 현재 agent 를 호출할 권한 있는지 체크 */
+export function isAgentAllowedByProfile(
+  profile: Pick<BotProfile, 'allowed_agents'> | null,
+  agentType: string,
+  ctx: JarvisContext,
+): boolean {
+  const allowedAgents = profile?.allowed_agents
+  if (!Array.isArray(allowedAgents) || allowedAgents.length === 0) return true
+
+  // 고객면 concierge 는 현재 dispatch 에서 products agent config 로 실행된다.
+  // 테넌트 설정에는 "concierge" 를 노출하므로 products/customer 를 concierge 권한으로도 허용한다.
+  const aliases = new Set<string>([agentType])
+  if (agentType === 'products' && ctx.surface === 'customer') aliases.add('concierge')
+
+  return allowedAgents.some(agent => aliases.has(agent))
+}
+
 export async function isAgentAllowed(ctx: JarvisContext, agentType: string): Promise<boolean> {
   if (!ctx.tenantId || ctx.userRole === 'platform_admin') return true
   const profile = await fetchProfile(ctx.tenantId)
   if (!profile) return true // 프로파일 없으면 기본 허용 (첫 가입 테넌트)
-  return profile.allowed_agents.includes(agentType)
+  return isAgentAllowedByProfile(profile, agentType, ctx)
+}
+
+type ToolLike = { name?: string } & Record<string, unknown>
+
+export function filterAllowedToolsByProfile<T extends ToolLike>(
+  tools: T[],
+  profile: Pick<BotProfile, 'allowed_tools'> | null,
+): T[] {
+  const allowedTools = profile?.allowed_tools
+  if (!Array.isArray(allowedTools) || allowedTools.length === 0) return tools
+  const allowed = new Set(allowedTools)
+  return tools.filter(tool => typeof tool.name === 'string' && allowed.has(tool.name))
+}
+
+/** 테넌트 allowed_tools 가 있으면 LLM 에 노출되는 tool catalog 를 제한한다. */
+export async function filterTenantAllowedTools<T extends ToolLike>(
+  tools: T[],
+  ctx: JarvisContext,
+): Promise<T[]> {
+  if (!ctx.tenantId || ctx.userRole === 'platform_admin') return tools
+  const profile = await fetchProfile(ctx.tenantId)
+  if (!profile) return tools
+  return filterAllowedToolsByProfile(tools, profile)
 }
 
 /** 현재 봇 이름 가져오기 (UI 타이틀 등) */

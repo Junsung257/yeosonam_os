@@ -3,8 +3,11 @@ import { Suspense, useState, useRef, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { ActionCard } from './components/ActionCard'
 import AgentActionsPanel from './components/AgentActionsPanel'
+import JarvisReadinessCard from '@/components/admin/JarvisReadinessCard'
 import JarvisRagStatusCard from '@/components/admin/JarvisRagStatusCard'
 import McpToolGuide from './components/McpToolGuide'
+import { useJarvisStream, type JarvisStreamEvent } from '@/lib/jarvis/useJarvisStream'
+import { AlertCircle, CheckCircle2, GitBranch, Settings, ThumbsDown, ThumbsUp } from 'lucide-react'
 
 const AGENT_LABELS: Record<string, string> = {
   operations: '운영',
@@ -29,8 +32,103 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   agent?: string
+  engine?: 'v1' | 'v2'
   pendingAction?: any
+  events?: JarvisStreamEvent[]
   timestamp: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function stringField(data: unknown, key: string): string | null {
+  if (!isRecord(data)) return null
+  const value = data[key]
+  return typeof value === 'string' ? value : null
+}
+
+function formatStreamEvent(event: JarvisStreamEvent): { label: string; tone: 'info' | 'ok' | 'warn' | 'error' } | null {
+  if (event.type === 'text_delta') return null
+
+  if (event.type === 'agent_picked') {
+    const agent = stringField(event.data, 'agent') ?? 'unknown'
+    const specialist = isRecord(event.data) && isRecord(event.data.specialist)
+      ? typeof event.data.specialist.label === 'string' ? event.data.specialist.label : null
+      : null
+    return { label: specialist ? `에이전트 선택: ${agent} / ${specialist}` : `에이전트 선택: ${agent}`, tone: 'info' }
+  }
+
+  if (event.type === 'tool_use_start') {
+    return { label: `도구 실행 시작: ${stringField(event.data, 'name') ?? 'unknown'}`, tone: 'info' }
+  }
+
+  if (event.type === 'tool_result') {
+    const ok = isRecord(event.data) ? event.data.ok !== false : true
+    return {
+      label: `도구 결과: ${stringField(event.data, 'name') ?? 'unknown'} ${ok ? '완료' : '실패'}`,
+      tone: ok ? 'ok' : 'error',
+    }
+  }
+
+  if (event.type === 'hitl_pending') {
+    return { label: `승인 대기: ${stringField(event.data, 'description') ?? stringField(event.data, 'toolName') ?? '작업 확인 필요'}`, tone: 'warn' }
+  }
+
+  if (event.type === 'cache_hit') {
+    const hit = isRecord(event.data) ? event.data.hit === true : false
+    return { label: hit ? '컨텍스트 캐시 사용' : '컨텍스트 캐시 미사용', tone: 'info' }
+  }
+
+  if (event.type === 'done') {
+    const latency = isRecord(event.data) && typeof event.data.latencyMs === 'number'
+      ? ` · ${event.data.latencyMs}ms`
+      : ''
+    return { label: `응답 완료${latency}`, tone: 'ok' }
+  }
+
+  if (event.type === 'error') {
+    return { label: `오류: ${stringField(event.data, 'message') ?? stringField(event.data, 'reason') ?? 'stream error'}`, tone: 'error' }
+  }
+
+  return null
+}
+
+function StreamEventTimeline({ events }: { events?: JarvisStreamEvent[] }) {
+  const visibleEvents = (events ?? [])
+    .map(formatStreamEvent)
+    .filter((event): event is NonNullable<typeof event> => event !== null)
+    .slice(-8)
+
+  if (visibleEvents.length === 0) return null
+
+  return (
+    <div className="mt-2 border-l border-admin-border-mid pl-3 space-y-1.5">
+      {visibleEvents.map((event, index) => {
+        const toneClass = event.tone === 'ok'
+          ? 'text-green-700'
+          : event.tone === 'warn'
+            ? 'text-amber-700'
+            : event.tone === 'error'
+              ? 'text-red-700'
+              : 'text-admin-muted'
+        const Icon = event.tone === 'ok'
+          ? CheckCircle2
+          : event.tone === 'warn'
+            ? GitBranch
+            : event.tone === 'error'
+              ? AlertCircle
+              : Settings
+
+        return (
+          <div key={`${event.label}-${index}`} className={`flex items-center gap-1.5 text-admin-xs ${toneClass}`}>
+            <Icon size={13} aria-hidden="true" />
+            <span className="truncate">{event.label}</span>
+          </div>
+        )
+      })}
+    </div>
+  )
 }
 
 function JarvisFallback() {
@@ -67,10 +165,12 @@ function JarvisPageContent() {
     }
   ])
   const [input, setInput] = useState('')
-  const [sessionId, setSessionId] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [streamingAssistantId, setStreamingAssistantId] = useState<string | null>(null)
+  const [feedbackByMessageId, setFeedbackByMessageId] = useState<Record<string, 'up' | 'down'>>({})
   const [kakaoCount, setKakaoCount] = useState(0)
   const bottomRef = useRef<HTMLDivElement>(null)
+  const jarvis = useJarvisStream()
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -87,8 +187,26 @@ function JarvisPageContent() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    if (!streamingAssistantId) return
+
+    setMessages(prev => prev.map(msg => {
+      if (msg.id !== streamingAssistantId) return msg
+      return {
+        ...msg,
+        content: jarvis.error
+          ? `오류가 발생했습니다: ${jarvis.error}`
+          : jarvis.text || '자비스가 생각 중입니다...',
+        agent: jarvis.agent ?? msg.agent,
+        engine: jarvis.engine ?? msg.engine,
+        pendingAction: jarvis.pendingAction ?? msg.pendingAction,
+        events: jarvis.events,
+      }
+    }))
+  }, [jarvis.agent, jarvis.engine, jarvis.error, jarvis.events, jarvis.pendingAction, jarvis.text, streamingAssistantId])
+
   const sendMessage = async (text: string) => {
-    if (!text.trim() || loading) return
+    if (!text.trim() || loading || jarvis.streaming) return
 
     const userMsg: Message = {
       id: Date.now().toString(),
@@ -96,38 +214,57 @@ function JarvisPageContent() {
       content: text,
       timestamp: new Date().toISOString()
     }
-    setMessages(prev => [...prev, userMsg])
+    const assistantId = `${Date.now()}-assistant`
+    const assistantMsg: Message = {
+      id: assistantId,
+      role: 'assistant',
+      content: '자비스가 생각 중입니다...',
+      timestamp: new Date().toISOString()
+    }
+    setMessages(prev => [...prev, userMsg, assistantMsg])
     setInput('')
+    setStreamingAssistantId(assistantId)
     setLoading(true)
 
     try {
-      const res = await fetch('/api/jarvis', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, sessionId }),
-      })
-      const data = await res.json()
-
-      if (data.sessionId) setSessionId(data.sessionId)
-
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: data.response || data.error || '응답을 받지 못했습니다.',
-        agent: data.agent,
-        pendingAction: data.pendingAction,
-        timestamp: new Date().toISOString()
-      }
-      setMessages(prev => [...prev, assistantMsg])
+      await jarvis.send(text)
     } catch {
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: '오류가 발생했습니다. 다시 시도해주세요.',
-        timestamp: new Date().toISOString()
-      }])
+      setMessages(prev => prev.map(msg => (
+        msg.id === assistantId
+          ? { ...msg, content: '오류가 발생했습니다. 다시 시도해주세요.' }
+          : msg
+      )))
     } finally {
       setLoading(false)
+    }
+  }
+
+  const submitFeedback = async (message: Message, rating: 'up' | 'down') => {
+    if (!message.content || message.content.includes('생각 중')) return
+    const previous = feedbackByMessageId[message.id]
+    setFeedbackByMessageId(prev => ({ ...prev, [message.id]: rating }))
+
+    try {
+      const res = await fetch('/api/qa/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: jarvis.sessionId,
+          rating,
+          responseText: message.content,
+          raterType: 'admin',
+          leadSource: 'jarvis_admin',
+          source: message.engine === 'v1' ? 'jarvis_v1' : 'jarvis_v2_stream',
+        }),
+      })
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    } catch {
+      setFeedbackByMessageId(prev => {
+        const next = { ...prev }
+        if (previous) next[message.id] = previous
+        else delete next[message.id]
+        return next
+      })
     }
   }
 
@@ -164,8 +301,9 @@ function JarvisPageContent() {
     <div className="flex h-[calc(100vh-8rem)]">
       {/* 왼쪽: 채팅/결재함 */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* RAG 색인 상태 */}
-        <div className="mb-4">
+        {/* Readiness / RAG 색인 상태 */}
+        <div className="mb-4 grid gap-3">
+          <JarvisReadinessCard />
           <JarvisRagStatusCard />
         </div>
         {/* 헤더 */}
@@ -214,7 +352,9 @@ function JarvisPageContent() {
               content: '대화를 초기화했습니다. 무엇을 도와드릴까요?',
               timestamp: new Date().toISOString()
             }])
-            setSessionId(null)
+            setStreamingAssistantId(null)
+            setFeedbackByMessageId({})
+            jarvis.clearSession()
           }}
           className="ml-auto text-admin-xs text-admin-muted hover:text-admin-text px-3 h-8 border border-admin-border-mid rounded-admin-sm hover:bg-admin-surface-2 hover:border-admin-border-strong transition-colors bg-admin-surface font-medium"
         >
@@ -259,11 +399,45 @@ function JarvisPageContent() {
                       onReject={handleReject}
                     />
                   )}
+                  <StreamEventTimeline events={msg.events} />
+                  {msg.role === 'assistant' && msg.id !== '0' && !msg.content.includes('생각 중') && (
+                    <div className="mt-1.5 flex items-center gap-1">
+                      <button
+                        type="button"
+                        aria-label="좋은 답변"
+                        title="좋은 답변"
+                        onClick={() => submitFeedback(msg, 'up')}
+                        className={`h-7 w-7 inline-flex items-center justify-center rounded-admin-xs border transition-colors ${
+                          feedbackByMessageId[msg.id] === 'up'
+                            ? 'border-green-300 bg-green-50 text-green-700'
+                            : 'border-admin-border-mid text-admin-muted hover:text-green-700 hover:bg-green-50'
+                        }`}
+                      >
+                        <ThumbsUp size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="나쁜 답변"
+                        title="나쁜 답변"
+                        onClick={() => submitFeedback(msg, 'down')}
+                        className={`h-7 w-7 inline-flex items-center justify-center rounded-admin-xs border transition-colors ${
+                          feedbackByMessageId[msg.id] === 'down'
+                            ? 'border-red-300 bg-red-50 text-red-700'
+                            : 'border-admin-border-mid text-admin-muted hover:text-red-700 hover:bg-red-50'
+                        }`}
+                      >
+                        <ThumbsDown size={14} />
+                      </button>
+                      {feedbackByMessageId[msg.id] && (
+                        <span className="text-admin-xs text-admin-muted ml-1">피드백 저장됨</span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
 
-            {loading && (
+            {loading && !streamingAssistantId && (
               <div className="flex justify-start">
                 <div className="admin-card px-4 py-3">
                   <div className="flex gap-1">

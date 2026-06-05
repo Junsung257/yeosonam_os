@@ -21,9 +21,10 @@ import type { JarvisContext } from '@/lib/jarvis/types'
 import { resolveSpecialist, mergeOrchestrationContext } from '@/lib/jarvis/orchestration'
 import { recordPlatformLearningEvent } from '@/lib/platform-learning'
 import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
-import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
+import { createAgentTask, recordAgentIncident, transitionAgentTask } from '@/lib/agent/tasking'
 import { rateLimitAI } from '@/lib/rate-limiter'
 import { applyRequestContext } from '@/lib/jarvis/scoped-client'
+import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 
 export async function POST(req: NextRequest) {
   const limited = await rateLimitAI(req)
@@ -47,6 +48,27 @@ export async function POST(req: NextRequest) {
 
     // Phase 0: RLS 격리 + 감사 컨텍스트 설정
     await applyRequestContext(ctx)
+
+    const injection = detectPromptInjection(message)
+    if (injection.blocked) {
+      try {
+        await recordAgentIncident({
+          correlationId: crypto.randomUUID(),
+          tenantId: ctx.tenantId ?? null,
+          severity: 'warn',
+          category: 'prompt_injection',
+          message: '자비스 V1 입력에서 프롬프트 인젝션 의심 패턴 감지',
+          details: { reason: injection.reason },
+          detectedBy: 'guardrails:prompt-injection',
+        })
+      } catch {
+        // incident 기록 실패는 응답 차단 정책에 영향 없음
+      }
+      return NextResponse.json(
+        { error: '요청이 보안 정책에 의해 차단되었습니다.' },
+        { status: 400 },
+      )
+    }
 
     // 1. 세션 가져오기 또는 생성 — 게스트 격리 적용
     let session: any = null

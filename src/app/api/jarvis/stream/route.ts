@@ -27,9 +27,10 @@ import { recordPlatformLearningEvent } from '@/lib/platform-learning'
 import { critiqueReply, applyCritique } from '@/lib/jarvis/response-critic'
 import { recordCritiqueResult } from '@/lib/response-learning'
 import { supervisorLite } from '@/lib/jarvis/supervisor-lite'
-import { createAgentTask, transitionAgentTask } from '@/lib/agent/tasking'
+import { createAgentTask, recordAgentIncident, transitionAgentTask } from '@/lib/agent/tasking'
 import { startTraceSpan, endTraceSpan } from '@/lib/telemetry/agent-tracing'
 import { rateLimitAI } from '@/lib/rate-limiter'
+import { detectPromptInjection } from '@/lib/guardrails/prompt-injection'
 
 export const runtime = 'nodejs'
 export const maxDuration = 120 // DeepSeek V4-Pro 5라운드 최대 ~100초 + 마진
@@ -68,6 +69,27 @@ export async function POST(req: NextRequest) {
 
   const ctx = auth.ctx
   const isGuest = auth.type === 'guest'
+
+  const injection = detectPromptInjection(message)
+  if (injection.blocked) {
+    try {
+      await recordAgentIncident({
+        correlationId: crypto.randomUUID(),
+        tenantId: ctx.tenantId ?? null,
+        severity: 'warn',
+        category: 'prompt_injection',
+        message: '자비스 V2 스트림 입력에서 프롬프트 인젝션 의심 패턴 감지',
+        details: { reason: injection.reason, isGuest },
+        detectedBy: 'guardrails:prompt-injection',
+      })
+    } catch {
+      // incident 기록 실패는 응답 차단 정책에 영향 없음
+    }
+    return new Response(JSON.stringify({ error: '요청이 보안 정책에 의해 차단되었습니다.' }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
   // 1) 세션 로드/생성 — S1 게스트 격리: 다른 booking 의 sessionId 이어쓰기 거부.
   let session: any = null
@@ -166,7 +188,7 @@ export async function POST(req: NextRequest) {
             finalResult = step.value
             break
           }
-          if (firstTokenAt === null && ((step.value as StreamEvent) as { type: string })?.type === 'token') {
+          if (firstTokenAt === null && step.value?.type === 'text_delta') {
             firstTokenAt = Date.now()
           }
           controller.enqueue(encodeSSE(step.value))
