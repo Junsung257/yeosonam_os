@@ -85,8 +85,9 @@ export async function POST(request: NextRequest) {
 
   const receivedAt = body.receivedAt ? new Date(body.receivedAt) : new Date();
   const parsed = parseShinhanSMS(rawSms, receivedAt);
+  const txType: '입금' | null = parsed.isDeposit ? '입금' : null;
 
-  if (!parsed.transactionType || !parsed.amount) {
+  if (!txType || !parsed.amount) {
     return apiResponse({ status: 'ignored', reason: '입출금 메시지 아님' });
   }
 
@@ -114,7 +115,7 @@ export async function POST(request: NextRequest) {
     customer_name: ((b.customers as { name?: string } | null)?.name) ?? undefined,
   }));
 
-  const matches = parsed.transactionType === '입금'
+  const matches = txType === '입금'
     ? applyDuplicateNameGuard(matchPaymentToBookings({
         amount: parsed.amount,
         senderName: parsed.senderName,
@@ -125,7 +126,7 @@ export async function POST(request: NextRequest) {
   const bestMatch = matches[0] || null;
   const confidence = bestMatch?.confidence || 0;
   const matchClass = bestMatch ? classifyMatch(confidence) : 'unmatched';
-  const bankTxMatchStatus = parsed.transactionType === '입금' ? matchClass : 'unmatched';
+  const bankTxMatchStatus = txType === '입금' ? matchClass : 'unmatched';
   const smsEventId = buildSmsEventId({
     from: body.from,
     messageId: body.messageId,
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest) {
   });
   const transactionFingerprint = buildBankTransactionFingerprint({
     receivedAt: parsed.receivedAt.toISOString(),
-    txType: parsed.transactionType,
+    txType,
     amount: parsed.amount,
     counterpartyName: parsed.senderName,
   });
@@ -151,7 +152,7 @@ export async function POST(request: NextRequest) {
         received_at: parsed.receivedAt.toISOString(),
       },
     },
-    transaction_type: parsed.transactionType,
+    transaction_type: txType,
     amount: parsed.amount,
     counterparty_name: parsed.senderName,
     memo: body.from ? `SMS ${body.from}` : 'SMS',
@@ -179,7 +180,7 @@ export async function POST(request: NextRequest) {
     await attachSmsWebhookEvidence(existingBankTx.id, smsMetadata);
 
     if (
-      parsed.transactionType === '입금' &&
+      txType === '입금' &&
       bankTxMatchStatus === 'auto' &&
       bestMatch &&
       !existingBankTx.booking_id
@@ -218,7 +219,7 @@ export async function POST(request: NextRequest) {
     return apiResponse({
       status: 'merged_existing',
       parsed: {
-        transactionType: parsed.transactionType,
+        transactionType: txType,
         senderName: parsed.senderName,
         amount: parsed.amount,
         receivedAt: parsed.receivedAt,
@@ -261,7 +262,7 @@ export async function POST(request: NextRequest) {
 
   const insertedBankTxId = (bankTx as { id?: string } | null)?.id ?? null;
 
-  if (insertedBankTxId && parsed.transactionType === '입금') {
+  if (insertedBankTxId && txType === '입금') {
     const { error: paymentError } = await supabaseAdmin
       .from('sms_payments')
       .insert([{
@@ -300,7 +301,7 @@ export async function POST(request: NextRequest) {
   return apiResponse({
     status: insertedBankTxId ? 'processed' : 'duplicate',
     parsed: {
-      transactionType: parsed.transactionType,
+      transactionType: txType,
       senderName: parsed.senderName,
       amount: parsed.amount,
       receivedAt: parsed.receivedAt,
