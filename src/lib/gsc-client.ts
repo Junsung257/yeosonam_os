@@ -1,10 +1,11 @@
 import { google } from 'googleapis';
+import { getSecret } from '@/lib/secret-registry';
 
 /**
  * Google Search Console API 래퍼
  *
  * 환경변수:
- *   GOOGLE_SERVICE_ACCOUNT_JSON — Service Account JSON 전체 내용 (string)
+ *   GSC_SERVICE_ACCOUNT_JSON / GOOGLE_SERVICE_ACCOUNT_JSON — Service Account JSON 전체 내용 (string)
  *
  * 사전 준비 (관리자가 1회 수행):
  *   1. Google Cloud Console → Search Console API 활성화
@@ -15,8 +16,18 @@ import { google } from 'googleapis';
 
 /** 꼬인 \n 이스케이프를 가진 Service Account JSON을 안전하게 파싱 */
 function parseServiceAccountJson(raw: string) {
-  // 1) JSON.parse 먼저 (표준 JSON \n → 개행 처리)
-  const parsed = JSON.parse(raw);
+  let normalized = raw.trim();
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(normalized);
+  } catch {
+    normalized = normalized.replace(
+      /("private_key"\s*:\s*")([\s\S]*?)(",\s*"client_email")/,
+      (_match, prefix: string, key: string, suffix: string) =>
+        `${prefix}${key.replace(/\r?\n/g, '\\n')}${suffix}`,
+    );
+    parsed = JSON.parse(normalized);
+  }
   // 2) private_key에 literal \n (두 글자)이 있으면 실제 개행으로 변환
   if (parsed.private_key && typeof parsed.private_key === 'string') {
     parsed.private_key = parsed.private_key.replace(/\\n/g, '\n');
@@ -24,8 +35,12 @@ function parseServiceAccountJson(raw: string) {
   return parsed;
 }
 
+function readServiceAccountJson(): string | null {
+  return getSecret('GSC_SERVICE_ACCOUNT_JSON') || getSecret('GOOGLE_SERVICE_ACCOUNT_JSON');
+}
+
 function getGSCClient() {
-  const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const serviceAccountJson = readServiceAccountJson();
   if (!serviceAccountJson) return null;
 
   try {
@@ -42,7 +57,7 @@ function getGSCClient() {
 }
 
 export function isGSCConfigured(): boolean {
-  return !!process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  return !!readServiceAccountJson();
 }
 
 export interface GSCMetrics {
@@ -125,7 +140,8 @@ export function extractSlugFromUrl(url: string): string | null {
 //   2. Search Console → 속성 설정 → 사용자 → Service Account 이메일을 **소유자(Owner)** 권한으로 추가
 //      ※ "전체" 권한이 아니라 "소유자" 권한 필요
 //
-// 참고: 공식적으로 JobPosting/BroadcastEvent 전용이지만 일반 페이지도 동작 확인됨
+// 참고: Google 공식 문서상 JobPosting/BroadcastEvent 전용이다.
+// 일반 블로그는 notifyIndexing()에서 Search Console Sitemaps API를 기본 경로로 사용한다.
 // ========================================================================
 
 export interface IndexingResult {
@@ -133,6 +149,63 @@ export interface IndexingResult {
   ok: boolean;
   error?: string;
   notify_time?: string;
+}
+
+export interface GoogleSitemapSubmitResult {
+  ok: boolean;
+  sitemapUrl: string;
+  error?: string;
+}
+
+function normalizeSiteUrlForGSC(baseUrl: string): string {
+  const configured = process.env.GSC_SITE_URL;
+  if (configured) return configured;
+  try {
+    const parsed = new URL(baseUrl);
+    parsed.pathname = '/';
+    parsed.search = '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return 'https://yeosonam.com/';
+  }
+}
+
+/**
+ * Google Search Console Sitemaps API submit.
+ *
+ * This is the official Google path for telling Search Console about sitemap
+ * updates for normal blog content. Unlike the Indexing API, it is not limited
+ * to JobPosting/BroadcastEvent pages.
+ */
+export async function submitGoogleSitemap(
+  sitemapUrl: string,
+  baseUrl: string,
+): Promise<GoogleSitemapSubmitResult> {
+  const serviceAccountJson = readServiceAccountJson();
+  if (!serviceAccountJson) {
+    return { ok: false, sitemapUrl, error: 'GSC_SERVICE_ACCOUNT_JSON 미설정' };
+  }
+
+  try {
+    const credentials = parseServiceAccountJson(serviceAccountJson);
+    const auth = new google.auth.GoogleAuth({
+      credentials,
+      scopes: ['https://www.googleapis.com/auth/webmasters'],
+    });
+    const client = google.searchconsole({ version: 'v1', auth });
+    await client.sitemaps.submit({
+      siteUrl: normalizeSiteUrlForGSC(baseUrl),
+      feedpath: sitemapUrl,
+    });
+    return { ok: true, sitemapUrl };
+  } catch (err) {
+    return {
+      ok: false,
+      sitemapUrl,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
 }
 
 /**
@@ -177,9 +250,9 @@ export async function requestGoogleIndexing(
   url: string,
   type: 'URL_UPDATED' | 'URL_DELETED' = 'URL_UPDATED',
 ): Promise<IndexingResult> {
-  const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const serviceAccountJson = readServiceAccountJson();
   if (!serviceAccountJson) {
-    return { url, ok: false, error: 'GOOGLE_SERVICE_ACCOUNT_JSON 미설정' };
+    return { url, ok: false, error: 'GSC_SERVICE_ACCOUNT_JSON/GOOGLE_SERVICE_ACCOUNT_JSON 미설정' };
   }
 
   // GSC 속성에 맞게 URL 보정 (www 유무 차이 해결)

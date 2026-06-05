@@ -2,16 +2,15 @@
  * 통합 검색엔진 색인 요청 모듈
  *
  * 호출 한 번으로 다음을 동시 실행:
- *   1. Google Indexing API (개별 URL, Service Account 필요, 일 200회 제한)
+ *   1. Google Search Console Sitemaps API (일반 블로그 기본 경로)
  *   2. IndexNow (Bing/Yandex/Seznam, 키 파일 검증 필요)
- *   3. Sitemap ping (구글은 2023년 폐지됐지만 Bing/네이버는 아직 작동)
+ *   3. Sitemap ping/WebSub (Bing/네이버/Google feed refresh 보조)
  *
  * 모든 호출은 fire-and-forget. 실패해도 발행 흐름 막지 않음.
  */
 
-import { requestGoogleIndexing, IndexingResult } from './gsc-client';
+import { requestGoogleIndexing, submitGoogleSitemap, IndexingResult } from './gsc-client';
 import { getSecret } from '@/lib/secret-registry';
-import { logWarning } from './sentry-logger';
 
 // 모듈 톱레벨이 아니라 함수 내부에서 getSecret() 호출로 변경 (서버 재시작 없이 env 변경 반영)
 function getIndexNowKey(): string {
@@ -26,6 +25,16 @@ export interface IndexingReport {
   indexnow_error?: string;
   sitemap_pings: { provider: string; ok: boolean }[];
   duration_ms: number;
+}
+
+function shouldUseGoogleIndexingApi(url: string): boolean {
+  if (getSecret('GOOGLE_INDEXING_API_FOR_BLOGS') === 'true') return true;
+  try {
+    const parsed = new URL(url);
+    return !parsed.pathname.startsWith('/blog/');
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -70,16 +79,34 @@ export async function notifyIndexing(
     }
   }
 
-  // 1. Google Indexing API (개별 URL 알림)
-  // 주의: GSC Service Account에 Owner 권한이 없으면 403 Permission Denied.
-  // 실패해도 IndexNow+WebSub 경로가 보조하므로 fire-and-forget 유지.
-  const googleResult: IndexingResult = await requestGoogleIndexing(url, type);
-  report.google = googleResult.ok ? 'success' : 'failed';
-  if (!googleResult.ok) {
-    report.google_error = googleResult.error;
-    if (googleResult.error?.includes('403')) {
-      console.warn('[indexing] Google Indexing API 403 (Service Account 권한 없음) — IndexNow/WebSub 경로로 대체');
+  // 1. Google Search Console 알림.
+  //    일반 블로그는 공식 지원 범위상 Indexing API 대신 Sitemaps API를 기본으로 쓴다.
+  //    GOOGLE_INDEXING_API_FOR_BLOGS=true 일 때만 기존 직접 URL 알림을 보조로 허용한다.
+  let googleDirectResult: IndexingResult | null = null;
+  if (shouldUseGoogleIndexingApi(url)) {
+    googleDirectResult = await requestGoogleIndexing(url, type);
+    report.google = googleDirectResult.ok ? 'success' : 'failed';
+    if (!googleDirectResult.ok) {
+      report.google_error = googleDirectResult.error;
+      if (googleDirectResult.error?.includes('403')) {
+        console.warn('[indexing] Google Indexing API 403 — Search Console Sitemap 경로로 대체');
+      }
     }
+  } else {
+    report.google = 'skipped';
+    report.google_error = 'Google Indexing API는 공식적으로 JobPosting/BroadcastEvent 전용이라 블로그는 GSC Sitemap API로 처리';
+  }
+
+  const googleSitemap = await submitGoogleSitemap(sitemapUrl, baseUrl);
+  report.sitemap_pings.push({
+    provider: 'google_search_console_sitemap',
+    ok: googleSitemap.ok,
+  });
+  if (googleSitemap.ok && (report.google === 'skipped' || report.google === 'failed')) {
+    report.google = 'success';
+    report.google_error = googleDirectResult?.ok === false ? report.google_error : undefined;
+  } else if (!googleSitemap.ok && report.google === 'skipped') {
+    report.google_error = googleSitemap.error ?? report.google_error;
   }
 
   // 2. IndexNow (Bing/Yandex/Seznam/Naver 통합)
@@ -180,12 +207,30 @@ export async function notifyIndexingBatch(
   baseUrl: string,
   options: { type?: 'URL_UPDATED' | 'URL_DELETED' } = {},
 ): Promise<IndexingReport[]> {
+  if (urls.length === 0) return [];
+  const startedAt = Date.now();
   const { type = 'URL_UPDATED' } = options;
   const host = new URL(baseUrl).host;
+  const sitemapUrl = `${baseUrl}/sitemap.xml`;
 
   // Google Indexing은 병렬, IndexNow는 한 번에 여러 URL 전송 가능
+  const googleSitemap = await submitGoogleSitemap(sitemapUrl, baseUrl);
   const googleResults = await Promise.all(
-    urls.map(url => requestGoogleIndexing(url, type)),
+    urls.map(async (url) => {
+      if (!shouldUseGoogleIndexingApi(url)) {
+        return {
+          ok: googleSitemap.ok,
+          error: googleSitemap.ok
+            ? undefined
+            : googleSitemap.error ?? 'GSC Sitemap API submission failed',
+        };
+      }
+
+      const direct = await requestGoogleIndexing(url, type);
+      if (direct.ok) return direct;
+      if (googleSitemap.ok) return { ok: true, error: direct.error };
+      return direct;
+    }),
   );
 
   // IndexNow batch (글로벌 + 네이버, 한 번에 최대 10,000 URL)
@@ -234,14 +279,17 @@ export async function notifyIndexingBatch(
     indexnowError = 'INDEXNOW_KEY 미설정';
   }
 
+  const durationMs = Date.now() - startedAt;
+  const indexnowStatus = !indexNowKey ? 'skipped' : indexnowOk ? 'success' : 'failed';
+
   return urls.map((url, idx) => ({
     url,
     google: googleResults[idx].ok ? 'success' : 'failed',
     google_error: googleResults[idx].error,
-    indexnow: indexnowOk ? 'success' : 'failed',
+    indexnow: indexnowStatus,
     indexnow_error: indexnowError,
-    sitemap_pings: [],
-    duration_ms: 0,
+    sitemap_pings: [{ provider: 'google_search_console_sitemap', ok: googleSitemap.ok }],
+    duration_ms: durationMs,
   }));
 }
 

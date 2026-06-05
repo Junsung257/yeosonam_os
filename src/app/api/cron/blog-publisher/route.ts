@@ -5,7 +5,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
-import { generateBlogPost, generateBlogSeo, AngleType } from '@/lib/content-generator';
+import { generateBlogPost, generateBlogSeo, ANGLE_PRESETS, type AngleType } from '@/lib/content-generator';
 import { notifyIndexing } from '@/lib/indexing';
 import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
@@ -13,10 +13,12 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
 import { buildStandardBlogCtaMarkdown } from '@/lib/blog-cta';
+import { appendOfficialReferenceLinksIfNeeded, forceAppendOfficialReferenceLinks } from '@/lib/blog-official-links';
 import {
   fetchApprovedReviewSnippets,
   formatReviewQuotesAppendMarkdown,
@@ -65,11 +67,6 @@ const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
 let blogStyleGuideCache: { content: string; version: string } | null = null;
-
-const OFFICIAL_REFERENCE_LINKS = [
-  { label: '외교부 해외안전여행', url: 'https://www.0404.go.kr/' },
-  { label: '외교부', url: 'https://www.mofa.go.kr/' },
-] as const;
 
 const NEUTRAL_CLICHE_REPLACEMENTS: Record<string, string> = {
   '아름다운': '경관이 좋은',
@@ -125,34 +122,157 @@ function neutralizeBannedCliches(markdown: string): string {
   return normalized;
 }
 
-function getMarkdownLinks(markdown: string): string[] {
-  const linkRe = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g;
-  const links: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = linkRe.exec(markdown)) !== null) {
-    const url = match[2];
-    if (!/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(url)) {
-      links.push(url);
-    }
-  }
-  return links;
+function isUsableBlogSlug(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const slug = value.trim().toLowerCase();
+  return /^[a-z0-9][a-z0-9-]{2,79}$/.test(slug)
+    && /[a-z]/.test(slug)
+    && !slug.endsWith('-')
+    && !/^((preparation|currency|weather|visa|budget|food|faq|itinerary|transport)(-v\d+)?)$/.test(slug);
 }
 
-function appendOfficialReferenceLinksIfNeeded(markdown: string): string {
-  const existingLinks = getMarkdownLinks(markdown);
-  const externalLinks = existingLinks.filter(url => /^https?:\/\//.test(url) && !url.includes('yeosonam.com'));
-  if (externalLinks.length >= 2) return markdown;
+function categorySlugSuffix(item: any): string {
+  const category = String(item.category || '').toLowerCase();
+  const topic = String(item.topic || '').toLowerCase();
+  if (category.includes('currency') || topic.includes('환전')) return 'currency';
+  if (category.includes('preparation') || topic.includes('준비')) return 'preparation';
+  if (category.includes('weather') || topic.includes('날씨')) return 'weather';
+  if (category.includes('visa') || topic.includes('비자') || topic.includes('입국')) return 'visa';
+  if (category.includes('itinerary') || topic.includes('일정')) return 'itinerary';
+  if (category.includes('food') || topic.includes('맛집')) return 'food';
+  return 'guide';
+}
 
-  const existingUrlSet = new Set(existingLinks.map(url => url.replace(/\/$/, '')));
-  const missingLinks = OFFICIAL_REFERENCE_LINKS.filter(
-    link => !existingUrlSet.has(link.url.replace(/\/$/, '')),
-  ).slice(0, 2 - externalLinks.length);
+function stableFallbackSlug(item: any): string {
+  const destination = romanize(String(item.destination || extractDestination(String(item.topic || '')) || ''));
+  const idPart = String(item.id || '')
+    .replace(/[^a-z0-9]/gi, '')
+    .slice(-8)
+    .toLowerCase();
+  const fallback = [destination || 'travel', categorySlugSuffix(item), idPart].filter(Boolean).join('-');
+  return isUsableBlogSlug(fallback) ? fallback : `travel-guide-${idPart || 'auto'}`;
+}
 
-  if (missingLinks.length === 0) return markdown;
+function buildQueueSlug(item: any): string {
+  const expected = item.meta?.expected_slug ?? item.meta?.spun_slug ?? item.slug_hint;
+  const cleanTopic = String(item.topic || '').replace(/[\s—–-]*재작성\s*v\d+/gi, '').trim();
+  const topicSlug = slugifyTopic(cleanTopic);
 
-  return `${markdown.trimEnd()}\n\n## 공식 확인 링크\n\n${missingLinks
-    .map(link => `- [${link.label}](${link.url})`)
-    .join('\n')}\n`;
+  if (isUsableBlogSlug(expected)) {
+    const cleanExpected = expected.trim().toLowerCase();
+    const expectedLooksThin =
+      !cleanExpected.includes('-') &&
+      topicSlug.includes('-') &&
+      /-(preparation|currency|weather|visa|budget|food|faq|itinerary|transport|guide)(-v\d+)?$/.test(topicSlug);
+    if (!expectedLooksThin) return cleanExpected;
+  }
+
+  if (isUsableBlogSlug(topicSlug)) return topicSlug;
+
+  return stableFallbackSlug(item);
+}
+
+function normalizeGeneratedSlug(generated: GeneratedBlog, item: any): boolean {
+  const queueSlug = buildQueueSlug(item);
+  if (!isUsableBlogSlug(queueSlug) || generated.slug === queueSlug) return false;
+
+  const current = String(generated.slug || '').trim().toLowerCase();
+  const queueHasCategory = /-(preparation|currency|weather|visa|budget|food|faq|itinerary|transport|guide)(-v\d+)?$/.test(queueSlug);
+  const currentLooksThin = !current.includes('-') && queueSlug.includes('-') && queueHasCategory;
+  const currentIsCategoryOnly = /^-?(preparation|currency|weather|visa|budget|food|faq|itinerary|transport|guide)(-v\d+)?$/.test(current);
+
+  if (!isUsableBlogSlug(current) || currentLooksThin || currentIsCategoryOnly) {
+    generated.slug = queueSlug;
+    return true;
+  }
+
+  return false;
+}
+
+function normalizeAngleType(value: unknown): AngleType {
+  return typeof value === 'string' && value in ANGLE_PRESETS ? value as AngleType : 'value';
+}
+
+function strengthenIntroHook(markdown: string, item: any, primaryKeyword?: string | null): string {
+  const lines = markdown.split('\n');
+  let h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
+  if (h1Index < 0) {
+    const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || item.topic || '여행 정보';
+    lines.unshift(`# ${keyword}`, '');
+    h1Index = 0;
+  }
+
+  const intro = lines
+    .slice(h1Index + 1)
+    .join('\n')
+    .replace(/[#*_`[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 200);
+  const hasNumber = /\d/.test(intro);
+  const hasTrigger = /[?？]|만원|원|절약|저렴|차이|할인|특가|\d+분|\d+시간|즉시|당일|바로|비교|보다/.test(intro);
+  if (hasNumber && hasTrigger) return markdown;
+
+  const now = new Date();
+  const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || '이번 여행';
+  const hook = `${now.getFullYear()}년 ${now.getMonth() + 1}월 기준, ${keyword}에서 가장 먼저 확인할 것은 무엇일까요? 준비물·비용·이동 시간을 먼저 비교하면 현지에서 낭비되는 1~2시간을 줄일 수 있습니다. 아래 내용은 예약 전 바로 확인할 항목만 추려 정리했습니다.`;
+  lines.splice(h1Index + 1, 0, '', hook);
+  return lines.join('\n');
+}
+
+function softenKeywordDensity(markdown: string, primaryKeyword?: string | null, blogType: 'product' | 'info' = 'info'): string {
+  const keyword = primaryKeyword?.trim();
+  if (!keyword || keyword.length < 2) return markdown;
+
+  const plainLength = markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>|=-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length;
+  if (plainLength === 0) return markdown;
+
+  const currentCount = (markdown.match(new RegExp(escapeRegExp(keyword), 'g')) || []).length;
+  const targetDensity = blogType === 'info' ? 1.55 : 2.2;
+  const allowedCount = Math.max(4, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
+  if (currentCount <= allowedCount) return markdown;
+
+  const replacement = keyword.includes(' ')
+    ? keyword.split(/\s+/).slice(-1)[0] || '관련 정보'
+    : itemSafePronoun(keyword);
+  let seen = 0;
+  return markdown.replace(new RegExp(escapeRegExp(keyword), 'g'), () => {
+    seen += 1;
+    return seen <= allowedCount ? keyword : replacement;
+  });
+}
+
+function itemSafePronoun(keyword: string): string {
+  if (/^[가-힣]{2,8}$/.test(keyword)) return '현지';
+  return '관련 지역';
+}
+
+function repairAiReadableStructure(markdown: string, item: any, primaryKeyword?: string | null): string {
+  const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || '여행 정보';
+  const lines = markdown.split('\n');
+  const h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
+  const definition = `${keyword}은 여행 전 비용, 이동 시간, 현지 결제 조건을 먼저 확인해야 시행착오를 줄일 수 있는 핵심 준비 항목입니다.`;
+  if (h1Index >= 0) {
+    lines.splice(h1Index + 1, 0, '', definition);
+  }
+  let repaired = lines.join('\n');
+
+  if (!/^##\s+.+[?？]\s*$/m.test(repaired)) {
+    repaired += `\n\n## ${keyword}에서 가장 먼저 확인할 것은?\n\n1. 현지 결제 가능 수단\n2. 공항·호텔 이동 시간\n3. 예약 전 추가 비용 여부\n`;
+  }
+
+  if (!/##\s*(자주\s*묻는\s*질문|FAQ|Q\s*&\s*A|자주\s*하는\s*질문)/i.test(repaired)) {
+    repaired += `\n\n## 자주 묻는 질문\n\nQ. ${keyword}은 언제 준비하면 좋나요?\nA. 출발 2주 전에는 결제 수단, 여권 정보, 이동 동선을 함께 확인하는 편이 좋습니다.\n\nQ. 현지에서 바로 바꿔도 되나요?\nA. 가능하지만 공항·호텔 환율 차이가 있을 수 있어 최소 2곳 이상 비교하는 것이 안전합니다.\n\nQ. 여소남 상담은 어떤 점을 확인해주나요?\nA. 상품 포함사항, 일정 동선, 현지 추가 비용을 예약 전 기준으로 함께 점검합니다.\n`;
+  }
+
+  return repaired;
 }
 
 async function getActiveBlogStyleGuide(): Promise<{ content: string; version: string }> {
@@ -207,7 +327,7 @@ async function runBlogPublisher(request: NextRequest) {
       try {
         const r = await processQueueItem(item, eligibleByCardNewsId);
         results.push(r);
-        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer') {
+        if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
           errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
       } catch (err) {
@@ -422,6 +542,17 @@ async function processQueueItem(
       generated = await generateFromTopic(item);
     }
 
+    const slugNormalized = normalizeGeneratedSlug(generated, item);
+    if (slugNormalized && promoteDraftId) {
+      await supabaseAdmin
+        .from('content_creatives')
+        .update({
+          slug: generated.slug,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', promoteDraftId);
+    }
+
     // 🆕 Topical Authority interlink 자동 주입 (본문 끝 "이 글과 함께 읽기" 섹션)
     try {
       generated.blog_html = await appendInterlinkSection(generated.blog_html, generated.slug, item.destination);
@@ -447,9 +578,6 @@ async function processQueueItem(
     // 기준은 유지하되, 발행 직전 최소 공식 출처를 보강한다.
     generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
 
-    // 🆕 가독성 점수 계산 (한국어 휴리스틱)
-    const readability = computeReadability(generated.blog_html);
-
     // 4-Gate (length · cliche · duplicate · keyword_density)
     const blogType: 'product' | 'info' = item.product_id ? 'product' : 'info';
     // Pillar posts: skip keyword density (destination name dominates by design)
@@ -464,7 +592,35 @@ async function processQueueItem(
       ? rawKeyword.split('/')[0].trim()
       : rawKeyword;
 
-    const qa = await runQualityGates({
+    generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
+    generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+
+    // 일반 정보성/상품 글도 카드뉴스 경로처럼 본문 안에 사진을 보유하게 만든다.
+    // AI가 이미 섹션 이미지를 넣은 경우에는 건드리지 않고, 부족분만 Pexels/OG 이미지로 보강한다.
+    try {
+      const imageResult = await ensureBlogInlineImages({
+        markdown: generated.blog_html,
+        destination: item.destination,
+        primaryKeyword,
+        ogImageUrl: generated.og_image_url,
+        minImages: item.card_news_id ? 2 : 3,
+        maxImages: item.card_news_id ? 3 : 4,
+      });
+      if (imageResult.inserted > 0) {
+        generated.blog_html = imageResult.markdown;
+        console.log(`[blog-publisher] 본문 이미지 ${imageResult.inserted}장 자동 삽입`);
+      }
+    } catch (e) {
+      logWarning('[cron/blog-publisher] inline image insertion failed (non-blocking)', e);
+    }
+
+    // 이미지/CTA 후처리 이후에도 공식 외부 링크 기준을 최종 보장한다.
+    generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+
+    // 🆕 가독성 점수 계산 (한국어 휴리스틱)
+    const readability = computeReadability(generated.blog_html);
+
+    let qa = await runQualityGates({
       blog_html: generated.blog_html,
       slug: generated.slug,
       destination: item.destination,
@@ -473,9 +629,51 @@ async function processQueueItem(
       primary_keyword: primaryKeyword,
     });
 
+    if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
+      generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
+      qa = await runQualityGates({
+        blog_html: generated.blog_html,
+        slug: generated.slug,
+        destination: item.destination,
+        angle_type: item.angle_type,
+        blog_type: blogType,
+        primary_keyword: primaryKeyword,
+      });
+    }
+
+    if (!qa.passed && qa.gates.some(gate => gate.gate === 'hook' && !gate.passed)) {
+      generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
+      qa = await runQualityGates({
+        blog_html: generated.blog_html,
+        slug: generated.slug,
+        destination: item.destination,
+        angle_type: item.angle_type,
+        blog_type: blogType,
+        primary_keyword: primaryKeyword,
+      });
+    }
+
+    if (!qa.passed && qa.gates.some(gate => gate.gate === 'ai_readability' && !gate.passed)) {
+      generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
+      generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+      qa = await runQualityGates({
+        blog_html: generated.blog_html,
+        slug: generated.slug,
+        destination: item.destination,
+        angle_type: item.angle_type,
+        blog_type: blogType,
+        primary_keyword: primaryKeyword,
+      });
+    }
+
     if (!qa.passed) {
-      await handleFailure(item, qa.summary, qa);
-      return { id: item.id, topic: item.topic, status: 'gate_failed', reason: qa.summary };
+      const failureStatus = await handleFailure(item, qa.summary, qa);
+      return {
+        id: item.id,
+        topic: item.topic,
+        status: failureStatus === 'skipped' ? 'skipped' : 'gate_failed',
+        reason: qa.summary,
+      };
     }
 
     // 🆕 GSC 키워드 연구 데이터 보강 (환경이 설정된 경우 Google Search Console 사용)
@@ -648,9 +846,14 @@ async function processQueueItem(
   }
 }
 
-async function handleFailure(item: any, reason: string, qa: any, forceFailure = false) {
+async function handleFailure(item: any, reason: string, qa: any, forceFailure = false): Promise<'queued' | 'failed' | 'skipped'> {
   const attempts = (item.attempts || 0) + 1;
-  const finalStatus = forceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
+  const duplicateFailure = /동일 slug|유사 slug|이미 발행됨|최근 \d+일 내/i.test(reason);
+  const duplicateTaggedFailure = /\[duplicate\]|duplicate|slug already|slug .*exists/i.test(reason);
+  const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure;
+  const finalStatus = isDuplicateFailure && item.source !== 'manual'
+    ? 'skipped'
+    : forceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
 
   await supabaseAdmin.from('blog_topic_queue')
     .update({
@@ -661,23 +864,14 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
       target_publish_at: finalStatus === 'queued'
         ? new Date(Date.now() + 2 * 3600 * 1000).toISOString()
         : item.target_publish_at,
-      meta: { ...(item.meta || {}), last_qa: qa, last_failed_at: new Date().toISOString() },
+      meta: {
+        ...(item.meta || {}),
+        last_qa: qa,
+        last_failed_at: new Date().toISOString(),
+        ...(isDuplicateFailure ? { skipped_duplicate: true } : {}),
+      },
     })
     .eq('id', item.id);
-
-  // ── 자동 변형 생성: duplicate 실패 시 slug에 suffix를 붙여 새 큐 항목 등록 ──
-  // "동일 slug", "유사 slug", "이미 발행됨" 계열이면 spin 시도
-  if (
-    finalStatus === 'failed' &&
-    /동일 slug|유사 slug|이미 발행됨/i.test(reason) &&
-    item.source !== 'manual' // 수동 등록은 변형하지 않음
-  ) {
-    try {
-      await spawnVariationTopic(item, reason, qa);
-    } catch (spinErr) {
-      console.warn('[blog-publisher] spinVariation 실패:', spinErr instanceof Error ? spinErr.message : spinErr);
-    }
-  }
 
   // 자기학습: 실패 원인을 error_patterns 에 누적 (있는 경우만)
   try {
@@ -690,67 +884,8 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
       p_source: 'blog-publisher',
     });
   } catch { /* RPC 없어도 크리티컬 아님 */ }
-}
 
-/**
- * 중복(duplicate) 실패 시 이 토픽의 변형(variation)을 새 slug로 큐에 등록.
- * slug suffix 패턴:
- *   - guide         → guide-v2
- *   - guide-v2      → guide-v3
- *   - preparation   → preparation-v2
- *   ...등
- *
- * Publisher가 2회 재시도에도 duplicate 실패하면 이 함수가 자동 대체 slug를 큐잉한다.
- */
-async function spawnVariationTopic(item: any, reason: string, _qa: any) {
-  // 원본 큐의 topic에서 slug를 추론해 suffix 증가
-  const topicSlug = item.slug_hint || slugifyTopic(item.topic);
-  const spinMatch = topicSlug.match(/-v(\d+)$/);
-  const nextVer = spinMatch ? Number(spinMatch[1]) + 1 : 2;
-  const baseSlug = spinMatch ? topicSlug.replace(/-v\d+$/, '') : topicSlug;
-  const newSlug = `${baseSlug}-v${nextVer}`;
-  const spinLabel = ` (대체 v${nextVer})`;
-
-  // 이미 같은 slug가 큐에 있는지 확인
-  const { data: existing } = await supabaseAdmin
-    .from('blog_topic_queue')
-    .select('id')
-    .in('status', ['queued', 'generating'])
-    .filter('meta->spin_of', 'eq', item.id)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    console.log(`[blog-publisher] spinVariation skip: 이미 변형 큐 있음 (item=${item.id})`);
-    return;
-  }
-
-  const newTopic = `${item.topic}${spinLabel}`;
-  const slotOffset = 2; // 2시간 뒤 슬롯
-  const targetPublishAt = new Date(Date.now() + slotOffset * 3600_000).toISOString();
-
-  await supabaseAdmin.from('blog_topic_queue').insert({
-    topic: newTopic,
-    source: item.source,
-    priority: Math.max(40, (item.priority || 50) - 10), // 약간 낮은 우선순위
-    destination: item.destination ?? null,
-    angle_type: item.angle_type ?? null,
-    category: item.category ?? null,
-    card_news_id: item.card_news_id ?? null,
-    product_id: item.product_id ?? null,
-    target_publish_at: targetPublishAt,
-    search_intent: item.search_intent ?? null,
-    tenant_id: item.tenant_id ?? null,
-    meta: {
-      spin_of: item.id,
-      original_topic: item.topic,
-      original_slug: topicSlug,
-      spun_slug: newSlug,
-      spin_reason: reason,
-      spin_generated_at: new Date().toISOString(),
-    },
-  });
-
-  console.log(`[blog-publisher] spinVariation 등록: "${newTopic}" → slug=${newSlug}, 원본=${item.id}`);
+  return finalStatus;
 }
 
 // ── 생성기 ────────────────────────────────────────────────
@@ -944,7 +1079,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   }
 
   const product = pkg[0];
-  const angle = (item.angle_type || 'value') as AngleType;
+  const angle = normalizeAngleType(item.angle_type);
 
   // 관광지 매칭 (옵션)
   let attractions: any[] = [];
@@ -1004,9 +1139,8 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();
   const baseForUtm = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
-  const utmCamp = encodeURIComponent(
-    (item.meta?.expected_slug as string | undefined) || slugifyTopic(item.topic) || 'blog',
-  );
+  const queueSlug = buildQueueSlug(item);
+  const utmCamp = encodeURIComponent(queueSlug);
   const utmSrc = 'naver_blog';
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: item.product_id ?? null,
@@ -1128,11 +1262,8 @@ ${serpGapBlock}
     .trim();
   blog_html = await maybeApplyChainOfDensity(blog_html);
 
-  // slug 자동 — expected_slug 있으면 우선
-  const expected = item.meta?.expected_slug;
-  // — 재작성 v2(v3...) 접미사가 topic에 포함된 경우 slug에서 제거 (SEO 치명적)
-  const cleanTopic = (item.topic || '').replace(/[\s—–-]*재작성\s*v\d+/gi, '').trim();
-  const slug = expected || slugifyTopic(cleanTopic);
+  // slug 자동 — 오래된 큐에 잘못 들어간 expected_slug는 자동 무시
+  const slug = queueSlug;
 
   // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
   const seo_title = serpData

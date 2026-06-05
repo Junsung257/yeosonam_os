@@ -73,6 +73,10 @@ export type SecretKey =
   | 'GOOGLE_ADS_CLIENT_SECRET'
   | 'GOOGLE_ADS_DEVELOPER_TOKEN'
   | 'GOOGLE_ADS_CUSTOMER_ID'
+  | 'GOOGLE_ADS_ACCESS_TOKEN'
+  | 'GOOGLE_ADS_REFRESH_TOKEN'
+  | 'GOOGLE_ADS_CONVERSION_ACTION_ID'
+  | 'GOOGLE_ADS_API_VERSION'
   | 'NAVER_ADS_API_KEY'
   | 'NAVER_ADS_SECRET_KEY'
   | 'NAVER_ADS_CUSTOMER_ID'
@@ -95,6 +99,7 @@ export type SecretKey =
   | 'MAGIC_LINK_SECRET'
   | 'MAGIC_SESSION_SECRET'
   | 'INDEXNOW_KEY'
+  | 'GOOGLE_INDEXING_API_FOR_BLOGS'
   | 'AMADEUS_CLIENT_ID'
   | 'AMADEUS_CLIENT_SECRET'
   | 'AGODA_AFFILIATE_API_KEY'
@@ -120,6 +125,7 @@ export type SecretKey =
   | 'NAVER_CAFE_ID'
   | 'META_ADS_DRY_RUN'
   | 'META_ADS_TEST_MODE'
+  | 'META_TEST_EVENT_CODE'
   | 'AFFILIATE_IP_SALT'
   | 'AFFILIATE_TOKEN_SECRET'
   | 'AFFILIATE_JWT_SECRET'
@@ -140,7 +146,10 @@ export type SecretKey =
 
 export function getSecret(key: SecretKey): string | null {
   const value = process.env[key];
-  return value && value.trim() ? value : null;
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '""' || trimmed === "''") return null;
+  return trimmed;
 }
 
 export function hasSecrets(keys: SecretKey[]): boolean {

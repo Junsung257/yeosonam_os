@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-var-requires */
 const withSerwist = require('@serwist/next').default({
   swSrc: 'src/app/sw.ts',
   swDest: 'public/sw.js',
@@ -5,6 +6,8 @@ const withSerwist = require('@serwist/next').default({
   disable: process.env.NODE_ENV !== 'production',
 });
 
+const fs = require('fs');
+const path = require('path');
 const { withSentryConfig } = require('@sentry/nextjs');
 
 // 번들 분석: ANALYZE=true 환경변수 설정 시 .next/analyze/ 에 트리맵 HTML 생성
@@ -15,6 +18,75 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+
+function ensureSpecialPagesManifest() {
+  const distDir = process.env.NEXT_DIST_DIR || '.next';
+  const serverDir = path.join(process.cwd(), distDir, 'server');
+  const pagesDir = path.join(serverDir, 'pages');
+  const manifestPath = path.join(serverDir, 'pages-manifest.json');
+  if (!fs.existsSync(pagesDir)) return;
+
+  let current = null;
+  if (fs.existsSync(manifestPath)) {
+    try {
+      current = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch {
+      current = null;
+    }
+  }
+  if (current && Object.keys(current).length > 0) return;
+
+  const manifest = {};
+  for (const name of ['_app', '_error', '_document']) {
+    if (fs.existsSync(path.join(pagesDir, `${name}.js`))) {
+      manifest[`/${name}`] = `pages/${name}.js`;
+    }
+  }
+  if (Object.keys(manifest).length === 0) return;
+
+  fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+  console.log(`[next-shim] rebuilt pages-manifest.json with ${Object.keys(manifest).length} special page(s)`);
+}
+
+function ensureAppPathsManifest() {
+  const distDir = process.env.NEXT_DIST_DIR || '.next';
+  const serverAppDir = path.join(process.cwd(), distDir, 'server', 'app');
+  const manifestPath = path.join(process.cwd(), distDir, 'server', 'app-paths-manifest.json');
+  if (!fs.existsSync(serverAppDir)) return;
+
+  let manifest = {};
+  if (fs.existsSync(manifestPath)) {
+    try {
+      manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch {
+      manifest = {};
+    }
+  }
+
+  let added = 0;
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && (entry.name === 'page.js' || entry.name === 'route.js')) {
+        const rel = path.relative(serverAppDir, full).split(path.sep).join('/');
+        const key = `/${rel.replace(/\.js$/, '')}`;
+        const value = `app/${rel}`;
+        if (manifest[key] !== value) {
+          manifest[key] = value;
+          added += 1;
+        }
+      }
+    }
+  }
+
+  walk(serverAppDir);
+  if (added > 0) {
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    console.log(`[next-shim] added ${added} app path(s) to app-paths-manifest.json`);
+  }
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -41,11 +113,25 @@ const nextConfig = {
   experimental: {
     webpackBuildWorker: false,
     prerenderEarlyExit: false,
+    // Dev-only Segment Explorer can fail to resolve its client manifest on
+    // Windows paths with non-ASCII characters; keep page rendering stable.
+    devtoolSegmentExplorer: false,
   },
   // Next server chunks are emitted under .next/server/chunks; keep runtime lookup aligned.
   webpack(config, { isServer }) {
     if (isServer && config.output) {
       config.output.chunkFilename = 'chunks/[name].js';
+    }
+    if (isServer) {
+      config.plugins = config.plugins || [];
+      config.plugins.push({
+        apply(compiler) {
+          compiler.hooks.afterEmit.tap('EnsureNextManifestsPlugin', () => {
+            ensureSpecialPagesManifest();
+            ensureAppPathsManifest();
+          });
+        },
+      });
     }
     config.resolve = config.resolve || {};
     config.resolve.alias = {
@@ -243,7 +329,7 @@ const nextConfig = {
       },
       // 깨진 슬러그(destination 누락) → 수정된 슬러그로 301 (Google 링크 신호 보존)
       { source: '/blog/-currency', destination: '/blog/나트랑-달랏-화폐-환전-팁-문화-총정리', permanent: true },
-      { source: '/blog/-preparation', destination: '/blog/나가사키-여행-준비물-완벽-체크리스트', permanent: true },
+      { source: '/blog/-preparation', destination: '/blog/shimonoseki-fukuoka-beppu-preparation', permanent: true },
       { source: '/blog/-weather', destination: '/blog/보홀-월별-날씨와-옷차림-가이드', permanent: true },
       { source: '/blog/-complete-guide', destination: '/blog/석가장-여행-완벽-가이드-관광지-일정-비용', permanent: true },
     ];

@@ -56,6 +56,12 @@ curl https://yeosonam.com/api/cron/blog-publisher
 3. **알림 체크**
    - Slack 웹훅 설정했으면 `#blog-alerts` 채널 확인
 
+4. **사진·색인 자동화 체크**
+   - 새 글 본문에 이미지가 최소 2~3장 들어갔는지 확인 (`seo_score.details`의 이미지 SEO 항목)
+   - `indexing_reports` 최신 행에서 `sitemap_pings` 안의 `google_search_console_sitemap` 이 `ok=true`인지 확인
+   - `INDEXNOW_KEY` 미설정이면 Bing/IndexNow는 `skipped`가 정상이며, 운영 전에는 루트 key 파일 배포가 필요
+   - 대량 재색인은 `/api/blog/bulk-reindex`를 사용한다. 이 경로는 Google sitemap 제출과 IndexNow 요청을 batch로 묶어 호출한다.
+
 ---
 
 ## 📆 매주 확인 (15분, 월요일)
@@ -104,7 +110,10 @@ curl https://yeosonam.com/api/cron/blog-publisher
 3. **Google Search Console 체크**
    - 색인 상태 / 클릭 수 / 평균 순위
    - 상위 10개 키워드 확인
-   - 색인 누락된 글 있으면 IndexNow 재전송
+   - 색인 누락된 글 있으면 `/api/blog/reindex` 또는 `/api/blog/bulk-reindex`로 재전송
+   - 일반 블로그는 Google Indexing API 직접 호출보다 Search Console Sitemap API + URL Inspection을 기본으로 본다
+     - 이유: Google 공식 지원 범위상 Indexing API는 JobPosting/BroadcastEvent 중심
+     - 예외적으로 직접 호출까지 테스트하려면 `GOOGLE_INDEXING_API_FOR_BLOGS=true` 설정
 
 4. **리뷰 수집률**
    ```sql
@@ -160,6 +169,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 | 월간 블로그 발행 수 | 150~180편 (하루 6개 × 25일) | `SELECT COUNT(*) FROM content_creatives WHERE published_at >= DATE_TRUNC('month', NOW())` |
 | 자동 발행 성공률 | 95% 이상 | `status='published'` / (published + failed) |
 | 평균 3-Gate 통과율 | 90% 이상 | `quality_gate->>'passed'='true'` |
+| 평균 본문 이미지 수 | 글당 2장 이상 | `seo_score` 이미지 SEO 항목 또는 마크다운 이미지 수 |
 | 평균 조회수 (30일) | 글당 50+ | `AVG(view_count)` |
 | Pillar 페이지 커버리지 | 17/17 active destinations | `SELECT destination FROM active_destinations WHERE destination NOT IN (SELECT pillar_for FROM content_creatives WHERE content_type='pillar')` |
 | 리뷰 수집률 | 15%+ | 위 SQL 참조 |
