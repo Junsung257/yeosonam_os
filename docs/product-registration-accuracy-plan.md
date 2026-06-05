@@ -2,6 +2,12 @@
 
 Last updated: 2026-05-31
 
+## 2026-06-05 Current Operational Contract
+
+The current source of truth for upload registration, customer mobile landing, and A4 readiness is `docs/product-registration-current-ssot.md`.
+
+This plan remains a supporting evidence/accuracy strategy. Do not use it as the execution playbook when it overlaps with the current SSOT.
+
 ## Goal
 
 Travel product registration must preserve the supplier source exactly, then generate mobile landing pages and A4 posters from a single verified render contract. The target is not a nominal 100% AI confidence score. The target is that every customer-visible claim is either:
@@ -291,7 +297,10 @@ Reference anchors:
   - Shared golden raw fixtures live in `src/lib/product-registration-golden-fixtures.ts`.
   - `src/lib/product-registration-evaluator.ts` converts the golden corpus into measurable gates: field pass rate, deterministic LLM-skip rate, duplicate second-pass skip rate, section-cache reduce-ready rate, reusable character count, and supplier-format scenario coverage.
   - `npm run eval:product-registration` prints the same metrics locally; `npm run eval:product-registration:ci` fails when any default gate is below 100%, including supplier-format scenario coverage.
-  - Current evaluator output: 5/5 fixtures pass, deterministic skip rate 100%, duplicate second-pass skip rate 100%, section reduce-ready rate 100%, scenario coverage 100%, and 3,049 reusable section characters across the seed corpus.
+  - The same command now also runs the customer-deliverability golden corpus from `src/lib/product-registration/golden-corpus/evaluator.ts`.
+  - Customer-deliverability gates fail strict mode on any non-zero `priceRowsZeroCount`, `priceDatesZeroCount`, `destinationUnkCount`, `optionalTourPricePollutionCount`, or `deliverabilityBlockedCount`.
+  - Current evaluator output: supplier raw fixtures 5/5 pass, customer deliverability corpus 12/12 pass, deterministic skip rate 100%, duplicate second-pass skip rate 100%, section reduce-ready rate 100%, scenario coverage 100%, and 3,049 reusable section characters across the seed corpus.
+  - Current customer-deliverability corpus includes Cebu, Phu Quoc, Fukuoka, four Clark multi-product variants, and the supplier raw fixtures.
   - Current scenario coverage includes free-text itinerary, alternate labels, table-heavy price, multi-departure price, optional-tour-heavy, and noisy OCR samples.
   - `supplier-raw-deterministic-facts.test.ts` verifies the Nha Trang/Dalat raw format is LLM-skippable and produces a 5-day customer itinerary.
   - The same test also covers common alternate supplier labels such as `행사명`, `출발지`, `이용항공`, `가는편/오는편`,

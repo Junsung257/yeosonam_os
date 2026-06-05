@@ -29,6 +29,10 @@ import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { useChatStore } from '@/lib/chat-store';
 import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
+import {
+  getCustomerPriceOptionsForDate,
+  type CustomerProductPriceRow,
+} from '@/lib/customer-package-price-options';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -47,7 +51,6 @@ interface PriceTier {
   status?: string;
   note?: string;
 }
-
 interface DaySchedule {
   day: number;
   regions?: string[];
@@ -71,6 +74,7 @@ interface Package {
   product_type?: string;
   price_tiers?: PriceTier[];
   price_dates?: { date: string; price: number; child_price?: number; confirmed: boolean }[];
+  product_prices?: CustomerProductPriceRow[];
   inclusions?: string[];
   excludes?: string[];
   // ERR-20260418-23: 써차지 객체 배열 (기간별 추가 요금)
@@ -539,6 +543,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
+  const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
   // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
   // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
@@ -1140,15 +1145,30 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 }}
               />
               {selectedDateInfo && (
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs text-gray-500">선택한 출발일</p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {parseInt(selectedDate.split('-')[1])}월 {parseInt(selectedDate.split('-')[2])}일
-                      {selectedDateInfo.confirmed && <span className="ml-1.5 text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
-                    </p>
+                <div className="mt-4 border-t border-gray-100 pt-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs text-gray-500">선택한 출발일</p>
+                      <p className="text-sm font-bold text-gray-900">
+                        {parseInt(selectedDate.split('-')[1])}월 {parseInt(selectedDate.split('-')[2])}일
+                        {selectedDateInfo.confirmed && <span className="ml-1.5 text-xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">확정</span>}
+                      </p>
+                    </div>
+                    <p className="shrink-0 text-base font-extrabold text-brand">₩{selectedDateInfo.price.toLocaleString()}</p>
                   </div>
-                  <p className="text-base font-extrabold text-brand">₩{selectedDateInfo.price.toLocaleString()}</p>
+                  {selectedProductPriceOptions.length > 1 && (
+                    <div className="mt-3 border-t border-gray-100 pt-3">
+                      <p className="text-xs font-bold text-gray-600">옵션별 요금</p>
+                      <div className="mt-2 space-y-1.5">
+                        {selectedProductPriceOptions.map((option, index) => (
+                          <div key={`${option.targetDate}-${option.price}-${option.label}-${index}`} className="flex items-center justify-between gap-3">
+                            <span className="min-w-0 truncate text-xs font-medium text-gray-700">{option.label}</span>
+                            <span className="shrink-0 text-sm font-extrabold tabular-nums text-gray-900">₩{option.price.toLocaleString()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

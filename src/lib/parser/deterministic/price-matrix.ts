@@ -10,6 +10,14 @@ export interface MatrixPriceRow {
   child_price?: number | null;
   note?: string | null;
   status?: string | null;
+  option_label?: string | null;
+  option_type?: 'hotel' | null;
+}
+
+export interface MatrixPriceExtractOptions {
+  title?: string | null;
+  accommodations?: string[] | null;
+  includeAllHotelColumns?: boolean;
 }
 
 const DOW_MAP: Record<string, number> = {
@@ -20,10 +28,26 @@ const DOW_NAMES = ['일', '월', '화', '수', '목', '금', '토'];
 const PERIOD_RE = /(\d{1,2})[./](\d{1,2})\s*[~\-–—]\s*(\d{1,2})[./](\d{1,2})/;
 /** 단일일 또는 쉼표 구분 개별일 — e.g. "6/3", "10/3,10/9" */
 const SINGLE_DATE_RE = /^(\d{1,2})[./](\d{1,2})(?:,\s*(\d{1,2})[./](\d{1,2}))*$/;
-const DOW_LINE_RE = /^([일월화수목금토](?:[~\-][일월화수목금토])?|매일)\s*$/;
+const DOW_LINE_RE = /^([일월화수목금토](?:[~\-][일월화수목금토])?|[일월화수목금토]{2,7}|매일)\s*$/;
 const PRICE_RE = /^([\d,]{3,10})(?:\s*[,\-]|\s*원)?\s*$/;
 const SPOT_LINE_RE = /^(\d{1,2})[./](\d{1,2})\s+([\d,]{3,10})/;
 const EXCLUDE_HINT_RE = /제외|except|exclude/i;
+
+function compactLabel(label: string): string {
+  return label.replace(/\s+/g, '');
+}
+
+function isDowLine(line: string): boolean {
+  return DOW_LINE_RE.test(compactLabel(line));
+}
+
+function parseDowPriceLine(line: string): { dowLabel: string; price: number } | null {
+  const compact = compactLabel(line);
+  const m = compact.match(/^([일월화수목금토]{1,7}|매일)([\d,]{3,10})(?:원)?$/);
+  if (!m) return null;
+  const price = parsePrice(m[2]);
+  return price > 0 ? { dowLabel: m[1], price } : null;
+}
 
 function parsePrice(tok: string): number {
   const n = parseInt(tok.replace(/[, ]/g, ''), 10);
@@ -32,8 +56,9 @@ function parsePrice(tok: string): number {
 }
 
 function expandDow(label: string): number[] {
-  if (label === '매일') return [0, 1, 2, 3, 4, 5, 6];
-  const rangeM = label.match(/^([일월화수목금토])[~\-]([일월화수목금토])$/);
+  const compact = compactLabel(label);
+  if (compact === '매일') return [0, 1, 2, 3, 4, 5, 6];
+  const rangeM = compact.match(/^([일월화수목금토])[~\-]([일월화수목금토])$/);
   if (rangeM) {
     const start = DOW_MAP[rangeM[1]];
     const end = DOW_MAP[rangeM[2]];
@@ -47,7 +72,10 @@ function expandDow(label: string): number[] {
     }
     return out;
   }
-  const single = DOW_MAP[label];
+  if (/^[일월화수목금토]{2,7}$/.test(compact)) {
+    return [...new Set(compact.split('').map(ch => DOW_MAP[ch]).filter((v): v is number => v != null))];
+  }
+  const single = DOW_MAP[compact];
   return single != null ? [single] : [];
 }
 
@@ -73,6 +101,7 @@ function expandPeriod(
   dowFilter: number[],
   price: number,
   note: string | null,
+  meta: Pick<MatrixPriceRow, 'option_label' | 'option_type'> = {},
 ): MatrixPriceRow[] {
   const rows: MatrixPriceRow[] = [];
   const start = new Date(year, startMonth - 1, startDay);
@@ -84,7 +113,7 @@ function expandPeriod(
     const dow = cur.getDay();
     if (dowFilter.length === 0 || dowFilter.includes(dow)) {
       const iso = toIso(cur.getFullYear(), cur.getMonth() + 1, cur.getDate());
-      if (iso) rows.push({ date: iso, adult_price: price, child_price: null, note, status: 'available' });
+      if (iso) rows.push({ date: iso, adult_price: price, child_price: null, note, status: 'available', ...meta });
     }
     cur.setDate(cur.getDate() + 1);
   }
@@ -113,6 +142,145 @@ interface PeriodSlot {
   year: number;
 }
 
+function normalizeHint(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\[[^\]]*\]/g, ' ')
+    .replace(/[()\[\]{}【】［］]/g, ' ')
+    .replace(/\s+/g, '');
+}
+
+function labelHints(label: string): string[] {
+  const hints = [label];
+  const bracket = label.match(/\[([^\]]+)\]/);
+  if (bracket?.[1]) hints.push(bracket[1]);
+  const beforeBracket = label.split('[')[0]?.trim();
+  if (beforeBracket) hints.push(beforeBracket);
+  return [...new Set(hints.map(normalizeHint).filter(Boolean))];
+}
+
+function selectHotelColumn(labels: string[], options: MatrixPriceExtractOptions): number {
+  const sourceHints = [
+    options.title ?? '',
+    ...(options.accommodations ?? []),
+  ].map(normalizeHint).filter(Boolean);
+
+  if (sourceHints.length === 0) return 0;
+
+  let bestIndex = 0;
+  let bestScore = -1;
+  for (let i = 0; i < labels.length; i++) {
+    const candidates = labelHints(labels[i]);
+    let score = 0;
+    for (const source of sourceHints) {
+      for (const candidate of candidates) {
+        if (!candidate) continue;
+        if (source.includes(candidate)) score += candidate.length >= 3 ? 20 : 8;
+        if (candidate.includes(source) && source.length >= 2) score += source.length >= 3 ? 12 : 4;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestIndex = i;
+    }
+  }
+  return bestScore > 0 ? bestIndex : 0;
+}
+
+function findHorizontalHotelHeader(lines: string[]): { headerStart: number; labels: string[]; periodIndex: number } | null {
+  const departureIdx = lines.findIndex(line => compactLabel(line) === '출발일');
+  if (departureIdx < 0) return null;
+
+  let periodIndex = -1;
+  for (let i = departureIdx + 1; i < lines.length; i++) {
+    if (PERIOD_RE.test(lines[i])) {
+      periodIndex = i;
+      break;
+    }
+  }
+  if (periodIndex < 0) return null;
+
+  const labels = lines
+    .slice(departureIdx + 1, periodIndex)
+    .filter(line => compactLabel(line) !== '요일')
+    .filter(line => !isDowLine(line))
+    .filter(line => !PRICE_RE.test(line));
+
+  return labels.length >= 2 ? { headerStart: departureIdx, labels, periodIndex } : null;
+}
+
+function extractHorizontalHotelMatrix(
+  lines: string[],
+  todayYear: number | undefined,
+  options: MatrixPriceExtractOptions,
+): MatrixPriceRow[] {
+  const header = findHorizontalHotelHeader(lines);
+  if (!header) return [];
+
+  const selectedColumn = selectHotelColumn(header.labels, options);
+  const includeAllColumns = options.includeAllHotelColumns === true;
+  const rows: MatrixPriceRow[] = [];
+  let periods: PeriodSlot[] = [];
+  let priceGenerated = false;
+
+  for (let i = header.periodIndex; i < lines.length; i++) {
+    const line = lines[i];
+    const periodM = line.match(PERIOD_RE);
+    if (periodM) {
+      if (priceGenerated) {
+        periods = [];
+        priceGenerated = false;
+      }
+      const ps = { m: +periodM[1], d: +periodM[2] };
+      const pe = { m: +periodM[3], d: +periodM[4] };
+      periods.push({ start: ps, end: pe, year: inferYear(ps.m, todayYear) });
+      continue;
+    }
+
+    const dowPrice = parseDowPriceLine(line);
+    if (periods.length === 0 || (!isDowLine(line) && !dowPrice)) continue;
+
+    const dowLabel = dowPrice?.dowLabel ?? line;
+    const dow = expandDow(dowLabel);
+    if (dow.length === 0) continue;
+
+    const prices: number[] = dowPrice ? [dowPrice.price] : [];
+    let j = i + 1;
+    while (j < lines.length && prices.length < header.labels.length) {
+      const priceM = lines[j].match(PRICE_RE);
+      if (!priceM) break;
+      prices.push(parsePrice(priceM[1]));
+      j++;
+    }
+    if (prices.length < header.labels.length) continue;
+
+    const columns = includeAllColumns
+      ? header.labels.map((label, index) => ({ label, index }))
+      : [{ label: header.labels[selectedColumn] ?? header.labels[0] ?? null, index: selectedColumn }];
+
+    for (const column of columns) {
+      const selectedPrice = prices[column.index] ?? 0;
+      if (selectedPrice <= 0) continue;
+      const note = column.label ? `${column.label} ${dowLabel}` : dowLabel;
+      for (const p of periods) {
+        rows.push(...expandPeriod(
+          p.year,
+          p.start.m, p.start.d,
+          p.end.m, p.end.d,
+          dow,
+          selectedPrice,
+          note,
+          column.label ? { option_label: column.label, option_type: 'hotel' } : {},
+        ));
+      }
+      priceGenerated = true;
+    }
+    i = j - 1;
+  }
+
+  return rows;
+}
+
 /**
  * 기간×요일 매트릭스 → 일자별 price_dates row.
  * 패턴 미매칭 시 [] (LLM fallback 으로).
@@ -120,12 +288,17 @@ interface PeriodSlot {
  * 다중 기간 누적 지원: 여러 기간 라인이 하나의 요일+가격 블록을 공유하는 패턴 처리
  * (e.g. 기간1\n기간2\n기간3\n일,월,화\n1,059,-)
  */
-export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixPriceRow[] {
+export function extractPriceMatrix(rawText: string, todayYear?: number, options: MatrixPriceExtractOptions = {}): MatrixPriceRow[] {
   if (!rawText || rawText.length < 30) return [];
   const region = slicePriceRegion(rawText);
   if (!PERIOD_RE.test(region)) return [];
 
   const lines = region.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const hotelRows = extractHorizontalHotelMatrix(lines, todayYear, options);
+  if (hotelRows.length > 0) {
+    return hotelRows.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   const rows: MatrixPriceRow[] = [];
   const excludedDates = new Set<string>();
 
@@ -211,7 +384,7 @@ export function extractPriceMatrix(rawText: string, todayYear?: number): MatrixP
 
     if (periods.length === 0) continue;
 
-    if (DOW_LINE_RE.test(line)) {
+    if (isDowLine(line)) {
       pendingDow = expandDow(line);
       continue;
     }

@@ -1464,7 +1464,7 @@ function createInserter({ landOperator, commissionRate, commissionFixedAmount, c
                   } catch {
                     const { error: e2 } = await sb
                       .from('unmatched_activities')
-                      .upsert(it, { onConflict: 'activity' });
+                      .upsert(it, { onConflict: 'unmatched_scope_key,activity' });
                     if (!e2) saved++;
                   }
                 }

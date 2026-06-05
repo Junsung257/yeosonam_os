@@ -1,0 +1,178 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+import {
+  buildUploadRegisterReport,
+  type UploadRegisterReportPackage,
+  type UploadRegisterReportRow,
+} from '@/lib/product-registration-register-report';
+import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
+import type { UploadGate } from '@/lib/upload-validator';
+import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard';
+import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+
+type TokenUsageSource = {
+  provider?: string;
+  input?: number;
+  output?: number;
+  cache_hit?: number;
+  phase2Provider?: string;
+  phase2Input?: number;
+  phase2Output?: number;
+  phase2CacheHit?: number;
+  elapsed_ms?: number;
+} | null | undefined;
+
+function buildTokenInfo(tu: TokenUsageSource) {
+  if (!tu) return null;
+  const input = Number(tu.input ?? 0);
+  const output = Number(tu.output ?? 0);
+  const cacheHit = Number(tu.cache_hit ?? 0);
+  const billableInput = input - cacheHit;
+  const phase1CostUsd = tu.provider === 'deepseek'
+    ? (cacheHit / 1_000_000 * 0.014) + (billableInput / 1_000_000 * 0.14) + (output / 1_000_000 * 0.28)
+    : (input / 1_000_000 * 0.30) + (output / 1_000_000 * 2.50);
+
+  const p2in = Number(tu.phase2Input ?? 0);
+  const p2out = Number(tu.phase2Output ?? 0);
+  const p2cache = Number(tu.phase2CacheHit ?? 0);
+  const phase2CostUsd = tu.phase2Provider === 'gemini'
+    ? (p2in / 1_000_000 * 0.30) + (p2out / 1_000_000 * 2.50)
+    : (p2cache / 1_000_000 * 0.014) + ((p2in - p2cache) / 1_000_000 * 0.14) + (p2out / 1_000_000 * 0.28);
+
+  return {
+    provider: tu.provider,
+    inputTokens: input,
+    outputTokens: output,
+    cacheHitTokens: cacheHit,
+    phase2Provider: tu.phase2Provider ?? 'deepseek',
+    phase2InputTokens: p2in,
+    phase2OutputTokens: p2out,
+    phase2CacheHitTokens: p2cache,
+    costUsd: Math.round((phase1CostUsd + phase2CostUsd) * 1_000_000) / 1_000_000,
+    elapsed_ms: tu.elapsed_ms,
+  };
+}
+
+function buildAttractionLine(stats: {
+  matched: number;
+  unmatched: number;
+  seeded: number;
+  reflected: number;
+}): string {
+  if (stats.matched + stats.seeded + stats.unmatched <= 0) return '';
+  return [
+    `관광지 매칭 ${stats.matched}개`,
+    stats.seeded > 0 ? `신규 시드 ${stats.seeded}개` : null,
+    stats.reflected > 0 ? `같은 등록 즉시반영 ${stats.reflected}개` : null,
+    stats.unmatched > 0 ? `미매칭 ${stats.unmatched}개(검수 큐)` : null,
+  ].filter(Boolean).join(' · ');
+}
+
+export async function buildUploadResponsePayload(input: {
+  supabase: SupabaseClient;
+  isSupabaseConfigured: boolean;
+  savedIds: string[];
+  savedTitles: string[];
+  savedInternalCodes: string[];
+  savedConfidences: number[];
+  saveErrors: { title: string; error: string }[];
+  totalPriceRowsSaved: number;
+  savedPriceRowsByPackageId: Map<string, number>;
+  productsToSaveLength: number;
+  parsedDocument: Record<string, any>;
+  fileHash: string;
+  classification: unknown;
+  inputAnalysisForTrust: UploadInputAnalysis | null;
+  preSaveV3Status: string | null;
+  matchedAttractionCount: number;
+  unmatchedAttractionCount: number;
+  attractionSeededCount: number;
+  attractionReflectedCount: number;
+  uploadSourceMetadata: UploadSourceMetadataResult | null;
+  filenameSupplierRaw: string | null | undefined;
+  marginRate: number;
+  fileName: string;
+  baseUrl: string;
+}): Promise<Record<string, unknown>> {
+  const productCount = input.productsToSaveLength;
+  const successCount = input.savedIds.length;
+  const blockedCount = input.saveErrors.filter(error => error.error.includes('BLOCKED')).length;
+  const overallGate: UploadGate = blockedCount > 0 && successCount === 0
+    ? 'BLOCKED'
+    : blockedCount > 0
+      ? 'REVIEW_NEEDED'
+      : 'CLEAN';
+
+  const attractionStats = {
+    matched: input.matchedAttractionCount,
+    unmatched: input.unmatchedAttractionCount,
+    seeded: input.attractionSeededCount,
+    reflected: input.attractionReflectedCount,
+  };
+  const attractionLine = buildAttractionLine(attractionStats);
+
+  let registerReport: UploadRegisterReportRow[] = [];
+  if (input.isSupabaseConfigured && input.savedIds.length > 0) {
+    try {
+      const { data: pkgs } = await input.supabase
+        .from('travel_packages')
+        .select('id, internal_code, title, price, airline, status, departure_days, commission_rate, land_operator, price_dates, itinerary_data')
+        .in('id', input.savedIds);
+      registerReport = buildUploadRegisterReport((pkgs ?? []) as UploadRegisterReportPackage[], input.baseUrl, {
+        priceRowsByPackageId: input.savedPriceRowsByPackageId,
+      });
+    } catch (e) {
+      console.warn('[upload] register report build failed:', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  const trustScore = calculateProductRegistrationTrustScore({
+    inputBlocked: input.inputAnalysisForTrust?.blocked ?? false,
+    inputNeedsReview: input.inputAnalysisForTrust?.needsReview ?? false,
+    inputIssueCodes: input.inputAnalysisForTrust?.issues.map(issue => issue.code) ?? [],
+    actualProductCount: productCount,
+    savedProductCount: successCount,
+    priceRowsSaved: input.totalPriceRowsSaved,
+    priceDatesCount: registerReport.reduce((sum, row) => sum + row.price_dates_count, 0),
+    itineraryDaysCount: registerReport.reduce((sum, row) => sum + row.itinerary_days_count, 0),
+    rawNoticeLeakRisk: false,
+    v3Status: input.preSaveV3Status,
+    unmatchedActivitiesCount: attractionStats.unmatched,
+    renderAuditStatus: 'unknown',
+  });
+
+  return {
+    success: successCount > 0 || !input.isSupabaseConfigured,
+    data: input.parsedDocument,
+    dbId: input.savedIds[0] ?? null,
+    dbIds: input.savedIds,
+    titles: input.savedTitles,
+    internal_codes: input.savedInternalCodes,
+    internal_code: input.savedInternalCodes[0] ?? null,
+    finalConfidence: input.savedConfidences[0] ?? input.parsedDocument.confidence,
+    finalConfidences: input.savedConfidences,
+    productCount,
+    priceRowsSaved: input.totalPriceRowsSaved,
+    fileHash: `${input.fileHash.slice(0, 12)}...`,
+    classification: input.classification,
+    gate: overallGate,
+    trustScore,
+    tokenUsage: buildTokenInfo(input.parsedDocument._tokenUsage as TokenUsageSource),
+    attractionStats,
+    uploadMetadata: {
+      landOperator: input.uploadSourceMetadata?.landOperator ?? input.filenameSupplierRaw ?? null,
+      commissionRate: input.uploadSourceMetadata?.commissionRate ?? Math.round(input.marginRate * 10000) / 100,
+      marginRate: input.marginRate,
+      sourceLabel: input.uploadSourceMetadata?.cleanSourceLabel ?? input.fileName,
+      metadataOnlyLineRemoved: input.uploadSourceMetadata?.metadataOnlyLineRemoved ?? false,
+      issues: input.uploadSourceMetadata?.issues ?? [],
+    },
+    registerReport,
+    ...(input.saveErrors.length > 0 ? { errors: input.saveErrors } : {}),
+    message: productCount > 1
+      ? `문서에서 ${successCount}/${productCount}개 상품 등록 완료. 가격 ${input.totalPriceRowsSaved}행 저장${attractionLine ? ` · ${attractionLine}` : ''}`
+      : successCount > 0
+        ? `문서 파싱 완료. (${input.savedInternalCodes[0] ?? 'DB 미설정'}) 가격 ${input.totalPriceRowsSaved}행${attractionLine ? ` · ${attractionLine}` : ''}`
+        : '문서 파싱은 완료됐지만 DB 저장에 실패했습니다.',
+  };
+}

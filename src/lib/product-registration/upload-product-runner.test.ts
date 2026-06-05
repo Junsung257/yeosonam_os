@@ -1,0 +1,173 @@
+import { describe, expect, it, vi } from 'vitest';
+
+const mocks = vi.hoisted(() => ({
+  buildUploadPersistenceRows: vi.fn(),
+  finalizeUploadRegistration: vi.fn(),
+  issueUploadInternalCode: vi.fn(),
+  persistUploadRegistrationRows: vi.fn(),
+  registerProductFromRaw: vi.fn(),
+  rollbackInsertedUploadProduct: vi.fn(),
+  scheduleUploadReviewInsert: vi.fn(),
+}));
+
+vi.mock('@/lib/registration-policy', () => ({
+  getRegistrationPolicy: vi.fn(async () => ({ autoApprove: false })),
+}));
+
+vi.mock('@/lib/parser/mrt-lazy-sync', () => ({
+  maybeTriggerMrtSync: vi.fn(),
+}));
+
+vi.mock('@/lib/parser/hotel-canonical-learner', () => ({
+  recordHotelsFromItinerary: vi.fn(),
+}));
+
+vi.mock('@/lib/parser/catalog-pre-split', () => ({
+  extractProductRawTextSection: vi.fn(() => 'fallback product raw text'),
+}));
+
+vi.mock('@/lib/product-registration/destination-resolution', () => ({
+  issueUploadInternalCode: mocks.issueUploadInternalCode,
+}));
+
+vi.mock('@/lib/product-registration/finalize-registration', () => ({
+  finalizeUploadRegistration: mocks.finalizeUploadRegistration,
+}));
+
+vi.mock('@/lib/product-registration/persistence-rows', () => ({
+  buildUploadPersistenceRows: mocks.buildUploadPersistenceRows,
+}));
+
+vi.mock('@/lib/product-registration/register-product-from-raw', () => ({
+  registerProductFromRaw: mocks.registerProductFromRaw,
+}));
+
+vi.mock('@/lib/product-registration/section-signal-recording', () => ({
+  recordUploadSectionSignals: vi.fn(async () => undefined),
+}));
+
+vi.mock('@/lib/product-registration/upload-post-registration-tasks', () => ({
+  logUploadPostSaveAuditStatus: vi.fn(async () => undefined),
+  recordUploadAiQualityLog: vi.fn(async () => undefined),
+  scheduleUploadPostRegistrationTasks: vi.fn(),
+}));
+
+vi.mock('@/lib/product-registration/upload-persistence', () => ({
+  persistUploadRegistrationRows: mocks.persistUploadRegistrationRows,
+  rollbackInsertedUploadProduct: mocks.rollbackInsertedUploadProduct,
+}));
+
+vi.mock('@/lib/product-registration/upload-review-queue', () => ({
+  scheduleUploadReviewInsert: mocks.scheduleUploadReviewInsert,
+}));
+
+import { processUploadRegistrationProducts } from './upload-product-runner';
+
+describe('processUploadRegistrationProducts', () => {
+  it('does not persist a finalized registration blocked by the upload gate', async () => {
+    mocks.issueUploadInternalCode.mockResolvedValue('PUS-ETC-CEB-05-0001');
+    mocks.registerProductFromRaw.mockResolvedValue({
+      extractedData: {
+        title: 'Blocked Cebu Package',
+        destination: 'Cebu',
+        duration: 5,
+        price: 859000,
+        rawText: 'raw text',
+      },
+      sanitization: { incidents: [], leakScore: 0 },
+      priceRecovery: { minPrice: 859000 },
+      pricing: {
+        productPrices: [{
+          target_date: '2026-07-24',
+          day_of_week: null,
+          net_price: 859000,
+          adult_selling_price: null,
+          child_price: null,
+          note: null,
+        }],
+        priceDates: [{ date: '2026-07-24', price: 859000, confirmed: false }],
+      },
+      itinerary: {
+        itineraryInput: { days: [{ day: 1, schedule: [] }] },
+        itineraryDataToSave: { days: [{ day: 1, schedule: [] }] },
+        scheduleItemCount: 0,
+        matchedCanonicalNames: [],
+        extractedCandidateRows: [],
+        matchedScheduleItemCount: 0,
+        unmatchedCandidateCount: 0,
+        unmatchedCandidates: [],
+      },
+      deliverability: { ok: true, blockers: [] },
+      destination: {
+        departureCode: 'PUS',
+        destinationCode: 'CEB',
+        durationDays: 5,
+        departureRegion: 'Busan',
+      },
+    });
+    mocks.finalizeUploadRegistration.mockReturnValue({
+      validation: { isValid: false, errors: ['title missing'], warnings: [] },
+      uploadGate: 'BLOCKED',
+      v2WithAttraction: {
+        confidence: 0.2,
+        fillScore: 0,
+        crossValidationScore: 0,
+        leakScore: 0,
+        autoGate: 'rejected',
+        checks: [],
+      },
+      confidenceV3: 0.2,
+      failedChecks: [],
+      l1Gate: { reasons: [], warnings: [], codes: [] },
+      legacyProductsGate: undefined,
+      productStatus: 'REVIEW_NEEDED',
+      pkgStatus: 'pending',
+    });
+    mocks.rollbackInsertedUploadProduct.mockResolvedValue({ rolledBack: false, error: null });
+
+    const result = await processUploadRegistrationProducts({
+      supabase: {} as never,
+      isSupabaseConfigured: true,
+      safeAfter: task => { void task(); },
+      postAlert: vi.fn(),
+      requestBaseUrl: 'http://localhost:3000',
+      parsedDocument: {
+        filename: 'blocked.txt',
+        fileType: 'hwp',
+        rawText: 'full product raw text',
+        extractedData: { rawText: 'full product raw text' },
+        parsedAt: new Date(),
+        confidence: 0,
+      },
+      productsToSave: [{
+        extractedData: { title: 'Blocked Cebu Package', rawText: 'section raw text' },
+        itineraryData: null,
+        sectionRawText: 'section raw text',
+      }],
+      filenameRule: {
+        cleanName: 'blocked',
+      },
+      fileName: 'blocked.txt',
+      fileHash: 'hash',
+      normalizedCatalogHash: 'normalized',
+      activeAttractions: [],
+      effectiveSupplierCode: 'ETC',
+      effectiveLandOperatorId: null,
+      irLandOperatorName: 'ETC',
+      tempDestination: 'Cebu',
+      productRegistrationV2GateFailures: [],
+      rawNormalizerFailedReason: null,
+      marginRate: 0.1,
+      departingLocationId: null,
+      catalogGroupId: null,
+      landOperators: [],
+      irCanaryPrimary: false,
+    });
+
+    expect(result.savedIds).toEqual([]);
+    expect(result.saveErrors).toEqual([{ title: 'Blocked Cebu Package', error: 'BLOCKED: title missing' }]);
+    expect(mocks.scheduleUploadReviewInsert).toHaveBeenCalledTimes(1);
+    expect(mocks.buildUploadPersistenceRows).not.toHaveBeenCalled();
+    expect(mocks.persistUploadRegistrationRows).not.toHaveBeenCalled();
+  });
+});

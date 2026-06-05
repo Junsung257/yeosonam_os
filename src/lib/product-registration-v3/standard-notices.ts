@@ -306,7 +306,7 @@ export function detectStandardNoticeFromLine(
 
   if (/싱글\s*(차지|룸|사용)|1\s*인실|독실|single\s*(charge|room)/i.test(source)) {
     const { amount, currency } = parseKrw(source);
-    const inquiryOnly = amount == null && /문의|확인|별도/i.test(source);
+    const inquiryOnly = amount == null;
     return buildStandardNoticeDraft({
       source_text: source,
       category: 'single_room_surcharge',
@@ -396,7 +396,7 @@ export function detectStandardNoticeFromLine(
     });
   }
 
-  if (/미\s*참여|불참|패널티|노쇼|개별\s*일정/.test(source)) {
+  if (/미\s*참여|불참|패널티|노쇼|개별\s*일정/.test(source) && !/캔슬|취소|파이널|확정\s*후/.test(source)) {
     const amount = parseUsd(source);
     return buildStandardNoticeDraft({
       source_text: source,

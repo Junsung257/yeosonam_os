@@ -6,6 +6,7 @@ import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { canCreateAttractionViaReconcileAction } from '@/lib/unmatched-policy';
+import { requireAdminRequest } from '@/lib/admin-guard';
 
 // ── Internal interfaces for type safety (no `as any`) ──
 interface AttractionBase {
@@ -74,7 +75,7 @@ export async function POST(request: NextRequest) {
             region: item.region || null,
             occurrence_count: 1,
             status: 'pending',
-          }, { onConflict: 'activity' });
+          }, { onConflict: 'unmatched_scope_key,activity' });
         return !e2;
       }
       return true;
@@ -98,6 +99,9 @@ export async function POST(request: NextRequest) {
  * ?status=pending (기본)
  */
 export async function GET(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
 
   try {
@@ -169,6 +173,9 @@ export async function GET(request: NextRequest) {
  * body: { id, action: 'link_alias', attractionId: 'uuid' } — 기존 관광지에 alias 연결
  */
 export async function PATCH(request: NextRequest) {
+  const authError = await requireAdminRequest(request);
+  if (authError) return authError;
+
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'Supabase 미설정' }, { status: 500 });
 
   try {

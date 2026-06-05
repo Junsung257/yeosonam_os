@@ -21,5 +21,12 @@ export function looksLikeCommaSplitBroken(items: unknown[] | null | undefined): 
   });
   if (hasOrphanDayDigit) return true;
 
+  const hasSplitThousandsAmount = strings.some((s, i) => {
+    const current = s.trim();
+    const next = strings[i + 1]?.trim() ?? '';
+    return /(?:^|[/\s])\d{1,3}$/.test(current) && /^000(?:원|P|페소|엔|달러|\/|$)/i.test(next);
+  });
+  if (hasSplitThousandsAmount) return true;
+
   return false;
 }

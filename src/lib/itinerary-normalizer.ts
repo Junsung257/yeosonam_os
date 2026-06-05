@@ -28,9 +28,12 @@ interface DayHotel {
 }
 
 interface Meals {
-  breakfast?: boolean | null;
-  lunch?: boolean | null;
-  dinner?: boolean | null;
+  breakfast?: boolean | string | null;
+  lunch?: boolean | string | null;
+  dinner?: boolean | string | null;
+  breakfast_note?: string | null;
+  lunch_note?: string | null;
+  dinner_note?: string | null;
   [key: string]: unknown;
 }
 
@@ -118,6 +121,38 @@ function normalizeRegions(regions: string[] | undefined): string[] {
   return Array.from(new Set(cleaned));
 }
 
+function normalizeMealSlot(value: unknown, note: unknown): { enabled: boolean | null; note: string | null } {
+  const noteText = typeof note === 'string' && note.trim() ? note.trim() : null;
+  if (typeof value === 'boolean') return { enabled: value, note: noteText };
+  if (value == null) return { enabled: noteText ? true : null, note: noteText };
+  if (typeof value !== 'string') return { enabled: Boolean(value), note: noteText };
+
+  const text = value.trim();
+  if (!text) return { enabled: noteText ? true : null, note: noteText };
+  const normalizedText = text === '한' ? '한식' : text;
+  const unavailable = /불포함|자유식|없음|미포함|X|x/.test(normalizedText);
+  return {
+    enabled: !unavailable,
+    note: noteText ?? normalizedText,
+  };
+}
+
+function normalizeMeals(meals: Meals | undefined): Meals | undefined {
+  if (!meals) return meals;
+  const breakfast = normalizeMealSlot(meals.breakfast, meals.breakfast_note);
+  const lunch = normalizeMealSlot(meals.lunch, meals.lunch_note);
+  const dinner = normalizeMealSlot(meals.dinner, meals.dinner_note);
+  return {
+    ...meals,
+    breakfast: breakfast.enabled,
+    lunch: lunch.enabled,
+    dinner: dinner.enabled,
+    breakfast_note: breakfast.note,
+    lunch_note: lunch.note,
+    dinner_note: dinner.note,
+  };
+}
+
 /** LLM이 공항 출발/도착을 type=normal 로 두는 경우 flight 로 보정 (flight_segments·헤더 카드 SSOT) */
 export function coerceAirportScheduleTypes(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
   if (!Array.isArray(schedule)) return [];
@@ -156,6 +191,22 @@ export function coerceAirportScheduleTypes(schedule: ScheduleItem[] | undefined)
  *  ▶로 시작하는 부분 + 줄바꿈 으로 분할하여 별도 schedule item 으로 정형화. */
 const BULLET_PREFIX_RE = /^[▶●•·◆◇■□★☆+○•▪●◦]+\s*/;
 const ACTIVITY_SPLIT_RE = /\s*(?=▶)\s*|\n+/;
+const SCHEDULE_DETAIL_NOISE_RE: RegExp[] = [
+  /^\d+\.\s*\uACE8\uD504\uC7A5\s*\uC815\uBCF4\s*$/,
+  /^\[?\s*(?:\uD3EC\uD568\s*\uC0AC\uD56D|\uBD88\uD3EC\uD568\s*\uC0AC\uD56D)\s*\]?\s*$/,
+  /^\uCF54\uC2A4\uC815\uBCF4\s*[:：]/,
+  /^\uD2F0\uD0C0\uC784\s*[:：]/,
+  /^\uD074\uB7FD\s*\uB80C\uD0C8\s*[:：]/,
+  /^\uCE90\uB514\uD301\b/,
+  /^\uD640\uC218\s*\uC778\uC6D0\s*\uC608\uC57D/,
+  /^\uB9AC\uC870\uD2B8\s*[→>\-~]+\s*\uACE8\uD504\uC7A5/,
+];
+
+export function isScheduleDetailNoise(activity: string | null | undefined): boolean {
+  const s = (activity ?? '').trim();
+  if (!s) return false;
+  return SCHEDULE_DETAIL_NOISE_RE.some(re => re.test(s));
+}
 
 function cleanSchedule(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
   if (!Array.isArray(schedule)) return [];
@@ -168,13 +219,13 @@ function cleanSchedule(schedule: ScheduleItem[] | undefined): ScheduleItem[] {
     if (parts.length <= 1) {
       // 단일 활동 — ▶ 접두사만 제거
       const cleaned = raw.replace(BULLET_PREFIX_RE, '').trim();
-      if (cleaned) out.push({ ...s, activity: cleaned });
+      if (cleaned && !isScheduleDetailNoise(cleaned)) out.push({ ...s, activity: cleaned });
       continue;
     }
     // 다중 활동 — 각각 분할해서 별도 schedule item 으로 (첫 item 은 time/transport 등 메타 보존)
     parts.forEach((part, idx) => {
       const activity = part.replace(BULLET_PREFIX_RE, '').trim();
-      if (!activity) return;
+      if (!activity || isScheduleDetailNoise(activity)) return;
       if (idx === 0) {
         out.push({ ...s, activity });
       } else {
@@ -224,6 +275,47 @@ function sanitizeFlightScheduleTimes(schedule: ScheduleItem[]): ScheduleItem[] {
   });
 }
 
+function applyMetaFlightHints(days: DayBlock[], meta: ItineraryDataBlock['meta'] | undefined): DayBlock[] {
+  const flightOut = typeof meta?.flight_out === 'string' ? meta.flight_out : null;
+  const flightIn = typeof meta?.flight_in === 'string' ? meta.flight_in : null;
+  const flightOutTime = typeof meta?.flight_out_time === 'string' ? meta.flight_out_time : null;
+  const flightInTime = typeof meta?.flight_in_time === 'string' ? meta.flight_in_time : null;
+
+  return days.map((day, dayIndex) => {
+    const isFirstDay = dayIndex === 0;
+    const isLastDay = dayIndex === days.length - 1;
+    const schedule = (day.schedule ?? []).map((item) => {
+      const activity = item.activity ?? '';
+      const isOutboundDeparture =
+        isFirstDay
+        && /\uCD9C\uBC1C/.test(activity)
+        && (/\uD5A5\uBC1C/.test(activity) || !/\uB3C4\uCC29/.test(activity));
+      const isInboundDeparture =
+        isLastDay
+        && /\uCD9C\uBC1C/.test(activity)
+        && !/\uD5A5\uBC1C/.test(activity);
+
+      if (isOutboundDeparture && flightOut) {
+        return {
+          ...item,
+          type: 'flight',
+          transport: item.transport ?? flightOut,
+          time: item.time ?? flightOutTime,
+        };
+      }
+      if (isInboundDeparture && flightIn) {
+        return {
+          ...item,
+          type: 'flight',
+          transport: item.transport ?? flightIn,
+          time: item.time ?? flightInTime,
+        };
+      }
+      return item;
+    });
+    return { ...day, schedule };
+  });
+}
 /** 업로드·고객 상세 공통 — itinerary_data 후처리 + flight_segments SSOT */
 export function enrichItineraryForDisplay<T extends ItineraryDataBlock | null | undefined>(
   itin: T,
@@ -246,11 +338,14 @@ export function normalizeItinerary(itin: ItineraryDataBlock | null | undefined):
     ...day,
     regions: normalizeRegions(day.regions),
     schedule: sanitizeFlightScheduleTimes(cleanSchedule(coerceAirportScheduleTypes(day.schedule))),
+    meals: normalizeMeals(day.meals),
     hotel: day.hotel ? {
       ...day.hotel,
       grade: normalizeHotelGrade(day.hotel.grade),
     } : day.hotel,
   }));
+
+  normalizedDays = applyMetaFlightHints(normalizedDays, itin.meta);
 
   // 2) 호텔명 fuzzy dedupe (Levenshtein 2 이하)
   normalizedDays = dedupeHotelNames(normalizedDays);

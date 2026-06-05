@@ -1,0 +1,15 @@
+{
+  "title": "부산出 세부 세미 PKG 3박 5일 진에어(LJ)",
+  "destination": "세부",
+  "destinationCode": "CEB",
+  "minPrice": 859000,
+  "specificDate": "2026-07-25",
+  "specificDatePrice": 859000,
+  "priceRowsMinCount": 45,
+  "specificDatePriceRowsMinCount": 3,
+  "specificDateOptionPrices": [859000, 1029000, 1079000],
+  "priceDatesMinCount": 1,
+  "forbiddenPrices": [50000, 40000],
+  "itineraryDaysValid": true,
+  "customerDeliverableBlocked": false
+}

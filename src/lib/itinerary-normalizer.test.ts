@@ -60,3 +60,83 @@ describe('coerceAirportScheduleTypes (via normalizeItinerary + flight_segments)'
     expect(inbound?.arr_time).toBe('07:20');
   });
 });
+
+describe('cleanSchedule option detail noise', () => {
+  it('removes optional golf detail headings from day schedule', () => {
+    const itin = normalizeItinerary({
+      days: [{
+        day: 2,
+        schedule: [
+          { activity: '\uD638\uD154 \uC870\uC2DD \uD6C4 \uC804\uC77C \uC790\uC720\uC77C\uC815 [\uD638\uD154 \uBD80\uB300\uC2DC\uC124 \uC774\uC6A9]' },
+          { activity: '1. \uACE8\uD504\uC7A5 \uC815\uBCF4' },
+          { activity: '\uCF54\uC2A4\uC815\uBCF4: 18\uD640/72\uD30C/7224\uC57C\uB4DC' },
+          { activity: '1. \uACE8\uD504\uC7A5 \uC815\uBCF4' },
+          { activity: '\uD734\uC2DD \uBC0F \uC790\uC720\uC77C\uC815' },
+        ],
+      }],
+    });
+
+    const activities = itin?.days?.[0]?.schedule?.map(item => item.activity) ?? [];
+    expect(activities).toContain('\uD638\uD154 \uC870\uC2DD \uD6C4 \uC804\uC77C \uC790\uC720\uC77C\uC815 [\uD638\uD154 \uBD80\uB300\uC2DC\uC124 \uC774\uC6A9]');
+    expect(activities).toContain('\uD734\uC2DD \uBC0F \uC790\uC720\uC77C\uC815');
+    expect(activities).not.toContain('1. \uACE8\uD504\uC7A5 \uC815\uBCF4');
+    expect(activities.some(activity => activity?.startsWith('\uCF54\uC2A4\uC815\uBCF4:'))).toBe(false);
+  });
+});
+
+describe('meal and meta flight normalization', () => {
+  it('normalizes string meal slots, preserves notes, and recounts included meals', () => {
+    const itin = normalizeItinerary({
+      days: [{
+        day: 1,
+        meals: {
+          breakfast: '\uD638\uD154\uC2DD',
+          lunch: '\uC790\uC720\uC2DD',
+          dinner: null,
+          dinner_note: '\uD604\uC9C0\uC2DD',
+        },
+      }],
+    });
+
+    const meals = itin?.days?.[0]?.meals;
+    expect(meals?.breakfast).toBe(true);
+    expect(meals?.breakfast_note).toBe('\uD638\uD154\uC2DD');
+    expect(meals?.lunch).toBe(false);
+    expect(meals?.lunch_note).toBe('\uC790\uC720\uC2DD');
+    expect(meals?.dinner).toBe(true);
+    expect(meals?.dinner_note).toBe('\uD604\uC9C0\uC2DD');
+    expect(itin?.meta?.total_meals).toBe(2);
+  });
+
+  it('uses meta flight hints for first and last day departure rows', () => {
+    const itin = normalizeItinerary({
+      days: [
+        {
+          day: 1,
+          schedule: [{ activity: '\uC778\uCC9C \uCD9C\uBC1C', type: 'normal' }],
+        },
+        {
+          day: 4,
+          schedule: [{ activity: '\uB2E4\uB0AD \uACF5\uD56D \uCD9C\uBC1C', type: 'normal' }],
+        },
+      ],
+      meta: {
+        flight_out: 'LJ001',
+        flight_out_time: '08:30',
+        flight_in: 'LJ002',
+        flight_in_time: '22:10',
+      },
+    });
+
+    expect(itin?.days?.[0]?.schedule?.[0]).toMatchObject({
+      type: 'flight',
+      transport: 'LJ001',
+      time: '08:30',
+    });
+    expect(itin?.days?.[1]?.schedule?.[0]).toMatchObject({
+      type: 'flight',
+      transport: 'LJ002',
+      time: '22:10',
+    });
+  });
+});

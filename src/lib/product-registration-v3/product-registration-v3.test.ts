@@ -178,8 +178,10 @@ describe('product-registration-v3 draft ledger pipeline', () => {
 
   it('uses line-level evidence and never whole raw text as fallback evidence', async () => {
     const result = await runProductRegistrationV3(fixtures[0].raw);
-    const option = result.ledger.variants[0].options[0];
+    const option = result.ledger.variants[0].options.find(item => item.duration_minutes === 60);
 
+    expect(option).toBeDefined();
+    if (!option) throw new Error('expected 60-minute option');
     expect(option.evidence.line_start).toBe(option.evidence.line_end);
     expect(option.evidence.quote).toContain('$30');
     expect(option.evidence.quote.length).toBeLessThan(fixtures[0].raw.length);
@@ -200,6 +202,203 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     });
     expect(unmatched.match_summary.unmatched.length).toBeGreaterThanOrEqual(1);
     expect(unmatched.gate_result.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('fail');
+  });
+
+  it('does not queue price-table and legal-tail lines as unmatched attractions', async () => {
+    const raw = [
+      '스팟특가',
+      '6/20,21,28',
+      '999,-',
+      '출발일',
+      '요일',
+      '상품: 클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일',
+      'Price: 1,159,000 KRW / minimum 4',
+      '제1일 LJ065 부산 김해 국제공항 출발',
+      '제2일 더 비스타 18홀 라운딩',
+      '제3일 디 하이츠 18홀 라운딩',
+      '제6일 LJ066 클락 국제공항 출발',
+      '필리핀 골프상품 취소규정 안내',
+      '취소시기',
+      '수수료',
+      '100% 환불 불가',
+      '현금영수증 발급 안내 드립니다',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: '클락',
+    });
+    const unmatched = result.match_summary.unmatched.map(item => item.raw_text);
+    const variant = result.ledger.variants[0];
+
+    expect(unmatched).toHaveLength(0);
+    expect(variant.days.flatMap(day => day.events)
+      .filter(event => event.type === 'activity')
+      .map(event => event.raw_text)
+    ).toEqual(expect.arrayContaining([
+      '더 비스타 18홀 라운딩',
+      '디 하이츠 18홀 라운딩',
+    ]));
+    expect(variant.minimum_departure?.value).toBe(4);
+    for (const noise of [
+      '스팟특가',
+      '999,-',
+      '출발일',
+      '요일',
+      '필리핀 골프상품 취소규정 안내',
+      '취소시기',
+      '수수료',
+      '100% 환불 불가',
+      '현금영수증 발급 안내 드립니다',
+    ]) {
+      expect(unmatched).not.toContain(noise);
+    }
+  });
+
+  it('keeps Phu Quoc optional golf details out of the attraction unmatched queue', async () => {
+    const raw = [
+      '상품: [부산출발][가족여행] 푸꾸옥 뉴월드 풀빌라 자유여행 5일',
+      '가격: 959,000원 / 최소출발 4명',
+      'DAY 1 ZE981 부산 출발 18:55 푸꾸옥 도착 22:25',
+      'DAY 1 푸꾸옥',
+      'DAY 1 : 푸꾸옥 뉴월드 - 가든풀빌라 2BED룸',
+      'DAY 2 추천관광 (1) 빈펄CC - [1인] 18홀당 주중$100 / 주말 $120',
+      'DAY 2 1. 골프장 정보',
+      'DAY 2 코스정보: 18홀/72파/7224야드',
+      'DAY 2 티타임: 06:00 ~ 11:36 & 12:00 ~ 14:00',
+      'DAY 2 그린피 + 캐디피 + 카트피',
+      'DAY 2 캐디팁 $20/18홀/인 (현장결제)',
+      'DAY 2 홀수 인원 예약 시 싱글카트 추가금 발생(1인 45만동 / 현장 결제)',
+      'DAY 2 클럽 렌탈: 1인 95만동/1세트당(타이틀리스트 or 테일러메이드)',
+      'DAY 3 자유시간',
+      'DAY 5 ZE982 푸꾸옥 출발 23:25 부산 도착 06:55',
+      '포함사항 왕복항공료, 유류할증료, 숙박, 조식',
+      '불포함사항 기타 개인경비 및 매너팁',
+      '* 2베드룸풀빌라 기준 최소 성인 4인이상 예약조건 상품가이며, 인원충족이 안될 경우 추가요금 발생됩니다.',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: '푸꾸옥',
+    });
+    const unmatched = result.match_summary.unmatched.map(item => item.raw_text);
+    const highRiskReviewNeeded = result.ledger.variants[0].structured_facts
+      .filter(fact => fact.risk_level === 'high' && fact.review_status === 'review_needed');
+
+    expect(result.gate_result.status).not.toBe('blocked');
+    expect(unmatched).toHaveLength(0);
+    expect(highRiskReviewNeeded).toHaveLength(0);
+    expect(result.match_summary.option_review_count).toBeGreaterThan(0);
+    expect(result.gate_result.status).not.toBe('blocked');
+    expect(result.gate_result.checks.find(check => check.id === 'option_review_queue_clear')?.status).toBe('warn');
+  });
+
+  it('keeps core golf round schedule lines out of the attraction unmatched queue', async () => {
+    const raw = [
+      '상품: 클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일',
+      '가격: 1,159,000원 / 최소 4명',
+      '제1일 LJ065 부산 김해 국제공항 출발 22:10 클락 국제공항 도착 00:40',
+      '제1일 풀빌라 투숙 및 휴식',
+      '제2일 풀빌라 조식 후 골프장으로 이동',
+      '제2일 더 비스타 18홀 라운딩 (2부 TEE 조건)',
+      '제3일 더 비스타 18홀 라운딩 (2부 TEE 조건)',
+      '제4일 디 하이츠 18홀 라운딩',
+      '제5일 라운딩 후 클락 공항으로 이동',
+      '제6일 LJ066 클락 국제공항 출발 01:45 부산 김해 국제공항 도착 06:25',
+      '포함사항: 왕복항공료, 숙박, 조식, 그린피, 여행자보험, 단독차량',
+      '불포함사항: 개인경비, 주말골프추가금, 전일정 주유비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: '클락',
+    });
+    const activities = result.ledger.variants[0].days
+      .flatMap(day => day.events)
+      .filter(event => event.type === 'activity')
+      .map(event => event.raw_text);
+
+    expect(result.match_summary.unmatched).toHaveLength(0);
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+    expect(result.gate_result.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('pass');
+    expect(activities).toEqual(expect.arrayContaining([
+      '더 비스타 18홀 라운딩 (2부 TEE 조건)',
+      '디 하이츠 18홀 라운딩',
+    ]));
+  });
+
+  it('keeps Cebu semi-package transit, shopping, options, and passport notices out of unmatched attractions', async () => {
+    const raw = [
+      '상품: 부산出 세부 세미 PKG 3박 5일 진에어(LJ)',
+      '출발일 요일 솔레아[준특급] 두짓타니[특급] 제이파크[특급]',
+      '7/24~8/7',
+      '토일월화 859,000 1,029,000 1,079,000',
+      '수목금 889,000 1,079,000 1,119,000',
+      '포 함 사 항 항공요금+유류/텍스, 여행자보험, 전 일정 호텔(2인1실), 조식 및 일정상 식사, 스쿠버다이빙 강습, 특식2회',
+      '불포함 사항 가이드 & 기사팁 별도(성인&아동 동일) : 3박 $50 P/P, 써차지 및 의무디너, 싱글차지',
+      '선 택 관 광',
+      '체험다이빙&씨워크($120), 파라세일링($80), 럭셔리스톤&스파2시간30분($160), 스톤마사지2시간($100)',
+      '쇼 핑 센 터',
+      '진주, 토산품, 건강보조식품, 잡화 중 3회 방문예정',
+      '제1일',
+      '세   부',
+      'LJ 061',
+      '(+1)',
+      '부산 출발 / 세부 향발',
+      '세부 국제 공항 도착 후 가이드 미팅',
+      '리조트 이동 투숙 및 휴식',
+      'HOTEL : 상기 호텔 또는 동급',
+      '제2일',
+      '세   부',
+      '호텔 조식 후',
+      '▶해양 스포츠 체험 스쿠버다이빙 무료강습(※체험 다이빙 별도)',
+      '- 이론 교육 및 수영장 실습 (신비한 바닷속을 체험할 수 있는 기회)',
+      '▶세부 디스커버리 투어(재래시장, 열대과일 상점 방문)',
+      '▶필리핀 전통 오일마사지 60분 1회 (성인만/팁별도/아동불포함)',
+      '제3일',
+      '♣ 추천 선택관광',
+      '세부 아일랜드 호핑투어 (스노쿨링+중식BBQ) / 현지 옵션가 $80/인',
+      '제4일',
+      '▶세부 막탄 시내관광 (막탄슈라인, 막탄 산토니뇨 성당)',
+      '▶여행의 또 다른 재미 필리핀 기념품 및 토산품관광',
+      '기 내 박',
+      '제5일',
+      'LJ 062',
+      '세부 출발 / 부산 향발',
+      '부산 국제 공항 도착 후 해산',
+      '살펴보기',
+      '♣ 여권 유효기간은 6개월 이상 남아 있어야 합니다.',
+      '♣ 필리핀 입국시 이트래블 QR코드 필수입니다.',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: '세부',
+    });
+    const allEvents = result.ledger.variants[0].days.flatMap(day => day.events);
+    const options = result.ledger.variants[0].options;
+
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+    expect(result.match_summary.unmatched).toHaveLength(0);
+    expect(result.match_summary.shopping_count).toBeGreaterThan(0);
+    expect(result.gate_result.status).not.toBe('blocked');
+    expect(result.gate_result.checks.find(check => check.id === 'attraction_unmatched_queue_clear')?.status).toBe('pass');
+    expect(allEvents.find(event => event.raw_text === '부산 출발 / 세부 향발')?.type).toBe('flight');
+    expect(allEvents.find(event => event.raw_text === '기 내 박')?.type).toBe('hotel');
+    expect(allEvents.find(event => event.raw_text.includes('기념품'))?.type).toBe('shopping');
+    expect(allEvents.map(event => event.raw_text)).not.toContain('살펴보기');
+    expect(allEvents.some(event => event.raw_text.includes('여권 유효기간'))).toBe(false);
+    expect(options.map(option => option.raw_name)).toEqual(expect.arrayContaining([
+      '체험다이빙&씨워크($120)',
+      '파라세일링($80)',
+      '럭셔리스톤&스파2시간30분($160)',
+      '스톤마사지2시간($100)',
+      '세부 아일랜드 호핑투어 (스노쿨링+중식BBQ) / 현지 옵션가 $80/인',
+    ]));
+    expect(options.some(option => option.raw_name.includes('추천 선택관광'))).toBe(false);
+    expect(options.some(option => option.raw_name.includes('쇼 핑 센 터'))).toBe(false);
+    expect(options.some(option => option.raw_name.includes('무료강습'))).toBe(false);
+    expect(options.find(option => option.raw_name.includes('호핑투어'))?.normalized_name).toBe('세부 아일랜드 호핑투어 (스노쿨링+중식BBQ)');
   });
 
   it('persists V3 draft and forwards unmatched attractions to the review queue', async () => {
@@ -248,6 +447,53 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(persisted.queuedUnmatched).toBe(result.match_summary.unmatched.length);
     expect(rpcCalls).toHaveLength(result.match_summary.unmatched.length);
     expect(rpcCalls[0]).toMatchObject({ name: 'upsert_unmatched_activity' });
+  });
+
+  it('uses package-scoped fallback upsert for unmatched attractions when the RPC is unavailable', async () => {
+    const result = await runProductRegistrationV3(fixtures[2].raw, {
+      attractions: [],
+      destination: 'City',
+    });
+    const upserts: unknown[] = [];
+    const fakeSupabase = {
+      from(table: string) {
+        if (table === 'product_registration_drafts') {
+          return {
+            insert() {
+              return {
+                select() {
+                  return {
+                    single: async () => ({ data: { id: 'draft-1' }, error: null }),
+                  };
+                },
+              };
+            },
+          };
+        }
+        return {
+          upsert: async (payload: unknown, options: unknown) => {
+            upserts.push({ payload, options });
+            return { error: null };
+          },
+        };
+      },
+      rpc() {
+        throw new Error('rpc unavailable');
+      },
+    };
+
+    await persistProductRegistrationDraftV3(fakeSupabase as never, {
+      packageId: '00000000-0000-0000-0000-000000000001',
+      packageTitle: 'Shopping Included 4D',
+      destination: 'City',
+      rawText: fixtures[2].raw,
+      result,
+    });
+
+    expect(upserts).toHaveLength(result.match_summary.unmatched.length);
+    expect(upserts[0]).toMatchObject({
+      options: { onConflict: 'unmatched_scope_key,activity' },
+    });
   });
 
   it('feeds the same V3 render contract into mobile LP and A4 canonical rendering', async () => {
@@ -386,7 +632,7 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(blob).not.toContain('나트랑 식당들은 주차장 구비된 곳이 많지가 않고');
   });
 
-  it('blocks publish when high-risk notice value is missing', async () => {
+  it('keeps amount-less single room surcharge as review instead of blocking publish', async () => {
     const raw = `
 상품: 하이리스크 검증
 가격 499,000원 / 최소출발 4명
@@ -396,8 +642,12 @@ REMARK
 DAY 3 KE124 출발 13:00 도착 15:00
 `.trim();
     const result = await runProductRegistrationV3(raw);
-    expect(result.gate_result.status).toBe('blocked');
-    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(true);
+    const notice = result.ledger.variants[0].standard_notices.find(n => n.category === 'single_room_surcharge');
+    expect(notice?.template_key).toBe('single_room_surcharge.inquiry_required');
+    expect(notice?.risk_level).toBe('medium');
+    expect(notice?.review_status).toBe('review_needed');
+    expect(result.gate_result.status).not.toBe('blocked');
+    expect(result.gate_result.checks.some(c => c.id.endsWith('high_risk_notice_values') && c.status === 'fail')).toBe(false);
   });
 
   it('extracts prohibited e-cigarette notice even when supplier omits country name', async () => {

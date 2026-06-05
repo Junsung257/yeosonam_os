@@ -354,4 +354,53 @@ describe('inline PKG catalog headers', () => {
     expect(sections[2]).toContain('고품격(노옵션) PKG 3박5일');
     expect(sections[3]).toContain('고품격(노옵션) PKG 4박6일');
   });
+
+  it('splits newline PKG golf catalogs with shared price tables into four products', () => {
+    const raw = `공통 가격표
+스팟특가
+6/20,21,28
+999,-
+1,159,-
+
+PKG
+클락 알뜰 3색골프 + 단독차량 3박5일
+2026.4.1
+출 발 일
+6/1~10/24 (수,목)
+일정 A
+
+PKG
+클락 알뜰 3색골프 + 단독차량 4박6일
+2026.4.1
+출 발 일
+6/1~10/24 (토,일)
+일정 B
+
+PKG
+클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일
+2026.4.1
+출 발 일
+6/1~10/24 (수,목)
+일정 C
+
+PKG
+클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일
+2026.4.1
+출 발 일
+6/1~10/24 (토,일)
+일정 D`;
+
+    expect(collectPkgBlockStarts(raw)).toHaveLength(4);
+    expect(countCatalogItineraryHeaders(raw)).toBe(4);
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+    expect(sharedPrefix).toContain('공통 가격표');
+    expect(sections).toHaveLength(4);
+    expect(sections.map(section => section.split(/\r?\n/)[1])).toEqual([
+      '클락 알뜰 3색골프 + 단독차량 3박5일',
+      '클락 알뜰 3색골프 + 단독차량 4박6일',
+      '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 3박5일',
+      '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일',
+    ]);
+  });
 });

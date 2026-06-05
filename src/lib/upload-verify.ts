@@ -16,6 +16,9 @@
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { sendSlackAlert } from '@/lib/slack-alert';
+import { isScheduleDetailNoise } from '@/lib/itinerary-normalizer';
+import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
+import { inferDepartureDaysFromRawText } from '@/lib/product-registration/departure-days';
 
 export interface VerifyCheck {
   id: string;
@@ -36,13 +39,16 @@ export interface VerifyResult {
 type PackageRow = {
   id: string;
   title?: string | null;
+  duration?: number | null;
+  price?: number | null;
   display_title?: string | null;
   hero_tagline?: string | null;
   raw_text?: string | null;
   itinerary_data?: { days?: Array<{ hotel?: { name?: string | null } | null; schedule?: Array<{ activity?: string }> | null } | null> } | null;
+  accommodations?: string[] | null;
   inclusions?: string[] | string | null;
   optional_tours?: Array<{ name?: string; price?: number | string | null; price_currency?: string | null } | string | null> | null;
-  price_dates?: Array<{ adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
+  price_dates?: Array<{ date?: string; price?: number; adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
   price_list?: Array<{ adult_selling_price?: number; selling_price?: number; currency?: string | null }> | null;
   departure_days?: unknown;
   surcharges?: Array<{ amount?: number | string | null; currency?: string | null } | string | null> | null;
@@ -67,6 +73,35 @@ function mergeAuditStatus(a: VerifyResult['status'], b: VerifyResult['status'] |
   if (a === 'warnings' || b === 'warnings') return 'warnings';
   if (a === 'skipped') return b ?? a;
   return a;
+}
+
+function inferDurationDays(pkg: PackageRow): number | null {
+  if (typeof pkg.duration === 'number' && Number.isFinite(pkg.duration) && pkg.duration > 0) return pkg.duration;
+  const titleMatch = pkg.title?.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (titleMatch) return Number(titleMatch[2]);
+  return null;
+}
+
+function priceValue(row: { price?: number; adult_price?: number; adult_selling_price?: number; selling_price?: number } | null | undefined): number | null {
+  const value = row?.price ?? row?.adult_price ?? row?.adult_selling_price ?? row?.selling_price;
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+function minPrice(rows: Array<{ price?: number; adult_price?: number; adult_selling_price?: number; selling_price?: number }>): number | null {
+  const prices = rows.map(priceValue).filter((value): value is number => value != null);
+  return prices.length > 0 ? Math.min(...prices) : null;
+}
+
+function inferPriceVerifyYear(pkg: PackageRow, rawText: string): number {
+  const dbYear = (pkg.price_dates ?? [])
+    .map(row => (typeof row.date === 'string' ? Number(row.date.slice(0, 4)) : NaN))
+    .find(year => Number.isFinite(year) && year >= 2000);
+  if (dbYear) return dbYear;
+
+  const rawYear = Number(rawText.match(/\b(20\d{2})\b/)?.[1] ?? 0);
+  if (rawYear >= 2000) return rawYear;
+
+  return new Date().getFullYear();
 }
 
 export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
@@ -167,13 +202,18 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
   }
 
   // C5: departure_days 형식
+  const inferredDepartureDays = hasRaw ? inferDepartureDaysFromRawText(rawText) : null;
   if (pkg.departure_days !== null && pkg.departure_days !== undefined) {
     const depStr = typeof pkg.departure_days === 'string' ? pkg.departure_days : JSON.stringify(pkg.departure_days);
     if (/^\[/.test(depStr.trim())) {
       checks.push({ id: 'C5', label: '출발요일 형식', status: 'warn', detail: `JSON 배열 문자열 누출: "${depStr.slice(0, 30)}"` });
+    } else if (inferredDepartureDays && !depStr.includes(inferredDepartureDays)) {
+      checks.push({ id: 'C5', label: '출발요일 원문 대조', status: 'warn', detail: `원문 "${inferredDepartureDays}" vs DB "${depStr}" 불일치` });
     } else {
       checks.push({ id: 'C5', label: '출발요일 형식', status: 'pass', detail: `"${depStr.slice(0, 20)}" 정상` });
     }
+  } else if (inferredDepartureDays) {
+    checks.push({ id: 'C5', label: '출발요일 원문 대조', status: 'fail', detail: `원문에 "${inferredDepartureDays}" 출발요일이 있으나 DB departure_days 없음` });
   } else {
     checks.push({ id: 'C5', label: '출발요일 형식', status: 'skip', detail: '출발요일 없음' });
   }
@@ -186,6 +226,80 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     checks.push({ id: 'C6', label: '가격 데이터', status: 'warn', detail: 'price_dates 행 없음 — 수동 입력 필요' });
   } else {
     checks.push({ id: 'C6', label: '가격 데이터', status: 'pass', detail: `${priceRows.length}개 가격 행` });
+  }
+
+  // C12: deterministic 가격 재대조 — 공통 가격표의 다중 컬럼/박수/요일 오매칭 차단.
+  if (hasRaw) {
+    const durationDays = inferDurationDays(pkg);
+    const depDays = typeof pkg.departure_days === 'string'
+      ? pkg.departure_days
+      : inferredDepartureDays;
+    const expected = extractPriceIR(rawText, {
+      year: inferPriceVerifyYear(pkg, rawText),
+      title: pkg.title,
+      durationDays,
+      departureDays: depDays,
+      accommodations: pkg.accommodations ?? [],
+    });
+    const dbPriceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
+    if (expected.rows.length === 0) {
+      checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: 'deterministic 가격표 미인식' });
+    } else if (dbPriceDates.length === 0) {
+      checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'fail', detail: `원문 가격 ${expected.rows.length}건 인식, DB price_dates 없음` });
+    } else {
+      const expectedMin = minPrice(expected.rows);
+      const dbMin = minPrice(dbPriceDates);
+      const expectedByDate = new Map(expected.rows.map(row => [row.date, row.adult_price]));
+      const dbByDate = new Map(
+        dbPriceDates
+          .filter(row => typeof row.date === 'string')
+          .map(row => [row.date as string, priceValue(row)]),
+      );
+      const mismatches: string[] = [];
+      for (const [date, expectedPrice] of expectedByDate) {
+        const actual = dbByDate.get(date);
+        if (actual == null || actual !== expectedPrice) {
+          mismatches.push(`${date}:${actual ?? '없음'}!=${expectedPrice}`);
+          if (mismatches.length >= 3) break;
+        }
+      }
+      const extraDates = [...dbByDate.keys()]
+        .filter(date => !expectedByDate.has(date))
+        .sort()
+        .slice(0, 3);
+
+      if (expectedMin != null && dbMin != null && expectedMin !== dbMin) {
+        checks.push({
+          id: 'C12',
+          label: '가격표 원문 재대조',
+          status: 'fail',
+          detail: `최저가 불일치: 원문 ${expectedMin.toLocaleString()}원 vs DB ${dbMin.toLocaleString()}원`,
+        });
+      } else if (mismatches.length > 0) {
+        checks.push({
+          id: 'C12',
+          label: '가격표 원문 재대조',
+          status: 'fail',
+          detail: `날짜별 가격 불일치 ${mismatches.join(' / ')}`,
+        });
+      } else if (extraDates.length > 0) {
+        checks.push({
+          id: 'C12',
+          label: '가격표 원문 재대조',
+          status: 'fail',
+          detail: `원문에 없는 출발일 포함 ${extraDates.join(', ')}`,
+        });
+      } else {
+        checks.push({
+          id: 'C12',
+          label: '가격표 원문 재대조',
+          status: 'pass',
+          detail: `원문 ${expected.rows.length}건 ↔ DB ${dbPriceDates.length}건 정합`,
+        });
+      }
+    }
+  } else {
+    checks.push({ id: 'C12', label: '가격표 원문 재대조', status: 'skip', detail: '원문 없음' });
   }
 
   // C7: 호텔 수 대조 (원문 "박" 수 ≤ days-1 vs hotel.name 채워진 day 수)
@@ -258,6 +372,7 @@ export function evaluateVerifyChecks(pkg: PackageRow): VerifyResult {
     for (const item of d.schedule) {
       const key = (item?.activity ?? '').trim();
       if (key.length < 4) continue;            // 너무 짧은 토큰은 자연스러운 반복 가능
+      if (isScheduleDetailNoise(key)) continue;
       if (seen.has(key)) { dupHits.push(`Day${i + 1}:"${key.slice(0, 30)}"`); break; }
       seen.add(key);
     }
@@ -347,7 +462,7 @@ export async function runUploadVerify(packageId: string): Promise<VerifyResult |
     const { data: rows, error } = await supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, display_title, hero_tagline, raw_text, itinerary_data, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
+        'id, title, duration, price, display_title, hero_tagline, raw_text, itinerary_data, accommodations, inclusions, optional_tours, price_dates, price_list, departure_days, surcharges',
       )
       .eq('id', packageId)
       .limit(1);

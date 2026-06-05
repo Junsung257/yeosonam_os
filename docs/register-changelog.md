@@ -1,5 +1,22 @@
 # /register 변경 이력 (P0~P1 정책 + 결정 이력)
 
+## 2026-06-05 — Upload registration current contract supersedes legacy manual insert docs
+
+Current SSOT: `docs/product-registration-current-ssot.md`.
+
+Decision:
+
+- Internal reliability comes before public API design.
+- Supplier uploads must go through the centralized engine and `registerProductFromRaw()`.
+- `upload/route.ts` is an HTTP adapter, not a supplier-case patch surface.
+- Price success requires both `product_prices` and `price_dates`.
+- Customer-visible price options require `adult_selling_price`; internal `net_price` is not a customer payload.
+- Hotel/grade matrix prices must stay as separate same-date `product_prices` rows.
+- `product_prices` persistence failure is a blocker and must roll back/reject the registration instead of saving a customer package with missing price rows.
+- New failures follow `fixture -> parser/IR or registration-object improvement -> recovery verification -> deliverability gate -> persistence/audit`.
+
+Legacy commands such as `.claude/commands/register-product.md` and `.claude/commands/assemble-product.md` are manual/legacy references only unless the user explicitly asks for manual script insertion.
+
 > **목적**: `/register` 슬래시 스킬의 누적된 정책 변경·결정 사항을 본문에서 분리. 본문(`.claude/skills/register/SKILL.md`)은 orchestration 위주로 가볍게 유지하고, 시간 의존적인 변경 로그는 여기에 누적.
 >
 > **읽는 시점**: `/register` 실행 중 본문에서 "최근 정책 → docs/register-changelog.md" 라고 가리킨 항목을 확인할 때, 또는 사장님이 새 정책 결정 시 append.

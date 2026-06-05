@@ -65,7 +65,7 @@ DAY 5 LJ116 출발 01:00 도착 06:40
     expect(gateNotes).toContain('원문 근거');
   });
 
-  it('blocks customer delivery when V3 high-risk notice check fails', async () => {
+  it('does not block customer delivery for amount-less single room surcharge review notices', async () => {
     const raw = `
 상품: 하이리스크 검증
 가격 499,000원 / 최소출발 4명
@@ -94,9 +94,11 @@ DAY 3 KE124 출발 13:00 도착 15:00
       requireCompletedAudit: true,
     });
 
-    expect(v3.gate_result.status).toBe('blocked');
-    expect(failedChecks.some(c => c.id?.endsWith('high_risk_notice_values'))).toBe(true);
-    expect(result.customerDeliverable).toBe(false);
-    expect(result.publishGate.decision).toBe('block');
+    const notice = v3.ledger.variants[0].standard_notices.find(n => n.category === 'single_room_surcharge');
+    expect(notice?.template_key).toBe('single_room_surcharge.inquiry_required');
+    expect(notice?.review_status).toBe('review_needed');
+    expect(v3.gate_result.status).not.toBe('blocked');
+    expect(failedChecks.some(c => c.id?.endsWith('high_risk_notice_values'))).toBe(false);
+    expect(result.publishGate.decision).not.toBe('block');
   });
 });

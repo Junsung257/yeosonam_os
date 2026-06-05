@@ -1567,8 +1567,15 @@ function parseCatalogOptionalTours(optionalText: string): Array<{ name: string; 
 function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]): Record<string, unknown>[] {
   return sections.map(section => {
     const grade = CATALOG_GRADE_ORDER.find(g => section.includes(g)) ?? '세이브';
+    const lines = section.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+    const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
+    const pkgTitle = pkgIndex >= 0
+      ? lines.slice(pkgIndex + 1).find(line => /\d+\s*박\s*\d+\s*일/.test(line))
+      : undefined;
     const title = section.match(/([^\n]*백두산[^\n]*\d+\s*박\s*\d+\s*일)/)?.[1]?.replace(/\s+/g, ' ').trim()
-      ?? `${grade} 백두산 상품`;
+      ?? pkgTitle?.replace(/\s+/g, ' ').trim()
+      ?? lines.find(line => /\d+\s*박\s*\d+\s*일/.test(line))?.replace(/\s+/g, ' ').trim()
+      ?? `${grade} 카탈로그 상품`;
     const duration = Number(title.match(/(\d+)\s*박\s*(\d+)\s*일/)?.[2] ?? 0) || undefined;
     const nights = Number(title.match(/(\d+)\s*박\s*(\d+)\s*일/)?.[1] ?? 0) || undefined;
     const minParticipants = Number(section.match(/성인\s*(\d+)\s*명\s*이상/)?.[1] ?? 0) || undefined;
@@ -1585,9 +1592,9 @@ function buildDeterministicCatalogSeeds(sharedPrefix: string, sections: string[]
       title,
       display_title: title,
       category: 'package',
-      product_type: buildCatalogProductType(grade, section),
-      trip_style: title.includes('북+서파') ? '북+서파' : '북파',
-      destination: '연길/백두산',
+      product_type: section.includes('백두산') ? buildCatalogProductType(grade, section) : 'package',
+      trip_style: title.match(/\d+\s*박\s*\d+\s*일/)?.[0],
+      destination: title.includes('백두산') ? '연길/백두산' : undefined,
       duration,
       nights,
       departure_airport: '김해',
@@ -1840,6 +1847,11 @@ export async function extractMultipleProducts(
             console.warn('[Parser] 수동 검토 권장 (UPLOAD_JUDGE_REPAIR=0 이면 자동 보정 생략)');
           }
         }
+        if (sections.length >= 2 && phase1Parsed.length < sections.length) {
+          console.warn('[Parser] Map-Reduce 상품 수 부족 — deterministic catalog seed로 섹션 수 보존:', `${phase1Parsed.length}/${sections.length}`);
+          phase1Parsed = buildDeterministicCatalogSeeds(sharedPrefix, sections);
+          usedDeterministicCatalogSeeds = true;
+        }
       } else {
         console.warn('[Parser] Map-Reduce Phase 1 — 유효 블록 < 2, 단일 경로로 폴백');
         phase1Parsed = sections.length >= 2
@@ -2076,8 +2088,31 @@ export async function extractMultipleProducts(
 
 // ─── 메인 파싱 함수 ─────────────────────────────────────────
 
+export function looksLikePlainTextBuffer(buffer: Buffer): boolean {
+  if (!buffer.length || buffer.includes(0)) return false;
+  const text = buffer.toString('utf8');
+  const trimmed = text.trim();
+  if (trimmed.length < 20) return false;
+  const replacementCount = (text.match(/\uFFFD/g) ?? []).length;
+  if (replacementCount / Math.max(1, text.length) > 0.02) return false;
+  const printableCount = [...text].filter(ch => ch === '\n' || ch === '\r' || ch === '\t' || ch >= ' ').length;
+  return printableCount / Math.max(1, text.length) > 0.9;
+}
+
+function documentExtension(filename: string): string {
+  const normalized = filename.trim();
+  const dotIndex = normalized.lastIndexOf('.');
+  if (dotIndex <= 0 || dotIndex === normalized.length - 1) return '';
+  return normalized.slice(dotIndex + 1).toLowerCase();
+}
+
+export function shouldTreatDocumentAsPlainText(buffer: Buffer, filename: string): boolean {
+  const ext = documentExtension(filename);
+  return ext === 'txt' || ext === 'md' || (!ext && looksLikePlainTextBuffer(buffer));
+}
+
 export async function parseDocument(buffer: Buffer, filename: string, options?: ParseOptions): Promise<ParsedDocument> {
-  const ext = filename.split('.').pop()?.toLowerCase();
+  const ext = documentExtension(filename);
   let fileType: 'pdf' | 'image' | 'hwp' | 'hwpx' = 'pdf';
 
   try {
@@ -2101,7 +2136,7 @@ export async function parseDocument(buffer: Buffer, filename: string, options?: 
     }
 
     let rawText = '';
-    if (ext === 'txt') {
+    if (shouldTreatDocumentAsPlainText(buffer, filename)) {
       // 텍스트 직접 입력 모드: buffer가 이미 텍스트
       fileType = 'pdf'; // 타입은 pdf로 통일 (내부 분류용)
       rawText = buffer.toString('utf-8');

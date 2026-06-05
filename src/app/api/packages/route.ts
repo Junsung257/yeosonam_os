@@ -25,6 +25,8 @@ import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attracti
 import { getSecret } from '@/lib/secret-registry';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
 import { successResponse, listResponse, ApiErrors } from '@/lib/api-response';
+import { isAdminRequest } from '@/lib/admin-guard';
+import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -48,6 +50,10 @@ function collectAttractionIds(itineraryData: unknown): string[] {
 function stripSupplierRemarkFields<T extends Record<string, unknown>>(row: T): Omit<T, 'special_notes'> {
   const { special_notes: _supplierRemark, ...safe } = row;
   return safe;
+}
+
+function stripPublicPackageFields(row: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeCustomerPackageForClient(stripSupplierRemarkFields(row)) ?? {};
 }
 
 function includesCustomerNoticeFields(input: Record<string, unknown>): boolean {
@@ -226,6 +232,8 @@ export async function GET(request: NextRequest) {
   const from     = (page - 1) * limit;
 
   try {
+    const isAdmin = await isAdminRequest(request).catch(() => false);
+
     // 목적지별 집계 — 홈페이지용
     const aggregate = searchParams.get('aggregate');
     if (aggregate === 'destination') {
@@ -295,7 +303,9 @@ export async function GET(request: NextRequest) {
       const attraction_ids = collectAttractionIds(pkg.itinerary_data);
       return successResponse(
         {
-          package: stripSupplierRemarkFields(pkg as Record<string, unknown>),
+          package: isAdmin
+            ? stripSupplierRemarkFields(pkg as Record<string, unknown>)
+            : stripPublicPackageFields(pkg as Record<string, unknown>),
           lp_hero_image_url,
           attraction_ids,
           attraction_preview_names: getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 8),
@@ -365,13 +375,18 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    const enrichedData = (data ?? []).map((row: any) => ({
-      ...stripSupplierRemarkFields(row),
-      has_itinerary_data:
-        !!row.itinerary_data?.days?.length ||
-        (Array.isArray(row.itinerary) && row.itinerary.length > 0),
-      attraction_preview_names: getAttractionPreviewNamesFromItinerary(row.itinerary_data, 4),
-    }));
+    const enrichedData = (data ?? []).map((row: any) => {
+      const safeRow = isAdmin
+        ? stripSupplierRemarkFields(row)
+        : stripPublicPackageFields(row);
+      return {
+        ...safeRow,
+        has_itinerary_data:
+          !!row.itinerary_data?.days?.length ||
+          (Array.isArray(row.itinerary) && row.itinerary.length > 0),
+        attraction_preview_names: getAttractionPreviewNamesFromItinerary(row.itinerary_data, 4),
+      };
+    });
     const totalPages = Math.ceil((count ?? 0) / limit);
     // Edge CDN cache 5분 + SWR 10분 (이전: 1분/2분).
     //   상품 목록은 매분 바뀌지 않으므로 적극 캐시. 등록/승인 시 revalidatePath('/packages') 로 무효화.

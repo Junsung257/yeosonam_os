@@ -114,7 +114,22 @@ function extractRegion(rawText: string): string | null {
 function extractTitle(rawText: string): string | null {
   const title = rawText.match(/(?:상품명|상품명칭|행사명)\s*[:：]\s*([^\n]+)/)?.[1]?.trim();
   if (title) return title;
-  const first = rawText.split(/\r?\n/).find(line => line.trim().length >= 4)?.trim();
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
+  const pkgTitle = pkgIndex >= 0
+    ? lines.slice(pkgIndex + 1).find(line => (
+        line.length >= 8
+        && !/^\d{2,4}[./-]\d{1,2}/.test(line)
+        && !/^(출\s*발\s*일|판\s*매\s*가|포함사항|불포함사항|비고|주의사항)$/i.test(line)
+      ))
+    : null;
+  if (pkgTitle) return pkgTitle;
+
+  const first = lines.find(line => (
+    line.length >= 4
+    && !/^\d{2,4}[./-]\d{1,2}/.test(line)
+    && !/^(PKG|현금영수증|취소규정|일본골프상품)/.test(line)
+  ));
   return first ?? null;
 }
 

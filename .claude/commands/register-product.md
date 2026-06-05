@@ -1,4 +1,15 @@
 ---
+#
+# 2026-06-05 CURRENT UPLOAD REGISTRATION GATE
+#
+# This command is legacy/manual-insert guidance unless the user explicitly asks for a manual script.
+# Normal supplier upload registration must use the centralized engine documented in:
+# docs/product-registration-current-ssot.md
+#
+# Do not create db/insert_*.js scripts for the upload pipeline.
+# Do not add supplier-specific price/destination/itinerary rescue logic to upload/route.ts.
+# Current success requires product_prices + price_dates + customer adult_selling_price readiness.
+# New failures must follow fixture -> parser/IR or registration-object improvement -> recovery -> deliverability -> persistence/audit.
 name: register-product
 description: 단순 상품 등록 — 코드베이스 탐색 없이 즉시 db/insert_XXX_packages.js 스크립트 생성. 어셈블러 미지원 지역 / 단순 INSERT 용. 부수효과 큼 — 사용자 명시 호출만.
 argument-hint: [원문 텍스트] [랜드사코드 마진율%]
