@@ -35,8 +35,8 @@ function googleCredentialsReady() {
   return Boolean(
     getSecret('GOOGLE_ADS_DEVELOPER_TOKEN') &&
       getSecret('GOOGLE_ADS_CUSTOMER_ID') &&
-      (process.env.GOOGLE_ADS_ACCESS_TOKEN || process.env.GOOGLE_ADS_REFRESH_TOKEN) &&
-      process.env.GOOGLE_ADS_CONVERSION_ACTION_ID,
+      (getSecret('GOOGLE_ADS_ACCESS_TOKEN') || getSecret('GOOGLE_ADS_REFRESH_TOKEN')) &&
+      getSecret('GOOGLE_ADS_CONVERSION_ACTION_ID'),
   );
 }
 
@@ -85,7 +85,7 @@ function metaEventPayload(job: UploadJob) {
         custom_data: customData,
       },
     ],
-    ...(process.env.META_TEST_EVENT_CODE ? { test_event_code: process.env.META_TEST_EVENT_CODE } : {}),
+    ...(getSecret('META_TEST_EVENT_CODE') ? { test_event_code: getSecret('META_TEST_EVENT_CODE') } : {}),
   };
 }
 
@@ -113,8 +113,8 @@ async function uploadMeta(job: UploadJob) {
 async function uploadGoogle(job: UploadJob) {
   const developerToken = getSecret('GOOGLE_ADS_DEVELOPER_TOKEN');
   const customerId = getSecret('GOOGLE_ADS_CUSTOMER_ID')?.replace(/-/g, '');
-  const accessToken = process.env.GOOGLE_ADS_ACCESS_TOKEN;
-  const conversionActionId = process.env.GOOGLE_ADS_CONVERSION_ACTION_ID;
+  const accessToken = getSecret('GOOGLE_ADS_ACCESS_TOKEN');
+  const conversionActionId = getSecret('GOOGLE_ADS_CONVERSION_ACTION_ID');
   if (!developerToken || !customerId || !accessToken || !conversionActionId) {
     return { ok: false, error: 'google_offline_conversion_credentials_missing', response: null, external_upload_id: null };
   }
@@ -133,7 +133,7 @@ async function uploadGoogle(job: UploadJob) {
     currencyCode: String(payload.currency || 'KRW'),
     orderId: String(payload.order_id || payload.event_id || job.idempotency_key || job.id),
   };
-  const response = await fetch(`https://googleads.googleapis.com/${process.env.GOOGLE_ADS_API_VERSION || 'v22'}/customers/${customerId}:uploadClickConversions`, {
+  const response = await fetch(`https://googleads.googleapis.com/${getSecret('GOOGLE_ADS_API_VERSION') || 'v22'}/customers/${customerId}:uploadClickConversions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${accessToken}`,

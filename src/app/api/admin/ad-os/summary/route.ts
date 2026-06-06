@@ -14,6 +14,7 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { withTimeout } from '@/lib/promise-timeout';
 import { getSecret } from '@/lib/secret-registry';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import type { LaunchActionKey, Summary } from '@/app/admin/ad-os/_lib/types';
 
 export const dynamic = 'force-dynamic';
 const AD_OS_SUMMARY_TIMEOUT_MS = 8000;
@@ -173,7 +174,7 @@ function buildLaunchActionQueue(input: {
     label: string;
     description: string;
     button_label: string;
-    ui_action: string;
+    ui_action: LaunchActionKey;
     tone: 'good' | 'warn' | 'bad' | 'neutral';
   }> = [];
 
@@ -338,6 +339,18 @@ function buildDegradedSummary(error: unknown) {
     meta: hasAnySecret(['META_ACCESS_TOKEN', 'META_ADS_ACCESS_TOKEN']) && hasAllSecrets(['META_AD_ACCOUNT_ID']),
     kakao: false,
   };
+
+  const launchActionQueue: Summary['launch_action_queue'] = [
+    {
+      id: 'data_plane_recover',
+      priority: 1,
+      label: '데이터 연결 복구',
+      description: 'Supabase 응답 지연 중에는 외부 광고 집행을 켜지 않습니다.',
+      button_label: '상태 새로고침',
+      ui_action: 'refresh',
+      tone: 'bad',
+    },
+  ];
 
   return {
     ok: false,
@@ -509,17 +522,7 @@ function buildDegradedSummary(error: unknown) {
       risk_status: 'blocked',
     },
     tenant_ad_readiness: [],
-    launch_action_queue: [
-      {
-        id: 'data_plane_recover',
-        priority: 1,
-        label: '데이터 연결 복구',
-        description: 'Supabase 응답 지연 중에는 외부 광고 집행을 켜지 않습니다.',
-        button_label: '상태 새로고침',
-        ui_action: 'refresh',
-        tone: 'bad',
-      },
-    ],
+    launch_action_queue: launchActionQueue,
     recent_decisions: [],
     expiring_packages: [],
     samples: {
