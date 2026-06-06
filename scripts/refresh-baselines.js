@@ -17,6 +17,7 @@
  */
 
 const { createClient } = require('@supabase/supabase-js');
+const WebSocket = require('ws');
 const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
@@ -27,7 +28,16 @@ for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
   if (k && rest.length) process.env[k.trim()] = rest.join('=').trim().replace(/^["']|["']$/g, '');
 }
 
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, {
+  auth: {
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    persistSession: false,
+  },
+  realtime: {
+    transport: WebSocket,
+  },
+});
 const DRY_RUN = process.argv.includes('--dry-run');
 const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
