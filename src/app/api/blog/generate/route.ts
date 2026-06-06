@@ -3,6 +3,7 @@ import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { BLOG_STYLE_GUIDE } from '@/prompts/blog/style-guide';
 import { getPrompt } from '@/lib/prompt-loader';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { slugifyTopic, extractDestination } from '@/lib/slug-utils';
 import {
   getRandomPexelsPhoto,
@@ -104,18 +105,29 @@ ${catName}
       .replace(/[^a-z0-9\s-]/g, '').trim().replace(/\s+/g, '-').substring(0, 80);
 
     const year = new Date().getFullYear();
+    const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
 
     // Pexels cover image 자동 첨부 (정보성 블로그도 OG/카드뉴스 노출 필요)
     const ogImageUrl = await fetchAutoCoverImage(topic);
+    const finalized = await finalizeBlogPost({
+      blogHtml,
+      destination: extractDestination(topic),
+      primaryKeyword: topic,
+      ogImageUrl,
+      inlineImageSeedUrl: ogImageUrl,
+      minImages: 3,
+      maxImages: 4,
+      fallbackOgImageUrl: `${baseUrl}/og-image.png`,
+    });
 
     return NextResponse.json({
-      blog_html: blogHtml,
-      og_image_url: ogImageUrl,
+      blog_html: finalized.blogHtml,
+      og_image_url: finalized.ogImageUrl,
       seo: {
         slug: slugBase,
         seoTitle: `${topic} | ${year} 여소남 가이드`.substring(0, 60),
         seoDescription: `${topic} 완벽 가이드. 실용 정보와 팁을 여소남에서 확인하세요.`.substring(0, 160),
-        ogImageUrl,
+        ogImageUrl: finalized.ogImageUrl,
       },
     });
   } catch (err) {

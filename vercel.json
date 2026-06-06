@@ -30,6 +30,10 @@
       "schedule": "2 2 * * *"
     },
     {
+      "path": "/api/cron/ad-os-keyword-growth",
+      "schedule": "20 3 * * *"
+    },
+    {
       "path": "/api/cron/sync-creative-performance",
       "schedule": "6 0 * * *"
     },
@@ -112,6 +116,14 @@
     {
       "path": "/api/cron/rank-tracking",
       "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/blog-longtail-expander",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/blog-freshness-monitor",
+      "schedule": "45 3 * * *"
     },
     {
       "path": "/api/cron/topical-rebuild",

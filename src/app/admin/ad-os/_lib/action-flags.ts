@@ -36,6 +36,8 @@ export const ACTION_FLAG_KEYS = [
   'syncingBookingFunnel',
   'runningConversionAttribution',
   'runningKeywordBrain',
+  'runningSeoKeywordBridge',
+  'runningSearchTermGrowth',
   'creatingNaverAssets',
   'executingNaverGate',
   'exportingGoogleConversions',

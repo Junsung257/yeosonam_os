@@ -33,6 +33,8 @@ import { getSecret } from '@/lib/secret-registry';
 import { slugifyTopic, romanize, extractDestination } from '@/lib/slug-utils';
 import { VALID_CATEGORIES } from '@/lib/blog-categories';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
+import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
+import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -731,6 +733,12 @@ async function processQueueItem(
     }
 
     const now = new Date().toISOString();
+    const generationMeta: Record<string, unknown> = {
+      queue_item_id: item.id,
+      ...(promoteDraftId ? { promoted_from_draft: true } : {}),
+      ...(item.meta || {}),
+      ...(generated.generation_meta || {}),
+    };
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
       blog_html: generated.blog_html,
@@ -754,9 +762,7 @@ async function processQueueItem(
       target_ad_keywords: item.meta?.keywords ?? (item.primary_keyword ? [item.primary_keyword] : []),
       readability_score: readability.score,
       readability_issues: readability.issues,
-      generation_meta: promoteDraftId
-        ? { queue_item_id: item.id, promoted_from_draft: true, ...(item.meta || {}) }
-        : { queue_item_id: item.id, ...(item.meta || {}) },
+      generation_meta: generationMeta,
     };
 
     // 카드뉴스 이미지 URL 배열 저장 (본문 마크다운에 삽입된 이미지도 원본 참조용으로 보관)
@@ -896,6 +902,7 @@ interface GeneratedBlog {
   seo_title: string;
   seo_description: string;
   og_image_url?: string | null;
+  generation_meta?: Record<string, unknown>;
   /** 카드뉴스 슬라이드 PNG URL 배열 (섹션별 이미지 배치용) */
   slide_image_urls?: string[];
 }
@@ -1151,6 +1158,13 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
     reviewSnips.length > 0
       ? `\n## 실제 여행자 목소리 (본문 중간 H2 사이에 > 인용으로 1~3곳 반영)\n${formatReviewQuotesForPrompt(reviewSnips)}\n`
       : '';
+  const freshnessRisk = classifyBlogFreshnessRisk(`${item.topic} ${item.primary_keyword || ''} ${item.category || ''}`);
+  const freshnessPromptBlock = buildFreshnessPromptBlock(freshnessRisk);
+  const originalitySignals = await fetchBlogOriginalitySignals({
+    destination: item.destination || extractDestination(item.topic),
+    productId: item.product_id,
+  });
+  const originalityPromptBlock = buildOriginalityPromptBlock(originalitySignals);
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
@@ -1189,11 +1203,20 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const trendBlock = trendScore && trendScore > 30
     ? `\n## ⚡ 트렌드 신호\n- 트렌드 점수: ${trendScore}/100 — "지금 검색되는" 토픽\n- 도입부에 "최근 ${new Date().getMonth() + 1}월 검색 급증", "지금 한국인이 가장 많이 묻는" 같은 신선도 트리거 포함\n- 데이터 출처 추정 → 출처 한 줄 명시 ("트렌드 분석 기준")\n` : '';
 
-  // SERP 분석 (HEAD/MID tier만 — longtail은 SERP 가치 낮음 + API 쿼터 절약)
+  // SERP analysis: always for head/mid, selectively for proven longtail opportunities.
   let serpBlock = '';
   let serpGapBlock = '';
   let serpData: import('@/lib/serp-analyzer').SerpAnalysis | null = null;
-  if ((tier === 'head' || tier === 'mid') && primaryKw) {
+  const shouldAnalyzeSerp = Boolean(
+    primaryKw &&
+    (
+      tier === 'head' ||
+      tier === 'mid' ||
+      item.source === 'gsc_longtail' ||
+      (tier === 'longtail' && typeof volume === 'number' && volume >= 300)
+    ),
+  );
+  if (shouldAnalyzeSerp && primaryKw) {
     try {
       await new Promise(r => setTimeout(r, 500));
       serpData = await analyzeSerp(primaryKw, 'naver_blog');
@@ -1238,6 +1261,8 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
 ${reviewPromptBlock}
+${originalityPromptBlock}
+${freshnessPromptBlock}
 ${tierGuidance[tier]}
 ${trendBlock}
 ${serpBlock}
@@ -1297,11 +1322,36 @@ ${serpGapBlock}
     } catch { /* silent — og_image_url은 null로 유지 */ }
   }
 
+  const generation_meta: Record<string, unknown> = {
+    serp_analyzed: Boolean(serpData),
+    freshness_risk: freshnessRisk,
+    originality_signals: {
+      destination: originalitySignals.destination,
+      package_count: originalitySignals.packageCount,
+      active_package_count: originalitySignals.activePackageCount,
+      booking_count: originalitySignals.bookingCount,
+      min_price: originalitySignals.minPrice,
+      max_price: originalitySignals.maxPrice,
+      latest_package_updated_at: originalitySignals.latestPackageUpdatedAt,
+    },
+    ...(serpData ? {
+      serp_analysis: {
+        keyword: serpData.keyword,
+        source: serpData.source,
+        fetched_at: serpData.fetched_at,
+        cached: serpData.cached,
+        recommended_title_patterns: serpData.recommended_title_patterns,
+        recommended_entities_to_include: serpData.recommended_entities_to_include,
+      },
+    } : {}),
+  };
+
   return {
     blog_html: blog_html + `\n\n<!-- prompt_version: ${promptVersion} -->`,
     slug,
     seo_title,
     seo_description,
     og_image_url,
+    generation_meta,
   };
 }

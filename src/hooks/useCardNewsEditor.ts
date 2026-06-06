@@ -170,7 +170,7 @@ export function useCardNewsEditor() {
     if (!keyword.trim()) return;
     setPexelsLoading(true);
     try {
-      const res = await fetch(`/api/card-news/pexels?q=${encodeURIComponent(keyword)}`);
+      const res = await fetch(`/api/card-news/pexels?keyword=${encodeURIComponent(keyword)}`);
       if (res.ok) {
         const data = await res.json();
         setPexelsResults(data.photos || []);

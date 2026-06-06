@@ -48,6 +48,7 @@ const handleBlogLearn = async (request: NextRequest) => {
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .neq('content_type', 'pillar')
+      .not('og_image_url', 'is', null)
       .gte('published_at', since.toISOString())
       .order('view_count', { ascending: false })
       .limit(3);

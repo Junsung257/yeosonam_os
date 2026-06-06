@@ -66,3 +66,10 @@ _Updated: 2026-05-31_
 - 검색어 리포트에서 negative keyword 자동 초안 생성.
 - `/admin/search-ads`에 `search_ad_keyword_plans` 탭 추가.
 - 예산 pacing 알림과 월 예산 초과 차단.
+## 2026-06-06 implementation note
+
+- SEO-to-Ads bridge is implemented at `/api/admin/ad-os/seo-keyword-bridge`.
+- Search-term growth is implemented at `/api/admin/ad-os/search-term-growth`.
+- Daily automation is implemented at `/api/cron/ad-os-keyword-growth`.
+- The loop now runs: learning harvest -> search-term candidate promotion -> keyword/negative draft -> approval-required change request.
+- External platform write remains disabled in this layer. Naver/Google spend stays 0 until the existing approval, budget, adapter, and live-spend preflight gates pass.
