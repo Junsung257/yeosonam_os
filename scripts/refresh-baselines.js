@@ -50,7 +50,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
     .from('travel_packages')
     .select('id, title, short_code, status, baseline_requested_at, baseline_created_at')
     .not('baseline_requested_at', 'is', null)
-    .in('status', ['approved', 'active', 'pending', 'pending_review'])
+    .in('status', ['approved', 'active'])
     .order('baseline_requested_at', { ascending: true });
 
   if (error) { console.error(error); process.exit(1); }
