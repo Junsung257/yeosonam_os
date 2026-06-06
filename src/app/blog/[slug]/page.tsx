@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import { notFound, redirect } from 'next/navigation';
 import React, { Suspense } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import BlogTracker from '@/components/BlogTracker';
 import TableOfContents from '@/components/blog/TableOfContents';
@@ -67,33 +66,9 @@ function buildHeadlineVariants(original: string): string[] {
   ];
 }
 
-export const experimental_ppr = true;
 export const revalidate = 3600;
-// dynamicParams=true(기본값): generateStaticParams에 없는 새 slug도 ISR로 동적 생성.
-// PPR fallback에서 notFound()가 404를 반환하게 Next.js에 의존. (PPR 환경에서는
-// fallback이 200+noindex로 캐시될 가능성이 있으므로 generateMetadata의 noindex로 방어.)
-// 빌드 시점에 발행된 모든 글을 SSG. 새로 발행되는 글은 dynamicParams=true 기본값으로 on-demand SSG.
-// 이 한 줄이 "발행 직후 첫 요청 race로 404가 캐시되는" 패턴을 구조적으로 차단한다.
-export async function generateStaticParams(): Promise<{ slug: string }[]> {
-  if (!isSupabaseConfigured) return [];
-  try {
-    const { data } = await supabaseAdmin
-      .from('content_creatives')
-      .select('slug')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(2000);
-    const rows = (data || []) as Array<{ slug: string | null }>;
-    return rows
-      .map((r) => r.slug)
-      .filter((s: string | null): s is string => !!s)
-      .map((slug: string) => ({ slug }));
-  } catch {
-    return [];
-  }
-}
+// 자동 발행 글은 계속 늘어나므로 정적 slug 목록을 빌드/개발 서버에 고정하지 않는다.
+// 각 상세 페이지는 첫 요청 시 on-demand ISR로 생성하고, 미존재 slug는 noindex 404로 방어한다.
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
@@ -205,6 +180,17 @@ function estimateReadingMinutes(html: string): number {
   const text = html.replace(/<[^>]+>/g, '').trim();
   // 한국어 기준 분당 500자. 최소 3분.
   return Math.max(3, Math.round(text.length / 500));
+}
+
+function sanitizeServerBlogHtml(html: string): string {
+  return html
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[\s\S]*?<\/\1>/gi, '')
+    .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[^>]*\/?>/gi, '')
+    .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\sstyle\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+    .replace(/\s(href|src)\s*=\s*(["']?)\s*(javascript:|data:text\/html|vbscript:)[\s\S]*?\2/gi, '')
+    .replace(/\s(class|id)\s*=\s*(["'])([^"']{300,})\2/gi, '');
 }
 
 // ── 데이터 페칭 ──────────────────────────────────────────────
@@ -612,11 +598,7 @@ async function renderBlogDetail({
       : (marked.parse(mdAccented) as string);
     // 숫자+단위 자동 오렌지 볼드
     const accented = applyHtmlAccents(rawHtml);
-    const { default: DOMPurify } = await import('isomorphic-dompurify');
-    const sanitized = DOMPurify.sanitize(accented, {
-      ADD_TAGS: ['mark', 'aside'],
-      ADD_ATTR: ['class'],
-    });
+    const sanitized = sanitizeServerBlogHtml(accented);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;
@@ -829,12 +811,11 @@ async function renderBlogDetail({
         {!isLanding && post.og_image_url && (
           <figure className="mx-auto mb-4 max-w-3xl px-4">
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
-              <Image
+              <img
                 src={post.og_image_url}
                 alt={[pkg?.destination || post.destination, title].filter(Boolean).join(' — ')}
-                fill
-                className="object-cover"
-                priority
+                className="absolute inset-0 h-full w-full object-cover"
+                loading="eager"
                 sizes="(max-width: 768px) 100vw, (max-width: 1200px) 768px, 1024px"
                 fetchPriority="high"
               />
@@ -1036,12 +1017,12 @@ async function RelatedPostsSection({
               >
                 {rp.og_image_url ? (
                   <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
-                    <Image
+                    <img
                       src={rp.og_image_url}
                       alt={rpTitle}
-                      fill
-                      className="object-cover transition duration-300 group-hover:scale-105"
+                      className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                       sizes="(max-width: 640px) 100vw, 33vw"
+                      loading="lazy"
                     />
                   </div>
                 ) : (
@@ -1172,12 +1153,12 @@ async function PrevNextSection({
             >
               {prevNext.prev.og_image_url && (
                 <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
-                  <Image
+                  <img
                     src={prevNext.prev.og_image_url}
                     alt=""
-                    fill
-                    className="object-cover transition duration-300 group-hover:scale-105"
+                    className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     sizes="96px"
+                    loading="lazy"
                   />
                 </div>
               )}
@@ -1218,12 +1199,12 @@ async function PrevNextSection({
               </div>
               {prevNext.next.og_image_url && (
                 <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
-                  <Image
+                  <img
                     src={prevNext.next.og_image_url}
                     alt=""
-                    fill
-                    className="object-cover transition duration-300 group-hover:scale-105"
+                    className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     sizes="96px"
+                    loading="lazy"
                   />
                 </div>
               )}

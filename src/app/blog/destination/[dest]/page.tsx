@@ -1,13 +1,11 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { Suspense } from 'react';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
-export const experimental_ppr = true;
 export const revalidate = 300;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -19,7 +17,7 @@ const ANGLE_LABELS: Record<string, string> = {
 
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
-  og_image_url: string | null; angle_type: string; published_at: string;
+  og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
   travel_packages: { id: string; title: string; destination: string; price: number | null; duration: string | null } | null;
 }
 
@@ -44,7 +42,7 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
     // 블로그 글 (해당 목적지)
     const { data: allPosts } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, travel_packages(id, title, destination, price, duration)')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
@@ -52,7 +50,7 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
       .limit(100);
 
     const posts = ((allPosts || []) as unknown as BlogPost[]).filter(
-      p => p.travel_packages?.destination?.includes(destination)
+      p => (p.destination || p.travel_packages?.destination || '').includes(destination)
     );
 
     // 관련 상품
@@ -92,6 +90,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
   const dest = getRouteParam(rawDest);
   const destination = safeDecodePathSegment(dest);
   const canonical = `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`;
+  const { posts, packages } = await getPostsByDestination(dest);
 
   return (
     <>
@@ -108,8 +107,13 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
             url: canonical,
             mainEntity: {
               '@type': 'ItemList',
-              numberOfItems: 0,
-              itemListElement: [],
+              numberOfItems: posts.length,
+              itemListElement: posts.slice(0, 10).map((p, i) => ({
+                '@type': 'ListItem',
+                position: i + 1,
+                url: `${BASE_URL}/blog/${p.slug}`,
+                name: p.seo_title || `${destination} 여행 가이드`,
+              })),
             },
           }),
         }}
@@ -132,19 +136,22 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
         </header>
 
         <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16 space-y-12 md:space-y-16">
-          <Suspense fallback={<div className="animate-pulse h-64 bg-gray-100 rounded" />}>
-            <DestinationContent dest={dest} destination={destination} />
-          </Suspense>
+          <DestinationContent destination={destination} posts={posts} packages={packages} />
         </div>
       </main>
     </>
   );
 }
 
-/** 목적지 블로그 콘텐츠 (PPR: Suspense로 streaming) */
-async function DestinationContent({ dest, destination }: { dest: string; destination: string }) {
-  const { posts, packages } = await getPostsByDestination(dest);
-
+function DestinationContent({
+  destination,
+  posts,
+  packages,
+}: {
+  destination: string;
+  posts: BlogPost[];
+  packages: { id: string; title: string; price: number | null }[];
+}) {
   return (
     <>
       {/* 관련 상품 CTA */}

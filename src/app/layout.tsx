@@ -36,6 +36,7 @@ const pretendard = localFont({
 });
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
+const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
@@ -171,7 +172,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AffiliateAttributionBanner />
         {children}
         <LayoutClientWidgets />
-        <SpeedInsights />
+        {ENABLE_SPEED_INSIGHTS ? <SpeedInsights /> : null}
       </body>
     </html>
   );

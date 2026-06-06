@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
 import { sanitizeDbError, logAndSanitize } from '@/lib/error-sanitizer';
@@ -6,6 +6,7 @@ import { getDefaultAffiliateCommissionRate } from '@/lib/affiliate-config';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { logWarning } from '@/lib/sentry-logger';
 import { hashAffiliatePin } from '@/lib/affiliate/auth-service';
+import { apiResponse } from '@/lib/api-response';
 
 function generatePortalPin(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -13,7 +14,7 @@ function generatePortalPin(): string {
 
 // GET: 파트너 신청 목록
 const getHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ applications: [] });
+  if (!isSupabaseConfigured) return apiResponse({ applications: [] });
 
   const { searchParams } = request.nextUrl;
   const status = searchParams.get('status') || undefined;
@@ -26,21 +27,21 @@ const getHandler = async (request: NextRequest) => {
   if (status) query = query.eq('status', status);
 
   const { data, error } = await query;
-  if (error) return NextResponse.json({ error: sanitizeDbError(error) }, { status: 500 });
+  if (error) return apiResponse({ error: sanitizeDbError(error) }, { status: 500 });
 
-  return NextResponse.json({ applications: data || [] });
+  return apiResponse({ applications: data || [] });
 }
 
 // POST: 승인 또는 거절
 const postHandler = async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
     const { applicationId, action, reject_reason } = body;
 
     if (!applicationId || !action) {
-      return NextResponse.json({ error: 'applicationId, action 필수' }, { status: 400 });
+      return apiResponse({ error: 'applicationId, action 필수' }, { status: 400 });
     }
 
     // 신청 조회
@@ -50,8 +51,8 @@ const postHandler = async (request: NextRequest) => {
       .eq('id', applicationId)
       .single();
 
-    if (appErr || !app) return NextResponse.json({ error: '신청을 찾을 수 없습니다.' }, { status: 404 });
-    if (app.status !== 'PENDING') return NextResponse.json({ error: '이미 처리된 신청입니다.' }, { status: 409 });
+    if (appErr || !app) return apiResponse({ error: '신청을 찾을 수 없습니다.' }, { status: 404 });
+    if (app.status !== 'PENDING') return apiResponse({ error: '이미 처리된 신청입니다.' }, { status: 409 });
 
     if (action === 'approve') {
       // PIN 생성 (전화번호 뒷 4자리)
@@ -121,7 +122,7 @@ const postHandler = async (request: NextRequest) => {
         logWarning('[admin/applications] approval notification failed', notifyErr);
       }
 
-      return NextResponse.json({ affiliate: { ...(affiliate as Record<string, unknown>), pin }, message: '승인 완료' });
+      return apiResponse({ affiliate: { ...(affiliate as Record<string, unknown>), pin }, message: '승인 완료' });
 
     } else if (action === 'reject') {
       await supabaseAdmin
@@ -133,12 +134,12 @@ const postHandler = async (request: NextRequest) => {
         })
         .eq('id', applicationId);
 
-      return NextResponse.json({ message: '거절 완료' });
+      return apiResponse({ message: '거절 완료' });
     }
 
-    return NextResponse.json({ error: 'action은 approve 또는 reject' }, { status: 400 });
+    return apiResponse({ error: 'action은 approve 또는 reject' }, { status: 400 });
   } catch (error) {
-    return NextResponse.json(
+    return apiResponse(
       { error: logAndSanitize('admin-applications', error, '처리 실패') },
       { status: 500 }
     );

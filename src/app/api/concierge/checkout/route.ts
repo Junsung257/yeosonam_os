@@ -14,10 +14,12 @@ import {
   getTransactionByIdempotencyKey,
   deductInventory,
   resolveProductCategory,
+  getSupabaseAdmin,
   SagaEvent,
   VoucherItem,
+  CartItem,
 } from '@/lib/supabase';
-import { bookProduct, cancelProduct } from '@/lib/mock-apis';
+import { bookProduct, cancelProduct, getMockProductServerPricing } from '@/lib/mock-apis';
 
 function generateVoucherCode(): string {
   return Math.random().toString(36).slice(2, 8).toUpperCase();
@@ -25,6 +27,56 @@ function generateVoucherCode(): string {
 
 function addSagaEvent(log: SagaEvent[], event: string, detail?: string): SagaEvent[] {
   return [...log, { event, timestamp: new Date().toISOString(), detail }];
+}
+
+type PricedCartItem = CartItem & {
+  cost: number;
+  price: number;
+};
+
+async function resolveTenantProductPricing(item: CartItem): Promise<{ cost: number; price: number } | null> {
+  const sb = getSupabaseAdmin();
+  if (!sb) return null;
+
+  const date = typeof item.attrs?.date === 'string' ? item.attrs.date : null;
+  let query = sb
+    .from('inventory_blocks')
+    .select('price_override, travel_packages!product_id(cost_price, price)')
+    .eq('product_id', item.product_id)
+    .gt('available_seats', 0)
+    .eq('status', 'OPEN')
+    .limit(1);
+
+  if (date) query = query.eq('date', date);
+  else query = query.gte('date', new Date().toISOString().slice(0, 10));
+
+  const { data } = await query.maybeSingle();
+  const row = data as {
+    price_override?: number | null;
+    travel_packages?: { cost_price?: number | null; price?: number | null } | null;
+  } | null;
+  const pkg = row?.travel_packages;
+  if (!pkg) return null;
+
+  const cost = Math.max(0, Number(pkg.cost_price) || 0);
+  const price = Math.max(0, Number(row?.price_override ?? pkg.price) || 0);
+  return { cost, price };
+}
+
+async function resolveServerPricedItem(item: CartItem): Promise<PricedCartItem> {
+  const isTenantProduct = item.api_name === 'tenant_product' || resolveProductCategory(item) === 'FIXED';
+  const pricing = isTenantProduct
+    ? await resolveTenantProductPricing(item)
+    : getMockProductServerPricing({
+        api_name: item.api_name,
+        product_id: item.product_id,
+        attrs: item.attrs,
+      });
+
+  const fallbackPrice = Math.max(0, Number(item.price) || 0);
+  const price = pricing?.price ?? fallbackPrice;
+  const cost = pricing?.cost ?? 0;
+  return { ...item, price, cost, quantity: Math.max(1, Number(item.quantity) || 1) };
 }
 
 export async function POST(request: NextRequest) {
@@ -51,7 +103,7 @@ export async function POST(request: NextRequest) {
   if (!cart || !cart.items?.length) {
     return NextResponse.json({ error: '장바구니가 비어 있습니다.' }, { status: 400 });
   }
-  const items = cart.items;
+  const items = await Promise.all(cart.items.map(resolveServerPricedItem));
 
   // ② 멱등성 키 — 클라이언트 제공 or session + ms + nonce (초 단위는 동시 요청 충돌 위험)
   const { idempotency_key: clientKey } = body as { idempotency_key?: string };

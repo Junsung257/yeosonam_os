@@ -1,8 +1,9 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
 import { runQualityGates } from '@/lib/blog-quality-gate';
+import { apiResponse } from '@/lib/api-response';
 
 /**
  * 공개 블로그 API — 발행된(published) 블로그 글만 반환
@@ -10,7 +11,7 @@ import { runQualityGates } from '@/lib/blog-quality-gate';
  * GET /api/blog?slug=xxx → 단건 조회
  */
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ posts: [] });
+  if (!isSupabaseConfigured) return apiResponse({ posts: [] });
 
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get('slug');
@@ -25,7 +26,7 @@ export async function GET(request: NextRequest) {
       // UUID 형식 사전 검증 — 잘못된 ID 는 500 대신 404
       const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
       if (!UUID_RE.test(id)) {
-        return NextResponse.json({ error: '글을 찾을 수 없습니다' }, { status: 404 });
+        return apiResponse({ error: '글을 찾을 수 없습니다' }, { status: 404 });
       }
       const { data, error } = await supabaseAdmin
         .from('content_creatives')
@@ -35,9 +36,9 @@ export async function GET(request: NextRequest) {
 
       if (error) throw error;
       if (!data || data.length === 0) {
-        return NextResponse.json({ error: '글을 찾을 수 없습니다' }, { status: 404 });
+        return apiResponse({ error: '글을 찾을 수 없습니다' }, { status: 404 });
       }
-      return NextResponse.json({ post: data[0] });
+      return apiResponse({ post: data[0] });
     }
 
     // 관리자 목록 조회 (admin=1): 모든 상태(draft/published/archived) 포함
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
       }
       const { data, count, error } = await adminQuery;
       if (error) throw error;
-      return NextResponse.json({ posts: data || [], total: count ?? 0 });
+      return apiResponse({ posts: data || [], total: count ?? 0 });
     }
 
     // 단건 조회 (slug)
@@ -70,10 +71,10 @@ export async function GET(request: NextRequest) {
 
       if (error) throw error;
       if (!data || data.length === 0) {
-        return NextResponse.json({ error: '글을 찾을 수 없습니다' }, { status: 404 });
+        return apiResponse({ error: '글을 찾을 수 없습니다' }, { status: 404 });
       }
 
-      return NextResponse.json({ post: data[0] }, {
+      return apiResponse({ post: data[0] }, {
         headers: { 'Cache-Control': 'public, s-maxage=600, stale-while-revalidate=3600' },
       });
     }
@@ -95,7 +96,7 @@ export async function GET(request: NextRequest) {
     const { data, error, count } = await query;
     if (error) throw error;
 
-    return NextResponse.json({
+    return apiResponse({
       posts: data || [],
       total: count ?? 0,
       page,
@@ -104,7 +105,7 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600' },
     });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: err instanceof Error ? err.message : '조회 실패' },
       { status: 500 },
     );
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
 
 // ── POST: 새 블로그 글 저장 ─────────────────────────────────
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest) {
       product_id, category, status: reqStatus, angle_type } = body;
 
     if (!blog_html || !slug) {
-      return NextResponse.json({ error: 'blog_html과 slug는 필수입니다.' }, { status: 400 });
+      return apiResponse({ error: 'blog_html과 slug는 필수입니다.' }, { status: 400 });
     }
 
     // slug 정규화
@@ -149,7 +150,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabaseAdmin
       .from('content_creatives')
       .insert(insertData)
-      .select()
+      .select();
 
     if (error) throw error;
 
@@ -164,21 +165,21 @@ export async function POST(request: NextRequest) {
         .catch(() => {});
     }
 
-    return NextResponse.json({ post: data?.[0], success: true }, { status: 201 });
+    return apiResponse({ post: data?.[0], success: true }, { status: 201 });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '저장 실패' }, { status: 500 });
+    return apiResponse({ error: err instanceof Error ? err.message : '저장 실패' }, { status: 500 });
   }
 }
 
 // ── PATCH: 블로그 글 수정 ───────────────────────────────────
 export async function PATCH(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
     const { id, blog_html, slug, seo_title, seo_description, og_image_url, status: reqStatus, category, force_revalidate } = body;
 
-    if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
+    if (!id) return apiResponse({ error: 'id 필수' }, { status: 400 });
 
     // force_revalidate: 콘텐츠 변경 없이 캐시만 강제 무효화 + 색인 재요청
     // (ISR이 빈 결과로 stuck 됐을 때 운영자가 수동 복구하는 비상 경로)
@@ -191,13 +192,13 @@ export async function PATCH(request: NextRequest) {
       if (rowErr) throw rowErr;
       const target = row?.[0];
       if (!target?.slug) {
-        return NextResponse.json({ error: '글을 찾을 수 없거나 slug 없음' }, { status: 404 });
+        return apiResponse({ error: '글을 찾을 수 없거나 slug 없음' }, { status: 404 });
       }
       revalidatePath('/blog');
       revalidatePath(`/blog/${target.slug}`);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const report = await notifyIndexing(`${baseUrl}/blog/${target.slug}`, baseUrl);
-      return NextResponse.json({ success: true, force_revalidate: true, slug: target.slug, indexing: report });
+      return apiResponse({ success: true, force_revalidate: true, slug: target.slug, indexing: report });
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -260,7 +261,7 @@ export async function PATCH(request: NextRequest) {
       .from('content_creatives')
       .update(updateData)
       .eq('id', id)
-      .select()
+      .select();
 
     if (error) throw error;
 
@@ -278,7 +279,7 @@ export async function PATCH(request: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    return apiResponse({
       post: data?.[0],
       success: true,
       // v1.5 게이트 실패 시 어드민 UI에 경고 표시용
@@ -287,6 +288,6 @@ export async function PATCH(request: NextRequest) {
         : null,
     });
   } catch (err) {
-    return NextResponse.json({ error: err instanceof Error ? err.message : '수정 실패' }, { status: 500 });
+    return apiResponse({ error: err instanceof Error ? err.message : '수정 실패' }, { status: 500 });
   }
 }

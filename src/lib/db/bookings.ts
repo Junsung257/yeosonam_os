@@ -117,6 +117,17 @@ export async function createBooking(data: {
 }) {
   try {
     const { initialDepositNoticeBlockedForNewBooking } = await import('@/lib/booking-automation-policy');
+    const adultCount = Math.max(0, Number(data.adultCount) || 0);
+    const childCount = Math.max(0, Number(data.childCount) || 0);
+    const infantCount = Math.max(0, Number(data.infantCount ?? 0) || 0);
+    const adultPrice = Number(data.adultPrice) || 0;
+    const childPrice = Number(data.childPrice) || 0;
+    const adultCost = Number(data.adultCost) || 0;
+    const childCost = Number(data.childCost) || 0;
+    const infantCost = Number(data.infantCost ?? 0) || 0;
+    const fuelSurcharge = Number(data.fuelSurcharge) || 0;
+    const totalPrice = adultCount * adultPrice + childCount * childPrice + fuelSurcharge;
+    const totalCost = adultCount * adultCost + childCount * childCost + infantCount * infantCost;
     let selfReferralFlag = false;
     let selfReferralReason: string | null = null;
     if (data.affiliateId) {
@@ -139,15 +150,17 @@ export async function createBooking(data: {
       package_id: data.packageId || null,
       package_title: data.packageTitle || '미정',
       lead_customer_id: data.leadCustomerId,
-      adult_count: data.adultCount,
-      child_count: data.childCount,
-      adult_cost: data.adultCost,
-      adult_price: data.adultPrice,
-      child_cost: data.childCost,
-      child_price: data.childPrice,
-      infant_count: data.infantCount ?? 0,
-      infant_cost: data.infantCost ?? 0,
-      fuel_surcharge: data.fuelSurcharge,
+      adult_count: adultCount,
+      child_count: childCount,
+      adult_cost: adultCost,
+      adult_price: adultPrice,
+      child_cost: childCost,
+      child_price: childPrice,
+      infant_count: infantCount,
+      infant_cost: infantCost,
+      fuel_surcharge: fuelSurcharge,
+      total_price: totalPrice,
+      total_cost: totalCost,
       departure_date: data.departureDate || null,
       departure_region: data.departureRegion || null,
       land_operator: data.landOperator || null,

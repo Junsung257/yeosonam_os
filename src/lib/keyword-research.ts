@@ -530,7 +530,7 @@ export async function collectAllTrends(): Promise<TrendKeyword[]> {
  *
  * - 블로그의 실제 노출·클릭·CTR·평균 순위를 일별로 수집
  * - keyword_research_cache 테이블에 저장 (24h TTL)
- * - env: GSC_SERVICE_ACCOUNT (서비스 계정 JSON) + GSC_SITE_URL
+ * - env: GSC_SERVICE_ACCOUNT_JSON / GOOGLE_SERVICE_ACCOUNT_JSON (+ legacy GSC_SERVICE_ACCOUNT) + GSC_SITE_URL
  *
  * Google Search Console API (v1):
  *   POST https://searchconsole.googleapis.com/v1/urlInspection/index:inspect
@@ -559,7 +559,10 @@ export async function fetchGscSearchAnalytics(
   rowLimit: number = 100,
 ): Promise<Map<string, GscSearchAnalyticsRow>> {
   const result = new Map<string, GscSearchAnalyticsRow>();
-  const serviceAccountJson = getSecret('GSC_SERVICE_ACCOUNT');
+  const serviceAccountJson =
+    getSecret('GSC_SERVICE_ACCOUNT_JSON') ||
+    getSecret('GOOGLE_SERVICE_ACCOUNT_JSON') ||
+    getSecret('GSC_SERVICE_ACCOUNT');
   const siteUrl = getSecret('GSC_SITE_URL') || 'https://yeosonam.com/';
 
   if (!serviceAccountJson) {

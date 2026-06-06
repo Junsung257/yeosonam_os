@@ -3,7 +3,6 @@ import { Suspense } from 'react';
 import BlogData from './BlogData';
 import Loading from './loading';
 
-export const experimental_ppr = true;
 export const revalidate = 86400;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -21,10 +20,8 @@ export const metadata: Metadata = {
   },
 };
 
-// Vercel 공식 PPR 패턴 (https://nextjs.org/docs/15/app/getting-started/partial-prerendering):
-//   "Components only opt into dynamic rendering when the value is accessed."
-//   Page 는 searchParams 를 prop 으로 받기만 하고 access 안 함 → 정적 shell prerender 가능.
-//   Suspense 안 BlogData 만 dynamic, Featured/Posts/Destinations streaming.
+// 블로그 목록은 검색/필터 query와 공개 DB 목록이 SEO 진입점이다.
+// 실험적 PPR에서는 dev/prod 캐시 경계에서 간헐 404가 발생할 수 있어 일반 ISR로 유지한다.
 export default function BlogListPage({
   searchParams,
 }: {

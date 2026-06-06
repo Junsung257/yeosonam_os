@@ -342,7 +342,7 @@ export async function backfillPackageAttractionsL3(
       region: dest,
       occurrence_count: 1,
       status: 'pending',
-    }, { onConflict: 'activity' }).then(() => {});
+    }, { onConflict: 'unmatched_scope_key,activity' }).then(() => {});
   };
 
   for (const d of existingItin.days) {

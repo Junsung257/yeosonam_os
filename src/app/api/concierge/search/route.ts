@@ -9,6 +9,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { getPrompt } from '@/lib/prompt-loader';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import { sanitizeConciergeItemsForPublic } from '@/lib/concierge-public-payload';
 
 function tenantToMock(r: CrossSearchResult): MockSearchResult {
   return {
@@ -215,11 +216,11 @@ export async function POST(request: NextRequest) {
         searchActivities(query, '', 2).catch(() => [] as MockSearchResult[]),
       ]);
       const tenantMapped: MockSearchResult[] = tenantRes.map(tenantToMock);
-      return NextResponse.json({ results: [...tenantMapped, ...hotelRes, ...actRes] });
+      return NextResponse.json({ results: sanitizeConciergeItemsForPublic([...tenantMapped, ...hotelRes, ...actRes]) });
     }
 
     const results = await callGemini(apiKey, query);
-    return NextResponse.json({ results });
+    return NextResponse.json({ results: sanitizeConciergeItemsForPublic(results) });
   } catch (error) {
     return NextResponse.json(
       { error: logAndSanitize('concierge-search', error, '검색 처리 실패') },

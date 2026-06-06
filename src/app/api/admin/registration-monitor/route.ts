@@ -24,6 +24,10 @@ import {
   evaluateProductRegistrationCorpus,
   type ProductRegistrationCorpusEval,
 } from '@/lib/product-registration-evaluator';
+import {
+  evaluateGoldenCorpus,
+  type GoldenCorpusReport,
+} from '@/lib/product-registration/golden-corpus/evaluator';
 
 interface TriggerCondition {
   id: 'reject_rate' | 'weekly_leak' | 'cove_pass_rate' | 'reflexion_count';
@@ -86,6 +90,7 @@ interface MonitorResponse {
   }>;
   sectionCacheCanary: SectionCacheCanaryResult;
   productRegistrationCorpus: ProductRegistrationCorpusEval;
+  customerDeliverabilityCorpus: GoldenCorpusReport;
 }
 
 const getHandler = async () => {
@@ -160,6 +165,7 @@ const getHandler = async () => {
       qualityIncidentCount: mobileQaCount + verifyDeterministicCount + coveCount + confidenceMismatchCount,
     });
     const productRegistrationCorpus = evaluateProductRegistrationCorpus();
+    const customerDeliverabilityCorpus = await evaluateGoldenCorpus();
 
     // 2) extractions_corrections 누적
     const { count: reflexionCount } = await supabaseAdmin
@@ -337,6 +343,7 @@ const getHandler = async () => {
       dailyTrend,
       sectionCacheCanary,
       productRegistrationCorpus,
+      customerDeliverabilityCorpus,
     };
 
     return apiResponse(response);

@@ -9,7 +9,7 @@ interface CartItem {
   api_name:         string;
   product_type:     'HOTEL' | 'ACTIVITY' | 'CRUISE';
   product_category: 'DYNAMIC' | 'FIXED';
-  cost:             number;
+  cost?:            number;
   price:            number;
   quantity:         number;
   description:      string;
@@ -92,7 +92,6 @@ function normalizeCartItem(value: unknown): CartItem | null {
     api_name: getString(record.api_name).trim() || 'tenant_product',
     product_type: productType,
     product_category: productCategory,
-    cost: Math.max(0, getFiniteNumber(record.cost)),
     price: Math.max(0, getFiniteNumber(record.price)),
     quantity: getPositiveInteger(record.quantity),
     description: getString(record.description),
@@ -286,7 +285,6 @@ export default function SharePage() {
       api_name:         'tenant_product',
       product_type:     'ACTIVITY',
       product_category: 'FIXED',
-      cost:             block.price_override ?? 0,
       price:            block.price_override ?? 0,
       quantity:         1,
       description:      `${selectedDate} 출발`,
