@@ -88,6 +88,7 @@ lint_output.txt
 .cursor-home-fetch.html
 
 # Local temporary audit/export artifacts
+.codex-temp/
 tmp-*.json
 tmp-*.txt
 tmp-*.html
@@ -181,10 +182,17 @@ fix-catch-patterns.py
 # Codex local workspace metadata
 .agents/
 .codex/
+.codex-temp/
+.codex-*.png
+.codex-dev-server.log
 .codex-*.err.log
 .codex-*.out.log
 .codex-*.pid
 .codex-*.mjs
+tmp-*.png
+
+# Local toolchains and generated app bundles
+/tools/
 
 # Local desktop cleanup archives
 .desktop-dev-archive/

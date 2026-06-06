@@ -2,6 +2,9 @@
   "name": "yeosonam-os",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "next dev",
     "dev:stop": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/stop-node-dev.ps1",
@@ -32,6 +35,8 @@
     "type-check": "cross-env NODE_OPTIONS=--max-old-space-size=8192 tsc --noEmit",
     "verify:tokens": "node scripts/verify-admin-tokens.mjs",
     "audit:public-critical": "node scripts/audit-public-critical-pages.mjs",
+    "open:readiness": "node scripts/open-readiness-check.mjs",
+    "open:readiness:strict": "node scripts/open-readiness-check.mjs --strict",
     "audit:event-taxonomy": "node scripts/audit-event-taxonomy.mjs",
     "audit:pii-surface": "node scripts/audit-pii-surface.mjs",
     "audit:pii-surface:strict": "node scripts/audit-pii-surface.mjs --strict",
@@ -77,6 +82,8 @@
     "eval:product-registration:ci": "npx tsx scripts/eval-product-registration-corpus.ts --strict",
     "ai:switch": "node scripts/ai-provider-switch.mjs",
     "audit:api-keys": "node scripts/audit-api-keys.mjs",
+    "supabase:auth-open-gate": "node scripts/supabase-auth-open-gate.mjs --check --allow-plan-blocked",
+    "supabase:auth-open-gate:enable": "node scripts/supabase-auth-open-gate.mjs --harden-password-policy --enable-hibp --check",
     "lint:secrets": "node scripts/check-no-direct-env.mjs",
     "lint:secrets:all": "node scripts/check-no-direct-env.mjs --all",
     "ai:all:deepseek": "node scripts/ai-provider-switch.mjs --all deepseek",

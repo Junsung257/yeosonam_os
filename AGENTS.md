@@ -40,6 +40,7 @@
 | 블로그 운영 런북 | `docs/blog-system-runbook.md` |
 | 배포 전 체크리스트 | `docs/deploy-checklist.md` |
 | 환경 변수 레퍼런스 | `docs/env-variables-reference.md` |
+| Supabase Auth 오픈 보안 게이트 | `docs/supabase-auth-open-gate.md` |
 | AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
 | AI 에이전트 문서 자동화·하네스 | `docs/ai-agent-doc-automation.md` |
 | Git 커밋 핸드오프 | `docs/git-commit-handoff.md` |
