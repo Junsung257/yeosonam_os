@@ -62,9 +62,12 @@ jobs:
           else
             git commit -m "test: refresh visual baselines (automated) [vercel skip]"
             git push --set-upstream origin "$BRANCH"
-            gh pr create \
-              --base main \
-              --head "$BRANCH" \
-              --title "test: refresh visual baselines (automated) [vercel skip]" \
-              --body "Automated visual baseline refresh from Baseline Refresh (Option B), run ${{ github.run_id }}."
+            PR_TITLE="test: refresh visual baselines (automated) [vercel skip]"
+            PR_BODY="Automated visual baseline refresh from Baseline Refresh (Option B), run ${{ github.run_id }}."
+            if gh pr create --base main --head "$BRANCH" --title "$PR_TITLE" --body "$PR_BODY"; then
+              echo "Baseline refresh PR created for $BRANCH."
+            else
+              echo "::warning::Baseline branch was pushed, but GitHub Actions is not allowed to create pull requests in this repository."
+              echo "::warning::Create it manually with: gh pr create --base main --head $BRANCH --title \"$PR_TITLE\""
+            fi
           fi
