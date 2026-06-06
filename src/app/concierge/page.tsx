@@ -10,7 +10,7 @@ interface MockSearchResult {
   api_name:         string;
   product_type:     'HOTEL' | 'ACTIVITY' | 'CRUISE';
   product_category: 'DYNAMIC' | 'FIXED';
-  cost:             number;
+  cost?:            number;
   price:            number;
   description:      string;
   attrs?:           Record<string, unknown>;
@@ -378,9 +378,6 @@ export default function ConciergePage() {
 
                     <div className="flex items-end justify-between mt-auto">
                       <div>
-                        <span className="text-xs text-slate-400 line-through">
-                          ₩{item.cost.toLocaleString()}
-                        </span>
                         <div className="text-base font-bold text-[#1B64DA]">
                           ₩{item.price.toLocaleString()}
                         </div>

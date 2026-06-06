@@ -4,6 +4,63 @@
 
 ---
 
+## 0. Open Gate Snapshot (2026-06-06)
+
+Current production can accept traffic for the verified customer -> affiliate -> lead/booking flow, but the full "complete open" gate is not closed until Supabase Auth leaked password protection is enabled and verified.
+
+Verified on production:
+
+- [x] `www.yeosonam.com` is aliased to the latest production deployment.
+- [x] Customer package page returns 200.
+- [x] Influencer referral link returns 200 and browser testing verified `aff_ref` attribution.
+- [x] `/api/leads` creates a pending booking with affiliate attribution and commission fields.
+- [x] Lead/booking idempotency prevents duplicate booking creation on retry.
+- [x] Test bookings `BK-0085` through `BK-0090` were cancelled and voided after verification.
+- [x] Supabase Auth `site_url` is `https://www.yeosonam.com`.
+- [x] Supabase Auth password policy is hardened to minimum 10 characters with lowercase, uppercase, and digit requirements.
+- [x] Latest production deployment `dpl_BLcTXokQtLurGnuRbgd2Y2mZyT7T` has no recent Vercel error/fatal logs after the blog runtime fix.
+
+Hard remaining gate:
+
+- [ ] Supabase Auth `password_hibp_enabled=true`.
+
+Supabase currently rejects this setting on the active project plan:
+
+```text
+Configuring leaked password protection via HaveIBeenPwned.org is available on Pro Plans and up.
+```
+
+After upgrading the Supabase project to Pro or higher, run:
+
+```bash
+npm run supabase:auth-open-gate:enable
+```
+
+For a read-only gate check that tolerates the known plan blocker, run:
+
+```bash
+npm run supabase:auth-open-gate
+```
+
+For the full production readiness check, run:
+
+```bash
+npm run open:readiness
+npm run open:readiness:strict
+```
+
+Exit code meanings:
+
+- `0`: all checked gates pass.
+- `1`: a runtime or local verification failed.
+- `2`: functionality checks pass, but a known hard gate is blocked. As of 2026-06-06 this means Supabase HIBP is still disabled by plan limits.
+
+The goal is only fully complete when `supabase:auth-open-gate:enable` exits successfully and the Supabase security advisor no longer reports `auth_leaked_password_protection` as WARN.
+
+Detailed runbook: [`docs/supabase-auth-open-gate.md`](./supabase-auth-open-gate.md)
+
+---
+
 ## 🗄 1. 데이터베이스 (Supabase)
 
 - [ ] 3개 마이그레이션 순서대로 적용됨:

@@ -62,10 +62,12 @@ export async function searchPexelsPhotos(
     orientation: 'landscape', // 카드뉴스 배경용 가로 사진
   });
 
-  const res = await fetch(`${PEXELS_API_BASE}/search?${params}`, {
+  const pexelsRequestInit: RequestInit & { next?: { revalidate: number } } = {
     headers: getPexelsHeaders(),
     next: { revalidate: 3600 }, // 1시간 캐시 (Next.js fetch 캐시)
-  });
+  };
+
+  const res = await fetch(`${PEXELS_API_BASE}/search?${params}`, pexelsRequestInit);
 
   if (!res.ok) {
     if (res.status === 401) throw new Error('Pexels API 키가 유효하지 않습니다.');

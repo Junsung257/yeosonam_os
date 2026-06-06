@@ -24,6 +24,41 @@ export interface MockBookResult {
   product_id:   string;
 }
 
+export function getMockProductServerPricing(input: {
+  api_name?: string;
+  product_id?: string;
+  attrs?: Record<string, unknown>;
+}): { cost: number; price: number } | null {
+  const productId = input.product_id ?? '';
+  const attrs = input.attrs ?? {};
+
+  if (input.api_name === 'agoda_mock') {
+    const hotel = AGODA_HOTELS.find((item) => item.id === productId);
+    if (!hotel) return null;
+    const guests = Math.max(1, Number(attrs.guests) || 2);
+    const cost = hotel.cost * guests;
+    return { cost, price: applyMargin(cost) };
+  }
+
+  if (input.api_name === 'klook_mock') {
+    const activity = KLOOK_ACTIVITIES.find((item) => item.id === productId);
+    if (!activity) return null;
+    const persons = Math.max(1, Number(attrs.persons) || 2);
+    const cost = activity.cost * persons;
+    return { cost, price: applyMargin(cost) };
+  }
+
+  if (input.api_name === 'cruise_mock') {
+    const cruise = CRUISE_PRODUCTS.find((item) => item.id === productId);
+    if (!cruise) return null;
+    const persons = Math.max(1, Number(attrs.persons) || 2);
+    const cost = cruise.cost * persons;
+    return { cost, price: applyMargin(cost, 22) };
+  }
+
+  return null;
+}
+
 interface MockApiConfig {
   mode:     'success' | 'fail' | 'timeout';
   delay_ms: number;

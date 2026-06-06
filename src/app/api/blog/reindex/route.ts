@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { notifyIndexing } from '@/lib/indexing';
+import { apiResponse } from '@/lib/api-response';
 
 /**
  * POST /api/blog/reindex
@@ -16,7 +17,7 @@ import { notifyIndexing } from '@/lib/indexing';
  */
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
   try {
@@ -24,7 +25,7 @@ export async function POST(request: NextRequest) {
     const { id, slug } = body as { id?: string; slug?: string };
 
     if (!id && !slug) {
-      return NextResponse.json({ error: 'id 또는 slug 필수' }, { status: 400 });
+      return apiResponse({ error: 'id 또는 slug 필수' }, { status: 400 });
     }
 
     // 블로그 조회 (slug 확인 + 발행 상태 검증)
@@ -37,18 +38,18 @@ export async function POST(request: NextRequest) {
     const { data, error } = await query.limit(1);
     if (error) throw error;
     if (!data || data.length === 0) {
-      return NextResponse.json({ error: '블로그 글을 찾을 수 없습니다.' }, { status: 404 });
+      return apiResponse({ error: '블로그 글을 찾을 수 없습니다.' }, { status: 404 });
     }
 
     const post = data[0] as { slug: string; status: string };
     if (post.status !== 'published') {
-      return NextResponse.json(
+      return apiResponse(
         { error: `발행된 글만 재색인 가능합니다. (현재 상태: ${post.status})` },
         { status: 400 },
       );
     }
     if (!post.slug) {
-      return NextResponse.json({ error: 'slug가 없는 글은 재색인 불가' }, { status: 400 });
+      return apiResponse({ error: 'slug가 없는 글은 재색인 불가' }, { status: 400 });
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
@@ -56,10 +57,10 @@ export async function POST(request: NextRequest) {
 
     const report = await notifyIndexing(url, baseUrl);
 
-    return NextResponse.json({ report });
+    return apiResponse({ report });
   } catch (err) {
     console.error('[blog/reindex] 오류:', err);
-    return NextResponse.json(
+    return apiResponse(
       { error: err instanceof Error ? err.message : '재색인 실패' },
       { status: 500 },
     );

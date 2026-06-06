@@ -235,7 +235,7 @@ async function buildDashboard(affiliateRow: AffiliateRow, authenticated = true) 
       .limit(12),
     supabaseAdmin
       .from('bookings')
-      .select('id, product_name, package_title, booking_date, status, total_price, influencer_commission, referral_code, promo_code, promo_affiliate_id, attribution_model, attribution_split, attribution_snapshot, created_at')
+      .select('id, package_title, booking_date, status, total_price, influencer_commission, referral_code, promo_code, promo_affiliate_id, attribution_model, attribution_split, attribution_snapshot, created_at')
       .eq('affiliate_id', affiliate.id)
       .order('created_at', { ascending: false })
       .limit(10),

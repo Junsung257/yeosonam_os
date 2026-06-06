@@ -36,6 +36,17 @@ export interface CreateLandingBookingRequestInput {
   idempotencyKey?: string | null;
 }
 
+export type LandingBookingReplay = {
+  booking: {
+    id: string;
+    booking_no: string | null;
+    status: string | null;
+    idempotency_key: string | null;
+  };
+  customerId: null;
+  idempotentReplay: true;
+};
+
 type PackageRow = {
   id: string;
   title: string | null;
@@ -45,25 +56,67 @@ type PackageRow = {
   price_list?: unknown;
   price_tiers?: unknown;
   destination: string | null;
+  affiliate_commission_rate: number | null;
   land_operator: string | null;
   land_operator_id: string | null;
-  products?: { internal_code?: string | null; departure_region?: string | null } | Array<{ internal_code?: string | null; departure_region?: string | null }> | null;
+  products?:
+    | { internal_code?: string | null; departure_region?: string | null }
+    | Array<{ internal_code?: string | null; departure_region?: string | null }>
+    | null;
+};
+
+type AffiliateRow = {
+  id: string;
+  grade: number | null;
+  bonus_rate: number | null;
+  created_at: string | null;
 };
 
 function digitsOnly(value: string): string {
   return (value ?? '').replace(/\D/g, '');
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function deterministicUuidFromText(value: string): string {
+  const hex = crypto.createHash('sha256').update(value).digest('hex');
+  const bytes = hex.slice(0, 32).split('');
+  bytes[12] = '5';
+  bytes[16] = ((parseInt(bytes[16], 16) & 0x3) | 0x8).toString(16);
+  const id = bytes.join('');
+  return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20, 32)}`;
+}
+
 function makeIdempotencyKey(input: CreateLandingBookingRequestInput): string {
-  const raw = [
+  return deterministicUuidFromText([
     'landing-booking',
     input.productId,
     input.form.desiredDate,
     input.form.adults,
     input.form.children,
     digitsOnly(input.form.phone),
-  ].join('|');
-  return `lp:${crypto.createHash('sha256').update(raw).digest('hex').slice(0, 48)}`;
+  ].join('|'));
+}
+
+function normalizeBookingIdempotencyKey(value: string | null | undefined, input: CreateLandingBookingRequestInput): string {
+  const raw = value?.trim();
+  if (!raw) return makeIdempotencyKey(input);
+  return UUID_RE.test(raw) ? raw : deterministicUuidFromText(raw);
+}
+
+export async function findExistingLandingBookingReplay(
+  input: CreateLandingBookingRequestInput,
+): Promise<LandingBookingReplay | null> {
+  const idempotencyKey = normalizeBookingIdempotencyKey(input.idempotencyKey, input);
+  const { data: existing, error } = await supabaseAdmin
+    .from('bookings')
+    .select('id, booking_no, status, idempotency_key')
+    .eq('idempotency_key', idempotencyKey)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!existing) return null;
+  return { booking: existing, customerId: null, idempotentReplay: true };
 }
 
 function pickProductsCode(products: PackageRow['products']): string | undefined {
@@ -85,27 +138,72 @@ function resolveUnitPrice(pkg: PackageRow, desiredDate: string): number {
   return Number(pkg.price ?? 0) || 0;
 }
 
+async function resolveAffiliateCommission(input: {
+  affiliateRef: string | null | undefined;
+  packageRow: PackageRow;
+  adultCount: number;
+  childCount: number;
+  adultPrice: number;
+  childPrice: number;
+}) {
+  if (!input.affiliateRef) return null;
+
+  const { data: affiliate, error } = await supabaseAdmin
+    .from('affiliates')
+    .select('id, grade, bonus_rate, created_at')
+    .eq('referral_code', input.affiliateRef)
+    .eq('is_active', true)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!affiliate) return null;
+
+  const affiliateRow = affiliate as AffiliateRow;
+  const { applyCommissionPolicies } = await import('@/lib/policy-engine');
+  const productRate = Number(input.packageRow.affiliate_commission_rate);
+  const baseRate = Number.isFinite(productRate) && productRate >= 0 ? productRate : 0.02;
+  const daysSinceSignup = affiliateRow.created_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(affiliateRow.created_at).getTime()) / 86400000))
+    : 0;
+
+  const breakdown = await applyCommissionPolicies({
+    product_id: input.packageRow.id,
+    destination: input.packageRow.destination ?? undefined,
+    affiliate_id: affiliateRow.id,
+    affiliate_grade: affiliateRow.grade ?? 1,
+    days_since_signup: daysSinceSignup,
+    base_rate: baseRate,
+    tier_bonus: Math.max(0, Number(affiliateRow.bonus_rate ?? 0)),
+  });
+  const commissionBase = input.adultCount * input.adultPrice + input.childCount * input.childPrice;
+
+  return {
+    affiliateId: affiliateRow.id,
+    influencerCommission: Math.round(commissionBase * breakdown.final_rate),
+    appliedTotalCommissionRate: breakdown.final_rate,
+    commissionBreakdown: {
+      ...breakdown,
+      source: 'landing_lead',
+      referral_code: input.affiliateRef,
+    } satisfies Record<string, unknown>,
+  };
+}
+
 export async function createLandingBookingRequest(input: CreateLandingBookingRequestInput) {
   if (!input.productId) throw new Error('productId is required');
   if (!input.form?.name || !input.form?.phone || !input.form?.privacyConsent) {
     throw new Error('required customer fields are missing');
   }
 
-  const idempotencyKey = input.idempotencyKey?.trim() || makeIdempotencyKey(input);
-  const { data: existing } = await supabaseAdmin
-    .from('bookings')
-    .select('id, booking_no, status, idempotency_key')
-    .eq('idempotency_key', idempotencyKey)
-    .maybeSingle();
-  if (existing) {
-    return { booking: existing, customerId: null, idempotentReplay: true };
-  }
+  const idempotencyKey = normalizeBookingIdempotencyKey(input.idempotencyKey, input);
+  const replay = await findExistingLandingBookingReplay(input);
+  if (replay) return replay;
 
   const [{ data: pkg, error: pkgErr }, customerId] = await Promise.all([
     supabaseAdmin
       .from('travel_packages')
       .select(
-        'id, title, price, cost_price, price_dates, price_list, price_tiers, destination, land_operator, land_operator_id, products(internal_code, departure_region)',
+        'id, title, price, cost_price, price_dates, price_list, price_tiers, destination, affiliate_commission_rate, land_operator, land_operator_id, products(internal_code, departure_region)',
       )
       .eq('id', input.productId)
       .maybeSingle(),
@@ -125,17 +223,25 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
   const childCost = adultCost;
   const totalPeople = adultCount + childCount;
   const internalCode = pickProductsCode(packageRow.products);
+  const affiliateCommission = await resolveAffiliateCommission({
+    affiliateRef: input.affiliateRef,
+    packageRow,
+    adultCount,
+    childCount,
+    adultPrice,
+    childPrice,
+  });
 
   const notes = [
     '[랜딩 예약 요청]',
-    '고객이 상품 랜딩에서 예약 요청 후 카카오 채널로 이동했습니다.',
+    '고객이 상품 랜딩에서 예약 문의 후 카카오 채널로 이동했습니다.',
     `희망 출발일: ${input.form.desiredDate || '미정'}`,
     `인원: 성인 ${adultCount}명 / 아동 ${childCount}명`,
     input.leadId ? `lead_id: ${input.leadId}` : null,
     internalCode ? `상품코드: ${internalCode}` : null,
     input.tracking?.landingUrl ? `랜딩URL: ${input.tracking.landingUrl}` : null,
     input.affiliateRef ? `제휴코드: ${input.affiliateRef}` : null,
-    '운영자 액션: 랜드사 좌석 가능 여부 확인 후 고객에게 카카오로 안내',
+    '운영 액션: 좌석/가능 여부 확인 후 고객에게 카카오로 안내',
   ].filter(Boolean).join('\n');
 
   const booking = await createBooking({
@@ -156,6 +262,15 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
     notes,
     status: 'pending',
     paidAmount: 0,
+    ...(affiliateCommission
+      ? {
+          affiliateId: affiliateCommission.affiliateId,
+          bookingType: 'AFFILIATE',
+          influencerCommission: affiliateCommission.influencerCommission,
+          appliedTotalCommissionRate: affiliateCommission.appliedTotalCommissionRate,
+          commissionBreakdown: affiliateCommission.commissionBreakdown,
+        }
+      : {}),
     idempotencyKey,
     conversationId: input.chatSessionId || undefined,
     depositNoticeBlocked: true,
@@ -165,6 +280,27 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
     utm_term: input.tracking?.utmTerm || null,
     utm_content: input.tracking?.utmContent || null,
     referral_code: input.affiliateRef || null,
+    attribution_model: input.affiliateRef ? 'last_touch' : null,
+    attribution_split: input.affiliateRef
+      ? {
+          model: 'last_touch',
+          last_touch: input.affiliateRef,
+          source: 'landing_lead',
+        }
+      : null,
+    attribution_snapshot: input.affiliateRef
+      ? {
+          source: 'landing_lead',
+          captured_at: new Date().toISOString(),
+          affiliate_id: affiliateCommission?.affiliateId ?? null,
+          referral_code: input.affiliateRef,
+          utm_source: input.affiliateRef || input.tracking?.utmSource || null,
+          utm_medium: input.tracking?.utmMedium || null,
+          utm_campaign: input.tracking?.utmCampaign || null,
+          utm_term: input.tracking?.utmTerm || null,
+          utm_content: input.tracking?.utmContent || null,
+        }
+      : null,
   });
 
   if (booking?.id) {
@@ -173,7 +309,7 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
       desired_date: input.form.desiredDate || null,
       total_people: totalPeople,
       source: input.channel ?? 'landing',
-      next_manual_step: '랜드사 좌석 가능 여부 확인',
+      next_manual_step: '좌석/가능 여부 확인 후 고객에게 카카오로 안내',
     });
 
     dispatchPushAsync({

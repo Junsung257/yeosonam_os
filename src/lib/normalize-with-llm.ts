@@ -22,7 +22,7 @@
 
 import crypto from 'crypto';
 import OpenAI from 'openai';
-import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType, type ResponseSchema } from '@google/generative-ai';
 import {
   NormalizedIntakeSchema,
   validateIntake,
@@ -356,9 +356,7 @@ async function runGemini(
         systemInstruction: systemPrompt,
         generationConfig: {
           responseMimeType: 'application/json',
-          responseSchema: zodToGeminiSchema(NormalizedIntakeSchema) as unknown as Parameters<
-            typeof model.generateContent
-          >[0] extends { generationConfig?: { responseSchema?: infer S } } ? S : never,
+          responseSchema: zodToGeminiSchema(NormalizedIntakeSchema) as ResponseSchema,
           temperature: 0.1,
           maxOutputTokens: 8192,
         },

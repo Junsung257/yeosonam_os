@@ -5,17 +5,10 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import useSWR from 'swr';
 import {
-  LayoutDashboard, Inbox, BookOpenCheck, Users, Wallet, FileText,
-  Package, ClipboardCheck, Upload, Building2, ScrollText, MapPinned, Mountain, Globe,
-  Handshake, BarChart3, BarChart4, UserPlus, FileQuestion, Headset, Layers, Compass,
-  BookCopy, Coins, Calculator,
-  Megaphone, Sparkles as Sparkle, Newspaper, FolderKanban, ListChecks, TrendingUp, AlertTriangle, Search as SearchIcon, BookOpen,
-  Bot, Wand2, MessageCircle, MessageSquare, FilePlus2, LibraryBig,
-  Activity, Siren, Timer,
-  LogOut, Star, StarOff, Menu as MenuIcon, Eye,
-  ArrowLeftRight, Unlink, FileSearch, PackagePlus, Combine,
-  Receipt, Plane, Palette, Target, Zap, Send, Link2,
-  Tags, BadgeDollarSign, Settings, PencilLine, GitBranch, SlidersHorizontal, Shield,
+  Sparkles as Sparkle, Newspaper,
+  Bot, ClipboardCheck,
+  LogOut, Star, StarOff, Menu as MenuIcon,
+  ArrowLeftRight, Unlink,
   ChevronRight, ChevronDown, X,
   type LucideIcon,
 } from 'lucide-react';
@@ -37,184 +30,29 @@ import { useUserRole } from '@/hooks/useUserRole';
 import { useNavLogger, readNavUsage } from '@/hooks/useNavLogger';
 import SidebarAIWidget from './admin/SidebarAIWidget';
 import { IntentRecommendationsBar } from './admin/IntentRecommendations';
+import {
+  buildAdminMissionItems,
+  filterActiveMissionItems,
+  getMissionTotal,
+  type AdminBadgeCounts,
+  type AdminMissionId,
+  type AdminMissionItem,
+  type AdminMissionTone,
+} from '@/lib/admin-mission-control';
+import {
+  adminNavGroups,
+  allAdminNavItems,
+  filterNavGroups,
+  getNavItemBadge,
+  type NavGroup,
+  type NavItem,
+} from '@/lib/admin-navigation';
 
 // ── 역할 기반 접근 제어 타입 ─────────────────────────────
-/** 최소 필요 역할 (낮을수록 더 많은 접근) */
-export type MenuRoleLevel = 'platform_admin' | 'tenant_admin' | 'tenant_staff';
-
-/** 역할 계층 (숫자가 높을수록 더 broad) */
-const ROLE_HIERARCHY: Record<MenuRoleLevel, number> = {
-  platform_admin: 3,
-  tenant_admin: 2,
-  tenant_staff: 1,
-};
-
-/** 사용자 역할이 minRole 조건을 만족하는지 검사 */
-export function hasMenuAccess(
-  userRole: string | undefined,
-  minRole: MenuRoleLevel | undefined,
-): boolean {
-  if (!minRole) return true; // 제한 없음 → 모두 접근 가능
-  if (!userRole) return false;
-  const userLevel = ROLE_HIERARCHY[userRole as MenuRoleLevel] ?? 0;
-  const requiredLevel = ROLE_HIERARCHY[minRole];
-  return userLevel >= requiredLevel;
-}
-
-// ── 카테고리 그룹핑 사이드바 메뉴 ─────────────────────────────
-interface NavItem {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  exact?: boolean;
-  /** 최소 필요 역할 (없으면 모두 접근 가능) */
-  minRole?: MenuRoleLevel;
-}
-
-interface NavDivider {
-  divider: true;
-  label: string;
-}
-
-interface NavGroup {
-  title: string;
-  icon: LucideIcon;
-  items: (NavItem | NavDivider)[];
-  /** 그룹 전체의 최소 필요 역할 (개별 항목보다 우선) */
-  minRole?: MenuRoleLevel;
-}
-
-const navGroups: NavGroup[] = [
-  {
-    title: '운영',
-    icon: LayoutDashboard,
-    items: [
-      { href: '/admin',                    label: '대시보드',     icon: LayoutDashboard, exact: true },
-      { href: '/admin/inbox',              label: '고객 문의',    icon: Inbox },
-      { href: '/admin/leads',              label: '예약 문의',    icon: MessageSquare },
-      { href: '/admin/bookings',           label: '예약 관리',    icon: BookOpenCheck },
-      { href: '/admin/customers',          label: '고객 관리',    icon: Users },
-      { href: '/admin/reviews',            label: '리뷰 분석',    icon: Star },
-      { href: '/admin/flight-alerts',      label: '항공 지연',    icon: Plane },
-    ],
-  },
-  {
-    title: '상품·공급',
-    icon: Package,
-    items: [
-      { href: '/admin/packages',                      label: '상품 관리',          icon: Package },
-      { href: '/admin/packages?status=pending',         label: '상품 검수',          icon: ClipboardCheck },
-      { href: '/admin/upload',                        label: '상품 업로드',        icon: Upload },
-      { href: '/admin/product-registration-drafts',   label: 'V3 Draft Ledger',      icon: FileSearch },
-      { href: '/admin/land-operators',                label: '랜드사 관리',        icon: Building2, minRole: 'tenant_admin' },
-      { href: '/admin/attractions',                   label: '여행지/관광지',       icon: Mountain },
-      { href: '/admin/destinations',                  label: '목적지 관리',        icon: MapPinned },
-      { href: '/admin/departing-locations',           label: '출발지 관리',        icon: Globe },
-      { href: '/admin/terms-templates',               label: '약관 템플릿',        icon: ScrollText, minRole: 'tenant_admin' },
-      { href: '/admin/products/assemble-free-travel', label: '자유여행 상품 조립', icon: Combine, minRole: 'tenant_admin' },
-    ],
-  },
-  {
-    title: '영업·제휴',
-    icon: BarChart3,
-    minRole: 'tenant_admin',
-    items: [
-      { href: '/admin/rfqs',                label: '단체 RFQ',               icon: FileQuestion },
-      { href: '/admin/concierge',           label: '컨시어지',               icon: Headset },
-      { href: '/admin/free-travel',         label: '자유여행 플래너',        icon: Compass },
-      { href: '/admin/affiliates',          label: '제휴/인플루언서',        icon: Handshake },
-      { href: '/admin/affiliate-analytics', label: '제휴 분석',              icon: BarChart3 },
-      { href: '/admin/affiliate-promo-report', label: '프로모코드 성과',      icon: Tags },
-      { href: '/admin/applications',        label: '파트너 신청',            icon: UserPlus },
-      { href: '/admin/partner-preview',     label: '파트너 프론트 미리보기', icon: Eye },
-      { href: '/admin/competitor-prices',   label: '경쟁사 가격',            icon: TrendingUp },
-      { href: '/admin/analytics',           label: 'LTV 코호트',             icon: BarChart3 },
-      { href: '/admin/tenants',             label: '테넌트 관리',            icon: Layers, minRole: 'platform_admin' },
-    ],
-  },
-  {
-    title: '재무',
-    icon: Wallet,
-    minRole: 'tenant_admin',
-    items: [
-      { href: '/admin/payments',                label: '입금 관리',    icon: Wallet },
-      { href: '/admin/payments/reconcile',      label: '입금 매칭',    icon: ArrowLeftRight },
-      { href: '/admin/ledger',                  label: '통합 장부',    icon: BookCopy },
-      { href: '/admin/settlements',             label: '제휴 정산',    icon: Coins },
-      { href: '/admin/land-settlements',        label: '랜드사 정산',  icon: BadgeDollarSign },
-      { href: '/admin/tax',                     label: '세무 관리',    icon: Calculator },
-      { href: '/admin/invoice',                 label: '인보이스 파싱', icon: Receipt },
-    ],
-  },
-  {
-    title: '마케팅·콘텐츠',
-    icon: Megaphone,
-    items: [
-      { href: '/admin/marketing',              label: '마케팅 대시보드',    icon: Megaphone },
-      { href: '/admin/ad-os',                  label: 'Ad OS',             icon: Bot, minRole: 'tenant_admin' },
-      { href: '/admin/marketing/command-center', label: '마케팅 커맨드센터', icon: Target, minRole: 'tenant_admin' },
-      { href: '/admin/marketing/system-health', label: '마케팅 시스템 점검', icon: Activity, minRole: 'tenant_admin' },
-      { href: '/admin/marketing/card-news',    label: '카드뉴스',           icon: Newspaper },
-      { href: '/admin/content-hub',            label: '콘텐츠',             icon: FolderKanban },
-      { href: '/admin/search-ads',             label: '검색광고',           icon: SearchIcon },
-      { href: '/admin/blog',                   label: '블로그',             icon: BookOpen },
-      { href: '/admin/marketing-intelligence', label: '마케팅 인텔리전스',   icon: BarChart4, minRole: 'tenant_admin' },
-      { href: '/admin/tmp-pipeline',           label: 'TMP 파이프라인',     icon: GitBranch, minRole: 'tenant_admin' },
-      { href: '/admin/marketing/creatives',    label: '크리에이티브',       icon: Sparkle },
-      { href: '/admin/tenant-tokens',          label: 'API 토큰 관리',      icon: SlidersHorizontal, minRole: 'tenant_admin' },
-    ],
-  },
-  {
-    title: 'AI·자동화',
-    icon: Bot,
-    minRole: 'tenant_admin',
-    items: [
-      { href: '/admin/jarvis',                  label: '자비스 AI',         icon: Bot },
-      { href: '/admin/qa',                      label: 'Q&A 챗봇',          icon: MessageCircle },
-      { href: '/admin/generate',                label: 'AI 생성',           icon: Wand2 },
-      { href: '/admin/jarvis/rag',              label: 'RAG 검색',          icon: SearchIcon },
-      { href: '/admin/mcp',                     label: 'MCP 게이트웨이',    icon: Link2 },
-      { href: '/admin/platform-learning',       label: 'AI 플라이휠',       icon: LibraryBig, minRole: 'platform_admin' },
-      { href: '/admin/agent-mas',               label: 'MAS 관제',          icon: GitBranch, minRole: 'platform_admin' },
-      { href: '/admin/extractions/corrections', label: 'AI 파싱 교정 이력', icon: PencilLine, minRole: 'platform_admin' },
-      { href: '/admin/prompts',                 label: '프롬프트 레지스트리', icon: SlidersHorizontal, minRole: 'platform_admin' },
-    ],
-  },
-  {
-    title: '시스템',
-    icon: Activity,
-    minRole: 'platform_admin',
-    items: [
-      { href: '/admin/control-tower',  label: 'OS 관제탑',     icon: Activity },
-      { href: '/admin/ops',            label: '크론·작업',     icon: Timer },
-      { href: '/admin/scoring',        label: '점수 정책',     icon: Star },
-      { href: '/admin/alerts',         label: '운영 알림',     icon: AlertTriangle },
-      { href: '/admin/escalations',    label: '에스컬레이션',  icon: Siren },
-      { href: '/admin/gdpr',           label: '개인정보 삭제', icon: Shield },
-      { href: '/admin/settings/integrations', label: '외부 플랫폼 연동', icon: Settings },
-    ],
-  },
-];
+export type { MenuRoleLevel } from '@/lib/admin-mission-control';
 
 const FAV_STORAGE_KEY = 'admin.favorites';
 const FAV_LIMIT = 7;
-
-/** navGroups 중 사용자 역할에 접근 가능한 그룹/아이템만 필터링 */
-function filterNavGroups(groups: NavGroup[], role: string | undefined): NavGroup[] {
-  return groups
-    .filter((g) => hasMenuAccess(role, g.minRole))
-    .map((g) => ({
-      ...g,
-      items: g.items.filter((it) => {
-        if ('divider' in it) return false; // divider는 필터에서 제외 (현재 사용 안 함)
-        return hasMenuAccess(role, (it as NavItem).minRole);
-      }),
-    }))
-    .filter((g) => g.items.length > 0);
-}
-
-/** allItems는 항상 전체 목록 (즐겨찾기·⌘K용). 역할에 따른 필터링은 render 타임에서 별도 처리. */
-const allItems: NavItem[] = navGroups.flatMap((g) => g.items.filter((it): it is NavItem => !('divider' in it)));
 
 function useFavorites() {
   const [favs, setFavs] = useState<string[]>([]);
@@ -257,6 +95,141 @@ function useFavorites() {
   const isFav = useCallback((href: string) => favs.includes(href), [favs]);
 
   return { favs, isFav, toggle };
+}
+
+const missionIconMap: Record<AdminMissionId, LucideIcon> = {
+  'jarvis-actions': Bot,
+  'package-review': ClipboardCheck,
+  'attraction-matching': Unlink,
+  'payment-matching': ArrowLeftRight,
+  'blog-queue': Newspaper,
+};
+
+const missionToneClass: Record<AdminMissionTone, string> = {
+  danger: 'border-red-200 bg-red-50 text-red-700 hover:border-red-300',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800 hover:border-amber-300',
+  info: 'border-blue-200 bg-blue-50 text-blue-700 hover:border-blue-300',
+};
+
+const missionSlimToneClass: Record<AdminMissionTone, string> = {
+  danger: 'bg-red-50 text-red-700 hover:bg-red-100',
+  warning: 'bg-amber-50 text-amber-800 hover:bg-amber-100',
+  info: 'bg-blue-50 text-blue-700 hover:bg-blue-100',
+};
+
+function formatMissionComputedAt(value: string | undefined) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return new Intl.DateTimeFormat('ko-KR', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
+}
+
+function formatMissionSlo(minutes: number) {
+  if (minutes >= 1440) return `${Math.round(minutes / 1440)}d`;
+  if (minutes >= 60) return `${Math.round(minutes / 60)}h`;
+  return `${minutes}m`;
+}
+
+function MissionControlRail({
+  items,
+  userRole,
+  onNavClick,
+  computedAt,
+}: {
+  items: AdminMissionItem[];
+  userRole: string | undefined;
+  onNavClick: (href: string) => void;
+  computedAt?: string;
+}) {
+  const activeItems = filterActiveMissionItems(items, userRole);
+  const total = getMissionTotal(activeItems);
+  const computedAtLabel = formatMissionComputedAt(computedAt);
+
+  if (activeItems.length === 0) return null;
+
+  return (
+    <div className="mb-2 border-b border-admin-border pb-2">
+      <div className="flex items-center gap-2 px-2 pb-1.5 text-admin-2xs font-semibold uppercase tracking-[0.08em] text-admin-muted">
+        <span>오늘 처리</span>
+        <span className="ml-auto rounded-full bg-admin-surface-2 px-1.5 py-0.5 text-[10px] font-bold text-admin-text tabular-nums">
+          {total}
+        </span>
+      </div>
+      <div className="grid grid-cols-1 gap-1">
+        {activeItems.map((item) => {
+          const Icon = missionIconMap[item.id];
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={item.description}
+              onClick={() => onNavClick(item.href)}
+              className={`flex min-h-10 items-center gap-2 rounded-admin-sm border px-2 py-1.5 text-admin-xs font-medium transition-colors ${missionToneClass[item.tone]}`}
+            >
+              <Icon size={13} className="shrink-0" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate">{item.label}</span>
+                <span className="block truncate text-[10px] font-normal opacity-80">{item.actionLabel}</span>
+                <span className="block truncate text-[10px] font-normal opacity-70">
+                  {item.owner} · SLA {formatMissionSlo(item.sloMinutes)}
+                </span>
+              </span>
+              <span className="rounded-full bg-white/80 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                {item.count}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+      {computedAtLabel && (
+        <div className="px-2 pt-1.5 text-[10px] text-admin-muted-2">
+          갱신 {computedAtLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MissionControlSlimRail({
+  items,
+  userRole,
+  onNavClick,
+}: {
+  items: AdminMissionItem[];
+  userRole: string | undefined;
+  onNavClick: (href: string) => void;
+}) {
+  const activeItems = filterActiveMissionItems(items, userRole).slice(0, 5);
+
+  if (activeItems.length === 0) return null;
+
+  return (
+    <div className="mb-2 border-b border-admin-border pb-2">
+      <div className="flex flex-col items-center gap-1">
+        {activeItems.map((item) => {
+          const Icon = missionIconMap[item.id];
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              title={`${item.label} ${item.count}건 - ${item.actionLabel}`}
+              onClick={() => onNavClick(item.href)}
+              className={`relative flex h-9 w-9 items-center justify-center rounded-admin-md transition-colors ${missionSlimToneClass[item.tone]}`}
+            >
+              <Icon size={15} />
+              <span className="absolute -right-0.5 -top-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-danger px-0.5 text-[8px] font-bold leading-none text-white">
+                {item.count > 9 ? '9+' : item.count}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 interface SidebarItemProps {
@@ -336,12 +309,10 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const { density } = useDensity();
-  const [sidebarMode, setSidebarMode] = useState<'full' | 'slim'>(() => {
-    if (typeof window === 'undefined') return 'full';
-    return (window.localStorage.getItem('admin.sidebar-mode') as 'full' | 'slim') ?? 'full';
-  });
+  const [sidebarMode, setSidebarMode] = useState<'full' | 'slim'>('full');
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
   const { favs, isFav, toggle: toggleFav } = useFavorites();
   const { role: userRole, isLoading: roleLoading } = useUserRole();
   const { trackNavClick } = useNavLogger();
@@ -354,15 +325,22 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   /** 사용자 역할에 따라 필터링된 메뉴 */
   const visibleGroups = useMemo(
-    () => filterNavGroups(navGroups, userRole),
+    () => filterNavGroups(adminNavGroups, userRole),
     [userRole],
   );
 
-  /** 사용 빈도 데이터 읽기. 그룹 위치는 안정적으로 유지하고 추천/접힘 판단에만 사용한다. */
-  const { sortedGroups, usageCounts } = useMemo(() => {
-    const counts = readNavUsage();
-    return { sortedGroups: visibleGroups, usageCounts: counts };
-  }, [visibleGroups]);
+  /** 그룹 위치는 안정적으로 유지하고, 방문 빈도는 hydration 이후 추천/접힘 판단에만 사용한다. */
+  const sortedGroups = visibleGroups;
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem('admin.sidebar-mode');
+      if (saved === 'full' || saved === 'slim') setSidebarMode(saved);
+    } catch {
+      // ignore
+    }
+    setUsageCounts(readNavUsage());
+  }, []);
 
   /** 접힘 상태 초기화 — 방문 빈도 0인 그룹은 기본 접힘 */
   useEffect(() => {
@@ -395,21 +373,12 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   // ── 사이드바 배지 통합 fetch (SWR 60초 폴링) ──────────────────────────
   // 감사: docs/audits/2026-05-11-admin-perf-audit.md
   // 기존 5개 fetch + setInterval → 단일 RPC + SWR dedup + 30s 캐시.
-  const { data: badges } = useSWR<{
-    pendingActions: number;
-    unmatchedPending: number;
-    pendingPackages: number;
-    ledgerDrift: number;
-    blogQueue: number;
-  }>('/api/admin/badge-counts', {
+  const { data: badges } = useSWR<AdminBadgeCounts>('/api/admin/badge-counts', {
     refreshInterval: 60_000,
     dedupingInterval: 30_000,
   });
-  const pendingActionsCount = badges?.pendingActions ?? 0;
-  const unmatchedAttrCount  = badges?.unmatchedPending ?? 0;
-  const pendingReviewCount  = badges?.pendingPackages ?? 0;
-  const ledgerDriftCount    = badges?.ledgerDrift ?? 0;
-  const blogQueueCount      = badges?.blogQueue ?? 0;
+
+  const missionItems = useMemo(() => buildAdminMissionItems(badges), [badges]);
 
   // ShortcutsBridge → CommandPalette 토글 이벤트 수신
   useEffect(() => {
@@ -425,6 +394,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   const handleNavClick = useCallback((href: string) => {
     trackNavClick(href);
+    setUsageCounts((prev) => ({ ...prev, [href]: (prev[href] ?? 0) + 1 }));
     if (typeof window !== 'undefined' && window.innerWidth < 768) {
       setMobileSidebarOpen(false);
     }
@@ -432,8 +402,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   const isActive = useCallback(
     (item: NavItem) => {
-      if (item.exact) return pathname === item.href;
-      return pathname === item.href || pathname.startsWith(item.href + '/');
+      const hrefPath = item.href.split('?')[0];
+      if (item.exact) return pathname === hrefPath;
+      return pathname === hrefPath || pathname.startsWith(hrefPath + '/');
     },
     [pathname],
   );
@@ -444,21 +415,26 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   );
 
   const favoriteItems = useMemo(
-    () => favs.map((href) => allItems.find((it) => it.href === href)).filter(Boolean) as NavItem[],
+    () => favs.map((href) => allAdminNavItems.find((it) => it.href === href)).filter(Boolean) as NavItem[],
     [favs],
   );
 
-  const itemBadge = (item: NavItem): number | undefined => {
-    if (item.href === '/admin/jarvis' && pendingActionsCount > 0) return pendingActionsCount;
-    if (item.href === '/admin/attractions/unmatched' && unmatchedAttrCount > 0) return unmatchedAttrCount;
-    if (item.href === '/admin/payments/reconcile' && ledgerDriftCount > 0) return ledgerDriftCount;
-    if (item.href === '/admin/packages?status=pending' && pendingReviewCount > 0) return pendingReviewCount;
-    if (item.href === '/admin/blog/queue' && blogQueueCount > 0) return blogQueueCount;
-    return undefined;
-  };
+  const itemBadge = useCallback(
+    (item: NavItem): number | undefined => getNavItemBadge(item, badges),
+    [badges],
+  );
 
   // ── ⌘K 명령 카탈로그 (네비 + 액션) ──────────────────────────
   const staticCommands: AdminCommand[] = useMemo(() => {
+    const missionCmds: AdminCommand[] = filterActiveMissionItems(missionItems, userRole).map((item) => ({
+      id: `mission:${item.id}`,
+      kind: 'navigate' as const,
+      label: `${item.label} ${item.count}건`,
+      keywords: ['오늘 처리', item.label, item.actionLabel, item.owner, item.domain, `sla:${item.sloMinutes}`],
+      group: '오늘 처리',
+      icon: missionIconMap[item.id],
+      href: item.href,
+    }));
     const navCmds: AdminCommand[] = visibleGroups.flatMap((g) =>
       g.items
         .filter((it): it is NavItem => !('divider' in it))
@@ -466,6 +442,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           id: `nav:${it.href}`,
           kind: 'navigate' as const,
           label: it.label,
+          keywords: [g.title, it.primaryAction, ...(it.searchKeywords ?? [])].filter(Boolean) as string[],
           group: g.title,
           icon: it.icon,
           href: it.href,
@@ -496,8 +473,8 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
         group: '시스템',
       },
     ];
-    return [...navCmds, ...actionCmds];
-  }, [visibleGroups]);
+    return [...missionCmds, ...navCmds, ...actionCmds];
+  }, [missionItems, userRole, visibleGroups]);
 
   return (
     <div className="admin-scope min-h-screen bg-admin-bg flex" data-density={density}>
@@ -533,6 +510,21 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
         {/* 메뉴 */}
         <nav className={`flex-1 overflow-y-auto py-3 space-y-1 ${sidebarMode === 'slim' ? 'px-1' : 'px-2'}`}>
+          {sidebarMode === 'full' && (
+            <MissionControlRail
+              items={missionItems}
+              userRole={userRole}
+              onNavClick={handleNavClick}
+              computedAt={badges?.computedAt}
+            />
+          )}
+          {sidebarMode === 'slim' && (
+            <MissionControlSlimRail
+              items={missionItems}
+              userRole={userRole}
+              onNavClick={handleNavClick}
+            />
+          )}
           {/* 즐겨찾기 — slim 모드에서 숨김 */}
           {sidebarMode === 'full' && favoriteItems.length > 0 && (
             <div className="pb-2 mb-2 border-b border-admin-border">
@@ -838,13 +830,19 @@ function NavRecommendations({
   usageCounts: Record<string, number>;
   onNavClick: (href: string) => void;
 }) {
-  const [dismissed, setDismissed] = useState<string[]>(() => {
-    if (typeof window === 'undefined') return [];
+  const [dismissed, setDismissed] = useState<string[]>([]);
+
+  useEffect(() => {
     try {
       const raw = window.localStorage.getItem('admin.nav-recs-dismissed');
-      return raw ? JSON.parse(raw) : [];
-    } catch { return []; }
-  });
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) {
+        setDismissed(parsed.filter((v) => typeof v === 'string'));
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
 
   // 방문 3회 미만 + 즐겨찾기 없는 항목 중 랜덤 추천
   const recs = useMemo(() => {

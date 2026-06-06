@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, type ReactNode } from 'react';
-import Image from 'next/image';
 import { isSafeImageSrc } from '@/lib/image-url';
 
 type CoverProps = {
@@ -53,13 +52,13 @@ export function SafeCoverNextImg({ src, alt, sizes, priority = false, className,
   useEffect(() => { setBroken(false); }, [src]);
   if (!ok || broken) return <>{fallback}</>;
   return (
-    <Image
+    <img
       src={src.trim()}
       alt={alt}
-      fill
-      className={`object-cover${className ? ` ${className}` : ''}`}
+      className={`absolute inset-0 h-full w-full object-cover${className ? ` ${className}` : ''}`}
       sizes={sizes ?? '100vw'}
-      priority={priority}
+      loading={priority ? 'eager' : 'lazy'}
+      fetchPriority={priority ? 'high' : 'auto'}
       onError={() => setBroken(true)}
     />
   );

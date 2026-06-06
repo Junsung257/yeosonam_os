@@ -12,7 +12,7 @@
  * 이 함수는 항상 동일한 시간을 보장한다.
  */
 
-import { timingSafeEqual } from 'crypto';
+const textEncoder = new TextEncoder();
 
 /**
  * 두 문자열을 상수 시간으로 비교한다. 길이가 다르면 즉시 false (이건 공격에 도움 안됨).
@@ -23,8 +23,13 @@ import { timingSafeEqual } from 'crypto';
  */
 export function safeEqualString(a: string | null | undefined, b: string | null | undefined): boolean {
   if (a == null || b == null) return false;
-  const bufA = Buffer.from(a);
-  const bufB = Buffer.from(b);
-  if (bufA.length !== bufB.length) return false;
-  return timingSafeEqual(bufA, bufB);
+  const bytesA = textEncoder.encode(a);
+  const bytesB = textEncoder.encode(b);
+  if (bytesA.length !== bytesB.length) return false;
+
+  let mismatch = 0;
+  for (let i = 0; i < bytesA.length; i += 1) {
+    mismatch |= bytesA[i] ^ bytesB[i];
+  }
+  return mismatch === 0;
 }

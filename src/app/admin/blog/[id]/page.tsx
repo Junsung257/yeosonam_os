@@ -181,7 +181,7 @@ export default function BlogEditPage() {
   const handleReindex = async () => {
     if (!id) { showToast('블로그 ID가 올바르지 않습니다.'); return; }
 
-    if (!confirm('이 글의 색인 요청을 검색엔진에 다시 보내시겠습니까?\n\n- Google Indexing API\n- IndexNow (Bing/Yandex 등)\n- Bing sitemap ping')) return;
+    if (!confirm('이 글의 색인 요청을 검색엔진에 다시 보내시겠습니까?\n\n- Google Search Console sitemap 제출\n- IndexNow (Bing/Yandex/Seznam 등)\n- 보조 sitemap/feed ping')) return;
     setReindexing(true);
     try {
       const res = await fetch('/api/blog/reindex', {
@@ -238,7 +238,7 @@ export default function BlogEditPage() {
           {status === 'published' && slug && (
             <>
               <button onClick={handleReindex} disabled={reindexing}
-                title="Google + IndexNow + Bing에 색인 요청 (색인 가속)"
+                title="Google Search Console sitemap + IndexNow 색인 요청"
                 className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-admin-xs rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
                 {reindexing ? '요청 중...' : '🔄 재색인 요청'}
               </button>

@@ -198,6 +198,7 @@ td, th {
 /* ── 표 — Linear/Stripe 정석 (hairline + tabular nums) ── */
 .admin-scope table.admin-data-table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   font-variant-numeric: tabular-nums;
@@ -224,6 +225,7 @@ td, th {
   border-bottom: 1px solid var(--admin-border);
   background-color: var(--admin-surface);
   vertical-align: middle;
+  overflow-wrap: anywhere;
 }
 .admin-scope table.admin-data-table tbody tr:hover td {
   background-color: var(--admin-surface-2);

@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { successResponse, ApiErrors } from '@/lib/api-response';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { normalizeAffiliateReferralCode } from '@/lib/affiliate-ref-code';
-import { createLandingBookingRequest } from '@/lib/lead-booking-request';
+import { createLandingBookingRequest, findExistingLandingBookingReplay } from '@/lib/lead-booking-request';
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,6 +16,25 @@ export async function POST(req: NextRequest) {
     const affRaw = req.cookies.get('aff_ref')?.value || null;
     const affCanon = affRaw?.trim() ? normalizeAffiliateReferralCode(affRaw) : '';
     const affRef = affCanon || null;
+
+    const replay = await findExistingLandingBookingReplay({
+      productId,
+      channel,
+      form,
+      tracking,
+      chatSessionId,
+      leadId: null,
+      affiliateRef: affRef,
+      idempotencyKey,
+    });
+    if (replay) {
+      return successResponse({
+        ok: true,
+        lead_id: null,
+        booking: replay.booking,
+        idempotent_replay: true,
+      });
+    }
 
     const { data: insertedLead, error } = await supabase.from('leads').insert({
       product_id: productId,

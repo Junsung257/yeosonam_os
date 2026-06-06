@@ -1,34 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { isAdminRequest } from '@/lib/admin-guard';
-import { notifyIndexing } from '@/lib/indexing';
+import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
+import { isAdminRequest } from '@/lib/admin-guard';
+import { apiResponse } from '@/lib/api-response';
+import { notifyIndexingBatch } from '@/lib/indexing';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+
+type BulkReindexBody = {
+  batchSize?: number;
+  dryRun?: boolean;
+  since?: string;
+};
+
+type BlogPostForReindex = {
+  id: string;
+  slug: string;
+  published_at: string;
+};
+
+type BulkReindexResult = {
+  slug: string;
+  google: string;
+  indexnow: string;
+  google_error?: string;
+  indexnow_error?: string;
+};
 
 /**
  * POST /api/blog/bulk-reindex
  *
- * 발행된 모든 블로그 글에 Google Indexing API + IndexNow 색인 요청.
- * Google Indexing API 일 200회 제한 → batchSize=200 기본.
- *
- * Body (선택):
- *   { batchSize?: number; dryRun?: boolean; since?: string }
- *   - batchSize: 한 번에 처리할 최대 수 (기본 200)
- *   - dryRun: true면 DB 조회만 하고 실제 알림 X
- *   - since: ISO 날짜 — 이 날짜 이후 발행된 글만 처리 (예: "2026-04-01")
+ * Revalidates published blog pages and sends batched indexing notifications.
+ * Normal blog URLs use Google Search Console sitemap submit plus IndexNow.
  */
 export async function POST(request: NextRequest) {
   if (!(await isAdminRequest(request))) {
-    return NextResponse.json({ error: 'admin 권한 필요' }, { status: 403 });
+    return apiResponse({ error: 'admin 권한 필요' }, { status: 403 });
   }
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return apiResponse({ error: 'DB 미설정' }, { status: 503 });
   }
 
-  const body = await request.json().catch(() => ({}));
+  const body = (await request.json().catch(() => ({}))) as BulkReindexBody;
   const batchSize = Math.min(200, Math.max(1, Number(body.batchSize) || 200));
   const dryRun = body.dryRun === true;
-  const since = body.since as string | undefined;
-
+  const since = body.since;
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
   try {
@@ -46,44 +60,64 @@ export async function POST(request: NextRequest) {
     const { data, error } = await query;
     if (error) throw error;
 
-    const posts = (data || []) as Array<{ id: string; slug: string; published_at: string }>;
+    const posts = (data || []) as BlogPostForReindex[];
 
     if (dryRun) {
-      return NextResponse.json({
+      return apiResponse({
         dryRun: true,
         found: posts.length,
-        slugs: posts.map(p => p.slug),
+        slugs: posts.map((post) => post.slug),
       });
     }
 
-    // ISR 캐시 무효화 + Indexing API 알림 (순차 처리, 500ms 간격 — rate limit 방어)
-    const results: Array<{ slug: string; google: string; indexnow: string; google_error?: string; indexnow_error?: string }> = [];
-    for (const post of posts) {
-      revalidatePath(`/blog/${post.slug}`);
-      const url = `${baseUrl}/blog/${post.slug}`;
-      try {
-        const report = await notifyIndexing(url, baseUrl);
-        results.push({ slug: post.slug, google: report.google, indexnow: report.indexnow, google_error: report.google_error, indexnow_error: report.indexnow_error });
-      } catch {
-        results.push({ slug: post.slug, google: 'error', indexnow: 'error' });
-      }
-      // 500ms 딜레이 — Google Indexing API 200req/day 준수
-      await new Promise(r => setTimeout(r, 500));
+    if (posts.length === 0) {
+      return apiResponse({
+        processed: 0,
+        google_success: 0,
+        indexnow_success: 0,
+        results: [] as BulkReindexResult[],
+      });
     }
 
+    for (const post of posts) {
+      revalidatePath(`/blog/${post.slug}`);
+    }
     revalidatePath('/blog');
 
-    const googleOk = results.filter(r => r.google === 'success').length;
-    const indexnowOk = results.filter(r => r.indexnow === 'success').length;
+    const urls = posts.map((post) => `${baseUrl}/blog/${post.slug}`);
+    const reports = await notifyIndexingBatch(urls, baseUrl);
+    const reportRows = reports.map((report, idx) => ({
+      url: report.url,
+      content_creative_id: posts[idx]?.id ?? null,
+      google_status: report.google,
+      google_error: report.google_error ?? null,
+      indexnow_status: report.indexnow,
+      indexnow_error: report.indexnow_error ?? null,
+      sitemap_pings: report.sitemap_pings,
+      duration_ms: report.duration_ms,
+    }));
+    const { error: reportError } = await supabaseAdmin
+      .from('indexing_reports')
+      .insert(reportRows);
 
-    return NextResponse.json({
+    const results: BulkReindexResult[] = reports.map((report, idx) => ({
+      slug: posts[idx]?.slug ?? report.url,
+      google: report.google,
+      indexnow: report.indexnow,
+      google_error: report.google_error,
+      indexnow_error: report.indexnow_error,
+    }));
+
+    return apiResponse({
       processed: results.length,
-      google_success: googleOk,
-      indexnow_success: indexnowOk,
+      google_success: results.filter((result) => result.google === 'success').length,
+      indexnow_success: results.filter((result) => result.indexnow === 'success').length,
+      report_persisted: !reportError,
+      report_persist_error: reportError?.message ?? null,
       results,
     });
   } catch (err) {
-    return NextResponse.json(
+    return apiResponse(
       { error: err instanceof Error ? err.message : '처리 실패' },
       { status: 500 },
     );

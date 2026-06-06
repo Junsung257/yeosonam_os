@@ -248,27 +248,27 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
           큐에 항목이 없습니다. 스케줄러를 실행해서 토픽을 채워보세요.
         </div>
       ) : (
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
-          <table className="admin-data-table">
+        <div className="max-w-full overflow-x-auto rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-xs">
+          <table className="admin-data-table w-full min-w-[860px] table-fixed">
             <thead>
               <tr>
-                <th style={{ width: 96 }}>소스</th>
+                <th style={{ width: 104 }}>소스</th>
                 <th>토픽</th>
-                <th style={{ width: 80 }}>목적지</th>
-                <th className="text-center" style={{ width: 48 }}>우선</th>
-                <th style={{ width: 128 }}>발행 예정</th>
-                <th style={{ width: 80 }}>상태</th>
+                <th style={{ width: 112 }}>목적지</th>
+                <th className="text-center" style={{ width: 56 }}>우선</th>
+                <th style={{ width: 120 }}>발행 예정</th>
+                <th style={{ width: 92 }}>상태</th>
                 <th style={{ width: 64 }}></th>
               </tr>
             </thead>
             <tbody>
               {items.map(it => (
                 <tr key={it.id}>
-                  <td className="text-admin-xs text-admin-muted">
+                  <td className="truncate text-admin-xs text-admin-muted">
                     {SOURCE_LABELS[it.source] || it.source}
                   </td>
-                  <td>
-                    <p className="text-admin-sm text-admin-text truncate max-w-md">{it.topic}</p>
+                  <td className="min-w-0">
+                    <p className="truncate text-admin-sm text-admin-text">{it.topic}</p>
                     <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                       {it.keyword_tier && TIER_BADGES[it.keyword_tier] && (
                         <span className={`px-1.5 py-0.5 text-[9px] rounded-admin-xs border font-mono font-bold ${TIER_BADGES[it.keyword_tier].cls}`}>
@@ -295,10 +295,10 @@ export default function BlogQueuePage({ initialItems, initialCounts }: BlogQueue
                       )}
                     </div>
                     {it.last_error && (
-                      <p className="text-admin-2xs text-danger truncate mt-0.5">⚠ {it.last_error}</p>
+                      <p className="mt-0.5 truncate text-admin-2xs text-danger">⚠ {it.last_error}</p>
                     )}
                   </td>
-                  <td className="text-admin-xs text-admin-muted">{it.destination || '—'}</td>
+                  <td className="truncate text-admin-xs text-admin-muted">{it.destination || '—'}</td>
                   <td className="text-center text-admin-xs font-mono text-admin-muted admin-num">{it.priority}</td>
                   <td className="text-admin-xs text-admin-muted font-mono admin-num">
                     {it.target_publish_at

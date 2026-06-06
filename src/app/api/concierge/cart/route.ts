@@ -4,6 +4,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { getCart, upsertCart, isSupabaseConfigured, CartItem } from '@/lib/supabase';
+import { sanitizeConciergeItemForPublic, sanitizeConciergeItemsForPublic } from '@/lib/concierge-public-payload';
 
 function getSessionId(request: NextRequest): string | null {
   return request.headers.get('x-session-id') ??
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
 
   const cart = await getCart(sessionId);
-  return NextResponse.json({ items: cart?.items ?? [] });
+  return NextResponse.json({ items: sanitizeConciergeItemsForPublic(cart?.items ?? []) });
 }
 
 // POST /api/concierge/cart  body: { session_id, item }  or  { session_id, items }
@@ -32,12 +33,13 @@ export async function POST(request: NextRequest) {
 
   if (body.items) {
     // 전체 교체
-    const updated = await upsertCart(sessionId, body.items as CartItem[]);
-    return NextResponse.json({ items: updated?.items ?? body.items });
+    const safeItems = sanitizeConciergeItemsForPublic(body.items) as unknown as CartItem[];
+    const updated = await upsertCart(sessionId, safeItems);
+    return NextResponse.json({ items: sanitizeConciergeItemsForPublic(updated?.items ?? safeItems) });
   }
 
   if (body.item) {
-    const newItem: CartItem = body.item;
+    const newItem: CartItem = sanitizeConciergeItemForPublic(body.item) as unknown as CartItem;
     // 같은 product_id 있으면 quantity += 1
     const idx = existing.findIndex(i => i.product_id === newItem.product_id);
     let updated: CartItem[];
@@ -49,7 +51,7 @@ export async function POST(request: NextRequest) {
       updated = [...existing, { ...newItem, quantity: newItem.quantity ?? 1 }];
     }
     const result = await upsertCart(sessionId, updated);
-    return NextResponse.json({ items: result?.items ?? updated });
+    return NextResponse.json({ items: sanitizeConciergeItemsForPublic(result?.items ?? updated) });
   }
 
   return NextResponse.json({ error: 'item 또는 items 필요' }, { status: 400 });
@@ -67,10 +69,10 @@ export async function DELETE(request: NextRequest) {
     const existing: CartItem[] = cart?.items ?? [];
     const updated = existing.filter(i => i.product_id !== body.product_id);
     const result = await upsertCart(sessionId, updated);
-    return NextResponse.json({ items: result?.items ?? updated });
+    return NextResponse.json({ items: sanitizeConciergeItemsForPublic(result?.items ?? updated) });
   }
 
   // 전체 비우기
   const result = await upsertCart(sessionId, []);
-  return NextResponse.json({ items: result?.items ?? [] });
+  return NextResponse.json({ items: sanitizeConciergeItemsForPublic(result?.items ?? []) });
 }
