@@ -19,12 +19,31 @@ const fixturesPath = path.join(__dirname, 'fixtures.json');
 const fixtures: Fixture[] = fs.existsSync(fixturesPath)
   ? JSON.parse(fs.readFileSync(fixturesPath, 'utf8'))
   : [];
+const fixtureIds = csvSet(process.env.VISUAL_FIXTURE_IDS);
+const fixtureProducts = csvSet(process.env.VISUAL_FIXTURE_PRODUCTS);
+const selectedFixtures = fixtures.filter((fx) => {
+  if (!fixtureIds && !fixtureProducts) return true;
+  return Boolean(fixtureIds?.has(fx.id) || fixtureProducts?.has(fx.product));
+});
+
+function csvSet(value: string | undefined): Set<string> | null {
+  if (!value) return null;
+  const items = value
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
+  return items.length > 0 ? new Set(items) : null;
+}
 
 if (fixtures.length === 0) {
   test.skip('fixtures.json 없음 — scripts/sync-visual-fixtures.js 실행 필요', () => {});
 }
 
-for (const fx of fixtures) {
+if (fixtures.length > 0 && selectedFixtures.length === 0) {
+  test.skip('VISUAL_FIXTURE_IDS/VISUAL_FIXTURE_PRODUCTS matched no fixtures', () => {});
+}
+
+for (const fx of selectedFixtures) {
   test.describe(`${fx.title} (${fx.product})`, () => {
     test('모바일 랜딩 — 시각 회귀', async ({ page }) => {
       await page.goto(`/packages/${fx.id}`);

@@ -74,10 +74,13 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
   const fxPath = path.join(__dirname, '..', 'tests', 'visual', 'fixtures.json');
   let fixtures = fs.existsSync(fxPath) ? JSON.parse(fs.readFileSync(fxPath, 'utf8')) : [];
   const existingIds = new Set(fixtures.map(f => f.id));
+  const fixtureById = new Map(fixtures.map(f => [f.id, f]));
   for (const p of toProcess) {
     if (!existingIds.has(p.id)) {
       const slug = (p.short_code || p.id.slice(0, 8)).toLowerCase().replace(/[^a-z0-9]/g, '-');
-      fixtures.push({ id: p.id, title: p.title, product: slug });
+      const fixture = { id: p.id, title: p.title, product: slug };
+      fixtures.push(fixture);
+      fixtureById.set(p.id, fixture);
     }
   }
   if (!DRY_RUN) {
@@ -92,7 +95,17 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
   // 3. Playwright 실행 (--update-snapshots 로 baseline 재생성)
   console.log('\n🎭 Playwright --update-snapshots 실행 중...\n');
-  const env = { ...process.env, UPDATE_BASELINE: '1', VISUAL_TEST_URL: BASE_URL };
+  const ids = toProcess.map(p => p.id);
+  const productKeys = toProcess
+    .map(p => fixtureById.get(p.id)?.product)
+    .filter(Boolean);
+  const env = {
+    ...process.env,
+    UPDATE_BASELINE: '1',
+    VISUAL_FIXTURE_IDS: ids.join(','),
+    VISUAL_FIXTURE_PRODUCTS: productKeys.join(','),
+    VISUAL_TEST_URL: BASE_URL,
+  };
   const result = spawnSync('npx', ['playwright', 'test', 'tests/visual', '--update-snapshots'], {
     stdio: 'inherit',
     env,
@@ -106,7 +119,6 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
 
   // 4. baseline_created_at 업데이트
   const now = new Date().toISOString();
-  const ids = toProcess.map(p => p.id);
   const { error: upErr } = await sb
     .from('travel_packages')
     .update({ baseline_created_at: now })
