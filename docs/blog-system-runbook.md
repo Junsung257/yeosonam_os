@@ -160,6 +160,37 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - 충족 전까지 `blog-learn` 크론이 조용히 skip
 - 현재 상태: `curl https://yeosonam.com/api/agent/prompt-optimizer` (GET)
 
+### GSC 롱테일 자동 확장 확인
+- 크론: `/api/cron/blog-longtail-expander`가 `rank-tracking` 이후 매일 실행된다.
+- 역할: `rank_history`의 실제 GSC winning query를 seed로 삼아 관련검색어/검색량/경쟁도를 붙이고, 기존 글과 큐의 유사 키워드를 제외한 뒤 `blog_topic_queue.source='gsc_longtail'`로 등록한다.
+- 큐에 넣기 전 후보만 확인:
+  ```bash
+  curl "https://yeosonam.com/api/cron/blog-longtail-expander?dry_run=1&limit=5"
+  ```
+- 최근 등록 확인:
+  ```sql
+  SELECT primary_keyword, keyword_tier, monthly_search_volume, competition_level, priority, created_at
+  FROM blog_topic_queue
+  WHERE source = 'gsc_longtail'
+  ORDER BY created_at DESC
+  LIMIT 20;
+  ```
+
+### Keyword Growth Engine 확인
+- 대시보드: `/admin/blog/keyword-growth`
+- API: `/api/admin/blog/keyword-growth?days=28`
+- 핵심 루프: GSC query seed -> semantic dedupe -> keyword family -> SERP 분석 -> 발행 -> GSC/전환 성과 재학습
+- `blog_keyword_families`: 비슷한 롱테일을 대표 키워드 중심으로 묶는다.
+- `blog_keyword_family_members`: 후보/보조/대표 역할, 점수, seed query, 잠식 위험을 저장한다.
+- `content_creatives.generation_meta.serp_analysis`: 롱테일 발행 시 참고한 경쟁 SERP 패턴을 저장한다.
+- `content_creatives.generation_meta.originality_signals`: 여소남 내부 상품/예약/가격 신호를 저장한다.
+- `content_creatives.generation_meta.freshness_monitor`: 비자/입국/안전/환율/날씨/공항 이동/가격 글의 재검토 필요 여부를 저장한다.
+- 수동 점검:
+  ```bash
+  curl "https://yeosonam.com/api/cron/blog-longtail-expander?dry_run=1&limit=5"
+  curl "https://yeosonam.com/api/cron/blog-freshness-monitor?dry_run=1&limit=20"
+  ```
+
 ---
 
 ## 🎯 KPI 대시보드 (월간 리포트)

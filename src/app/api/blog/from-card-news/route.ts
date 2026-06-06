@@ -13,6 +13,7 @@ import { ContentBrief } from '@/lib/validators/content-brief';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { getSecret } from '@/lib/secret-registry';
 import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/blog-review-quotes';
+import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { safeEqualString } from '@/lib/timing-safe';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
@@ -78,6 +79,7 @@ export async function POST(request: NextRequest) {
     const cardNewsImages: string[] = Array.isArray(slide_image_urls) && slide_image_urls.length > 0
       ? slide_image_urls
       : [];
+    const siteBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
 
     if (!hasBlogApiKey()) {
       return NextResponse.json({ error: 'AI API 키 미설정' }, { status: 503 });
@@ -218,14 +220,27 @@ export async function POST(request: NextRequest) {
     const finalSlug = await ensureUniqueSlug(slug);
 
     // OG 이미지: 카드뉴스 첫 번째 PNG (우선) > 배경 이미지
+    const bgImageCandidate = (cn.slides as Array<Record<string, unknown>> | null | undefined)?.[0]?.bg_image_url;
     const ogImage = cardNewsImages[0]
-      || (cn.slides as unknown as Array<Record<string, unknown>>)?.[0]?.bg_image_url
+      || (typeof bgImageCandidate === 'string' ? bgImageCandidate : null)
       || null;
+    const primaryKeyword = (cardMode === 'product' ? productData?.destination : cn.topic) as string | undefined;
+    const finalized = await finalizeBlogPost({
+      blogHtml,
+      destination: productData?.destination ?? null,
+      primaryKeyword: primaryKeyword ?? null,
+      ogImageUrl: ogImage,
+      inlineImageSeedUrl: cardNewsImages[0] ?? ogImage,
+      minImages: 2,
+      maxImages: 3,
+      fallbackOgImageUrl: `${siteBaseUrl}/og-image.png`,
+    });
+    blogHtml = finalized.blogHtml;
 
     // SEO 점수 산출
     const seoScore = calculateSeoScore({
       content: blogHtml,
-      primaryKeyword: (cardMode === 'product' ? (cn as Record<string, unknown>).destination : cn.topic) as string || undefined,
+      primaryKeyword,
       metaTitle: seoTitle,
       metaDescription: seoDesc,
     });
@@ -239,7 +254,7 @@ export async function POST(request: NextRequest) {
           slug: finalSlug,
           seo_title: seoTitle,
           seo_description: seoDesc,
-          og_image_url: ogImage,
+          og_image_url: finalized.ogImageUrl,
           slide_image_urls: cardNewsImages.length > 0 ? cardNewsImages : undefined,
           angle_type: angleType,
           category: cardMode === 'product' ? 'product_intro' : 'info',
@@ -263,7 +278,7 @@ export async function POST(request: NextRequest) {
       slug: finalSlug,
       seo_title: seoTitle,
       seo_description: seoDesc,
-      og_image_url: ogImage,
+      og_image_url: finalized.ogImageUrl,
       prompt_version: BLOG_PROMPT_VERSION,
       ai_model: BLOG_AI_MODEL,
       ai_temperature: BLOG_AI_TEMPERATURE,
@@ -307,7 +322,7 @@ export async function POST(request: NextRequest) {
         slug: finalSlug,
         seo_title: seoTitle,
         seo_description: seoDesc,
-        og_image_url: ogImage,
+        og_image_url: finalized.ogImageUrl,
         seo_score: seoScore,
         card_news_id,
       },

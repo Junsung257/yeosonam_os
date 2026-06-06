@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
   }
 
   const { searchParams } = request.nextUrl;
-  const keyword = searchParams.get('keyword');
+  const keyword = searchParams.get('keyword') ?? searchParams.get('q');
   const page = parseInt(searchParams.get('page') ?? '1', 10);
   const perPage = Math.min(parseInt(searchParams.get('per_page') ?? '5', 10), 20);
 

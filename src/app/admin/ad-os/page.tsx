@@ -106,7 +106,7 @@ export default function AdOsPage() {
     syncingNaverAssets, generatingNaverPacket, approvingNaverCandidates, runningExpiryCleanup, runningKillSwitch,
     generatingCandidates, syncingPerformance, applyingLearning, publishingExternal, harvestingSearchTerms,
     planningExperiments, probingGooglePublisher, loadingTenantReport, buildingOpsPlan, creatingCreativeDrafts,
-    syncingBookingFunnel, runningConversionAttribution, runningKeywordBrain, creatingNaverAssets, executingNaverGate,
+    syncingBookingFunnel, runningConversionAttribution, runningKeywordBrain, runningSeoKeywordBridge, runningSearchTermGrowth, creatingNaverAssets, executingNaverGate,
     exportingGoogleConversions, exportingMetaConversions, runningBidOptimizer, runningExperiments, applyingBlogEvolution,
     runningPlatformJobs, runningConversionUpload, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
@@ -782,6 +782,56 @@ export default function AdOsPage() {
           inserted_keyword_plans?: unknown;
         } | undefined;
         return `Keyword Brain complete: candidates ${formatAdOsNumber(summary?.candidates)}, clusters ${formatAdOsNumber(summary?.inserted_clusters)}, keyword drafts ${formatAdOsNumber(summary?.inserted_keyword_plans)}. External ad spend 0.`;
+      },
+    });
+  };
+
+  const runSeoKeywordBridge = async () => {
+    await runJsonAction<{
+      summary?: {
+        candidate_keyword_plans?: unknown;
+        inserted_keyword_plans?: unknown;
+        inserted_negative_candidates?: unknown;
+      };
+    } & Record<string, unknown>>({
+      flag: 'runningSeoKeywordBridge',
+      url: '/api/admin/ad-os/seo-keyword-bridge',
+      body: { apply: true, days: 28, limit: 80, platforms: ['naver', 'google'] },
+      errorMessage: 'SEO to Ads keyword bridge failed.',
+      onSuccess: setKeywordBrainResult,
+      successMessage: (json) => {
+        const summary = json.summary as {
+          candidate_keyword_plans?: unknown;
+          inserted_keyword_plans?: unknown;
+          inserted_negative_candidates?: unknown;
+        } | undefined;
+        return `SEO to Ads bridge complete: candidates ${formatAdOsNumber(summary?.candidate_keyword_plans)}, keyword drafts ${formatAdOsNumber(summary?.inserted_keyword_plans)}, negative candidates ${formatAdOsNumber(summary?.inserted_negative_candidates)}. External ad spend 0.`;
+      },
+    });
+  };
+
+  const runSearchTermGrowth = async () => {
+    await runJsonAction<{
+      summary?: {
+        keyword_drafts?: unknown;
+        negative_drafts?: unknown;
+        inserted_keyword_plans?: unknown;
+        inserted_change_requests?: unknown;
+      };
+    } & Record<string, unknown>>({
+      flag: 'runningSearchTermGrowth',
+      url: '/api/admin/ad-os/search-term-growth',
+      body: { apply: true, limit: 100, platforms: ['naver', 'google'] },
+      errorMessage: 'Search term growth failed.',
+      onSuccess: setKeywordBrainResult,
+      successMessage: (json) => {
+        const summary = json.summary as {
+          keyword_drafts?: unknown;
+          negative_drafts?: unknown;
+          inserted_keyword_plans?: unknown;
+          inserted_change_requests?: unknown;
+        } | undefined;
+        return `Search term growth complete: keyword drafts ${formatAdOsNumber(summary?.keyword_drafts)}, negative drafts ${formatAdOsNumber(summary?.negative_drafts)}, saved ${formatAdOsNumber(summary?.inserted_keyword_plans)}, approval requests ${formatAdOsNumber(summary?.inserted_change_requests)}. External ad spend 0.`;
       },
     });
   };
@@ -1535,6 +1585,14 @@ export default function AdOsPage() {
                 Search ads
               </Button>
             </Link>
+            <Button variant="secondary" size="sm" onClick={runSeoKeywordBridge} disabled={runningSeoKeywordBridge}>
+              <Search size={14} />
+              {runningSeoKeywordBridge ? 'SEO bridge...' : 'SEO→Ads drafts'}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={runSearchTermGrowth} disabled={runningSearchTermGrowth}>
+              <Search size={14} />
+              {runningSearchTermGrowth ? 'Search terms...' : 'Terms->Ads drafts'}
+            </Button>
             <Link href="/admin/blog/ads">
               <Button variant="secondary" size="sm">
                 <Layers size={14} />

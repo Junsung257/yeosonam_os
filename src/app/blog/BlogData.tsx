@@ -115,6 +115,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
       .eq('channel', 'naver_blog')
       .eq('featured', true)
       .not('slug', 'is', null)
+      .not('og_image_url', 'is', null)
       .order('featured_order', { ascending: true, nullsFirst: false })
       .order('published_at', { ascending: false })
       .limit(3),
@@ -122,13 +123,18 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   ]);
 
   const posts = (listRes.data as unknown as BlogPost[]) || [];
-  const featuredIds = new Set((featuredRes.data || []).map((f: any) => f.id));
+  const featuredBase = ((featuredRes.data as unknown as BlogPost[]) || []).filter((post) => Boolean(post.og_image_url));
+  const featuredIds = new Set(featuredBase.map((f) => f.id));
+  const featuredFallback = posts
+    .filter((post) => Boolean(post.og_image_url) && !featuredIds.has(post.id))
+    .slice(0, Math.max(0, 3 - featuredBase.length));
+  const featured = [...featuredBase, ...featuredFallback];
   const filteredPosts = page === 1 && !filter.destination && !filter.angle
-    ? posts.filter(p => !featuredIds.has(p.id))
+    ? posts.filter(p => !featured.some(featuredPost => featuredPost.id === p.id))
     : posts;
 
   return {
-    featured: page === 1 && !filter.destination && !filter.angle ? (featuredRes.data as unknown as BlogPost[]) || [] : [],
+    featured: page === 1 && !filter.destination && !filter.angle ? featured : [],
     posts: filteredPosts,
     total: listRes.count ?? 0,
     destinations: (destRes.data as unknown as DestinationStat[]) || [],

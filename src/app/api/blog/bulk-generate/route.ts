@@ -13,6 +13,8 @@ import { getTopPerformingBlogExcerpts, formatFewShotBlock } from '@/lib/blog-few
 import { formatHookCandidatesBlock } from '@/lib/copywriting/hook-templates';
 import { pickMarketingPrice } from '@/lib/marketing-price';
 import { escapePostgrestIlikeValue } from '@/lib/supabase-filter-safe';
+import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '@/lib/pexels';
+import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 
 export const maxDuration = 60;
 
@@ -85,6 +87,7 @@ export async function POST(request: NextRequest) {
 
     const angleLabel = ANGLE_PRESETS[angle].label;
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
+    const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
     const productUrl = `${baseUrl}/packages/${pkg.id}`;
 
     // 각 서브 키워드로 블로그 생성 (병렬 호출)
@@ -252,6 +255,26 @@ ${baseBlog.substring(0, 3000)}
           .flatMap(a => (a.photos || []).map((p: any) => p?.src_large || p?.src_medium || (typeof p === 'string' ? p : null)))
           .find((u): u is string => typeof u === 'string' && u.startsWith('http'));
         if (firstAttrPhoto) ogImage = firstAttrPhoto;
+        if (!ogImage && pkg.destination && isPexelsConfigured()) {
+          try {
+            const photo = await getRandomPexelsPhoto(destToEnKeyword(pkg.destination));
+            ogImage = photo?.src?.large2x || photo?.src?.large || photo?.src?.original || null;
+          } catch (err) {
+            console.warn(`[bulk-generate ${idx + 1}/${n}] Pexels OG fallback failed:`, err instanceof Error ? err.message : err);
+          }
+        }
+
+        const finalized = await finalizeBlogPost({
+          blogHtml,
+          destination: pkg.destination,
+          primaryKeyword: keyword,
+          ogImageUrl: ogImage,
+          inlineImageSeedUrl: ogImage,
+          minImages: 3,
+          maxImages: 4,
+          fallbackOgImageUrl: `${normalizedBaseUrl}/og-image.png`,
+        });
+        blogHtml = finalized.blogHtml;
 
         // SEO 메타 생성 (서브 키워드 반영)
         const baseSeo = generateBlogSeo(pkg, angle);
@@ -334,7 +357,7 @@ ${baseBlog.substring(0, 3000)}
             few_shot_total_views: fewShotExamples.reduce((sum, ex) => sum + ex.viewCount, 0),
           },
         };
-        if (ogImage) insertData.og_image_url = ogImage;
+        if (finalized.ogImageUrl) insertData.og_image_url = finalized.ogImageUrl;
 
         const { data: creative, error } = await supabaseAdmin
           .from('content_creatives')

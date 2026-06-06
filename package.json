@@ -67,6 +67,8 @@
     "verify:jarvis-readiness:ci": "npx tsx scripts/verify-jarvis-readiness.ts --strict --require-db",
     "verify:blog-bridge": "node scripts/verify-blog-publisher-bridge.mjs",
     "verify:blog-bridge:dry": "node scripts/verify-blog-publisher-bridge.mjs --dry-run",
+    "audit:blog-quality": "npx tsx scripts/backfill-blog-quality.ts",
+    "backfill:blog-quality": "npx tsx scripts/backfill-blog-quality.ts --write",
     "audit:drift": "node db/audit_schema_drift.js",
     "audit:drift:detail": "node db/audit_schema_drift.js --detail",
     "audit:drift:ci": "node db/audit_schema_drift.js --detail --fail-on-drift",

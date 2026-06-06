@@ -1117,3 +1117,41 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Operators can manually refresh the matrix with `Surface QA` and inspect the raw JSON at `/api/admin/ad-os/admin-surface-qa`.
 - This turns the earlier UX QA requirement into a visible operating artifact instead of a one-off manual checklist.
 - It remains read-only and does not mutate Supabase, change automation level, or write to ad platforms.
+
+## 72. 2026-06-06 SEO to Search Ads keyword bridge
+
+- Added `src/lib/ad-os-seo-keyword-bridge.ts`.
+  - Converts organic/GSC query signals into paid-search keyword candidates.
+  - Classifies commercial, informational, mixed, and negative paid intent.
+  - Applies max CPC guardrails before any keyword draft is created.
+- Added `POST /api/admin/ad-os/seo-keyword-bridge`.
+  - Reads `rank_history`, `content_creatives`, `content_roas_summary`, active `travel_packages`, channel budgets, and existing `search_ad_keyword_plans`.
+  - Creates Naver/Google draft keyword plans from SEO-proven longtails.
+  - Creates `ad_os_keyword_clusters` and negative candidates in `ad_os_search_term_candidates`.
+  - Does not call Naver, Google, Meta, or Kakao. External spend remains 0.
+- Added an `/admin/ad-os` header action: `SEO→Ads drafts`.
+  - This runs the bridge with `apply=true`, but only writes internal drafts/candidates.
+  - Live external publish still requires existing approval, budget, pilot policy, execution gate, and adapter controls.
+- Verification:
+  - `npm run type-check`
+  - `npx vitest run src/lib/ad-os-seo-keyword-bridge.test.ts src/lib/blog-longtail-expander.test.ts`
+
+## 73. 2026-06-06 Search term growth loop
+
+- Added `src/lib/ad-os-search-term-growth.ts`.
+  - Promotes real search-term candidates into guarded paid keyword drafts.
+  - Separates winning terms from waste terms and creates positive keyword drafts or negative keyword drafts.
+  - Uses semantic family keys to block duplicate paid-keyword families before drafts are inserted.
+- Added `POST /api/admin/ad-os/search-term-growth`.
+  - Reads `ad_os_search_term_candidates`, active `travel_packages`, existing `search_ad_keyword_plans`, and channel max CPC guardrails.
+  - Writes only internal `search_ad_keyword_plans`, `ad_os_keyword_clusters`, and approval-required `ad_os_change_requests`.
+  - Marks consumed search-term candidates as `applied` after internal draft creation.
+  - Does not call Naver, Google, Meta, or Kakao. External spend remains 0.
+- Added `GET /api/cron/ad-os-keyword-growth`.
+  - Runs learning harvest and search-term growth daily through service-role admin calls.
+  - Default cron writes internal drafts/change requests only; `?dry_run=1` keeps it read-only.
+- Added an `/admin/ad-os` header action: `Terms->Ads drafts`.
+  - Operators can manually run the same search-term growth loop and inspect generated candidates in the existing Keyword Brain result panel.
+- Safety principle:
+  - This closes the practical loop from actual search terms to next keyword/negative drafts without enabling live spend.
+  - External execution still requires existing approval, budget, max CPC, adapter, confirmation, and live-spend preflight gates.
