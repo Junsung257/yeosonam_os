@@ -329,6 +329,174 @@ const PROVIDER_LABEL: Record<string, { name: string; color: string }> = {
   unknown:   { name: '기타',     color: '#94a3b8' },
 };
 
+type FinanceTileTone = 'neutral' | 'good' | 'warn' | 'danger';
+
+function FinanceTile({
+  href,
+  label,
+  value,
+  caption,
+  tone = 'neutral',
+  className = '',
+}: {
+  href: string;
+  label: string;
+  value: string;
+  caption: string;
+  tone?: FinanceTileTone;
+  className?: string;
+}) {
+  const toneClass: Record<FinanceTileTone, string> = {
+    neutral: 'border-admin-border-mid bg-admin-surface text-text-primary',
+    good: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    warn: 'border-amber-200 bg-amber-50 text-amber-800',
+    danger: 'border-red-200 bg-red-50 text-red-700',
+  };
+
+  return (
+    <Link
+      href={href}
+      className={`block min-h-[108px] rounded-admin-md border p-4 shadow-admin-xs transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${toneClass[tone]} ${className}`}
+    >
+      <p className="text-[11px] font-semibold text-current/70">{label}</p>
+      <p className="mt-2 text-[24px] font-black leading-none tabular-nums">{value}</p>
+      <p className="mt-2 text-[11px] text-current/60">{caption}</p>
+    </Link>
+  );
+}
+
+function OwnerFinanceCommandCenter({
+  stats,
+  settlement,
+  capitalTotal,
+  unmatchedCount,
+  pendingActionsCount,
+  pendingPackagesCount,
+}: {
+  stats: DashboardStats | null;
+  settlement: SettlementBalances | null;
+  capitalTotal: number | null;
+  unmatchedCount: number | null;
+  pendingActionsCount: number;
+  pendingPackagesCount: number;
+}) {
+  const customerPaid = stats?.totalPaid ?? 0;
+  const receivable = settlement?.receivable.total ?? stats?.totalOutstanding ?? 0;
+  const landPayable = settlement?.payable.total ?? 0;
+  const preTaxMargin = stats?.margin ?? 0;
+  const cashLeft = customerPaid - landPayable;
+  const totalTodo = (stats?.unpaidD7 ?? 0) + (unmatchedCount ?? 0) + pendingActionsCount + pendingPackagesCount;
+
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-admin-base font-bold text-text-primary">정산 대시보드</h2>
+          <p className="mt-0.5 text-[11px] text-admin-muted-2">고객 수납, 랜드사 송금, 우리 수익을 한 화면에서 확인</p>
+        </div>
+        <Link href="/admin/payments" className="shrink-0 rounded-[8px] border border-admin-border-mid bg-white px-3 py-1.5 text-[11px] font-semibold text-admin-text-2 hover:bg-admin-bg">
+          입금/정산
+        </Link>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-12">
+        <Link
+          href="/admin/ledger"
+          className={`col-span-2 block min-h-[186px] rounded-admin-md border p-5 shadow-admin-xs transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm xl:col-span-4 ${
+            cashLeft < 0 ? 'border-red-200 bg-red-50' : 'border-slate-200 bg-slate-950 text-white'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className={`text-[11px] font-semibold ${cashLeft < 0 ? 'text-red-600' : 'text-slate-300'}`}>현금 기준 남은 돈</p>
+              <p className={`mt-3 text-[34px] font-black leading-none tabular-nums ${cashLeft < 0 ? 'text-red-700' : 'text-white'}`}>
+                {fmt만KRW(cashLeft)}
+              </p>
+            </div>
+            <span className={`rounded-full px-2 py-1 text-[10px] font-bold ${totalTodo > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800'}`}>
+              처리 {totalTodo}건
+            </span>
+          </div>
+
+          <div className={`mt-5 grid grid-cols-3 gap-2 text-[11px] ${cashLeft < 0 ? 'text-red-700' : 'text-slate-300'}`}>
+            <div>
+              <p className="text-current/60">받은 돈</p>
+              <p className="mt-1 font-bold tabular-nums">{fmt만KRW(customerPaid)}</p>
+            </div>
+            <div>
+              <p className="text-current/60">보낼 돈</p>
+              <p className="mt-1 font-bold tabular-nums">{fmt만KRW(landPayable)}</p>
+            </div>
+            <div>
+              <p className="text-current/60">자본</p>
+              <p className="mt-1 font-bold tabular-nums">{capitalTotal != null ? fmt만KRW(capitalTotal) : '-'}</p>
+            </div>
+          </div>
+        </Link>
+
+        <FinanceTile
+          href="/admin/ledger"
+          label="우리수익"
+          value={fmt만KRW(preTaxMargin)}
+          caption="출발일 기준 · 세전"
+          tone={preTaxMargin < 0 ? 'danger' : 'good'}
+          className="xl:col-span-2"
+        />
+        <FinanceTile
+          href="/admin/payments?filter=outstanding"
+          label="아직 받을 돈"
+          value={fmt만KRW(receivable)}
+          caption={`${stats?.unpaidD7 ?? 0}건은 D-7 이내`}
+          tone={receivable > 0 ? 'danger' : 'good'}
+          className="xl:col-span-2"
+        />
+        <FinanceTile
+          href="/admin/land-settlements"
+          label="랜드사 보낼 돈"
+          value={fmt만KRW(landPayable)}
+          caption="출발 완료 후 미송금"
+          tone={landPayable > 0 ? 'warn' : 'good'}
+          className="xl:col-span-2"
+        />
+        <FinanceTile
+          href="/admin/payments?filter=unmatched"
+          label="미매칭 입금"
+          value={`${unmatchedCount ?? 0}건`}
+          caption="통장·문자 자동매칭 확인"
+          tone={(unmatchedCount ?? 0) > 0 ? 'warn' : 'good'}
+          className="xl:col-span-2"
+        />
+        <FinanceTile
+          href="/admin/jarvis?tab=actions"
+          label="승인 대기"
+          value={`${pendingActionsCount + pendingPackagesCount}건`}
+          caption={`자비스 ${pendingActionsCount} · 상품 ${pendingPackagesCount}`}
+          tone={pendingActionsCount + pendingPackagesCount > 0 ? 'warn' : 'neutral'}
+          className="xl:col-span-2"
+        />
+      </div>
+
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {[
+          { href: '/admin/payments?filter=unmatched', label: '입금 자동매칭', value: `${unmatchedCount ?? 0}건` },
+          { href: '/admin/payments?filter=outstanding', label: '잔금 미수', value: fmt만KRW(receivable) },
+          { href: '/admin/land-settlements', label: '랜드사 정산', value: fmt만KRW(landPayable) },
+          { href: '/admin/bookings?status=pending,confirmed', label: '진행 예약', value: `${stats?.activeBookings ?? 0}건` },
+        ].map(item => (
+          <Link
+            key={item.href}
+            href={item.href}
+            className="flex min-h-[54px] items-center justify-between gap-3 rounded-admin-md border border-admin-border-mid bg-white px-3 py-2 text-admin-xs shadow-admin-xs hover:border-admin-border-strong hover:bg-admin-bg"
+          >
+            <span className="font-semibold text-admin-text-2">{item.label}</span>
+            <span className="font-black tabular-nums text-text-primary">{item.value}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function OperationsKPI({
   aiUsage, settlement, aiCredits,
 }: {
@@ -1374,9 +1542,9 @@ export default function AdminPage({
       )}
 
       {/* UX-2 + E: sticky frosted-glass 헤더 + 기간 필터 + 새로고침 버튼 */}
-      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-admin-border-mid/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex items-center justify-between gap-3">
-        <div>
-          <h1 className="text-admin-lg font-bold text-text-primary">어드민 대시보드</h1>
+      <div className="sticky top-0 z-20 -mx-4 px-4 py-3 bg-white/80 backdrop-blur-md border-b border-admin-border-mid/70 shadow-[0_1px_8px_rgba(0,0,0,0.04)] flex flex-wrap items-center justify-between gap-2 sm:gap-3">
+        <div className="min-w-0">
+          <h1 className="text-admin-lg font-bold text-text-primary whitespace-nowrap">어드민 대시보드</h1>
           {lastRefreshed && (
             <p className="text-[11px] text-admin-muted-2 mt-0.5">
               마지막 새로고침: {lastRefreshed.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
@@ -1385,7 +1553,7 @@ export default function AdminPage({
         </div>
 
         {/* 글로벌 기간 필터 — revenue-recognition + chart 공통 적용 */}
-        <div className="flex items-center gap-1 bg-bg-section rounded-[8px] p-0.5 ml-auto">
+        <div className="order-3 flex flex-1 items-center gap-1 bg-bg-section rounded-[8px] p-0.5 sm:order-none sm:ml-auto sm:flex-none">
           {(['3m', '6m', '12m'] as const).map((p) => (
             <button
               key={p}
@@ -1396,7 +1564,7 @@ export default function AdminPage({
                 loadAll(m);
               }}
               disabled={isRefreshing || isLoading}
-              className={`px-2.5 py-1 rounded-[6px] text-[11px] font-semibold transition-all disabled:opacity-50 ${
+              className={`flex-1 rounded-[6px] px-2.5 py-1 text-[11px] font-semibold transition-all disabled:opacity-50 sm:flex-none ${
                 period === p
                   ? 'bg-white text-text-primary shadow-[0_1px_3px_rgba(0,0,0,0.08)]'
                   : 'text-text-secondary hover:text-text-body'
@@ -1414,7 +1582,7 @@ export default function AdminPage({
             loadAll(m);
           }}
           disabled={isRefreshing || isLoading}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-[10px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] text-admin-xs text-text-body hover:bg-admin-bg disabled:opacity-50 transition-shadow"
+          className="order-4 flex items-center gap-1.5 rounded-[10px] bg-white px-3 py-1.5 text-admin-xs text-text-body shadow-[0_1px_4px_rgba(0,0,0,0.06)] transition-shadow hover:bg-admin-bg disabled:opacity-50 sm:order-none"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
             className={isRefreshing ? 'animate-spin' : ''}>
@@ -1425,6 +1593,15 @@ export default function AdminPage({
           {isRefreshing ? '새로고침 중...' : '새로고침'}
         </button>
       </div>
+
+      <OwnerFinanceCommandCenter
+        stats={stats}
+        settlement={settlement}
+        capitalTotal={capitalTotal}
+        unmatchedCount={unmatchedCount}
+        pendingActionsCount={pendingActions.length}
+        pendingPackagesCount={pendingPackages.length}
+      />
 
       {/* ── Zone 1: 긴급 액션 ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-1">
@@ -1549,91 +1726,6 @@ export default function AdminPage({
 
       {/* 매출 인식 분리 KPI (IFRS 15 / ASC 606) */}
       <TwoTrackKPI recognized={recognized} newBookings={newBookings} periodLabel={period === '3m' ? '최근 3개월' : period === '12m' ? '최근 12개월' : '최근 6개월'} />
-
-      {/* 재무 미니 카드 — 모두 drilldown 가능 (Stripe 패턴) */}
-      {(() => {
-        const prevMargin = recognized.length >= 2 ? recognized[recognized.length - 2].margin : null;
-        const curMargin = recognized.length >= 1 ? recognized[recognized.length - 1].margin : null;
-        const marginMoM = prevMargin != null && prevMargin !== 0 && curMargin != null
-          ? ((curMargin - prevMargin) / Math.abs(prevMargin)) * 100 : null;
-        const prevBk = newBookings.length >= 2 ? newBookings[newBookings.length - 2].total_bookings : null;
-        const curBk = newBookings.length >= 1 ? newBookings[newBookings.length - 1].total_bookings : null;
-        const bkMoM = prevBk != null && prevBk !== 0 && curBk != null
-          ? ((curBk - prevBk) / prevBk) * 100 : null;
-        const Badge = ({ pct }: { pct: number | null }) => pct == null ? null : (
-          <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded ${
-            pct >= 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-500'
-          }`}>
-            {pct >= 0 ? '▲' : '▼'} {Math.abs(pct).toFixed(1)}%
-          </span>
-        );
-        return (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-            {/* 이번달 마진 — featured card */}
-            <Link href="/admin/ledger"
-              className="bg-brand rounded-admin-md p-4 shadow-[0_8px_24px_rgba(0,31,63,0.25)] hover:bg-[#1B64DA] transition block">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-blue-200 font-medium">이번달 마진</p>
-                <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-                </svg>
-              </div>
-              <p className={`text-[22px] font-black tabular-nums leading-tight ${stats && stats.margin < 0 ? 'text-red-300' : 'text-white'}`}>
-                {stats ? `₩${fmt만(stats.margin)}` : '—'}
-              </p>
-              <div className="flex items-center justify-between mt-1.5">
-                <p className="text-[10px] text-blue-300">출발일 기준</p>
-                <Badge pct={marginMoM} />
-              </div>
-            </Link>
-            {/* 자본 잔액 */}
-            <Link href="/admin/ledger"
-              className="bg-admin-surface border border-admin-border-mid rounded-admin-md p-4 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-admin-muted-2 font-medium">자본 잔액</p>
-                <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-              <p className="text-[22px] font-black tabular-nums leading-tight text-emerald-700">
-                {capitalTotal !== null ? `₩${fmt만(capitalTotal)}` : '—'}
-              </p>
-              <p className="text-[10px] text-admin-muted-2 mt-1.5">자본 관리 → 장부</p>
-            </Link>
-            {/* 미수금 */}
-            <Link href="/admin/payments?filter=outstanding"
-              className="bg-admin-surface border border-admin-border-mid rounded-admin-md p-4 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-admin-muted-2 font-medium">미수금</p>
-                <svg className={`w-4 h-4 ${stats && stats.totalOutstanding > 0 ? 'text-red-400' : 'text-admin-muted-2'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                </svg>
-              </div>
-              <p className={`text-[22px] font-black tabular-nums leading-tight ${stats && stats.totalOutstanding > 0 ? 'text-red-600' : 'text-emerald-700'}`}>
-                {stats ? `₩${fmt만(stats.totalOutstanding)}` : '—'}
-              </p>
-              <p className="text-[10px] text-admin-muted-2 mt-1.5">이번달 잔금 미납</p>
-            </Link>
-            {/* 진행 예약 */}
-            <Link href="/admin/bookings?status=pending,confirmed"
-              className="bg-admin-surface border border-admin-border-mid rounded-admin-md p-4 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160 block">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-[11px] text-admin-muted-2 font-medium">진행 예약</p>
-                <svg className="w-4 h-4 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 002.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 00-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 00.75-.75 2.25 2.25 0 00-.1-.664m-5.8 0A2.251 2.251 0 0113.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25z" />
-                </svg>
-              </div>
-              <p className="text-[22px] font-black tabular-nums leading-tight text-text-primary">
-                {stats?.activeBookings ?? 0}<span className="text-admin-base font-semibold ml-0.5">건</span>
-              </p>
-              <div className="flex items-center justify-between mt-1.5">
-                <p className="text-[10px] text-admin-muted-2">이번달 총 {stats?.totalMonthBookings ?? 0}건 중</p>
-                <Badge pct={bkMoM} />
-              </div>
-            </Link>
-          </div>
-        );
-      })()}
 
       {/* Booking Pace + 90일 취소율 */}
       {(pace.length > 0 || cancellation90d) && (
