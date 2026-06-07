@@ -2,8 +2,9 @@ import { unstable_cache } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { mapTravelPackageToLandingData, type LandingProductData } from '@/lib/map-travel-package-to-lp';
+import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 
-async function fetchLpPackageUncached(id: string): Promise<LandingProductData | null> {
+export async function fetchLpPackageUncached(id: string): Promise<LandingProductData | null> {
   if (!isSupabaseConfigured || !supabaseAdmin) return null;
 
   const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -16,6 +17,9 @@ async function fetchLpPackageUncached(id: string): Promise<LandingProductData | 
     .single();
 
   if (error || !pkg) return null;
+  const status = (pkg as { status?: string | null }).status;
+  const auditStatus = (pkg as { audit_status?: string | null }).audit_status;
+  if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) return null;
 
   const { data: scores } = await supabaseAdmin
     .from('package_scores')
