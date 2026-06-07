@@ -43,6 +43,9 @@ function baseResult() {
     extractedCandidateRows: [],
     attractionSeededCount: 0,
     attractionReflectedCount: 0,
+    improvementEvents: [],
+    improvementEventsSaved: 0,
+    improvementEventsSaveError: null,
   };
 }
 
@@ -96,6 +99,9 @@ describe('completeUploadRegistration', () => {
       matchedAttractionCount: 1,
       unmatchedAttractionCount: 0,
       totalPriceRowsSaved: 3,
+      improvementEvents: [],
+      improvementEventsSaved: 0,
+      improvementEventsSaveError: null,
     }));
   });
 

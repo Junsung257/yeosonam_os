@@ -306,11 +306,11 @@ export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult 
   const variantStarts = collectVariantCatalogBlockStarts(text);
   const itineraryStarts = collectItineraryHeaderStarts(text);
   const pkgStarts = collectPkgBlockStarts(text);
-  const starts = variantStarts.length >= 2
-    ? variantStarts
-    : itineraryStarts.length >= 2
-      ? itineraryStarts
-      : pkgStarts;
+  const starts = pkgStarts.length >= 2
+    ? pkgStarts
+    : variantStarts.length >= 2
+      ? variantStarts
+      : itineraryStarts;
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };

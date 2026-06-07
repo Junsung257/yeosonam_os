@@ -31,6 +31,6 @@ export function extractHotelColumnMatrixRows(rawText: string, options: PriceIROp
   return extractPriceMatrix(rawText, options.year, {
     title: options.title,
     accommodations: options.accommodations,
-    includeAllHotelColumns: true,
+    includeAllHotelColumns: options.includeAllHotelColumns ?? true,
   });
 }

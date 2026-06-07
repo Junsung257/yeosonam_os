@@ -10,6 +10,7 @@ import { isSynthesizedRawText } from '@/lib/packages/raw-text';
 import type { PostProcessCatalogInput, ItineraryLike } from '@/lib/package-post-process';
 import { postProcessPackageRow } from '@/lib/package-post-process';
 import { renderPackage, isFerryPackage, type RenderPackageInput } from '@/lib/render-contract';
+import { findItineraryScheduleQualityIssues } from '@/lib/product-registration/itinerary-quality-gate';
 
 const LANDMARK_WHITELIST = [
   '메르데카 광장',
@@ -112,6 +113,18 @@ export function evaluateL1CustomerReadyGate(input: L1GateInput): L1GateResult {
   if (view.days.length === 0) {
     codes.push('M7_NO_ITINERARY');
     reasons.push('itinerary_data.days 비어 있음 — 모바일 일정표 렌더 불가');
+  }
+
+  const scheduleQualityIssues = findItineraryScheduleQualityIssues(
+    (processed.itinerary_data as { days?: Parameters<typeof findItineraryScheduleQualityIssues>[0] } | undefined)?.days,
+  );
+  for (const issue of scheduleQualityIssues.slice(0, 5)) {
+    codes.push(issue.code);
+    reasons.push(`일정표 표 조각이 고객 schedule에 섞임: DAY${issue.day ?? '?'} "${issue.activity}" (${issue.reason})`);
+  }
+  if (scheduleQualityIssues.length > 5) {
+    codes.push('ITINERARY_SCHEDULE_QUALITY_OVERFLOW');
+    reasons.push(`일정표 표 조각이 고객 schedule에 ${scheduleQualityIssues.length - 5}건 더 섞임`);
   }
 
   // BLOCK: CRITICAL leak

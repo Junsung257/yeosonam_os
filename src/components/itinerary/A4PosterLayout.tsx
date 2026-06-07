@@ -25,6 +25,13 @@ export interface PriceTier {
   note?: string | null;
 }
 
+export interface PosterPriceDate {
+  date: string;
+  price: number;
+  child_price?: number;
+  confirmed: boolean;
+}
+
 /* ═══════════════════════════════════════════════════════
    Constants
    ═══════════════════════════════════════════════════════ */
@@ -214,6 +221,7 @@ export function PosterPrice({
   meta,
   priceTiers,
   priceList,
+  priceDates,
   highlightDate,
   excludedDates = [],
   singleSupplement,
@@ -222,25 +230,37 @@ export function PosterPrice({
   meta: TravelItinerary['meta'];
   priceTiers?: PriceTier[];
   priceList?: PriceListItem[];
+  priceDates?: PosterPriceDate[];
   highlightDate?: string | null;
   excludedDates?: string[];
   singleSupplement?: string | null;
   guideTip?: string | null;
 }) {
   const tiers = filterTiersByDepartureDays(priceTiers as unknown as import('@/lib/parser').PriceTier[] ?? [], meta.departure_days || undefined) as unknown as PriceTier[];
+  const validPriceDates = (priceDates ?? [])
+    .filter((row): row is PosterPriceDate => typeof row?.date === 'string' && typeof row?.price === 'number' && row.price > 0)
+    .sort((a, b) => a.date.localeCompare(b.date));
   const highlightDay = highlightDate ? new Date(highlightDate).getDate().toString() : null;
 
   // 요금 데이터 없으면 표시 안함
-  if (tiers.length === 0 && (!priceList || priceList.length === 0)) {
+  if (tiers.length === 0 && (!priceList || priceList.length === 0) && validPriceDates.length === 0) {
     return null;
   }
 
   const usePriceList = priceList && priceList.length > 0;
+  const usePriceDates = !usePriceList && validPriceDates.length > 0;
   const allPrices = usePriceList
     ? priceList!.flatMap(p => p.rules.map(r => r.price).filter((v): v is number => v !== null))
-    : tiers.map(t => t.adult_price);
+    : usePriceDates
+      ? validPriceDates.map(d => d.price)
+      : tiers.map(t => t.adult_price);
   const minPrice = allPrices.length > 0 ? Math.min(...allPrices.filter((v): v is number => v != null)) : null;
-  const isSinglePrice = tiers.length <= 1 && (!usePriceList || (priceList!.length === 1 && priceList![0].rules.length <= 1));
+  const isSinglePrice = !usePriceDates && tiers.length <= 1 && (!usePriceList || (priceList!.length === 1 && priceList![0].rules.length <= 1));
+  const formatPriceDate = (value: string) => {
+    const date = new Date(`${value}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return value;
+    return `${date.getMonth() + 1}/${date.getDate()}`;
+  };
 
   const thS: React.CSSProperties = {
     background: NAVY, color: '#fff', padding: '5px 8px', fontSize: '10px',
@@ -361,6 +381,28 @@ export function PosterPrice({
                     );
                   })
                 )
+              : usePriceDates
+                ? validPriceDates.map((row, i) => {
+                    const isMin = row.price === minPrice;
+                    const isConfirmed = row.confirmed === true;
+                    const isHighlighted = !!highlightDate && row.date === highlightDate;
+                    const bg = isHighlighted ? '#fef9c3' : isMin ? '#fff1f2' : i % 2 === 0 ? ROW_EVEN : ROW_ODD;
+                    return (
+                      <tr key={row.date} style={{ background: bg }}>
+                        <td style={tdS}>
+                          {formatPriceDate(row.date)} 출발
+                          {isConfirmed && <span style={{ background: '#dcfce7', color: '#166534', fontSize: '8px', padding: '1px 3px', borderRadius: '2px', marginLeft: '4px', fontWeight: 600 }}>확정</span>}
+                          {isHighlighted && <span style={{ color: '#1e40af', marginLeft: '4px' }}>◀</span>}
+                        </td>
+                        <td style={{ ...tdS, textAlign: 'right', fontWeight: 700 }}>
+                          {isMin && <span style={{ color: '#dc2626', fontSize: '8px', marginRight: '3px' }}>🔥최저가</span>}
+                          <span style={{ color: isMin ? '#dc2626' : '#111' }}>
+                            {row.price.toLocaleString('ko-KR')}원
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
               : tiers.map((tier, i) => {
                   const isMin = tier.adult_price === minPrice;
                   const isConfirmed = tier.status === 'confirmed';

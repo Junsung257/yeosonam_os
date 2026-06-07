@@ -152,6 +152,9 @@ beforeEach(() => {
     extractedCandidateRows: [],
     attractionSeededCount: 0,
     attractionReflectedCount: 0,
+    improvementEvents: [],
+    improvementEventsSaved: 0,
+    improvementEventsSaveError: null,
   });
   mocks.completeUploadRegistration.mockResolvedValue({ success: true, dbIds: ['pkg-1'] });
 });

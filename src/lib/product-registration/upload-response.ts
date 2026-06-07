@@ -6,6 +6,12 @@ import {
   type UploadRegisterReportRow,
 } from '@/lib/product-registration-register-report';
 import { calculateProductRegistrationTrustScore } from '@/lib/product-registration-trust-score';
+import {
+  buildLearningEngineEvidenceFromRuntime,
+  scoreCentralLearningEngine,
+} from '@/lib/product-registration/learning-engine-scorecard';
+import type { ImprovementLedgerEvent } from '@/lib/product-registration/improvement-ledger';
+import { mineProductRegistrationPatterns } from '@/lib/product-registration/pattern-mining';
 import type { UploadGate } from '@/lib/upload-validator';
 import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
@@ -93,6 +99,9 @@ export async function buildUploadResponsePayload(input: {
   marginRate: number;
   fileName: string;
   baseUrl: string;
+  improvementEvents?: ImprovementLedgerEvent[];
+  improvementEventsSaved?: number;
+  improvementEventsSaveError?: string | null;
 }): Promise<Record<string, unknown>> {
   const productCount = input.productsToSaveLength;
   const successCount = input.savedIds.length;
@@ -140,6 +149,29 @@ export async function buildUploadResponsePayload(input: {
     unmatchedActivitiesCount: attractionStats.unmatched,
     renderAuditStatus: 'unknown',
   });
+  const improvementEvents = input.improvementEvents ?? [];
+  const improvementEventsSaved = input.improvementEventsSaved ?? 0;
+  const macroMining = mineProductRegistrationPatterns({
+    events: improvementEvents,
+    minEvents: 50,
+    minFailedOrReviewNeeded: 10,
+    minRepeatedBlockers: 5,
+  });
+  const learningScore = scoreCentralLearningEngine(buildLearningEngineEvidenceFromRuntime({
+    microEventsCaptured: improvementEvents.length,
+    macroCandidatesGenerated: macroMining.candidates.length,
+    promotionReadyCandidates: macroMining.candidates.filter(candidate => candidate.promotionReady).length,
+    hasAutoQARunner: true,
+    hasRenderAuditors: true,
+    hasImprovementLedger: improvementEvents.length === 0
+      ? !input.improvementEventsSaveError
+      : improvementEventsSaved >= improvementEvents.length && !input.improvementEventsSaveError,
+    hasPatternMining: true,
+    hasPromotionWorkflow: true,
+    routeBoundaryClean: true,
+    fullRegressionVerified: false,
+    operatorReportAvailable: true,
+  }));
 
   return {
     success: successCount > 0 || !input.isSupabaseConfigured,
@@ -157,6 +189,30 @@ export async function buildUploadResponsePayload(input: {
     classification: input.classification,
     gate: overallGate,
     trustScore,
+    learningEngine: {
+      mode: 'shadow',
+      microEventsCaptured: improvementEvents.length,
+      microEventsPersisted: improvementEventsSaved,
+      persistenceError: input.improvementEventsSaveError ?? null,
+      latestStatuses: improvementEvents.slice(-5).map(event => event.finalStatus),
+      macroShouldRun: macroMining.shouldRun,
+      macroRunReasons: macroMining.runReasons,
+      macroCandidates: macroMining.candidates.slice(0, 5).map(candidate => ({
+        id: candidate.id,
+        kind: candidate.kind,
+        evidenceCount: candidate.evidenceCount,
+        promotionReady: candidate.promotionReady,
+        risk: candidate.risk,
+        recommendedAction: candidate.recommendedAction,
+      })),
+      score: {
+        micro: learningScore.micro.total,
+        macro: learningScore.macro.total,
+        combined: learningScore.combined,
+        productionReady: learningScore.productionReady,
+        blockers: learningScore.blockers.slice(0, 12),
+      },
+    },
     tokenUsage: buildTokenInfo(input.parsedDocument._tokenUsage as TokenUsageSource),
     attractionStats,
     uploadMetadata: {

@@ -10,9 +10,26 @@ import type { UploadPriceRecoveryResult } from './price-recovery';
 
 export type ProductRegistrationEvidence = {
   rawTextLength: number;
+  rawTextHash: string;
   priceSource: string;
   v3DraftStatus: string | null;
   v3RawTextHash: string | null;
+  spans: SourceEvidenceSpan[];
+};
+
+export type SourceEvidenceSpan = {
+  field: string;
+  rawTextHash: string;
+  start: number;
+  end: number;
+  quote: string;
+  productIndex?: number | null;
+  sourceKind?: 'line' | 'table_cell' | 'section' | 'document';
+  sectionKey?: string | null;
+  lineIndex?: number | null;
+  rowIndex?: number | null;
+  columnIndex?: number | null;
+  confidence: number;
 };
 
 export type ProductRegistrationIdentity = {

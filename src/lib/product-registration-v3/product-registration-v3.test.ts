@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseV3AiStructurePlan, persistProductRegistrationDraftV3, runProductRegistrationV3 } from '.';
+import { createSourceLineIndex, parseV3AiStructurePlan, persistProductRegistrationDraftV3, planProductRegistrationV3, runProductRegistrationV3 } from '.';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildStandardNoticeDraft } from './standard-notices';
 import { mapTravelPackageToLandingData } from '../map-travel-package-to-lp';
 import { renderPackage } from '../render-contract';
@@ -164,6 +166,24 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.structure_plan.expected_products).toBe(6);
     expect(result.ledger.variants).toHaveLength(6);
     expect(result.gate_result.checks.find(check => check.id === 'expected_products_match')?.status).toBe('pass');
+  });
+
+  it('uses explicit PKG boundaries before variant labels for Xian/Huashan catalogs', () => {
+    const raw = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/xian-huashan-bx-multiproduct.txt'),
+      'utf8',
+    );
+
+    const plan = planProductRegistrationV3(createSourceLineIndex(raw));
+
+    expect(plan.document_type).toBe('catalog');
+    expect(plan.expected_products).toBe(4);
+    expect(plan.product_boundaries.map(boundary => boundary.title_hint)).toEqual([
+      'PKG',
+      'PKG',
+      'PKG',
+      'PKG',
+    ]);
   });
 
   it('keeps airport meeting time as meeting, not flight departure', async () => {

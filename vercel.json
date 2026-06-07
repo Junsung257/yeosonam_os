@@ -378,6 +378,10 @@
       "schedule": "18 2 * * 1"
     },
     {
+      "path": "/api/cron/product-registration-learning-report",
+      "schedule": "24 2 * * 1"
+    },
+    {
       "path": "/api/admin/optimization",
       "schedule": "0 21 * * *"
     },

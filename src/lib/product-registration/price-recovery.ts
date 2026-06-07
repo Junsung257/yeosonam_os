@@ -21,6 +21,7 @@ export type UploadPriceRecoveryOptions = {
   rawText?: string | null;
   title?: string | null;
   accommodations?: string[] | null;
+  includeAllHotelColumns?: boolean;
   durationDays?: number | null;
   departureDays?: string | null;
   year?: number;
@@ -129,6 +130,37 @@ function normalizeTiers(raw: unknown): PriceTier[] {
     .filter((tier): tier is PriceTier => tier != null);
 }
 
+function isDateString(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function hasUsableDateSource(tier: Record<string, unknown>): boolean {
+  if (Array.isArray(tier.departure_dates) && tier.departure_dates.some(isDateString)) return true;
+  const dateRange = tier.date_range;
+  if (
+    dateRange
+    && typeof dateRange === 'object'
+    && isDateString((dateRange as { start?: unknown }).start)
+    && isDateString((dateRange as { end?: unknown }).end)
+  ) {
+    return true;
+  }
+  return typeof tier.departure_day_of_week === 'string' && tier.departure_day_of_week.trim().length > 0;
+}
+
+export function normalizeStrictFallbackPriceTiers(raw: unknown): PriceTier[] {
+  if (!Array.isArray(raw)) return [];
+  const candidates = raw.filter((tier): tier is Record<string, unknown> => {
+    if (!tier || typeof tier !== 'object') return false;
+    const adultPrice = typeof tier.adult_price === 'number' ? tier.adult_price : Number(tier.adult_price);
+    return Number.isInteger(adultPrice)
+      && adultPrice >= 10_000
+      && adultPrice <= 50_000_000
+      && hasUsableDateSource(tier);
+  });
+  return normalizeTiers(candidates);
+}
+
 function supplierRawFactsToTiers(rawText: string): PriceTier[] {
   const facts = extractSupplierRawDeterministicFacts(rawText);
   const adultPrice = facts.prices.adult;
@@ -200,7 +232,7 @@ JSON 배열로만 응답:
   const txt = res.response.text();
   const jsonMatch = txt.match(/\[[\s\S]*\]/);
   if (!jsonMatch) return [];
-  return normalizeTiers(JSON.parse(jsonMatch[0]));
+  return normalizeStrictFallbackPriceTiers(JSON.parse(jsonMatch[0]));
 }
 
 export async function recoverUploadPriceData(
@@ -211,6 +243,29 @@ export async function recoverUploadPriceData(
   const rawText = options.rawText ?? ed.rawText ?? '';
   const recoveredDepartureDays = options.departureDays ?? ed.departure_days ?? inferDepartureDaysFromRawText(rawText);
   const ctx = { packageDepartureDays: recoveredDepartureDays, year: options.year };
+  let deterministicCandidate: (Pick<UploadPriceRecoveryResult, 'tiers' | 'priceRows' | 'priceDates' | 'minPrice'> & { source: string }) | null = null;
+
+  if (rawText.length >= 100) {
+    const det = extractPriceIR(rawText, {
+      year: options.year,
+      title: options.title ?? ed.title,
+      accommodations: options.accommodations ?? ed.accommodations ?? [],
+      includeAllHotelColumns: options.includeAllHotelColumns,
+      durationDays: options.durationDays ?? ed.duration,
+      departureDays: recoveredDepartureDays,
+    });
+    const candidate = evaluateCandidate(ed, normalizeTiers(det.tiers), ctx);
+    deterministicCandidate = { source: det.source, ...candidate };
+
+    if (det.source !== 'none' && candidate.priceRows.length > 0 && candidate.priceDates.length > 0) {
+      return {
+        ok: true,
+        source: `deterministic:${det.source}`,
+        failures,
+        ...candidate,
+      };
+    }
+  }
 
   const llmCandidate = evaluateCandidate(ed, normalizeTiers(ed.price_tiers ?? []), ctx);
   if (llmCandidate.priceRows.length > 0 && llmCandidate.priceDates.length > 0) {
@@ -224,23 +279,27 @@ export async function recoverUploadPriceData(
   failures.push(...explainCandidate('llm', llmCandidate));
 
   if (rawText.length >= 100) {
-    const det = extractPriceIR(rawText, {
-      year: options.year,
-      title: options.title ?? ed.title,
-      accommodations: options.accommodations ?? ed.accommodations ?? [],
-      durationDays: options.durationDays ?? ed.duration,
-      departureDays: recoveredDepartureDays,
-    });
-    const detCandidate = evaluateCandidate(ed, normalizeTiers(det.tiers), ctx);
+    const detCandidate = deterministicCandidate ?? (() => {
+      const det = extractPriceIR(rawText, {
+        year: options.year,
+        title: options.title ?? ed.title,
+        accommodations: options.accommodations ?? ed.accommodations ?? [],
+        includeAllHotelColumns: options.includeAllHotelColumns,
+        durationDays: options.durationDays ?? ed.duration,
+        departureDays: recoveredDepartureDays,
+      });
+      return { source: det.source, ...evaluateCandidate(ed, normalizeTiers(det.tiers), ctx) };
+    })();
     if (detCandidate.priceRows.length > 0 && detCandidate.priceDates.length > 0) {
+      const { source: detSource, ...candidate } = detCandidate;
       return {
         ok: true,
-        source: `deterministic:${det.source}`,
+        source: `deterministic:${detSource}`,
         failures,
-        ...detCandidate,
+        ...candidate,
       };
     }
-    failures.push(...explainCandidate(`deterministic:${det.source}`, detCandidate));
+    failures.push(...explainCandidate(`deterministic:${detCandidate.source}`, detCandidate));
 
     const supplierRawCandidate = evaluateCandidate(ed, supplierRawFactsToTiers(rawText), ctx);
     if (supplierRawCandidate.priceRows.length > 0 && supplierRawCandidate.priceDates.length > 0) {

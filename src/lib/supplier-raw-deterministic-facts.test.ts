@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { NormalizedIntake } from './intake-normalizer';
+import { recoverCatalogSplitFromRawText } from './product-registration/catalog-split-recovery';
 import {
   applySupplierRawDeterministicFacts,
   buildSupplierRawDeterministicItinerary,
@@ -52,6 +55,101 @@ BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일
 `);
 
     expect(facts.title).toBe('BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일');
+  });
+
+  it('infers unlabeled flight codes from catalog schedule tables', () => {
+    const facts = extractSupplierRawDeterministicFacts(`
+PKG
+BX나리타 치바 죠시 골프 54H 3박4일
+일 자
+제1일
+부 산
+나리타
+BX112
+07:50
+10:00
+김해 국제공항 출발
+나리타 국제공항 도착
+제4일
+나리타
+부 산
+BX111
+11:00
+13:30
+나리타 국제공항 출발
+김해 국제공항 도착
+`);
+
+    expect(facts.airline).toBe('BX');
+    expect(facts.outbound?.code).toBeUndefined();
+    expect(facts.inbound?.code).toBeUndefined();
+  });
+
+  it('keeps pasted catalog table columns out of the customer itinerary and notices', () => {
+    const rawText = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),
+      'utf8',
+    );
+    const products = recoverCatalogSplitFromRawText(rawText);
+    const joshi = products.find(product => product.extractedData.title?.includes('죠시'));
+    expect(joshi).toBeTruthy();
+
+    const sectionRawText = joshi!.sectionRawText ?? '';
+    const facts = extractSupplierRawDeterministicFacts(sectionRawText);
+    const itinerary = buildSupplierRawDeterministicItinerary(sectionRawText);
+    const scheduleText = itinerary?.days.flatMap(day => day.schedule.map(item => item.activity)).join('\n') ?? '';
+
+    expect(facts.inclusions).toEqual(expect.arrayContaining([
+      '왕복항공료(15KG)',
+      '유류할증료(6월기준)',
+      '호텔',
+      '식사(조식,중식)',
+    ]));
+    expect(facts.inclusions).not.toContain('식사(조식');
+    expect(facts.inclusions).not.toContain('중식)');
+    expect(facts.notices.map(notice => notice.text).join('\n')).not.toContain('주 요 행 사 일 정');
+    expect(facts.notices.map(notice => notice.text).join('\n')).not.toContain('제1일');
+
+    expect(itinerary?.meta.flight_out).toBe('BX112');
+    expect(itinerary?.meta.flight_in).toBe('BX111');
+    expect(itinerary?.days).toHaveLength(4);
+    expect(itinerary?.days[0].hotel?.name).toBe('호텔 죠시 또는 동급 (2인실-스탠다드)');
+    expect(itinerary?.days[0].meals.lunch).toBe(true);
+    expect(itinerary?.days[0].meals.lunch_note).toBe('클럽식');
+    expect(itinerary?.days[0].meals.dinner).toBe(false);
+    expect(itinerary?.days[0].meals.dinner_note).toBe('불포함');
+    expect(scheduleText).not.toMatch(/^(BX112|BX111|07:50|10:00|10:55|13:15|전용차량|도보|전 일)$/m);
+    expect(scheduleText).not.toMatch(/^라운딩 후$/m);
+    expect(scheduleText).not.toContain('출발 2시간 전');
+    expect(scheduleText).toContain('김해공항 국제선 2층 미팅 후 수속');
+    expect(scheduleText).not.toContain('호텔 조식 후 체크아웃 후');
+    expect(scheduleText).not.toContain('셔틀탑승');
+    expect(scheduleText).toContain('라운딩 후 호텔 체크인 및 휴식');
+    expect(scheduleText).toContain('호텔 조식 후 체크아웃');
+    expect(scheduleText).toContain('셔틀 탑승 후 공항으로 이동 (약 1시간 소요, 현지 운전기사님 수송 후 개별 수속)');
+    expect(scheduleText).not.toContain('https://www.unimat-golf.jp/choshi/hotel.html');
+    expect(itinerary?.days[0].schedule).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'flight', transport: 'BX112', time: '07:50', activity: '김해 국제공항 출발' }),
+      expect.objectContaining({ type: 'flight', transport: 'BX112', time: '10:00', activity: '나리타 국제공항 도착' }),
+    ]));
+    expect(itinerary?.days[3].schedule).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'flight', transport: 'BX111', time: '10:55', activity: '나리타 국제공항 출발' }),
+      expect.objectContaining({ type: 'flight', transport: 'BX111', time: '13:15', activity: '김해 국제공항 도착' }),
+    ]));
+    expect((itinerary as { flight_segments?: unknown[] } | null)?.flight_segments).toHaveLength(2);
+
+    const narita = products.find(product => product.extractedData.title?.includes('나리타노모리'));
+    expect(narita).toBeTruthy();
+    const naritaItinerary = buildSupplierRawDeterministicItinerary(narita!.sectionRawText ?? '');
+    const naritaScheduleText = naritaItinerary?.days.flatMap(day => day.schedule.map(item => item.activity)).join('\n') ?? '';
+    expect(naritaScheduleText).not.toContain('저녁 메뉴 안내');
+    expect(naritaScheduleText).not.toContain('松花堂御膳');
+    expect(naritaScheduleText).not.toContain('일본골프상품 취소규정');
+    expect(naritaScheduleText).not.toContain('현금영수증');
+    expect(naritaItinerary?.days[3].schedule).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'flight', transport: 'BX111', time: '10:55', activity: '나리타 국제공항 출발' }),
+      expect.objectContaining({ type: 'flight', transport: 'BX111', time: '13:15', activity: '김해 국제공항 도착' }),
+    ]));
   });
 
   it.each(SUPPLIER_RAW_GOLDEN_FIXTURES)(

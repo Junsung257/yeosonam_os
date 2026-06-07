@@ -15,6 +15,11 @@ export const UPLOAD_REGION_CODE_MAP: Record<string, string> = {
 export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
   오사카: 'OSA',
   도쿄: 'TYO',
+  동경: 'TYO',
+  나리타: 'TYO',
+  치바: 'TYO',
+  죠시: 'TYO',
+  조시: 'TYO',
   후쿠오카: 'FUK',
   삿포로: 'CTS',
   오키나와: 'OKA',
