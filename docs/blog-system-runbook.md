@@ -58,6 +58,8 @@ curl https://yeosonam.com/api/cron/blog-publisher
 
 4. **사진·색인 자동화 체크**
    - 새 글 본문에 이미지가 최소 2~3장 들어갔는지 확인 (`seo_score.details`의 이미지 SEO 항목)
+   - 새 글 상세 페이지에서 본문 이미지가 실제 `<img>`로 보이는지 확인한다. 화면에 `![...](...)`, `##`, `[링크](...)`, `|---|` 같은 마크다운 원문이 보이면 즉시 배포 중단.
+   - 발행 품질 게이트의 `render_integrity` 가 `passed=true`인지 확인한다. 실패 시 원문은 저장하지 말고 렌더러/마크다운 구조를 먼저 수정한다.
    - `indexing_reports` 최신 행에서 `sitemap_pings` 안의 `google_search_console_sitemap` 이 `ok=true`인지 확인
    - `INDEXNOW_KEY` 미설정이면 Bing/IndexNow는 `skipped`가 정상이며, 운영 전에는 루트 key 파일 배포가 필요
    - 대량 재색인은 `/api/blog/bulk-reindex`를 사용한다. 이 경로는 Google sitemap 제출과 IndexNow 요청을 batch로 묶어 호출한다.
@@ -130,6 +132,16 @@ curl https://yeosonam.com/api/cron/blog-publisher
 ---
 
 ## 🆘 트러블슈팅
+
+### 글 본문 사진이 깨지고 마크다운이 그대로 보임
+- 증상: `/blog/[slug]` 본문에 `##`, `![이미지](url)`, `[링크](url)`, 표 파이프(`|`)가 그대로 노출되고, 본문 이미지가 실제 사진으로 렌더되지 않는다.
+- 대표 사고: 2026-06-07 `/blog/zhangjiajie-weather` 및 최신 글 다수에서 본문 이미지 3장이 모두 마크다운 텍스트로 노출됨.
+- 근본 원인: `content_creatives.blog_html`은 "마크다운 + 안전한 HTML(`<figcaption>`, `<aside>`)" 혼합 저장값인데, 상세 페이지가 `<figcaption>` 태그를 보고 전체를 raw HTML로 오판해 `marked.parse()`를 건너뜀.
+- 재발 방지:
+  - 상세 페이지는 반드시 `src/lib/blog-renderer.ts`의 `renderBlogContentToHtml()`만 사용한다.
+  - 발행 전 `runQualityGates()`의 `render_integrity` 게이트를 통과해야 한다.
+  - 테스트 `src/lib/blog-renderer.test.ts`는 `<figcaption>`이 섞인 마크다운도 `<h2>`, `<img>`, `<a>`로 렌더되는지 검증한다.
+  - 단순히 이미지 URL 200 응답만 보면 안 된다. 실제 DOM에 `<article img>`가 있고 본문 텍스트에 마크다운 원문이 남지 않았는지 같이 본다.
 
 ### 블로그 자동 생성 중단됨
 ```bash
@@ -214,3 +226,108 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - **Vercel 장애**: https://vercel-status.com
 - **Solapi 장애**: https://solapi.com/status
 - **Gemini API 쿼터**: https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com
+
+---
+
+## Blog Render Integrity Audit (2026-06-07)
+
+블로그 상세 본문은 이미지 URL 200 응답만으로 정상 판단하지 않는다. 실제 DOM 기준으로 마크다운 원문 잔여물과 본문 이미지/제목 렌더를 함께 확인한다.
+
+### 필수 명령
+
+- 배포 전 로컬: `npm run audit:blog-render:browser -- --base=http://localhost:3002`
+- 운영 현재 상태: `npm run audit:blog-render:browser -- --base=https://www.yeosonam.com`
+- JSON 보고서가 필요하면 뒤에 `--json`을 붙인다.
+
+### 100점 기준
+
+- `score=100`
+- `failed=0`
+- `errors=0`
+- 모든 글의 `artifactTotal=0`
+- 본문 이미지가 필요한 일반 글은 `imgCount>0`
+- 본문 구조형 글은 `h2Count>=2`
+
+### 판정 원칙
+
+- PPR/스트리밍 페이지는 서버 HTML만 보면 `<article>` 본문이 비어 오탐이 날 수 있으므로 전수 감사는 반드시 `--browser-fallback`으로 실제 브라우저 DOM을 재확인한다.
+- `content_creatives.blog_html`은 마크다운과 안전한 HTML(`<figcaption>`, `<aside>`)이 섞일 수 있다. `<tag>` 존재만으로 raw HTML이라고 판단하면 안 된다.
+- 상세 페이지는 `src/lib/blog-renderer.ts`의 `renderBlogContentToHtml()`을 통해 렌더한다.
+- 발행 전 품질 게이트는 `render_integrity`를 통과해야 한다.
+- 2026-06-07 사고 기준 운영 사이트는 99개 글 중 99개 실패(`score=0`, `avgImages=0`, `avgArtifacts=45.2`)였고, 로컬 개선판은 99개 글 모두 통과(`score=100`, `failed=0`, `avgImages=3`)했다.
+
+---
+
+## Blog Image Quality Audit (2026-06-07)
+
+렌더 감사는 `![이미지](url)`가 실제 `<img>`로 변환되는지 보는 검사다. 이미지 품질 감사는 실제 글에 배치된 사진이 깨지지 않았는지, alt/caption이 비어 있지 않은지, 같은 글 안에서 중복되지 않는지, 제목/목적지 토큰과 연결되는지 보는 별도 검사다.
+
+### 필수 명령
+
+- 배포 전 로컬: `npm run audit:blog-images -- --base=http://localhost:3002`
+- 운영 현재 상태: `npm run audit:blog-images -- --base=https://www.yeosonam.com`
+- JSON 보고서가 필요하면 뒤에 `--json`을 붙인다.
+
+### 100점 기준
+
+- `score=100`
+- `failed=0`
+- `errors=0`
+- 모든 글의 `imageCount>0`
+- `broken=0`
+- `missingAlt=0`
+- `duplicate_within_post=0`
+- `no_title_token_in_alt_or_caption=0`
+
+### 엔진 기준
+
+- 발행 전 `runQualityGates()`의 `image_quality` 게이트를 통과해야 한다.
+- `image_quality`는 마크다운 원문 기준으로 최소 이미지 수, 빈 alt, generic alt, 중복 URL, 깨진 Pexels URL, 목적지/키워드 토큰 없는 alt/caption을 차단한다.
+- Pexels 검색어는 `destToEnKeyword(destination)` + 섹션 힌트 조합을 사용한다. 목적지 매핑을 추가/수정하면 `src/lib/pexels.ts`와 이미지 감사 결과를 함께 확인한다.
+- 시각적 의미 적합성은 자동 감사가 alt/caption/제목 토큰 기반으로 하한선을 잡는다. 신규 목적지나 대량 발행 전에는 실패 예시와 상위 샘플을 사람이 추가 확인한다.
+- 2026-06-07 로컬 개선판 기준 이미지 감사 결과: 99개 글 전부 통과(`score=100`, `failed=0`, `errors=0`, `totalImages=299`). 이미지 출처는 Pexels 295장, Supabase blog-assets 4장이다. 전체 중복률은 `duplicateImageRatio=0.361`이므로 글 안 중복은 금지하고, 새 생성 엔진은 Pexels 결과 페이지/사진 인덱스를 주제 seed로 분산한다.
+
+---
+
+## Blog SEO Quality Audit (2026-06-07)
+
+렌더링과 이미지가 정상이어도 SEO 메타, canonical, 구조화 데이터, H1/H2, 내부링크, 롱테일 제목 구성이 약하면 상위노출 품질로 보지 않는다. 새 글 발행 전에는 `computeSeoScore()`가 100점 만점 기준을 통과해야 하며, 배포 전에는 실제 페이지 DOM 기준의 SEO 감사를 별도로 실행한다.
+
+### 필수 명령
+
+- 배포 전 로컬: `npm run audit:blog-seo -- --base=http://localhost:3002`
+- 운영 현재 상태: `npm run audit:blog-seo -- --base=https://www.yeosonam.com`
+- JSON 보고서가 필요하면 뒤에 `--json`을 붙인다.
+
+### 100점 기준
+
+- `score=100`
+- `failed=0`
+- `errors=0`
+- 모든 공개 글에 title, meta description, canonical, OG/Twitter 메타가 있어야 한다.
+- 모든 공개 글은 `noindex`가 없어야 하고 canonical path가 실제 slug와 일치해야 한다.
+- 모든 공개 글은 문서 전체 기준 H1 1개, H2 3개 이상, 본문 1,200자 이상이어야 한다.
+- 모든 공개 글은 본문 이미지 2장 이상, 빈 alt 0개, OG image 1개 이상이어야 한다.
+- 모든 공개 글은 BlogPosting 또는 Article JSON-LD와 BreadcrumbList JSON-LD를 가져야 한다.
+- 모든 공개 글은 내부링크 1개 이상을 가져야 한다.
+
+### 상위노출 경고 기준
+
+- `weak_longtail_modifier`: 제목/H1에 비용, 가격, 일정, 코스, 날씨, 월별, 준비물, 체크리스트, 환전, 입국, 서류, 항공권, 숙소, 맛집, 추천, 가이드, 후기, 예약, 포함, 주의, 연도형 키워드가 없으면 경고로 남긴다. 실패는 아니지만 GSC 롱테일 확장 후보나 수동 개선 후보로 본다.
+- `short_title`: 한국어 제목이 20자 이상이면 기술 실패는 아니지만, 25자 미만이면 CTR 개선 후보로 본다.
+- `below_info_blog_ideal_length`: 본문 1,200자는 색인 최소선이고, 정보성 글은 2,500자 이상을 이상 기준으로 본다.
+- `missing_external_authority_link`: 공식 출처 링크가 없으면 경고로 남긴다. 비자, 입국, 날씨, 안전, 공항, 환율 글은 공식 출처 링크를 강제하는 쪽을 우선한다.
+
+### 발행 엔진 기준
+
+- `src/lib/blog-seo-scorer.ts`의 `computeSeoScore()`는 100점 만점이다.
+- 자동 발행 기준은 정보성 글 85점 이상, 상품형 글 80점 이상이다.
+- title, meta description, heading, image SEO, 내부링크/CTA, structured data, helpful content 항목 중 critical fail이 있으면 점수가 높아도 발행하지 않는다.
+- `blog-publisher`는 `blog_topic_queue.meta.keywords`를 `secondaryKeywords`로 넘겨 롱테일/보조 키워드 커버리지를 채점한다.
+- 새 글 발행, 수동 발행/재발행, 강제 재검증, 크론 발행은 `notifyIndexing()` 또는 batch indexing 경로로 sitemap 제출과 IndexNow를 요청한다.
+- 기존 글의 렌더러/SEO 시스템 수정 후에는 배포 직후 `/api/blog/bulk-reindex`를 실행해 전체 블로그를 재검증/재색인한다.
+
+### 현재 확인 결과
+
+- 2026-06-07 로컬 전체 99개 SEO 감사 결과: `score=100`, `passed=99`, `failed=0`, `errors=0`, `warnings=115`.
+- 주요 경고: `short_title`, `duplicate_meta_description`, `weak_longtail_modifier`, `missing_external_authority_link`. 이 경고는 색인 차단 사유는 아니지만, 롱테일 제목/메타/공신력 링크 개선 후보로 관리한다.

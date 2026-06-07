@@ -82,17 +82,33 @@ function sectionAlreadyHasImage(lines: string[], headingIndex: number): boolean 
   return false;
 }
 
-async function pickPexelsImage(query: string, usedUrls: Set<string>): Promise<string | null> {
+async function pickPexelsImage(query: string, usedUrls: Set<string>, seed = query): Promise<string | null> {
   if (!isPexelsConfigured()) return null;
   try {
-    const photos = await searchPexelsPhotos(query, 5, 1);
+    const page = 1 + (stableHash(seed) % 5);
+    const photos = await searchPexelsPhotos(query, 10, page);
+    const startIndex = stableHash(`${seed}:image`) % Math.max(1, photos.length);
+    const rotated = photos.slice(startIndex).concat(photos.slice(0, startIndex));
     const picked = photos
+      .length > 0
+      ? rotated
+      : photos;
+    const url = picked
       .map((photo) => photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original)
       .find((url) => url && !usedUrls.has(url));
-    return picked ?? null;
+    return url ?? null;
   } catch {
     return null;
   }
+}
+
+function stableHash(value: string): number {
+  let hash = 2166136261;
+  for (let i = 0; i < value.length; i += 1) {
+    hash ^= value.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
 }
 
 export async function ensureBlogInlineImages(options: BlogInlineImageOptions): Promise<BlogInlineImageResult> {
@@ -124,6 +140,7 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
       url = await pickPexelsImage(
         buildPexelsQuery(options.destination, options.primaryKeyword, heading),
         usedUrls,
+        `${options.destination || ''}|${options.primaryKeyword || ''}|${heading}`,
       );
     }
 

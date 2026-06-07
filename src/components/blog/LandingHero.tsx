@@ -57,9 +57,9 @@ export default function LandingHero({
         )}
 
         {/* H1 (DKI 반영) */}
-        <h1 className="text-2xl md:text-4xl font-extrabold leading-tight mb-3 tracking-tight">
+        <h2 className="text-2xl md:text-4xl font-extrabold leading-tight mb-3 tracking-tight">
           {headline}
-        </h1>
+        </h2>
 
         {/* 부제 — 핵심 셀링 3줄 */}
         {subtitle && (

@@ -714,6 +714,7 @@ async function processQueueItem(
       seoTitle: generated.seo_title,
       seoDescription: generated.seo_description,
       primaryKeyword,
+      secondaryKeywords: item.meta?.keywords ?? [],
       destination: item.destination,
       blogType,
       imageCount: imgCount,
@@ -727,8 +728,9 @@ async function processQueueItem(
     });
 
     if (!seoScore.passed) {
-      console.log(`[blog-publisher] SEO 점수 ${seoScore.score}/${seoScore.maxScore} — 발행 보류 (기준: ${blogType === 'info' ? 45 : 35}점)`);
-      await handleFailure(item, `SEO 점수 ${seoScore.score}점 (${seoScore.maxScore}점) — ${seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ')}`, null);
+      const failedDetails = seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ');
+      console.log(`[blog-publisher] SEO score ${seoScore.score}/${seoScore.maxScore} - publish blocked (${seoScore.summary})`);
+      await handleFailure(item, `SEO score ${seoScore.score}/${seoScore.maxScore} - ${failedDetails || seoScore.summary}`, null);
       return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
     }
 
