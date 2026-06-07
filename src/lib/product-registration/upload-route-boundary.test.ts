@@ -6,6 +6,10 @@ function readUploadRoute(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/upload/route.ts'), 'utf8');
 }
 
+function readPackageReextractRoute(): string {
+  return readFileSync(join(process.cwd(), 'src/app/api/packages/reextract/route.ts'), 'utf8');
+}
+
 function readUploadRegistrationPipeline(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-registration-pipeline.ts'), 'utf8');
 }
@@ -604,5 +608,25 @@ describe('upload route registration pipeline boundary', () => {
     expect(preparation).toContain('const v3CatalogPreflight = await runUploadV3CatalogPreflight({');
     expect(preflight).toContain('const preSaveV3Result = await runProductRegistrationV3');
     expect(route).not.toMatch(/if\s*\(\s*!preSaveV3Result\.gate_result\.customer_publishable\s*\)\s*{[\s\S]*?productStatus\s*=\s*'REVIEW_NEEDED'/);
+  });
+
+  it('routes saved package re-extraction through the central registration engine', () => {
+    const reextract = readPackageReextractRoute();
+
+    expect(reextract).toContain("from '@/lib/product-registration/register-product-from-raw'");
+    expect(reextract).toContain("from '@/lib/product-registration/finalize-registration'");
+    expect(reextract).toContain("from '@/lib/product-registration/auto-qa'");
+    expect(reextract).toContain("from '@/lib/product-registration/improvement-ledger-persistence'");
+    expect(reextract).toContain('const registration = await registerProductFromRaw({');
+    expect(reextract).toContain('const finalized = finalizeUploadRegistration({');
+    expect(reextract).toContain('runMicroAutoQA({');
+    expect(reextract).toContain('persistImprovementLedgerEvents({');
+    expect(reextract).toContain(".from('product_prices')");
+    expect(reextract).toContain('.delete()');
+    expect(reextract).toContain('.insert(priceRowsToInsert)');
+    expect(reextract).toContain('withAdminGuard(postHandler)');
+    expect(reextract).not.toContain("from '@/lib/parser/extract-itinerary'");
+    expect(reextract).not.toContain('extractItineraryData(');
+    expect(reextract).not.toContain('raw_extracted_text');
   });
 });
