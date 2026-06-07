@@ -72,6 +72,6 @@ const result = (joinData as unknown as JoinedRow[]).map(r => r.some_field);
 ## 5. 기존 코드 감사 (정기적)
 
 ```
-npm run typecheck  # tsc --noEmit 실행
+npm run type-check  # tsc --noEmit 실행
 rg "as any" --include '*.ts' --include '*.tsx' src/ | wc -l  # 추세 추적
 ```
