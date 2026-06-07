@@ -113,6 +113,34 @@ describe('finalizeUploadRegistration', () => {
     expect(result.pkgStatus).toBe('pending');
   });
 
+  it('keeps V3 blocked registrations out of customer-visible package status', () => {
+    const registration = baseRegistration();
+    registration.evidence.v3DraftStatus = 'blocked';
+    const result = finalizeUploadRegistration({
+      registration,
+      rawText: 'Cebu package fixture',
+      title: registration.extractedData.title ?? 'Untitled',
+      netPrice: 859000,
+      internalCode: 'PUS-ETC-CEB-05-0001',
+      policy: DEFAULT_REGISTRATION_POLICY,
+      priceRows: [{
+        target_date: '2026-07-24',
+        day_of_week: null,
+        net_price: 859000,
+        adult_selling_price: 859000,
+        child_price: null,
+        note: null,
+      }],
+      itineraryInput: registration.itinerary.itineraryInput,
+      itineraryDataToSave: registration.itinerary.itineraryDataToSave,
+      scheduleItemCount: 0,
+    });
+
+    expect(result.uploadGate).not.toBe('BLOCKED');
+    expect(result.productStatus).toBe('REVIEW_NEEDED');
+    expect(result.pkgStatus).toBe('pending');
+  });
+
   it('builds the write row from the finalized registration data', () => {
     const registration = baseRegistration({ inclusions: ['airfare'], excludes: ['guide tip'] });
     const result = finalizeUploadRegistration({

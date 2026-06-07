@@ -50,6 +50,47 @@ describe('product registration golden corpus', () => {
     expect(!registration.deliverability.ok).toBe(expected.customerDeliverableBlocked);
   });
 
+  it('keeps Fukuoka price-table and cash-receipt text out of the customer itinerary/title', async () => {
+    const testCase = GOLDEN_CORPUS_CASES.find(item => item.id === 'fukuoka-golf-spot-weekday-cash-receipt');
+    expect(testCase).toBeDefined();
+    if (!testCase) return;
+
+    const rawText = readGoldenText(testCase.fixture);
+    const expected = readGoldenExpected(testCase.expected);
+    const registration = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: '현금영수증 발급 안내 드립니다',
+        destination: expected.destination,
+        duration: testCase.duration,
+        accommodations: [...testCase.accommodations],
+        rawText,
+        price_tiers: [],
+      },
+      title: '현금영수증 발급 안내 드립니다',
+      activeAttractions: [],
+      destinationCode: expected.destinationCode,
+      internalCode: `PUS-ETC-${expected.destinationCode}-03-0010`,
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    const scheduleText = JSON.stringify(registration.itinerary.itineraryDataToSave?.days ?? []);
+
+    expect(registration.identity.title).toBe(expected.title);
+    expect(registration.identity.title).not.toContain('현금영수증');
+    expect(registration.deliverability.ok).toBe(true);
+    expect(scheduleText).not.toContain('현금영수증');
+    expect(scheduleText).not.toContain('스팟특가');
+    expect(scheduleText).not.toContain('월,화,수');
+    expect(scheduleText).not.toMatch(/\d{1,2}\/\d{1,2}(?:~\d{1,2}\/\d{1,2})?/);
+    expect(scheduleText).not.toMatch(/\d{1,3}(?:,\d{3})?,-/);
+    expect(scheduleText).not.toContain('\uC720\uD6C4\uC778');
+    expect(scheduleText).not.toContain('\uB3C4\uC2A4');
+    expect(scheduleText).not.toContain('\uD638\uD154 \uC608\uC57D\uC2DC \uB0A0\uC9DC\uBCC4');
+  });
+
   it('keeps corpus-level registration blockers at zero', async () => {
     const report = await evaluateGoldenCorpus();
 

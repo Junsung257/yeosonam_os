@@ -21,11 +21,19 @@ export type ItineraryScheduleQualityIssue = {
 const STANDALONE_FLIGHT_CODE_RE = /^(?:[A-Z]{2}|\d[A-Z])\d{2,4}$/;
 const STANDALONE_TIME_RE = /^\d{1,2}:\d{2}$/;
 const STANDALONE_TRANSPORT_RE = /^(?:전용차량|전용 차량|도보|셔틀|셔틀버스|차량|버스|이동)$/;
-const STANDALONE_REGION_RE = /^(?:부산|부\s*산|김해|나리타|나라타|치바|치\s*바|동경|도쿄|오사카|후쿠오카|세부|다낭|나트랑|푸꾸옥)$/;
+const STANDALONE_REGION_RE = /^(?:부산|부\s*산|김해|나리타|나라타|치바|치\s*바|동경|도쿄|오사카|후쿠오카|유후인|도스|사세보|세부|다낭|나트랑|푸꾸옥)$/;
 const HOTEL_LINE_RE = /^HOTEL\s*[:：]/i;
 const URL_RE = /^https?:\/\//i;
 const MEAL_LINE_RE = /^[조중석]\s*[:：]\s*\S+/;
 const NOTICE_SECTION_RE = /^(?:비\s*고|주의사항|취소|환불|예약금|잔금|취소수수료|취소료|환불규정)\b/;
+
+const KOREAN_STANDALONE_TRANSPORT_RE = /^(?:전용차량|전용\s*차량|송영차량|전용버스|버스|차량|이동)$/;
+const KOREAN_STANDALONE_REGION_RE = /^(?:부산|김해|후쿠오카|유후인|도스|사세보|나리타|치바|동경|도쿄|서안|화산|푸꾸옥|다낭|하노이|나트랑|방콕)$/;
+const PRICE_TABLE_HEADING_RE = /^(?:스팟\s*특가|spot|실시간\s*항공\s*기준|\*\s*실시간\s*항공\s*기준|\?ㅽ뙚\s*\?밴\?|\?ㅼ떆媛꾪빆怨듦린以)$/i;
+const PRICE_DATE_TOKEN_RE = /^\d{1,2}\/\d{1,2}(?:\s*[,，]\s*\d{1,2})*(?:\s*~\s*\d{1,2}\/\d{1,2})?$/;
+const PRICE_AMOUNT_TOKEN_RE = /^\d{1,3}(?:,\d{3})?,-$/;
+const WEEKDAY_ONLY_RE = /^(?:[일월화수목금토](?:\s*[,/·~\-]\s*[일월화수목금토])*)$/;
+const PRICE_TABLE_NOTICE_RE = /^(?:(?:호텔\s*)?예약시\s*날짜별\s*(?:써차지|서차지|surcharge|상품가)|호텔\s*예약시\s*날짜별|항공제외일|항공\s*제외일|현지지상비|현지\s*지상비|일본공휴일|일본\s*공휴일|항공그룹요금|항공\s*그룹\s*요금)/i;
 
 function normalizeActivity(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
@@ -45,10 +53,20 @@ function classifyPollutedActivity(activity: string): { code: string; reason: str
   if (STANDALONE_TIME_RE.test(compact)) {
     return { code: 'ITINERARY_SCHEDULE_TIME_ONLY', reason: 'time appears as a standalone schedule activity' };
   }
-  if (STANDALONE_TRANSPORT_RE.test(activity) || STANDALONE_TRANSPORT_RE.test(compact)) {
+  if (
+    STANDALONE_TRANSPORT_RE.test(activity)
+    || STANDALONE_TRANSPORT_RE.test(compact)
+    || KOREAN_STANDALONE_TRANSPORT_RE.test(activity)
+    || KOREAN_STANDALONE_TRANSPORT_RE.test(compact)
+  ) {
     return { code: 'ITINERARY_SCHEDULE_TRANSPORT_ONLY', reason: 'transport column value appears as a standalone schedule activity' };
   }
-  if (STANDALONE_REGION_RE.test(activity) || STANDALONE_REGION_RE.test(compact)) {
+  if (
+    STANDALONE_REGION_RE.test(activity)
+    || STANDALONE_REGION_RE.test(compact)
+    || KOREAN_STANDALONE_REGION_RE.test(activity)
+    || KOREAN_STANDALONE_REGION_RE.test(compact)
+  ) {
     return { code: 'ITINERARY_SCHEDULE_REGION_ONLY', reason: 'region column value appears as a standalone schedule activity' };
   }
   if (HOTEL_LINE_RE.test(activity)) {
@@ -62,6 +80,21 @@ function classifyPollutedActivity(activity: string): { code: string; reason: str
   }
   if (NOTICE_SECTION_RE.test(activity)) {
     return { code: 'ITINERARY_SCHEDULE_NOTICE_LINE', reason: 'notice/policy text leaked into schedule activity' };
+  }
+  if (PRICE_TABLE_HEADING_RE.test(activity)) {
+    return { code: 'ITINERARY_SCHEDULE_PRICE_TABLE_HEADING', reason: 'price table heading leaked into schedule activity' };
+  }
+  if (PRICE_DATE_TOKEN_RE.test(compact)) {
+    return { code: 'ITINERARY_SCHEDULE_PRICE_DATE_TOKEN', reason: 'price table date/range leaked into schedule activity' };
+  }
+  if (PRICE_AMOUNT_TOKEN_RE.test(compact)) {
+    return { code: 'ITINERARY_SCHEDULE_PRICE_AMOUNT_TOKEN', reason: 'price table amount leaked into schedule activity' };
+  }
+  if (WEEKDAY_ONLY_RE.test(compact)) {
+    return { code: 'ITINERARY_SCHEDULE_WEEKDAY_ONLY', reason: 'price table weekday label leaked into schedule activity' };
+  }
+  if (PRICE_TABLE_NOTICE_RE.test(activity)) {
+    return { code: 'ITINERARY_SCHEDULE_PRICE_NOTICE_LINE', reason: 'price table notice leaked into schedule activity' };
   }
   return null;
 }
@@ -85,8 +118,7 @@ export function findItineraryScheduleQualityIssues(
         activity,
       });
     }
-    const hasColumnFragment = dayIssues.some(issue => issue.code !== 'ITINERARY_SCHEDULE_REGION_ONLY');
-    issues.push(...dayIssues.filter(issue => issue.code !== 'ITINERARY_SCHEDULE_REGION_ONLY' || hasColumnFragment));
+    issues.push(...dayIssues);
   }
 
   return issues;
