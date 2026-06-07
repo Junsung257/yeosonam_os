@@ -1,5 +1,42 @@
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
+async function isReachableImageUrl(url: string): Promise<boolean> {
+  if (!/^https?:\/\//i.test(url)) return false;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const head = await fetch(url, {
+      method: 'HEAD',
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (head.ok) return true;
+    if (![405, 501].includes(head.status)) return false;
+
+    const get = await fetch(url, {
+      method: 'GET',
+      headers: { Range: 'bytes=0-0' },
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    return get.ok;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function filterReachableImageUrls(urls: string[]): Promise<string[]> {
+  const checked = await Promise.all(urls.map(async (url) => ({
+    url,
+    ok: await isReachableImageUrl(url),
+  })));
+  return checked.filter((item) => item.ok).map((item) => item.url);
+}
+
 /**
  * 블로그(from-card-news)·퍼블리셔가 사용하는 슬라이드 공개 URL 목록.
  * card_news.slide_image_urls 우선, 비어 있으면 card_news_renders 폴백.
@@ -20,7 +57,8 @@ export async function getSlideImagePublicUrlsForBlog(
     .maybeSingle();
 
   const direct = (row?.slide_image_urls as string[] | null) ?? [];
-  if (direct.length > 0) return direct;
+  const reachableDirect = direct.length > 0 ? await filterReachableImageUrls(direct) : [];
+  if (direct.length > 0 && reachableDirect.length === direct.length) return direct;
 
   // 요청된 포맷 목록 중 첫 번째로 일치하는 format의 렌더를 반환
   for (const fmt of formats) {
@@ -41,11 +79,13 @@ export async function getSlideImagePublicUrlsForBlog(
       latestBySlide.set(r.slide_index, r.url);
     }
     if (latestBySlide.size > 0) {
-      return [...latestBySlide.entries()]
+      const urls = [...latestBySlide.entries()]
         .sort((a, b) => a[0] - b[0])
         .map(([, url]) => url);
+      const reachable = await filterReachableImageUrls(urls);
+      if (reachable.length > 0) return reachable;
     }
   }
 
-  return [];
+  return reachableDirect;
 }

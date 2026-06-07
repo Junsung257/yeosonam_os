@@ -1,40 +1,44 @@
 /**
- * Blog SEO Score Engine — 발행 전 SEO 점수 측정기
+ * Blog SEO score engine.
  *
- * Google / Naver 상위 노출을 위해 글의 SEO 최적화 정도를 0~100 점수로 정량화.
- * 모든 글은 발행 전 이 엔진을 통과하며, score < 45 (info) / 35 (product) 면 발행 보류.
- *
- * 평가 항목 (가중치 합 110):
- *   - 제목 SEO      (15) — 길이·power word·연도·키워드 포함
- *   - 메타 설명      (10) — 존재·길이·키워드 포함
- *   - H1-H2 구조     (10) — H1 정확성·H2 다양성·키워드 분포
- *   - 키워드 밀도    (10) — 1.5~3.0% 적정 범위
- *   - LSI 키워드 밀도 (10) — secondaryKeywords 각각 0.5%~2.0% 최적
- *   - LSI 커버리지   (12) — 관련 LSI 키워드 본문 내 등장 수
- *   - 이미지 SEO      (8) — alt 텍스트 존재·파일명 최적화
- *   - 내부 링크      (8)  — 내부 링크 수·관련 글 연결
- *   - 가독성         (10) — 문장 길이·문단 길이·한글 비율
- *   - JSON-LD       (10)  — 필수 스키마 존재 여부
- *   - EEAT 시그널    (7)  — AI 디스클로저·리뷰 인용·편집자 문장
- *   - 모바일 최적화   (5)  — 반응형·이미지 최적화
- *   - URL slug       (5)  — slug 구조·키워드 포함
- *
- * Reference: Backlinko (2M SERP 분석), Google Quality Rater Guidelines, 
- *           Semantic SEO (Bill Slawski), Brian Dean's SEO checklist
+ * This is a publish-time quality gate, not a loose diagnostics widget.
+ * New auto-published posts should clear a high bar before they can be indexed.
  */
 
-const LSI_DICTIONARY: Record<string, string[]> = {
-  destination: ['여행', '목적지', '방문', '도착', '출발', '일정'],
-  transport: ['비행기', '항공권', '기차', '버스', '렌터카', '픽업', '교통', '이동'],
-  accommodation: ['숙소', '호텔', '리조트', '게스트하우스', '민박', '투숙'],
-  food: ['맛집', '식사', '음식', '레스토랑', '현지음식', '먹거리', '요리'],
-  weather: ['날씨', '기온', '계절', '우기', '건기', '장마', '일기예보'],
-  currency: ['환전', '환율', '달러', '엔화', '동', '바트', '화폐', '현지화폐'],
-  document: ['비자', '여권', '입국', '면세', '세관', '무비자'],
-  tip: ['팁', '챙길', '준비물', '필수', '꿀팁', '주의', '유의'],
-  communication: ['통신', '와이파이', '유심', 'esim', '로밍', '인터넷', '언어'],
-  cost: ['가격', '비용', '예산', '경비', '요금', '할인', '특가', '가성비'],
+const SEMANTIC_DICTIONARY: Record<string, string[]> = {
+  destination: ['여행', '목적지', '방문', '현지', '출발', '일정'],
+  transport: ['항공권', '비행기', '공항', '기차', '버스', '픽업', '교통', '이동'],
+  accommodation: ['숙소', '호텔', '리조트', '객실', '위치', '조식'],
+  food: ['맛집', '식사', '음식', '레스토랑', '현지식', '먹거리'],
+  weather: ['날씨', '기온', '계절', '우기', '건기', '옷차림', '월별'],
+  currency: ['환전', '환율', '달러', '카드', '현금', '결제'],
+  document: ['비자', '여권', '입국', '서류', '면세', '검역'],
+  planning: ['준비물', '체크리스트', '예약', '포함사항', '주의사항', '예산'],
+  communication: ['통신', '와이파이', '유심', 'esim', '로밍', '인터넷'],
+  cost: ['가격', '비용', '경비', '예산', '요금', '할인', '특가', '가성비'],
 };
+
+const AUTHORITATIVE_HOST_HINTS = [
+  '.go.kr',
+  '.gov',
+  'mofa.go.kr',
+  '0404.go.kr',
+  'visit',
+  'tourism',
+  'weather',
+  'airport',
+  'immigration',
+  'embassy',
+  'consulate',
+  'iata.org',
+  'who.int',
+];
+
+export const BLOG_SEO_MAX_SCORE = 100;
+export const BLOG_SEO_MIN_SCORE = {
+  info: 85,
+  product: 80,
+} as const;
 
 export interface SeoScoreResult {
   score: number;
@@ -45,7 +49,7 @@ export interface SeoScoreResult {
   checkedAt: string;
 }
 
-interface SeoScoreDetail {
+export interface SeoScoreDetail {
   name: string;
   score: number;
   maxScore: number;
@@ -59,7 +63,6 @@ export interface ScorerInput {
   seoTitle?: string;
   seoDescription?: string;
   primaryKeyword?: string | null;
-  /** LSI 보조 키워드 배열 (밀도 검증용) */
   secondaryKeywords?: string[];
   destination?: string | null;
   blogType: 'product' | 'info';
@@ -73,369 +76,329 @@ export interface ScorerInput {
   };
 }
 
-const MAX_SCORE = 125;
+function clampScore(score: number, max: number): number {
+  return Math.max(0, Math.min(max, score));
+}
 
-function extractPlainText(html: string): string {
-  return html
+function detail(
+  name: string,
+  score: number,
+  maxScore: number,
+  passAt: number,
+  warnAt: number,
+  message: string,
+): SeoScoreDetail {
+  const safeScore = clampScore(score, maxScore);
+  return {
+    name,
+    score: safeScore,
+    maxScore,
+    status: safeScore >= passAt ? 'pass' : safeScore >= warnAt ? 'warn' : 'fail',
+    message,
+  };
+}
+
+function stripMarkdownAndHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<[^>]+>/g, ' ')
-    .replace(/!\[([^\]]*)\]\([^)]+\)/g, '')
-    .replace(/[#*_`>\[\]()\-:|]/g, ' ')
+    .replace(/!\[([^\]]*)]\([^)]+\)/g, ' $1 ')
+    .replace(/\[([^\]]+)]\([^)]+\)/g, ' $1 ')
+    .replace(/[#*_`>|=-]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-function scoreTitle(input: ScorerInput, keyword: string, dest: string): SeoScoreDetail {
-  let score = 0;
-  const title = input.seoTitle || '';
-  const msgs: string[] = [];
-  if (title.length >= 25 && title.length <= 60) {
-    score += 6;
-    msgs.push(`제목 길이 ${title.length}자 (양호)`);
-  } else if (title.length > 0) {
-    score += 3;
-    msgs.push(`제목 길이 ${title.length}자 (25~60자 권장)`);
+function extractImages(markdownOrHtml: string): Array<{ alt: string; src: string }> {
+  const images: Array<{ alt: string; src: string }> = [];
+  const mdRe = /!\[([^\]]*)]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  let mdMatch: RegExpExecArray | null;
+  while ((mdMatch = mdRe.exec(markdownOrHtml)) !== null) {
+    images.push({ alt: mdMatch[1] || '', src: mdMatch[2] || '' });
   }
-  if (keyword && title.includes(keyword)) { score += 4; msgs.push('주요 키워드 포함'); }
-  if (dest && dest !== keyword && title.includes(dest)) { score += 2; msgs.push('목적지명 포함'); }
-  if (/2025|2026|2027/.test(title)) { score += 3; msgs.push('연도 포함'); }
-  return {
-    name: '제목 SEO', score: Math.min(score, 15), maxScore: 15,
-    status: score >= 10 ? 'pass' : score >= 5 ? 'warn' : 'fail',
-    message: msgs.join(', ') || '제목 없음',
-  };
+
+  const htmlRe = /<img\b[^>]*>/gi;
+  const attrRe = /\s(alt|src)=["']([^"']*)["']/gi;
+  let htmlMatch: RegExpExecArray | null;
+  while ((htmlMatch = htmlRe.exec(markdownOrHtml)) !== null) {
+    const tag = htmlMatch[0];
+    const attrs: Record<string, string> = {};
+    let attrMatch: RegExpExecArray | null;
+    while ((attrMatch = attrRe.exec(tag)) !== null) {
+      attrs[attrMatch[1].toLowerCase()] = attrMatch[2];
+    }
+    images.push({ alt: attrs.alt || '', src: attrs.src || '' });
+  }
+
+  return images;
+}
+
+function extractLinks(markdownOrHtml: string): string[] {
+  const links: string[] = [];
+  const mdRe = /(?<!!)\[[^\]]+]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+  let mdMatch: RegExpExecArray | null;
+  while ((mdMatch = mdRe.exec(markdownOrHtml)) !== null) links.push(mdMatch[1]);
+
+  const htmlRe = /<a\b[^>]*\shref=["']([^"']+)["'][^>]*>/gi;
+  let htmlMatch: RegExpExecArray | null;
+  while ((htmlMatch = htmlRe.exec(markdownOrHtml)) !== null) links.push(htmlMatch[1]);
+
+  return [...new Set(links.filter(Boolean))];
+}
+
+function countOccurrences(text: string, keyword: string): number {
+  if (!keyword) return 0;
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return (text.match(new RegExp(escaped, 'gi')) || []).length;
+}
+
+function scoreTitle(input: ScorerInput, keyword: string, dest: string): SeoScoreDetail {
+  const title = input.seoTitle?.trim() || '';
+  let score = 0;
+  const messages: string[] = [];
+
+  if (title.length >= 25 && title.length <= 60) score += 4;
+  else if (title.length >= 15 && title.length <= 70) score += 2;
+  messages.push(`title ${title.length}자`);
+
+  if (keyword && title.includes(keyword)) score += 3;
+  if (dest && dest !== keyword && title.includes(dest)) score += 1;
+  if (/\b20\d{2}\b|최신|월별|비용|일정|준비물|가격|코스|날씨|체크리스트/.test(title)) score += 3;
+  if (!/(완벽|끝판왕|무조건|충격|대박|실화)/.test(title)) score += 1;
+
+  return detail('title', score, 12, 10, 6, messages.join(', '));
 }
 
 function scoreMeta(input: ScorerInput, keyword: string): SeoScoreDetail {
+  const desc = input.seoDescription?.trim() || '';
   let score = 0;
-  const desc = input.seoDescription || '';
-  const msgs: string[] = [];
-  if (desc.length >= 50 && desc.length <= 160) { score += 5; msgs.push(`설명 ${desc.length}자 (양호)`); }
-  else if (desc.length > 0) { score += 2; msgs.push(`설명 ${desc.length}자 (50~160자 권장)`); }
-  else { msgs.push('메타 설명 없음'); }
-  if (keyword && desc.includes(keyword)) { score += 3; msgs.push('키워드 포함'); }
-  if (desc.length > 0 && desc.length < 50) { score -= 1; }
-  return {
-    name: '메타 설명', score: Math.max(0, Math.min(score, 10)), maxScore: 10,
-    status: score >= 6 ? 'pass' : score >= 3 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
+  const messages: string[] = [`description ${desc.length}자`];
+
+  if (desc.length >= 70 && desc.length <= 160) score += 4;
+  else if (desc.length >= 50 && desc.length <= 180) score += 2;
+  if (keyword && desc.includes(keyword)) score += 3;
+  if (/\d|비용|일정|준비|예약|포함|날씨|월별|체크/.test(desc)) score += 2;
+  if (desc && desc !== input.seoTitle) score += 1;
+
+  return detail('meta_description', score, 10, 8, 5, messages.join(', '));
 }
 
-function scoreHeadings(html: string, keyword: string, dest: string): SeoScoreDetail {
+function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoScoreDetail {
+  const text = input.blogHtml;
+  const h1 = text.match(/^#\s+.+$/gm) || [];
+  const h2 = text.match(/^##\s+.+$/gm) || [];
   let score = 0;
-  const h1 = html.match(/^#\s+.+$/gm) || [];
-  const h2 = html.match(/^##\s+.+$/gm) || [];
-  const msgs: string[] = [];
-  if (h1.length === 1) { score += 3; msgs.push('H1 1개 (양호)'); }
-  else { msgs.push(`H1 ${h1.length}개 (1개 권장)`); }
-  if (h2.length >= 3) { score += 3; msgs.push(`H2 ${h2.length}개`); }
-  else { msgs.push(`H2 ${h2.length}개 (3개 이상 권장)`); }
-  if (keyword) {
-    const kw = [...(h1 || []), ...(h2 || [])].filter(h => h.includes(keyword)).length;
-    if (kw >= 1) { score += 2; msgs.push('키워드 헤딩 포함'); }
-  }
-  if (dest && dest !== keyword) {
-    const dh = [...(h1 || []), ...(h2 || [])].filter(h => h.includes(dest)).length;
-    if (dh >= 1) { score += 2; msgs.push('목적지 헤딩 포함'); }
-  }
-  return {
-    name: 'H1-H2 구조', score: Math.min(score, 10), maxScore: 10,
-    status: score >= 7 ? 'pass' : score >= 4 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
+  const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 7 };
+
+  if (h1.length === 1) score += 3;
+  if (h2.length >= expected.min && h2.length <= expected.max) score += 3;
+  else if (h2.length >= 2) score += 1;
+
+  const headingText = [...h1, ...h2].join(' ');
+  if (keyword && headingText.includes(keyword)) score += 2;
+  if ((dest && headingText.includes(dest)) || /[?？]|비용|일정|준비물|날씨|FAQ|자주 묻는 질문/.test(headingText)) score += 2;
+
+  return detail('heading_structure', score, 10, 8, 5, `H1 ${h1.length}개, H2 ${h2.length}개`);
 }
 
-function scoreKeywordDensity(plainText: string, keyword: string, blogType: string): SeoScoreDetail {
+function scorePrimaryKeyword(plainText: string, keyword: string, blogType: 'product' | 'info'): SeoScoreDetail {
+  if (!keyword) return detail('primary_keyword', 2, 8, 6, 3, 'primary keyword 없음');
+  const count = countOccurrences(plainText, keyword);
+  const density = plainText.length > 0 ? (count * keyword.length / plainText.length) * 100 : 0;
+  const min = blogType === 'product' ? 0.45 : 0.35;
+  const max = blogType === 'product' ? 2.8 : 2.2;
   let score = 0;
-  const msgs: string[] = [];
-  if (keyword && plainText.length > 0) {
-    const kwCount = plainText.split(keyword).length - 1;
-    const density = (kwCount / plainText.length) * 100;
-    const targetMax = blogType === 'product' ? 3.0 : 2.0;
-    if (density >= 0.5 && density <= targetMax) { score += 10; msgs.push(`밀도 ${density.toFixed(2)}% (적정)`); }
-    else if (density > 0 && density < 0.5) { score += 5; msgs.push(`밀도 ${density.toFixed(2)}% (낮음)`); }
-    else { score += 2; msgs.push(`밀도 ${density.toFixed(2)}% (스터핑 위험)`); }
-  } else { msgs.push('키워드 미지정'); }
-  return {
-    name: '키워드 밀도', score, maxScore: 10,
-    status: score >= 8 ? 'pass' : score >= 4 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
+
+  if (density >= min && density <= max) score = 8;
+  else if (density > 0 && density <= max + 0.6) score = 5;
+  else if (count > 0) score = 2;
+
+  return detail('primary_keyword', score, 8, 7, 4, `${keyword} ${count}회, density ${density.toFixed(2)}%`);
 }
 
-/** LSI 키워드 밀도 검증 — 각 secondaryKeywords의 밀도를 측정하고 스터핑 경고 */
-function scoreLsiKeywordDensity(plainText: string, secondaryKeywords?: string[]): SeoScoreDetail {
+function scoreSemanticCoverage(plainText: string, secondaryKeywords?: string[]): SeoScoreDetail {
   let score = 0;
-  const msgs: string[] = [];
-  if (!secondaryKeywords || secondaryKeywords.length === 0) {
-    return { name: 'LSI 키워드 밀도', score: 0, maxScore: 10, status: 'warn', message: 'LSI 키워드 미지정' };
-  }
-  let optimalCount = 0;
-  let stuffingCount = 0;
-  const stuffingKeywords: string[] = [];
-  for (const kw of secondaryKeywords) {
-    if (!kw || plainText.length === 0) continue;
-    const count = plainText.split(kw).length - 1;
-    const density = (count / plainText.length) * 100;
-    if (density >= 0.5 && density <= 2.0) {
-      optimalCount++;
-    } else if (density > 2.0) {
-      stuffingCount++;
-      stuffingKeywords.push(kw);
+  const matchedGroups: string[] = [];
+  for (const [group, words] of Object.entries(SEMANTIC_DICTIONARY)) {
+    const hits = words.filter((word) => plainText.includes(word));
+    if (hits.length >= 2) {
+      matchedGroups.push(group);
+      score += 1;
     }
   }
-  // 점수: LSI 키워드 중 최적 범위 비율에 따라 0~10점
-  const total = secondaryKeywords.length;
-  const optimalRatio = optimalCount / total;
-  if (optimalRatio >= 0.7) { score = 10; msgs.push(`LSI ${optimalCount}/${total} 최적 범위`); }
-  else if (optimalRatio >= 0.4) { score = 6; msgs.push(`LSI ${optimalCount}/${total} 최적 (${total - optimalCount}개 조정 필요)`); }
-  else { score = 2; msgs.push(`LSI ${optimalCount}/${total} 최적 — 추가 권장`); }
-  if (stuffingCount > 0) {
-    score = Math.max(0, score - stuffingCount * 3);
-    msgs.push(`${stuffingCount}개 스터핑 (${stuffingKeywords.slice(0, 3).join(', ')})`);
-  }
-  return {
-    name: 'LSI 키워드 밀도', score, maxScore: 10,
-    status: score >= 7 ? 'pass' : score >= 3 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
-}
 
-function scoreLsiCoverage(plainText: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  const matched: string[] = [];
-  for (const [cat, words] of Object.entries(LSI_DICTIONARY)) {
-    const hits = words.filter(w => plainText.includes(w));
-    if (hits.length >= 2) { matched.push(cat); score += 2; }
-  }
-  score = Math.min(score, 12);
-  if (score >= 8) { msgs.push(`LSI ${matched.length}개 카테고리 (${matched.join(', ')})`); }
-  else if (score >= 4) { msgs.push(`LSI ${matched.length}개 카테고리 — 추가 권장`); }
-  else { msgs.push('LSI 키워드 부족 (4개 카테고리 이상 권장)'); }
-  return {
-    name: 'LSI 커버리지', score, maxScore: 12,
-    status: score >= 8 ? 'pass' : score >= 4 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
-}
-
-function scoreImageSeo(input: ScorerInput, dest: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  const imgCount = input.imageCount ?? 0;
-  const altCount = input.imagesWithAlt ?? 0;
-  if (imgCount >= 2) { score += 2; msgs.push(`이미지 ${imgCount}개`); }
-  else if (imgCount >= 1) { score += 1; msgs.push(`이미지 ${imgCount}개 (2개 이상 권장)`); }
-  else { msgs.push('이미지 없음'); }
-  if (altCount > 0) {
-    const altRatio = altCount / Math.max(imgCount, 1);
-    if (altRatio >= 0.8) { score += 4; msgs.push(`alt ${altCount}/${imgCount} (${Math.round(altRatio * 100)}%)`); }
-    else { score += 2; msgs.push(`alt ${altCount}/${imgCount} (누락 있음)`); }
-  } else if (imgCount > 0) { msgs.push('alt 태그 없음'); }
-  if (dest) {
-    const altTexts = input.blogHtml.match(/\[([^\]]*)\]/g)?.join(' ') || '';
-    if (altTexts.includes(dest)) { score += 2; msgs.push('alt에 목적지명 포함'); }
-  }
-  return {
-    name: '이미지 SEO', score: Math.min(score, 8), maxScore: 8,
-    status: score >= 5 ? 'pass' : score >= 2 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
-}
-
-function scoreInternalLinks(html: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  const internalLinks = (html.match(/\]\(\/(?!\/)/g) || []).length;
-  const fullLinks = (html.match(/\]\(https?:\/\/[^)]*yeosonam/g) || []).length;
-  const total = internalLinks + fullLinks;
-  if (total >= 2) { score += 5; msgs.push(`내부 링크 ${total}개`); }
-  else if (total >= 1) { score += 3; msgs.push(`내부 링크 ${total}개 (2개 이상 권장)`); }
-  else { msgs.push('내부 링크 없음'); }
-  if (html.includes('👉') || /yeosonam\.com\/packages/.test(html)) { score += 3; msgs.push('CTA 링크 있음'); }
-  return {
-    name: '내부 링크', score: Math.min(score, 8), maxScore: 8,
-    status: score >= 5 ? 'pass' : score >= 2 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
-}
-
-function scoreReadability(html: string, plainText: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  const sentences = plainText.split(/[.!?]\s+/).filter(s => s.trim().length > 0);
-  const avgSent = sentences.length > 0
-    ? sentences.reduce((sum, s) => sum + s.length, 0) / sentences.length : 0;
-  if (avgSent >= 20 && avgSent <= 60) { score += 3; msgs.push(`평균 문장 ${Math.round(avgSent)}자`); }
-  else { score += 1; msgs.push(`평균 문장 ${Math.round(avgSent)}자 (20~60자 권장)`); }
-  const paragraphs = html.split('\n\n').filter(p => p.trim().length > 20);
-  if (paragraphs.length >= 5) { score += 3; msgs.push(`문단 ${paragraphs.length}개`); }
-  else { msgs.push(`문단 ${paragraphs.length}개 (5개 이상 권장)`); }
-  const koreanChars = plainText.match(/[가-힣]/g)?.length || 0;
-  if (plainText.length > 0 && koreanChars / plainText.length >= 0.4) { score += 2; }
-  if (html.includes('- ') || html.includes('* ')) { score += 2; msgs.push('목록 활용'); }
-  return {
-    name: '가독성', score: Math.min(score, 10), maxScore: 10,
-    status: score >= 6 ? 'pass' : score >= 3 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
-}
-
-function scoreJsonLd(input: ScorerInput): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  const jld = input.hasJsonLd;
-  if (jld) {
-    if (jld.blogPosting) { score += 3; msgs.push('BlogPosting'); }
-    if (jld.faqPage) { score += 3; msgs.push('FAQPage'); }
-    if (jld.howTo) { score += 2; msgs.push('HowTo'); }
-    if (jld.breadcrumbList) { score += 2; msgs.push('Breadcrumb'); }
-  } else { msgs.push('JSON-LD 미확인'); }
-  return {
-    name: 'JSON-LD', score, maxScore: 10,
-    status: score >= 8 ? 'pass' : score >= 4 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
-}
-
-function scoreEeat(html: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  if (html.includes('여소남') || html.includes('운영팀')) { score += 2; msgs.push('발행자 정보'); }
-  if (/AI|자동|생성/i.test(html)) { score += 2; msgs.push('AI 디스클로저'); }
-  if (html.includes('> ')) { score += 2; msgs.push('리뷰 인용'); }
-  if (/검증|직접|확인/.test(html)) { score += 1; msgs.push('검증 시그널'); }
-  return {
-    name: 'EEAT 시그널', score: Math.min(score, 7), maxScore: 7,
-    status: score >= 5 ? 'pass' : score >= 2 ? 'warn' : 'fail',
-    message: msgs.join(', ') || 'EEAT 시그널 부족',
-  };
-}
-
-/** 얇은 콘텐츠(Thin Content) 감지 — HCS(Helpful Content System) 대응 */
-function scoreThinContent(plainText: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
-  const totalChars = plainText.length;
-
-  // 1,500자 미만: 강력 감점
-  if (totalChars < 800) {
-    score = 0;
-    msgs.push(`매우 얇은 콘텐츠 (${totalChars}자, 1,500자 권장)`);
-  } else if (totalChars < 1500) {
-    score = 5;
-    msgs.push(`다소 얇은 콘텐츠 (${totalChars}자, 1,500자 권장)`);
-  } else if (totalChars < 2500) {
-    score = 12;
-    msgs.push(`적정 길이 (${totalChars}자)`);
+  const secondary = (secondaryKeywords || []).filter(Boolean).slice(0, 8);
+  const secondaryHits = secondary.filter((keyword) => plainText.includes(keyword)).length;
+  if (secondary.length > 0) {
+    score += Math.min(3, Math.round((secondaryHits / secondary.length) * 3));
   } else {
-    score = 15;
-    msgs.push(`충분한 길이 (${totalChars}자)`);
+    score += Math.min(2, Math.floor(matchedGroups.length / 3));
   }
 
-  // 정보 밀도 체크: 고유 정보(숫자, 날짜, 인용) 비율
-  const infoSignals = (plainText.match(/\d+/g) || []).length +
-    (plainText.match(/\d{4}년/g) || []).length * 2 +
-    (plainText.match(/"[^"]+"/g) || []).length;
-  const infoDensity = infoSignals / Math.max(totalChars, 1);
-  if (infoDensity >= 0.02) {
-    score += 3;
-    msgs.push('정보 밀도 양호');
-  } else {
-    score -= 5;
-    msgs.push('정보 밀도 낮음 (숫자/인용 부족)');
-  }
-
-  // 단락 다양성 체크
-  const uniqueStarts = new Set(plainText.split(/[.!?]\s+/).map(s => s.trim().substring(0, 3)).filter(Boolean));
-  if (uniqueStarts.size >= 5) {
-    score += 2;
-    msgs.push('문장 다양성 양호');
-  } else {
-    score -= 3;
-    msgs.push('문장 다양성 낮음 (반복 패턴 의심)');
-  }
-
-  return {
-    name: '콘텐츠 깊이 (HCS)',
-    score: Math.max(0, Math.min(score, 15)),
-    maxScore: 15,
-    status: score >= 10 ? 'pass' : score >= 5 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
+  return detail(
+    'semantic_longtail_coverage',
+    score,
+    8,
+    6,
+    3,
+    `semantic groups ${matchedGroups.length}, secondary ${secondaryHits}/${secondary.length}`,
+  );
 }
 
-function scoreMobile(html: string, plainText: string): SeoScoreDetail {
+function scoreImages(input: ScorerInput, keyword: string, dest: string): SeoScoreDetail {
+  const images = extractImages(input.blogHtml);
+  const imageCount = input.imageCount ?? images.length;
+  const altCount = input.imagesWithAlt ?? images.filter((image) => image.alt.trim().length >= 3).length;
+  const altText = images.map((image) => image.alt).join(' ');
   let score = 0;
-  const msgs: string[] = [];
-  if (html.includes('.webp') || html.includes('.avif')) { score += 2; msgs.push('차세대 포맷'); }
-  const tables = (html.match(/<table|^\|/gm) || []).length;
-  if (tables <= 3) { score += 2; }
-  const paragraphs = html.split('\n\n').filter(p => p.trim().length > 20);
-  if (paragraphs.length >= 5) { score += 1; }
-  return {
-    name: '모바일 최적화', score: Math.min(score, 5), maxScore: 5,
-    status: score >= 3 ? 'pass' : score >= 1 ? 'warn' : 'fail',
-    message: msgs.join(', ') || '개선 필요',
-  };
+
+  if (imageCount >= 3) score += 3;
+  else if (imageCount >= 2) score += 2;
+  else if (imageCount >= 1) score += 1;
+
+  if (imageCount > 0 && altCount / imageCount >= 0.9) score += 3;
+  else if (altCount > 0) score += 1;
+
+  if ((keyword && altText.includes(keyword)) || (dest && altText.includes(dest))) score += 1;
+  if (images.some((image) => /pexels|supabase|images\.unsplash|cdn/i.test(image.src))) score += 1;
+
+  return detail('image_seo', score, 8, 7, 4, `images ${imageCount}, alt ${altCount}`);
+}
+
+function scoreInternalLinks(blogHtml: string): SeoScoreDetail {
+  const links = extractLinks(blogHtml);
+  const internal = links.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href));
+  const cta = internal.filter((href) => /\/packages|utm_|kakao|consult|문의|예약/i.test(href));
+  let score = 0;
+
+  if (internal.length >= 3) score += 4;
+  else if (internal.length >= 2) score += 3;
+  else if (internal.length >= 1) score += 1;
+  if (cta.length >= 2) score += 3;
+  else if (cta.length >= 1) score += 1;
+
+  return detail('internal_links_cta', score, 7, 6, 3, `internal ${internal.length}, cta ${cta.length}`);
+}
+
+function scoreExternalLinks(blogHtml: string): SeoScoreDetail {
+  const links = extractLinks(blogHtml);
+  const external = links.filter((href) => /^https?:\/\//i.test(href) && !/yeosonam\.com/i.test(href));
+  const authority = external.filter((href) => {
+    try {
+      const host = new URL(href).hostname.toLowerCase();
+      return AUTHORITATIVE_HOST_HINTS.some((hint) => host.includes(hint));
+    } catch {
+      return false;
+    }
+  });
+  let score = 0;
+  if (external.length >= 2) score += 3;
+  else if (external.length >= 1) score += 1;
+  if (authority.length >= 1) score += 3;
+
+  return detail('external_authority_links', score, 6, 5, 2, `external ${external.length}, authority ${authority.length}`);
+}
+
+function scoreReadability(blogHtml: string, plainText: string): SeoScoreDetail {
+  const sentences = plainText.split(/[.!?。！？]\s*|\n+/).filter((sentence) => sentence.trim().length >= 8);
+  const avgSentenceLength = sentences.length > 0
+    ? sentences.reduce((sum, sentence) => sum + sentence.trim().length, 0) / sentences.length
+    : 0;
+  const paragraphs = blogHtml.split(/\n{2,}/).filter((paragraph) => stripMarkdownAndHtml(paragraph).length >= 30);
+  const listItems = (blogHtml.match(/(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g) || []).length;
+  const tableRows = (blogHtml.match(/(^|\n)\s*\|.+\|/g) || []).length;
+  let score = 0;
+
+  if (avgSentenceLength >= 20 && avgSentenceLength <= 80) score += 2;
+  if (paragraphs.length >= 5) score += 2;
+  if (listItems >= 2 || tableRows >= 2) score += 2;
+  if (!/!\[[^\]]*]\(|\[[^\]]+]\(https?:\/\/|^\s*#{1,6}\s/m.test(plainText)) score += 1;
+
+  return detail('readability', score, 7, 6, 3, `avg sentence ${Math.round(avgSentenceLength)}자, paragraphs ${paragraphs.length}`);
+}
+
+function scoreSchema(input: ScorerInput): SeoScoreDetail {
+  const jsonLd = input.hasJsonLd;
+  let score = 0;
+  if (jsonLd?.blogPosting) score += 3;
+  if (jsonLd?.breadcrumbList) score += 2;
+  if (jsonLd?.faqPage) score += 2;
+  if (jsonLd?.howTo) score += 1;
+
+  return detail('structured_data', score, 8, 7, 4, jsonLd ? JSON.stringify(jsonLd) : 'JSON-LD metadata 없음');
+}
+
+function scoreHelpfulContent(input: ScorerInput, plainText: string): SeoScoreDetail {
+  const minLength = input.blogType === 'info' ? 2500 : 1200;
+  let score = 0;
+  if (plainText.length >= minLength) score += 3;
+  else if (plainText.length >= minLength * 0.75) score += 1;
+  if (/\d{1,3}(?:,\d{3})*원|\d+\s*(?:분|시간|일|월|도|℃|km|박)|20\d{2}/.test(plainText)) score += 2;
+  if (/여소남|운영팀|검토|확인|공식|출처|기준/i.test(plainText)) score += 2;
+  if (/> |“|”|"[^"]{8,}"/.test(input.blogHtml)) score += 1;
+
+  return detail('helpful_content_eeat', score, 8, 6, 3, `body ${plainText.length}자, min ${minLength}자`);
+}
+
+function scoreMobile(blogHtml: string): SeoScoreDetail {
+  const tableRows = (blogHtml.match(/(^|\n)\s*\|.+\|/g) || []).length;
+  const longRawUrls = (blogHtml.match(/https?:\/\/\S{90,}/g) || []).length;
+  let score = 0;
+  if (tableRows <= 18) score += 2;
+  if (longRawUrls === 0) score += 1;
+  if (!/<table\b[^>]*style=/i.test(blogHtml)) score += 1;
+  return detail('mobile_snippet_safety', score, 4, 3, 2, `table rows ${tableRows}, long raw urls ${longRawUrls}`);
 }
 
 function scoreSlug(input: ScorerInput, keyword: string): SeoScoreDetail {
-  let score = 0;
-  const msgs: string[] = [];
   const slug = input.slug || '';
-  if (slug.length >= 20 && slug.length <= 80) { score += 2; msgs.push(`slug ${slug.length}자`); }
-  else { msgs.push(`slug ${slug.length}자 (20~80자 권장)`); }
-  if (keyword) {
-    if (slug.includes(keyword.replace(/\s+/g, '-').toLowerCase()) ||
-        keyword.split(' ').some(w => w.length >= 2 && slug.includes(w))) {
-      score += 2; msgs.push('키워드 포함');
-    }
-  }
-  if (!/재작성|v\d$|untitled/.test(slug)) { score += 1; msgs.push('slug 깔끔'); }
-  return {
-    name: 'URL Slug', score: Math.min(score, 5), maxScore: 5,
-    status: score >= 4 ? 'pass' : score >= 2 ? 'warn' : 'fail',
-    message: msgs.join(', '),
-  };
+  let score = 0;
+  if (slug.length >= 12 && slug.length <= 90) score += 1;
+  if (!/untitled|draft|test|v\d+$/i.test(slug)) score += 1;
+  if (/^[a-z0-9가-힣-]+$/i.test(slug)) score += 1;
+  if (keyword && keyword.split(/\s+/).some((part) => part.length >= 2 && slug.toLowerCase().includes(part.toLowerCase()))) score += 1;
+  else if (!keyword) score += 1;
+
+  return detail('url_slug', score, 4, 3, 2, `slug ${slug.length}자`);
 }
 
 export function computeSeoScore(input: ScorerInput): SeoScoreResult {
-  const plainText = extractPlainText(input.blogHtml);
-  const keyword = input.primaryKeyword || '';
-  const dest = input.destination || '';
+  const plainText = stripMarkdownAndHtml(input.blogHtml);
+  const keyword = input.primaryKeyword?.trim() || '';
+  const dest = input.destination?.trim() || '';
 
-  const details: SeoScoreDetail[] = [
+  const details = [
     scoreTitle(input, keyword, dest),
     scoreMeta(input, keyword),
-    scoreHeadings(input.blogHtml, keyword, dest),
-    scoreKeywordDensity(plainText, keyword, input.blogType),
-    scoreLsiKeywordDensity(plainText, input.secondaryKeywords),
-    scoreLsiCoverage(plainText),
-    scoreImageSeo(input, dest),
+    scoreHeadings(input, keyword, dest),
+    scorePrimaryKeyword(plainText, keyword, input.blogType),
+    scoreSemanticCoverage(plainText, input.secondaryKeywords),
+    scoreImages(input, keyword, dest),
     scoreInternalLinks(input.blogHtml),
+    scoreExternalLinks(input.blogHtml),
     scoreReadability(input.blogHtml, plainText),
-    scoreJsonLd(input),
-    scoreEeat(input.blogHtml),
-    scoreThinContent(plainText),
-    scoreMobile(input.blogHtml, plainText),
+    scoreSchema(input),
+    scoreHelpfulContent(input, plainText),
+    scoreMobile(input.blogHtml),
     scoreSlug(input, keyword),
   ];
 
-  const totalScore = details.reduce((sum, d) => sum + d.score, 0);
-  const threshold = input.blogType === 'info' ? 45 : 35;
-
-  const summary = totalScore >= 70
-    ? `SEO 점수 ${totalScore}/${MAX_SCORE} — 발행 적합 (우수)`
-    : totalScore >= threshold
-    ? `SEO 점수 ${totalScore}/${MAX_SCORE} — 발행 가능 (${threshold}점 이상)`
-    : `SEO 점수 ${totalScore}/${MAX_SCORE} — 발행 보류 (${input.blogType === 'info' ? 45 : 35}점 미만)`;
+  const score = details.reduce((sum, item) => sum + item.score, 0);
+  const minScore = BLOG_SEO_MIN_SCORE[input.blogType];
+  const criticalFailures = details.filter((item) =>
+    item.status === 'fail' &&
+    ['title', 'meta_description', 'heading_structure', 'image_seo', 'internal_links_cta', 'structured_data', 'helpful_content_eeat'].includes(item.name),
+  );
+  const passed = score >= minScore && criticalFailures.length === 0;
+  const summary = passed
+    ? `SEO ${score}/${BLOG_SEO_MAX_SCORE} 통과 (${input.blogType}, 기준 ${minScore}점)`
+    : `SEO ${score}/${BLOG_SEO_MAX_SCORE} 발행 보류 (${input.blogType}, 기준 ${minScore}점, critical=${criticalFailures.map((item) => item.name).join(', ') || 'none'})`;
 
   return {
-    score: totalScore,
-    maxScore: MAX_SCORE,
-    passed: totalScore >= threshold,
+    score,
+    maxScore: BLOG_SEO_MAX_SCORE,
+    passed,
     details,
     summary,
     checkedAt: new Date().toISOString(),

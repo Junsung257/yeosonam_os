@@ -14,6 +14,8 @@ import { checkReadability } from './blog-readability';
 import { stripMarkup } from './blog-text-utils';
 import { slugifyTopic } from './slug-utils';
 import { getActiveThresholds, type AdaptiveThresholds } from './blog-bayesian-optimizer';
+import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
+import { inspectBlogImageQuality } from './blog-image-quality';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -39,7 +41,7 @@ const THRESHOLDS = {
 const DEDUP_WINDOW_DAYS = 14;
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'image_quality';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -331,6 +333,41 @@ export function checkAiReadability(
   };
 }
 
+export async function checkRenderIntegrity(blog_html: string): Promise<GateResult> {
+  try {
+    const rendered = await renderBlogContentToHtml(blog_html);
+    const report = inspectRenderedBlogIntegrity(blog_html, rendered);
+    return {
+      gate: 'render_integrity',
+      passed: report.passed,
+      reason: report.reason,
+      evidence: report.evidence,
+    };
+  } catch (error) {
+    return {
+      gate: 'render_integrity',
+      passed: false,
+      reason: `본문 렌더링 실패: ${error instanceof Error ? error.message : String(error)}`,
+      evidence: { error: error instanceof Error ? error.message : String(error) },
+    };
+  }
+}
+
+export function checkImageQuality(input: CheckInput): GateResult {
+  const report = inspectBlogImageQuality(input.blog_html, {
+    destination: input.destination,
+    primaryKeyword: input.primary_keyword,
+    blogType: input.blog_type,
+  });
+
+  return {
+    gate: 'image_quality',
+    passed: report.passed,
+    reason: report.reason,
+    evidence: report.evidence,
+  };
+}
+
 export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   const since = new Date();
   since.setDate(since.getDate() - DEDUP_WINDOW_DAYS);
@@ -456,6 +493,10 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(checkReadability(input.blog_html, readThreshold));
   // AI 인용 최적화 (Cue/AIO/SGE) — 9번째 게이트
   gates.push(checkAiReadability(input.blog_html, blogType));
+  // 실제 상세 페이지 렌더 기준 검증 — 이미지/링크/헤딩 마크다운 잔여물 차단
+  gates.push(await checkRenderIntegrity(input.blog_html));
+  // 이미지 품질 기준 검증 — 깨진 URL, 중복, 빈 alt, 주제 무관 alt/caption 차단
+  gates.push(checkImageQuality(input));
 
   const failed = gates.filter(g => !g.passed);
   const summary = failed.length === 0

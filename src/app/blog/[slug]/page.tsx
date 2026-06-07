@@ -15,7 +15,7 @@ import InlineRelated, {
   type RelatedPostLite,
 } from '@/components/blog/InlineRelated';
 import { extractTocAndInjectIds, shouldShowToc } from '@/lib/blog-toc';
-import { applyMarkdownAccents, applyHtmlAccents } from '@/lib/blog-accent';
+import { removeUnreachableBlogAssetImages, renderBlogContentToHtml } from '@/lib/blog-renderer';
 import LandingHero from '@/components/blog/LandingHero';
 import StickyMobileCta from '@/components/blog/StickyMobileCta';
 import DestinationCuration from '@/components/blog/DestinationCuration';
@@ -149,6 +149,57 @@ function formatDuration(
 
 function stripMarkdownBold(s: string): string {
   return s.replace(/\*\*([^*]+)\*\*/g, '$1').replace(/\*/g, '').trim();
+}
+
+function buildSeoTitleWithSuffix(title: string, suffix: string): string {
+  if (!suffix) return title;
+  const maxBaseLength = Math.max(20, 60 - suffix.length);
+  const base = title.length > maxBaseLength
+    ? title.slice(0, maxBaseLength).replace(/\s+\S*$/, '').trim() || title.slice(0, maxBaseLength).trim()
+    : title;
+  return `${base}${suffix}`;
+}
+
+function buildSeoDescription(post: BlogPost): string {
+  const destination = post.travel_packages?.destination || post.destination || '여행';
+  const base = (post.seo_description || '').trim()
+    || `${destination} 여행 가이드 — 여소남이 추천하는 일정, 비용, 준비물, 예약 전 확인 사항을 정리했습니다.`;
+  if (base.length >= 50 && base.length <= 180) return base;
+  if (base.length < 50) {
+    return `${base} ${destination} 일정, 비용, 준비물, 예약 전 확인 사항을 함께 정리했습니다.`
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180);
+  }
+  return `${base.slice(0, 177).replace(/\s+\S*$/, '').trim()}...`;
+}
+
+async function getDuplicateTitleSuffix(post: BlogPost): Promise<string> {
+  if (!isSupabaseConfigured || !post.seo_title) return '';
+  try {
+    const { data } = await supabaseAdmin
+      .from('content_creatives')
+      .select('slug, published_at, created_at')
+      .eq('channel', 'naver_blog')
+      .eq('status', 'published')
+      .eq('seo_title', post.seo_title)
+      .not('slug', 'is', null)
+      .order('published_at', { ascending: true });
+
+    const duplicates = ((data || []) as Array<{ slug: string | null; published_at: string | null; created_at: string | null }>)
+      .filter((row) => row.slug)
+      .sort((a, b) => {
+        const ad = a.published_at || a.created_at || '';
+        const bd = b.published_at || b.created_at || '';
+        return ad.localeCompare(bd) || String(a.slug).localeCompare(String(b.slug));
+      });
+    if (duplicates.length <= 1) return '';
+    const index = duplicates.findIndex((row) => row.slug === post.slug);
+    if (index <= 0) return '';
+    return ` (${index + 1}편)`;
+  } catch {
+    return '';
+  }
 }
 
 function extractTldrItems(post: BlogPost): string[] {
@@ -412,10 +463,10 @@ export async function generateMetadata({
   const cleanedTitle = rawTitle
     .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
     .trim();
+  const duplicateTitleSuffix = await getDuplicateTitleSuffix(post);
+  const metadataTitle = buildSeoTitleWithSuffix(cleanedTitle, duplicateTitleSuffix);
 
-  const description =
-    post.seo_description ||
-    `${post.travel_packages?.destination || ''} 여행 가이드 — 여소남이 추천하는 알찬 여행 정보`;
+  const description = buildSeoDescription(post);
   const dbOgImage = post.og_image_url;
 
   const angleLabel = ANGLE_LABELS[post.angle_type] || post.angle_type;
@@ -426,7 +477,7 @@ export async function generateMetadata({
   // (실제 변형은 페이지 컴포넌트에서 처리)
   return {
     // absolute를 쓰면 layout의 template이 적용되지 않음
-    title: { absolute: `${cleanedTitle} | 여소남` },
+    title: { absolute: `${metadataTitle} | 여소남` },
     description,
     keywords: tagSet,
     alternates: {
@@ -435,7 +486,7 @@ export async function generateMetadata({
     },
     openGraph: {
       type: 'article',
-      title: cleanedTitle,
+      title: metadataTitle,
       description,
       url: `${BASE_URL}/blog/${slug}`,
       publishedTime: post.published_at,
@@ -445,11 +496,11 @@ export async function generateMetadata({
       tags: tagSet,
       locale: 'ko_KR',
       siteName: '여소남',
-      ...(dbOgImage ? { images: [{ url: dbOgImage, width: 1200, height: 630, alt: cleanedTitle }] } : {}),
+      ...(dbOgImage ? { images: [{ url: dbOgImage, width: 1200, height: 630, alt: metadataTitle }] } : {}),
     },
     twitter: {
       card: 'summary_large_image',
-      title: cleanedTitle,
+      title: metadataTitle,
       description,
       ...(dbOgImage ? { images: [dbOgImage] } : {}),
     },
@@ -588,17 +639,10 @@ async function renderBlogDetail({
   let readingMinutes = 3;
 
   if (post.blog_html) {
-    // 마크다운 단계에서 ==text== · :::tip::: 변환 → 그다음 marked 파싱
-    const mdAccented = applyMarkdownAccents(
-      post.blog_html.replace(/\*\*([^*\n[]+?)\*\*/g, (_m, inner) => inner),
-    );
-    const { marked } = await import('marked');
-    const rawHtml = /<[a-z][\s\S]*>/i.test(post.blog_html)
-      ? applyMarkdownAccents(post.blog_html)
-      : (marked.parse(mdAccented) as string);
-    // 숫자+단위 자동 오렌지 볼드
-    const accented = applyHtmlAccents(rawHtml);
-    const sanitized = sanitizeServerBlogHtml(accented);
+    // blog_html은 "마크다운 + 일부 안전한 HTML(figcaption/aside)" 혼합 저장값이다.
+    // figcaption 태그만 보고 전체를 raw HTML로 취급하면 이미지/표/링크 마크다운이 그대로 노출된다.
+    const rendered = await removeUnreachableBlogAssetImages(await renderBlogContentToHtml(post.blog_html));
+    const sanitized = sanitizeServerBlogHtml(rendered);
     const result = extractTocAndInjectIds(sanitized);
     bodyHtml = result.html;
     toc = result.toc;

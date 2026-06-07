@@ -15,6 +15,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/blog-review-quotes';
 import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { safeEqualString } from '@/lib/timing-safe';
+import { filterReachableImageUrls } from '@/lib/card-news-slide-urls';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -76,9 +77,10 @@ export async function POST(request: NextRequest) {
     }
 
     const cardMode = cn.card_news_type || (cn.package_id ? 'product' : 'info');
-    const cardNewsImages: string[] = Array.isArray(slide_image_urls) && slide_image_urls.length > 0
+    const requestedCardNewsImages: string[] = Array.isArray(slide_image_urls) && slide_image_urls.length > 0
       ? slide_image_urls
       : [];
+    const cardNewsImages = await filterReachableImageUrls(requestedCardNewsImages);
     const siteBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
 
     if (!hasBlogApiKey()) {
