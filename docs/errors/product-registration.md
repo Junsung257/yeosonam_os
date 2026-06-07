@@ -35,6 +35,19 @@ Last updated: 2026-06-07
 
 ---
 
+## ERR-FUK-spot-weekday-title-itinerary@2026-06-07: Fukuoka spot price table and cash-receipt title leaked into itinerary/title
+
+- **Discovered**: 2026-06-07
+- **Product**: `PUS-ETC-FUK-03-0010`, Fukuoka/Yufuin golf, BX148/BX147, spot weekday price table.
+- **Source vs result**: the source included a cash-receipt 안내 block and a weekday spot price table. The saved `travel_packages.title` kept `현금영수증 발급 안내 드립니다`, and DAY3 schedule contained price-table rows such as `스팟특가`, `6/8~7/16`, `월,화,수`, `1,999,-`, and hotel surcharge notices. Customer pages were not exposed because V3 draft status was blocked and the package stayed `pending/blocked`.
+- **Root cause**: schedule pollution pruning covered flight/time/transport fragments and some price-table cells, but missed Fukuoka standalone region tokens (`유후인`, `도스`) and hotel price-table surcharge notices. Golden tests did not assert these final customer itinerary tokens.
+- **Fix**: `itinerary-quality-gate` now classifies Fukuoka standalone region tokens and hotel date-specific surcharge notices as non-schedule pollution, and region-only tokens are pruned consistently. The golden Fukuoka fixture asserts that cash-receipt text, price-table headings, date ranges, weekday labels, shorthand prices, `유후인`, `도스`, and hotel date-surcharge notices do not survive into customer itinerary JSON.
+- **Verification**: same live raw text re-run through `registerProductFromRaw()` returned clean title `후쿠오카 유후인 고원 골프`, 82 `product_prices`, 82 `price_dates`, zero duplicate activities, and zero forbidden mobile/A4 render tokens. `npx vitest run src/lib/product-registration/golden-corpus/golden-corpus.test.ts src/lib/product-registration/itinerary-normalization.test.ts src/lib/product-registration/deliverability-gate.test.ts`, `npm run eval:product-registration:ci`, broad product-registration vitest, `npm run type-check`, and public-only mobile readiness audit passed.
+- **Status**: FIXED
+- **Prevention**: A registration is not considered correct until `/packages`/LP/A4 render text is clean, not merely because DB insert succeeded or the admin confidence score is high. New supplier price-table formats must add a fixture or final customer-itinerary assertion.
+
+---
+
 ## ERR-XIY-pkg-boundary-price-a4@2026-06-07: 서안/화산 BX 4개 PKG 원문이 2개 상품으로 붕괴되고 가격·A4 박수 표기가 깨진 문제
 
 - **발견일**: 2026-06-07

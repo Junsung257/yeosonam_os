@@ -453,9 +453,12 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   const sanitization = sanitizeForCustomer(ed);
   Object.assign(ed, sanitization.cleaned);
 
+  const registrationTitle = normalizeUploadTitle(input.title, ed.title) ?? ed.title ?? input.title ?? null;
+  if (registrationTitle) ed.title = registrationTitle;
+
   const priceRecovery = await recoverUploadPriceData(ed, {
     rawText,
-    title: input.title ?? ed.title,
+    title: registrationTitle ?? ed.title,
     accommodations: ed.accommodations ?? [],
     includeAllHotelColumns: !input.documentRawText || input.documentRawText.trim() === rawText.trim(),
     durationDays: ed.duration,
@@ -517,7 +520,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
 
   return {
     identity: {
-      title: input.title ?? ed.title ?? null,
+      title: registrationTitle,
       destination: ed.destination ?? null,
       destinationCode: input.destinationCode ?? destination.destinationCode,
       internalCode: input.internalCode ?? null,

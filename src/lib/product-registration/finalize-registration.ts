@@ -133,6 +133,13 @@ export function finalizeUploadRegistration(
     productStatus = 'draft';
     pkgStatus = 'pending';
   }
+  if (input.registration.evidence.v3DraftStatus === 'blocked') {
+    productStatus = 'REVIEW_NEEDED';
+    pkgStatus = 'pending';
+  } else if (input.registration.evidence.v3DraftStatus === 'needs_review' && productStatus === 'approved') {
+    productStatus = 'draft';
+    pkgStatus = 'pending';
+  }
 
   return {
     validation,
