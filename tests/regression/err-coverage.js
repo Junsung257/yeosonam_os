@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
  * @file tests/regression/err-coverage.js
- * @description error-registry.md ↔ tests/regression/cases/ 커버리지 리포트 (P3 #4)
+ * @description error registry docs ↔ tests/regression/cases/ 커버리지 리포트 (P3 #4)
  *
  * 목적:
- *   - error-registry.md 의 모든 ERR 항목을 추출
+ *   - db/error-registry.md 및 docs/errors/*.md 의 모든 ERR 항목을 추출
  *   - tests/regression/cases/ 의 회귀 fixture 와 매칭
  *   - "어느 ERR 가 회귀 보호 받고 있는지" / "어느 ERR 가 다음 변환 후보인지" 가시화
  *
@@ -18,7 +18,15 @@ const fs = require('fs');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const ERR_REGISTRY = path.join(ROOT, 'db', 'error-registry.md');
+const ERR_REGISTRY_FILES = [
+  path.join(ROOT, 'db', 'error-registry.md'),
+  path.join(ROOT, 'docs', 'errors', 'product-registration.md'),
+  path.join(ROOT, 'docs', 'errors', 'blog.md'),
+  path.join(ROOT, 'docs', 'errors', 'affiliate.md'),
+  path.join(ROOT, 'docs', 'errors', 'settlement.md'),
+  path.join(ROOT, 'docs', 'errors', 'ai-ops.md'),
+  path.join(ROOT, 'docs', 'errors', 'common.md'),
+];
 const CASES_DIR = path.join(ROOT, 'tests', 'regression', 'cases');
 
 function parseArgs() {
@@ -29,25 +37,60 @@ function parseArgs() {
   };
 }
 
-// ERR 항목 파싱: "- [ ] **ERR-XXX@YYYY-MM-DD** (카테고리): ..."
-function parseRegistry(text) {
+function normalizeCode(code) {
+  return code.split('@')[0].replace(/[):：,.;]+$/, '');
+}
+
+function pushErr(out, seen, code, category, body, source) {
+  if (!code || code === 'ERR-YYYYMMDD-NN') return;
+  const fullCode = code.replace(/[):：,.;]+$/, '');
+  const normalized = normalizeCode(fullCode);
+  if (seen.has(normalized)) return;
+  seen.add(normalized);
+  out.push({
+    code: normalized,
+    fullCode,
+    date: fullCode.includes('@') ? fullCode.split('@')[1] : null,
+    category: category ? category.trim() : '',
+    body: body.slice(0, 120) + (body.length > 120 ? '...' : ''),
+    source,
+  });
+}
+
+// ERR 항목 파싱: heading 또는 "- [ ] **ERR-XXX@YYYY-MM-DD** (카테고리): ..."
+function parseRegistryFile(file) {
   const out = [];
+  const seen = new Set();
+  const text = fs.readFileSync(file, 'utf-8');
   const lines = text.split(/\r?\n/);
-  // 패턴: - [ ] **ERR-...** ( 카테고리 ): 설명
-  const re = /^-\s*\[\s*[ x]?\s*\]\s*\*\*([A-Z][A-Za-z0-9_-]+(?:@[\d-]+)?)\*\*\s*(?:\(([^)]+)\))?\s*[:：]?\s*(.*)$/;
+  const headingRe = /^#{2,3}\s+(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)(?:[:：]\s*)?(.*)$/;
+  const checklistRe = /^-\s*\[\s*[ x]?\s*\]\s*\*\*(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)\*\*\s*(?:\(([^)]+)\))?\s*[:：]?\s*(.*)$/;
   for (const line of lines) {
-    const m = line.match(re);
-    if (!m) continue;
-    const [_, code, category, body] = m;
-    out.push({
-      code: code.split('@')[0],
-      fullCode: code,
-      date: code.includes('@') ? code.split('@')[1] : null,
-      category: category ? category.trim() : '',
-      body: body.slice(0, 120) + (body.length > 120 ? '...' : ''),
-    });
+    const heading = line.match(headingRe);
+    if (heading) {
+      pushErr(out, seen, heading[1], '', heading[2] || '', path.relative(ROOT, file));
+      continue;
+    }
+    const checklist = line.match(checklistRe);
+    if (checklist) {
+      pushErr(out, seen, checklist[1], checklist[2] || '', checklist[3] || '', path.relative(ROOT, file));
+    }
   }
   return out;
+}
+
+function parseRegistry() {
+  const all = [];
+  const seen = new Set();
+  for (const file of ERR_REGISTRY_FILES) {
+    if (!fs.existsSync(file)) continue;
+    for (const err of parseRegistryFile(file)) {
+      if (seen.has(err.code)) continue;
+      seen.add(err.code);
+      all.push(err);
+    }
+  }
+  return all;
 }
 
 // fixture 파일에서 @case 헤더 추출
@@ -87,8 +130,7 @@ function isFixtureCandidate(err) {
 
 function main() {
   const args = parseArgs();
-  const registryText = fs.readFileSync(ERR_REGISTRY, 'utf-8');
-  const errs = parseRegistry(registryText);
+  const errs = parseRegistry();
   const fixtures = parseFixtures(CASES_DIR);
   const fixtureCodes = new Set(fixtures.map(f => f.caseCode));
 
@@ -125,7 +167,7 @@ function main() {
 
   // 한 화면 리포트
   console.log('═'.repeat(72));
-  console.log(' Regression Fixture Coverage — error-registry.md ↔ tests/regression/cases/');
+  console.log(' Regression Fixture Coverage — docs/errors ↔ tests/regression/cases/');
   console.log('═'.repeat(72));
   console.log(`📋 ERR 항목 총합:      ${errs.length}개`);
   console.log(`✅ 회귀 fixture 보유: ${fixtures.length}개 파일 / ${fixtures.reduce((a, f) => a + f.tests, 0)}개 테스트`);

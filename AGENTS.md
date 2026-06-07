@@ -11,8 +11,8 @@
 | 작업 성격 | 먼저 Read (필요한 구간만) |
 |-----------|---------------------------|
 | **도메인·DB·RLS·제휴·PII·학습 데이터·자비스** | `CURRENT_STATUS.md`, 아래 **§docs/ 주제별** 표에서 파일 고른 뒤 필요한 구간만 Read, `.claude/CLAUDE.md` 해당 절 |
-| **상품 등록·A4/모바일 렌더·관광지** | `docs/product-registration-current-ssot.md` 먼저 Read + `.claude/CLAUDE.md` §도메인별 강제 진입점 + 필요한 `.claude/commands/*.md` |
-| **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md` (생성 예정), `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
+| **상품 등록·A4/모바일 렌더·관광지** | `docs/product-registration-current-ssot.md` 먼저 Read + `.claude/CLAUDE.md` 해당 절. `.claude/commands/*.md`는 수동 legacy 작업 요청 때만 참조 |
+| **게이미피케이션·마일리지** | `CURRENT_STATUS.md`, `docs/gamification-runbook.md`, `src/lib/gamification-service.ts`, `src/lib/mileage-service.ts` |
 | **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
 | **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
 | **반복 실수·문서 자동 정리·SSOT 정리** | `docs/ai-agent-doc-automation.md` + `db/error-registry.md` |
@@ -43,6 +43,7 @@
 | Supabase Auth 오픈 보안 게이트 | `docs/supabase-auth-open-gate.md` |
 | AI 정책 운영 가이드 | `docs/ai-policy-operations.md` |
 | AI 에이전트 문서 자동화·하네스 | `docs/ai-agent-doc-automation.md` |
+| 반복 오류 상세 보관소 | `docs/errors/README.md` |
 | Git 커밋 핸드오프 | `docs/git-commit-handoff.md` |
 | 자유여행 100 시나리오 스펙 | `docs/free-travel-100-scenarios-spec.md` |
 | 자유여행 AI 플래너 운영 | `docs/free-travel-planner-runbook.md` |
@@ -63,7 +64,6 @@
 | 추천·비교 V1 개발 실행서 | `docs/recommendation-comparison-v1-plan.md` |
 | 호텔 점수 V1.5 운영 런북 | `docs/hotel-scoring-v1-5-runbook.md` |
 | 게이미피케이션 운영 런북 | `docs/gamification-runbook.md` |
-| 마일리지 시스템 개요 | `docs/mileage-system-overview.md` |
 | 검색광고 자동화 리서치 | `docs/search-ads-automation-research.md` |
 | Ad OS 완전자동화 마스터플랜 | `docs/ad-os-autopilot-master-plan.md` |
 | 일회성 감사 로그 인덱스 | `docs/audits/README.md` |

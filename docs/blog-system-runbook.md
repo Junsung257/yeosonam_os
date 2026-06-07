@@ -16,10 +16,7 @@ Supabase Dashboard > SQL Editor에서 순서대로:
 ```
 
 ### 2. 초기 시드
-```bash
-# 스타일 가이드 v1.0 prompt_versions 등록
-node db/migrate_blog_autopublish_20260422.js
-```
+별도 Node 시드 스크립트는 현재 유지하지 않는다. 다른 환경 재현 시 위 SQL 3개를 먼저 적용한 뒤, `/admin/blog/queue`와 Supabase의 `prompt_versions`/`blog_topic_queue` 상태를 확인한다.
 
 ### 3. 첫 스케줄러 수동 실행
 ```bash
@@ -50,7 +47,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 
 2. **Vercel Cron 로그**
    - Vercel Dashboard > Project > Crons 탭
-   - `blog-publisher` 는 `vercel.json` 기준 **UTC 매일 02:00** (배치당 최대 `MAX_BATCH`건) — 매시간이 아님
+   - `blog-publisher` 는 `vercel.json` 기준 **UTC 매시 04분/34분** (`4,34 * * * *`, 배치당 최대 `MAX_BATCH`건)
    - `blog-lifecycle` 이 매일 01:30 KST 실행 확인
 
 3. **알림 체크**
