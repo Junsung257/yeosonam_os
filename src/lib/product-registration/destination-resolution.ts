@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { detectKnownMojibakeSupplierProfile } from './supplier-mojibake-standardization';
 
 export const UPLOAD_REGION_CODE_MAP: Record<string, string> = {
   부산: 'PUS',
@@ -106,6 +107,9 @@ export function resolveUploadCode(text: string | undefined | null, map: Record<s
 
 export function inferUploadDestinationFromText(rawText: string | undefined | null): string {
   if (!rawText) return '';
+  const mojibakeProfile = detectKnownMojibakeSupplierProfile(rawText);
+  if (mojibakeProfile === 'joshi-golf' || mojibakeProfile === 'narita-nomori-golf') return '나리타';
+  if (mojibakeProfile?.startsWith('xian-')) return '서안';
   const head = rawText.slice(0, 3000);
   const counts: Record<string, number> = {};
   for (const name of DEST_KEYWORDS) {
