@@ -37,11 +37,11 @@ function collectCatalogBoundaryStarts(raw: string): number[] {
   const variantStarts = collectVariantCatalogBlockStarts(raw);
   const itineraryStarts = collectItineraryHeaderStarts(raw);
   const pkgStarts = collectPkgBlockStarts(raw);
-  const starts = variantStarts.length >= 2
-    ? variantStarts
-    : itineraryStarts.length >= 2
-      ? itineraryStarts
-      : pkgStarts;
+  const starts = pkgStarts.length >= 2
+    ? pkgStarts
+    : variantStarts.length >= 2
+      ? variantStarts
+      : itineraryStarts;
   return [...new Set(starts)].sort((a, b) => a - b);
 }
 

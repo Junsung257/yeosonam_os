@@ -162,7 +162,7 @@ export function coerceAirportScheduleTypes(schedule: ScheduleItem[] | undefined)
     if (!act) return item;
 
     // 미팅·수속 — flight 아님 (sanitizeFlightScheduleTimes 가 time 제거)
-    if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층/.test(act)) {
+    if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층|공항\s*도착\s*후|도착\s*후/.test(act)) {
       return item;
     }
 
@@ -286,6 +286,9 @@ function applyMetaFlightHints(days: DayBlock[], meta: ItineraryDataBlock['meta']
     const isLastDay = dayIndex === days.length - 1;
     const schedule = (day.schedule ?? []).map((item) => {
       const activity = item.activity ?? '';
+      if (/출발\s*\d+\s*시간\s*전|미팅\s*후\s*수속|국제선\s*\d+\s*층/.test(activity)) {
+        return item;
+      }
       const isOutboundDeparture =
         isFirstDay
         && /\uCD9C\uBC1C/.test(activity)

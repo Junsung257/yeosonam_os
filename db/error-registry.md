@@ -13,18 +13,116 @@
 
 > **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
 
-1. **ERR-product-prices-customer-options@2026-06-05** — 업로드는 성공했지만 고객 모바일/A4 옵션 가격이 깨질 수 있는 상태. 원인: 과거 문서와 검증이 `price_dates` 중심이라 `product_prices` 저장 실패, 동일 날짜 호텔 옵션 보존, `adult_selling_price` 누락을 blocker로 보지 못함. → 현재 SSOT는 `docs/product-registration-current-ssot.md`; 성공 기준은 `product_prices + price_dates + adult_selling_price`; 저장 실패는 rollback/blocker; golden corpus와 live readiness audit 필수.
-2. **ERR-blog-encoded-slug@2026-05-16** — `/blog/[slug]` 정보성 블로그 25건 일괄 404 (5월 1~16일 발행 전부 사망). 원인: Next.js dynamic route가 한글 slug를 URL-encoded(`%EC%84%9D…`) 상태로 page handler에 전달했는데 `getPost(slug)`가 그대로 `.eq('slug', param)` → DB의 한글 원본과 매칭 0건 → `notFound()`. 다른 route(`destination/[dest]`)는 이미 `decodeURIComponent` 호출하고 있었으나 `[slug]` 만 누락. → `src/lib/decode-slug.ts` 의 `safeDecodeSlug()` 박제 + `page.tsx`/`opengraph-image.tsx` 둘 다 적용 + `getPost` error 분기에 `admin_alerts` 적재(silent fail 차단). 회귀 fixture: `tests/unit/lib/decode-slug.spec.ts` 5건.
-3. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
-4. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
-5. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
-6. **ERR-process-violation-auto-approve@2026-04-21** (line 707) — CLEAN 상품 자동 승인·결과값 도출 누락. → Agent가 직접 `PATCH /api/packages/[id]/approve` 호출.
-7. **ERR-HSN-render-bundle@2026-04-21** (line 676) — 황산 송백CC 2건 렌더링 6가지 오류. → flight 1 activity + `→` 토큰, inclusions 콤마 없는 개별 토큰, 호텔 activity 고정 문구.
-8. **ERR-date-confusion** (line 582) — 원문 날짜 의미 혼동 (배포일 vs 발권기한). → `ticketing_deadline` 명시적 라벨 매칭.
-9. **ERR-FUK-customer-leaks** (line 554) — 내부 메모 고객 화면 노출 + 숫자 콤마 split + 항공편 파싱 실패 (복합 4건). → `internal_notes` vs `customer_notes` 분리 강제.
-10. **ERR-KUL-safe-replace** (line 537) — 중복 감지 시 자동 아카이브의 사일런트 사고. → 중복 감지 후 사용자 확인 분기.
+1. **ERR-XIY-pkg-boundary-price-a4@2026-06-07** — 명시 `PKG` 4개 원문은 variant 라벨보다 `PKG` 경계를 우선해야 하며, `출 발 일`/`판 매 가`처럼 띄어진 제목도 deterministic 가격·날짜로 복구해야 함. A4는 `price_dates` 실제 날짜와 제목의 `N박M일`을 우선하고, 포함/불포함/선택관광 section 오염을 차단.
+2. **ERR-itinerary-detail-flight-card-and-appendix@2026-06-07** — 상단 항공 헤더가 있어도 DAY 상세 항공카드는 유지해야 하며, 마지막 상품 뒤 저녁 메뉴/취소규정/현금영수증 공유 부록이 schedule로 붙으면 안 됨.
+3. **ERR-catalog-split-recovery@2026-06-06** — `PKG` 다중 상품 원문이 parser 일시 실패로 1개 처리될 때 수동 분리 안내로 새면 안 됨. → 저장 준비 단계에서 `multiProducts < 2`이면 원문 deterministic split recovery를 먼저 실행하고, 복구 불가능할 때만 `CATALOG_SPLIT_REQUIRED`.
+4. **ERR-shared-price-column-mix@2026-06-06** — 다중 상품 공통 가격표에서 정규화/LLM `price_tiers`가 두 컬럼을 모두 담으면 모바일/A4에 상품별 가격이 섞일 수 있음. → 원문 deterministic 가격표가 인식되면 상품 제목/숙소 기준 컬럼 선택이 `price_tiers`보다 우선.
+5. **ERR-catalog-table-itinerary-pollution@2026-06-06** — 붙여넣기 표형 일정에서 지역/교통편/시간/식사/HOTEL/URL 열 값이 고객 `/packages/{id}` 일정·안내문에 섞이면 안 됨. → 표형 일정 deterministic parser가 호텔/식사/항공 segment를 분리하고, LLM 일정이 오염됐으면 원문 일정이 우선. 고객 검수 기준은 `/lp`가 아니라 `/packages/{id}`.
+6. **ERR-product-prices-customer-options@2026-06-05** — 업로드는 성공했지만 고객 모바일/A4 옵션 가격이 깨질 수 있는 상태. 원인: 과거 문서와 검증이 `price_dates` 중심이라 `product_prices` 저장 실패, 동일 날짜 호텔 옵션 보존, `adult_selling_price` 누락을 blocker로 보지 못함. → 현재 SSOT는 `docs/product-registration-current-ssot.md`; 성공 기준은 `product_prices + price_dates + adult_selling_price`; 저장 실패는 rollback/blocker; golden corpus와 live readiness audit 필수.
+7. **ERR-blog-encoded-slug@2026-05-16** — `/blog/[slug]` 정보성 블로그 25건 일괄 404 (5월 1~16일 발행 전부 사망). 원인: Next.js dynamic route가 한글 slug를 URL-encoded(`%EC%84%9D…`) 상태로 page handler에 전달했는데 `getPost(slug)`가 그대로 `.eq('slug', param)` → DB의 한글 원본과 매칭 0건 → `notFound()`. 다른 route(`destination/[dest]`)는 이미 `decodeURIComponent` 호출하고 있었으나 `[slug]` 만 누락. → `src/lib/decode-slug.ts` 의 `safeDecodeSlug()` 박제 + `page.tsx`/`opengraph-image.tsx` 둘 다 적용 + `getPost` error 분기에 `admin_alerts` 적재(silent fail 차단). 회귀 fixture: `tests/unit/lib/decode-slug.spec.ts` 5건.
+8. **ERR-KWL-seed-fallback-and-stopwords@2026-05-15** — 계림/양삭 등록: 자동 시드 14/15건 실패 + "맛집" 단독 시드 + 17 attraction 미매칭 + "산수간쇼" 부적합 fuzzy. → V5 seeder 최후 LLM 템플릿 fallback + STANDALONE_STOP_WORDS + fuzzy length-guard + AutoMobileQA 매칭률 < 60% admin_alerts (PR #75, #76). 회귀 fixture: `src/lib/itinerary-attraction-candidates.test.ts` [ERR-KWL] 3건.
+9. **ERR-audit-fuzzy** (line 752) — `audit_render_vs_source` 공백/괄호 차이로 false alarm. → 정규화 후 비교 강제.
+10. **ERR-process-violation** (line 731) — `/register` Step 7 자동 감사 누락. → Step 7 MANDATORY, "수동 실행하세요" 안내 금지.
 
 > **신규 ERR 추가 시**: 가장 오래된 항목(현재 #10)을 체크리스트에서 제거하고 새 항목을 #1로 prepend. 본문은 그대로 유지(append-only).
+
+---
+
+## ERR-XIY-pkg-boundary-price-a4@2026-06-07: 서안/화산 BX 4개 PKG 원문이 2개 상품으로 붕괴되고 가격·A4 박수 표기가 깨진 문제
+
+- **발견일**: 2026-06-07
+- **발생 상품**: `[노팁/노옵션/노쇼핑] BX 서안/화산 품격 패키지 3박5일`, `[노팁/노옵션/노쇼핑] BX 서안/화산 품격 패키지 4박6일`, BX341/BX342
+- **원문 vs 결과**: 원문에는 `PKG` 블록 4개가 있었지만 variant 라벨 2개가 더 강하게 잡혀 2개 상품으로만 분리됐다. 그 결과 앞 상품 일정까지 뒤 상품에 붙어 duplicate day/overflow가 발생했고, `출 발 일`/`판 매 가` 띄어쓰기 제목을 가격 파서가 못 읽어 `product_prices`/`price_dates`가 비었다. A4는 `duration - 1` 추론으로 3박5일을 4박5일처럼 표시할 수 있었고, `price_dates`가 있는데도 내부 tier label(`supplier_raw_departure_dates`)을 출발일로 보여줄 수 있었다.
+- **카테고리**: 파싱 | 가격복구 | 렌더링 | 고객검수
+- **근본 원인**:
+  - catalog split과 V3 structure planner가 명시 `PKG` 시작점보다 variant 라벨/일정 헤더를 우선했다.
+  - deterministic 가격·출발일 추출이 `출 발 일`, `판 매 가`, `7/1,8,29, 8/19(수)` 같은 compact 표기를 지원하지 못했다.
+  - 표형 일정 parser가 중국 취소규정 부록 종료점을 모르고, A4 박수는 제목의 `N박M일`을 우선하지 않았다.
+  - A4 print loader가 `travel_packages.price_dates`를 조회하지 않았고, section parser가 `선택관광`/`쇼핑센터`/`비고` 경계를 충분히 끊지 않아 포함/불포함/선택관광 표시가 오염될 수 있었다.
+- **해결책**:
+  - 즉시: parser와 V3 planner 모두 명시 `PKG` 경계를 최우선으로 사용.
+  - 구조적: supplier raw deterministic facts에서 spaced heading/compact date list/next-line price를 복구하고, 일정 parser가 중국 취소규정 부록을 차단.
+  - 구조적: 일정 meta의 `nights`는 제목의 `N박M일`을 우선해 A4/mobile 계약에 전달.
+  - 구조적: A4 print loader가 `price_dates`를 직접 넘기고, 포함/불포함/선택관광 parser 종료 heading을 보강.
+  - 회귀: `xian-huashan-bx-multiproduct.txt` golden corpus와 split/price/register/V3 planner 테스트 추가.
+- **검증 규칙**: 해당 원문은 4개 상품으로 등록되어야 하며 premium 3박5일은 979,000원·출발일 4개·DAY 1~5, premium 4박6일은 1,049,000원·출발일 3개·DAY 1~6이어야 한다. `/packages/{id}`와 A4 모두 BX341/BX342 항공카드가 보여야 하고 취소규정 부록·일정 overflow가 없어야 한다.
+- **상태**: FIXED
+- **재발 방지**: 신규 카탈로그 장애는 variant 라벨 개수만 보지 말고 raw `PKG` 개수, `product_prices`, `price_dates`, A4 박수 라벨까지 함께 검증한다.
+
+---
+
+## ERR-itinerary-detail-flight-card-and-appendix@2026-06-07: DAY 상세 항공카드 누락 및 마지막 상품 부록 일정 유입
+
+- **발견일**: 2026-06-07
+- **발생 상품**: 죠시 골프 / 나리타노모리 골프 54H 3박4일, BX112/BX111
+- **원문 vs 결과**: 원문 일정표에는 출국/귀국 항공 행이 있고 저녁 메뉴/취소규정은 일정 뒤 공유 부록이었으나, 고객 `/packages/{id}`에서는 DAY 상세 항공카드가 빠지거나 마지막 상품 DAY 4 schedule에 저녁 메뉴/취소규정이 붙을 수 있었다.
+- **카테고리**: 렌더링 | 파싱 | 고객검수
+- **근본 원인**:
+  - 상단 `flightHeader` 중복 방지 로직이 DAY 상세 `type='flight'` item까지 숨겼다.
+  - pasted catalog 마지막 상품의 day 범위가 다음 `PKG`까지만 끊겨, 뒤따르는 공유 부록을 마지막 day 본문으로 읽었다.
+  - 고객 문장 품질 테스트가 없어 `라운딩 후`, `호텔 조식 후 체크아웃 후`, `셔틀탑승`, `출발 2시간 전 ...` 같은 원문 조각이 통과했다.
+- **해결책**:
+  - DAY 상세 항공카드는 유지하고, 출발/도착 pair 내부 중복만 제거한다.
+  - `저녁 메뉴 안내`, `일본골프상품 취소규정`, `현금영수증` 등 공유 부록 시작점을 catalog itinerary 종료 지점으로 본다.
+  - deterministic schedule 문장 보정과 fixture 테스트를 추가한다.
+- **검증 규칙**: `/packages/{id}` 기준으로 DAY 1/마지막 DAY 항공카드가 각각 1개 보이고, `라운딩 후` 단독/반복 체크아웃/공유 부록 문구가 schedule에 없어야 한다.
+- **상태**: FIXED
+- **재발 방지**: 상단 항공 헤더와 DAY 상세 항공카드는 서로 다른 고객 맥락이다. 하나가 있다고 다른 하나를 숨기지 않는다.
+
+---
+
+## ERR-catalog-split-recovery@2026-06-06: PKG 다중 상품이 1개 처리 오류로 막히는 문제
+
+- **발견일**: 2026-06-06
+- **발생 상품**: 죠시 골프 / 나리타노모리 2색 골프 54H 3박4일, BX112/BX111, 저녁 메뉴 안내 부록 포함 원문
+- **원문 vs 결과**: 원문에는 `PKG` 상품 블록 2개와 저녁 메뉴/취소규정 부록이 있었으나, 업로드 준비 단계에서 `multiProducts`가 비어 있으면 `CATALOG_SPLIT_REQUIRED` 422로 막히고 수동 분리 안내가 노출될 수 있었다.
+- **카테고리**: 파싱 | 검증 | 프로세스
+- **근본 원인**: parser가 일시적으로 1개 상품만 반환해도 저장 준비 단계가 원문 deterministic `PKG` 경계 복구를 재시도하지 않고 곧바로 split fallback 오류를 반환했다.
+- **해결책**:
+  - 즉시: `prepareUploadRegistrationProducts()`에서 `multiProducts`가 2개 미만이면 `recoverCatalogSplitFromRawText()`를 먼저 실행해 2개 이상 복구 가능한 경우 등록 러너에 넘긴다.
+  - 구조적: `hasMultiProducts` 판단을 `Boolean(multiProducts)`가 아니라 실제 저장 대상 수 `productsToSave.length >= 2`로 판정한다.
+  - 회귀: `src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt` fixture와 preparation 테스트 추가.
+- **검증 규칙**: 다중 상품 원문에서 parser가 1개로 축약되어도 저장 전 준비 단계가 원문 `PKG` 경계로 상품별 `sectionRawText`를 복구해야 한다. 복구 불가능할 때만 `CATALOG_SPLIT_REQUIRED`.
+- **상태**: FIXED
+- **재발 방지**: 신규 공급사 카탈로그 실패는 UI 안내/수동 분리로 우회하지 말고 `fixture -> split recovery -> preparation gate -> V3 product count` 순서로 고친다.
+
+## ERR-catalog-table-itinerary-pollution@2026-06-06: 붙여넣기 일정표 열 값이 고객 페이지에 섞이는 문제
+
+- **발견일**: 2026-06-06
+- **발생 상품**: 죠시 골프 / 나리타노모리 2색 골프 54H 3박4일, BX112/BX111
+- **원문 vs 결과**: 원문 일정표는 `일 자 / 지 역 / 교통편 / 시 간 / 주요 행사 일정 / 식 사` 표였지만 붙여넣기 과정에서 각 열 값이 줄 단위로 풀렸다. 기존 저장 결과는 `부산`, `나리타`, `치바`, `BX112`, `전용차량`, `07:50`, `10:00`, `중:클럽식`, `HOTEL: ...`, URL 등이 일정 본문 또는 고객 안내문으로 섞였다.
+- **카테고리**: 파싱 | 렌더링 | 고객검수
+- **근본 원인**:
+  - supplier deterministic itinerary가 `제1일 + 제목 한 줄` 형식만 지원하고 표형 붙여넣기 일정을 인식하지 못했다.
+  - LLM/normalizer가 만든 오염 일정이 있어도 원문 deterministic 일정으로 교체하지 않았다.
+  - 포함사항/주의사항 추출이 일정표 시작점에서 끊기지 않아 안내문에 일정표 본문이 섞일 수 있었다.
+  - 고객 검수 기준을 `/lp/{id}`로 오해하면 실제 고객 상세(`/packages/{id}`)의 렌더 중복을 놓친다.
+- **해결책**:
+  - 즉시: DB의 죠시/나리타노모리 `travel_packages`를 새 deterministic 일정/포함사항/주의사항으로 재계산해 반영.
+  - 구조적 1: `buildSupplierRawDeterministicItinerary()`에 표형 일정 parser 추가. 지역/교통편/시간/식사/HOTEL/URL은 각각 regions/transport/flight/meals/hotel로 분리하고 schedule에는 실제 행사 문장만 남긴다.
+  - 구조적 2: 등록 저장 시 LLM itinerary가 표 열 값 오염 또는 호텔/식사 누락 상태이고 원문 deterministic itinerary가 완전하면 원문 일정이 우선한다.
+  - 구조적 3: 포함사항은 괄호 안 쉼표를 보존해 `식사(조식,중식)`을 쪼개지 않고, 비고/주의사항은 `일 자`/`PKG`/상품 섹션 시작에서 끊는다.
+  - 구조적 4: `/packages/{id}` 상세는 정규 항공 헤더가 있으면 일정 리스트에서 `flight` 항목을 중복 렌더하지 않는다.
+- **검증 규칙**: 고객 검수는 반드시 `/packages/{id}` 페이지 텍스트 기준으로 한다. `BX112`, `07:50`, `전용차량`, `도보`, `전 일`, `HOTEL:` 같은 표 열 값이 단독 일정 activity로 남으면 실패다.
+- **상태**: FIXED
+- **재발 방지**: 표형 카탈로그는 fixture를 먼저 추가하고, DB 저장값 + `/packages/{id}` 렌더 텍스트를 함께 대조한다. `/lp/{id}`는 디자인/랜딩 실험면일 수 있으므로 상품 등록 완료 검수 기준으로 삼지 않는다.
+
+---
+
+## ERR-shared-price-column-mix@2026-06-06: 공통 가격표 컬럼이 상품별 모바일랜딩에 섞이는 문제
+
+- **발견일**: 2026-06-06
+- **발생 상품**: 죠시 골프 / 나리타노모리 2색 골프 54H 3박4일, BX112/BX111
+- **원문 vs 결과**: 원문 공통 가격표에는 `치바 죠시`와 `나리타노모리 2색` 두 컬럼이 있었다. 등록은 2개 상품으로 되었지만, 정규화/LLM 가격 tiers가 두 컬럼을 모두 담으면 각 상품의 `product_prices` 또는 `price_dates`에 다른 상품 가격이 섞일 수 있었다.
+- **카테고리**: AI 파싱 | 데이터스키마 | 검증
+- **근본 원인**: `recoverUploadPriceData()`가 완성된 `price_tiers`를 원문 deterministic 가격표보다 먼저 신뢰했다. 다중 컬럼 가격표에서는 LLM tiers가 "완성"으로 보여도 상품별 컬럼 선택 근거가 약하다.
+- **해결책**:
+  - 즉시: 원문에서 `hotel_column_matrix` 공통 가격표가 인식되면 상품 제목/숙소 기준 deterministic 컬럼 선택을 우선한다.
+  - 구조적: `PKG` 원문 제목과 `sectionRawText`는 정규화 결과가 약해도 저장 준비 단계에서 원문 기준으로 복원한다.
+  - 회귀: 죠시/나리타노모리 fixture로 `product_prices` 동일 날짜 행이 상품별 1개만 남는지 검사한다.
+- **검증 규칙**: 죠시 상품 2026-06-18은 1,219,000원 1행, 나리타노모리 상품 2026-06-18은 1,279,000원 1행이어야 하며 서로 섞이면 실패다.
+- **상태**: FIXED
+- **재발 방지**: 모바일랜딩/A4 확인은 `price_dates`뿐 아니라 `product_prices` 동일 날짜 행까지 같이 본다.
 
 ---
 
@@ -912,3 +1010,22 @@
 - [ ] **ERR-BHO-TB-03@2026-04-30** (코드 — computeRawHash module.exports 미포함): `insert-template.js` 에 `computeRawHash` 함수가 정의되어 있으나 `module.exports` 에 포함되지 않아 `require()` 로 import 불가. 매 스크립트마다 `crypto` 로 중복 정의 필요. **해결**: `module.exports` 에 `computeRawHash` 추가 (2026-04-30). BHO 어셈블러는 `rawText` 를 받아 내부에서 hash 자동 계산하므로 외부 노출 불필요. **재발 방지**: insert-template.js 신규 유틸 함수 추가 시 반드시 exports 동반.
 
 - [ ] **ERR-BHO-TB-04@2026-04-30** (데이터 — 원문 날짜 표기 OCR/인쇄 오류로 월 잘못 기재): 투어비 보홀 원문 가격표의 `8/2,3,9,10,16 수목` 행이 실제로는 **9월** 날짜 (2026-09-02=수, 09-03=목 ... 확인). 원문에 "8"로 인쇄되어 있으나 2026년 8월 2일=일요일로 수요일과 불일치. 요일 대조 결과 9월로 교정. **해결**: 날짜-요일 불일치 탐지 후 인접 월 탐색으로 교정. 9월로 정정하여 PRICES_3D5 행렬 구성. **재발 방지**: `db/lib/parse-price-table.js` 신규 유틸 — `parsePriceRows()` 가 날짜-요일 불일치 자동 탐지 + 인접 월 교정 + anomaly 보고 (2026-04-30). 앞으로 BHO 어셈블러 가격표 파싱 시 이 유틸 사용 권장.
+
+- [ ] **ERR-BLOG-render-markdown-skip@2026-06-07** (블로그 렌더 — 본문 이미지/표/링크 마크다운 원문 노출): 공개 `/blog/zhangjiajie-weather` 및 최신 블로그 샘플 12건에서 본문에 `##`, `![이미지](url)`, `[링크](url)`, 표 파이프가 그대로 노출되고 본문 이미지 3장이 `<img>`로 렌더되지 않음. 이미지 URL은 200이라 CDN 문제가 아니라 상세 페이지 렌더 판정 문제였음. **근본 원인**: `content_creatives.blog_html`은 "마크다운 + 안전한 HTML(`<figcaption>`, `<aside>`)" 혼합 저장값인데, 상세 페이지가 `<figcaption>` 존재만 보고 전체를 raw HTML로 오판해 `marked.parse()`를 건너뜀. **해결**: ① `src/lib/blog-renderer.ts` 공용 렌더러 추가 — 마크다운 신호(`#`, `![ ]`, 링크, 표, 리스트)가 있으면 HTML 태그가 섞여도 반드시 markdown으로 파싱. ② `/blog/[slug]` 상세 페이지가 공용 렌더러만 사용. ③ `runQualityGates()`에 `render_integrity` 게이트 추가 — 렌더 결과에 literal markdown artifact 또는 누락 이미지가 있으면 발행 차단. ④ `src/lib/blog-renderer.test.ts`로 `<figcaption>` 혼합 저장값 회귀 테스트 추가. **재발 방지**: 블로그 본문 렌더 변경 시 raw HTML 여부를 `<tag>` 존재만으로 판단 금지. 공개 QA는 이미지 URL 200뿐 아니라 DOM 내 `<article img>` 수와 본문 텍스트의 `![`, `##`, `[...](...)` 잔여 여부를 함께 확인.
+## ERR-PHU-itinerary-pollution@2026-06-07: Phu Quoc full upload DAY1 column fragments leaked into schedule
+
+- **Discovered**: 2026-06-07
+- **Product**: `phu-quoc-full-upload`, ZE981 outbound table.
+- **Source vs result**: source table has region, flight code, and time columns; registration result exposed standalone `푸꾸옥`, `ZE981`, `18:55`, and `22:25` as DAY1 schedule activities.
+- **Category**: parsing | customer render | regression gate
+- **Root cause**: itinerary fallback accepted day-table fragments as normal activities after extraction. The blocker existed in `itinerary-quality-gate`, but normalization did not prune the fragments before customer deliverability evaluation.
+- **Fix**: `normalizeUploadItinerary()` now prunes schedule items classified by the quality gate before attraction enrichment and again before save. Deterministic price IR also wins over complete LLM tiers when it can build both `product_prices` and `price_dates`.
+- **Verification**: `phu-quoc-full-upload` is customer deliverable in golden corpus; schedule activities no longer contain standalone `ZE981`, `18:55`, or `22:25`.
+- **Status**: FIXED
+- **Prevention**: New fixture assertions must check schedule pollution at registration level, not only after render.
+
+---
+
+- [x] **ERR-BLOG-render-integrity-audit@2026-06-07** (블로그 전수 렌더 감사/재발 방지): 운영 `https://www.yeosonam.com/blog` 전체 링크 기준 99개 글 중 99개가 상세 본문 렌더 실패(`score=0`, `avgImages=0`, `avgArtifacts=45.2`)했다. CDN/이미지 URL 장애가 아니라 `blog_html`의 "마크다운 + 안전 HTML" 혼합값을 raw HTML로 오판한 렌더 엔진 문제였다. 해결 후 로컬 `http://localhost:3002`에서 `npm run audit:blog-render:browser -- --base=http://localhost:3002 --json` 실행 결과 99개 글 전부 통과(`score=100`, `failed=0`, `errors=0`, `avgImages=3`). 재발 방지 장치: `src/lib/blog-renderer.ts` 공용 렌더러, `render_integrity` 품질 게이트, `src/lib/blog-renderer.test.ts` 회귀 테스트, `scripts/audit-blog-render-integrity.mjs` 전수 감사 스크립트, `docs/blog-system-runbook.md` 운영 명령/100점 기준 박제. 운영 점검은 PPR/스트리밍 오탐 방지를 위해 반드시 `--browser-fallback`을 사용한다.
+
+- [x] **ERR-BLOG-image-quality-gate@2026-06-07** (블로그 이미지 품질/주제 적합성 하한선): 렌더 복구만으로는 Pexels/OG 이미지가 실제 글 주제에 맞는지, alt/caption이 비었는지, 같은 글 안에서 중복되는지 보장할 수 없었다. 해결: `src/lib/blog-image-quality.ts` 추가, `runQualityGates()`에 `image_quality` 게이트 연결, `scripts/audit-blog-image-quality.mjs` 전수 감사 스크립트와 `npm run audit:blog-images` 명령 등록. 게이트는 최소 이미지 수, 빈 alt, generic alt, 중복 URL, 깨진 Pexels URL, 목적지/키워드 토큰 없는 alt/caption을 발행 전에 차단한다. 한계: 실제 사진의 시각적 의미 적합성은 자동으로 완전 판정할 수 없으므로 감사 스크립트의 제목 토큰/alt/caption 검사를 하한선으로 두고, 신규 목적지 대량 발행 전에는 실패 예시와 샘플을 사람이 확인한다.

@@ -230,6 +230,29 @@ export function extractBalancedJsonObjectSubstring(s: string): string | null {
 export function collectPkgBlockStarts(raw: string): number[] {
   const text = raw.replace(/\r\n/g, '\n');
   const starts: number[] = [];
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const looksLikeDurationTitle = (value: string) =>
+    /\d+\s*박\s*\d+\s*일/.test(value) ||
+    // OCR/encoding-damaged supplier raws often preserve only the night marker as mojibake.
+    /\d+\s*諛/.test(value);
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^PKG$/i.test(lines[i].trim())) continue;
+    const nextMeaningful = lines
+      .slice(i + 1, Math.min(lines.length, i + 5))
+      .map(line => line.trim())
+      .find(Boolean);
+    if (!nextMeaningful || !looksLikeDurationTitle(nextMeaningful)) continue;
+    starts.push(offsets[i] + Math.max(0, lines[i].indexOf('PKG')));
+  }
+
   const patterns = [
     /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g,
     /(?:^|\n)([^\n]{2,80}出\s*[^\n]{2,80}PKG\s*\d+\s*박\s*\d+\s*일[^\n]{0,60})/g,
@@ -306,11 +329,11 @@ export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult 
   const variantStarts = collectVariantCatalogBlockStarts(text);
   const itineraryStarts = collectItineraryHeaderStarts(text);
   const pkgStarts = collectPkgBlockStarts(text);
-  const starts = variantStarts.length >= 2
-    ? variantStarts
-    : itineraryStarts.length >= 2
-      ? itineraryStarts
-      : pkgStarts;
+  const starts = pkgStarts.length >= 2
+    ? pkgStarts
+    : variantStarts.length >= 2
+      ? variantStarts
+      : itineraryStarts;
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };

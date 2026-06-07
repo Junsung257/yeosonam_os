@@ -15,6 +15,7 @@ import {
   PosterMiniHeader,
   calcPage1DayCount,
   estimateHeights,
+  type PosterPriceDate,
   type PriceTier,
 } from '@/components/itinerary/A4PosterLayout';
 
@@ -23,7 +24,7 @@ async function loadPackage(id: string) {
   if (!isSupabaseConfigured || !isValidUuid(normalizedId)) return null;
   const { data } = await supabaseAdmin
     .from('travel_packages')
-    .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions, min_participants')
+    .select('id, title, destination, airline, departure_airport, itinerary_data, price_tiers, price_dates, price_list, single_supplement, guide_tip, excluded_dates, excludes, surcharges, optional_tours, customer_notes, internal_notes, inclusions, min_participants')
     .eq('id', normalizedId)
     .single();
   return data as {
@@ -34,6 +35,7 @@ async function loadPackage(id: string) {
     departure_airport: string | null;
     itinerary_data: TravelItinerary | null;
     price_tiers: PriceTier[] | null;
+    price_dates: PosterPriceDate[] | null;
     price_list: PriceListItem[] | null;
     single_supplement: string | null;
     guide_tip: string | null;
@@ -152,6 +154,7 @@ export default async function PrintPage(
   const itinerary = pkg.itinerary_data;
   const view = renderPackage(pkg);
   const priceTiers = pkg.price_tiers ?? [];
+  const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
   const priceList = pkg.price_list ?? [];
   const excludedDates = pkg.excluded_dates ?? [];
   const days = toPosterDays(view.days);
@@ -185,6 +188,8 @@ export default async function PrintPage(
   // 높이 기반 자동 페이지 분배
   const priceListRowCount = priceList.length > 0
     ? priceList.reduce((sum, p) => sum + p.rules.length, 0)
+    : priceDates.length > 0
+      ? priceDates.length
     : 0;
 
   const { headerH, priceH, infoH, footerH } = estimateHeights(itineraryForRender, priceTiers.length, priceListRowCount);
@@ -210,6 +215,7 @@ export default async function PrintPage(
           <PosterPrice
             meta={itineraryForRender.meta}
             priceTiers={priceTiers.length > 0 ? priceTiers : undefined}
+            priceDates={priceDates.length > 0 ? priceDates : undefined}
             priceList={priceList.length > 0 ? priceList : undefined}
             highlightDate={departureDate}
             excludedDates={excludedDates}

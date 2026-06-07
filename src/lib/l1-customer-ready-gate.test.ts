@@ -78,4 +78,43 @@ describe('evaluateL1CustomerReadyGate', () => {
     });
     expect(gate.codes).toContain('STUB_RAW_TEXT');
   });
+
+  it('blocks pasted itinerary table fragments before customer exposure', () => {
+    const gate = evaluateL1CustomerReadyGate({
+      row: {
+        title: 'BX나리타 치바 죠시 골프 54H 3박4일',
+        raw_text: 'PKG\nBX나리타 치바 죠시 골프 54H 3박4일',
+        notices_parsed: [
+          { type: 'CRITICAL', title: 't', text: '여권은 출발일 기준 6개월 이상 남아 있어야 합니다.' },
+          { type: 'PAYMENT', title: 't', text: '9홀 추가 챠지 1인 3,800엔 추가' },
+          { type: 'POLICY', title: 't', text: '문신이 있는 경우 골프장 및 목욕탕 사용이 불가합니다.' },
+          { type: 'INFO', title: 't', text: '차량 배차 상황에 따라 대기 시간이 발생할 수 있습니다.' },
+        ],
+        inclusions: ['왕복항공료(15KG)', '식사(조식,중식)'],
+        excludes: ['기타개인경비'],
+        itinerary_data: {
+          days: [
+            {
+              day: 1,
+              schedule: [
+                { type: 'normal', activity: 'BX112' },
+                { type: 'normal', activity: '10:00' },
+                { type: 'normal', activity: 'HOTEL: 호텔 죠시 또는 동급' },
+              ],
+            },
+          ],
+        },
+      },
+      internalCode: 'PUS-ETC-TYO-04-0009',
+      rawText: 'PKG\nBX나리타 치바 죠시 골프 54H 3박4일',
+    });
+
+    expect(gate.reasons.join('\n')).toContain('일정표 표 조각');
+    expect(gate.codes).toEqual(expect.arrayContaining([
+      'ITINERARY_SCHEDULE_FLIGHT_CODE_ONLY',
+      'ITINERARY_SCHEDULE_TIME_ONLY',
+      'ITINERARY_SCHEDULE_HOTEL_LINE',
+    ]));
+    expect(decidePackageStatusFromL1(gate, { confidence: 0.99 })).toBe('pending_review');
+  });
 });

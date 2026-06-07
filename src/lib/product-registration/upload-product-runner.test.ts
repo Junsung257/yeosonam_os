@@ -5,7 +5,9 @@ const mocks = vi.hoisted(() => ({
   finalizeUploadRegistration: vi.fn(),
   issueUploadInternalCode: vi.fn(),
   persistUploadRegistrationRows: vi.fn(),
+  persistImprovementLedgerEvents: vi.fn(),
   registerProductFromRaw: vi.fn(),
+  runMicroAutoQA: vi.fn(),
   rollbackInsertedUploadProduct: vi.fn(),
   scheduleUploadReviewInsert: vi.fn(),
 }));
@@ -40,6 +42,14 @@ vi.mock('@/lib/product-registration/persistence-rows', () => ({
 
 vi.mock('@/lib/product-registration/register-product-from-raw', () => ({
   registerProductFromRaw: mocks.registerProductFromRaw,
+}));
+
+vi.mock('@/lib/product-registration/auto-qa', () => ({
+  runMicroAutoQA: mocks.runMicroAutoQA,
+}));
+
+vi.mock('@/lib/product-registration/improvement-ledger-persistence', () => ({
+  persistImprovementLedgerEvents: mocks.persistImprovementLedgerEvents,
 }));
 
 vi.mock('@/lib/product-registration/section-signal-recording', () => ({
@@ -124,6 +134,31 @@ describe('processUploadRegistrationProducts', () => {
       pkgStatus: 'pending',
     });
     mocks.rollbackInsertedUploadProduct.mockResolvedValue({ rolledBack: false, error: null });
+    mocks.persistImprovementLedgerEvents.mockResolvedValue({ saved: 1, error: null });
+    mocks.runMicroAutoQA.mockReturnValue({
+      attempts: [{
+        uploadId: 'hash',
+        productId: null,
+        packageId: null,
+        attemptNo: 0,
+        rawTextHash: 'raw-hash',
+        sectionRawTextHash: null,
+        parserVersion: 'test',
+        detectedFormat: 'unknown',
+        blockersBefore: ['blocked'],
+        blockersAfter: ['blocked'],
+        normalizedBlockerSignatures: ['blocked'],
+        evidenceSpans: [],
+        comparedFields: [],
+        autoFixesApplied: [],
+        packagesAudit: { status: 'unknown', failures: [], warnings: [] },
+        a4Audit: { status: 'unknown', failures: [], warnings: [] },
+        finalStatus: 'BLOCKED',
+        fixtureCandidate: true,
+        ruleCandidate: true,
+        createdAt: '2026-06-07T00:00:00.000Z',
+      }],
+    });
 
     const result = await processUploadRegistrationProducts({
       supabase: {} as never,
@@ -166,6 +201,17 @@ describe('processUploadRegistrationProducts', () => {
 
     expect(result.savedIds).toEqual([]);
     expect(result.saveErrors).toEqual([{ title: 'Blocked Cebu Package', error: 'BLOCKED: title missing' }]);
+    expect(result.improvementEvents).toHaveLength(1);
+    expect(result.improvementEventsSaved).toBe(1);
+    expect(result.improvementEventsSaveError).toBeNull();
+    expect(mocks.persistImprovementLedgerEvents).toHaveBeenCalledWith(expect.objectContaining({
+      isSupabaseConfigured: true,
+      events: expect.arrayContaining([expect.objectContaining({ finalStatus: 'BLOCKED' })]),
+    }));
+    expect(mocks.runMicroAutoQA).toHaveBeenCalledWith(expect.objectContaining({
+      uploadFailed: true,
+      trustScore: 20,
+    }));
     expect(mocks.scheduleUploadReviewInsert).toHaveBeenCalledTimes(1);
     expect(mocks.buildUploadPersistenceRows).not.toHaveBeenCalled();
     expect(mocks.persistUploadRegistrationRows).not.toHaveBeenCalled();

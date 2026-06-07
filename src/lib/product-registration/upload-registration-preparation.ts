@@ -4,6 +4,7 @@ import type { AlertInput } from '@/lib/admin-alerts';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import type { MultiProductResult, ParsedDocument } from '@/lib/parser';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { recoverCatalogSplitFromRawText } from './catalog-split-recovery';
 import {
   detectCatalogSplitFallback,
   runUploadV3CatalogPreflight,
@@ -24,6 +25,38 @@ export type UploadRegistrationPreparationResult = {
 };
 
 function buildProductsToSave(parsedDocument: ParsedDocument): MultiProductResult[] {
+  const recoveredProducts = recoverCatalogSplitFromRawText(parsedDocument.rawText);
+
+  if (parsedDocument.multiProducts && parsedDocument.multiProducts.length >= 2) {
+    if (recoveredProducts.length === parsedDocument.multiProducts.length) {
+      parsedDocument.multiProducts = parsedDocument.multiProducts.map((product, index) => {
+        const recovered = recoveredProducts[index];
+        return {
+          ...product,
+          sectionRawText: recovered.sectionRawText ?? product.sectionRawText,
+          extractedData: {
+            ...product.extractedData,
+            title: recovered.extractedData.title ?? product.extractedData.title,
+            rawText: recovered.sectionRawText ?? product.extractedData.rawText,
+            destination: product.extractedData.destination ?? recovered.extractedData.destination,
+            duration: product.extractedData.duration ?? recovered.extractedData.duration,
+            nights: product.extractedData.nights ?? recovered.extractedData.nights,
+            trip_style: product.extractedData.trip_style ?? recovered.extractedData.trip_style,
+          },
+        };
+      });
+    }
+    return parsedDocument.multiProducts;
+  }
+
+  if (recoveredProducts.length >= 2) {
+    console.warn(`[Upload API] recovered catalog split from raw text: ${recoveredProducts.length} products`);
+    parsedDocument.multiProducts = recoveredProducts;
+    parsedDocument.extractedData = recoveredProducts[0].extractedData;
+    parsedDocument.itineraryData = recoveredProducts[0].itineraryData ?? null;
+    return recoveredProducts;
+  }
+
   return parsedDocument.multiProducts ?? [
     { extractedData: parsedDocument.extractedData, itineraryData: parsedDocument.itineraryData ?? null },
   ];
@@ -44,7 +77,7 @@ export async function prepareUploadRegistrationProducts(input: {
 
   const catalogSplitWarning = detectCatalogSplitFallback({
     rawText: input.parsedDocument.rawText,
-    hasMultiProducts: Boolean(input.parsedDocument.multiProducts),
+    hasMultiProducts: productsToSave.length >= 2,
   });
   if (catalogSplitWarning) {
     const rawExcerpt = safeRawTextExcerpt(input.parsedDocument.rawText) ?? '';

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 import {
   extractUploadDestinationFromFilename,
   inferUploadDestinationFromText,
@@ -68,6 +70,25 @@ describe('upload destination resolution Korean aliases', () => {
 
     expect(result.destination).toBe('클락');
     expect(result.destinationCode).toBe('CRK');
+    expect(result.failures).toEqual([]);
+  });
+
+  it('resolves Narita/Chiba golf catalog text to Tokyo airport group', () => {
+    const rawText = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),
+      'utf8',
+    );
+
+    const result = resolveUploadDestinationAndCodes({
+      destination: '',
+      departureAirport: '부산',
+      durationDays: 4,
+      productRawText: rawText,
+      documentRawText: '',
+    });
+
+    expect(result.destination).toBe('나리타');
+    expect(result.destinationCode).toBe('TYO');
     expect(result.failures).toEqual([]);
   });
 });

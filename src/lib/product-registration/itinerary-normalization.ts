@@ -6,6 +6,10 @@ import {
   type ItineraryDataLike,
 } from '@/lib/itinerary-attraction-enricher';
 import { postProcessItineraryData } from '@/lib/package-post-process';
+import {
+  findItineraryScheduleQualityIssues,
+  type ItineraryScheduleQualityDay,
+} from './itinerary-quality-gate';
 
 export type { ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 
@@ -20,6 +24,7 @@ export type UploadItineraryNormalizationResult = {
   extractedCandidateRows: Array<{ activity: string; destination?: string }>;
   fallbackApplied: boolean;
   fallbackAirline?: string | null;
+  removedPollutedScheduleItems: Array<{ day: number | null; activity: string; reason: string }>;
   warnings: string[];
 };
 
@@ -42,6 +47,41 @@ function attachShoppingHighlight<T extends ItineraryDataLike | null>(itineraryDa
       shopping: shoppingText,
     },
   } as unknown as T;
+}
+
+function activityKey(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function prunePollutedScheduleItems<T extends ItineraryDataLike | null>(itineraryData: T): {
+  itineraryData: T;
+  removed: Array<{ day: number | null; activity: string; reason: string }>;
+} {
+  if (!itineraryData?.days?.length) return { itineraryData, removed: [] };
+
+  let changed = false;
+  const removed: Array<{ day: number | null; activity: string; reason: string }> = [];
+  const days = itineraryData.days.map(day => {
+    const issues = findItineraryScheduleQualityIssues([day as ItineraryScheduleQualityDay]);
+    if (issues.length === 0 || !Array.isArray(day.schedule)) return day;
+
+    const pollutedActivities = new Set(issues.map(issue => activityKey(issue.activity)));
+    const schedule = day.schedule.filter(item => !pollutedActivities.has(activityKey(item.activity)));
+    if (schedule.length === day.schedule.length) return day;
+
+    changed = true;
+    removed.push(...issues.map(issue => ({
+      day: issue.day,
+      activity: issue.activity,
+      reason: issue.reason,
+    })));
+    return { ...day, schedule };
+  });
+
+  return {
+    itineraryData: changed ? ({ ...itineraryData, days } as T) : itineraryData,
+    removed,
+  };
 }
 
 export async function normalizeUploadItinerary(input: {
@@ -68,6 +108,8 @@ export async function normalizeUploadItinerary(input: {
       warnings.push(`day-table fallback 실패: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  const initialPrune = prunePollutedScheduleItems(itineraryInput);
+  itineraryInput = initialPrune.itineraryData;
 
   const enrichment = enrichItineraryWithAttractionReferences(
     itineraryInput,
@@ -84,8 +126,11 @@ export async function normalizeUploadItinerary(input: {
     }
   }
 
+  const finalPrune = prunePollutedScheduleItems(
+    (postProcessItineraryData(enrichment.itineraryData ?? itineraryInput ?? input.itineraryData ?? null) ?? null) as ItineraryDataLike | null,
+  );
   const itineraryDataToSave = attachShoppingHighlight(
-    (postProcessItineraryData(enrichment.itineraryData ?? input.itineraryData ?? null) ?? null) as ItineraryDataLike | null,
+    finalPrune.itineraryData,
     extractCatalogShoppingForRender(input.productRawText),
   );
 
@@ -115,6 +160,7 @@ export async function normalizeUploadItinerary(input: {
     extractedCandidateRows,
     fallbackApplied,
     fallbackAirline,
+    removedPollutedScheduleItems: [...initialPrune.removed, ...finalPrune.removed],
     warnings,
   };
 }

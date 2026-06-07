@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const mocks = vi.hoisted(() => ({
   detectCatalogSplitFallback: vi.fn(),
@@ -36,6 +38,74 @@ function parsedDocument(overrides: Record<string, unknown> = {}) {
 }
 
 describe('prepareUploadRegistrationProducts', () => {
+  it('recovers PKG catalog products from raw text before raising split fallback', async () => {
+    const rawText = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),
+      'utf8',
+    );
+
+    const result = await prepareUploadRegistrationProducts({
+      parsedDocument: parsedDocument({
+        rawText,
+        extractedData: { title: 'collapsed product', rawText },
+      }),
+      activeAttractions: [],
+      fileName: 'joshi-golf.txt',
+      isSupabaseConfigured: true,
+      postAlert: vi.fn(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productsToSave).toHaveLength(2);
+      expect(result.productsToSave.map(p => p.extractedData.title)).toEqual([
+        'BX나리타 치바 죠시 골프 54H 3박4일',
+        'BX 나리타 나리타노모리 2색 골프 54H 3박4일',
+      ]);
+      expect(result.catalogGroupId).toEqual(expect.any(String));
+    }
+    expect(mocks.detectCatalogSplitFallback).toHaveBeenCalledWith(expect.objectContaining({
+      hasMultiProducts: true,
+    }));
+    expect(mocks.runUploadV3CatalogPreflight).toHaveBeenCalledWith(expect.objectContaining({
+      productsToSave: expect.arrayContaining([
+        expect.objectContaining({ sectionRawText: expect.stringContaining('BX나리타 치바 죠시 골프') }),
+        expect.objectContaining({ sectionRawText: expect.stringContaining('BX 나리타 나리타노모리') }),
+      ]),
+    }));
+  });
+
+  it('keeps PKG source titles and section raw text when the normalizer returns weak multi-products', async () => {
+    const rawText = readFileSync(
+      join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),
+      'utf8',
+    );
+
+    const result = await prepareUploadRegistrationProducts({
+      parsedDocument: parsedDocument({
+        rawText,
+        multiProducts: [
+          { extractedData: { title: '죠시 3박4일 (?)', rawText: 'weak-1' }, itineraryData: null },
+          { extractedData: { title: '나리타 3박4일 (?)', rawText: 'weak-2' }, itineraryData: null },
+        ],
+      }),
+      activeAttractions: [],
+      fileName: 'joshi-golf.txt',
+      isSupabaseConfigured: true,
+      postAlert: vi.fn(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.productsToSave.map(p => p.extractedData.title)).toEqual([
+        'BX나리타 치바 죠시 골프 54H 3박4일',
+        'BX 나리타 나리타노모리 2색 골프 54H 3박4일',
+      ]);
+      expect(result.productsToSave[0].sectionRawText).toContain('BX나리타 치바 죠시 골프');
+      expect(result.productsToSave[1].sectionRawText).toContain('BX 나리타 나리타노모리 2색 골프');
+    }
+  });
+
   it('blocks catalog split fallback before V3 preflight and saving', async () => {
     const postAlert = vi.fn();
     mocks.detectCatalogSplitFallback.mockReturnValue({ headerCount: 4, processedCount: 1 });

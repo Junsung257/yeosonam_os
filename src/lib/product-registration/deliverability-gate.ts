@@ -1,5 +1,6 @@
 import type { PriceDate } from '@/lib/price-dates';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
+import { findItineraryScheduleQualityIssues, type ItineraryScheduleQualityDay } from './itinerary-quality-gate';
 
 export type UploadDeliverabilityResult = {
   ok: boolean;
@@ -12,7 +13,7 @@ export type UploadDeliverabilityInput = {
   destination?: string | null;
   destinationCode?: string | null;
   internalCode?: string | null;
-  itineraryDays?: Array<{ day?: number; dayNumber?: number; day_number?: number }> | null;
+  itineraryDays?: ItineraryScheduleQualityDay[] | null;
   durationDays?: number | null;
   rawText?: string | null;
   priceRecoveryFailures?: string[];
@@ -91,6 +92,23 @@ function findPriceStorageMismatch(input: UploadDeliverabilityInput): string | nu
   return null;
 }
 
+function findMissingCustomerSellingPrice(input: UploadDeliverabilityInput): string | null {
+  const missing = input.priceRows.find(row => (
+    typeof row.net_price === 'number'
+    && Number.isFinite(row.net_price)
+    && row.net_price > 0
+    && (
+      typeof row.adult_selling_price !== 'number'
+      || !Number.isFinite(row.adult_selling_price)
+      || row.adult_selling_price <= 0
+    )
+  ));
+
+  if (!missing) return null;
+  const date = missing.target_date ?? missing.day_of_week ?? 'undated';
+  return `adult_selling_price missing for positive product_prices row ${date} net ${missing.net_price.toLocaleString()} KRW`;
+}
+
 export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): UploadDeliverabilityResult {
   const blockers: string[] = [];
   const destination = input.destination?.trim();
@@ -109,6 +127,11 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
   const priceStorageMismatch = findPriceStorageMismatch(input);
   if (priceStorageMismatch) {
     blockers.push(`price storage mismatch: ${priceStorageMismatch}`);
+  }
+
+  const missingCustomerSellingPrice = findMissingCustomerSellingPrice(input);
+  if (missingCustomerSellingPrice) {
+    blockers.push(`customer selling price missing: ${missingCustomerSellingPrice}`);
   }
 
   if (!destination || destination === 'UNK') {
@@ -143,6 +166,16 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
 
   if (typeof input.durationDays === 'number' && input.durationDays > 0 && days.length > input.durationDays + 1) {
     blockers.push(`itinerary duration overflow: product duration ${input.durationDays} days but itinerary has ${days.length} days.`);
+  }
+
+  const scheduleQualityIssues = findItineraryScheduleQualityIssues(days);
+  for (const issue of scheduleQualityIssues.slice(0, 5)) {
+    blockers.push(
+      `itinerary schedule quality error: DAY${issue.day ?? '?'} "${issue.activity}" — ${issue.reason}`,
+    );
+  }
+  if (scheduleQualityIssues.length > 5) {
+    blockers.push(`itinerary schedule quality error: ${scheduleQualityIssues.length - 5} additional polluted schedule activities.`);
   }
 
   const rawText = input.rawText ?? '';

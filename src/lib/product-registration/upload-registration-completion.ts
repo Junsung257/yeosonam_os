@@ -98,5 +98,8 @@ export async function completeUploadRegistration(input: {
     marginRate: input.marginRate,
     fileName: input.fileName,
     baseUrl: input.baseUrl,
+    improvementEvents: result.improvementEvents,
+    improvementEventsSaved: result.improvementEventsSaved,
+    improvementEventsSaveError: result.improvementEventsSaveError,
   });
 }

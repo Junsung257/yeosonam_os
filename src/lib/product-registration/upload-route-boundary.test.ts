@@ -207,6 +207,10 @@ describe('upload route registration pipeline boundary', () => {
 
     expect(route).not.toContain('recordUploadSectionSignals({ rawText: rawForDeterm, extractedData: ed })');
     expect(runner).toContain('recordUploadSectionSignals({ rawText: rawForDeterm, extractedData: ed })');
+    expect(route).not.toContain('runMicroAutoQA({');
+    expect(runner).toContain('runMicroAutoQA({');
+    expect(route).not.toContain('persistImprovementLedgerEvents({');
+    expect(runner).toContain('persistImprovementLedgerEvents({');
     expect(route).not.toMatch(/\bparseSections\(/);
     expect(route).not.toMatch(/\bclassifyByContext\(/);
     expect(route).not.toMatch(/\blookupSignal\(/);

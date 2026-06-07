@@ -54,7 +54,7 @@ export const TITLE_BY_TYPE: Record<NoticeItem['type'], string> = {
 };
 
 const SECTION_START_RE = /^[\s*]*(?:주\s*의\s*사\s*항|주의사항|비\s*고|비고|특\s*이\s*사\s*항|특이사항)\s*$/i;
-const SECTION_STOP_RE = /^(?:일\s*자|제\s*\d+\s*일|DAY\s*\d+|일정표|포\s*함|불포함)/i;
+const SECTION_STOP_RE = /^(?:일\s*자|지\s*역|교통편|제\s*\d+\s*일|DAY\s*\d+|일정표|PKG|포\s*함|불포함)/i;
 
 /** 주의사항·비고 섹션 본문 라인만 추출 (일정표 직전까지) */
 function extractRemarkSectionLines(rawText: string): string[] {
@@ -70,9 +70,13 @@ function extractRemarkSectionLines(rawText: string): string[] {
       inSection = true;
       continue;
     }
-    if (inSection && SECTION_STOP_RE.test(line.replace(/\s+/g, ' '))) break;
+    if (inSection && (
+      SECTION_STOP_RE.test(line.replace(/\s+/g, ' '))
+      || SECTION_STOP_RE.test(line.replace(/\s+/g, ''))
+    )) break;
     if (!inSection) continue;
     const cleaned = line.replace(/^[\s*•·\-]+/, '').trim();
+    if (/마지막페이지|잔금\s*입금|완납\s*기준|꼭\s*안내\s*부탁/.test(cleaned)) continue;
     if (cleaned.length >= 8 && cleaned.length <= 400) out.push(cleaned);
   }
   return out;
@@ -197,9 +201,11 @@ export function extractNotices(rawText: string): NoticeItem[] {
     INFO: [],
   };
 
-  for (const line of extractRemarkSectionLines(rawText)) {
+  const remarkLines = extractRemarkSectionLines(rawText);
+  for (const line of remarkLines) {
     classifyLine(line, buckets);
   }
+  if (remarkLines.length > 0) return bucketsToNotices(buckets);
 
   const lines = rawText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
   for (const line of lines) {

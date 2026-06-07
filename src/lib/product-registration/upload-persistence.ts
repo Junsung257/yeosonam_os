@@ -25,14 +25,14 @@ export async function persistUploadRegistrationRows(input: {
   };
   if (!input.isSupabaseConfigured) return result;
 
-  let existingProductBeforeWrite: { internal_code: string } | null = null;
+  let existingProductBeforeWrite: Record<string, unknown> | null = null;
   if (input.internalCode) {
     const { data: existingProductBeforeWriteRow } = await input.supabase
       .from('products')
-      .select('internal_code')
+      .select('*')
       .eq('internal_code', input.internalCode)
       .maybeSingle();
-    existingProductBeforeWrite = existingProductBeforeWriteRow as { internal_code: string } | null;
+    existingProductBeforeWrite = existingProductBeforeWriteRow as Record<string, unknown> | null;
   }
 
   if (input.internalCode && input.rows.productRow) {
@@ -54,14 +54,25 @@ export async function persistUploadRegistrationRows(input: {
       .insert(input.rows.productPriceRows);
 
     if (priceError) {
+      let rollbackErrorMessage: string | null = null;
       if (result.productInserted) {
         const { error: rollbackError } = await input.supabase
           .from('products')
           .delete()
           .eq('internal_code', input.internalCode);
         if (rollbackError) {
-          throw new Error(`product_prices save failed: ${priceError.message}; product rollback failed: ${rollbackError.message}`);
+          rollbackErrorMessage = rollbackError.message;
         }
+      } else if (result.productUpdated && existingProductBeforeWrite) {
+        const { error: rollbackError } = await input.supabase
+          .from('products')
+          .upsert(existingProductBeforeWrite, { onConflict: 'internal_code' });
+        if (rollbackError) {
+          rollbackErrorMessage = rollbackError.message;
+        }
+      }
+      if (rollbackErrorMessage) {
+        throw new Error(`product_prices save failed: ${priceError.message}; product rollback failed: ${rollbackErrorMessage}`);
       }
       throw new Error(`product_prices save failed: ${priceError.message}`);
     }

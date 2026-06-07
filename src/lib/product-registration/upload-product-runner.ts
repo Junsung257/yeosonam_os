@@ -12,6 +12,9 @@ import { issueUploadInternalCode } from '@/lib/product-registration/destination-
 import { finalizeUploadRegistration } from '@/lib/product-registration/finalize-registration';
 import { buildUploadPersistenceRows } from '@/lib/product-registration/persistence-rows';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
+import { runMicroAutoQA } from '@/lib/product-registration/auto-qa';
+import type { ImprovementLedgerEvent } from '@/lib/product-registration/improvement-ledger';
+import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
 import { recordUploadSectionSignals } from '@/lib/product-registration/section-signal-recording';
 import type { StandardProductRegistrationObject } from '@/lib/product-registration/types';
 import {
@@ -52,6 +55,9 @@ export type ProcessUploadProductsResult = {
   extractedCandidateRows: { activity: string; destination?: string }[];
   attractionSeededCount: number;
   attractionReflectedCount: number;
+  improvementEvents: ImprovementLedgerEvent[];
+  improvementEventsSaved: number;
+  improvementEventsSaveError: string | null;
 };
 
 export async function processUploadRegistrationProducts(input: {
@@ -91,6 +97,7 @@ export async function processUploadRegistrationProducts(input: {
   const extractedCandidateRows: { activity: string; destination?: string }[] = [];
   const attractionSeededCount = 0;
   const attractionReflectedCount = 0;
+  const improvementEvents: ImprovementLedgerEvent[] = [];
 
   for (let productIndex = 0; productIndex < input.productsToSave.length; productIndex++) {
     const product = input.productsToSave[productIndex];
@@ -148,6 +155,14 @@ export async function processUploadRegistrationProducts(input: {
 
       if (!deliverability.ok) {
         const errorReason = `Customer landing/A4 blocked: ${deliverability.blockers.join(' | ')}`;
+        const autoQA = runMicroAutoQA({
+          uploadId: input.fileHash,
+          rawText: rawForDeterm,
+          sectionRawText: productRawText,
+          registration: registrationResult,
+          uploadFailed: true,
+        });
+        improvementEvents.push(...autoQA.attempts);
         saveErrors.push({ title, error: errorReason });
         scheduleUploadReviewInsert({
           supabase: input.supabase,
@@ -214,6 +229,15 @@ export async function processUploadRegistrationProducts(input: {
 
       if (uploadGate === 'BLOCKED') {
         const errorReason = `BLOCKED: ${validation.errors.join(' | ') || finalizedRegistration.failedChecks.map(check => check.message).join(' | ') || 'final upload gate blocked'}`;
+        const autoQA = runMicroAutoQA({
+          uploadId: input.fileHash,
+          rawText: rawForDeterm,
+          sectionRawText: productRawText,
+          registration: registrationResult,
+          uploadFailed: true,
+          trustScore: confidenceV3 * 100,
+        });
+        improvementEvents.push(...autoQA.attempts);
         saveErrors.push({ title, error: errorReason });
         scheduleUploadReviewInsert({
           supabase: input.supabase,
@@ -283,6 +307,17 @@ export async function processUploadRegistrationProducts(input: {
       const pkgResult = persistenceResult.packageRow as { id: string } | null;
 
       if (pkgResult?.id) {
+        const autoQA = runMicroAutoQA({
+          uploadId: input.fileHash,
+          productId: internalCode,
+          packageId: pkgResult.id,
+          rawText: rawForDeterm,
+          sectionRawText: productRawText,
+          registration: registrationResult,
+          trustScore: confidenceV3 * 100,
+        });
+        improvementEvents.push(...autoQA.attempts);
+
         savedIds.push(pkgResult.id);
         savedTitles.push(title);
         savedConfidences.push(confidenceV3);
@@ -399,6 +434,24 @@ export async function processUploadRegistrationProducts(input: {
     }
   }
 
+  let improvementEventsSaved = 0;
+  let improvementEventsSaveError: string | null = null;
+  try {
+    const ledgerPersistence = await persistImprovementLedgerEvents({
+      supabase: input.supabase,
+      isSupabaseConfigured: input.isSupabaseConfigured,
+      events: improvementEvents,
+    });
+    improvementEventsSaved = ledgerPersistence.saved;
+    improvementEventsSaveError = ledgerPersistence.error;
+    if (ledgerPersistence.error) {
+      console.warn('[Upload API] improvement ledger save failed:', ledgerPersistence.error);
+    }
+  } catch (error) {
+    improvementEventsSaveError = error instanceof Error ? error.message : String(error);
+    console.warn('[Upload API] improvement ledger save threw:', improvementEventsSaveError);
+  }
+
   return {
     savedIds,
     savedTitles,
@@ -412,5 +465,8 @@ export async function processUploadRegistrationProducts(input: {
     extractedCandidateRows,
     attractionSeededCount,
     attractionReflectedCount,
+    improvementEvents,
+    improvementEventsSaved,
+    improvementEventsSaveError,
   };
 }

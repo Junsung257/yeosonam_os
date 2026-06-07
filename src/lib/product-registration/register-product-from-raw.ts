@@ -1,4 +1,5 @@
 import type { AttractionData } from '@/lib/attraction-matcher';
+import { createHash } from 'node:crypto';
 import { sanitizeForCustomer } from '@/lib/customer-leak-sanitizer';
 import { postProcessCatalogFields } from '@/lib/package-post-process';
 import { normalizeOptionalTours } from '@/lib/package-acl';
@@ -14,7 +15,7 @@ import {
   buildSupplierRawDeterministicItinerary,
   extractSupplierRawDeterministicFacts,
 } from '@/lib/supplier-raw-deterministic-facts';
-import { applyDeterministicExtractedDataFixes, validateExtractedProduct } from '@/lib/upload-validator';
+import { applyDeterministicExtractedDataFixes, validateExtractedProduct, type ProductPriceRowInput } from '@/lib/upload-validator';
 import {
   resolveUploadDestinationAndCodes,
   type UploadDestinationResolution,
@@ -25,9 +26,67 @@ import { inferDepartureDaysFromRawText } from './departure-days';
 import { normalizeUploadItinerary, type ItineraryDataLike } from './itinerary-normalization';
 import { recoverUploadPriceData } from './price-recovery';
 import { normalizeUploadTitle } from './title-normalization';
-import type { StandardProductRegistrationObject } from './types';
+import type { SourceEvidenceSpan, StandardProductRegistrationObject } from './types';
 
 const NOTICE_TYPES = new Set<NoticeItem['type']>(['CRITICAL', 'PAYMENT', 'POLICY', 'INFO']);
+
+function hashRawText(rawText: string): string {
+  return createHash('sha256').update(rawText).digest('hex');
+}
+
+function addEvidenceSpan(input: {
+  spans: SourceEvidenceSpan[];
+  field: string;
+  rawText: string;
+  rawTextHash: string;
+  value: unknown;
+  productIndex?: number | null;
+  sourceKind?: SourceEvidenceSpan['sourceKind'];
+  sectionKey?: string | null;
+  confidence?: number;
+}): void {
+  const value = typeof input.value === 'string' ? input.value.trim() : '';
+  if (value.length < 2) return;
+  const start = input.rawText.indexOf(value);
+  if (start < 0) return;
+  const lineIndex = input.rawText.slice(0, start).split(/\r?\n/).length - 1;
+  input.spans.push({
+    field: input.field,
+    rawTextHash: input.rawTextHash,
+    start,
+    end: start + value.length,
+    quote: value.slice(0, 240),
+    productIndex: input.productIndex ?? null,
+    sourceKind: input.sourceKind ?? 'line',
+    sectionKey: input.sectionKey ?? null,
+    lineIndex,
+    rowIndex: null,
+    columnIndex: null,
+    confidence: input.confidence ?? 0.9,
+  });
+}
+
+function buildEvidenceSpans(input: {
+  rawText: string;
+  rawTextHash: string;
+  ed: ExtractedData;
+  priceRecovery: { minPrice: number | null; source: string };
+}): SourceEvidenceSpan[] {
+  const spans: SourceEvidenceSpan[] = [];
+  addEvidenceSpan({ spans, field: 'title', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.title, confidence: 0.95 });
+  addEvidenceSpan({ spans, field: 'destination', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.destination, confidence: 0.85 });
+  addEvidenceSpan({ spans, field: 'airline', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.airline, confidence: 0.8 });
+  addEvidenceSpan({ spans, field: 'departure_airport', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.departure_airport, confidence: 0.8 });
+  addEvidenceSpan({ spans, field: 'flight_no', rawText: input.rawText, rawTextHash: input.rawTextHash, value: input.ed.flight_info?.flight_no, confidence: 0.9 });
+
+  const minPrice = input.priceRecovery.minPrice;
+  if (minPrice != null) {
+    const formatted = minPrice.toLocaleString('en-US');
+    addEvidenceSpan({ spans, field: 'min_price', rawText: input.rawText, rawTextHash: input.rawTextHash, value: formatted, confidence: 0.8 });
+  }
+
+  return spans;
+}
 
 function normalizeParserOptionalTours(raw: unknown): OptionalTour[] {
   return normalizeOptionalTours(raw).map(tour => ({
@@ -134,16 +193,61 @@ function hasValidSequentialDays(input: ItineraryDataLike | null): boolean {
   return Array.from(seen).sort((a, b) => a - b).every((day, index) => day === index + 1);
 }
 
+function shouldPreferSupplierItinerary(
+  inputItinerary: ItineraryDataLike | null | undefined,
+  supplierItinerary: ItineraryDataLike | null | undefined,
+): boolean {
+  if (!supplierItinerary?.days?.length) return false;
+  if (!inputItinerary?.days?.length) return true;
+
+  const hasHotelName = (day: unknown) => {
+    const hotel = (day as { hotel?: { name?: unknown } } | null)?.hotel;
+    return typeof hotel?.name === 'string' && hotel.name.trim().length > 0;
+  };
+  const hasMealInfo = (day: unknown) => {
+    const meals = (day as { meals?: Record<string, unknown> } | null)?.meals;
+    return Boolean(
+      meals?.breakfast_note || meals?.lunch_note || meals?.dinner_note
+      || meals?.breakfast || meals?.lunch || meals?.dinner
+    );
+  };
+
+  const supplierDays = supplierItinerary.days ?? [];
+  const inputDays = inputItinerary.days ?? [];
+  const supplierHasHotels = supplierDays.some(hasHotelName);
+  const inputHasHotels = inputDays.some(hasHotelName);
+  const supplierHasMeals = supplierDays.some(hasMealInfo);
+  const inputHasMeals = inputDays.some(hasMealInfo);
+  const pollutedScheduleItems = inputDays.flatMap(day => day.schedule ?? []).filter(item => {
+    const activity = String(item.activity ?? '').trim();
+    const compact = activity.replace(/\s+/g, '');
+    return /^(전용차량|도보|셔틀|차량|버스|전일|부산|김해|나리타|나라타|치바|동경|도쿄)$/.test(compact)
+      || /^[A-Z]{2}\d{2,4}$/.test(compact)
+      || /^\d{1,2}:\d{2}$/.test(compact)
+      || /^HOTEL\s*:/i.test(activity)
+      || /^https?:\/\//i.test(activity)
+      || /^[조중석]\s*:/.test(activity);
+  });
+
+  return pollutedScheduleItems.length >= 2
+    || (supplierHasHotels && !inputHasHotels)
+    || (supplierHasMeals && !inputHasMeals);
+}
+
 function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDataLike | null {
   if (rawText.trim().length < 50) return null;
   const rawFacts = extractSupplierRawDeterministicFacts(rawText);
+  const missingText = (value: unknown) => !value || value === 'UNK' || value === '?';
+  const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
+  const fallbackFlightOut = rawFacts.outbound?.code ?? rawFlightCodes[0] ?? null;
+  const fallbackFlightIn = rawFacts.inbound?.code ?? (rawFlightCodes.length > 1 ? rawFlightCodes[rawFlightCodes.length - 1] : null);
 
   ed.title = normalizeUploadTitle(ed.title, rawFacts.title) ?? ed.title;
   if ((!ed.destination || ed.destination === 'UNK') && rawFacts.region) ed.destination = rawFacts.region;
   if ((!ed.trip_style || ed.trip_style === 'UNK') && rawFacts.tripStyle) ed.trip_style = rawFacts.tripStyle;
   if ((!ed.duration || ed.duration <= 0) && rawFacts.durationDays) ed.duration = rawFacts.durationDays;
   if ((!ed.departure_airport || ed.departure_airport === 'UNK') && rawFacts.departureAirport) ed.departure_airport = rawFacts.departureAirport;
-  if ((!ed.airline || ed.airline === 'UNK') && rawFacts.airline) ed.airline = rawFacts.airline;
+  if (missingText(ed.airline) && rawFacts.airline) ed.airline = rawFacts.airline;
   if ((!ed.min_participants || ed.min_participants <= 0) && rawFacts.minParticipants) ed.min_participants = rawFacts.minParticipants;
   if ((!ed.inclusions?.length) && rawFacts.inclusions.length) ed.inclusions = rawFacts.inclusions;
   if ((!ed.excludes?.length) && rawFacts.excludes.length) ed.excludes = rawFacts.excludes;
@@ -166,13 +270,13 @@ function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDat
       note: tour.note,
     }));
   }
-  if ((!ed.flight_info?.flight_no) && rawFacts.outbound?.code) {
+  if ((!ed.flight_info?.flight_no) && fallbackFlightOut) {
     ed.flight_info = {
       ...(ed.flight_info ?? {}),
       airline: ed.airline ?? rawFacts.airline,
-      flight_no: rawFacts.outbound.code,
-      depart: rawFacts.outbound.departure.time,
-      arrive: rawFacts.outbound.arrival.time,
+      flight_no: fallbackFlightOut,
+      depart: rawFacts.outbound?.departure.time,
+      arrive: rawFacts.outbound?.arrival.time,
       return_depart: rawFacts.inbound?.departure.time,
       return_arrive: rawFacts.inbound?.arrival.time,
     };
@@ -187,8 +291,8 @@ function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDat
   itinerary.meta = {
     ...(itinerary.meta ?? {}),
     airline: itinerary.meta?.airline ?? ed.airline ?? rawFacts.airline,
-    flight_out: itinerary.meta?.flight_out ?? rawFacts.outbound?.code ?? null,
-    flight_in: itinerary.meta?.flight_in ?? rawFacts.inbound?.code ?? null,
+    flight_out: itinerary.meta?.flight_out ?? fallbackFlightOut,
+    flight_in: itinerary.meta?.flight_in ?? fallbackFlightIn,
     departure_airport: itinerary.meta?.departure_airport ?? ed.departure_airport ?? rawFacts.departureAirport,
   };
   return itinerary;
@@ -268,6 +372,20 @@ function applyCrossFieldAndSummaryRecovery(ed: ExtractedData, rawText: string): 
   return warnings;
 }
 
+function ensureCustomerSellingPrices(rows: ProductPriceRowInput[]): ProductPriceRowInput[] {
+  return rows.map(row => {
+    if (
+      (typeof row.adult_selling_price !== 'number' || row.adult_selling_price <= 0)
+      && typeof row.net_price === 'number'
+      && Number.isFinite(row.net_price)
+      && row.net_price > 0
+    ) {
+      return { ...row, adult_selling_price: row.net_price };
+    }
+    return row;
+  });
+}
+
 async function normalizeExtractedDataForRegistration(input: RegisterProductFromRawInput, ed: ExtractedData): Promise<string[]> {
   const warnings: string[] = [];
   applyDeterministicExtractedDataFixes(ed);
@@ -304,6 +422,7 @@ async function normalizeExtractedDataForRegistration(input: RegisterProductFromR
 export async function registerProductFromRaw(input: RegisterProductFromRawInput): Promise<StandardProductRegistrationObject> {
   const ed = cloneExtractedData(input.extractedData);
   const rawText = input.rawText || ed.rawText || '';
+  const rawTextHash = hashRawText(rawText);
   ed.rawText = rawText;
   const normalizationWarnings = await normalizeExtractedDataForRegistration(input, ed);
   const supplierItinerary = applySupplierRawFacts(ed, rawText);
@@ -338,19 +457,24 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     rawText,
     title: input.title ?? ed.title,
     accommodations: ed.accommodations ?? [],
+    includeAllHotelColumns: !input.documentRawText || input.documentRawText.trim() === rawText.trim(),
     durationDays: ed.duration,
     departureDays: ed.departure_days,
     year: input.priceYear,
     enableGeminiFallback: input.enableGeminiFallback,
   });
+  priceRecovery.priceRows = ensureCustomerSellingPrices(priceRecovery.priceRows);
   ed.price_tiers = priceRecovery.tiers;
   if (priceRecovery.minPrice != null) ed.price = priceRecovery.minPrice;
 
   const v3ItineraryInput = v3RenderInput?.itinerary_data?.days?.length
     ? { days: v3RenderInput.itinerary_data.days ?? [] } as ItineraryDataLike
     : null;
+  const preferSupplierItinerary = shouldPreferSupplierItinerary(input.itineraryData, supplierItinerary);
   const itinerary = await normalizeUploadItinerary({
-    itineraryData: input.itineraryData ?? supplierItinerary ?? (hasValidSequentialDays(v3ItineraryInput) ? v3ItineraryInput : null),
+    itineraryData: preferSupplierItinerary
+      ? supplierItinerary
+      : input.itineraryData ?? supplierItinerary ?? (hasValidSequentialDays(v3ItineraryInput) ? v3ItineraryInput : null),
     productRawText: rawText,
     destination: ed.destination,
     activeAttractions: input.activeAttractions,
@@ -368,7 +492,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     destination: ed.destination,
     destinationCode: input.destinationCode ?? destination.destinationCode,
     internalCode: input.internalCode,
-    itineraryDays: itinerary.itineraryInput?.days ?? [],
+    itineraryDays: itinerary.itineraryDataToSave?.days ?? itinerary.itineraryInput?.days ?? [],
     durationDays: ed.duration,
     rawText,
     priceRecoveryFailures: priceRecovery.failures,
@@ -425,9 +549,16 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     deliverability,
     evidence: {
       rawTextLength: rawText.length,
+      rawTextHash,
       priceSource: priceRecovery.source,
       v3DraftStatus: v3.result?.gate_result.status ?? null,
       v3RawTextHash: v3.result?.raw_text_hash ?? null,
+      spans: buildEvidenceSpans({
+        rawText,
+        rawTextHash,
+        ed,
+        priceRecovery,
+      }),
     },
     confidence: input.confidence ?? null,
     failures: [...new Set(failures)],

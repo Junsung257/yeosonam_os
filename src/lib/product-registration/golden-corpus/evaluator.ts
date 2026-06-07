@@ -263,6 +263,7 @@ export async function evaluateGoldenCorpus(
       duration: testCase.duration,
       price: recovered.minPrice,
       priceDates: recovered.priceDates,
+      itineraryData: registration.itinerary.itineraryDataToSave,
     });
     if (renderFailure) failures.push(renderFailure);
 
@@ -385,6 +386,7 @@ export async function evaluateGoldenCorpus(
       duration: product.extractedData.duration ?? expected?.duration ?? 1,
       price: recovered.minPrice,
       priceDates: recovered.priceDates,
+      itineraryData: registration.itinerary.itineraryDataToSave,
     });
     if (renderFailure) failures.push(renderFailure);
 

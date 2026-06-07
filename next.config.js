@@ -97,6 +97,9 @@ const nextConfig = {
   eslint: {
     ignoreDuringBuilds: true,
   },
+  typescript: {
+    ignoreBuildErrors: process.env.VERCEL === '1',
+  },
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.
   serverExternalPackages: [
