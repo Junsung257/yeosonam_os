@@ -15,6 +15,7 @@ const actions: EnterpriseRuntimeActionHandlers = {
   createGoogleDraftPacket: noop,
   createGoogleRsaDrafts: noop,
   createGoogleDraftFromRsa: noop,
+  runGoogleSafePipeline: noop,
   createMetaCapiTestPacket: noop,
   checkExecutionGate: noop,
   checkGoogleDraftGate: noop,
@@ -50,6 +51,7 @@ describe('Ad OS EnterpriseRuntimeActionBar', () => {
     expect(html).toContain('Naver paused packet');
     expect(html).toContain('Google RSA drafts');
     expect(html).toContain('Google RSA packets');
+    expect(html).toContain('Google safe pipeline');
     expect(html).toContain('Naver gate');
     expect(html).toContain('Google draft gate');
     expect(html).toContain('Platform dry-run');

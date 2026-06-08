@@ -33,6 +33,7 @@ import {
 } from './_lib/naver-keyword-csv';
 import { loadInitialReadinessPanels } from './_lib/initial-readiness-loader';
 import {
+  parseAdOsJsonResponse,
   useAdOsJsonActionRunner,
   useAdOsJsonBatchActionRunner,
   useAdOsJsonIdActionRunner,
@@ -111,7 +112,7 @@ export default function AdOsPage() {
     runningPlatformJobs, runningConversionUpload, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
-    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
+    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, runningGoogleSafePipeline, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
 
@@ -234,6 +235,19 @@ export default function AdOsPage() {
     setError,
     setAutomationMessage,
   });
+
+  const postAdOsJson = async (
+    url: string,
+    body: Record<string, unknown>,
+    errorMessage: string,
+  ) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return parseAdOsJsonResponse(response, errorMessage);
+  };
 
   const runStagingSmoke = async () => {
     await runReadinessCheck({
@@ -1311,6 +1325,41 @@ export default function AdOsPage() {
     });
   };
 
+  const runGoogleSafePipeline = async () => {
+    setActionFlag('runningGoogleSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const drafts = await postAdOsJson(
+        '/api/admin/ad-os/creative-factory/search-rsa',
+        { apply: true, limit: 3 },
+        'Google RSA draft generation failed.',
+      );
+      const packets = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/google/draft-from-rsa',
+        { apply: true, include_drafts: false, limit: 20 },
+        'Google RSA draft packet generation failed.',
+      );
+      const gate = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/execution-gate',
+        { apply: true, platform: 'google', requested_mode: 'approve', human_approved: false, limit: 20 },
+        'Google draft gate check failed.',
+      );
+
+      await refresh();
+      const draftSummary = getAdOsRecord(drafts.summary);
+      const packetSummary = getAdOsRecord(packets.summary);
+      const gateSummary = getAdOsRecord(gate.summary);
+      setAutomationMessage(
+        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}. External API write 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');
+    } finally {
+      setActionFlag('runningGoogleSafePipeline', false);
+    }
+  };
+
   const createMetaCapiTestPacket = async () => {
     await runJsonAction({
       flag: 'creatingMetaCapiPacket',
@@ -1588,6 +1637,7 @@ export default function AdOsPage() {
     createGoogleDraftPacket,
     createGoogleRsaDrafts,
     createGoogleDraftFromRsa,
+    runGoogleSafePipeline,
     createMetaCapiTestPacket,
     checkExecutionGate,
     checkGoogleDraftGate,
@@ -1612,6 +1662,7 @@ export default function AdOsPage() {
     createGoogleDraftPacket: creatingGoogleDraftPacket,
     createGoogleRsaDrafts: creatingGoogleRsaDrafts,
     createGoogleDraftFromRsa: creatingGoogleDraftFromRsa,
+    runGoogleSafePipeline: runningGoogleSafePipeline,
     createMetaCapiTestPacket: creatingMetaCapiPacket,
     checkExecutionGate: checkingExecutionGate,
     checkGoogleDraftGate: checkingGoogleDraftGate,

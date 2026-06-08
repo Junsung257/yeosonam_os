@@ -62,6 +62,7 @@ export const ACTION_FLAG_KEYS = [
   'creatingGoogleDraftPacket',
   'creatingGoogleRsaDrafts',
   'creatingGoogleDraftFromRsa',
+  'runningGoogleSafePipeline',
   'creatingMetaCapiPacket',
   'checkingExecutionGate',
   'checkingGoogleDraftGate',
