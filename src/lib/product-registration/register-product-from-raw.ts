@@ -20,6 +20,8 @@ import {
   resolveUploadDestinationAndCodes,
   type UploadDestinationResolution,
 } from './destination-resolution';
+import { readSupplierDocumentLikeHuman } from './ai-human-reader';
+import { auditPriceExtractionAgainstSource } from './price-red-team-auditor';
 import { evaluateUploadDeliverability } from './deliverability-gate';
 import { inferAccommodationsFromRawText } from './accommodations';
 import { inferDepartureDaysFromRawText } from './departure-days';
@@ -490,6 +492,19 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   ed.price_tiers = priceRecovery.tiers;
   if (priceRecovery.minPrice != null) ed.price = priceRecovery.minPrice;
 
+  const humanReader = readSupplierDocumentLikeHuman({
+    rawText,
+    title: registrationTitle ?? ed.title,
+    accommodations: ed.accommodations ?? [],
+    durationDays: ed.duration,
+    departureDays: ed.departure_days,
+    year: input.priceYear,
+  });
+  const priceAudit = auditPriceExtractionAgainstSource({
+    priceRecovery,
+    humanReader,
+  });
+
   const v3ItineraryInput = v3RenderInput?.itinerary_data?.days?.length
     ? { days: v3RenderInput.itinerary_data.days ?? [] } as ItineraryDataLike
     : null;
@@ -520,6 +535,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     rawText,
     priceRecoveryFailures: priceRecovery.failures,
     extraFailures: [
+      ...priceAudit.blockers.map(reason => `Price source audit failed: ${reason}`),
       ...destination.failures.map(reason => `Destination resolution failed: ${reason}`),
       ...(input.extraFailures ?? []),
     ],
@@ -533,6 +549,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ...normalizationWarnings,
     ...fieldRecoveryWarnings,
     ...v3.warnings,
+    ...priceAudit.warnings.map(reason => `price_source_audit:${reason}`),
     ...v3GateFailures,
     ...itinerary.warnings,
     ...(v3.result?.gate_result.status === 'needs_review' ? ['v3:needs_review'] : []),
@@ -581,7 +598,16 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
         rawTextHash,
         ed,
         priceRecovery,
-      }),
+      }).concat(humanReader.evidenceSpans),
+      humanReader: {
+        source: humanReader.source,
+        priceSource: humanReader.priceSource,
+        pricePairCount: humanReader.pricePairs.length,
+        itineraryEventCount: humanReader.itineraryEvents.length,
+        entityMentionCount: humanReader.entityMentions.length,
+        uncertainties: humanReader.uncertainties,
+      },
+      priceAudit,
     },
     confidence: input.confidence ?? null,
     failures: [...new Set(failures)],

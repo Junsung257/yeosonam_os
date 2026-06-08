@@ -5,7 +5,9 @@ import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import type { RenderPackageInput } from '@/lib/render-contract';
 import type { UploadDeliverabilityResult } from './deliverability-gate';
 import type { UploadDestinationResolution } from './destination-resolution';
+import type { HumanReaderResult } from './ai-human-reader';
 import type { UploadItineraryNormalizationResult } from './itinerary-normalization';
+import type { PriceRedTeamAuditResult } from './price-red-team-auditor';
 import type { UploadPriceRecoveryResult } from './price-recovery';
 
 export type ProductRegistrationEvidence = {
@@ -15,6 +17,15 @@ export type ProductRegistrationEvidence = {
   v3DraftStatus: string | null;
   v3RawTextHash: string | null;
   spans: SourceEvidenceSpan[];
+  humanReader?: Pick<
+    HumanReaderResult,
+    'source' | 'priceSource' | 'uncertainties'
+  > & {
+    pricePairCount: number;
+    itineraryEventCount: number;
+    entityMentionCount: number;
+  };
+  priceAudit?: PriceRedTeamAuditResult;
 };
 
 export type SourceEvidenceSpan = {
