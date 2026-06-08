@@ -12,6 +12,7 @@ const getArg = (name, fallback = null) => {
 const hasFlag = (name) => args.includes(name);
 
 const baseUrl = (getArg('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const expectedCanonicalOriginInput = (getArg('--canonical-origin', process.env.BLOG_CANONICAL_ORIGIN || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(10, Number(getArg('--concurrency', '5')) || 5));
 const outputJson = hasFlag('--json');
@@ -132,7 +133,7 @@ function judge(row) {
   const issues = [];
   const warnings = [];
   const expectedCanonicalPath = safeDecodePath(row.path).replace(/\/$/, '');
-  const expectedCanonicalOrigin = new URL(baseUrl).origin;
+  const expectedCanonicalOrigin = new URL(expectedCanonicalOriginInput).origin;
   let canonicalPath = '';
   let canonicalOrigin = '';
   try {
@@ -150,7 +151,7 @@ function judge(row) {
   else if (title.length < 25) warnings.push('short_title');
   if (!description || description.length < 50 || description.length > 180) issues.push('bad_meta_description_length');
   if (!canonicalPath || canonicalPath !== expectedCanonicalPath) issues.push('bad_canonical');
-  if (!canonicalOrigin || canonicalOrigin !== expectedCanonicalOrigin) issues.push('bad_canonical_origin');
+  if (!canonicalOrigin || !isAllowedCanonicalOrigin(canonicalOrigin, expectedCanonicalOrigin)) issues.push('bad_canonical_origin');
   if (row.robots && /noindex/i.test(row.robots)) issues.push('noindex_on_published_post');
   if (row.h1Count !== 1) issues.push('bad_h1_count');
   if (row.h2Count < 3) issues.push('not_enough_h2');
@@ -177,6 +178,20 @@ function judge(row) {
     warnings,
     failed: !passed,
   };
+}
+
+function isLocalOrigin(origin) {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedCanonicalOrigin(origin, expectedOrigin) {
+  if (origin === expectedOrigin) return true;
+  return isLocalOrigin(origin) && isLocalOrigin(baseUrl);
 }
 
 async function auditPage(page, path) {
