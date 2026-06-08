@@ -175,4 +175,96 @@ BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일
     expect(result.pricing.priceDates.length).toBeGreaterThan(0);
     expect(result.publishable).toBe(true);
   });
+
+  it('recovers Crown Kyushu price and itinerary into customer landing-ready schedule data', async () => {
+    const rawText = `
+[크라운] 큐슈 BX조석 스기노이 2박 3일
+상품가
+7/1, 6, 8, 13, 15
+1,299,000원
+7/20, 22, 27, 29
+1,399,000원
+포함 내역
+왕복항공권, 호텔, 일정표상 식사
+불포함
+개인경비
+1일
+부산
+후쿠오카
+BX142
+09:00
+10:00
+김해 국제공항 출발
+후쿠오카 국제공항 도착
+전용차량
+벳부 이동
+▶ 유황재배지 유노하나 관광
+▶ 가마도 지옥순례 및 족욕체험
+*특전: 라무네(일본사이다)+계란 인당 1개 제공
+호텔 이동 후 석식 및 휴식, ♨온천욕
+조: 없음
+중: 현지식
+석: 호텔식
+HOTEL: 스기노이 호텔 (니지관)
+2일
+유후인
+전용차량
+유후인 이동
+▶ 긴린 호수 및 민예거리 관광
+쿠로가와 이동
+▶ 쿠로가와 온천마을 산책
+벳부 이동
+조: 호텔식
+중: 현지식
+석: 호텔식
+HOTEL: 스기노이 호텔 (니지관)
+3일
+벳부
+후쿠오카
+전용차량
+호텔 조식 후 체크아웃
+면세점 쇼핑 후 후쿠오카 타워(내부관광) 관광
+후쿠오카 국제공항 출발
+김해 국제공항 도착
+조: 호텔식
+중: 없음
+석: 없음
+`;
+
+    const result = await registerProductFromRaw({
+      rawText,
+      extractedData: {
+        title: '크라운 · 후쿠오카 · 2박 3일 · BX142',
+        destination: '큐슈 조석 스기노이',
+        duration: 3,
+        rawText,
+        price_tiers: [],
+      },
+      itineraryData: null,
+      title: '크라운 · 후쿠오카 · 2박 3일 · BX142',
+      activeAttractions: [
+        { id: 'yunohana', name: '유노하나 재배지', short_desc: '온천 침전물을 채취하는 명소' },
+        { id: 'kamado', name: '가마도지옥', aliases: ['가마도 지옥순례'], short_desc: '벳부 지옥온천' },
+        { id: 'kinrin', name: '긴린코호수', aliases: ['긴린 호수'], short_desc: '유후인의 호수' },
+        { id: 'mingei', name: '유후인 민예거리', aliases: ['민예거리'], short_desc: '상점 거리' },
+        { id: 'kurokawa', name: '쿠로가와 온천마을', short_desc: '온천 마을' },
+        { id: 'fukuoka-tower', name: '후쿠오카 타워', short_desc: '후쿠오카 전망 명소' },
+      ],
+      destinationCode: 'FUK',
+      internalCode: 'PUS-AA-FUK-03-0001',
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    const savedDays = result.itinerary.itineraryDataToSave?.days ?? [];
+    const labels = savedDays.flatMap(day => day.schedule ?? []).map(item => item.landing_sentence ?? item.activity);
+
+    expect(result.pricing.source).toBe('deterministic:product_price_vertical_date_table');
+    expect(result.pricing.priceDates.find(row => row.date === '2026-07-01')?.price).toBe(1299000);
+    expect(result.deliverability.ok).toBe(true);
+    expect(result.publishable).toBe(true);
+    expect(savedDays).toHaveLength(3);
+    expect(labels).toContain('쿠로가와 온천마을을 산책하며 온천 마을의 분위기를 둘러봅니다.');
+    expect(labels).toContain('호텔로 이동해 석식 후 휴식하며 온천욕을 즐깁니다.');
+  });
 });
