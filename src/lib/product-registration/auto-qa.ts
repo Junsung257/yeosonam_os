@@ -382,9 +382,7 @@ export function runMicroAutoQA(input: {
     : remainingTriggers.length === 0
       ? 'AUTO_FIXED'
       : finalStatusFor({ triggers: remainingTriggers, fixes: recommendedFixes, packagesAudit, a4Audit });
-  const maxRepairAttempts = triggers.length > 0
-    ? Math.max(0, Math.min(3, input.maxAttempts ?? 3))
-    : 0;
+  const maxRepairAttempts = Math.max(0, Math.min(3, input.maxAttempts ?? 3));
   const attemptCount = 1 + maxRepairAttempts;
   const blockersBefore = [
     ...input.registration.deliverability.blockers,

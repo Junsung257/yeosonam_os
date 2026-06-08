@@ -27,7 +27,7 @@ export interface EnrichResult {
 }
 
 const SKIP_TYPES = new Set(['flight', 'hotel', 'shopping', 'meal']);
-const DIRECT_SCAN_EXCLUDED_CATEGORIES = new Set(['accommodation', 'mrt_product']);
+const DIRECT_SCAN_EXCLUDED_CATEGORIES = new Set(['accommodation', 'hotel', 'mrt_product']);
 const DIRECT_SCAN_STOP_TERMS = new Set([
   '호텔 투숙',
   '쇼핑센터',
