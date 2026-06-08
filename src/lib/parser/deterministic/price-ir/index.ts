@@ -3,6 +3,7 @@ import { extractHotelColumnMatrixRows } from './hotel-column-matrix';
 import { extractMonthDowPriceIR } from './month-dow-table';
 import { extractPeriodDowMatrixRows } from './period-dow-matrix';
 import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
+import { extractSinglePeriodProductPriceRows } from './single-period-product-price';
 import { extractSpotWeekdayRows } from './spot-weekday-table';
 import { rowsToTiers } from './utils';
 import { extractVerticalGradePriceIR } from './vertical-grade-table';
@@ -24,6 +25,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
       source: 'product_price_vertical_date_table',
       rows: productPriceVerticalRows,
       tiers: rowsToTiers(productPriceVerticalRows),
+    };
+  }
+
+  const singlePeriodRows = extractSinglePeriodProductPriceRows(rawText, options);
+  if (singlePeriodRows.length > 0) {
+    return {
+      source: 'single_period_product_price',
+      rows: singlePeriodRows,
+      tiers: rowsToTiers(singlePeriodRows),
     };
   }
 

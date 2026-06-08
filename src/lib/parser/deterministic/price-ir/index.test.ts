@@ -215,3 +215,34 @@ describe('extractPriceIR product price vertical date table', () => {
     expect(result.tiers.length).toBe(3);
   });
 });
+
+describe('extractPriceIR single travel-period product price', () => {
+  it('recovers a source-backed package price from travel period plus product price labels', () => {
+    const rawText = `
+품격
+♡TW항공 부산출발♡ 나트랑/달랏 3박5일
+여행기간 2026년 5월 4일 ~ 5월 8일 까지 ★노팁+노옵션★
+상품가 ₩399,000원/인 (*성인/아동 동일)
+포함 사항
+왕복 항공료, TAX, 유류할증료(2월기준), 호텔(2인1실), 식사
+불포함 사항
+유류할증료 변동분, 매너팁, 싱글룸 사용 시 1인 전일정 15만원 추가됩니다.
+날짜|지역|교통편|시간|여행 일정|식사
+제1일|부산|TW 041|21:10|부산 김해 국제공항 출발|기내식 불포함
+|나트랑|전용차량|00:10+1|나트랑 깜란 국제공항 도착 후 입국 수속 및 가이드 미팅
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('single_period_product_price');
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        date: '2026-05-04',
+        adult_price: 399000,
+        child_price: null,
+        status: 'available',
+      }),
+    ]);
+    expect(result.rows.some(row => row.adult_price === 150000)).toBe(false);
+  });
+});

@@ -5,6 +5,7 @@ export type PriceIRSource =
   | 'period_dow_matrix'
   | 'hotel_column_matrix'
   | 'spot_weekday_table'
+  | 'single_period_product_price'
   | 'product_price_vertical_date_table'
   | 'weekday_period_table'
   | 'month_dow_table'

@@ -59,6 +59,13 @@ export const GOLDEN_CORPUS_CASES: GoldenCorpusCase[] = [
     accommodations: ['더 사세보 파라다이스 가든 호텔 또는 동급'],
     duration: 3,
   },
+  {
+    id: 'nha-trang-single-period-day-table',
+    fixture: 'nha-trang-single-period-day-table.txt',
+    expected: 'nha-trang-single-period-day-table.json',
+    accommodations: ['나트랑 호라이즌 또는 동급 호텔(5성)'],
+    duration: 5,
+  },
 ];
 
 export type GoldenCorpusCaseResult = {
