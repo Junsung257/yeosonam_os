@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { finalizeBlogPost } from '../src/lib/blog-post-finalizer';
 import { normalizeBlogDescription, normalizeBlogTitle } from '../src/lib/blog-quality-normalizer';
+import { runQualityGates } from '../src/lib/blog-quality-gate';
 import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '../src/lib/pexels';
 import { extractDestination } from '../src/lib/slug-utils';
 
@@ -32,6 +33,8 @@ type AuditRow = {
   rewriteTraceAfter: boolean;
   highlightCountBefore: number;
   highlightCountAfter: number;
+  qualityGatePassed: boolean;
+  qualityGateSummary: string | null;
   titleChanged: boolean;
   descriptionChanged: boolean;
   changed: boolean;
@@ -169,12 +172,21 @@ async function main() {
 
     const nextHtml = finalized.blogHtml;
     const nextOg = finalized.ogImageUrl;
+    const slug = row.slug || row.id;
+    const qaReport = await runQualityGates({
+      blog_html: nextHtml,
+      slug,
+      destination,
+      angle_type: null,
+      blog_type: 'info',
+      primary_keyword: primaryKeyword,
+      excludeContentCreativeId: row.id,
+    });
     const changed =
       nextHtml !== originalHtml ||
       nextOg !== originalOg ||
       normalizedTitle !== originalTitle ||
       normalizedDescription !== originalDescription;
-    const slug = row.slug || row.id;
 
     auditRows.push({
       slug,
@@ -190,12 +202,18 @@ async function main() {
       rewriteTraceAfter: hasRewriteTrace(`${normalizedTitle}\n${nextHtml}`),
       highlightCountBefore: countHighlights(originalHtml),
       highlightCountAfter: countHighlights(nextHtml),
+      qualityGatePassed: qaReport.passed,
+      qualityGateSummary: qaReport.passed ? null : qaReport.summary,
       titleChanged: normalizedTitle !== originalTitle,
       descriptionChanged: normalizedDescription !== originalDescription,
       changed,
     });
 
     if (!changed || dryRun) continue;
+    if (!qaReport.passed) {
+      console.warn(`[blog-quality] skipped ${slug}: ${qaReport.summary}`);
+      continue;
+    }
 
     const { error: updateError } = await supabase
       .from('content_creatives')
@@ -204,6 +222,7 @@ async function main() {
         og_image_url: nextOg,
         seo_title: normalizedTitle,
         seo_description: normalizedDescription,
+        quality_gate: qaReport,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
@@ -240,6 +259,7 @@ async function main() {
     tldrMissingAfter: auditRows.filter((row) => row.tldrMissingAfter).length,
     rewriteTraceBefore: auditRows.filter((row) => row.rewriteTraceBefore).length,
     rewriteTraceAfter: auditRows.filter((row) => row.rewriteTraceAfter).length,
+    qualityGateFailed: auditRows.filter((row) => !row.qualityGatePassed).length,
     highlightAverageBefore: highlightCountsBefore.length > 0
       ? Number((highlightCountsBefore.reduce((sum, value) => sum + value, 0) / highlightCountsBefore.length).toFixed(2))
       : 0,

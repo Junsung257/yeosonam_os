@@ -390,6 +390,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 ### 운영 규칙
 
 - 새 글 발행 전 `runQualityGates()`의 `structure_integrity`가 `passed=true`여야 한다.
-- 이미지가 보이고 table overflow가 0이어도 `structure_integrity`가 실패하면 저장·발행·색인 요청을 진행하지 않는다.
+- 자동 발행, 수동 발행, 직접 `POST /api/blog`, 기존 글 백필 모두 `runQualityGates()`를 통과해야 한다. 실패하면 저장·발행·색인 요청을 진행하지 않는다.
+- 이미지가 보이고 table overflow가 0이어도 `structure_integrity`가 실패하면 차단한다.
 - 실패 원문은 글을 수동으로 고치는 것보다 생성 프롬프트/Markdown 정규화/본문 블록 조립기를 먼저 고친다.
 - 같은 오류가 재발하면 `docs/errors/blog.md`의 `ERR-BLOG-structure-contamination@2026-06-09` 항목에 증상과 회귀 테스트를 추가한다.

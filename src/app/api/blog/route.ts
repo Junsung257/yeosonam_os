@@ -5,6 +5,22 @@ import { notifyIndexing } from '@/lib/indexing';
 import { runQualityGates } from '@/lib/blog-quality-gate';
 import { apiResponse } from '@/lib/api-response';
 
+type BlogQualityGateReport = Awaited<ReturnType<typeof runQualityGates>>;
+
+function qualityWarnings(report: BlogQualityGateReport | null) {
+  return report && !report.passed
+    ? report.gates.filter(g => !g.passed).map(g => ({ gate: g.gate, reason: g.reason }))
+    : null;
+}
+
+function qualityGateFailedResponse(report: BlogQualityGateReport) {
+  return apiResponse({
+    error: '블로그 품질 게이트 실패',
+    summary: report.summary,
+    quality_warnings: qualityWarnings(report),
+  }, { status: 422 });
+}
+
 /**
  * 공개 블로그 API — 발행된(published) 블로그 글만 반환
  * GET /api/blog          → 목록 (페이지네이션)
@@ -132,6 +148,32 @@ export async function POST(request: NextRequest) {
 
     const status = reqStatus === 'published' ? 'published' : 'draft';
 
+    let qaReport: BlogQualityGateReport | null = null;
+    let destinationForQa: string | null = null;
+    if (product_id) {
+      const { data: packageRows, error: packageError } = await supabaseAdmin
+        .from('travel_packages')
+        .select('destination')
+        .eq('id', product_id)
+        .limit(1);
+      if (packageError) throw packageError;
+      destinationForQa = packageRows?.[0]?.destination ?? null;
+    }
+
+    if (status === 'published') {
+      qaReport = await runQualityGates({
+        blog_html,
+        slug: cleanSlug,
+        destination: destinationForQa,
+        angle_type: angle_type || null,
+        blog_type: product_id ? 'product' : 'info',
+        primary_keyword: destinationForQa || seo_title || cleanSlug,
+      });
+      if (!qaReport.passed) {
+        return qualityGateFailedResponse(qaReport);
+      }
+    }
+
     const insertData: Record<string, unknown> = {
       blog_html,
       slug: cleanSlug,
@@ -146,6 +188,7 @@ export async function POST(request: NextRequest) {
 
     if (product_id) insertData.product_id = product_id;
     if (status === 'published') insertData.published_at = new Date().toISOString();
+    if (qaReport) insertData.quality_gate = qaReport;
 
     const { data, error } = await supabaseAdmin
       .from('content_creatives')
@@ -214,13 +257,12 @@ export async function PATCH(request: NextRequest) {
     if (category !== undefined) updateData.category = category;
 
     // 상태 변경
-    let qaReport: Awaited<ReturnType<typeof runQualityGates>> | null = null;
+    let qaReport: BlogQualityGateReport | null = null;
     if (reqStatus === 'published') {
       updateData.status = 'published';
       updateData.published_at = new Date().toISOString();
 
       // v1.5 quality gate — 수동 발행도 cron 발행과 동일 게이트 통과 검증.
-      // 실패해도 차단하지 않음 (어드민의 의도적 발행 존중) — 결과만 quality_gate 컬럼에 저장 + 응답 warnings.
       try {
         const { data: existing } = await supabaseAdmin
           .from('content_creatives')
@@ -251,7 +293,18 @@ export async function PATCH(request: NextRequest) {
           updateData.quality_gate = qaReport;
         }
       } catch (qaErr) {
-        console.warn('[blog PATCH] quality gate 실행 실패 (무시):', qaErr);
+        console.warn('[blog PATCH] quality gate 실행 실패:', qaErr);
+        return apiResponse({
+          error: '블로그 품질 게이트 실행 실패',
+          detail: qaErr instanceof Error ? qaErr.message : String(qaErr),
+        }, { status: 500 });
+      }
+
+      if (!qaReport) {
+        return apiResponse({ error: '블로그 품질 게이트 입력 누락' }, { status: 400 });
+      }
+      if (!qaReport.passed) {
+        return qualityGateFailedResponse(qaReport);
       }
     } else if (reqStatus === 'draft') {
       updateData.status = 'draft';
@@ -283,9 +336,7 @@ export async function PATCH(request: NextRequest) {
       post: data?.[0],
       success: true,
       // v1.5 게이트 실패 시 어드민 UI에 경고 표시용
-      quality_warnings: qaReport && !qaReport.passed
-        ? qaReport.gates.filter(g => !g.passed).map(g => ({ gate: g.gate, reason: g.reason }))
-        : null,
+      quality_warnings: qualityWarnings(qaReport),
     });
   } catch (err) {
     return apiResponse({ error: err instanceof Error ? err.message : '수정 실패' }, { status: 500 });
