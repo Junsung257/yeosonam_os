@@ -236,6 +236,7 @@ function estimateReadingMinutes(html: string): number {
 function sanitizeServerBlogHtml(html: string): string {
   return html
     .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<\/?(del|s|strike)\b[^>]*>/gi, '')
     .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[\s\S]*?<\/\1>/gi, '')
     .replace(/<(script|style|iframe|object|embed|svg|math|base|link|meta|form|input|button|textarea|select)\b[^>]*\/?>/gi, '')
     .replace(/\s(?:on[a-z]+|srcdoc)\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+)/gi, '')

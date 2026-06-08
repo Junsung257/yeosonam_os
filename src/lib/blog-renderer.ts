@@ -274,9 +274,10 @@ export async function renderBlogContentToHtml(
   }
 
   const normalizedSource = normalizeStoredBlogMarkdownStructure(source);
+  const deDecoratedSource = normalizedSource.replace(/~~([^~]{1,300}?)~~/gs, (_match, inner) => inner.replace(/\s+/g, ' ').trim());
   const markdownSource = options.stripDecorativeBold === false
-    ? normalizedSource
-    : normalizedSource.replace(/\*\*([^*]{1,180}?)\*\*/gs, (_m, inner) => inner.replace(/\s+/g, ' ').trim());
+    ? deDecoratedSource
+    : deDecoratedSource.replace(/\*\*([^*]{1,180}?)\*\*/gs, (_m, inner) => inner.replace(/\s+/g, ' ').trim());
   const mdAccented = applyMarkdownAccents(markdownSource);
   const { marked } = await import('marked');
   const rawHtml = await marked.parse(mdAccented, { gfm: true });
@@ -356,6 +357,7 @@ export function inspectRenderedBlogIntegrity(
   if (/(^|\s)#{1,6}\s+\S/.test(renderedText)) artifacts.push('literal_markdown_heading');
   if (/\[[^\]]+]\((?:https?:\/\/|\/)[^)]+\)/.test(renderedText)) artifacts.push('literal_markdown_link');
   if (/\*\*[^*]+?\*\*/.test(renderedText)) artifacts.push('literal_markdown_bold');
+  if (/~~[^~]+?~~/.test(renderedText) || /<(del|s|strike)\b/i.test(renderedHtml)) artifacts.push('literal_markdown_strike');
   if (/(^|\s)\|?---+\|/.test(renderedText)) artifacts.push('literal_markdown_table_separator');
   if (markdownImageCount > 0 && renderedImageCount < markdownImageCount) artifacts.push('missing_rendered_images');
   if (markdownHeadingCount >= 2 && renderedHeadingCount < Math.min(markdownHeadingCount, 2)) {

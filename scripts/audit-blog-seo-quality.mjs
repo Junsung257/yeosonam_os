@@ -12,6 +12,7 @@ const getArg = (name, fallback = null) => {
 const hasFlag = (name) => args.includes(name);
 
 const baseUrl = (getArg('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const expectedCanonicalOriginInput = (getArg('--canonical-origin', process.env.BLOG_CANONICAL_ORIGIN || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(10, Number(getArg('--concurrency', '5')) || 5));
 const outputJson = hasFlag('--json');
@@ -132,9 +133,13 @@ function judge(row) {
   const issues = [];
   const warnings = [];
   const expectedCanonicalPath = safeDecodePath(row.path).replace(/\/$/, '');
+  const expectedCanonicalOrigin = new URL(expectedCanonicalOriginInput).origin;
   let canonicalPath = '';
+  let canonicalOrigin = '';
   try {
-    canonicalPath = safeDecodePath(new URL(row.canonical || '').pathname).replace(/\/$/, '');
+    const canonicalUrl = new URL(row.canonical || '');
+    canonicalPath = safeDecodePath(canonicalUrl.pathname).replace(/\/$/, '');
+    canonicalOrigin = canonicalUrl.origin;
   } catch {
     canonicalPath = safeDecodePath(String(row.canonical || '')).replace(/\/$/, '');
   }
@@ -146,6 +151,7 @@ function judge(row) {
   else if (title.length < 25) warnings.push('short_title');
   if (!description || description.length < 50 || description.length > 180) issues.push('bad_meta_description_length');
   if (!canonicalPath || canonicalPath !== expectedCanonicalPath) issues.push('bad_canonical');
+  if (!canonicalOrigin || !isAllowedCanonicalOrigin(canonicalOrigin, expectedCanonicalOrigin)) issues.push('bad_canonical_origin');
   if (row.robots && /noindex/i.test(row.robots)) issues.push('noindex_on_published_post');
   if (row.h1Count !== 1) issues.push('bad_h1_count');
   if (row.h2Count < 3) issues.push('not_enough_h2');
@@ -160,6 +166,7 @@ function judge(row) {
   if (row.externalAuthorityLinkCount < 1) warnings.push('missing_external_authority_link');
   if (!LONGTAIL_MODIFIERS.test(visibleTitle)) warnings.push('weak_longtail_modifier');
   if (RAW_MARKDOWN_ARTIFACTS.test(row.articleTextSample)) issues.push('raw_markdown_visible');
+  if (row.strikethroughCount > 0) issues.push('visible_strikethrough_or_deletion');
   if (!row.viewportMeta) issues.push('missing_viewport_meta');
   if (!row.ogTitle || !row.ogDescription) issues.push('missing_og_title_description');
   if (!row.twitterCard) warnings.push('missing_twitter_card');
@@ -171,6 +178,20 @@ function judge(row) {
     warnings,
     failed: !passed,
   };
+}
+
+function isLocalOrigin(origin) {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedCanonicalOrigin(origin, expectedOrigin) {
+  if (origin === expectedOrigin) return true;
+  return isLocalOrigin(origin) && isLocalOrigin(baseUrl);
 }
 
 async function auditPage(page, path) {
@@ -226,6 +247,7 @@ async function auditPage(page, path) {
       h2Count: article.querySelectorAll('h2').length,
       articleTextLength: articleText.replace(/\s+/g, ' ').trim().length,
       articleTextSample: articleText.slice(0, 4000),
+      strikethroughCount: article.querySelectorAll('del, s, strike, [style*="line-through"], .line-through').length,
       imageCount: images.length,
       imagesMissingAlt: images.filter((image) => image.alt.trim().length < 3).length,
       ogImageMissing: !meta('og:image'),

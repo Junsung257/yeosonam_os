@@ -328,3 +328,46 @@ curl https://yeosonam.com/api/cron/blog-publisher
 
 - 2026-06-07 로컬 전체 99개 SEO 감사 결과: `score=100`, `passed=99`, `failed=0`, `errors=0`, `warnings=115`.
 - 주요 경고: `short_title`, `duplicate_meta_description`, `weak_longtail_modifier`, `missing_external_authority_link`. 이 경고는 색인 차단 사유는 아니지만, 롱테일 제목/메타/공신력 링크 개선 후보로 관리한다.
+
+---
+
+## Blog Visual 100 Gate (2026-06-08)
+
+사용자 화면의 실제 깨짐은 DOM/URL 감사만으로 충분히 잡히지 않는다. 블로그 배포 전에는 실제 브라우저 viewport 기준의 visual audit을 반드시 실행한다.
+
+### 필수 명령
+
+- 배포 전 로컬: `npm run audit:blog-visual -- --base=http://localhost:3002 --full --strict`
+- 운영 배포 후: `npm run audit:blog-visual -- --base=https://www.yeosonam.com --full --strict`
+- 빠른 표본 점검: `npm run audit:blog-visual -- --base=http://localhost:3002 --limit=3 --surface-limit=3 --json`
+
+### 100점 기준
+
+- `score=100`
+- `failed=0`
+- 목록/탭 카드의 실제 표시 이미지가 0px, 깨진 이미지, generic `/og-image.png`로 남지 않아야 한다.
+- 본문에 `![이미지](url)`, `##`, `[링크](url)`, `|---|`, `~~취소선~~` 원문이 보이면 실패다.
+- `<del>`, `<s>`, `<strike>`, `.line-through`가 블로그 본문에 노출되면 실패다.
+- 모바일에서 table이 article container 또는 viewport를 밀면 실패다.
+- horizontal overflow가 발생하면 실패다.
+
+### 이미지 배치 기준
+
+- 카드 `og_image_url`이 비었거나 `/og-image.png`이면 본문 첫 실제 이미지를 카드 썸네일로 승격한다.
+- 새 글 생성 엔진은 본문 이미지 2장 이상, 카드 이미지 1장 이상, alt 3자 이상, 글 제목/목적지와 연결되는 alt/caption을 만들어야 한다.
+- Pexels는 기본 공급원일 뿐이다. 주제 적합성이 약하면 Wikimedia Commons, 공식 관광청/공항/날씨/비자/입국 안내 등 라이선스와 출처가 확인되는 외부 리소스를 후보로 둔다.
+- 기본 OG 이미지는 최후 fallback이며 공개 카드 품질 통과 이미지로 보지 않는다.
+
+### GSC / 도메인 기준
+
+- Google Search Console에 Domain property와 `https://www.yeosonam.com/`, `https://yeosonam.com/` URL-prefix property가 공존하는 것은 문제 자체가 아니다.
+- 자동화와 sitemap 기준 canonical origin은 `https://www.yeosonam.com` 하나로 고정한다.
+- 배포 전후 `npm run audit:blog-gsc-domain -- --strict`를 실행해 redirect, canonical, `og:url`, sitemap origin을 확인한다.
+- `GSC_SITE_URL`을 설정할 때는 `https://www.yeosonam.com/` URL-prefix property와 서비스 계정 권한이 맞는지 확인한다.
+- 수정 후 색인 요청은 visual/render/image/SEO/GSC 감사가 모두 통과한 뒤 실행한다.
+
+### 왜 2026-06-08 이전 감사가 부족했나
+
+- 기존 `audit:blog-render`, `audit:blog-images`, `audit:blog-seo`는 DOM과 URL 중심이라 삭제선, 모바일 표 overflow, 실제 viewport horizontal overflow를 놓쳤다.
+- lazy image는 스크롤 전에 검사하면 깨진 이미지처럼 보일 수 있다. `audit:blog-visual`은 페이지를 스크롤한 뒤 이미지 로딩을 판정한다.
+- 이전 세션 작업은 main이 아닌 기능 브랜치에서 진행된 흔적이 있어, 블로그 복구 작업은 반드시 `origin/main` 기준 새 브랜치에서 시작한다.
