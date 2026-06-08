@@ -1,9 +1,7 @@
 /**
  * POST /api/blog/mrt-hotel-ranking
  *
- * MRT 실시간 호텔 데이터 → 랭킹형 SEO 블로그 자동 생성.
- * 예: "나트랑 5성급 호텔 TOP 5 (2026년)" + 각 호텔에 MRT 어필리에이트 링크.
- *
+ * Generates an SEO blog post from real-time MyRealTrip hotel data.
  * Body: { city, tier?, count?, publish? }
  */
 
@@ -13,17 +11,32 @@ import { llmCall } from '@/lib/llm-gateway';
 import { mrtProvider, buildMylinkUrl } from '@/lib/travel-providers/mrt';
 import { getPrompt } from '@/lib/prompt-loader';
 import { logAndSanitize } from '@/lib/error-sanitizer';
+import {
+  applyBlogPublishQualityToUpdate,
+  blogPublishQualityWarnings,
+  evaluateBlogPublishQuality,
+} from '@/lib/blog-publish-quality';
 
 export const maxDuration = 60;
 
 const TIER_LABEL: Record<string, string> = {
   luxury: '5성급',
-  mid:    '가성비',
+  mid: '가성비',
 };
+
 const TIER_MIN_RATING: Record<string, number> = {
   luxury: 4.5,
-  mid:    3.8,
+  mid: 3.8,
 };
+
+function slugPart(value: string): string {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{Letter}\p{Number}]+/gu, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
 
 async function ensureUniqueSlug(slug: string): Promise<string> {
   if (!isSupabaseConfigured) return slug;
@@ -43,31 +56,30 @@ async function ensureUniqueSlug(slug: string): Promise<string> {
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
 
   try {
     const body = await request.json() as {
-      city:     string;
-      tier?:    string;
-      count?:   number;
+      city: string;
+      tier?: string;
+      count?: number;
       publish?: boolean;
     };
 
-    const city    = body.city?.trim();
-    const tier    = body.tier ?? 'luxury';
-    const count   = Math.min(10, Math.max(3, body.count ?? 5));
-    const publish = body.publish !== false; // default true
+    const city = body.city?.trim();
+    const tier = body.tier ?? 'luxury';
+    const count = Math.min(10, Math.max(3, body.count ?? 5));
+    const publish = body.publish !== false;
 
-    if (!city) return NextResponse.json({ error: 'city 필수' }, { status: 400 });
+    if (!city) return NextResponse.json({ error: 'city is required' }, { status: 400 });
 
-    // 1. MRT 호텔 검색
-    const checkIn  = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+    const checkIn = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
     const checkOut = new Date(Date.now() + 31 * 86400_000).toISOString().slice(0, 10);
     const hotels = await mrtProvider.searchStays({
       destination: city,
       checkIn,
       checkOut,
-      adults:   2,
+      adults: 2,
       children: 0,
     });
 
@@ -82,37 +94,36 @@ export async function POST(request: NextRequest) {
       .slice(0, count);
 
     if (filtered.length === 0) {
-      return NextResponse.json({ error: `${city}에서 조건에 맞는 호텔 없음 (평점 ${minRating}+)` }, { status: 404 });
+      return NextResponse.json({ error: `${city} hotel candidates not found for rating ${minRating}+` }, { status: 404 });
     }
 
-    // 2. 어필리에이트 링크 빌드
-    const hotelLines = filtered.map((h, i) => {
-      const affLink = buildMylinkUrl(h.providerUrl ?? '', `hotel-ranking-${city}-${i + 1}`);
-      const stars = h.rating ? `★${h.rating.toFixed(1)}` : '';
-      const reviews = h.reviewCount ? `리뷰 ${h.reviewCount.toLocaleString()}건` : '';
-      const price = h.pricePerNight > 0 ? `1박 ${h.pricePerNight.toLocaleString()}원~` : '';
-      return `${i + 1}위. **${h.name}** ${stars} ${reviews} / ${price}\n   - 위치: ${h.location || '시내'}\n   - 예약: ${affLink}`;
+    const hotelLines = filtered.map((hotel, i) => {
+      const affLink = buildMylinkUrl(hotel.providerUrl ?? '', `hotel-ranking-${slugPart(city)}-${i + 1}`);
+      const rating = hotel.rating ? `평점 ${hotel.rating.toFixed(1)}` : '평점 정보 없음';
+      const reviews = hotel.reviewCount ? `리뷰 ${hotel.reviewCount.toLocaleString()}건` : '리뷰 정보 없음';
+      const price = hotel.pricePerNight > 0 ? `1박 ${hotel.pricePerNight.toLocaleString()}원대` : '가격 확인 필요';
+      return `${i + 1}. **${hotel.name}** (${rating}, ${reviews}, ${price})
+   - 위치: ${hotel.location || city}
+   - 예약: ${affLink}`;
     }).join('\n\n');
 
     const tierLabel = TIER_LABEL[tier] ?? '추천';
-    const year      = new Date().getFullYear();
-    const topN      = filtered.length;
-    const keyword   = `${city} ${tierLabel} 호텔`;
-    const h1        = `${city} ${tierLabel} 호텔 TOP ${topN} (${year}년 최신)`;
-    const baseUrl   = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.yeosonam.com';
+    const year = new Date().getFullYear();
+    const topN = filtered.length;
+    const keyword = `${city} ${tierLabel} 호텔`;
+    const h1 = `${city} ${tierLabel} 호텔 TOP ${topN} (${year}년 최신)`;
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://www.yeosonam.com';
     const internalLink = `${baseUrl}/free-travel`;
 
-    // 3. LLM 블로그 생성
-    const MRT_SYSTEM_FALLBACK = `당신은 한국 여행 블로그 전문 작가입니다. SEO 최적화된 호텔 랭킹 블로그를 작성합니다.
+    const MRT_SYSTEM_FALLBACK = `당신은 한국 여행 블로그 전문 작성자입니다. SEO에 맞는 호텔 랭킹 글을 작성합니다.
 규칙:
-- 마크다운 형식 (# H1, ## H2, ### H3)
-- H1: "{{h1}}" 그대로 사용
-- H2 4~6개, 각 H2에 "{{keyword}}" 또는 관련어 자연스럽게 포함
-- 1800~2500자
-- 각 호텔 섹션: 이름·별점·위치·가격·특징·예약링크 포함
-- 추측 형용사("아름다운/환상적인/완벽한") 금지 — 구체 수치만
-- 결론에 내부링크(자유여행 플래너) 1회 의무: {{internalLink}}
-- 마크다운만 출력 (코드블록 X)`;
+- Markdown 형식만 출력합니다.
+- H1은 "{{h1}}" 그대로 사용합니다.
+- H2는 4~6개로 구성하고 "{{keyword}}" 또는 관련 롱테일 키워드를 자연스럽게 포함합니다.
+- 1800~2500자로 작성합니다.
+- 각 호텔 섹션에는 이름, 별점, 위치, 가격, 특징, 예약 링크를 포함합니다.
+- 과장된 표현과 추측을 피하고, 실제 데이터 기준으로 씁니다.
+- 결론에는 자유여행 플래너 내부 링크를 1회 넣습니다: {{internalLink}}`;
     const systemPrompt = (await getPrompt('mrt-hotel-ranking-system', MRT_SYSTEM_FALLBACK))
       .replace('{{h1}}', h1)
       .replace('{{keyword}}', keyword)
@@ -120,60 +131,95 @@ export async function POST(request: NextRequest) {
 
     const userPrompt = `다음 ${city} ${tierLabel} 호텔 ${topN}곳을 랭킹 형식으로 소개하는 SEO 블로그를 작성하세요.
 
-## 호텔 데이터 (팩트 절대 유지)
+## 호텔 데이터
 
 ${hotelLines}
 
 ## 작성 가이드
-1. 서론: "${city} ${tierLabel} 호텔을 고를 때 기준이 되는 3가지 (위치·평점·가격)" 형식
-2. 각 호텔 ## 섹션: 순위·이름·별점·간단한 특징·예약 링크
-3. "## 직접 예약 vs 패키지 가격 비교" H2 1개 필수 (가성비 설명)
-4. 결론 + 자유여행 플래너 내부링크: ${internalLink}`;
+1. 서론은 "${city} ${tierLabel} 호텔"을 고르는 기준 3가지로 시작합니다.
+2. 각 호텔 섹션에는 순위, 이름, 별점, 간단한 특징, 예약 링크를 넣습니다.
+3. "## 직접 예약 vs 패키지 가격 비교" H2를 포함합니다.
+4. 결론에는 자유여행 플래너 내부 링크를 넣습니다: ${internalLink}`;
 
     const result = await llmCall<string>({
       task: 'blog-generate',
       systemPrompt,
       userPrompt,
-      maxTokens:   3000,
+      maxTokens: 3000,
       temperature: 0.5,
     });
 
     let blogHtml = result.rawText?.trim() ?? '';
     if (blogHtml.length < 500) {
-      // LLM 실패 시 서식화된 폴백 생성
-      blogHtml = `# ${h1}\n\n${city} ${tierLabel} 호텔을 찾고 있다면, 평점과 리뷰 수 기준으로 엄선한 TOP ${topN}을 확인하세요.\n\n${filtered.map((h, i) => {
-        const affLink = buildMylinkUrl(h.providerUrl ?? '', `hotel-ranking-${city}-${i + 1}`);
-        return `## ${i + 1}위. ${h.name}\n\n- 평점: ★${h.rating?.toFixed(1) ?? 'N/A'} (리뷰 ${(h.reviewCount ?? 0).toLocaleString()}건)\n- 위치: ${h.location || city}\n- 가격: 1박 ${h.pricePerNight.toLocaleString()}원~\n\n[${h.name} 예약하기](${affLink})`;
-      }).join('\n\n')}\n\n---\n\n자유여행 전체 견적은 [여소남 자유여행 플래너](${internalLink})에서 확인하세요.`;
+      blogHtml = `# ${h1}
+
+${city} ${tierLabel} 호텔을 찾고 있다면 평점, 위치, 가격을 함께 확인하는 편이 좋습니다. 아래 목록은 MyRealTrip 호텔 데이터에서 평점과 리뷰 수를 기준으로 정리한 TOP ${topN}입니다.
+
+${filtered.map((hotel, i) => {
+  const affLink = buildMylinkUrl(hotel.providerUrl ?? '', `hotel-ranking-${slugPart(city)}-${i + 1}`);
+  return `## ${i + 1}. ${hotel.name}
+
+- 평점: ${hotel.rating?.toFixed(1) ?? 'N/A'} / 리뷰 ${(hotel.reviewCount ?? 0).toLocaleString()}건
+- 위치: ${hotel.location || city}
+- 가격: 1박 ${hotel.pricePerNight.toLocaleString()}원대
+- 예약: [${hotel.name} 예약 확인](${affLink})`;
+}).join('\n\n')}
+
+## 직접 예약 vs 패키지 가격 비교
+
+호텔만 따로 예약하면 일정 자유도가 높습니다. 항공, 차량, 가이드까지 같이 필요한 여행이라면 [여소남 자유여행 플래너](${internalLink})에서 전체 비용을 비교해 보세요.`;
     }
 
-    // 4. SEO 메타
-    const slugBase   = `${city.replace(/\s+/g, '-')}-${tierLabel}-hotel-top${topN}-${year}`;
-    const finalSlug  = await ensureUniqueSlug(slugBase);
-    const seoTitle   = `${city} ${tierLabel} 호텔 TOP ${topN} ${year}년 최신 | 여소남`.slice(0, 60);
-    const seoDesc    = `${city} ${tierLabel} 호텔 ${topN}곳 평점·가격·위치 비교. MRT 실시간 최저가 기준 랭킹. 바로 예약 가능.`.slice(0, 160);
+    const slugBase = `${slugPart(city)}-${slugPart(tierLabel)}-hotel-top${topN}-${year}`;
+    const finalSlug = await ensureUniqueSlug(slugBase);
+    const seoTitle = `${city} ${tierLabel} 호텔 TOP ${topN} ${year}년 최신`.slice(0, 60);
+    const seoDesc = `${city} ${tierLabel} 호텔 ${topN}곳을 평점, 가격, 위치 기준으로 비교했습니다. MyRealTrip 실시간 호텔 데이터를 바탕으로 예약 링크까지 정리했습니다.`.slice(0, 160);
 
-    // 5. DB 저장
-    const insertData = {
-      channel:      'naver_blog',
-      blog_html:    blogHtml,
-      slides:       [],
-      status:       publish ? 'published' : 'draft',
-      category:     'hotel_ranking',
-      slug:         finalSlug,
-      seo_title:    seoTitle,
+    const qaReport = publish
+      ? await evaluateBlogPublishQuality({
+          blog_html: blogHtml,
+          slug: finalSlug,
+          seo_title: seoTitle,
+          seo_description: seoDesc,
+          destination: city,
+          angle_type: 'hotel_ranking',
+          product_id: null,
+          primary_keyword: keyword,
+          secondary_keywords: [`${city} 호텔 추천`, `${city} 호텔 가격`, `${city} 숙소 위치`],
+        })
+      : null;
+    if (qaReport && !qaReport.passed) {
+      return NextResponse.json({
+        error: 'Blog publish quality gate failed',
+        summary: qaReport.summary,
+        quality_warnings: blogPublishQualityWarnings(qaReport),
+        quality_gate: qaReport.qualityGate,
+        seo_score: qaReport.seoScore,
+        readability: qaReport.readability,
+      }, { status: 422 });
+    }
+
+    const insertData: Record<string, unknown> = {
+      channel: 'naver_blog',
+      blog_html: blogHtml,
+      slides: [],
+      status: publish ? 'published' : 'draft',
+      category: 'hotel_ranking',
+      slug: finalSlug,
+      seo_title: seoTitle,
       seo_description: seoDesc,
-      destination:  city,
+      destination: city,
       topic_source: 'mrt_hotel',
       published_at: publish ? new Date().toISOString() : null,
       generation_params: {
         city,
         tier,
-        count:        topN,
-        hotel_count:  filtered.length,
-        ai_model:     result.model ?? 'gemini-2.5-flash',
+        count: topN,
+        hotel_count: filtered.length,
+        ai_model: result.model ?? 'gemini-2.5-flash',
       },
     };
+    if (qaReport) applyBlogPublishQualityToUpdate(insertData, qaReport);
 
     const { data: creative, error } = await supabaseAdmin
       .from('content_creatives')
@@ -184,15 +230,15 @@ ${hotelLines}
     if (error) throw error;
 
     return NextResponse.json({
-      ok:      true,
-      slug:    finalSlug,
-      id:      creative?.id,
-      hotels:  topN,
-      status:  publish ? 'published' : 'draft',
+      ok: true,
+      slug: finalSlug,
+      id: creative?.id,
+      hotels: topN,
+      status: publish ? 'published' : 'draft',
     });
   } catch (err) {
     return NextResponse.json(
-      { error: logAndSanitize('mrt-hotel-ranking', err, '생성 실패') },
+      { error: logAndSanitize('mrt-hotel-ranking', err, 'Generation failed') },
       { status: 500 },
     );
   }

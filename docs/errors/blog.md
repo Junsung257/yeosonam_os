@@ -2,6 +2,16 @@
 
 Last updated: 2026-06-09
 
+## ERR-BLOG-publish-quality-bypass@2026-06-09
+
+- [x] **ERR-BLOG-publish-quality-bypass@2026-06-09**: `/api/blog` publish path was protected, but other live-entry paths could still flip a blog post to public without the same SEO/readability/render/image/structure gate. The missed paths were content queue approval, content hub publish/manual publish, distribution publisher `blog_body`, MRT hotel ranking immediate publish, backfill writes, and zero-click regeneration.
+- **Root cause**: Quality logic existed in multiple places instead of a single publish contract. Earlier verification focused on the main auto publisher and public DOM audits, so admin/manual/distribution paths were not treated as equivalent public publishing.
+- **Fix**: Added `src/lib/blog-publish-quality.ts` with `evaluateBlogPublishQuality()`. It runs `runQualityGates()`, `computeSeoScore()`, and `computeReadability()` together and stores `quality_gate`, `seo_score`, `readability_score`, and `readability_issues`.
+- **Prevention**: Any future code that sets `content_creatives.status` to `published` or `manually_published`, or replaces a published blog body, must call `evaluateBlogPublishQuality()` first. Failure must block status update, indexing notification, and public revalidation.
+- **Verification**: `npm run type-check`, `npm run lint`, `npx vitest run src/lib/blog-structure-audit.test.ts src/lib/blog-renderer.test.ts`, and `git diff --check`.
+
+---
+
 ## ERR-BLOG-structure-contamination@2026-06-09
 
 - [x] **ERR-BLOG-structure-contamination@2026-06-09** (렌더/이미지 감사 100점인데 본문 의미 구조가 깨짐): `/blog/zhangjiajie-weather` 실제 화면 점검에서 이미지는 보이지만 표 마지막 행에 문단이 빨려 들어가고, 나머지 셀이 비어 있으며, `:::` 원시 directive가 노출되고, `핵심 요약`/FAQ 블록이 중복·붕괴되고, 날씨 정보글에 `여소남이 이 상품을 고른 이유` 같은 상품 판매 어투가 섞였다. 기존 `render_integrity`는 `<img>`, heading, markdown artifact 중심이라 “HTML로는 렌더됐지만 의미 구조가 망가진 상태”를 통과시켰다.

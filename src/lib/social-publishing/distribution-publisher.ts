@@ -4,6 +4,11 @@ import {
   getThreadsMainText,
   type ThreadsGateResult,
 } from '@/lib/content-pipeline/threads-automation';
+import {
+  applyBlogPublishQualityToUpdate,
+  evaluateBlogPublishQuality,
+  resolveBlogDestination,
+} from '@/lib/blog-publish-quality';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getThreadsConfig, publishToThreads } from '@/lib/threads-publisher';
 
@@ -222,15 +227,36 @@ async function publishDistributionProvider(
     if (row.blog_post_id) {
       const { data: existing } = await supabaseAdmin
         .from('content_creatives')
-        .select('id, slug, status')
+        .select('id, slug, status, blog_html, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)')
         .eq('id', row.blog_post_id)
         .limit(1);
       const existingRow = existing?.[0];
       if (existingRow) {
         if (existingRow.status !== 'published') {
+          const destination = resolveBlogDestination(existingRow);
+          const qaReport = await evaluateBlogPublishQuality({
+            id: row.blog_post_id,
+            blog_html: existingRow.blog_html ?? '',
+            slug: existingRow.slug ?? '',
+            seo_title: existingRow.seo_title ?? null,
+            seo_description: existingRow.seo_description ?? null,
+            destination,
+            angle_type: existingRow.angle_type ?? null,
+            product_id: existingRow.product_id ?? null,
+            primary_keyword: destination || existingRow.seo_title || existingRow.slug,
+            excludeContentCreativeId: row.blog_post_id,
+          });
+          if (!qaReport.passed) {
+            return { status: 'failed', error: `Blog quality gate: ${qaReport.summary}` };
+          }
+          const updateData: Record<string, unknown> = {
+            status: 'published',
+            published_at: new Date().toISOString(),
+          };
+          applyBlogPublishQualityToUpdate(updateData, qaReport);
           await supabaseAdmin
             .from('content_creatives')
-            .update({ status: 'published', published_at: new Date().toISOString() })
+            .update(updateData)
             .eq('id', row.blog_post_id);
         }
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';

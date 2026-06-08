@@ -394,3 +394,36 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - 이미지가 보이고 table overflow가 0이어도 `structure_integrity`가 실패하면 차단한다.
 - 실패 원문은 글을 수동으로 고치는 것보다 생성 프롬프트/Markdown 정규화/본문 블록 조립기를 먼저 고친다.
 - 같은 오류가 재발하면 `docs/errors/blog.md`의 `ERR-BLOG-structure-contamination@2026-06-09` 항목에 증상과 회귀 테스트를 추가한다.
+---
+
+## Blog Publish Quality Gate (2026-06-09)
+
+Public publishing must use one shared gate: `evaluateBlogPublishQuality()` in `src/lib/blog-publish-quality.ts`.
+
+### Mandatory Covered Paths
+
+- `POST /api/blog` with `status='published'`
+- `PATCH /api/blog` when changing to `status='published'`
+- `POST /api/content-queue` approve action
+- `POST /api/content-hub/publish` for `published` or `manually_published`
+- `publishDistribution(... platform='blog_body')` when it flips an existing blog post to published
+- `POST /api/blog/mrt-hotel-ranking` when `publish !== false`
+- `scripts/backfill-blog-quality.ts --write`
+- `GET /api/cron/blog-regenerate-zero-click` when replacing a published post body
+
+### Required Stored Evidence
+
+Every path above must store all of these fields together before the post is public or re-indexed:
+
+- `quality_gate`
+- `seo_score`
+- `readability_score`
+- `readability_issues`
+
+### Blocking Rule
+
+If either `quality_gate.passed` or `seo_score.passed` is false, the publishing path must return `422` or a failed distribution result. It must not update `status`, must not call `notifyIndexing()`, and must not revalidate the public blog URL as a successful publish.
+
+### Editorial Standard
+
+SEO is not complete from metadata alone. The body must be readable, non-duplicative, table-safe on mobile, free of Markdown artifacts, and written in the correct intent for the article type. Direct-answer paragraphs, FAQ blocks, specific longtail modifiers, source-backed claims, internal links, and image alt text are all part of the publish gate.

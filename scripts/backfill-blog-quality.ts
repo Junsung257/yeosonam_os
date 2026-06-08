@@ -2,7 +2,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { finalizeBlogPost } from '../src/lib/blog-post-finalizer';
 import { normalizeBlogDescription, normalizeBlogTitle } from '../src/lib/blog-quality-normalizer';
-import { runQualityGates } from '../src/lib/blog-quality-gate';
+import { evaluateBlogPublishQuality } from '../src/lib/blog-publish-quality';
 import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '../src/lib/pexels';
 import { extractDestination } from '../src/lib/slug-utils';
 
@@ -35,6 +35,8 @@ type AuditRow = {
   highlightCountAfter: number;
   qualityGatePassed: boolean;
   qualityGateSummary: string | null;
+  seoScore: number | null;
+  readabilityScore: number | null;
   titleChanged: boolean;
   descriptionChanged: boolean;
   changed: boolean;
@@ -173,12 +175,14 @@ async function main() {
     const nextHtml = finalized.blogHtml;
     const nextOg = finalized.ogImageUrl;
     const slug = row.slug || row.id;
-    const qaReport = await runQualityGates({
+    const qaReport = await evaluateBlogPublishQuality({
+      id: row.id,
       blog_html: nextHtml,
       slug,
+      seo_title: normalizedTitle,
+      seo_description: normalizedDescription,
       destination,
       angle_type: null,
-      blog_type: 'info',
       primary_keyword: primaryKeyword,
       excludeContentCreativeId: row.id,
     });
@@ -204,6 +208,8 @@ async function main() {
       highlightCountAfter: countHighlights(nextHtml),
       qualityGatePassed: qaReport.passed,
       qualityGateSummary: qaReport.passed ? null : qaReport.summary,
+      seoScore: qaReport.seoScore.score,
+      readabilityScore: qaReport.readability.score,
       titleChanged: normalizedTitle !== originalTitle,
       descriptionChanged: normalizedDescription !== originalDescription,
       changed,
@@ -222,7 +228,10 @@ async function main() {
         og_image_url: nextOg,
         seo_title: normalizedTitle,
         seo_description: normalizedDescription,
-        quality_gate: qaReport,
+        quality_gate: qaReport.qualityGate,
+        seo_score: qaReport.seoScore,
+        readability_score: qaReport.readability.score,
+        readability_issues: qaReport.readability.issues,
         updated_at: new Date().toISOString(),
       })
       .eq('id', row.id);
