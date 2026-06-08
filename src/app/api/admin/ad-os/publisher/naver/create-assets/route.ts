@@ -26,13 +26,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const body = await request.json().catch(() => ({}));
   const apply = body.apply === true;
-  const mode = apply ? 'change_request' : 'dry_run';
+  const runMode = apply ? 'guarded' : 'dry_run';
+  const mutationMode = apply ? 'change_request' : 'dry_run';
 
   const { data: run, error: runError } = await supabaseAdmin
     .from('ad_os_automation_runs')
     .insert({
       run_type: 'external_asset_plan',
-      mode,
+      mode: runMode,
       status: 'running',
       summary: { platform: 'naver', apply, external_spend_krw: 0 },
     })
@@ -148,7 +149,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     const mutationRows = plan.mutations.map((mutation, index) => ({
       platform: 'naver',
       mutation_type: mutation.mutationType,
-      mode,
+      mode: mutationMode,
       status: plan.canRequest ? 'requested' : 'blocked',
       change_request_id: requestData?.[index]?.id || null,
       run_id: run.id,
