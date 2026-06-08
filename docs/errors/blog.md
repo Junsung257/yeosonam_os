@@ -1,6 +1,16 @@
 # Blog Errors
 
-Last updated: 2026-06-07
+Last updated: 2026-06-09
+
+## ERR-BLOG-structure-contamination@2026-06-09
+
+- [x] **ERR-BLOG-structure-contamination@2026-06-09** (렌더/이미지 감사 100점인데 본문 의미 구조가 깨짐): `/blog/zhangjiajie-weather` 실제 화면 점검에서 이미지는 보이지만 표 마지막 행에 문단이 빨려 들어가고, 나머지 셀이 비어 있으며, `:::` 원시 directive가 노출되고, `핵심 요약`/FAQ 블록이 중복·붕괴되고, 날씨 정보글에 `여소남이 이 상품을 고른 이유` 같은 상품 판매 어투가 섞였다. 기존 `render_integrity`는 `<img>`, heading, markdown artifact 중심이라 “HTML로는 렌더됐지만 의미 구조가 망가진 상태”를 통과시켰다.
+- **Root cause**: 자동 점검이 DOM 존재 여부와 CSS overflow에 치우쳐 있었다. Markdown table collapse, admonition directive leak, checklist collapse, FAQ heading collapse, content-type tone mismatch를 발행 차단 기준으로 갖고 있지 않았다.
+- **Fix**: `src/lib/blog-structure-audit.ts` 신규 추가. Cheerio로 렌더 HTML을 파싱해 `table_prose_contamination`, `raw_directive_leak`, `heading_shape_invalid`, `duplicate_core_block`, `checklist_shape_invalid`, `content_type_tone_mismatch`를 검사한다. `runQualityGates()`에 `structure_integrity` 게이트를 연결해 앞으로 같은 구조 오류는 발행 단계에서 실패한다.
+- **Verification**: `src/lib/blog-structure-audit.test.ts`에 장가계 날씨 글에서 확인된 표 문단 오염, `:::` 누출, 중복 핵심 요약, 무너진 FAQ, 접힌 체크리스트, 정보글/상품어투 mismatch 회귀 테스트를 추가했다.
+- **Prevention**: 블로그 자동화는 `render_integrity`, `image_quality`, `structure_integrity`, SEO 점수를 모두 통과해야 발행/배포/색인 요청으로 넘어간다. 이미지 URL 200, `<img>` 존재, table overflow 0만으로 정상 판정하지 않는다.
+
+---
 
 블로그 렌더링, 이미지 품질, SEO, slug 처리, 자동 발행 반복 오류 상세.
 

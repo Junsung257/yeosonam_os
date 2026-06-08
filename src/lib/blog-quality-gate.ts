@@ -16,6 +16,7 @@ import { slugifyTopic } from './slug-utils';
 import { getActiveThresholds, type AdaptiveThresholds } from './blog-bayesian-optimizer';
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { inspectBlogImageQuality } from './blog-image-quality';
+import { inspectBlogStructure } from './blog-structure-audit';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -41,7 +42,7 @@ const THRESHOLDS = {
 const DEDUP_WINDOW_DAYS = 14;
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'image_quality';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'image_quality';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -353,6 +354,42 @@ export async function checkRenderIntegrity(blog_html: string): Promise<GateResul
   }
 }
 
+export async function checkStructureIntegrity(input: CheckInput): Promise<GateResult> {
+  try {
+    const rendered = await renderBlogContentToHtml(input.blog_html);
+    const report = inspectBlogStructure({
+      rawMarkdown: input.blog_html,
+      renderedHtml: rendered,
+      title: input.primary_keyword,
+      slug: input.slug,
+      angleType: input.angle_type,
+      primaryKeyword: input.primary_keyword,
+    });
+    const issueCodes = report.issues.map((issue) => issue.code);
+
+    return {
+      gate: 'structure_integrity',
+      passed: report.passed,
+      reason: report.passed
+        ? undefined
+        : `본문 구조 오류 감지: ${[...new Set(issueCodes)].join(', ')}`,
+      evidence: {
+        score: report.score,
+        issueCount: report.issues.length,
+        criticalCount: report.issues.filter((issue) => issue.severity === 'critical').length,
+        issues: report.issues.slice(0, 10),
+      },
+    };
+  } catch (error) {
+    return {
+      gate: 'structure_integrity',
+      passed: false,
+      reason: `본문 구조 감사 실패: ${error instanceof Error ? error.message : String(error)}`,
+      evidence: { error: error instanceof Error ? error.message : String(error) },
+    };
+  }
+}
+
 export function checkImageQuality(input: CheckInput): GateResult {
   const report = inspectBlogImageQuality(input.blog_html, {
     destination: input.destination,
@@ -495,6 +532,8 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(checkAiReadability(input.blog_html, blogType));
   // 실제 상세 페이지 렌더 기준 검증 — 이미지/링크/헤딩 마크다운 잔여물 차단
   gates.push(await checkRenderIntegrity(input.blog_html));
+  // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
+  gates.push(await checkStructureIntegrity(input));
   // 이미지 품질 기준 검증 — 깨진 URL, 중복, 빈 alt, 주제 무관 alt/caption 차단
   gates.push(checkImageQuality(input));
 

@@ -371,3 +371,25 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - 기존 `audit:blog-render`, `audit:blog-images`, `audit:blog-seo`는 DOM과 URL 중심이라 삭제선, 모바일 표 overflow, 실제 viewport horizontal overflow를 놓쳤다.
 - lazy image는 스크롤 전에 검사하면 깨진 이미지처럼 보일 수 있다. `audit:blog-visual`은 페이지를 스크롤한 뒤 이미지 로딩을 판정한다.
 - 이전 세션 작업은 main이 아닌 기능 브랜치에서 진행된 흔적이 있어, 블로그 복구 작업은 반드시 `origin/main` 기준 새 브랜치에서 시작한다.
+
+---
+
+## Blog Structure Integrity Gate (2026-06-09)
+
+렌더링, 이미지 URL, SEO 점수가 정상이어도 본문 의미 구조가 깨지면 발행 실패다. 특히 `/blog/zhangjiajie-weather`에서 확인된 것처럼 `<table>` 안에 설명 문단이 들어가고 나머지 셀이 빈 상태, `:::` 원시 directive, 중복 핵심 요약, 접힌 FAQ/체크리스트, 정보글에 상품 판매 어투가 섞인 상태는 고객 화면 품질 0점으로 본다.
+
+### 발행 차단 기준
+
+- `table_prose_contamination`: 표 행의 첫 칸이 긴 설명 문단이고 나머지 칸이 비어 있거나, `td` 안에 `aside`, `p`, `ul`, `ol`, `blockquote`, `:::`가 들어가면 실패다.
+- `raw_directive_leak`: 렌더된 본문 텍스트에 `:::`가 보이면 실패다.
+- `heading_shape_invalid`: FAQ 질문이나 번호형 본문이 H2/H3 제목 안으로 접히면 실패다.
+- `duplicate_core_block`: `핵심 요약`, `자주 묻는 질문`, `FAQ`, `Q&A` 같은 핵심 블록이 중복되면 실패다.
+- `checklist_shape_invalid`: 체크리스트/준비물/필수 아이템 섹션은 최소 3개 이상의 짧은 리스트 항목이어야 한다. 한 항목 안에 `2. ...` 같은 다음 섹션이 접히면 실패다.
+- `content_type_tone_mismatch`: 날씨/옷차림/우기/기온 정보글에 `상품을 고른 이유`, `이 상품`, `특가`, `출발가` 같은 상품 판매 어투가 섞이면 실패다.
+
+### 운영 규칙
+
+- 새 글 발행 전 `runQualityGates()`의 `structure_integrity`가 `passed=true`여야 한다.
+- 이미지가 보이고 table overflow가 0이어도 `structure_integrity`가 실패하면 저장·발행·색인 요청을 진행하지 않는다.
+- 실패 원문은 글을 수동으로 고치는 것보다 생성 프롬프트/Markdown 정규화/본문 블록 조립기를 먼저 고친다.
+- 같은 오류가 재발하면 `docs/errors/blog.md`의 `ERR-BLOG-structure-contamination@2026-06-09` 항목에 증상과 회귀 테스트를 추가한다.
