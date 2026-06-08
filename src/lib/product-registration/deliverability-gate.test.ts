@@ -153,6 +153,67 @@ Excluded: personal expenses, weekend golf surcharge 15,000원
     expect(result.blockers.join(' | ')).toContain('price storage mismatch');
   });
 
+  it('blocks malformed price_dates before a price string can become a travel date', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null }],
+      priceDates: [{ date: '1,299,000원', price: 999000, confirmed: false }],
+      destination: 'Fukuoka',
+      destinationCode: 'FUK',
+      internalCode: 'PUS-AA-FUK-03-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }],
+      durationDays: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join(' | ')).toContain('price shape error: price_dates invalid date 1,299,000원');
+  });
+
+  it('blocks duplicate price_dates and invalid package price ranges', () => {
+    const duplicate = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null }],
+      priceDates: [
+        { date: '2026-07-04', price: 999000, confirmed: false },
+        { date: '2026-07-04', price: 999000, confirmed: false },
+      ],
+      destination: 'Fukuoka',
+      destinationCode: 'FUK',
+      internalCode: 'PUS-AA-FUK-03-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }],
+      durationDays: 3,
+    });
+
+    expect(duplicate.ok).toBe(false);
+    expect(duplicate.blockers.join(' | ')).toContain('price_dates duplicate date 2026-07-04');
+
+    const invalidPrice = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 5000, adult_selling_price: 5000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-04', price: 5000, confirmed: false }],
+      destination: 'Fukuoka',
+      destinationCode: 'FUK',
+      internalCode: 'PUS-AA-FUK-03-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }],
+      durationDays: 3,
+    });
+
+    expect(invalidPrice.ok).toBe(false);
+    expect(invalidPrice.blockers.join(' | ')).toContain('price_dates invalid price 2026-07-04: 5000');
+  });
+
+  it('blocks customer selling prices below net price', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 899000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-04', price: 999000, confirmed: false }],
+      destination: 'Fukuoka',
+      destinationCode: 'FUK',
+      internalCode: 'PUS-AA-FUK-03-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }],
+      durationDays: 3,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join(' | ')).toContain('adult_selling_price below net_price');
+  });
+
   it('blocks calendar summaries that omit product price dates', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [
