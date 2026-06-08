@@ -180,6 +180,24 @@ function normalizeSiteUrlForGSC(baseUrl: string): string {
   }
 }
 
+function gscSiteUrlCandidates(baseUrl: string): string[] {
+  const candidates = new Set<string>();
+  const primary = normalizeSiteUrlForGSC(baseUrl);
+  candidates.add(primary);
+
+  const configured = process.env.GSC_SITE_URL;
+  if (configured) candidates.add(configured);
+
+  try {
+    const parsed = new URL(baseUrl);
+    candidates.add(`sc-domain:${parsed.hostname.replace(/^www\./, '')}`);
+  } catch {
+    candidates.add('sc-domain:yeosonam.com');
+  }
+
+  return Array.from(candidates).filter(Boolean);
+}
+
 /**
  * Google Search Console Sitemaps API submit.
  *
@@ -203,11 +221,19 @@ export async function submitGoogleSitemap(
       scopes: ['https://www.googleapis.com/auth/webmasters'],
     });
     const client = google.searchconsole({ version: 'v1', auth });
-    await client.sitemaps.submit({
-      siteUrl: normalizeSiteUrlForGSC(baseUrl),
-      feedpath: sitemapUrl,
-    });
-    return { ok: true, sitemapUrl };
+    const errors: string[] = [];
+    for (const siteUrl of gscSiteUrlCandidates(baseUrl)) {
+      try {
+        await client.sitemaps.submit({
+          siteUrl,
+          feedpath: sitemapUrl,
+        });
+        return { ok: true, sitemapUrl };
+      } catch (err) {
+        errors.push(`${siteUrl}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+    return { ok: false, sitemapUrl, error: errors.join(' | ') };
   } catch (err) {
     return {
       ok: false,
