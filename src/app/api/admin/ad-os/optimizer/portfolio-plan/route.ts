@@ -27,10 +27,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .insert({
       run_type: 'portfolio_plan',
       platform: null,
+      mode: apply ? 'guarded' : 'dry_run',
       status: 'running',
-      trigger_source: 'admin_api',
       started_at: new Date().toISOString(),
-      config: { apply, tenant_id: tenantId, days },
+      summary: {
+        config: { apply, tenant_id: tenantId, days, source: 'portfolio_plan_v1' },
+        external_api_write: false,
+      },
     })
     .select('*')
     .single();

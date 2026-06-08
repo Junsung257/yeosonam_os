@@ -99,11 +99,14 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .insert({
       run_type: 'creative_asset_group',
       platform: 'google',
+      mode: apply ? 'guarded' : 'dry_run',
       status: 'running',
-      trigger_source: 'admin_api',
       started_at: new Date().toISOString(),
-      config: { apply, tenant_id: tenantId, product_id: productId, source: 'search_rsa_v1' },
-      summary: { external_spend_krw: 0, external_api_write: false },
+      summary: {
+        config: { apply, tenant_id: tenantId, product_id: productId, source: 'search_rsa_v1' },
+        external_spend_krw: 0,
+        external_api_write: false,
+      },
     })
     .select('id')
     .single();
