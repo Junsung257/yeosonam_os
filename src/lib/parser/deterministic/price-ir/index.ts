@@ -9,21 +9,21 @@ import { extractVerticalGradePriceIR } from './vertical-grade-table';
 import { extractWeekdayPeriodRows } from './weekday-period-table';
 
 export function extractPriceIR(rawText: string, options: PriceIROptions = {}): PriceIRResult {
-  const productPriceVerticalRows = extractProductPriceVerticalDateRows(rawText, options);
-  if (productPriceVerticalRows.length > 0) {
-    return {
-      source: 'product_price_vertical_date_table',
-      rows: productPriceVerticalRows,
-      tiers: rowsToTiers(productPriceVerticalRows),
-    };
-  }
-
   const spotWeekdayRows = extractSpotWeekdayRows(rawText, options);
   if (spotWeekdayRows.length > 0) {
     return {
       source: 'spot_weekday_table',
       rows: spotWeekdayRows,
       tiers: rowsToTiers(spotWeekdayRows),
+    };
+  }
+
+  const productPriceVerticalRows = extractProductPriceVerticalDateRows(rawText, options);
+  if (productPriceVerticalRows.length > 0) {
+    return {
+      source: 'product_price_vertical_date_table',
+      rows: productPriceVerticalRows,
+      tiers: rowsToTiers(productPriceVerticalRows),
     };
   }
 
