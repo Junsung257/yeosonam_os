@@ -70,6 +70,66 @@ describe('auditPriceExtractionAgainstSource', () => {
     expect(audit.blockers.join('\n')).toContain('price amount disagreement 2026-07-01');
   });
 
+  it('passes when a multi-column source table contains the recovered price for the date', () => {
+    const reader = readSupplierDocumentLikeHuman({
+      rawText: `
+6/1 월 3박
+999,000
+1,229,000
+1,359,000
+1,439,000
+`,
+      durationDays: 4,
+      year: 2026,
+    });
+
+    const audit = auditPriceExtractionAgainstSource({
+      humanReader: reader,
+      priceRecovery: {
+        ...recovery(1229000),
+        source: 'llm_hydrated',
+        priceRows: [{
+          ...recovery(1229000).priceRows[0],
+          target_date: '2026-06-01',
+        }],
+        priceDates: [{ date: '2026-06-01', price: 1229000, confirmed: false }],
+      },
+    });
+
+    expect(audit.status).toBe('warn');
+    expect(audit.blockers).toHaveLength(0);
+  });
+
+  it('still fails when a multi-column source table does not contain the recovered price', () => {
+    const reader = readSupplierDocumentLikeHuman({
+      rawText: `
+6/1 월 3박
+999,000
+1,229,000
+1,359,000
+1,439,000
+`,
+      durationDays: 4,
+      year: 2026,
+    });
+
+    const audit = auditPriceExtractionAgainstSource({
+      humanReader: reader,
+      priceRecovery: {
+        ...recovery(1449000),
+        source: 'llm_hydrated',
+        priceRows: [{
+          ...recovery(1449000).priceRows[0],
+          target_date: '2026-06-01',
+        }],
+        priceDates: [{ date: '2026-06-01', price: 1449000, confirmed: false }],
+      },
+    });
+
+    expect(audit.status).toBe('fail');
+    expect(audit.blockers.join('\n')).toContain('price amount disagreement 2026-06-01');
+  });
+
   it('blocks model-derived prices when no independent source-backed price evidence exists', () => {
     const reader = readSupplierDocumentLikeHuman({
       rawText: '포함 내역\n항공권\n호텔\n',

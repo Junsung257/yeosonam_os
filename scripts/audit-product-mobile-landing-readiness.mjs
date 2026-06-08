@@ -47,6 +47,55 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function runSupabaseQuery(label, queryFactory) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await queryFactory();
+    lastResult = result;
+    if (!result.error) return result;
+    const message = String(result.error.message ?? result.error);
+    if (!/fetch failed|timeout|network|ECONNRESET|ETIMEDOUT/i.test(message)) break;
+    if (attempt < 3) await sleep(250 * attempt);
+  }
+  if (lastResult?.error) {
+    console.error(`${label} lookup failed: ${lastResult.error.message ?? lastResult.error}`);
+  }
+  return lastResult;
+}
+
+async function fetchProductPricesByCodes(codes) {
+  const rowsByCode = new Map();
+  const countsByCode = new Map();
+  const errors = [];
+
+  for (const code of codes) {
+    const { data, error } = await runSupabaseQuery(
+      `Product price rows ${code}`,
+      () => supabase
+        .from('product_prices')
+        .select('product_id, target_date, net_price, adult_selling_price, note')
+        .eq('product_id', code),
+    );
+    if (error) {
+      errors.push({ code, message: error.message ?? String(error) });
+      continue;
+    }
+    for (const price of data ?? []) {
+      const key = price.product_id;
+      countsByCode.set(key, (countsByCode.get(key) ?? 0) + 1);
+      const rows = rowsByCode.get(key) ?? [];
+      rows.push(price);
+      rowsByCode.set(key, rows);
+    }
+  }
+
+  return { rowsByCode, countsByCode, errors };
+}
+
 function isRecord(value) {
   return typeof value === 'object' && value !== null;
 }
@@ -332,6 +381,8 @@ const productPriceRowsByCode = new Map();
 const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
+const priceRowsLookupFailedCodes = new Set();
+const auditDataErrors = [];
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
 
@@ -359,17 +410,17 @@ if (packageIds.length > 0) {
   }
 
   if (internalCodes.length > 0) {
-    const { data: priceRows, error: priceError } = await supabase
-      .from('product_prices')
-      .select('product_id, target_date, net_price, adult_selling_price, note')
-      .in('product_id', internalCodes);
-    if (!priceError) {
-      for (const price of priceRows ?? []) {
-        const key = price.product_id;
-        priceCountMap.set(key, (priceCountMap.get(key) ?? 0) + 1);
-        const rows = productPriceRowsByCode.get(key) ?? [];
-        rows.push(price);
-        productPriceRowsByCode.set(key, rows);
+    const priceLookup = await fetchProductPricesByCodes(internalCodes);
+    for (const [code, rows] of priceLookup.rowsByCode.entries()) {
+      productPriceRowsByCode.set(code, rows);
+    }
+    for (const [code, count] of priceLookup.countsByCode.entries()) {
+      priceCountMap.set(code, count);
+    }
+    if (priceLookup.errors.length > 0) {
+      for (const item of priceLookup.errors) {
+        priceRowsLookupFailedCodes.add(item.code);
+        auditDataErrors.push({ scope: 'product_prices', code: item.code, message: item.message });
       }
     }
 
@@ -463,6 +514,7 @@ const rows = allPackageRows
     const draft = draftMap.get(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
+    const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const row = {
       id: pkg.id,
       code: pkg.internal_code ?? pkg.short_code ?? '',
@@ -475,7 +527,7 @@ const rows = allPackageRows
       draft_id: draft?.id ?? null,
       price_dates: Array.isArray(pkg.price_dates) ? pkg.price_dates.length : 0,
       price_tiers: Array.isArray(pkg.price_tiers) ? pkg.price_tiers.length : 0,
-      product_prices: priceCountMap.get(pkg.internal_code) ?? 0,
+      product_prices: priceRowsLookupFailed ? null : priceCountMap.get(pkg.internal_code) ?? 0,
       itinerary_days: countItineraryDays(pkg),
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
@@ -489,8 +541,9 @@ const rows = allPackageRows
       entity_transfer_structured: draftEntities.transfer_structured,
       code_unk: hasUnresolvedCodeOrDestination(pkg),
       raw_notice_leak_risk: hasRawLeakRisk(pkg),
-      price_storage_mismatch: priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      customer_price_option_mismatch: customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
+      price_lookup_failed: priceRowsLookupFailed,
+      price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
+      customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
@@ -537,6 +590,7 @@ const summary = {
   unmatched_queue_scope_ready: unmatchedScopeReady,
   unmatched_queue_scope_error: unmatchedScopeError,
   schema_failures: unmatchedScopeReady ? 0 : 1,
+  data_query_failures: auditDataErrors.length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
 };
 
@@ -547,6 +601,7 @@ const report = {
     unmatched_queue_scope_error: unmatchedScopeError,
     required_migration: unmatchedScopeReady ? null : 'supabase/migrations/20260605001000_unmatched_activities_package_scope.sql',
   },
+  data_query_errors: auditDataErrors,
   repairs: priceStorageRepairs,
   failed: failedRows.map(row => ({
     id: row.id,
@@ -592,6 +647,7 @@ console.log(JSON.stringify(jsonOnly ? report : { summary, repairs: report.repair
 if (strict) {
   const strictFailures = [];
   if (summary.schema_failures > 0) strictFailures.push('schema_failures');
+  if (summary.data_query_failures > 0) strictFailures.push('data_query_failures');
   if (summary.fail > 0) strictFailures.push('readiness_fail');
   if (summary.public_fail > 0) strictFailures.push('public_fail');
   if (summary.raw_notice_leak_risk > 0) strictFailures.push('raw_notice_leak_risk');

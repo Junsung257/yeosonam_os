@@ -31,10 +31,6 @@ function mapHumanPrices(reader: HumanReaderResult): Map<string, number[]> {
   return byDate;
 }
 
-function min(values: number[]): number {
-  return Math.min(...values);
-}
-
 function isModelDerivedPriceSource(source: string): boolean {
   return source === 'gemini'
     || source.endsWith(':gemini')
@@ -73,11 +69,13 @@ export function auditPriceExtractionAgainstSource(input: {
   }
 
   for (const date of overlap.slice(0, 50)) {
-    const recoveredMin = min(recovered.get(date) ?? []);
-    const sourceMin = min(sourceBacked.get(date) ?? []);
-    if (Number.isFinite(recoveredMin) && Number.isFinite(sourceMin) && recoveredMin !== sourceMin) {
+    const recoveredPrices = [...new Set(recovered.get(date) ?? [])].sort((a, b) => a - b);
+    const sourcePrices = [...new Set(sourceBacked.get(date) ?? [])].sort((a, b) => a - b);
+    const sourcePriceSet = new Set(sourcePrices);
+    const missingRecoveredPrices = recoveredPrices.filter(price => !sourcePriceSet.has(price));
+    if (missingRecoveredPrices.length > 0 && sourcePrices.length > 0) {
       blockers.push(
-        `price amount disagreement ${date}: source-backed ${sourceMin.toLocaleString()} KRW != recovered ${recoveredMin.toLocaleString()} KRW`,
+        `price amount disagreement ${date}: recovered ${missingRecoveredPrices.map(price => price.toLocaleString()).join(', ')} KRW not found in source-backed prices (${sourcePrices.slice(0, 8).map(price => price.toLocaleString()).join(', ')} KRW)`,
       );
     }
   }

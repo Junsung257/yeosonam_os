@@ -30,4 +30,92 @@ describe('readSupplierDocumentLikeHuman', () => {
     expect(result.evidenceSpans.some(span => span.field === 'human_reader.price_pair')).toBe(true);
     expect(result.uncertainties).not.toContain('no source-backed product price/date pairs recognized by evidence reader');
   });
+
+  it('recognizes compact supplier date lines followed by one price line', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        'PKG',
+        '7/4,18 8/22(토)',
+        '1,049,000원',
+        '*선착순 10석, 6/10선발',
+      ].join('\n'),
+      durationDays: 6,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual(
+      expect.arrayContaining([
+        '2026-07-04:1049000',
+        '2026-07-18:1049000',
+        '2026-08-22:1049000',
+      ]),
+    );
+  });
+
+  it('keeps multiple adjacent price columns as source evidence for the same departure date', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '6/1 월 3박',
+        '999,000',
+        '1,229,000',
+        '1,359,000',
+        '1,439,000',
+      ].join('\n'),
+      durationDays: 4,
+      year: 2026,
+    });
+
+    const prices = result.pricePairs
+      .filter(row => row.date === '2026-06-01')
+      .map(row => row.adult_price)
+      .sort((a, b) => a - b);
+
+    expect(prices).toEqual([999000, 1229000, 1359000, 1439000]);
+  });
+
+  it('reads monthly Korean weekday grids into date-scoped source-backed prices', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '6월',
+        '1~20',
+        '월',
+        '3박4일',
+        '759,000',
+        '999,000',
+        '1,179,000',
+        '1,229,000',
+        '화',
+        '수',
+        '829,000',
+        '1,059,000',
+        '1,259,000',
+        '1,299,000',
+        '목',
+        '949,000',
+        '1,199,000',
+        '1,359,000',
+        '1,399,000',
+        '금',
+        '899,000',
+        '1,129,000',
+        '1,319,000',
+        '1,359,000',
+        '토',
+        '849,000',
+        '1,069,000',
+        '1,259,000',
+        '1,299,000',
+        '일',
+      ].join('\n'),
+      durationDays: 4,
+      year: 2026,
+    });
+
+    const prices = result.pricePairs
+      .filter(row => row.date === '2026-06-20')
+      .map(row => row.adult_price)
+      .sort((a, b) => a - b);
+
+    expect(prices).toEqual([849000, 1069000, 1259000, 1299000]);
+  });
 });
