@@ -673,7 +673,7 @@ export async function buildSummaryResponse() {
       .limit(100),
     supabaseAdmin
       .from('ad_os_change_requests')
-      .select('id, request_type, status, risk_level, platform, title, reason, created_at')
+      .select('id, request_type, target_table, target_id, status, risk_level, platform, title, reason, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
@@ -959,6 +959,8 @@ export async function buildSummaryResponse() {
   })));
   const changeRequests = (changeRequestRes.data || []) as Array<{
     request_type: string | null;
+    target_table?: string | null;
+    target_id?: string | null;
     status: string | null;
     risk_level: string | null;
   }>;
