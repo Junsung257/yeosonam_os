@@ -32,6 +32,7 @@ const publicOnly = process.argv.includes('--public-only');
 const jsonOnly = process.argv.includes('--json');
 const strict = process.argv.includes('--strict');
 const repairPriceStorage = process.argv.includes('--repair-price-storage');
+const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -573,6 +574,71 @@ const rows = allPackageRows
 const publicRows = rows.filter(row => row.public);
 const failedRows = rows.filter(row => row.readiness.status === 'fail');
 const warnedRows = rows.filter(row => row.readiness.status === 'warn');
+const demotionCandidates = rows.filter(row =>
+  row.public
+  && row.readiness.status === 'fail'
+  && !row.draft_lookup_failed
+  && !row.price_lookup_failed
+);
+const demotions = [];
+
+if (demoteUnsafePublic) {
+  const checkedAt = new Date().toISOString();
+  for (const row of demotionCandidates) {
+    const auditReport = {
+      source: 'mobile-landing-readiness-demotion',
+      checked_at: checkedAt,
+      previous_status: row.status,
+      readiness: row.readiness,
+      trust_score: row.trust_score,
+      v3_status: row.v3,
+      draft_id: row.draft_id,
+      entity_counts: {
+        attraction_unresolved: row.entity_attraction_unresolved,
+        shopping_review_needed: row.entity_shopping_review_needed,
+        option_review_needed: row.entity_option_review_needed,
+        unknown_customer_visible: row.entity_unknown_customer_visible,
+      },
+      price_storage_mismatch: row.price_storage_mismatch,
+      customer_price_option_mismatch: row.customer_price_option_mismatch,
+      product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      render_failure: row.render_failure,
+    };
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        status: 'pending_review',
+        audit_status: 'blocked',
+        audit_checked_at: checkedAt,
+        audit_report: auditReport,
+        updated_at: checkedAt,
+      })
+      .eq('id', row.id);
+    if (packageError) {
+      demotions.push({ id: row.id, code: row.code, title: row.title, ok: false, reason: packageError.message });
+      continue;
+    }
+
+    let productStatusUpdated = false;
+    if (row.code) {
+      const { error: productError } = await supabase
+        .from('products')
+        .update({ status: 'pending_review', updated_at: checkedAt })
+        .eq('internal_code', row.code);
+      productStatusUpdated = !productError;
+    }
+    demotions.push({
+      id: row.id,
+      code: row.code,
+      title: row.title,
+      ok: true,
+      previous_status: row.status,
+      new_status: 'pending_review',
+      product_status_updated: productStatusUpdated,
+      failures: row.readiness.failures,
+    });
+  }
+}
 
 const summary = {
   since,
@@ -612,6 +678,9 @@ const summary = {
   schema_failures: unmatchedScopeReady ? 0 : 1,
   data_query_failures: auditDataErrors.length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
+  demote_unsafe_public: demoteUnsafePublic,
+  demotion_candidates: demotionCandidates.length,
+  demoted_public: demotions.filter(row => row.ok).length,
 };
 
 const report = {
@@ -623,6 +692,7 @@ const report = {
   },
   data_query_errors: auditDataErrors,
   repairs: priceStorageRepairs,
+  demotions,
   failed: failedRows.map(row => ({
     id: row.id,
     code: row.code,
