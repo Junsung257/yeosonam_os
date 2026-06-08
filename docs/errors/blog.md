@@ -64,3 +64,15 @@ Last updated: 2026-06-07
 > Original source before 2026-06-07 split: `db/error-registry.md:1037`
 
 - [x] **ERR-BLOG-seo-audit-missing@2026-06-07** (공개 블로그 SEO 전수검사 부재): 렌더링/이미지 감사와 별개로 canonical, meta description, OG/Twitter, JSON-LD, H1/H2, 내부링크, 롱테일 제목 modifier를 실제 DOM 기준으로 전수 점검하는 명령이 없었다. 해결: `scripts/audit-blog-seo-quality.mjs`와 `npm run audit:blog-seo` 추가. 로컬 표본 10개 검증 결과 `score=100`, `failed=0`, `errors=0`, warnings 3건(short title/weak longtail modifier). 예방: 배포 전 로컬, 배포 후 운영 URL에서 `audit:blog-render`, `audit:blog-images`, `audit:blog-seo`를 모두 실행한다.
+
+---
+
+## ERR-BLOG-visual-blindspot@2026-06-08
+
+- [x] **ERR-BLOG-visual-blindspot@2026-06-08** (블로그 시각 깨짐을 DOM 감사가 놓침): 사용자가 `/blog` 목록 사진 미노출, 상세 사진 깨짐, 삭제선 노출, 모바일 표 깨짐을 신고했다. 기존 운영 표본 감사는 render/image/SEO가 100점으로 보였지만, 실제 viewport 기준 감사가 없어 삭제선과 table overflow를 놓쳤다. 첫 visual audit은 lazy image를 스크롤 전에 판정해 이미지 깨짐을 과대 보고했으나, 스크롤 후 재감사에서 실제 남은 문제는 `/blog/zhangjiajie-weather` 삭제선과 모바일 table overflow였다. **해결**: `scripts/audit-blog-visual-system.mjs`와 `npm run audit:blog-visual` 추가, lazy image 스크롤 후 판정, 상세 렌더러의 `~~...~~`/`<del>/<s>/<strike>` 일반 텍스트화, `.prose-blog` table mobile overflow 방어, 카드 `og_image_url`이 generic `/og-image.png`일 때 본문 첫 실제 이미지를 썸네일로 승격. **검증**: 로컬 `http://localhost:3002`에서 `npm run audit:blog-visual -- --limit=3 --surface-limit=3 --json` 결과 `score=100`, `failed=0`; `npx vitest run src/lib/blog-renderer.test.ts` 16건 통과; `npm run type-check` 통과. **재발 방지**: 블로그 배포 전후 `audit:blog-visual --full --strict`를 render/image/SEO 감사와 함께 필수 실행한다.
+
+---
+
+## ERR-BLOG-gsc-property-split-audit@2026-06-08
+
+- [x] **ERR-BLOG-gsc-property-split-audit@2026-06-08** (Search Console 속성 분리와 canonical 혼선 위험): Search Console에 `yeosonam.com` Domain property, `https://www.yeosonam.com/`, `https://yeosonam.com/` URL-prefix property가 같이 보여 색인 자동화가 non-www와 www 사이에서 갈릴 수 있는지 확인이 필요했다. **확인 결과**: Domain property와 URL-prefix property 공존 자체는 정상이다. 운영 redirect, canonical, `og:url`, sitemap은 `https://www.yeosonam.com`으로 수렴했다. **해결**: `scripts/audit-blog-gsc-domain.mjs`와 `npm run audit:blog-gsc-domain` 추가. 이 감사는 `http://`, non-www, www redirect, canonical, `og:url`, sitemap origin, `GSC_SITE_URL` 힌트를 검사한다. **검증**: `npm run audit:blog-gsc-domain -- --json` 결과 `score=100`, issue 0건. **재발 방지**: 색인 요청 전 `audit:blog-gsc-domain --strict`를 통과해야 하며, `GSC_SITE_URL`은 `https://www.yeosonam.com/` URL-prefix property 기준으로 맞춘다.
