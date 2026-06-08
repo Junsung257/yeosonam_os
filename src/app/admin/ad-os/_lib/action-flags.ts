@@ -47,6 +47,7 @@ export const ACTION_FLAG_KEYS = [
   'applyingBlogEvolution',
   'runningPlatformJobs',
   'runningConversionUpload',
+  'runningConversionSafePipeline',
   'loadingDataQuality',
   'planningPortfolio',
   'applyingPortfolio',

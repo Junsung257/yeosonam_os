@@ -18,6 +18,7 @@ export type EnterpriseRuntimeActionKey =
   | 'executePlatformJobsDryRun'
   | 'runConversionUploadJobs'
   | 'executeConversionUploadsDryRun'
+  | 'runConversionSafePipeline'
   | 'loadDataQuality'
   | 'runPortfolioPlan'
   | 'applyApprovedPortfolio'
@@ -47,6 +48,7 @@ const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label
   { key: 'executePlatformJobsDryRun', label: 'Platform dry-run' },
   { key: 'runConversionUploadJobs', label: 'Conversion upload jobs' },
   { key: 'executeConversionUploadsDryRun', label: 'Conversion dry-run' },
+  { key: 'runConversionSafePipeline', label: 'Conversion safe pipeline' },
   { key: 'loadDataQuality', label: 'Data quality' },
   { key: 'runPortfolioPlan', label: 'Portfolio plan' },
   { key: 'applyApprovedPortfolio', label: 'Apply portfolio' },

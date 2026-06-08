@@ -109,7 +109,7 @@ export default function AdOsPage() {
     planningExperiments, probingGooglePublisher, loadingTenantReport, buildingOpsPlan, creatingCreativeDrafts,
     syncingBookingFunnel, runningConversionAttribution, runningKeywordBrain, runningSeoKeywordBridge, runningSearchTermGrowth, creatingNaverAssets, executingNaverGate,
     exportingGoogleConversions, exportingMetaConversions, runningBidOptimizer, runningExperiments, applyingBlogEvolution,
-    runningPlatformJobs, runningConversionUpload, loadingDataQuality, planningPortfolio, applyingPortfolio,
+    runningPlatformJobs, runningConversionUpload, runningConversionSafePipeline, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
     creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
@@ -1057,13 +1057,61 @@ export default function AdOsPage() {
       };
     } & Record<string, unknown>>({
       flag: 'loadingDataQuality',
-      url: '/api/admin/ad-os/data-quality?days=14',
+      url: '/api/admin/ad-os/data-quality',
+      body: { apply: true, days: 14 },
       errorMessage: 'Conversion data quality load failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Conversion data quality: ${String(summary?.status || 'unknown')}, uploadable ${formatAdOsNumber(summary?.uploadable_conversions)}, blocked ${formatAdOsNumber(summary?.blocked_conversions)}, attribution coverage ${Math.round(Number(summary?.attribution_coverage || 0) * 100)}%.`;
+        return `Conversion data quality saved: ${String(summary?.status || 'unknown')}, uploadable ${formatAdOsNumber(summary?.uploadable_conversions)}, blocked ${formatAdOsNumber(summary?.blocked_conversions)}, attribution coverage ${Math.round(Number(summary?.attribution_coverage || 0) * 100)}%.`;
       },
     });
+  };
+
+  const runConversionSafePipeline = async () => {
+    setActionFlag('runningConversionSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const googleJobs = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/run',
+        { apply: true, platform: 'google', limit: 100 },
+        'Google conversion upload job failed.',
+      );
+      const metaJobs = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/run',
+        { apply: true, platform: 'meta', limit: 100 },
+        'Meta conversion upload job failed.',
+      );
+      const googleDryRun = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/execute',
+        { apply: true, platform: 'google', limit: 50 },
+        'Google conversion upload dry-run failed.',
+      );
+      const metaDryRun = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/execute',
+        { apply: true, platform: 'meta', limit: 50 },
+        'Meta conversion upload dry-run failed.',
+      );
+      const dataQuality = await postAdOsJson(
+        '/api/admin/ad-os/data-quality',
+        { apply: true, days: 14 },
+        'Conversion data quality snapshot failed.',
+      );
+
+      await refresh();
+      const googleJobSummary = getAdOsRecord(googleJobs.summary);
+      const metaJobSummary = getAdOsRecord(metaJobs.summary);
+      const googleDryRunSummary = getAdOsRecord(googleDryRun.summary);
+      const metaDryRunSummary = getAdOsRecord(metaDryRun.summary);
+      const dataQualitySummary = getAdOsRecord(dataQuality.summary);
+      setAutomationMessage(
+        `Conversion safe pipeline complete: Google jobs ${formatAdOsNumber(googleJobSummary.jobs_written)}, Meta jobs ${formatAdOsNumber(metaJobSummary.jobs_written)}, dry-run ready ${formatAdOsNumber(Number(googleDryRunSummary.upload_ready_dry_run || 0) + Number(metaDryRunSummary.upload_ready_dry_run || 0))}, blocked ${formatAdOsNumber(Number(googleJobSummary.blocked || 0) + Number(metaJobSummary.blocked || 0) + Number(googleDryRunSummary.blocked || 0) + Number(metaDryRunSummary.blocked || 0))}, quality ${String(dataQualitySummary.status || 'unknown')}. External upload 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Conversion safe pipeline failed.');
+    } finally {
+      setActionFlag('runningConversionSafePipeline', false);
+    }
   };
 
   const runPortfolioPlan = async () => {
@@ -1676,6 +1724,7 @@ export default function AdOsPage() {
     executePlatformJobsDryRun,
     runConversionUploadJobs,
     executeConversionUploadsDryRun,
+    runConversionSafePipeline,
     loadDataQuality,
     runPortfolioPlan,
     applyApprovedPortfolio,
@@ -1702,6 +1751,7 @@ export default function AdOsPage() {
     executePlatformJobsDryRun: executingPlatformDryRun,
     runConversionUploadJobs: runningConversionUpload,
     executeConversionUploadsDryRun: executingConversionDryRun,
+    runConversionSafePipeline: runningConversionSafePipeline,
     loadDataQuality: loadingDataQuality,
     runPortfolioPlan: planningPortfolio,
     applyApprovedPortfolio: applyingPortfolio,

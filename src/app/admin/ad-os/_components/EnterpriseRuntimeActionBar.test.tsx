@@ -26,6 +26,7 @@ const actions: EnterpriseRuntimeActionHandlers = {
   executePlatformJobsDryRun: noop,
   runConversionUploadJobs: noop,
   executeConversionUploadsDryRun: noop,
+  runConversionSafePipeline: noop,
   loadDataQuality: noop,
   runPortfolioPlan: noop,
   applyApprovedPortfolio: noop,
@@ -58,6 +59,7 @@ describe('Ad OS EnterpriseRuntimeActionBar', () => {
     expect(html).toContain('Google draft gate');
     expect(html).toContain('Platform dry-run');
     expect(html).toContain('Conversion dry-run');
+    expect(html).toContain('Conversion safe pipeline');
     expect(html).toContain('Audit export');
   });
 });
