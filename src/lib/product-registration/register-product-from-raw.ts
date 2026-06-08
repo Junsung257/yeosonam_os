@@ -492,8 +492,12 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   ed.price_tiers = priceRecovery.tiers;
   if (priceRecovery.minPrice != null) ed.price = priceRecovery.minPrice;
 
+  const priceEvidenceRawText = priceRecovery.source.startsWith('document_raw:')
+    && documentRawText
+    ? documentRawText
+    : rawText;
   const humanReader = readSupplierDocumentLikeHuman({
-    rawText,
+    rawText: priceEvidenceRawText,
     title: registrationTitle ?? ed.title,
     accommodations: ed.accommodations ?? [],
     durationDays: ed.duration,
@@ -594,8 +598,8 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
       v3DraftStatus: v3.result?.gate_result.status ?? null,
       v3RawTextHash: v3.result?.raw_text_hash ?? null,
       spans: buildEvidenceSpans({
-        rawText,
-        rawTextHash,
+        rawText: priceEvidenceRawText,
+        rawTextHash: humanReader.rawTextHash,
         ed,
         priceRecovery,
       }).concat(humanReader.evidenceSpans),

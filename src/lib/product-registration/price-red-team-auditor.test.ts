@@ -30,6 +30,13 @@ function recovery(price: number): UploadPriceRecoveryResult {
   };
 }
 
+function modelRecovery(): UploadPriceRecoveryResult {
+  return {
+    ...recovery(1299000),
+    source: 'llm_hydrated',
+  };
+}
+
 describe('auditPriceExtractionAgainstSource', () => {
   it('passes when recovered price agrees with source-backed reader evidence', () => {
     const reader = readSupplierDocumentLikeHuman({
@@ -61,5 +68,21 @@ describe('auditPriceExtractionAgainstSource', () => {
 
     expect(audit.status).toBe('fail');
     expect(audit.blockers.join('\n')).toContain('price amount disagreement 2026-07-01');
+  });
+
+  it('blocks model-derived prices when no independent source-backed price evidence exists', () => {
+    const reader = readSupplierDocumentLikeHuman({
+      rawText: '포함 내역\n항공권\n호텔\n',
+      durationDays: 3,
+      year: 2026,
+    });
+
+    const audit = auditPriceExtractionAgainstSource({
+      humanReader: reader,
+      priceRecovery: modelRecovery(),
+    });
+
+    expect(audit.status).toBe('fail');
+    expect(audit.blockers.join('\n')).toContain('model-derived price source llm_hydrated');
   });
 });

@@ -171,6 +171,9 @@ BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일
     });
 
     expect(result.pricing.source).toBe('document_raw:deterministic:spot_weekday_table');
+    expect(result.evidence.humanReader?.priceSource).toBe('spot_weekday_table');
+    expect(result.evidence.humanReader?.pricePairCount).toBeGreaterThan(0);
+    expect(result.evidence.priceAudit?.status).toBe('pass');
     expect(result.pricing.productPrices.length).toBeGreaterThan(0);
     expect(result.pricing.priceDates.length).toBeGreaterThan(0);
     expect(result.publishable).toBe(true);

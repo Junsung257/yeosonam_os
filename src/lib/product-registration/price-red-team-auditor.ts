@@ -35,6 +35,13 @@ function min(values: number[]): number {
   return Math.min(...values);
 }
 
+function isModelDerivedPriceSource(source: string): boolean {
+  return source === 'gemini'
+    || source.endsWith(':gemini')
+    || source === 'llm_hydrated'
+    || source.endsWith(':llm_hydrated');
+}
+
 export function auditPriceExtractionAgainstSource(input: {
   priceRecovery: UploadPriceRecoveryResult;
   humanReader: HumanReaderResult;
@@ -50,6 +57,12 @@ export function auditPriceExtractionAgainstSource(input: {
   if (sourceDates.length > 0 && recoveredDates.length === 0) {
     blockers.push(
       `price reader found ${sourceDates.length} source-backed price/date pairs but product price recovery produced no rows`,
+    );
+  }
+
+  if (sourceDates.length === 0 && input.priceRecovery.ok && isModelDerivedPriceSource(input.priceRecovery.source)) {
+    blockers.push(
+      `model-derived price source ${input.priceRecovery.source} has no independent source-backed price/date evidence`,
     );
   }
 
@@ -72,7 +85,7 @@ export function auditPriceExtractionAgainstSource(input: {
   if (sourceDates.length === 0) {
     warnings.push('price reader did not find independent source-backed price/date pairs');
   }
-  if (input.priceRecovery.ok && input.priceRecovery.source === 'gemini') {
+  if (input.priceRecovery.ok && isModelDerivedPriceSource(input.priceRecovery.source)) {
     warnings.push('price recovery depends on Gemini fallback; require source-backed audit before publish');
   }
 
