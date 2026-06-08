@@ -42,6 +42,10 @@ type LearningLoopSignal = {
     fact_conversions_30d?: number | null;
     fact_spend_krw_30d?: number | null;
     fact_margin_krw_30d?: number | null;
+    paid_assisted_organic_bookings_30d?: number | null;
+    paid_assisted_organic_revenue_krw_30d?: number | null;
+    paid_assisted_organic_margin_krw_30d?: number | null;
+    paid_assisted_organic_cost_krw_30d?: number | null;
   } | null;
 };
 
