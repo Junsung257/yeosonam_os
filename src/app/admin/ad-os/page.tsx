@@ -249,6 +249,15 @@ export default function AdOsPage() {
     return parseAdOsJsonResponse(response, errorMessage);
   };
 
+  const createPipelineAuditExportDraft = async () => {
+    const audit = await postAdOsJson(
+      '/api/admin/ad-os/tenant-audit-export',
+      { apply: true },
+      'Tenant audit export failed.',
+    );
+    return getAdOsRecord(audit.summary);
+  };
+
   const runStagingSmoke = async () => {
     await runReadinessCheck({
       flag: 'checkingStagingSmoke',
@@ -651,6 +660,7 @@ export default function AdOsPage() {
         { mode: 'dry_run' },
         'Budget pacing failed.',
       );
+      const audit = await createPipelineAuditExportDraft();
 
       await refresh();
       const performanceSummary = getAdOsRecord(performance.summary);
@@ -659,7 +669,7 @@ export default function AdOsPage() {
       const portfolioSummary = getAdOsRecord(portfolio.summary);
       const pacingSummary = getAdOsRecord(pacing.summary);
       setAutomationMessage(
-        `Optimization safe pipeline complete: facts ${formatAdOsNumber(performanceSummary.facts_prepared)}, attribution conversions ${formatAdOsNumber(attributionSummary.conversions)}, bid candidates ${formatAdOsNumber(bidSummary.candidates)}, portfolio plans ${formatAdOsNumber(portfolioSummary.inserted)}, pacing checked ${formatAdOsNumber(pacingSummary.checked_channels)}. External API write 0.`,
+        `Optimization safe pipeline complete: facts ${formatAdOsNumber(performanceSummary.facts_prepared)}, attribution conversions ${formatAdOsNumber(attributionSummary.conversions)}, bid candidates ${formatAdOsNumber(bidSummary.candidates)}, portfolio plans ${formatAdOsNumber(portfolioSummary.inserted)}, pacing checked ${formatAdOsNumber(pacingSummary.checked_channels)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Optimization safe pipeline failed.');
@@ -1144,6 +1154,7 @@ export default function AdOsPage() {
         { apply: true, days: 14 },
         'Conversion data quality snapshot failed.',
       );
+      const audit = await createPipelineAuditExportDraft();
 
       await refresh();
       const googleJobSummary = getAdOsRecord(googleJobs.summary);
@@ -1152,7 +1163,7 @@ export default function AdOsPage() {
       const metaDryRunSummary = getAdOsRecord(metaDryRun.summary);
       const dataQualitySummary = getAdOsRecord(dataQuality.summary);
       setAutomationMessage(
-        `Conversion safe pipeline complete: Google jobs ${formatAdOsNumber(googleJobSummary.jobs_written)}, Meta jobs ${formatAdOsNumber(metaJobSummary.jobs_written)}, dry-run ready ${formatAdOsNumber(Number(googleDryRunSummary.upload_ready_dry_run || 0) + Number(metaDryRunSummary.upload_ready_dry_run || 0))}, blocked ${formatAdOsNumber(Number(googleJobSummary.blocked || 0) + Number(metaJobSummary.blocked || 0) + Number(googleDryRunSummary.blocked || 0) + Number(metaDryRunSummary.blocked || 0))}, quality ${String(dataQualitySummary.status || 'unknown')}. External upload 0.`,
+        `Conversion safe pipeline complete: Google jobs ${formatAdOsNumber(googleJobSummary.jobs_written)}, Meta jobs ${formatAdOsNumber(metaJobSummary.jobs_written)}, dry-run ready ${formatAdOsNumber(Number(googleDryRunSummary.upload_ready_dry_run || 0) + Number(metaDryRunSummary.upload_ready_dry_run || 0))}, blocked ${formatAdOsNumber(Number(googleJobSummary.blocked || 0) + Number(metaJobSummary.blocked || 0) + Number(googleDryRunSummary.blocked || 0) + Number(metaDryRunSummary.blocked || 0))}, quality ${String(dataQualitySummary.status || 'unknown')}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External upload 0.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Conversion safe pipeline failed.');
@@ -1466,6 +1477,7 @@ export default function AdOsPage() {
         { apply: true, mode: 'dry_run', platform: 'google', limit: 50 },
         'Google draft platform dry-run failed.',
       );
+      const audit = await createPipelineAuditExportDraft();
 
       await refresh();
       const draftSummary = getAdOsRecord(drafts.summary);
@@ -1474,7 +1486,7 @@ export default function AdOsPage() {
       const jobSummary = getAdOsRecord(jobs.summary);
       const attemptSummary = getAdOsRecord(attempts.summary);
       setAutomationMessage(
-        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, dry-run attempts ${formatAdOsNumber(attemptSummary.attempts_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}. External API write 0.`,
+        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, dry-run attempts ${formatAdOsNumber(attemptSummary.attempts_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');
@@ -1536,13 +1548,14 @@ export default function AdOsPage() {
         },
         'Meta creative execution gate failed.',
       );
+      const audit = await createPipelineAuditExportDraft();
 
       await refresh();
       const assetSummary = getAdOsRecord(assetGroup.summary);
       const packetSummary = getAdOsRecord(seedPacket.summary);
       const gateSummary = getAdOsRecord(gate.summary);
       setAutomationMessage(
-        `Meta creative pipeline complete: intent signals ${formatAdOsNumber(assetSummary.generated_signals)}, variants ${formatAdOsNumber(assetSummary.generated_variants)}, seed ${String(packetSummary.lifecycle_status || 'unknown')}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}. External API write 0.`,
+        `Meta creative pipeline complete: intent signals ${formatAdOsNumber(assetSummary.generated_signals)}, variants ${formatAdOsNumber(assetSummary.generated_variants)}, seed ${String(packetSummary.lifecycle_status || 'unknown')}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Meta creative pipeline failed.');
