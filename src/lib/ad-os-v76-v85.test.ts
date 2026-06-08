@@ -3,6 +3,7 @@ import {
   buildChannelAdapterCapability,
   buildGoogleCampaignDraftPacket,
   buildMetaCapiTestPacket,
+  buildMetaCreativeSeedPacket,
   buildNaverPausedKeywordPacket,
   summarizeAdapterCapabilities,
 } from './ad-os-v76-v85';
@@ -104,6 +105,37 @@ describe('ad-os-v76-v85 channel adapters', () => {
 
     expect(buildMetaCapiTestPacket(blockedCapability).lifecycle_status).toBe('blocked');
     expect(buildMetaCapiTestPacket(readyCapability, { eventId: 'evt-1' }).lifecycle_status).toBe('ready');
+  });
+
+  it('builds a Meta creative seed packet without live publish semantics', () => {
+    const capability = buildChannelAdapterCapability({
+      platform: 'meta',
+      credentialsReady: true,
+      connectionStatus: 'ready',
+      budgetStatus: 'active',
+      monthlyBudgetKrw: 100000,
+      dailyBudgetCapKrw: 10000,
+      maxCpcKrw: 500,
+      automationLevel: 2,
+      conversionReady: false,
+    });
+    const packet = buildMetaCreativeSeedPacket(capability, {
+      creativeName: 'Danang parents seed',
+      landingUrl: '/blog/danang-parents',
+      headline: 'Danang family trip',
+      primaryText: 'Review fit before inquiry.',
+      productId: 'pkg-1',
+    });
+
+    expect(packet.lifecycle_status).toBe('ready');
+    expect(packet.packet_type).toBe('meta_creative_seed');
+    expect(packet.request_payload).toMatchObject({
+      creative_name: 'Danang parents seed',
+      asset_source: 'ad_os_creative_asset_variants',
+      live_publish_disabled: true,
+      external_api_write: false,
+    });
+    expect(packet.external_api_write).toBe(false);
   });
 
   it('summarizes adapter states for the admin dashboard', () => {

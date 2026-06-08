@@ -93,6 +93,9 @@ export type PacketSeed = {
   eventName?: string | null;
   eventId?: string | null;
   valueKrw?: number | null;
+  creativeName?: string | null;
+  primaryText?: string | null;
+  callToAction?: string | null;
   productId?: string | null;
   scenarioId?: string | null;
   runId?: string | null;
@@ -334,6 +337,35 @@ export function buildMetaCapiTestPacket(capability: AdapterCapability, seed: Pac
       value_krw: int(seed.valueKrw),
       action_source: 'website',
       test_event_code_required: true,
+      external_api_write: false,
+    },
+  });
+}
+
+export function buildMetaCreativeSeedPacket(capability: AdapterCapability, seed: PacketSeed = {}): PlatformWritePacket {
+  const creativeName = stableText(seed.creativeName || seed.campaignName, 'YSN Meta Creative Seed');
+  const landingUrl = stableText(seed.landingUrl, '/blog/danang-family-package');
+  const headline = stableText(seed.headline, 'Family trip offer');
+  const primaryText = stableText(seed.primaryText || seed.description, 'Compare itinerary, inclusions, and booking fit before inquiry.');
+
+  return basePacket({
+    capability,
+    seed,
+    packetType: 'meta_creative_seed',
+    requiredCapability: 'creative_seed',
+    idempotencySuffix: keyPart(`${creativeName}:${landingUrl}:${headline}`),
+    blockedFallback: 'meta_creative_seed_not_ready',
+    requestPayload: {
+      creative_name: creativeName,
+      final_url: landingUrl,
+      headline,
+      primary_text: primaryText,
+      description: seed.description ? stableText(seed.description, '') : null,
+      call_to_action: stableText(seed.callToAction, 'LEARN_MORE'),
+      asset_source: 'ad_os_creative_asset_variants',
+      product_id: seed.productId || null,
+      scenario_id: seed.scenarioId || null,
+      live_publish_disabled: true,
       external_api_write: false,
     },
   });

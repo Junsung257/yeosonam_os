@@ -10,6 +10,7 @@ export type EnterpriseRuntimeActionKey =
   | 'createGoogleDraftJobs'
   | 'runGoogleSafePipeline'
   | 'createMetaCapiTestPacket'
+  | 'runMetaCreativeSafePipeline'
   | 'checkExecutionGate'
   | 'checkGoogleDraftGate'
   | 'runRollbackDrill'
@@ -40,6 +41,7 @@ const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label
   { key: 'createGoogleDraftJobs', label: 'Google draft jobs' },
   { key: 'runGoogleSafePipeline', label: 'Google safe pipeline' },
   { key: 'createMetaCapiTestPacket', label: 'Meta CAPI packet' },
+  { key: 'runMetaCreativeSafePipeline', label: 'Meta creative pipeline' },
   { key: 'checkExecutionGate', label: 'Naver gate' },
   { key: 'checkGoogleDraftGate', label: 'Google draft gate' },
   { key: 'runRollbackDrill', label: 'Rollback drill' },

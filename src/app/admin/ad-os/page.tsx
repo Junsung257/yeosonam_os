@@ -112,7 +112,7 @@ export default function AdOsPage() {
     runningPlatformJobs, runningConversionUpload, runningConversionSafePipeline, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
-    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
+    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
 
@@ -1501,6 +1501,56 @@ export default function AdOsPage() {
     });
   };
 
+  const runMetaCreativeSafePipeline = async () => {
+    setActionFlag('runningMetaCreativeSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const assetGroup = await postAdOsJson(
+        '/api/admin/ad-os/creative-factory/asset-group',
+        { apply: true, limit: 20 },
+        'Meta creative asset group generation failed.',
+      );
+      const product = getAdOsRecord(assetGroup.product);
+      const seedPacket = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/meta/creative-seed',
+        {
+          apply: true,
+          product_id: product.id,
+          creative_name: product.title ? `Meta seed: ${String(product.title).slice(0, 80)}` : 'Meta creative seed',
+          landing_url: '/blog/danang-family-package',
+          headline: product.title ? String(product.title).slice(0, 40) : 'Family travel comparison',
+          primary_text: 'Compare itinerary, inclusions, and booking fit before inquiry.',
+          call_to_action: 'LEARN_MORE',
+        },
+        'Meta creative seed packet failed.',
+      );
+      const gate = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/execution-gate',
+        {
+          apply: true,
+          platform: 'meta',
+          requested_mode: 'approve',
+          human_approved: false,
+          limit: 20,
+        },
+        'Meta creative execution gate failed.',
+      );
+
+      await refresh();
+      const assetSummary = getAdOsRecord(assetGroup.summary);
+      const packetSummary = getAdOsRecord(seedPacket.summary);
+      const gateSummary = getAdOsRecord(gate.summary);
+      setAutomationMessage(
+        `Meta creative pipeline complete: intent signals ${formatAdOsNumber(assetSummary.generated_signals)}, variants ${formatAdOsNumber(assetSummary.generated_variants)}, seed ${String(packetSummary.lifecycle_status || 'unknown')}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}. External API write 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Meta creative pipeline failed.');
+    } finally {
+      setActionFlag('runningMetaCreativeSafePipeline', false);
+    }
+  };
+
   const checkExecutionGate = async () => {
     await runJsonAction({
       flag: 'checkingExecutionGate',
@@ -1765,6 +1815,7 @@ export default function AdOsPage() {
     createGoogleDraftJobs,
     runGoogleSafePipeline,
     createMetaCapiTestPacket,
+    runMetaCreativeSafePipeline,
     checkExecutionGate,
     checkGoogleDraftGate,
     runRollbackDrill,
@@ -1792,6 +1843,7 @@ export default function AdOsPage() {
     createGoogleDraftJobs: creatingGoogleDraftJobs,
     runGoogleSafePipeline: runningGoogleSafePipeline,
     createMetaCapiTestPacket: creatingMetaCapiPacket,
+    runMetaCreativeSafePipeline: runningMetaCreativeSafePipeline,
     checkExecutionGate: checkingExecutionGate,
     checkGoogleDraftGate: checkingGoogleDraftGate,
     runRollbackDrill: runningRollbackDrill,
