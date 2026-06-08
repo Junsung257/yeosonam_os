@@ -21,6 +21,12 @@ function json(value: unknown) {
   return JSON.parse(JSON.stringify(value ?? {}));
 }
 
+function isMissingKeywordPerformanceTable(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const message = String((error as { message?: unknown }).message || '');
+  return message.includes('keyword_performance_daily') && message.includes('schema cache');
+}
+
 async function failRun(runId: string, error: unknown, fallback?: string) {
   const safeError = sanitizeDbError(error, fallback);
   await supabaseAdmin.from('ad_os_automation_runs').update({
@@ -81,8 +87,20 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .gte('date', fromDate);
 
   if (perfError) {
+    if (isMissingKeywordPerformanceTable(perfError)) {
+      await supabaseAdmin.from('ad_os_automation_runs').update({
+        summary: {
+          apply,
+          tenant_id: tenantId,
+          engine: 'budget_pacing_v3',
+          performance_source: 'keyword_performance_daily_missing',
+          performance_rows: 0,
+        },
+      }).eq('id', run.id);
+    } else {
     const safeError = await failRun(run.id, perfError);
     return apiResponse({ ok: false, error: safeError }, { status: 500 });
+    }
   }
 
   const spendByPlatform = new Map<string, number>();
