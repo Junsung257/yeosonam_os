@@ -159,15 +159,24 @@ export interface GoogleSitemapSubmitResult {
 
 function normalizeSiteUrlForGSC(baseUrl: string): string {
   const configured = process.env.GSC_SITE_URL;
-  if (configured) return configured;
   try {
     const parsed = new URL(baseUrl);
     parsed.pathname = '/';
     parsed.search = '';
     parsed.hash = '';
+    if (configured) {
+      if (configured.startsWith('sc-domain:')) return configured;
+      const configuredUrl = new URL(configured);
+      const sameApexHost =
+        configuredUrl.hostname.replace(/^www\./, '') === parsed.hostname.replace(/^www\./, '');
+      if (sameApexHost && parsed.hostname.startsWith('www.') && !configuredUrl.hostname.startsWith('www.')) {
+        return parsed.toString();
+      }
+      return configuredUrl.toString();
+    }
     return parsed.toString();
   } catch {
-    return 'https://yeosonam.com/';
+    return 'https://www.yeosonam.com/';
   }
 }
 
