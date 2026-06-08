@@ -3,6 +3,7 @@ import {
   AD_OS_SAFE_PIPELINE_KEYS,
   buildAdOsSafePipelineSteps,
   isAdOsSafePipelineKey,
+  parseAdOsSafePipelineList,
 } from './ad-os-safe-pipelines';
 
 describe('ad-os safe pipelines', () => {
@@ -10,6 +11,14 @@ describe('ad-os safe pipelines', () => {
     expect(AD_OS_SAFE_PIPELINE_KEYS).toEqual(['google', 'conversion', 'optimization', 'meta_creative']);
     expect(isAdOsSafePipelineKey('google')).toBe(true);
     expect(isAdOsSafePipelineKey('unknown')).toBe(false);
+  });
+
+  it('parses cron pipeline lists with fallback and de-duplication', () => {
+    expect(parseAdOsSafePipelineList('', ['conversion'])).toEqual(['conversion']);
+    expect(parseAdOsSafePipelineList('conversion,google,unknown,google', ['optimization'])).toEqual([
+      'conversion',
+      'google',
+    ]);
   });
 
   it('keeps Google safe pipeline draft-only and audit-backed', () => {

@@ -25,6 +25,14 @@ export function isAdOsSafePipelineKey(value: unknown): value is AdOsSafePipeline
   return AD_OS_SAFE_PIPELINE_KEYS.includes(value as AdOsSafePipelineKey);
 }
 
+export function parseAdOsSafePipelineList(value: unknown, fallback: AdOsSafePipelineKey[]): AdOsSafePipelineKey[] {
+  const raw = String(value || '').trim();
+  const keys = raw
+    ? raw.split(',').map((part) => part.trim()).filter(isAdOsSafePipelineKey)
+    : fallback;
+  return Array.from(new Set(keys));
+}
+
 export function buildAdOsSafePipelineSteps(pipeline: AdOsSafePipelineKey): AdOsSafePipelineStep[] {
   if (pipeline === 'google') {
     return [

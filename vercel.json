@@ -34,6 +34,10 @@
       "schedule": "20 3 * * *"
     },
     {
+      "path": "/api/cron/ad-os-safe-pipelines",
+      "schedule": "35 3 * * *"
+    },
+    {
       "path": "/api/cron/sync-creative-performance",
       "schedule": "6 0 * * *"
     },
@@ -48,6 +52,10 @@
     {
       "path": "/api/cron/unmatched-auto-resolve",
       "schedule": "45 1 * * *"
+    },
+    {
+      "path": "/api/cron/entity-resolution",
+      "schedule": "50 1 * * *"
     },
     {
       "path": "/api/cron/legacy-sections-backfill",

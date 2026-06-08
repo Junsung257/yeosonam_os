@@ -14,6 +14,7 @@
 
 export type SecretKey =
   | 'CRON_SECRET'
+  | 'AD_OS_SAFE_PIPELINE_CRON_PIPELINES'
   | 'ADMIN_API_TOKEN'
   | 'NEXT_PUBLIC_SUPABASE_ANON_KEY'
   | 'SUPABASE_ANON_KEY'
@@ -173,4 +174,3 @@ export function hasResilientLlmConfig(): boolean {
       getSecret('GOOGLE_AI_API_KEY'),
   );
 }
-
