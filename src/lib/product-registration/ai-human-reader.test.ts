@@ -73,6 +73,29 @@ describe('readSupplierDocumentLikeHuman', () => {
     expect(prices).toEqual([999000, 1229000, 1359000, 1439000]);
   });
 
+  it('recognizes labeled departure date lists with a nearby 요금표 line', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '상품명: [RAW-E2E3P] 나트랑/달랏 5성 3박5일',
+        '출발일: 2027-02-04, 2027-02-11',
+        '최소출발 6명 이상',
+        '발권마감 출발 7일 전',
+        '',
+        '요금표',
+        '성인 889,000원 / 아동 889,000원',
+      ].join('\n'),
+      durationDays: 5,
+      year: 2027,
+    });
+
+    expect(result.priceSource).toBe('labeled_date_list_price');
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}:${row.child_price}`)).toEqual([
+      '2027-02-04:889000:889000',
+      '2027-02-11:889000:889000',
+    ]);
+    expect(result.uncertainties).not.toContain('no source-backed product price/date pairs recognized by evidence reader');
+  });
+
   it('reads monthly Korean weekday grids into date-scoped source-backed prices', () => {
     const result = readSupplierDocumentLikeHuman({
       rawText: [

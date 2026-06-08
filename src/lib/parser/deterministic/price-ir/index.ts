@@ -1,5 +1,6 @@
 import type { PriceIROptions, PriceIRResult } from './types';
 import { extractHotelColumnMatrixRows } from './hotel-column-matrix';
+import { extractLabeledDateListPriceRows } from './labeled-date-list-price';
 import { extractMonthDowPriceIR } from './month-dow-table';
 import { extractPeriodDowMatrixRows } from './period-dow-matrix';
 import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
@@ -25,6 +26,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
       source: 'product_price_vertical_date_table',
       rows: productPriceVerticalRows,
       tiers: rowsToTiers(productPriceVerticalRows),
+    };
+  }
+
+  const labeledDateListRows = extractLabeledDateListPriceRows(rawText, options);
+  if (labeledDateListRows.length > 0) {
+    return {
+      source: 'labeled_date_list_price',
+      rows: labeledDateListRows,
+      tiers: rowsToTiers(labeledDateListRows),
     };
   }
 

@@ -132,7 +132,7 @@ describe('recoverUploadPriceData', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.source).toBe('supplier_raw_facts');
+    expect(result.source).toBe('deterministic:labeled_date_list_price');
     expect(result.minPrice).toBe(fixture.expected.adultPrice);
     expect(result.priceRows.length).toBeGreaterThan(0);
     expect(result.priceDates.map(row => row.date)).toEqual(fixture.expected.departureDates);

@@ -44,6 +44,47 @@ describe('upload destination resolution', () => {
 });
 
 describe('upload destination resolution Korean aliases', () => {
+  it('resolves modern Korean destination aliases from existing destination strings', () => {
+    const cases = [
+      ['시즈오카 BX시내숙박 명문골프 3박4일', 'FSZ'],
+      ['청도 색골프 2박3일 BX', 'TAO'],
+      ['북해도 3박4일 온천 2박 시내 1박 도야 오타루 삿포로', 'CTS'],
+      ['토야마 온천3박 알펜루트 쿠로베열차', 'TOY'],
+      ['비엔티안/루앙프라방/방비엥 노팁노옵션', 'VTE'],
+      ['울란바토르 테를지 엘승 실속패키지', 'UBN'],
+      ['마나도 3박 5일 부나켄 아일랜드 호핑', 'MDC'],
+      ['장가계+부용진 4박5일 노팁노옵션', 'DYG'],
+    ] as const;
+
+    for (const [destination, destinationCode] of cases) {
+      const result = resolveUploadDestinationAndCodes({
+        destination,
+        departureAirport: '부산',
+        durationDays: 5,
+        productRawText: destination,
+        documentRawText: destination,
+      });
+
+      expect(result.destinationCode).toBe(destinationCode);
+      expect(result.failures).toEqual([]);
+    }
+  });
+
+  it('infers modern Korean destination aliases from raw text when the destination field is empty', () => {
+    const result = resolveUploadDestinationAndCodes({
+      destination: '',
+      departureAirport: '부산',
+      durationDays: 5,
+      productRawText: 'PKG 노팁 노옵션/울란바토르 테를지 엘승\n울란바토르 공항 도착 후 테를지 이동',
+      documentRawText: '',
+    });
+
+    expect(result.destination).toBe('울란바토르');
+    expect(result.source).toBe('product_raw');
+    expect(result.destinationCode).toBe('UBN');
+    expect(result.failures).toEqual([]);
+  });
+
   it('resolves modern Korean Fukuoka text to FUK without UNK fallback', () => {
     const result = resolveUploadDestinationAndCodes({
       destination: '',

@@ -246,3 +246,39 @@ describe('extractPriceIR single travel-period product price', () => {
     expect(result.rows.some(row => row.adult_price === 150000)).toBe(false);
   });
 });
+
+describe('extractPriceIR labeled departure date list price', () => {
+  it('recovers source-backed prices from 출발일 list plus 요금표 adult child line', () => {
+    const rawText = `
+투어코코넛 나트랑/달랏 5성 3박5일 상품 안내
+상품명: [RAW-E2E3P] 나트랑/달랏 5성 3박5일
+출발공항 부산 / 항공 LJ 진에어
+출발일: 2027-02-04, 2027-02-11
+최소출발 6명 이상
+발권마감 출발 7일 전
+
+요금표
+성인 889,000원 / 아동 889,000원
+
+불포함사항
+가이드/기사 경비, 개인경비 및 매너팁
+`;
+
+    const result = extractPriceIR(rawText, { year: 2027 });
+
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        date: '2027-02-04',
+        adult_price: 889000,
+        child_price: 889000,
+      }),
+      expect.objectContaining({
+        date: '2027-02-11',
+        adult_price: 889000,
+        child_price: 889000,
+      }),
+    ]);
+    expect(result.rows.some(row => row.adult_price === 7)).toBe(false);
+  });
+});
