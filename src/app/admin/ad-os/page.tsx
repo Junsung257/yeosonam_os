@@ -1366,14 +1366,20 @@ export default function AdOsPage() {
         { apply: true, limit: 50 },
         'Google draft platform job preparation failed.',
       );
+      const attempts = await postAdOsJson(
+        '/api/admin/ad-os/platform-jobs/execute',
+        { apply: true, mode: 'dry_run', platform: 'google', limit: 50 },
+        'Google draft platform dry-run failed.',
+      );
 
       await refresh();
       const draftSummary = getAdOsRecord(drafts.summary);
       const packetSummary = getAdOsRecord(packets.summary);
       const gateSummary = getAdOsRecord(gate.summary);
       const jobSummary = getAdOsRecord(jobs.summary);
+      const attemptSummary = getAdOsRecord(attempts.summary);
       setAutomationMessage(
-        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0))}. External API write 0.`,
+        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, dry-run attempts ${formatAdOsNumber(attemptSummary.attempts_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}. External API write 0.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');

@@ -14,6 +14,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
   const mode: PlatformExecutionMode = ['dry_run', 'paused_only', 'active_allowed'].includes(String(body.mode))
     ? String(body.mode) as PlatformExecutionMode
     : 'dry_run';
+  const platform = ['naver', 'google', 'meta', 'kakao'].includes(String(body.platform))
+    ? String(body.platform)
+    : null;
   const limit = Math.min(Math.max(Number(body.limit || 50), 1), 200);
 
   const { data: run, error: runError } = await supabaseAdmin
@@ -22,18 +25,21 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       run_type: 'platform_job_execute',
       mode: apply ? mode : 'dry_run',
       status: 'running',
-      summary: { apply, mode, limit, external_api_write: false },
+      summary: { apply, mode, platform, limit, external_api_write: false },
     })
     .select('id')
     .single();
   if (runError || !run) return NextResponse.json({ ok: false, error: runError?.message || 'run create failed' }, { status: 500 });
 
-  const { data: jobs, error } = await supabaseAdmin
+  let jobQuery = supabaseAdmin
     .from('ad_os_platform_jobs')
     .select('*')
     .in('status', ['approved', 'running'])
     .order('created_at', { ascending: true })
     .limit(limit);
+  if (platform) jobQuery = jobQuery.eq('platform', platform);
+
+  const { data: jobs, error } = await jobQuery;
   if (error) {
     await supabaseAdmin.from('ad_os_automation_runs').update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: error.message }] }).eq('id', run.id);
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
@@ -59,6 +65,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
 
   const summary = {
     jobs_checked: jobs?.length || 0,
+    platform,
     attempts_prepared: attempts.length,
     attempts_written: apply ? attempts.length : 0,
     succeeded: attempts.filter((attempt) => attempt.status === 'succeeded').length,
