@@ -135,6 +135,7 @@ const EMPTY_LEARNING_ENGINE: ProductRegistrationLearningReport = {
   },
   promotion: {
     workItems: [],
+    reviewQueue: [],
     requiresReview: true,
     autoMutationEnabled: false,
   },
@@ -253,6 +254,8 @@ export default function RegistrationMonitorPage() {
   const learningStatuses = learningMicro.statuses ?? {};
   const learningReviewQueue = (learningStatuses.REVIEW_NEEDED ?? 0) + (learningStatuses.BLOCKED ?? 0);
   const learningWorkItems = (learningPromotion.workItems ?? []).slice(0, 5);
+  const learningReviewPlans = (learningPromotion.reviewQueue ?? []).slice(0, 5);
+  const learningVisiblePlans = learningWorkItems.length > 0 ? learningWorkItems : learningReviewPlans;
   const sectionCacheCanaryLabel: Record<MonitorData['sectionCacheCanary']['recommendation'], string> = {
     collect_more_data: 'collect data',
     investigate_quality: 'investigate',
@@ -489,8 +492,8 @@ export default function RegistrationMonitorPage() {
           <Stat
             label="work items"
             value={learningPromotion.workItems.length}
-            hint="review required"
-            tone={learningPromotion.workItems.length > 0 ? 'warn' : 'ok'}
+            hint={`${learningPromotion.reviewQueue?.length ?? 0} review plans`}
+            tone={learningPromotion.workItems.length > 0 || (learningPromotion.reviewQueue?.length ?? 0) > 0 ? 'warn' : 'ok'}
           />
           <Stat
             label="score"
@@ -507,11 +510,12 @@ export default function RegistrationMonitorPage() {
             {learningScore.blockers.slice(0, 3).join(' / ')}
           </div>
         )}
-        {learningWorkItems.length > 0 && (
+        {learningVisiblePlans.length > 0 && (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-admin-sm">
               <thead className="text-left text-admin-muted text-[11px] border-b">
                 <tr>
+                  <th className="py-2">status</th>
                   <th className="py-2">kind</th>
                   <th>signature</th>
                   <th>risk</th>
@@ -522,14 +526,17 @@ export default function RegistrationMonitorPage() {
                 </tr>
               </thead>
               <tbody>
-                {learningWorkItems.map(item => (
+                {learningVisiblePlans.map(item => (
                   <tr key={item.id} className="border-b border-admin-border/30">
+                    <td className="py-1.5 font-mono text-[11px]">
+                      {'status' in item ? item.status : 'review_required'}
+                    </td>
                     <td className="py-1.5 font-mono text-[11px]">{item.kind}</td>
                     <td className="max-w-[260px] truncate text-[11px]" title={item.signature}>{item.signature}</td>
                     <td className={item.risk === 'high' ? 'text-red-600 font-semibold' : item.risk === 'medium' ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
                       {item.risk}
                     </td>
-                    <td className="text-xs">{item.evidenceCount}</td>
+                    <td className="text-xs">{item.evidenceCount} / {item.independentSourceCount}</td>
                     <td className="text-[11px] text-admin-muted-2 font-mono">
                       {(item.evidenceRawTextHashes[0] ?? item.evidencePackageIds[0] ?? 'pending').slice(0, 12)}
                     </td>
@@ -537,7 +544,9 @@ export default function RegistrationMonitorPage() {
                       {item.parserRulePlan.targetModules.slice(0, 2).join(', ')}
                     </td>
                     <td className="text-[11px] text-admin-muted-2">
-                      {item.fixturePlan.assertions[0] ?? item.verificationCommands[0] ?? item.nextAction}
+                      {'blockingReasons' in item && item.blockingReasons.length > 0
+                        ? item.blockingReasons[0]
+                        : item.fixturePlan.assertions[0] ?? item.verificationCommands[0] ?? item.nextAction}
                     </td>
                   </tr>
                 ))}

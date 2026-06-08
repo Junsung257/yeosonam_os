@@ -94,6 +94,7 @@ describe('product registration learning engine report', () => {
     expect(report.macro.shouldRun).toBe(true);
     expect(report.macro.candidates.some(candidate => candidate.promotionReady)).toBe(true);
     expect(report.promotion.workItems.length).toBeGreaterThan(0);
+    expect(report.promotion.reviewQueue.length).toBeGreaterThan(0);
     expect(report.promotion).toEqual(expect.objectContaining({
       requiresReview: true,
       autoMutationEnabled: false,
@@ -105,5 +106,36 @@ describe('product registration learning engine report', () => {
       rawTextStored: false,
       promotionRequiresReview: true,
     });
+  });
+
+  it('surfaces blocked macro candidates as review queue items when they are not promotion-ready', () => {
+    const events = Array.from({ length: 4 }, (_, index) => event({
+      uploadId: `blocked-upload-${index}`,
+      rawTextHash: `blocked-${index}`.padStart(64, 'b').slice(-64),
+      detectedFormat: 'day_table',
+      blockersBefore: ['product_prices missing'],
+      blockersAfter: ['product_prices missing'],
+      normalizedBlockerSignatures: ['product_prices missing'],
+      autoFixesApplied: [],
+      finalStatus: 'BLOCKED',
+      fixtureCandidate: true,
+      ruleCandidate: true,
+      createdAt: `2026-06-07T01:${String(index).padStart(2, '0')}:00.000Z`,
+    }));
+
+    const report = buildProductRegistrationLearningReport({
+      events,
+      since: '2026-06-01T00:00:00.000Z',
+      limit: 500,
+      fullRegressionVerified: true,
+    });
+
+    expect(report.promotion.workItems).toHaveLength(0);
+    expect(report.promotion.reviewQueue.length).toBeGreaterThan(0);
+    expect(report.promotion.reviewQueue[0]).toEqual(expect.objectContaining({
+      status: 'blocked_by_risk',
+      risk: 'high',
+    }));
+    expect(report.nextAction).toContain('blocked macro candidates');
   });
 });

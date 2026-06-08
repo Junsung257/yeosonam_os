@@ -182,6 +182,7 @@ Implementation status:
 - `/admin/registration-monitor` surfaces the same learning report next to registration quality telemetry: micro ledger counts, `AUTO_FIXED` count, review/blocked queue size, macro candidate count, review-required promotion work items, score blockers, and next action.
 - A weekly read-only cron is available at `/api/cron/product-registration-learning-report` and scheduled in `vercel.json`. It summarizes the last 30 days of durable events, macro run reasons, promotion-ready candidate counts, and score blockers.
 - Promotion-ready candidates are converted into review-required promotion work items. Each item includes fixture assertions, target parser modules, safety checks, evidence hashes, and verification commands. It does not auto-edit production parser code.
+- Non-promotion-ready macro candidates are still surfaced as a read-only `promotion.reviewQueue` with blocking reasons, fixture plans, target parser modules, evidence hashes, and verification commands. This prevents high-risk repeated blockers from disappearing just because they are not safe to promote yet.
 - PR-ready patch file generation is still review-gated; the macro engine may propose work items, but an engineer/agent must add the fixture and deterministic rule through the normal regression gates.
 
 Rule promotion order:
