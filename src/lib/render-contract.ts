@@ -76,6 +76,11 @@ export interface ScheduleItem {
   attraction_ids?: string[];
   /** upload route의 enrichItineraryWithAttractionReferences가 박은 관광지명 */
   attraction_names?: string[];
+  entity_kind?: string | null;
+  attraction_query?: string | null;
+  attraction_queries?: string[];
+  landing_sentence?: string | null;
+  a4_sentence?: string | null;
 }
 
 /** Meal — day.meals 와 호환 */
@@ -954,7 +959,11 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
 
   return days.map((d, idx) => {
     const isLastDay = idx === days.length - 1;
-    const origSchedule = Array.isArray(d?.schedule) ? (d.schedule as ScheduleItem[]) : [];
+    const origSchedule = Array.isArray(d?.schedule)
+      ? (d.schedule as ScheduleItem[]).map(item => (
+          item?.a4_sentence ? { ...item, activity: item.a4_sentence } : item
+        ))
+      : [];
 
     // 1) 도착-only flight 아이템 사전 필터 (ERR-HSN-flight-dup-render 의 DetailClient:718 로직 이관)
     const dedupedFlight = origSchedule.filter((item, i) => {

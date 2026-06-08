@@ -83,6 +83,16 @@ function toLpActivityType(type?: string | null): DayActivity['type'] {
   return 'sightseeing';
 }
 
+function toLpActivityTypeFromSchedule(type?: string | null, entityKind?: string | null): DayActivity['type'] {
+  if (entityKind === 'transfer') return 'transport';
+  if (entityKind === 'shopping') return 'shopping';
+  if (entityKind === 'optional_tour') return 'optional';
+  if (entityKind === 'hotel_stay') return 'hotel';
+  if (entityKind === 'meal') return 'meal';
+  if (entityKind === 'flight') return 'flight';
+  return toLpActivityType(type);
+}
+
 function compactKorean(value: string): string {
   return value.replace(/\s+/g, '').trim();
 }
@@ -106,15 +116,23 @@ function isSupplierTableFragment(label: string, type: DayActivity['type'], attra
 }
 
 function toLpActivities(
-  schedule: { activity?: string | null; type?: string | null; note?: string | null; attraction_ids?: string[]; attraction_names?: string[] }[],
+  schedule: {
+    activity?: string | null;
+    type?: string | null;
+    note?: string | null;
+    attraction_ids?: string[];
+    attraction_names?: string[];
+    entity_kind?: string | null;
+    landing_sentence?: string | null;
+  }[],
 ): DayActivity[] {
   return schedule
     .map((s): DayActivity => {
-      const type = toLpActivityType(s.type);
+      const type = toLpActivityTypeFromSchedule(s.type, s.entity_kind);
       const attractionNames = Array.isArray(s.attraction_names) ? s.attraction_names.filter(Boolean) : undefined;
       return {
         type,
-        label: s.activity ?? '',
+        label: s.landing_sentence || s.activity || '',
         detail: s.note ?? undefined,
         attractionIds: Array.isArray(s.attraction_ids) ? s.attraction_ids.filter(Boolean) : undefined,
         attractionNames,
@@ -294,7 +312,15 @@ export function mapTravelPackageToLandingData(
                 lunch: false,
                 dinner: false,
               },
-              activities: toLpActivities((d.schedule as { activity: string; type?: string; note?: string; attraction_ids?: string[]; attraction_names?: string[] }[]) || []),
+              activities: toLpActivities((d.schedule as {
+                activity: string;
+                type?: string;
+                note?: string;
+                attraction_ids?: string[];
+                attraction_names?: string[];
+                entity_kind?: string | null;
+                landing_sentence?: string | null;
+              }[]) || []),
               hotel: (d.hotel as { name?: string } | null)?.name,
             };
           })),

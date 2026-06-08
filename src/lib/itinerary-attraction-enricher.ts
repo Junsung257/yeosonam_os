@@ -73,6 +73,34 @@ function findRegisteredAttractionTermsInText(
   return [...found.values()];
 }
 
+function getAttractionQueries(item: ItineraryScheduleItem): string[] {
+  const rawQueries = Array.isArray(item.attraction_queries)
+    ? item.attraction_queries
+    : typeof item.attraction_query === 'string'
+      ? [item.attraction_query]
+      : [];
+  return rawQueries
+    .map(query => String(query).replace(/\s+/g, ' ').trim())
+    .filter(query => query.length >= 2);
+}
+
+function findMatchesForQueries(
+  queries: string[],
+  attractions: AttractionData[],
+  destination?: string,
+): AttractionData[] {
+  const found = new Map<string, AttractionData>();
+  for (const query of queries) {
+    for (const direct of findRegisteredAttractionTermsInText(query, attractions)) {
+      found.set(String(direct.id ?? direct.name), direct);
+    }
+    for (const matched of matchAttractions(query, attractions, destination)) {
+      found.set(String(matched.id ?? matched.name), matched);
+    }
+  }
+  return [...found.values()];
+}
+
 function isGenericNonAttractionActivity(activity: string): boolean {
   const text = activity.replace(/\s+/g, ' ').trim();
   if (!text) return true;
@@ -95,6 +123,7 @@ function isGenericNonAttractionActivity(activity: string): boolean {
 
 export function shouldAttemptAttractionMatch(item: ItineraryScheduleItem): boolean {
   if (!item.activity) return false;
+  if (item.entity_kind === 'transfer' || item.entity_kind === 'hotel_stay' || item.entity_kind === 'meal') return false;
   if (item.type && SKIP_TYPES.has(item.type)) return false;
   const text = [item.activity, item.note ?? ''].filter(Boolean).join(' ');
   if (MINIMUM_ACTIVITY_HINT_RE.test(text)) {
@@ -145,6 +174,24 @@ export function enrichItineraryWithAttractionReferences(
         return { ...item, attraction_ids: [] };
       }
 
+      const compiledQueries = getAttractionQueries(item);
+      if (compiledQueries.length > 0) {
+        const values = findMatchesForQueries(compiledQueries, attractions, destination);
+        if (values.length === 0) {
+          unmatched.push({ activity: compiledQueries[0], day_number: day.day ?? 0 });
+          return item;
+        }
+        matchedScheduleItemCount++;
+        values.forEach(v => matchedNames.add(v.name));
+        return {
+          ...item,
+          attraction_ids: values.map(v => v.id).filter(Boolean),
+          attraction_names: values.map(v => v.name),
+          attraction_note: values[0]?.short_desc ?? item.note ?? null,
+        };
+      }
+
+      if (!shouldAttemptAttractionMatch(item)) return item;
       const directMatches = findRegisteredAttractionTermsInText(
         [item.activity, item.note ?? ''].filter(Boolean).join(' '),
         attractions,
@@ -161,7 +208,6 @@ export function enrichItineraryWithAttractionReferences(
         };
       }
 
-      if (!shouldAttemptAttractionMatch(item)) return item;
       const candidates = extractAttractionCandidates(item.activity, item.note);
       if (candidates.length === 0) return item;
 
