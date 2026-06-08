@@ -67,6 +67,12 @@ async function runSupabaseQuery(label, queryFactory) {
   return lastResult;
 }
 
+function chunks(values, size) {
+  const out = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
 async function fetchProductPricesByCodes(codes) {
   const rowsByCode = new Map();
   const countsByCode = new Map();
@@ -141,6 +147,7 @@ function trustScore(row) {
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
+  add(row.v3 === 'lookup_failed', 'v3.lookup_failed', 'critical', 40);
   add(row.v3 === 'blocked', 'v3.blocked', 'critical', 40);
   add(row.v3 === 'needs_review', 'v3.needs_review', 'high', 20);
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
@@ -302,7 +309,8 @@ function countLedgerRows(draft, key) {
   return variants.reduce((sum, variant) => sum + (Array.isArray(variant?.[key]) ? variant[key].length : 0), 0);
 }
 
-function gateStatus(draft) {
+function gateStatus(draft, lookupFailed = false) {
+  if (lookupFailed) return 'lookup_failed';
   return draft?.gate_result?.status ?? draft?.status ?? 'none';
 }
 
@@ -337,12 +345,13 @@ function readinessFor(row) {
   if (row.render_failure) failures.push('render_blocked');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
+  if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
   if (row.v3 === 'blocked') failures.push('v3_blocked');
   if (row.entity_attraction_unresolved > 0) failures.push('entity_attraction_unresolved');
+  if (row.entity_shopping_review_needed > 0) failures.push('entity_shopping_review_needed');
+  if (row.entity_option_review_needed > 0) failures.push('entity_option_review_needed');
   if (row.entity_unknown_customer_visible > 0) failures.push('entity_unknown_customer_visible');
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
-  if (row.entity_shopping_review_needed > 0) warnings.push('entity_shopping_review_needed');
-  if (row.entity_option_review_needed > 0) warnings.push('entity_option_review_needed');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
   if (row.entity_noise_removed > 0) warnings.push('entity_noise_removed');
@@ -382,6 +391,7 @@ const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
 const priceRowsLookupFailedCodes = new Set();
+const draftLookupFailedPackageIds = new Set();
 const auditDataErrors = [];
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
@@ -396,14 +406,21 @@ let unmatchedScopeError = null;
 }
 
 if (packageIds.length > 0) {
-  const { data: drafts, error: draftError } = await supabase
-    .from('product_registration_drafts')
-    .select('id, package_id, status, gate_result, ledger, match_summary, created_at')
-    .in('package_id', packageIds)
-    .order('created_at', { ascending: false });
-  if (draftError) {
-    console.error(`Draft lookup failed: ${draftError.message}`);
-  } else {
+  for (const chunk of chunks(packageIds, 25)) {
+    const { data: drafts, error: draftError } = await runSupabaseQuery(
+      `Draft rows ${chunk[0]}`,
+      () => supabase
+        .from('product_registration_drafts')
+        .select('id, package_id, status, gate_result, ledger, match_summary, created_at')
+        .in('package_id', chunk)
+        .order('created_at', { ascending: false }),
+    );
+    if (draftError) {
+      const message = draftError.message ?? String(draftError);
+      for (const packageId of chunk) draftLookupFailedPackageIds.add(packageId);
+      auditDataErrors.push({ scope: 'product_registration_drafts', package_ids: chunk, message });
+      continue;
+    }
     for (const draft of drafts ?? []) {
       if (!draftMap.has(draft.package_id)) draftMap.set(draft.package_id, draft);
     }
@@ -512,6 +529,7 @@ const rows = allPackageRows
   .filter(pkg => scopedPackageIds.has(pkg.id))
   .map(pkg => {
     const draft = draftMap.get(pkg.id);
+    const draftLookupFailed = draftLookupFailedPackageIds.has(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
     const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
@@ -523,8 +541,9 @@ const rows = allPackageRows
       public: isPublicStatus(pkg.status),
       audit: pkg.audit_status ?? '',
       created_at: pkg.created_at,
-      v3: gateStatus(draft),
+      v3: gateStatus(draft, draftLookupFailed),
       draft_id: draft?.id ?? null,
+      draft_lookup_failed: draftLookupFailed,
       price_dates: Array.isArray(pkg.price_dates) ? pkg.price_dates.length : 0,
       price_tiers: Array.isArray(pkg.price_tiers) ? pkg.price_tiers.length : 0,
       product_prices: priceRowsLookupFailed ? null : priceCountMap.get(pkg.internal_code) ?? 0,
@@ -576,6 +595,7 @@ const summary = {
   render_blocked: rows.filter(row => row.render_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
+  v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
   v3_blocked: rows.filter(row => row.v3 === 'blocked').length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
@@ -659,6 +679,7 @@ if (strict) {
   if (summary.render_blocked > 0) strictFailures.push('render_blocked');
   if (summary.itinerary_policy_leak > 0) strictFailures.push('itinerary_policy_leak');
   if (summary.no_itinerary_days > 0) strictFailures.push('no_itinerary_days');
+  if (summary.v3_lookup_failed > 0) strictFailures.push('v3_lookup_failed');
   if (summary.v3_blocked > 0) strictFailures.push('v3_blocked');
   if (summary.v3_needs_review > 0) strictFailures.push('v3_needs_review');
   if (summary.missing_v3_draft > 0) strictFailures.push('missing_v3_draft');
