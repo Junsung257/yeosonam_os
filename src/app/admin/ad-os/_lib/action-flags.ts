@@ -71,6 +71,7 @@ export const ACTION_FLAG_KEYS = [
   'runningMetaCreativeSafePipeline',
   'checkingExecutionGate',
   'checkingGoogleDraftGate',
+  'checkingNaverLivePreflight',
   'runningRollbackDrill',
   'runningLimitedPilot',
   'checkingStagingSmoke',

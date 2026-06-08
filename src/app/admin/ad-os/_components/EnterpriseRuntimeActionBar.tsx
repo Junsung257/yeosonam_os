@@ -14,6 +14,7 @@ export type EnterpriseRuntimeActionKey =
   | 'runMetaCreativeSafePipeline'
   | 'checkExecutionGate'
   | 'checkGoogleDraftGate'
+  | 'checkNaverLivePreflight'
   | 'runRollbackDrill'
   | 'runNaverLimitedPilot'
   | 'runPlatformJobs'
@@ -46,6 +47,7 @@ const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label
   { key: 'runMetaCreativeSafePipeline', label: 'Meta creative pipeline' },
   { key: 'checkExecutionGate', label: 'Naver gate' },
   { key: 'checkGoogleDraftGate', label: 'Google draft gate' },
+  { key: 'checkNaverLivePreflight', label: 'Naver live preflight' },
   { key: 'runRollbackDrill', label: 'Rollback drill' },
   { key: 'runNaverLimitedPilot', label: 'Naver limited pilot' },
   { key: 'runPlatformJobs', label: 'Run platform jobs' },

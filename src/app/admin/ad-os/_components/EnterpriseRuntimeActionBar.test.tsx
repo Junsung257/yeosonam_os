@@ -22,6 +22,7 @@ const actions: EnterpriseRuntimeActionHandlers = {
   runMetaCreativeSafePipeline: noop,
   checkExecutionGate: noop,
   checkGoogleDraftGate: noop,
+  checkNaverLivePreflight: noop,
   runRollbackDrill: noop,
   runNaverLimitedPilot: noop,
   runPlatformJobs: noop,
@@ -61,6 +62,7 @@ describe('Ad OS EnterpriseRuntimeActionBar', () => {
     expect(html).toContain('Meta creative pipeline');
     expect(html).toContain('Naver gate');
     expect(html).toContain('Google draft gate');
+    expect(html).toContain('Naver live preflight');
     expect(html).toContain('Platform dry-run');
     expect(html).toContain('Conversion dry-run');
     expect(html).toContain('Conversion safe pipeline');

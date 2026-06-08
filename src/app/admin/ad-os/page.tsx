@@ -112,7 +112,7 @@ export default function AdOsPage() {
     runningPlatformJobs, runningConversionUpload, runningConversionSafePipeline, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, checkingCredentialPreflight, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
-    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
+    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, checkingNaverLivePreflight, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
 
@@ -1615,6 +1615,20 @@ export default function AdOsPage() {
     });
   };
 
+  const checkNaverLivePreflight = async () => {
+    await runJsonAction({
+      flag: 'checkingNaverLivePreflight',
+      url: '/api/admin/ad-os/channel-adapters/naver/live-preflight',
+      body: { apply: true, limit: 20 },
+      errorMessage: 'Naver live preflight failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        const blockers = Array.isArray(summary.blockers) ? summary.blockers : [];
+        return `Naver live preflight complete: ${String(summary.preflight_status || 'unknown')}, ready jobs ${formatAdOsNumber(summary.ready_jobs)}, blocked jobs ${formatAdOsNumber(summary.blocked_jobs)}, env ${summary.env_flag_enabled ? 'on' : 'off'}, first blocker ${String(blockers[0] || 'none')}. External API write 0.`;
+      },
+    });
+  };
+
   const runRollbackDrill = async () => {
     await runJsonAction<{
       summary?: {
@@ -1845,6 +1859,7 @@ export default function AdOsPage() {
     runMetaCreativeSafePipeline,
     checkExecutionGate,
     checkGoogleDraftGate,
+    checkNaverLivePreflight,
     runRollbackDrill,
     runNaverLimitedPilot,
     runPlatformJobs,
@@ -1874,6 +1889,7 @@ export default function AdOsPage() {
     runMetaCreativeSafePipeline: runningMetaCreativeSafePipeline,
     checkExecutionGate: checkingExecutionGate,
     checkGoogleDraftGate: checkingGoogleDraftGate,
+    checkNaverLivePreflight: checkingNaverLivePreflight,
     runRollbackDrill: runningRollbackDrill,
     runNaverLimitedPilot: runningLimitedPilot,
     runPlatformJobs: runningPlatformJobs,
