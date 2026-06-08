@@ -521,7 +521,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(rows).toContain('price_dates: input.priceDates');
     expect(persistence).toContain(".from('products')");
     expect(persistence).toContain(".upsert(input.rows.productRow, { onConflict: 'internal_code' })");
-    expect(persistence).toContain(".from('product_prices')");
+    expect(persistence).toContain('replaceProductPricesForProduct({');
     expect(persistence).toContain(".from('travel_packages')");
     expect(route).not.toContain('selling_price:');
   });
@@ -531,7 +531,8 @@ describe('upload route registration pipeline boundary', () => {
     const persistence = readPersistenceExecutor();
 
     expect(rows).toContain('adult_selling_price: row.adult_selling_price ?? row.net_price');
-    expect(persistence).toContain('throw new Error(`product_prices save failed: ${priceError.message}`)');
+    expect(persistence).toContain('replaceProductPricesForProduct({');
+    expect(persistence).toContain('throw new Error(priceErrorMessage)');
     expect(persistence).toContain(".from('products')");
     expect(persistence).toContain(".delete()");
     expect(persistence).not.toContain('keeping product for review');
@@ -560,6 +561,26 @@ describe('upload route registration pipeline boundary', () => {
     expect(audit).toContain("failures.push('customer_price_option_mismatch')");
     expect(audit).toContain("strictFailures.push('product_ledger_price_mismatch')");
     expect(audit).toContain("strictFailures.push('customer_price_option_mismatch')");
+  });
+
+  it('fails strict mobile/A4 audit when customer-visible products are not V3 publishable', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain("warnings.push('v3_needs_review')");
+    expect(audit).toContain('missing_v3_draft');
+    expect(audit).toContain("strictFailures.push('v3_blocked')");
+    expect(audit).toContain("strictFailures.push('v3_needs_review')");
+    expect(audit).toContain("strictFailures.push('missing_v3_draft')");
+  });
+
+  it('uses the latest V3 draft match summary before stale unmatched queue rows in mobile/A4 audit', () => {
+    const audit = readMobileReadinessAudit();
+
+    expect(audit).toContain('function draftAttractionUnmatchedCount(draft)');
+    expect(audit).toContain('match_summary, created_at');
+    expect(audit).toContain("eq('status', 'pending')");
+    expect(audit).toContain("is('resolved_attraction_id', null)");
+    expect(audit).toContain('draftAttractionUnmatchedCount(draft) ?? unmatchedCountMap.get(pkg.id) ?? 0');
   });
 
   it('normalizes itinerary before the deliverability gate evaluates A4/mobile inputs', () => {
@@ -617,13 +638,15 @@ describe('upload route registration pipeline boundary', () => {
     expect(reextract).toContain("from '@/lib/product-registration/finalize-registration'");
     expect(reextract).toContain("from '@/lib/product-registration/auto-qa'");
     expect(reextract).toContain("from '@/lib/product-registration/improvement-ledger-persistence'");
-    expect(reextract).toContain('const registration = await registerProductFromRaw({');
-    expect(reextract).toContain('const finalized = finalizeUploadRegistration({');
+    expect(reextract).toContain("from '@/lib/product-registration/product-price-replacement'");
+    expect(reextract).toContain('let registration = await registerProductFromRaw({');
+    expect(reextract).toContain('let finalized = finalizeUploadRegistration({');
     expect(reextract).toContain('runMicroAutoQA({');
     expect(reextract).toContain('persistImprovementLedgerEvents({');
-    expect(reextract).toContain(".from('product_prices')");
-    expect(reextract).toContain('.delete()');
-    expect(reextract).toContain('.insert(priceRowsToInsert)');
+    expect(reextract).toContain('replaceProductPricesForProduct({');
+    expect(reextract).not.toContain(".from('product_prices')");
+    expect(reextract).not.toContain('.delete()');
+    expect(reextract).not.toContain('.insert(priceRowsToInsert)');
     expect(reextract).toContain('withAdminGuard(postHandler)');
     expect(reextract).not.toContain("from '@/lib/parser/extract-itinerary'");
     expect(reextract).not.toContain('extractItineraryData(');

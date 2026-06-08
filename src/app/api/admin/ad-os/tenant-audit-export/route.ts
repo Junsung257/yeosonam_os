@@ -82,7 +82,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .from('ad_os_automation_runs')
     .insert({
       run_type: 'tenant_audit_export',
-      mode: apply ? 'draft_export' : 'dry_run',
+      mode: apply ? 'guarded' : 'dry_run',
       status: 'running',
       summary: { apply, workspace_id: workspace.id, period_start: periodStart, period_end: periodEnd },
     })

@@ -1,20 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { buildAdOsLearningEvidence } from '@/lib/ad-os-v621-v640';
 import { withTimeout } from '@/lib/promise-timeout';
-import { buildSummaryResponse } from '../summary/route';
+import { fetchAdOsSummaryJson } from '../_lib/summary-fetch';
 
 export const dynamic = 'force-dynamic';
 const AD_OS_LEARNING_EVIDENCE_TIMEOUT_MS = 8000;
 
-export const GET = withAdminGuard(async () => {
+export const GET = withAdminGuard(async (request: NextRequest) => {
   try {
-    const summaryResponse = await withTimeout(
-      buildSummaryResponse(),
+    const summary = await withTimeout(
+      fetchAdOsSummaryJson(request),
       AD_OS_LEARNING_EVIDENCE_TIMEOUT_MS,
       'ad os learning evidence',
     );
-    const summary = await summaryResponse.json();
     const facts = Array.isArray(summary?.samples?.performance_facts)
       ? summary.samples.performance_facts
       : [];

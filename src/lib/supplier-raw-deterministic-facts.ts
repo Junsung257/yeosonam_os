@@ -528,6 +528,11 @@ function parseMealToken(value: string | undefined): { enabled: boolean; note: st
   return { enabled: true, note: v };
 }
 
+function extractMealToken(line: string, slot: '조' | '중' | '석'): { enabled: boolean; note: string | null } {
+  const match = line.match(new RegExp(`(?:^|\\s)${slot}\\s*[:：]?\\s*([^\\s]+)`));
+  return parseMealToken(match?.[1]);
+}
+
 function parseRegions(line: string): string[] {
   return line
     .replace(/^\d+\s*일차\s*/, '')
@@ -985,9 +990,9 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
     const body = (match[5] ?? '').split(/^\s*(?:공지|비고|안내사항|주의사항|포함사항|포함내역|불포함사항|불포함내역|취소|환불)\s*$/m)[0] ?? '';
     const hotelLine = body.match(/(?:호텔|숙박)\s*[:：]\s*([^\n]+)/)?.[1]?.trim() ?? null;
     const mealLine = body.match(/식사\s+([^\n]+)/)?.[1] ?? '';
-    const breakfast = parseMealToken(mealLine.match(/조\s*[:：]\s*([^ ]+)/)?.[1]);
-    const lunch = parseMealToken(mealLine.match(/중\s*[:：]\s*([^ ]+)/)?.[1]);
-    const dinner = parseMealToken(mealLine.match(/석\s*[:：]\s*([^ ]+)/)?.[1]);
+    const breakfast = extractMealToken(mealLine, '조');
+    const lunch = extractMealToken(mealLine, '중');
+    const dinner = extractMealToken(mealLine, '석');
     const schedule: ScheduleItem[] = [];
 
     for (const line of body.split(/\r?\n/).map(v => v.trim()).filter(Boolean)) {

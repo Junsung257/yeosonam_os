@@ -12,6 +12,7 @@ function event(overrides: Partial<ImprovementLedgerEvent> = {}): ImprovementLedg
     productId: 'PUS-LA-PQC-05-0001',
     packageId: '550e8400-e29b-41d4-a716-446655440000',
     attemptNo: 0,
+    attemptPhase: 'normal_registration',
     rawTextHash: 'a'.repeat(64),
     sectionRawTextHash: 'b'.repeat(64),
     parserVersion: 'product-registration-central',
@@ -49,6 +50,7 @@ describe('improvement ledger persistence', () => {
       package_id: null,
       raw_text_hash: 'a'.repeat(64),
       section_raw_text_hash: 'b'.repeat(64),
+      attempt_phase: 'normal_registration',
       final_status: 'AUTO_FIXED',
       normalized_blocker_signatures: ['missing price'],
     }));
@@ -85,6 +87,7 @@ describe('improvement ledger persistence', () => {
     expect(insert).toHaveBeenCalledWith([
       expect.objectContaining({
         package_id: '550e8400-e29b-41d4-a716-446655440000',
+        attempt_phase: 'normal_registration',
         final_status: 'AUTO_FIXED',
       }),
     ]);

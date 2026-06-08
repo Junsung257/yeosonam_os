@@ -7,6 +7,12 @@ export type ImprovementAuditStatus = 'pass' | 'warn' | 'fail' | 'unknown';
 
 export type AutoFixKind = 'deterministic' | 'schema_fallback' | 'manual_review_candidate';
 
+export type ImprovementAttemptPhase =
+  | 'normal_registration'
+  | 'deterministic_source_recompare'
+  | 'render_payload_audit_repair'
+  | 'final_reregistration_deliverability_audit';
+
 export type AutoFixRecord = {
   field: string;
   kind: AutoFixKind;
@@ -27,6 +33,7 @@ export type ImprovementLedgerEvent = {
   productId: string | null;
   packageId: string | null;
   attemptNo: number;
+  attemptPhase: ImprovementAttemptPhase;
   rawTextHash: string;
   sectionRawTextHash: string | null;
   parserVersion: string;
@@ -79,6 +86,7 @@ export function buildImprovementLedgerEvent(input: {
   productId?: string | null;
   packageId?: string | null;
   attemptNo: number;
+  attemptPhase?: ImprovementAttemptPhase;
   rawText: string;
   sectionRawText?: string | null;
   parserVersion?: string | null;
@@ -103,6 +111,7 @@ export function buildImprovementLedgerEvent(input: {
     productId: input.productId ?? null,
     packageId: input.packageId ?? null,
     attemptNo: input.attemptNo,
+    attemptPhase: input.attemptPhase ?? attemptPhaseFor(input.attemptNo),
     rawTextHash: hashSourceText(input.rawText),
     sectionRawTextHash: input.sectionRawText ? hashSourceText(input.sectionRawText) : null,
     parserVersion: input.parserVersion ?? 'product-registration-central',
@@ -124,4 +133,11 @@ export function buildImprovementLedgerEvent(input: {
       || normalizedBlockerSignatures.length > 0,
     createdAt: input.createdAt ?? new Date().toISOString(),
   };
+}
+
+export function attemptPhaseFor(attemptNo: number): ImprovementAttemptPhase {
+  if (attemptNo <= 0) return 'normal_registration';
+  if (attemptNo === 1) return 'deterministic_source_recompare';
+  if (attemptNo === 2) return 'render_payload_audit_repair';
+  return 'final_reregistration_deliverability_audit';
 }

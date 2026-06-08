@@ -194,6 +194,7 @@ export async function runUploadRegistrationPipeline(input: {
     catalogGroupId,
     landOperators: landOps,
     irCanaryPrimary,
+    forceReprocess,
   });
 
   const responsePayload = await completeUploadRegistration({

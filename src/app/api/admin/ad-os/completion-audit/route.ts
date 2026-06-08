@@ -1,19 +1,18 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { withTimeout } from '@/lib/promise-timeout';
-import { buildSummaryResponse } from '../summary/route';
+import { fetchAdOsSummaryJson } from '../_lib/summary-fetch';
 
 export const dynamic = 'force-dynamic';
 const AD_OS_COMPLETION_AUDIT_TIMEOUT_MS = 8000;
 
-export const GET = withAdminGuard(async () => {
+export const GET = withAdminGuard(async (request: NextRequest) => {
   try {
-    const summaryResponse = await withTimeout(
-      buildSummaryResponse(),
+    const summary = await withTimeout(
+      fetchAdOsSummaryJson(request),
       AD_OS_COMPLETION_AUDIT_TIMEOUT_MS,
       'ad os completion audit',
     );
-    const summary = await summaryResponse.json();
     const audit = summary?.enterprise_layer?.completion_audit;
 
     if (!audit) {

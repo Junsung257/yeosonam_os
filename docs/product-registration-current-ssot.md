@@ -1,6 +1,6 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-06-07
+Last updated: 2026-06-08
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -8,12 +8,14 @@ The priority is internal reliability first. Do not design the public API layer u
 
 ## Research Recheck
 
-The 2026-06-07 direction remains correct after rechecking document-AI and agent-learning references:
+The 2026-06-08 direction remains correct after rechecking document-AI and agent-learning references:
 
 - Docling-style document IR uses structured document objects with provenance. Our source span, hash, section, and future table-row/cell evidence contract follows that direction without adding OCR/PDF dependencies to production text upload yet. Reference: https://docling-project.github.io/docling/concepts/docling_document/
 - Unstructured-style partition/chunk pipelines keep documents as elements before chunking. Our product/section/table/day-row split is intentionally structural, not random text splitting. References: https://docs.unstructured.io/open-source/core-functionality/partitioning and https://docs.unstructured.io/open-source/core-functionality/chunking
 - Structured LLM fallback must be schema-bound and eval-gated. Deterministic parser/IR still wins when source-backed extraction is complete. Reference: https://developers.openai.com/api/docs/guides/structured-outputs
 - Agent memory systems such as Reflexion/Voyager are useful as inspiration for episodic learning, but production promotion must stay review-gated with fixtures and regression tests. References: https://arxiv.org/abs/2303.11366 and https://arxiv.org/abs/2305.16291
+- DSPy/LangGraph-style optimization and durable workflow ideas are useful only when their outputs remain testable artifacts. In this repo, optimization output becomes a ledger event, macro candidate, fixture plan, or review-required work item, not direct production mutation.
+- OCR/PDF tools such as Marker, MinerU, PaddleOCR PP-StructureV3, and LayoutParser remain benchmark candidates. Their current public docs emphasize table/layout/document parsing, which matches our offline candidate harness, but not a reason to add them to production upload yet. References: https://www.paddleocr.ai/main/en/version3.x/algorithm/PP-StructureV3/PP-StructureV3.html, https://mineru.net/doc/docs/index_en/, https://layout-parser.github.io/
 
 Therefore the correct architecture is still:
 
@@ -122,7 +124,7 @@ Automatic improvement is capped at three repair attempts. After three attempts, 
 
 Every micro run must create an improvement ledger event with:
 
-- `uploadId`, `productId`, `packageId`, `attemptNo`.
+- `uploadId`, `productId`, `packageId`, `attemptNo`, `attemptPhase`.
 - `rawTextHash`, `sectionRawTextHash`, parser version, detected format.
 - blockers before/after.
 - source evidence spans and quotes.
@@ -134,10 +136,13 @@ Every micro run must create an improvement ledger event with:
 
 Implementation status:
 
-- Shadow-mode micro QA runs in the central upload product runner, not in `/api/upload`.
-- The runner collects improvement ledger events for deliverability-blocked, upload-gate-blocked, and successfully saved products.
-- The runner persists shadow events to `product_registration_improvement_events` after the product loop. This is append-only and must not store supplier raw text, only hashes, blockers, evidence spans, render audit results, and rule/fixture candidate flags.
-- Upload responses expose `learningEngine.mode = "shadow"` with captured/persisted micro event counts, latest statuses, persistence error, macro candidate preview, and scorecard blockers.
+- Micro QA runs in the central upload product runner, not in `/api/upload`.
+- The runner now applies a narrow deterministic pre-save repair loop for customer selling price completion and `price_dates` date-level minimum alignment when those fixes can be derived from existing `product_prices`. The repaired registration object is the one used for persistence and render audit when the deliverability gate becomes clean.
+- Triggered micro QA writes one normal-registration ledger event plus up to three bounded repair/final audit events. The phase names are `normal_registration`, `deterministic_source_recompare`, `render_payload_audit_repair`, and `final_reregistration_deliverability_audit`.
+- Saved-package re-extraction at `/api/packages/reextract` uses the same central parser, same bounded pre-save micro repair, and persists ledger attempts for both blocked and saved outcomes.
+- The runner collects improvement ledger events for deterministic auto-fixed products, deliverability-blocked products, upload-gate-blocked products, and successfully saved products.
+- The runner persists events to `product_registration_improvement_events` after the product loop. This is append-only and must not store supplier raw text, only hashes, blockers, evidence spans, render audit results, and rule/fixture candidate flags.
+- Upload responses expose `learningEngine.mode = "shadow"` for macro promotion because production parser mutation remains disabled; micro deterministic repair can affect the current upload only inside the bounded pre-save loop.
 - The integration test `src/lib/product-registration/learning-engine-integration.test.ts` must prove persisted micro events can be loaded into a macro report, produce promotion work items, and score 100 only when full regression is marked verified.
 
 ### Macro Pattern Mining Contract
@@ -167,8 +172,11 @@ Implementation status:
 - Macro candidate mining can run over improvement ledger events in memory.
 - The durable event table exists as `product_registration_improvement_events`; scheduled macro jobs and operator reports must read from that table, not from request-local response objects.
 - It groups blocker signatures, supplier formats, deterministic fixes, schedule-pollution fixes, and render failures.
-- It marks candidates as promotion-ready only when enough evidence exists and risk is not high.
+- It also classifies review candidates for section heading aliases, price table aliases, itinerary column aliases, optional-tour/surcharge phrases, include/exclude/notice stop-heading candidates, hotel/room/grade aliases, and flight/time/vehicle pollution signatures.
+- It marks candidates as promotion-ready only when enough independent source evidence exists and risk is not high. Multiple repair attempts from the same raw-text hash count as one independent source for promotion.
+- Candidate auto-fix success rate must be calculated over deterministic-fix events only and must stay in the 0..1 range.
 - A read-only operator report is available at `/api/admin/product-registration/learning-report`. It loads durable ledger events, produces macro candidates, returns the 100-point score, and confirms that production mutation is disabled.
+- `/admin/registration-monitor` surfaces the same learning report next to registration quality telemetry: micro ledger counts, `AUTO_FIXED` count, review/blocked queue size, macro candidate count, review-required promotion work items, score blockers, and next action.
 - A weekly read-only cron is available at `/api/cron/product-registration-learning-report` and scheduled in `vercel.json`. It summarizes the last 30 days of durable events, macro run reasons, promotion-ready candidate counts, and score blockers.
 - Promotion-ready candidates are converted into review-required promotion work items. Each item includes fixture assertions, target parser modules, safety checks, evidence hashes, and verification commands. It does not auto-edit production parser code.
 - PR-ready patch file generation is still review-gated; the macro engine may propose work items, but an engineer/agent must add the fixture and deterministic rule through the normal regression gates.
@@ -188,6 +196,7 @@ candidate
 Promotion requires:
 
 - at least three independent source documents or one critical supplier format approved by review.
+- repeated attempts or phase events from the same `rawTextHash` do not satisfy the independent-source requirement.
 - source spans for every proposed mapping.
 - auto-fix success rate at least 80% for the candidate pattern, when historical data exists.
 - zero known customer-critical regressions.
@@ -204,7 +213,7 @@ Micro engine score, 100 points:
 - 20 source comparison: raw source, section raw text, evidence spans, and standardized fields are compared.
 - 15 auto repair discipline: deterministic repairs run before LLM fallback, max three attempts, no unsafe direct DB mutation.
 - 20 customer render audit: `/packages` and A4 payload audits run with customer-safe price and itinerary data.
-- 15 improvement ledger: every attempt stores before/after blockers, fixes, evidence, status, and fixture/rule candidate flags.
+- 15 improvement ledger: every attempt stores phase, before/after blockers, fixes, evidence, status, and fixture/rule candidate flags.
 - 15 safety gates: publish requires deliverability, price storage alignment, customer selling price, destination, itinerary, and render readiness.
 
 Macro engine score, 100 points:
@@ -267,6 +276,7 @@ Current rule:
 price success =
   product_prices.length > 0
   AND price_dates.length > 0
+  AND every positive product_prices.target_date appears in price_dates
   AND every price_dates.date has at least one product_prices.target_date
   AND the minimum product_prices.net_price for a date matches price_dates.price
   AND every positive product_prices.net_price has adult_selling_price
@@ -274,6 +284,7 @@ price success =
 
 `price_dates` is the date-level minimum used for calendars and summary pricing.
 `product_prices` is the customer option ledger used by mobile landing and A4. Hotel/grade columns, room choices, and other same-date price options must stay as separate `product_prices` rows.
+If a `product_prices` date is missing from `price_dates`, the registration is not customer-ready because the customer calendar can hide a sellable option.
 
 Customer pages must never read or serialize internal `net_price` as the customer selling price. Customer-safe price payloads use `adult_selling_price`.
 
@@ -304,11 +315,35 @@ Registration is not complete unless all three stores are consistent:
 - `product_prices`: customer option rows with `target_date`, `net_price`, `adult_selling_price`, and option label/note when relevant.
 - `travel_packages`: customer package row with `price_dates`, itinerary, raw evidence, render-ready fields, and review status.
 
-`product_prices` insert failure is a blocker. It must not be downgraded to a warning after `travel_packages` is saved.
+`product_prices` persistence failure is a blocker. It must not be downgraded to a warning after `travel_packages` is saved.
+
+All upload and re-extract paths must replace `product_prices` through `public.replace_product_prices_for_product(product_id, rows)` via `src/lib/product-registration/product-price-replacement.ts`. The function takes a per-product advisory transaction lock, row-locks the `products` ledger row, deletes prior price rows, and inserts the new customer option rows as one database statement. Do not reintroduce app-layer `delete().eq('product_id')` followed by `insert()` for this flow.
 
 If `products` was newly inserted and `product_prices` persistence fails, delete that product row before returning the error. If an existing `products` row was updated and `product_prices` persistence fails, restore the pre-write product row before returning the error. Do not save `travel_packages` after `product_prices` failure.
 
 The database guard from migration `20260605121000_product_prices_customer_selling_price_guard.sql` fills `adult_selling_price` from `net_price` when needed and prevents positive customer price rows from remaining customer-invisible.
+
+The atomic replacement function is defined in migration `20260607053000_atomic_product_price_replacement.sql`.
+Access is hardened by `20260607161500_harden_product_registration_learning_access.sql`: anon/authenticated execution is explicitly revoked, and only `service_role` keeps runtime execute access for the upload/re-extract server paths.
+
+### Section Idempotency and Job Status
+
+Multi-product uploads must claim each product section before expensive registration work. The claim key is:
+
+```text
+raw_text_hash + section_raw_text_hash + supplier_code + normalized_title
+```
+
+The durable ledger is `product_registration_section_jobs`, created by migration `20260607061000_product_registration_section_jobs.sql`. RLS is enabled, anon/authenticated table grants are revoked, and `20260607161500_harden_product_registration_learning_access.sql` adds the explicit `service_role` policy used by the server pipeline. The upload runner uses `src/lib/product-registration/upload-section-idempotency.ts` to:
+
+- insert a `processing` job before `registerProductFromRaw()`.
+- skip already `completed` jobs and non-stale `processing` jobs unless the request uses `force=1` / `reprocess=1`.
+- reclaim `failed`, `blocked`, or stale `processing` jobs by incrementing `attempt_count` and resetting the row to `processing`; this keeps duplicate creation blocked while allowing automatic recovery after parser/QA improvements.
+- mark jobs `completed` with persisted `product_id` and `package_id`.
+- mark customer-deliverability or upload-gate failures as `blocked`.
+- mark unexpected save exceptions as `failed`.
+
+This is section-level idempotency. Document-level duplicate guards in `document_hashes` still run first and must not be removed.
 
 ## Customer Deliverability Gate
 
@@ -392,25 +427,117 @@ Optional-tour lines with comma-separated entries must be split into individual c
 
 Do not auto-seed attractions during product registration. If a tourism point is not matched, keep it as text and send it to the unmatched/review path. Attraction DB creation is a separate managed workflow.
 
+## Verified Master Candidate Automation Contract
+
+The unmatched queue may be promoted into evidence-backed master candidates, but automation has two separate gates:
+
+- internal candidate/master creation: allowed only for high-confidence structured candidates, stored as `auto_created=true`, `verification_status='auto_internal'`, and `customer_publishable=false`.
+- customer-publishable master creation: allowed only after independent external identity evidence such as Wikidata plus official/OSM/Google/supplier verification, or explicit admin approval.
+
+The queue table is `entity_master_candidates`. It groups `unmatched_activities` by category, normalized label, and regional scope, then records evidence counts, occurrence counts, source unmatched IDs, source context, suggested master data, confidence, and the recommended action.
+
+The single itinerary entity resolution engine is `src/lib/itinerary-entity-resolution-engine.ts`. It is the shared path for current backlog cleanup and future cron automation:
+
+```text
+unmatched_activities
+  -> entity_master_candidates
+  -> Naver naming signal + external identity signal
+  -> verification attempt log
+  -> internal/publishable-ready/review/noise decision
+```
+
+Source roles are intentionally separated:
+
+- Naver Search and SearchAd: Korean user-facing naming, alias popularity, and representative-name selection. SearchAd volume can choose the canonical display candidate, but it is not enough by itself to prove that a place exists.
+- Wikidata/OSM/official/manual evidence: identity proof. A customer-publishable attraction candidate requires at least one identity source plus an independent supporting source.
+- Supplier/internal evidence: occurrence and regional context. It can increase confidence but cannot bypass identity verification for new customer-visible master records.
+
+The verification state is stored on `entity_master_candidates` as `auto_verification_status`, `verification_score`, `canonical_name`, `canonical_name_source`, `source_reliability_snapshot`, and `verified_at`. Each external lookup is logged in `entity_verification_attempts` so the engine learns from successful, empty, errored, and skipped checks.
+
+Recommended actions:
+
+- `reject_noise`: section headings, date/price fragments, movement tokens, URLs, and other non-entity scraps.
+- `structure_non_master`: room types, golf fee fragments, table cells, and other useful structured data that should not become a master record.
+- `create_internal_master`: probable attraction/hotel identity that can reduce future matching noise, but must remain hidden from customer payloads.
+- `create_publishable_master`: only when the candidate has reliable independent external identity evidence and passes the publish gate.
+- `needs_review`: shopping, optional tour, notice, unclear hotel, and any customer-visible phrase with insufficient evidence.
+
+Run `npx tsx scripts/analyze-unmatched-master-candidates.ts --json` to inspect the queue. Add `--apply` to persist candidate groups. Add `--promote-internal` only after confirming the migration is applied; it may create internal non-customer-publishable attraction records, never public customer records.
+
+Run `npx tsx scripts/verify-entity-master-candidates.ts --json --limit=20` to verify candidate names and identity evidence without writing. Add `--apply` to persist verification state and attempt logs. The scheduled path is `/api/cron/entity-resolution`, after `/api/cron/unmatched-auto-resolve`.
+
+`needs_review` is not intended to mean "the owner must inspect every row." Use the automatic review audit first:
+
+```bash
+npm run audit:entity-review-candidates -- --json
+npm run audit:entity-review-candidates:apply -- --json
+```
+
+This audit may automatically move terminal non-master patterns out of review while preserving source evidence in `suggested_master.auto_review`. Examples include airline/package tokens, date/price fragments, country-only tokens, generic attraction-type tokens, hotel operational fragments, and customer-disclosure fragments. It must not reject a safe canonical place name merely because the supplier source line also contains a date or price; the decision is based primarily on the canonical candidate name.
+
+Low-risk repeated fragments can leave active review automatically when source evidence is preserved:
+
+- standard schedule-change notices such as local/airline circumstances or weather/force-majeure schedule changes, unless they mention cancellation, refund, visa/passport/entry, insurance, payment, surcharge, price change, fuel, commission, or exchange-rate risk.
+- option detail facts such as green fee, caddie/cart fee, caddie tip, tee time, course info, odd-person cart surcharge, club rental, locker use, on-site payment, golf-yard/par metrics, tee-up/through-play/self-rounding fragments, or source-backed golf round labels such as `CC 18홀 라운딩`.
+- low-risk preparation/service fragments such as swimsuit, life jacket, bait, one-way lift, round-trip cable car, glass observatory, or one-way luge. These stay as source-backed structured facts, not attraction masters.
+- hotel room/in-flight lodging fragments such as `2인실`, standard/deluxe/superior labels, room type labels, and `기내박`.
+
+These are `structure_non_master` or `template_matched` outcomes, not new attractions/hotels and not customer-publishable master creation.
+
+Customer-facing attraction APIs must hide `customer_publishable=false` records by default. Admin tools may request `include_unpublishable=1`.
+
 ## OCR/PDF Candidate Contract
 
 Docling, Unstructured, Marker, MinerU, Camelot, PaddleOCR, Azure Document Intelligence, and similar tools are benchmark candidates only until text-upload golden corpus and source-span IR are stable. Do not add them as production dependencies in the upload route.
 
 Any OCR/PDF benchmark must compare candidates offline using the same customer outcomes as the text corpus: product split count, price rows/dates, itinerary days, flight/hotel/meal relocation, evidence spans, and `/packages` + A4 render readiness.
 
+Implementation status:
+
+- `src/lib/product-registration/ocr-benchmark.ts` accepts OCR/PDF candidate extracted text and scores it through the same central registration engine and customer render checks.
+- `npm run benchmark:product-ocr` runs the offline benchmark. With no input file, it uses the supplier raw golden fixtures, including the noisy OCR fixture, as the text-upload baseline.
+- `npm run benchmark:product-ocr -- --input=path/to/candidates.json --json` can compare extracted text from Docling, Marker, MinerU, PaddleOCR PP-StructureV3, LayoutParser, Azure Document Intelligence, or any other candidate without adding that tool to production.
+- `npm run benchmark:product-ocr:ci` is strict and fails when any candidate is not final-customer-outcome ready.
+
+## Ignored Noise Audit Contract
+
+`unmatched_activities.status='ignored'` is not a permanent delete bucket. It must be periodically audited because legacy ignores may contain reusable customer-facing or parser-training evidence.
+
+The allowed final ignored categories are narrow:
+
+- true noise: empty/symbol fragments, broken table labels, non-entity scraps.
+- price/date evidence: shorthand prices, date ranges, age-price fragments, table cells. These stay out of the schedule render but keep `suggested_resolution.usable_signal=true` so price/date parsers and macro mining can reuse the evidence.
+- free-time fragments that do not change customer notice copy.
+
+Do not leave these as ignored when detected:
+
+- customer notices: passport, entry, ticketing, cancellation, refund, payment, insurance, or price-change warnings.
+- shopping phrases.
+- optional tours, included services, golf tee/rounding/service details, massage/tip details.
+- hotel, meal, transfer, ferry, airport, and flight-code events.
+- possible attraction text. Move it back to review/new-master candidate. Automatic internal master records must stay `customer_publishable=false` until independently verified.
+
+Use `npx tsx scripts/audit-ignored-unmatched-entities.ts --json` for a dry run and add `--apply` only after reviewing the summary. The script must preserve source context, raw hash, previous resolution metadata, and classification version.
+
 ## Required Verification
 
 Before declaring the registration engine ready:
 
 ```bash
+npm run verify:product-registration-learning
+npm run verify:product-registration-live-samples:ci
+npm run audit:drift:ci
 npx vitest run src/lib/product-registration/learning-engine-integration.test.ts
 npx vitest run src/lib/parser/deterministic src/lib/product-registration src/lib/upload-validator.test.ts src/lib/price-dates.test.ts src/lib/upload-verify.test.ts
 npm run type-check
 npm run eval:product-registration:ci
+npm run benchmark:product-ocr:ci
 node --check scripts/audit-product-mobile-landing-readiness.mjs
 ```
 
-After deployment or remote DB/data changes, run the live readiness audit with `npx tsx scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict` using the appropriate filters.
+After deployment or remote DB/data changes, run the live readiness audit with `npm run verify:product-registration-learning:live`, `npm run verify:product-registration-live-samples:ci`, or `npx tsx scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict` using the appropriate filters. Before release handoff, run `npm run verify:product-registration-learning:full` so the same regression gates, stored live-sample learning verification, live audit, and production build pass together.
+
+The strict live audit must fail customer-visible samples when the latest V3 draft is `blocked`, `needs_review`, or missing. For attraction matching, the latest `product_registration_drafts.match_summary.attraction_unmatched_count` is authoritative; the legacy `unmatched_activities` queue is only a fallback when no draft summary exists, and only unresolved pending rows count.
 
 ## Agent/Harness Setup
 

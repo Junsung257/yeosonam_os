@@ -19,7 +19,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .from('ad_os_automation_runs')
     .insert({
       run_type: 'naver_live_preflight',
-      mode: 'read_only',
+      mode: 'dry_run',
       platform: 'naver',
       status: 'running',
       summary: {

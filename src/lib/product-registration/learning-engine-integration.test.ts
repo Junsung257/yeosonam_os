@@ -12,6 +12,7 @@ function event(index: number): ImprovementLedgerEvent {
     productId: `PUS-LA-PQC-05-${String(index).padStart(4, '0')}`,
     packageId: '550e8400-e29b-41d4-a716-446655440000',
     attemptNo: 1,
+    attemptPhase: 'deterministic_source_recompare',
     rawTextHash: `${index.toString(16).padStart(64, '0')}`.slice(0, 64),
     sectionRawTextHash: null,
     parserVersion: 'product-registration-central',

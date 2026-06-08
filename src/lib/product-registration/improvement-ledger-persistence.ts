@@ -13,6 +13,7 @@ type ImprovementLedgerEventRow = {
   product_id: string | null;
   package_id: string | null;
   attempt_no: number;
+  attempt_phase: ImprovementLedgerEvent['attemptPhase'];
   raw_text_hash: string;
   section_raw_text_hash: string | null;
   parser_version: string;
@@ -49,6 +50,7 @@ export function mapImprovementLedgerEventToRow(event: ImprovementLedgerEvent): I
     product_id: event.productId,
     package_id: normalizeUuid(event.packageId),
     attempt_no: event.attemptNo,
+    attempt_phase: event.attemptPhase,
     raw_text_hash: normalizeHash(event.rawTextHash),
     section_raw_text_hash: event.sectionRawTextHash ? normalizeHash(event.sectionRawTextHash) : null,
     parser_version: event.parserVersion,

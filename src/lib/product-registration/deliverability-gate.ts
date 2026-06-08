@@ -80,6 +80,11 @@ function findPriceStorageMismatch(input: UploadDeliverabilityInput): string | nu
     pricesByDate.set(row.target_date, prices);
   }
 
+  const priceDateByDate = new Map(input.priceDates.map(priceDate => [priceDate.date, priceDate]));
+  for (const date of [...pricesByDate.keys()].sort()) {
+    if (!priceDateByDate.has(date)) return `price_dates missing date ${date}`;
+  }
+
   for (const priceDate of input.priceDates) {
     const rowPrices = pricesByDate.get(priceDate.date);
     if (!rowPrices || rowPrices.length === 0) return `product_prices missing date ${priceDate.date}`;

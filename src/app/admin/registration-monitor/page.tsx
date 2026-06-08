@@ -9,6 +9,8 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
+import { formatRatioPercent, formatScore100 } from '@/lib/admin/registration-monitor-format';
+import type { ProductRegistrationLearningReport } from '@/lib/product-registration/learning-engine-report';
 
 interface TriggerCondition {
   id: string;
@@ -112,7 +114,45 @@ interface MonitorData {
       duplicateRawHash: string;
     }>;
   };
+  learningEngine?: ProductRegistrationLearningReport;
 }
+
+const EMPTY_LEARNING_ENGINE: ProductRegistrationLearningReport = {
+  ok: false,
+  generatedAt: '',
+  window: { since: null, limit: 0, eventsLoaded: 0 },
+  micro: {
+    eventsCaptured: 0,
+    eventsPersisted: 0,
+    statuses: {},
+    fixtureCandidates: 0,
+    ruleCandidates: 0,
+  },
+  macro: {
+    shouldRun: false,
+    runReasons: [],
+    candidates: [],
+  },
+  promotion: {
+    workItems: [],
+    requiresReview: true,
+    autoMutationEnabled: false,
+  },
+  score: {
+    micro: 0,
+    macro: 0,
+    combined: 0,
+    productionReady: false,
+    blockers: ['learning report unavailable'],
+  },
+  safety: {
+    readOnly: true,
+    productionMutation: false,
+    rawTextStored: false,
+    promotionRequiresReview: true,
+  },
+  nextAction: 'Check the learning report API and durable ledger access.',
+};
 
 const gateLabel: Record<string, { text: string; cls: string }> = {
   auto_publish:   { text: '자동',    cls: 'bg-emerald-100 text-emerald-700' },
@@ -120,6 +160,12 @@ const gateLabel: Record<string, { text: string; cls: string }> = {
   pending_review: { text: '검토',    cls: 'bg-orange-100 text-orange-700'   },
   rejected:       { text: '거절',    cls: 'bg-red-100    text-red-700'      },
 };
+
+function hasLearningReportShape(value: unknown): value is ProductRegistrationLearningReport {
+  if (!value || typeof value !== 'object') return false;
+  const report = value as Partial<ProductRegistrationLearningReport>;
+  return Boolean(report.micro && report.macro && report.promotion && report.score && report.window);
+}
 
 export default function RegistrationMonitorPage() {
   const [data, setData] = useState<MonitorData | null>(null);
@@ -132,6 +178,9 @@ export default function RegistrationMonitorPage() {
     try {
       const res = await fetch('/api/admin/registration-monitor');
       const d = await res.json();
+      if (!d?.policy || !d?.last30dStats || !d?.triggerEval) {
+        throw new Error(d?.error ?? 'INVALID_MONITOR_RESPONSE');
+      }
       setData(d);
     } catch {
       setToast('로드 실패');
@@ -191,7 +240,19 @@ export default function RegistrationMonitorPage() {
   if (!data) return <div className="p-8 text-red-500">데이터 없음</div>;
 
   const { policy, last30dStats, triggerEval, recentLog, dailyTrend } = data;
-  const pct = (n: number) => `${Math.round(n * 1000) / 10}%`;
+  const score100 = formatScore100;
+  const pct = formatRatioPercent;
+  const learningEngine = hasLearningReportShape(data.learningEngine)
+    ? data.learningEngine
+    : EMPTY_LEARNING_ENGINE;
+  const learningMicro = learningEngine?.micro ?? EMPTY_LEARNING_ENGINE.micro;
+  const learningMacro = learningEngine?.macro ?? EMPTY_LEARNING_ENGINE.macro;
+  const learningPromotion = learningEngine?.promotion ?? EMPTY_LEARNING_ENGINE.promotion;
+  const learningScore = learningEngine?.score ?? EMPTY_LEARNING_ENGINE.score;
+  const learningWindow = learningEngine?.window ?? EMPTY_LEARNING_ENGINE.window;
+  const learningStatuses = learningMicro.statuses ?? {};
+  const learningReviewQueue = (learningStatuses.REVIEW_NEEDED ?? 0) + (learningStatuses.BLOCKED ?? 0);
+  const learningWorkItems = (learningPromotion.workItems ?? []).slice(0, 5);
   const sectionCacheCanaryLabel: Record<MonitorData['sectionCacheCanary']['recommendation'], string> = {
     collect_more_data: 'collect data',
     investigate_quality: 'investigate',
@@ -389,6 +450,99 @@ export default function RegistrationMonitorPage() {
                   {fixture.id}: {fixture.failures.join(', ')}
                 </div>
               ))}
+          </div>
+        )}
+      </section>
+
+      <section className="bg-white border border-admin-border rounded-lg p-5">
+        <h2 className="text-admin-sm font-bold mb-3">
+          Product Learning Engine
+          <span className="ml-2 text-[10px] text-admin-muted-2 font-normal">
+            micro repair ledger / reviewed macro promotion
+          </span>
+        </h2>
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+          <Stat
+            label="ledger events"
+            value={learningMicro.eventsPersisted}
+            hint={`${learningWindow.eventsLoaded} loaded`}
+            tone={learningMicro.eventsPersisted > 0 ? 'ok' : undefined}
+          />
+          <Stat
+            label="auto fixed"
+            value={learningStatuses.AUTO_FIXED ?? 0}
+            hint="deterministic repairs"
+            tone={(learningStatuses.AUTO_FIXED ?? 0) > 0 ? 'ok' : undefined}
+          />
+          <Stat
+            label="review queue"
+            value={learningReviewQueue}
+            hint="review needed + blocked"
+            tone={learningReviewQueue > 0 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="macro candidates"
+            value={learningMacro.candidates.length}
+            hint={learningMacro.shouldRun ? 'threshold met' : 'collecting'}
+            tone={learningMacro.shouldRun ? 'warn' : undefined}
+          />
+          <Stat
+            label="work items"
+            value={learningPromotion.workItems.length}
+            hint="review required"
+            tone={learningPromotion.workItems.length > 0 ? 'warn' : 'ok'}
+          />
+          <Stat
+            label="score"
+            value={score100(learningScore.combined)}
+            hint={learningScore.productionReady ? 'production ready' : 'gated'}
+            tone={learningScore.productionReady ? 'ok' : 'warn'}
+          />
+        </div>
+        <div className="mt-3 text-[11px] text-admin-muted-2">
+          {learningEngine.nextAction}
+        </div>
+        {learningScore.blockers.length > 0 && (
+          <div className="mt-2 text-[11px] text-amber-700">
+            {learningScore.blockers.slice(0, 3).join(' / ')}
+          </div>
+        )}
+        {learningWorkItems.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full text-admin-sm">
+              <thead className="text-left text-admin-muted text-[11px] border-b">
+                <tr>
+                  <th className="py-2">kind</th>
+                  <th>signature</th>
+                  <th>risk</th>
+                  <th>evidence</th>
+                  <th>hash/package</th>
+                  <th>target modules</th>
+                  <th>checks</th>
+                </tr>
+              </thead>
+              <tbody>
+                {learningWorkItems.map(item => (
+                  <tr key={item.id} className="border-b border-admin-border/30">
+                    <td className="py-1.5 font-mono text-[11px]">{item.kind}</td>
+                    <td className="max-w-[260px] truncate text-[11px]" title={item.signature}>{item.signature}</td>
+                    <td className={item.risk === 'high' ? 'text-red-600 font-semibold' : item.risk === 'medium' ? 'text-amber-600 font-semibold' : 'text-emerald-600 font-semibold'}>
+                      {item.risk}
+                    </td>
+                    <td className="text-xs">{item.evidenceCount}</td>
+                    <td className="text-[11px] text-admin-muted-2 font-mono">
+                      {(item.evidenceRawTextHashes[0] ?? item.evidencePackageIds[0] ?? 'pending').slice(0, 12)}
+                    </td>
+                    <td className="text-[11px] text-admin-muted-2">
+                      {item.parserRulePlan.targetModules.slice(0, 2).join(', ')}
+                    </td>
+                    <td className="text-[11px] text-admin-muted-2">
+                      {item.fixturePlan.assertions[0] ?? item.verificationCommands[0] ?? item.nextAction}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>

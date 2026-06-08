@@ -28,6 +28,11 @@ import {
   evaluateGoldenCorpus,
   type GoldenCorpusReport,
 } from '@/lib/product-registration/golden-corpus/evaluator';
+import {
+  buildProductRegistrationLearningReport,
+  loadProductRegistrationLearningReport,
+  type ProductRegistrationLearningReport,
+} from '@/lib/product-registration/learning-engine-report';
 
 interface TriggerCondition {
   id: 'reject_rate' | 'weekly_leak' | 'cove_pass_rate' | 'reflexion_count';
@@ -91,6 +96,7 @@ interface MonitorResponse {
   sectionCacheCanary: SectionCacheCanaryResult;
   productRegistrationCorpus: ProductRegistrationCorpusEval;
   customerDeliverabilityCorpus: GoldenCorpusReport;
+  learningEngine: ProductRegistrationLearningReport;
 }
 
 const getHandler = async () => {
@@ -164,8 +170,27 @@ const getHandler = async () => {
       reducedChars: sectionCacheReducedChars,
       qualityIncidentCount: mobileQaCount + verifyDeterministicCount + coveCount + confidenceMismatchCount,
     });
-    const productRegistrationCorpus = evaluateProductRegistrationCorpus();
-    const customerDeliverabilityCorpus = await evaluateGoldenCorpus();
+    const [
+      productRegistrationCorpus,
+      customerDeliverabilityCorpus,
+    ] = await Promise.all([
+      Promise.resolve(evaluateProductRegistrationCorpus()),
+      evaluateGoldenCorpus(),
+    ]);
+    const learningEngine = await loadProductRegistrationLearningReport({
+      supabase: supabaseAdmin,
+      isSupabaseConfigured,
+      since: since30d,
+      limit: 500,
+      fullRegressionVerified: false,
+    }).catch(error => buildProductRegistrationLearningReport({
+      events: [],
+      since: since30d,
+      limit: 500,
+      fullRegressionVerified: false,
+      generatedAt: new Date().toISOString(),
+      loadError: error instanceof Error ? error.message : String(error),
+    }));
 
     // 2) extractions_corrections 누적
     const { count: reflexionCount } = await supabaseAdmin
@@ -344,11 +369,14 @@ const getHandler = async () => {
       sectionCacheCanary,
       productRegistrationCorpus,
       customerDeliverabilityCorpus,
+      learningEngine,
     };
 
     return apiResponse(response);
   } catch (e) {
-    return apiResponse({ error: sanitizeDbError(e) }, { status: 500 });
+    const error = sanitizeDbError(e);
+    console.error('[registration-monitor] GET failed:', error);
+    return apiResponse({ error }, { status: 500 });
   }
 };
 

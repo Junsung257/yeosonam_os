@@ -17306,6 +17306,7 @@ export type Database = {
       unmatched_activities: {
         Row: {
           activity: string
+          classification_version: string | null
           confidence: number | null
           country: string | null
           created_at: string | null
@@ -17327,10 +17328,14 @@ export type Database = {
           segment_kind_guess: string | null
           status: string | null
           suggested_at: string | null
+          suggested_action: string | null
           suggested_card: Json | null
+          suggested_resolution: Json | null
+          source_context: Json | null
         }
         Insert: {
           activity: string
+          classification_version?: string | null
           confidence?: number | null
           country?: string | null
           created_at?: string | null
@@ -17352,10 +17357,14 @@ export type Database = {
           segment_kind_guess?: string | null
           status?: string | null
           suggested_at?: string | null
+          suggested_action?: string | null
           suggested_card?: Json | null
+          suggested_resolution?: Json | null
+          source_context?: Json | null
         }
         Update: {
           activity?: string
+          classification_version?: string | null
           confidence?: number | null
           country?: string | null
           created_at?: string | null
@@ -17377,7 +17386,10 @@ export type Database = {
           segment_kind_guess?: string | null
           status?: string | null
           suggested_at?: string | null
+          suggested_action?: string | null
           suggested_card?: Json | null
+          suggested_resolution?: Json | null
+          source_context?: Json | null
         }
         Relationships: [
           {

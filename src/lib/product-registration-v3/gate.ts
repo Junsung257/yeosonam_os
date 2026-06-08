@@ -87,6 +87,7 @@ export function evaluateProductRegistrationV3Gate(
   }
 
   if (matchSummary) {
+    const entity = matchSummary.entity_summary;
     check(
       checks,
       'attraction_unmatched_queue_clear',
@@ -101,6 +102,36 @@ export function evaluateProductRegistrationV3Gate(
       'info',
       `${matchSummary.option_review_count} option events require review`,
     );
+    if (entity) {
+      check(
+        checks,
+        'entity_attraction_unresolved_clear',
+        entity.attraction_unresolved_count === 0,
+        'high',
+        `${entity.attraction_unresolved_count} unresolved attraction entities require review`,
+      );
+      check(
+        checks,
+        'entity_shopping_review_clear',
+        entity.shopping_review_needed_count === 0,
+        'high',
+        `${entity.shopping_review_needed_count} shopping entities require customer-disclosure review`,
+      );
+      check(
+        checks,
+        'entity_option_review_clear',
+        entity.option_review_needed_count === 0,
+        'high',
+        `${entity.option_review_needed_count} optional-tour entities require customer-disclosure review`,
+      );
+      check(
+        checks,
+        'entity_unknown_customer_visible_clear',
+        entity.unknown_customer_visible_count === 0,
+        'high',
+        `${entity.unknown_customer_visible_count} customer-visible unknown entities require review`,
+      );
+    }
   }
 
   try {

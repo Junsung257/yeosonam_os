@@ -1,21 +1,20 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { buildAdOsOperatingInventory } from '@/lib/ad-os-v581-v600';
 import { buildAdOsStagingSmokeSummary } from '@/lib/ad-os-v541-v560';
 import { withTimeout } from '@/lib/promise-timeout';
-import { buildSummaryResponse } from '../summary/route';
+import { fetchAdOsSummaryJson } from '../_lib/summary-fetch';
 
 export const dynamic = 'force-dynamic';
 const AD_OS_OPERATING_INVENTORY_TIMEOUT_MS = 8000;
 
-export const GET = withAdminGuard(async () => {
+export const GET = withAdminGuard(async (request: NextRequest) => {
   try {
-    const summaryResponse = await withTimeout(
-      buildSummaryResponse(),
+    const summary = await withTimeout(
+      fetchAdOsSummaryJson(request),
       AD_OS_OPERATING_INVENTORY_TIMEOUT_MS,
       'ad os operating inventory',
     );
-    const summary = await summaryResponse.json();
     const inventory = buildAdOsOperatingInventory({
       completionAudit: summary?.enterprise_layer?.completion_audit || null,
       stagingSmoke: buildAdOsStagingSmokeSummary(),

@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
     const [{ data: unresolved }, { data: attractions }] = await Promise.all([
       supabaseAdmin
         .from('unmatched_activities')
-        .select('id, activity, region, country, note')
+        .select('id, activity, region, country, note, segment_kind_guess, suggested_action, confidence')
         .eq('status', 'pending')
         .is('resolved_at', null)
         .order('occurrence_count', { ascending: false })
@@ -58,7 +58,47 @@ export async function GET(request: NextRequest) {
 
     for (const row of unresolved || []) {
       scanned++;
-      const u = row as { id: string; activity: string; region: string | null; country: string | null };
+      const u = row as {
+        id: string;
+        activity: string;
+        region: string | null;
+        country: string | null;
+        segment_kind_guess?: string | null;
+        suggested_action?: string | null;
+        confidence?: number | null;
+      };
+      const entityKind = u.segment_kind_guess ?? 'attraction';
+      if (['meal', 'transfer'].includes(entityKind) && (u.confidence ?? 0) >= 0.85) {
+        const { error: updErr } = await supabaseAdmin
+          .from('unmatched_activities')
+          .update({
+            status: 'added',
+            resolved_at: new Date().toISOString(),
+            resolved_kind: `auto_entity_${entityKind}`,
+            resolved_by: 'cron_unmatched_auto_resolve',
+          })
+          .eq('id', u.id);
+        if (updErr) errors.push(sanitizeDbError(updErr, `Failed to resolve ${entityKind}`));
+        else resolved++;
+        continue;
+      }
+      if (['free_time', 'price_noise'].includes(entityKind) && (u.confidence ?? 0) >= 0.85) {
+        const { error: updErr } = await supabaseAdmin
+          .from('unmatched_activities')
+          .update({
+            status: 'ignored',
+            resolved_at: new Date().toISOString(),
+            resolved_kind: `auto_ignore_${entityKind}`,
+            resolved_by: 'cron_unmatched_auto_resolve',
+          })
+          .eq('id', u.id);
+        if (updErr) errors.push(sanitizeDbError(updErr, `Failed to ignore ${entityKind}`));
+        else resolved++;
+        continue;
+      }
+      if (entityKind !== 'attraction') {
+        continue;
+      }
       const scoped = candidateRows.filter(a =>
         (!u.region || !a.region || a.region === u.region) &&
         (!u.country || !a.country || a.country === u.country),

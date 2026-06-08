@@ -16,6 +16,7 @@ const TIME_RE = /\b([01]?\d|2[0-3]):[0-5]\d\b/;
 const TIME_RE_GLOBAL = /\b([01]?\d|2[0-3]):[0-5]\d\b/g;
 const FLIGHT_CODE_RE = /\b([A-Z0-9]{2})\s*(\d{3,4})\b/;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(\uc6d0|KRW|USD|\$)?/i;
+const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
 const USD_RE = /\$\s*(\d+(?:\.\d+)?)/;
 const DAY_HEADER_RE = /(?:day\s*(\d{1,2})|\uc81c\s*(\d{1,2})\s*\uc77c|(\d{1,2})\s*\uc77c\ucc28)/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
@@ -49,6 +50,7 @@ const TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22
 const ACTIVITY_NOTE_LINE_RE = /(?:\uc900\ube44\ubb3c|\uc7a5\ube44|\uad6c\uba85\uc870\ub07c|\ubbf8\ub07c|\uc544\ucfe0\uc544\uc288\uc988|\uc218\uc601\ubcf5|\uc120\ud06c\ub9bc|\uc5ec\ubc8c\s*\uc637)/i;
 const BROAD_TOUR_ACTIVITY_LINE_RE = /(?:\uc790\uc720\s*\uad00\uad11|\uad00\uad11|\ud22c\uc5b4|\ub9c8\ucf13|\uc2dc\uc7a5|\uc57c\uc2dc\uc7a5|\uc0ac\uc6d0|\ud574\ubcc0|\ube44\uce58|\ub18d\uc7a5|\uc218\uc6a9\uc18c|\ud3ec\ud1a0\uc874|\uc57c\uacbd|\ubc14\uc790|\uc120\uc14b\ud0c0\uc6b4|\ud56b\ud50c\s*\uce74\ud398|\ud14c\ub9c8\ud30c\ud06c|\uc6cc\ud130\ud30c\ud06c|\ube0c\ub9bf\uc9c0|\uc0ac\ud30c\ub9ac|\ub3d9\ubb3c\uc6d0|\uc2dd\ubb3c\uc6d0)/i;
 const FOOD_ONLY_RE = /^(?:\uc0bc\uacb9\uc0b4|\uac00\uc815\uc2dd|\ud55c\uc2dd|\ud604\uc9c0\uc2dd|\ud638\ud551\uc2dd|\ubdf0\ud398\uc2dd|\ud638\ud154\uc2dd|\ubb34\uc81c\ud55c|\ubca0\ud2b8\ub0a8\uac00\uc815\uc2dd)$/;
+const FOOD_TERM_RE = /\uc300\s*\uad6d\uc218|\ud3ec\b|pho\b|phở\b/i;
 const FREE_TIME_RE = /free\s*time|\uc790\uc720\s*\uc2dc\uac04|\ud734\uc2dd/i;
 const NOTICE_RE = /include|exclude|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ucd5c\uc18c|\uc8fc\uc758|\uc548\ub0b4|notice/i;
 const REMARK_RE = /비고|주의\s*사항|remark|안내|공지|싱글\s*차지|여권|전자\s*담배|룸\s*배정|객실\s*배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동|공항\s*미팅|관광지\s*방문|현지\s*가이드|차량에서\s*설명|가이드|기사\s*팁|쇼핑|선택\s*관광|노\s*옵션|노\s*쇼핑|노\s*팁/i;
@@ -64,6 +66,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   const text = line.trim();
   if (!text) return null;
   const compact = text.replace(/\s+/g, '');
+  if (ABBREVIATED_PRICE_RE.test(compact)) return 'price_noise';
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return 'shopping';
   if (/^\(\+\d+\)$/.test(compact)) return null;
   if (/^(?:부산|클락|푸꾸옥|세부|다낭|나트랑|호치민|방콕)$/.test(compact)) return null;
@@ -75,9 +78,10 @@ function eventTypeForLine(line: string): V3EventType | null {
     || PRICE_TABLE_OR_DOCUMENT_HEADER_RE.test(text)
     || TABLE_COLUMN_LABEL_RE.test(text)
     || TABLE_CELL_DECOY_RE.test(text)
-  ) return null;
+  ) return 'price_noise';
   if (MEAL_CELL_RE.test(text)) return 'meal';
   if (FOOD_ONLY_RE.test(compact)) return 'meal';
+  if (FOOD_TERM_RE.test(text)) return 'meal';
   if (ACTIVITY_NOTE_LINE_RE.test(text)) return 'notice';
   if (/^\s*[※*]/.test(text) && /\uacb0\uc81c|\uc774\uc6a9/.test(text)) return 'notice';
   if (MEETING_RE.test(text)) return 'meeting';
@@ -103,7 +107,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (/^\s*[▶●•·◆◇■□★☆+\-○▪◦*♣]/.test(text) && TOUR_ACTIVITY_LINE_RE.test(text)) return 'activity';
   if (/^\s*[▶●•·◆◇■□★☆+\-○▪◦*♣]/.test(text) && BROAD_TOUR_ACTIVITY_LINE_RE.test(text)) return 'activity';
   if (/^\s*[-–]/.test(text) && BROAD_TOUR_ACTIVITY_LINE_RE.test(text)) return 'activity';
-  if (ATTRACTION_DECOY_RE.test(text) || PRICE_RE.test(text)) return null;
+  if (ATTRACTION_DECOY_RE.test(text) || PRICE_RE.test(text)) return 'price_noise';
   return text.length >= 2 ? 'attraction' : null;
 }
 

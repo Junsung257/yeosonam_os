@@ -75,7 +75,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('ad_os_automation_runs')
       .insert({
         run_type: 'credential_preflight',
-        mode: 'read_only',
+        mode: 'dry_run',
         status: 'completed',
         started_at: new Date().toISOString(),
         finished_at: new Date().toISOString(),

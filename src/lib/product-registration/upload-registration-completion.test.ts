@@ -46,6 +46,7 @@ function baseResult() {
     improvementEvents: [],
     improvementEventsSaved: 0,
     improvementEventsSaveError: null,
+    skippedDuplicateSections: 0,
   };
 }
 
@@ -102,6 +103,7 @@ describe('completeUploadRegistration', () => {
       improvementEvents: [],
       improvementEventsSaved: 0,
       improvementEventsSaveError: null,
+      skippedDuplicateSections: 0,
     }));
   });
 
