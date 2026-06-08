@@ -42,6 +42,65 @@ const baseIr: NormalizedIntake = {
 };
 
 describe('applySupplierRawDeterministicFacts', () => {
+  it('recovers Korean day-line supplier itineraries for customer landing schedules', () => {
+    const rawText = `
+[크라운] 큐슈 BX조석 스기노이 2박 3일
+1일
+부산
+후쿠오카
+BX142
+09:00
+10:00
+김해 국제공항 출발
+후쿠오카 국제공항 도착
+전용차량
+벳부 이동
+▶ 유황재배지 유노하나 관광
+▶ 가마도 지옥순례 및 족욕체험
+*특전: 라무네(일본사이다)+계란 인당 1개 제공
+호텔 이동 후 석식 및 휴식, ♨온천욕
+조: 없음
+중: 현지식
+석: 호텔식
+HOTEL: 스기노이 호텔 (니지관)
+2일
+유후인
+전용차량
+유후인 이동
+▶ 긴린 호수 및 민예거리 관광
+쿠로가와 이동
+▶ 쿠로가와 온천마을 산책
+벳부 이동
+조: 호텔식
+중: 현지식
+석: 호텔식
+HOTEL: 스기노이 호텔 (니지관)
+3일
+벳부
+후쿠오카
+전용차량
+호텔 조식 후 체크아웃
+면세점 쇼핑 후 후쿠오카 타워(내부관광) 관광
+후쿠오카 국제공항 출발
+김해 국제공항 도착
+조: 호텔식
+중: 없음
+석: 없음
+`;
+
+    const itinerary = buildSupplierRawDeterministicItinerary(rawText);
+    const activities = itinerary?.days.flatMap(day => day.schedule.map(item => item.activity)) ?? [];
+
+    expect(itinerary?.days).toHaveLength(3);
+    expect(activities).toContain('유황재배지 유노하나 관광');
+    expect(activities).toContain('가마도 지옥순례 및 족욕체험');
+    expect(activities).toContain('긴린 호수 및 민예거리 관광');
+    expect(activities).toContain('쿠로가와 온천마을 산책');
+    expect(activities).toContain('호텔 이동 후 석식 및 휴식, ♨온천욕');
+    expect(itinerary?.days[0]?.hotel?.name).toBe('스기노이 호텔 (니지관)');
+    expect(itinerary?.days[0]?.meals.dinner_note).toBe('호텔식');
+  });
+
   it('extracts PKG-following product titles before notice sections', () => {
     const facts = extractSupplierRawDeterministicFacts(`
 26.5.19배포
