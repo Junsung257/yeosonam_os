@@ -11,6 +11,19 @@ function sinceIso(days: number): string {
   return new Date(Date.now() - days * 86_400_000).toISOString();
 }
 
+function normalizeSource(value?: string | null): string {
+  const source = String(value || '').trim().toLowerCase();
+  if (source === 'facebook') return 'meta';
+  return source;
+}
+
+function platformFromSource(value?: string | null): 'naver' | 'google' | 'meta' | 'kakao' | 'organic' {
+  const source = normalizeSource(value);
+  return ['naver', 'google', 'meta', 'kakao'].includes(source)
+    ? (source as 'naver' | 'google' | 'meta' | 'kakao')
+    : 'organic';
+}
+
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
     return apiResponse({ ok: false, error: 'Service unavailable' }, { status: 503 });
@@ -52,14 +65,46 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     return apiResponse({ ok: false, error: safeError }, { status: 500 });
   }
 
+  const bookingIds = (bookings || []).map((booking: any) => booking.id).filter(Boolean);
+  const { data: conversionLogs, error: conversionLogError } = bookingIds.length > 0
+    ? await supabaseAdmin
+        .from('ad_conversion_logs')
+        .select(`
+          final_booking_id, attributed_source, first_touch_source, first_touch_keyword,
+          first_touch_ad_landing_mapping_id, ad_landing_mapping_id,
+          content_creative_id, first_touch_creative_id,
+          paid_assisted_organic, attribution_path, created_at
+        `)
+        .in('final_booking_id', bookingIds)
+        .order('created_at', { ascending: false })
+    : { data: [], error: null };
+
+  if (conversionLogError) {
+    const safeError = sanitizeDbError(conversionLogError);
+    await supabaseAdmin
+      .from('ad_os_automation_runs')
+      .update({ status: 'failed', finished_at: new Date().toISOString(), errors: [{ message: safeError }] })
+      .eq('id', run.id);
+    return apiResponse({ ok: false, error: safeError }, { status: 500 });
+  }
+
+  const conversionLogByBookingId = new Map<string, any>();
+  for (const log of conversionLogs || []) {
+    if (log.final_booking_id && !conversionLogByBookingId.has(log.final_booking_id)) {
+      conversionLogByBookingId.set(log.final_booking_id, log);
+    }
+  }
+
   const rows = (bookings || []).flatMap((booking: any) => {
+    const conversionLog = conversionLogByBookingId.get(booking.id);
     const revenue = Math.max(Number(booking.paid_amount || 0), Number(booking.total_price || 0));
     const margin = Number(booking.total_price || 0) - Number(booking.total_cost || 0);
-    const platform = booking.utm_source && ['naver', 'google', 'meta', 'kakao'].includes(String(booking.utm_source))
-      ? String(booking.utm_source)
-      : 'organic';
+    const paidAssistedOrganic = conversionLog?.paid_assisted_organic === true;
+    const platform = paidAssistedOrganic
+      ? platformFromSource(conversionLog?.first_touch_source || conversionLog?.attributed_source)
+      : platformFromSource(booking.utm_source);
     const base = {
-      platform: platform as 'naver' | 'google' | 'meta' | 'kakao' | 'organic',
+      platform,
       productId: booking.package_id || null,
       bookingId: booking.id,
       revenueKrw: revenue,
@@ -73,6 +118,11 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         utm_content: booking.utm_content,
         utm_term: null,
         referral_code: booking.referral_code,
+        paid_assisted_organic: paidAssistedOrganic,
+        attribution_path: conversionLog?.attribution_path || null,
+        conversion_log_source: conversionLog?.attributed_source || null,
+        first_touch_source: conversionLog?.first_touch_source || null,
+        first_touch_keyword: conversionLog?.first_touch_keyword || null,
       },
     };
 
@@ -94,6 +144,10 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         source: 'booking_funnel_sync_v14',
         product_id: normalized.product_id,
         booking_id: normalized.booking_id,
+        ad_landing_mapping_id: paidAssistedOrganic
+          ? conversionLog?.first_touch_ad_landing_mapping_id || conversionLog?.ad_landing_mapping_id || null
+          : conversionLog?.ad_landing_mapping_id || null,
+        content_creative_id: conversionLog?.content_creative_id || conversionLog?.first_touch_creative_id || null,
         revenue_krw: eventType === 'cancel' ? 0 : normalized.revenue_krw,
         margin_krw: eventType === 'cancel' ? 0 : normalized.margin_krw,
         cost_krw: 0,
@@ -108,6 +162,8 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
           run_id: run.id,
           booking_status: booking.status,
           excluded_from_learning: normalized.excluded_from_learning,
+          paid_assisted_organic: paidAssistedOrganic,
+          attribution_path: conversionLog?.attribution_path || null,
         },
         raw_payload: {
           ...base.rawPayload,
@@ -136,6 +192,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     bookings_checked: bookings?.length || 0,
     events_prepared: rows.length,
     booking_events: rows.filter((row) => row.event_type === 'booking').length,
+    paid_assisted_organic_events: rows.filter((row: any) => row.quality_flags?.paid_assisted_organic === true).length,
     cancel_events: rows.filter((row) => row.event_type === 'cancel').length,
     settlement_events: rows.filter((row) => row.event_type === 'settlement_confirmed').length,
     revenue_krw: rows.reduce((sum, row) => sum + Number(row.revenue_krw || 0), 0),

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { hasAnalyticsConsent } from '@/lib/consent';
 import { initTracker, trackScrollMilestone, trackPageExit } from '@/lib/tracker';
 
@@ -13,18 +13,12 @@ import { initTracker, trackScrollMilestone, trackPageExit } from '@/lib/tracker'
  */
 export default function TrackerBootstrap() {
   const pathname = usePathname();
-  const initOnce = useRef(false);
+  const searchParams = useSearchParams();
   const fired = useRef<Set<string>>(new Set());
   const pageEnteredAt = useRef<number>(Date.now());
   const maxScrollPct = useRef<number>(0);
   const interactionCount = useRef<number>(0);
   const exitSent = useRef<boolean>(false);
-
-  useEffect(() => {
-    if (initOnce.current) return;
-    initOnce.current = true;
-    initTracker();
-  }, []);
 
   useEffect(() => {
     // 새 경로 진입 → 카운터 리셋
@@ -37,8 +31,9 @@ export default function TrackerBootstrap() {
     if (typeof window === 'undefined') return;
     const path = pathname || '/';
     if (path.startsWith('/admin')) return;
+    initTracker();
 
-    const keyBase = path;
+    const keyBase = `${path}?${searchParams.toString()}`;
 
     const emitMilestones = () => {
       if (!hasAnalyticsConsent()) return;
@@ -127,7 +122,7 @@ export default function TrackerBootstrap() {
       // 클라이언트 라우팅으로 경로가 바뀌는 경우(언마운트), exit 한 번 송신
       sendExit();
     };
-  }, [pathname]);
+  }, [pathname, searchParams]);
 
   return null;
 }

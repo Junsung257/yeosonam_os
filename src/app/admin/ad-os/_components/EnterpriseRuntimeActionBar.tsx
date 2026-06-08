@@ -5,8 +5,11 @@ export type EnterpriseRuntimeActionKey =
   | 'checkChannelAdapters'
   | 'createNaverPausedKeywordPacket'
   | 'createGoogleDraftPacket'
+  | 'createGoogleRsaDrafts'
+  | 'createGoogleDraftFromRsa'
   | 'createMetaCapiTestPacket'
   | 'checkExecutionGate'
+  | 'checkGoogleDraftGate'
   | 'runRollbackDrill'
   | 'runNaverLimitedPilot'
   | 'runPlatformJobs'
@@ -29,8 +32,11 @@ const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label
   { key: 'checkChannelAdapters', label: 'Channel adapters' },
   { key: 'createNaverPausedKeywordPacket', label: 'Naver paused packet' },
   { key: 'createGoogleDraftPacket', label: 'Google draft packet' },
+  { key: 'createGoogleRsaDrafts', label: 'Google RSA drafts' },
+  { key: 'createGoogleDraftFromRsa', label: 'Google RSA packets' },
   { key: 'createMetaCapiTestPacket', label: 'Meta CAPI packet' },
-  { key: 'checkExecutionGate', label: 'Execution gate' },
+  { key: 'checkExecutionGate', label: 'Naver gate' },
+  { key: 'checkGoogleDraftGate', label: 'Google draft gate' },
   { key: 'runRollbackDrill', label: 'Rollback drill' },
   { key: 'runNaverLimitedPilot', label: 'Naver limited pilot' },
   { key: 'runPlatformJobs', label: 'Run platform jobs' },

@@ -105,26 +105,39 @@ export function evaluateExecutionGate(input: ExecutionGateInput): ExecutionGateR
   const spentMonthKrw = int(budget.spentMonthKrw);
   const blockers: string[] = [];
   const approvals: string[] = [];
+  const packetType = input.packet?.packet_type || null;
+  const packetPayload = input.packet?.request_payload || {};
+  const googleDraftOnly = input.platform === 'google' && packetType === 'google_campaign_draft';
+  const draftOnlyMode = requestedMode === 'recommend' || requestedMode === 'approve';
+  const packetMaxCpcKrw = int(packetPayload.max_cpc_krw);
+  const packetDailyBudgetKrw = int(packetPayload.daily_budget_krw);
 
   if (!input.packet) blockers.push('packet_missing');
   if (input.packet && input.packet.lifecycle_status !== 'ready') blockers.push(`packet_${input.packet.lifecycle_status}`);
   if (!input.adapter) blockers.push('adapter_health_missing');
-  if (input.adapter && !['paused_write_ready', 'executable'].includes(input.adapter.adapter_state)) {
+  const adapterStatesAllowed = googleDraftOnly
+    ? ['draft_ready', 'paused_write_ready', 'executable']
+    : ['paused_write_ready', 'executable'];
+  if (input.adapter && !adapterStatesAllowed.includes(input.adapter.adapter_state)) {
     blockers.push(`adapter_${input.adapter.adapter_state}`);
   }
-  if (input.platform !== 'naver') blockers.push(`${input.platform}_limited_write_disabled`);
+  if (input.platform !== 'naver' && !(googleDraftOnly && draftOnlyMode)) blockers.push(`${input.platform}_limited_write_disabled`);
   if (modeRank(requestedMode) > modeRank(maxAllowedMode)) blockers.push('requested_mode_exceeds_tenant_automation_level');
   if (requestedMode === 'full_autopilot') blockers.push('full_autopilot_disabled');
   if (budget.requireHumanApproval !== false && !budget.humanApproved) blockers.push('human_approval_required');
   if (budget.killSwitchClear === false) blockers.push('kill_switch_active');
   if (monthlyBudgetKrw <= 0 || dailyBudgetCapKrw <= 0 || maxCpcKrw <= 0) blockers.push('budget_caps_missing');
   if (maxTestLossKrw <= 0) blockers.push('test_loss_cap_missing');
+  if (packetMaxCpcKrw > 0 && maxCpcKrw > 0 && packetMaxCpcKrw > maxCpcKrw) blockers.push('packet_cpc_exceeds_channel_cap');
+  if (packetDailyBudgetKrw > 0 && dailyBudgetCapKrw > 0 && packetDailyBudgetKrw > dailyBudgetCapKrw) blockers.push('packet_daily_budget_exceeds_channel_cap');
+  if (packetDailyBudgetKrw > 0 && maxTestLossKrw > 0 && packetDailyBudgetKrw > maxTestLossKrw) blockers.push('packet_daily_budget_exceeds_test_loss_cap');
   if (spentTodayKrw >= dailyBudgetCapKrw && dailyBudgetCapKrw > 0) blockers.push('daily_budget_exhausted');
   if (spentMonthKrw >= monthlyBudgetKrw && monthlyBudgetKrw > 0) blockers.push('monthly_budget_exhausted');
 
   if (budget.requireHumanApproval !== false) approvals.push('operator_approval');
   if (requestedMode === 'limited_autopilot') approvals.push('limited_budget_policy');
   if (input.platform === 'naver') approvals.push('naver_paused_write_only');
+  if (googleDraftOnly) approvals.push('google_draft_only_external_write_disabled');
 
   const blockerList = unique(blockers);
   const budgetPressure = monthlyBudgetKrw > 0 ? Math.round((spentMonthKrw / monthlyBudgetKrw) * 30) : 20;
@@ -150,6 +163,8 @@ export function evaluateExecutionGate(input: ExecutionGateInput): ExecutionGateR
       daily_budget_cap_krw: dailyBudgetCapKrw,
       max_cpc_krw: maxCpcKrw,
       max_test_loss_krw: maxTestLossKrw,
+      packet_max_cpc_krw: packetMaxCpcKrw,
+      packet_daily_budget_krw: packetDailyBudgetKrw,
       spent_today_krw: spentTodayKrw,
       spent_month_krw: spentMonthKrw,
       automation_level: automationLevel,
@@ -175,6 +190,8 @@ export function evaluateExecutionGate(input: ExecutionGateInput): ExecutionGateR
     required_approvals: unique(approvals),
     next_action: blockerList.length > 0
       ? `Resolve ${blockerList[0]} before limited autopilot.`
+      : googleDraftOnly
+        ? 'Google campaign draft packet is ready for staging review. Keep live publish disabled.'
       : gateStatus === 'eligible'
         ? 'Eligible for Naver paused-only limited write executor after rollback drill.'
         : 'Monitor-only mode. Keep external write disabled.',

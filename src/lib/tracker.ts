@@ -29,6 +29,8 @@ interface UtmData {
   keyword?: string;
   ad_landing_mapping_id?: string;
   gclid?: string;
+  gbraid?: string;
+  wbraid?: string;
   fbclid?: string;
   n_keyword?: string;
   current_cpc?: number;
@@ -148,11 +150,13 @@ export function initTracker(): void {
   const utmTerm = params.get('utm_term') ?? undefined;
   const adLandingMappingId = params.get('ad_mapping_id') ?? params.get('ad_landing_mapping_id') ?? params.get('admid') ?? undefined;
   const rawGclid = params.get('gclid') ?? undefined;
+  const rawGbraid = params.get('gbraid') ?? undefined;
+  const rawWbraid = params.get('wbraid') ?? undefined;
   const rawFbclid = params.get('fbclid') ?? undefined;
   const rawNKeyword = params.get('n_keyword') ?? undefined;
 
   // UTM 파라미터가 하나도 없으면 이전 localStorage 값 재사용 (last-click 귀속)
-  const hasUtmParams = !!(utmSource || rawGclid || rawFbclid || rawNKeyword);
+  const hasUtmParams = !!(utmSource || rawGclid || rawGbraid || rawWbraid || rawFbclid || rawNKeyword || adLandingMappingId);
 
   let utmData: UtmData;
 
@@ -165,6 +169,8 @@ export function initTracker(): void {
       ad_landing_mapping_id: adLandingMappingId,
       // PIPA: consent=false이면 개인식별 클릭 ID 저장 안 함
       gclid: consent ? rawGclid : undefined,
+      gbraid: consent ? rawGbraid : undefined,
+      wbraid: consent ? rawWbraid : undefined,
       fbclid: consent ? rawFbclid : undefined,
       n_keyword: rawNKeyword, // 검색 키워드는 비식별 정보로 허용
       consent_agreed: consent,

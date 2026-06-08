@@ -309,6 +309,8 @@ export function buildGoogleCampaignDraftPacket(capability: AdapterCapability, se
       daily_budget_krw: int(seed.dailyBudgetKrw) || 10000,
       final_url: stableText(seed.landingUrl, '/blog/danang-package-guide'),
       keyword_seed: stableText(seed.keyword, '부산 부모님 다낭 여행'),
+      rsa_headline: seed.headline ? stableText(seed.headline, '') : null,
+      rsa_description: seed.description ? stableText(seed.description, '') : null,
       live_publish_disabled: true,
       external_api_write: false,
     },

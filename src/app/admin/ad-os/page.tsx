@@ -111,7 +111,7 @@ export default function AdOsPage() {
     runningPlatformJobs, runningConversionUpload, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
-    creatingMetaCapiPacket, checkingExecutionGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
+    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
 
@@ -1278,6 +1278,39 @@ export default function AdOsPage() {
     });
   };
 
+  const createGoogleRsaDrafts = async () => {
+    await runJsonAction({
+      flag: 'creatingGoogleRsaDrafts',
+      url: '/api/admin/ad-os/creative-factory/search-rsa',
+      body: {
+        apply: true,
+        limit: 3,
+      },
+      errorMessage: 'Google RSA draft generation failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google RSA drafts complete: sets ${formatAdOsNumber(summary.rsa_sets_generated)}, variants ${formatAdOsNumber(summary.variants_inserted)}, approval requests ${formatAdOsNumber(summary.change_requests_created)}. External API write 0.`;
+      },
+    });
+  };
+
+  const createGoogleDraftFromRsa = async () => {
+    await runJsonAction({
+      flag: 'creatingGoogleDraftFromRsa',
+      url: '/api/admin/ad-os/channel-adapters/google/draft-from-rsa',
+      body: {
+        apply: true,
+        include_drafts: false,
+        limit: 20,
+      },
+      errorMessage: 'Google RSA draft packet generation failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google RSA packets complete: prepared ${formatAdOsNumber(summary.packets_prepared)}, written ${formatAdOsNumber(summary.packets_written)}, blocked ${formatAdOsNumber(summary.blocked_packets)}. External API write 0.`;
+      },
+    });
+  };
+
   const createMetaCapiTestPacket = async () => {
     await runJsonAction({
       flag: 'creatingMetaCapiPacket',
@@ -1311,6 +1344,25 @@ export default function AdOsPage() {
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
         return `Execution gate check complete: eligible ${formatAdOsNumber(summary.eligible)}, blocked ${formatAdOsNumber(summary.blocked)}, high risk ${formatAdOsNumber(summary.high_or_critical_risk)}. External API write 0.`;
+      },
+    });
+  };
+
+  const checkGoogleDraftGate = async () => {
+    await runJsonAction({
+      flag: 'checkingGoogleDraftGate',
+      url: '/api/admin/ad-os/channel-adapters/execution-gate',
+      body: {
+        apply: true,
+        platform: 'google',
+        requested_mode: 'approve',
+        human_approved: false,
+        limit: 20,
+      },
+      errorMessage: 'Google draft gate check failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google draft gate complete: monitor ${formatAdOsNumber(summary.monitor_only)}, blocked ${formatAdOsNumber(summary.blocked)}, high risk ${formatAdOsNumber(summary.high_or_critical_risk)}. Live publish disabled.`;
       },
     });
   };
@@ -1534,8 +1586,11 @@ export default function AdOsPage() {
     checkChannelAdapters,
     createNaverPausedKeywordPacket,
     createGoogleDraftPacket,
+    createGoogleRsaDrafts,
+    createGoogleDraftFromRsa,
     createMetaCapiTestPacket,
     checkExecutionGate,
+    checkGoogleDraftGate,
     runRollbackDrill,
     runNaverLimitedPilot,
     runPlatformJobs,
@@ -1555,8 +1610,11 @@ export default function AdOsPage() {
     checkChannelAdapters: checkingChannelAdapters,
     createNaverPausedKeywordPacket: creatingNaverAdapterPacket,
     createGoogleDraftPacket: creatingGoogleDraftPacket,
+    createGoogleRsaDrafts: creatingGoogleRsaDrafts,
+    createGoogleDraftFromRsa: creatingGoogleDraftFromRsa,
     createMetaCapiTestPacket: creatingMetaCapiPacket,
     checkExecutionGate: checkingExecutionGate,
+    checkGoogleDraftGate: checkingGoogleDraftGate,
     runRollbackDrill: runningRollbackDrill,
     runNaverLimitedPilot: runningLimitedPilot,
     runPlatformJobs: runningPlatformJobs,
