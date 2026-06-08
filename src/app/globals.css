@@ -412,6 +412,10 @@ td, th {
   margin-bottom: 1.2em;
 }
 
+.prose-blog {
+  overflow-wrap: anywhere;
+}
+
 /* 링크 — 단일 슬레이트 톤 + 하단 밑줄 (지원노트 스타일) */
 .prose-blog a {
   color: #0f172a;
@@ -429,6 +433,7 @@ td, th {
 .prose-blog img {
   /* 자연 비율 보존. Jiwonnote 스타일: 얕은 radius + shadow 최소화 */
   display: block;
+  width: 100%;
   max-width: 100%;
   height: auto;
   border-radius: 0.375rem;
@@ -534,9 +539,13 @@ td, th {
 .prose-blog aside.tip strong { color: #047857; }
 
 .prose-blog table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
   font-size: 0.95em;
   border-collapse: collapse;
-  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
   border-radius: 0.75rem;
   box-shadow: 0 0 0 1px #e5e7eb;
 }
@@ -551,6 +560,12 @@ td, th {
 .prose-blog td {
   padding: 0.6rem 0.85rem;
   border-top: 1px solid #f3f4f6;
+}
+.prose-blog th,
+.prose-blog td {
+  min-width: 7rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
 }
 
 .prose-blog strong {

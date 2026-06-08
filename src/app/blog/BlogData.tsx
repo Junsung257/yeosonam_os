@@ -54,6 +54,7 @@ interface BlogPost {
   seo_title: string | null;
   seo_description: string | null;
   og_image_url: string | null;
+  blog_html: string | null;
   angle_type: string;
   published_at: string;
   product_id: string | null;
@@ -75,6 +76,28 @@ interface DestinationStat {
   min_price: number | null;
 }
 
+function isGenericBlogImageUrl(url: string | null | undefined): boolean {
+  if (!url) return true;
+  try {
+    return new URL(url, BASE_URL).pathname === '/og-image.png';
+  } catch {
+    return url.includes('/og-image.png');
+  }
+}
+
+function extractFirstBlogImageUrl(source: string | null | undefined): string | null {
+  if (!source) return null;
+  const markdownImage = source.match(/!\[[^\]]*]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/i)?.[1];
+  if (markdownImage) return markdownImage;
+  const htmlImage = source.match(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i)?.[1];
+  return htmlImage || null;
+}
+
+function getDisplayImageUrl(post: BlogPost): string | null {
+  if (!isGenericBlogImageUrl(post.og_image_url)) return post.og_image_url;
+  return extractFirstBlogImageUrl(post.blog_html);
+}
+
 async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<{
   featured: BlogPost[];
   posts: BlogPost[];
@@ -88,7 +111,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   let listQuery = supabaseAdmin
     .from('content_creatives')
     .select(
-      'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
+      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
       { count: 'exact' },
     )
     .eq('status', 'published')
@@ -109,13 +132,12 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     supabaseAdmin
       .from('content_creatives')
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
       )
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('featured', true)
       .not('slug', 'is', null)
-      .not('og_image_url', 'is', null)
       .order('featured_order', { ascending: true, nullsFirst: false })
       .order('published_at', { ascending: false })
       .limit(3),
@@ -123,10 +145,10 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   ]);
 
   const posts = (listRes.data as unknown as BlogPost[]) || [];
-  const featuredBase = ((featuredRes.data as unknown as BlogPost[]) || []).filter((post) => Boolean(post.og_image_url));
+  const featuredBase = ((featuredRes.data as unknown as BlogPost[]) || []).filter((post) => Boolean(getDisplayImageUrl(post)));
   const featuredIds = new Set(featuredBase.map((f) => f.id));
   const featuredFallback = posts
-    .filter((post) => Boolean(post.og_image_url) && !featuredIds.has(post.id))
+    .filter((post) => Boolean(getDisplayImageUrl(post)) && !featuredIds.has(post.id))
     .slice(0, Math.max(0, 3 - featuredBase.length));
   const featured = [...featuredBase, ...featuredFallback];
   const filteredPosts = page === 1 && !filter.destination && !filter.angle
@@ -147,6 +169,7 @@ function HeroCard({ post }: { post: BlogPost }) {
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 7;
   const angleLabel = post.angle_type ? ANGLE_LABELS[post.angle_type] : null;
+  const imageUrl = getDisplayImageUrl(post);
 
   return (
     <Link
@@ -155,7 +178,7 @@ function HeroCard({ post }: { post: BlogPost }) {
     >
       <div className="aspect-[16/9] overflow-hidden relative">
         <SafeCoverImg
-          src={post.og_image_url}
+          src={imageUrl}
           alt={`${dest || ''} ${post.seo_title || ''}`.trim()}
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
           loading="eager"
@@ -203,6 +226,7 @@ function SideCard({ post }: { post: BlogPost }) {
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 5;
   const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
+  const imageUrl = getDisplayImageUrl(post);
 
   return (
     <Link
@@ -212,7 +236,7 @@ function SideCard({ post }: { post: BlogPost }) {
       {/* 섬네일 — 112×112 */}
       <div className="w-28 h-28 shrink-0 rounded-xl overflow-hidden bg-bg-section relative">
         <SafeCoverImg
-          src={post.og_image_url}
+          src={imageUrl}
           alt={dest || ''}
           className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
@@ -264,6 +288,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
   const ct = post.content_type || 'guide';
   const readMin = READING_TIME[ct] ?? 5;
   const angleChipStyle = post.angle_type ? (ANGLE_CHIP_STYLE[post.angle_type] ?? 'bg-bg-section text-text-body') : null;
+  const imageUrl = getDisplayImageUrl(post);
 
   return (
     <Link
@@ -272,7 +297,7 @@ function BlogCard({ post, compact = false }: { post: BlogPost; compact?: boolean
     >
       <div className={`${compact ? 'aspect-[16/9]' : 'aspect-[4/3]'} overflow-hidden bg-bg-section relative`}>
         <SafeCoverImg
-          src={post.og_image_url}
+          src={imageUrl}
           alt={`${dest || ''} ${post.seo_title || ''}`.trim() || '블로그 썸네일'}
           className="absolute inset-0 h-full w-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
           loading="lazy"

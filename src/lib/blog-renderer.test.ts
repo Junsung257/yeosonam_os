@@ -216,4 +216,15 @@ describe('blog-renderer', () => {
     expect(html).not.toContain('**');
     expect(html).toContain('추천 일정 알찬 휴양과 핵심 관광]');
   });
+  it('normalizes generated strikethrough markers instead of rendering deletion lines', async () => {
+    const source = '## 옷차림\n\n~~얇은 실내복도 챙기시면 호텔에서 쾌적하게 지내실 수 있습니다.~~';
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('얇은 실내복도 챙기시면');
+    expect(html).not.toContain('<del>');
+    expect(html).not.toContain('~~');
+    expect(report.passed).toBe(true);
+  });
 });
