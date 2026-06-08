@@ -2,12 +2,22 @@ import type { PriceIROptions, PriceIRResult } from './types';
 import { extractHotelColumnMatrixRows } from './hotel-column-matrix';
 import { extractMonthDowPriceIR } from './month-dow-table';
 import { extractPeriodDowMatrixRows } from './period-dow-matrix';
+import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
 import { extractSpotWeekdayRows } from './spot-weekday-table';
 import { rowsToTiers } from './utils';
 import { extractVerticalGradePriceIR } from './vertical-grade-table';
 import { extractWeekdayPeriodRows } from './weekday-period-table';
 
 export function extractPriceIR(rawText: string, options: PriceIROptions = {}): PriceIRResult {
+  const productPriceVerticalRows = extractProductPriceVerticalDateRows(rawText, options);
+  if (productPriceVerticalRows.length > 0) {
+    return {
+      source: 'product_price_vertical_date_table',
+      rows: productPriceVerticalRows,
+      tiers: rowsToTiers(productPriceVerticalRows),
+    };
+  }
+
   const spotWeekdayRows = extractSpotWeekdayRows(rawText, options);
   if (spotWeekdayRows.length > 0) {
     return {

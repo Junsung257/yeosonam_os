@@ -188,3 +188,30 @@ describe('extractPriceIR multi-column spot weekday table', () => {
     expect(result.rows.some(row => row.adult_price === 1159000 || row.adult_price === 1369000)).toBe(false);
   });
 });
+
+describe('extractPriceIR product price vertical date table', () => {
+  it('recovers 상품가 date lists followed by full KRW prices', () => {
+    const rawText = `
+[크라운] 큐슈 BX조석 스기노이 2박 3일
+상품가
+7/1, 6, 8, 13, 15
+1,299,000원
+7/20, 22, 27, 29
+1,399,000원
+8/3, 5
+1,499,000원
+포함 내역
+왕복항공권
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 3 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toHaveLength(11);
+    expect(result.rows.find(row => row.date === '2026-07-01')?.adult_price).toBe(1299000);
+    expect(result.rows.find(row => row.date === '2026-07-29')?.adult_price).toBe(1399000);
+    expect(result.rows.find(row => row.date === '2026-08-05')?.adult_price).toBe(1499000);
+    expect(result.rows.some(row => row.date === '1,299,000원')).toBe(false);
+    expect(result.tiers.length).toBe(3);
+  });
+});
