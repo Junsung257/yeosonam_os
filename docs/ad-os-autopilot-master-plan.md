@@ -1155,3 +1155,21 @@ Ad OS V1 완료는 다음 증거로 판단한다.
 - Safety principle:
   - This closes the practical loop from actual search terms to next keyword/negative drafts without enabling live spend.
   - External execution still requires existing approval, budget, max CPC, adapter, confirmation, and live-spend preflight gates.
+
+## 74. 2026-06-08 Ad OS safe pipeline cron, credential preflight, and live-write preflight
+
+- Added `/api/cron/ad-os-safe-pipelines`.
+  - Runs the server safe pipeline runner with `CRON_SECRET` and service-role admin calls.
+  - Defaults to `conversion,optimization`; `AD_OS_SAFE_PIPELINE_CRON_PIPELINES` can include `google` and `meta_creative`.
+  - Scheduled in `vercel.json` at `35 3 * * *`.
+- Added `/api/admin/ad-os/credential-preflight`.
+  - Reports platform credential readiness for Naver, Google, and Meta without exposing secret values.
+  - Checks that live-write env flags remain off unless an explicit limited pilot is being operated.
+  - Surfaced as `Credential preflight` in `/admin/ad-os`.
+- Added `/api/admin/ad-os/channel-adapters/naver/live-preflight`.
+  - Reuses the Naver paused-write executor decision logic in preflight-only mode.
+  - Checks live policy, env flag, approved jobs, keyword payload, bid, and ad group readiness without calling Naver.
+  - Surfaced as `Naver live preflight` in `/admin/ad-os`.
+- Safety principle:
+  - Cron automation still writes only internal drafts, data-quality snapshots, dry-run attempts, plans, and tenant audit exports.
+  - Actual external write remains behind the existing executor, explicit live mode, confirmation, policy, env flag, budget, approval, rollback, and result-confirmation gates.
