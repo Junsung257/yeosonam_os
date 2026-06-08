@@ -103,7 +103,7 @@ export default function AdOsPage() {
   const {
     savingBudget, savingTenantPolicy, runningAutomation, runningGuardedApply, runningPilotSetup,
     publishingDrafts, publishingNaverKeywords, activatingNaverKeywords, harvestingLearning, optimizingPerformance,
-    runningBudgetPacing, probingPublisher, runningLaunchAudit, probingNaverAdgroups, probingNaverAssets,
+    runningBudgetPacing, runningOptimizationSafePipeline, probingPublisher, runningLaunchAudit, probingNaverAdgroups, probingNaverAssets,
     syncingNaverAssets, generatingNaverPacket, approvingNaverCandidates, runningExpiryCleanup, runningKillSwitch,
     generatingCandidates, syncingPerformance, applyingLearning, publishingExternal, harvestingSearchTerms,
     planningExperiments, probingGooglePublisher, loadingTenantReport, buildingOpsPlan, creatingCreativeDrafts,
@@ -619,6 +619,53 @@ export default function AdOsPage() {
         return `Budget pacing dry-run complete: channels ${formatAdOsNumber(summary.checked_channels)}, over pacing ${formatAdOsNumber(summary.over_pacing)}, under pacing ${formatAdOsNumber(summary.under_pacing)}, near loss cap ${formatAdOsNumber(summary.loss_limit_near)}, blocked ${formatAdOsNumber(summary.blocked)}.`;
       },
     });
+  };
+
+  const runOptimizationSafePipeline = async () => {
+    setActionFlag('runningOptimizationSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const performance = await postAdOsJson(
+        '/api/admin/ad-os/performance-sync',
+        { days: 30, apply: true },
+        'Performance fact sync failed.',
+      );
+      const attribution = await postAdOsJson(
+        '/api/admin/ad-os/conversion-attribution',
+        { days: 30, apply: true, limit: 3000 },
+        'Conversion attribution failed.',
+      );
+      const bidOptimizer = await postAdOsJson(
+        '/api/admin/ad-os/bid-optimizer/apply',
+        { apply: true, limit: 200 },
+        'Bid optimizer failed.',
+      );
+      const portfolio = await postAdOsJson(
+        '/api/admin/ad-os/optimizer/portfolio-plan',
+        { apply: true, days: 30 },
+        'Portfolio optimizer planning failed.',
+      );
+      const pacing = await postAdOsJson(
+        '/api/admin/ad-os/budget-pacing',
+        { mode: 'dry_run' },
+        'Budget pacing failed.',
+      );
+
+      await refresh();
+      const performanceSummary = getAdOsRecord(performance.summary);
+      const attributionSummary = getAdOsRecord(attribution.summary);
+      const bidSummary = getAdOsRecord(bidOptimizer.summary);
+      const portfolioSummary = getAdOsRecord(portfolio.summary);
+      const pacingSummary = getAdOsRecord(pacing.summary);
+      setAutomationMessage(
+        `Optimization safe pipeline complete: facts ${formatAdOsNumber(performanceSummary.facts_prepared)}, attribution conversions ${formatAdOsNumber(attributionSummary.conversions)}, bid candidates ${formatAdOsNumber(bidSummary.candidates)}, portfolio plans ${formatAdOsNumber(portfolioSummary.inserted)}, pacing checked ${formatAdOsNumber(pacingSummary.checked_channels)}. External API write 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Optimization safe pipeline failed.');
+    } finally {
+      setActionFlag('runningOptimizationSafePipeline', false);
+    }
   };
 
   const probePublisher = async () => {
@@ -1651,6 +1698,7 @@ export default function AdOsPage() {
     dryRunExternalPublish,
     probeGooglePublisher,
     runBudgetPacing,
+    runOptimizationSafePipeline,
     loadTenantReport,
     buildOpsPlan,
     runKeywordBrain,
@@ -1691,6 +1739,7 @@ export default function AdOsPage() {
     dryRunExternalPublish: publishingExternal,
     probeGooglePublisher: probingGooglePublisher,
     runBudgetPacing: runningBudgetPacing,
+    runOptimizationSafePipeline: runningOptimizationSafePipeline,
     loadTenantReport: loadingTenantReport,
     buildOpsPlan: buildingOpsPlan,
     runKeywordBrain: runningKeywordBrain,

@@ -14,6 +14,7 @@ export const ACTION_FLAG_KEYS = [
   'harvestingLearning',
   'optimizingPerformance',
   'runningBudgetPacing',
+  'runningOptimizationSafePipeline',
   'probingPublisher',
   'runningLaunchAudit',
   'probingNaverAdgroups',

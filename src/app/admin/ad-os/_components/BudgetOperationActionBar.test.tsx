@@ -33,6 +33,7 @@ const actions: BudgetOperationActionHandlers = {
   dryRunExternalPublish: noop,
   probeGooglePublisher: noop,
   runBudgetPacing: noop,
+  runOptimizationSafePipeline: noop,
   loadTenantReport: noop,
   buildOpsPlan: noop,
   runKeywordBrain: noop,
@@ -66,6 +67,7 @@ describe('Ad OS BudgetOperationActionBar', () => {
     expect(html).toContain('Launch audit');
     expect(html).toContain('Create Naver paused keywords');
     expect(html).toContain('Budget pacing');
+    expect(html).toContain('Optimization safe pipeline');
     expect(html).toContain('Kill-switch dry-run');
   });
 
@@ -77,7 +79,7 @@ describe('Ad OS BudgetOperationActionBar', () => {
       />,
     );
 
-    expect((html.match(/<button/g) || []).length).toBe(38);
+    expect((html.match(/<button/g) || []).length).toBe(39);
     expect(html).toContain('Save budgets');
   });
 });
