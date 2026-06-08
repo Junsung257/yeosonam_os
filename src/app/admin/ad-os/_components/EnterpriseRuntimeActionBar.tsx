@@ -3,6 +3,7 @@ import Button from '@/components/ui/Button';
 export type EnterpriseRuntimeActionKey =
   | 'runRuntimeReadiness'
   | 'checkChannelAdapters'
+  | 'checkCredentialPreflight'
   | 'createNaverPausedKeywordPacket'
   | 'createGoogleDraftPacket'
   | 'createGoogleRsaDrafts'
@@ -34,6 +35,7 @@ export type EnterpriseRuntimeActionLoading = Record<EnterpriseRuntimeActionKey, 
 const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label: string }> = [
   { key: 'runRuntimeReadiness', label: 'Runtime readiness' },
   { key: 'checkChannelAdapters', label: 'Channel adapters' },
+  { key: 'checkCredentialPreflight', label: 'Credential preflight' },
   { key: 'createNaverPausedKeywordPacket', label: 'Naver paused packet' },
   { key: 'createGoogleDraftPacket', label: 'Google draft packet' },
   { key: 'createGoogleRsaDrafts', label: 'Google RSA drafts' },

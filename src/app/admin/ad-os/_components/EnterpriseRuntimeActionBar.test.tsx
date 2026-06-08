@@ -11,6 +11,7 @@ const noop = () => {};
 const actions: EnterpriseRuntimeActionHandlers = {
   runRuntimeReadiness: noop,
   checkChannelAdapters: noop,
+  checkCredentialPreflight: noop,
   createNaverPausedKeywordPacket: noop,
   createGoogleDraftPacket: noop,
   createGoogleRsaDrafts: noop,
@@ -52,6 +53,7 @@ describe('Ad OS EnterpriseRuntimeActionBar', () => {
 
     expect(html).toContain('Runtime readiness');
     expect(html).toContain('Naver paused packet');
+    expect(html).toContain('Credential preflight');
     expect(html).toContain('Google RSA drafts');
     expect(html).toContain('Google RSA packets');
     expect(html).toContain('Google draft jobs');

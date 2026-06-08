@@ -111,7 +111,7 @@ export default function AdOsPage() {
     exportingGoogleConversions, exportingMetaConversions, runningBidOptimizer, runningExperiments, applyingBlogEvolution,
     runningPlatformJobs, runningConversionUpload, runningConversionSafePipeline, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
-    standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
+    standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, checkingCredentialPreflight, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
     creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
@@ -1360,6 +1360,19 @@ export default function AdOsPage() {
     });
   };
 
+  const checkCredentialPreflight = async () => {
+    await runJsonAction({
+      flag: 'checkingCredentialPreflight',
+      url: '/api/admin/ad-os/credential-preflight',
+      body: { apply: true },
+      errorMessage: 'Credential preflight failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Credential preflight complete: ready ${formatAdOsNumber(summary.ready)}, partial ${formatAdOsNumber(summary.partial)}, missing ${formatAdOsNumber(summary.missing)}, live-write safe ${summary.live_write_safe ? 'yes' : 'no'}. Secret values exposed 0.`;
+      },
+    });
+  };
+
   const createNaverPausedKeywordPacket = async () => {
     await runJsonAction({
       flag: 'creatingNaverAdapterPacket',
@@ -1821,6 +1834,7 @@ export default function AdOsPage() {
   const enterpriseRuntimeActions: EnterpriseRuntimeActionHandlers = {
     runRuntimeReadiness,
     checkChannelAdapters,
+    checkCredentialPreflight,
     createNaverPausedKeywordPacket,
     createGoogleDraftPacket,
     createGoogleRsaDrafts,
@@ -1849,6 +1863,7 @@ export default function AdOsPage() {
   const enterpriseRuntimeLoading: EnterpriseRuntimeActionLoading = {
     runRuntimeReadiness: checkingRuntimeReadiness,
     checkChannelAdapters: checkingChannelAdapters,
+    checkCredentialPreflight: checkingCredentialPreflight,
     createNaverPausedKeywordPacket: creatingNaverAdapterPacket,
     createGoogleDraftPacket: creatingGoogleDraftPacket,
     createGoogleRsaDrafts: creatingGoogleRsaDrafts,

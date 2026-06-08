@@ -60,6 +60,7 @@ export const ACTION_FLAG_KEYS = [
   'standardizingExperiments',
   'creatingTenantAuditExport',
   'checkingChannelAdapters',
+  'checkingCredentialPreflight',
   'creatingNaverAdapterPacket',
   'creatingGoogleDraftPacket',
   'creatingGoogleRsaDrafts',
