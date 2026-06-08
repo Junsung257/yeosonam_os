@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   runMicroAutoQA: vi.fn(),
   rollbackInsertedUploadProduct: vi.fn(),
   scheduleUploadReviewInsert: vi.fn(),
+  claimUploadProductSection: vi.fn(),
+  updateUploadProductSectionJob: vi.fn(),
 }));
 
 vi.mock('@/lib/registration-policy', () => ({
@@ -71,10 +73,23 @@ vi.mock('@/lib/product-registration/upload-review-queue', () => ({
   scheduleUploadReviewInsert: mocks.scheduleUploadReviewInsert,
 }));
 
+vi.mock('@/lib/product-registration/upload-section-idempotency', () => ({
+  claimUploadProductSection: mocks.claimUploadProductSection,
+  updateUploadProductSectionJob: mocks.updateUploadProductSectionJob,
+}));
+
 import { processUploadRegistrationProducts } from './upload-product-runner';
 
 describe('processUploadRegistrationProducts', () => {
   it('does not persist a finalized registration blocked by the upload gate', async () => {
+    mocks.claimUploadProductSection.mockResolvedValue({
+      shouldProcess: true,
+      jobId: 'job-1',
+      rawTextHash: 'raw-hash',
+      sectionRawTextHash: 'section-hash',
+      normalizedTitle: 'blocked cebu package',
+      reason: 'claimed',
+    });
     mocks.issueUploadInternalCode.mockResolvedValue('PUS-ETC-CEB-05-0001');
     mocks.registerProductFromRaw.mockResolvedValue({
       extractedData: {
@@ -141,6 +156,7 @@ describe('processUploadRegistrationProducts', () => {
         productId: null,
         packageId: null,
         attemptNo: 0,
+        attemptPhase: 'normal_registration',
         rawTextHash: 'raw-hash',
         sectionRawTextHash: null,
         parserVersion: 'test',
@@ -197,6 +213,7 @@ describe('processUploadRegistrationProducts', () => {
       catalogGroupId: null,
       landOperators: [],
       irCanaryPrimary: false,
+      forceReprocess: false,
     });
 
     expect(result.savedIds).toEqual([]);
@@ -213,6 +230,11 @@ describe('processUploadRegistrationProducts', () => {
       trustScore: 20,
     }));
     expect(mocks.scheduleUploadReviewInsert).toHaveBeenCalledTimes(1);
+    expect(mocks.updateUploadProductSectionJob).toHaveBeenCalledWith(expect.objectContaining({
+      jobId: 'job-1',
+      status: 'blocked',
+      errorMessage: 'BLOCKED: title missing',
+    }));
     expect(mocks.buildUploadPersistenceRows).not.toHaveBeenCalled();
     expect(mocks.persistUploadRegistrationRows).not.toHaveBeenCalled();
   });

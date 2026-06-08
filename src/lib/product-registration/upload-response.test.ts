@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
+import { attemptPhaseFor, type ImprovementLedgerEvent } from './improvement-ledger';
 import { buildUploadResponsePayload } from './upload-response';
-import type { ImprovementLedgerEvent } from './improvement-ledger';
 
 function learningEvent(overrides: Partial<ImprovementLedgerEvent> = {}): ImprovementLedgerEvent {
+  const attemptNo = overrides.attemptNo ?? 0;
   return {
     uploadId: 'upload-1',
     productId: 'PUS-ETC-CEB-05-0001',
     packageId: 'pkg-1',
-    attemptNo: 0,
     rawTextHash: 'hash-1',
     sectionRawTextHash: null,
     parserVersion: 'test',
@@ -25,6 +25,8 @@ function learningEvent(overrides: Partial<ImprovementLedgerEvent> = {}): Improve
     ruleCandidate: false,
     createdAt: '2026-06-07T00:00:00.000Z',
     ...overrides,
+    attemptNo,
+    attemptPhase: overrides.attemptPhase ?? attemptPhaseFor(attemptNo),
   };
 }
 

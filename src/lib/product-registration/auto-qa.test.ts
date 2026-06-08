@@ -115,7 +115,7 @@ describe('runMicroAutoQA', () => {
     }));
   });
 
-  it('caps automatic improvement at three attempts and records deterministic repair candidates', () => {
+  it('caps automatic improvement at three repair attempts after the normal attempt', () => {
     const result = runMicroAutoQA({
       rawText: 'Cebu golf package raw with price 859,000',
       registration: registration({
@@ -131,10 +131,192 @@ describe('runMicroAutoQA', () => {
 
     expect(result.status).toBe('AUTO_FIXED');
     expect(result.triggers).toContain('schedule_pollution_removed');
-    expect(result.attempts).toHaveLength(3);
+    expect(result.attempts).toHaveLength(4);
+    expect(result.attempts.map(event => event.attemptPhase)).toEqual([
+      'normal_registration',
+      'deterministic_source_recompare',
+      'render_payload_audit_repair',
+      'final_reregistration_deliverability_audit',
+    ]);
     expect(result.recommendedFixes).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: 'itinerary_data.days[].schedule', kind: 'deterministic' }),
     ]));
     expect(result.attempts[1]?.ruleCandidate).toBe(true);
+  });
+
+  it('applies deterministic customer selling price repair before final render audit', () => {
+    const result = runMicroAutoQA({
+      rawText: 'Cebu golf package raw with price 859,000',
+      registration: registration({
+        pricing: {
+          ...registration().pricing,
+          productPrices: [{
+            target_date: '2026-07-24',
+            day_of_week: null,
+            net_price: 859000,
+            adult_selling_price: null,
+            child_price: null,
+            note: 'Solea',
+          }],
+        },
+        priceRecovery: {
+          ...registration().priceRecovery,
+          priceRows: [{
+            target_date: '2026-07-24',
+            day_of_week: null,
+            net_price: 859000,
+            adult_selling_price: null,
+            child_price: null,
+            note: 'Solea',
+          }],
+          priceDates: [{ date: '2026-07-24', price: 859000, confirmed: false }],
+        },
+        deliverability: {
+          ok: false,
+          blockers: ['customer selling price missing: adult_selling_price missing for positive product_prices row 2026-07-24 net 859,000 KRW'],
+        },
+        publishable: false,
+      }),
+      createdAt: '2026-06-07T00:00:00.000Z',
+    });
+
+    expect(result.status).toBe('AUTO_FIXED');
+    expect(result.repairedRegistration.deliverability.ok).toBe(true);
+    expect(result.repairedRegistration.pricing.productPrices[0]?.adult_selling_price).toBe(859000);
+    expect(result.attempts[1]?.autoFixesApplied).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'product_prices.adult_selling_price', kind: 'deterministic' }),
+    ]));
+  });
+
+  it('rebuilds price_dates from product_prices date-level minimum', () => {
+    const result = runMicroAutoQA({
+      rawText: 'Cebu golf package raw with price 859,000 and 899,000',
+      registration: registration({
+        pricing: {
+          ...registration().pricing,
+          productPrices: [
+            {
+              target_date: '2026-07-24',
+              day_of_week: null,
+              net_price: 899000,
+              adult_selling_price: 899000,
+              child_price: null,
+              note: 'Premium',
+            },
+            {
+              target_date: '2026-07-24',
+              day_of_week: null,
+              net_price: 859000,
+              adult_selling_price: 859000,
+              child_price: null,
+              note: 'Standard',
+            },
+          ],
+          priceDates: [{ date: '2026-07-24', price: 899000, confirmed: false }],
+        },
+        priceRecovery: {
+          ...registration().priceRecovery,
+          priceRows: [
+            {
+              target_date: '2026-07-24',
+              day_of_week: null,
+              net_price: 899000,
+              adult_selling_price: 899000,
+              child_price: null,
+              note: 'Premium',
+            },
+            {
+              target_date: '2026-07-24',
+              day_of_week: null,
+              net_price: 859000,
+              adult_selling_price: 859000,
+              child_price: null,
+              note: 'Standard',
+            },
+          ],
+          priceDates: [{ date: '2026-07-24', price: 899000, confirmed: false }],
+        },
+        deliverability: {
+          ok: false,
+          blockers: ['price storage mismatch: price storage mismatch 2026-07-24: product_prices min 859,000 != price_dates 899,000'],
+        },
+        publishable: false,
+      }),
+      createdAt: '2026-06-07T00:00:00.000Z',
+    });
+
+    expect(result.status).toBe('AUTO_FIXED');
+    expect(result.repairedRegistration.pricing.priceDates).toEqual([
+      { date: '2026-07-24', price: 859000, confirmed: false },
+    ]);
+    expect(result.repairedRegistration.extractedData.price).toBe(859000);
+    expect(result.attempts[1]?.autoFixesApplied).toEqual(expect.arrayContaining([
+      expect.objectContaining({ field: 'price_dates', kind: 'deterministic' }),
+    ]));
+  });
+
+  it('rebuilds price_dates when product_prices contain dates missing from the calendar summary', () => {
+    const result = runMicroAutoQA({
+      rawText: 'Cebu golf package raw with price rows on 2026-07-24 and 2026-07-25',
+      registration: registration({
+        pricing: {
+          ...registration().pricing,
+          productPrices: [
+            {
+              target_date: '2026-07-24',
+              day_of_week: null,
+              net_price: 859000,
+              adult_selling_price: 859000,
+              child_price: null,
+              note: 'Standard',
+            },
+            {
+              target_date: '2026-07-25',
+              day_of_week: null,
+              net_price: 879000,
+              adult_selling_price: 879000,
+              child_price: null,
+              note: 'Weekend',
+            },
+          ],
+          priceDates: [{ date: '2026-07-24', price: 859000, confirmed: false }],
+        },
+        priceRecovery: {
+          ...registration().priceRecovery,
+          priceRows: [
+            {
+              target_date: '2026-07-24',
+              day_of_week: null,
+              net_price: 859000,
+              adult_selling_price: 859000,
+              child_price: null,
+              note: 'Standard',
+            },
+            {
+              target_date: '2026-07-25',
+              day_of_week: null,
+              net_price: 879000,
+              adult_selling_price: 879000,
+              child_price: null,
+              note: 'Weekend',
+            },
+          ],
+          priceDates: [{ date: '2026-07-24', price: 859000, confirmed: false }],
+        },
+        deliverability: {
+          ok: false,
+          blockers: ['price storage mismatch: price_dates missing date 2026-07-25'],
+        },
+        publishable: false,
+      }),
+      createdAt: '2026-06-07T00:00:00.000Z',
+    });
+
+    expect(result.status).toBe('AUTO_FIXED');
+    expect(result.triggers).toContain('price_storage_mismatch');
+    expect(result.repairedRegistration.pricing.priceDates).toEqual([
+      { date: '2026-07-24', price: 859000, confirmed: false },
+      { date: '2026-07-25', price: 879000, confirmed: false },
+    ]);
   });
 });

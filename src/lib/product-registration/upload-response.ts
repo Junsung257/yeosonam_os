@@ -102,6 +102,7 @@ export async function buildUploadResponsePayload(input: {
   improvementEvents?: ImprovementLedgerEvent[];
   improvementEventsSaved?: number;
   improvementEventsSaveError?: string | null;
+  skippedDuplicateSections?: number;
 }): Promise<Record<string, unknown>> {
   const productCount = input.productsToSaveLength;
   const successCount = input.savedIds.length;
@@ -184,6 +185,7 @@ export async function buildUploadResponsePayload(input: {
     finalConfidence: input.savedConfidences[0] ?? input.parsedDocument.confidence,
     finalConfidences: input.savedConfidences,
     productCount,
+    skippedDuplicateSections: input.skippedDuplicateSections ?? 0,
     priceRowsSaved: input.totalPriceRowsSaved,
     fileHash: `${input.fileHash.slice(0, 12)}...`,
     classification: input.classification,

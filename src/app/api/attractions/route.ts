@@ -16,12 +16,13 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get('search'); // 이름 검색 (별칭 연결용)
     const limit = searchParams.get('limit');
     const idsParam = searchParams.get('ids'); // comma-separated UUID list
+    const includeUnpublishable = searchParams.get('include_unpublishable') === '1';
 
     // photos_only=1: 홈페이지용 경량 쿼리 (사진 매칭에 필요한 최소 필드만)
     const photosOnly = searchParams.get('photos_only');
     const fields = photosOnly
       ? 'id, name, country, region, photos, mention_count, mrt_gid'
-      : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, mrt_gid, mrt_rating, mrt_review_count, created_at';
+      : 'id, name, short_desc, long_desc, category, badge_type, emoji, country, region, aliases, photos, mention_count, mrt_gid, mrt_rating, mrt_review_count, customer_publishable, verification_status, auto_created, source_ids, created_at';
 
     // ids 지정 조회: itinerary_data attraction_ids 기반 경량 조회
     if (idsParam) {
@@ -30,11 +31,13 @@ export async function GET(request: NextRequest) {
         .map(s => s.trim())
         .filter(Boolean);
       if (ids.length === 0) return NextResponse.json({ attractions: [] });
-      const { data, error } = await supabaseAdmin
+      let query = supabaseAdmin
         .from('attractions')
         .select(fields)
         .in('id', ids)
         .eq('is_active', true);
+      if (!includeUnpublishable) query = query.eq('customer_publishable', true);
+      const { data, error } = await query;
       if (error) throw error;
       return NextResponse.json({ attractions: data || [] }, {
         headers: { 'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300' },
@@ -51,6 +54,7 @@ export async function GET(request: NextRequest) {
     const baseQuery = () => {
       let q = supabaseAdmin.from('attractions').select(fields).order('mention_count', { ascending: false });
       if (!includeInactive) q = q.eq('is_active', true);
+      if (!includeUnpublishable) q = q.eq('customer_publishable', true);
       if (search) q = q.ilike('name', `%${search}%`);
       if (country) q = q.eq('country', country);
       if (region) q = q.eq('region', region);
@@ -70,6 +74,7 @@ export async function GET(request: NextRequest) {
       // 먼저 head count로 전체 건수 조회 (baseQuery와 동일한 필터 적용)
       let countQuery = supabaseAdmin.from('attractions').select('id', { count: 'exact', head: true });
       if (!includeInactive) countQuery = countQuery.eq('is_active', true);
+      if (!includeUnpublishable) countQuery = countQuery.eq('customer_publishable', true);
       if (search) countQuery = countQuery.ilike('name', `%${search}%`);
       if (country) countQuery = countQuery.eq('country', country);
       if (region) countQuery = countQuery.eq('region', region);

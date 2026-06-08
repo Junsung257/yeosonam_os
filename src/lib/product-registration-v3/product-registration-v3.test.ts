@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { buildStandardNoticeDraft } from './standard-notices';
 import { mapTravelPackageToLandingData } from '../map-travel-package-to-lp';
 import { renderPackage } from '../render-contract';
+import { buildEntityReviewItem } from './entity-normalizer';
 
 function buildBaekduEightVariantFixture(): string {
   const grades = ['Standard', 'Premium', 'Lilac', 'VIP'];
@@ -275,6 +276,29 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     }
   });
 
+  it('removes price noise events from the render schedule', async () => {
+    const raw = [
+      'Package: Noise Render Guard',
+      'Price: 999,000 KRW / minimum 2',
+      'DAY 1 Airport meeting',
+      'DAY 1 999,-',
+      'DAY 1 City Garden attraction',
+      'DAY 2 free time',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [],
+      destination: 'City',
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+    const days = result.render_contract_preview[0]?.itinerary_data?.days ?? [];
+    const scheduleActivities = days.flatMap(day => (day.schedule ?? []).map(item => item.activity));
+
+    expect(events.find(event => event.raw_text === '999,-')?.type).toBe('price_noise');
+    expect(scheduleActivities).not.toContain('999,-');
+    expect(scheduleActivities).toContain('City Garden attraction');
+  });
+
   it('keeps Phu Quoc optional golf details out of the attraction unmatched queue', async () => {
     const raw = [
       '상품: [부산출발][가족여행] 푸꾸옥 뉴월드 풀빌라 자유여행 5일',
@@ -464,9 +488,16 @@ describe('product-registration-v3 draft ledger pipeline', () => {
 
     expect(persisted.id).toBe('draft-1');
     expect(persisted.error).toBeNull();
-    expect(persisted.queuedUnmatched).toBe(result.match_summary.unmatched.length);
-    expect(rpcCalls).toHaveLength(result.match_summary.unmatched.length);
+    expect(persisted.queuedUnmatched).toBe(result.match_summary.entity_summary.review_items.length);
+    expect(rpcCalls).toHaveLength(result.match_summary.entity_summary.review_items.length);
     expect(rpcCalls[0]).toMatchObject({ name: 'upsert_unmatched_activity' });
+    expect(rpcCalls[0]).toMatchObject({
+      payload: expect.objectContaining({
+        p_segment_kind_guess: expect.any(String),
+        p_suggested_action: expect.any(String),
+        p_source_context: expect.any(Object),
+      }),
+    });
   });
 
   it('uses package-scoped fallback upsert for unmatched attractions when the RPC is unavailable', async () => {
@@ -510,9 +541,14 @@ describe('product-registration-v3 draft ledger pipeline', () => {
       result,
     });
 
-    expect(upserts).toHaveLength(result.match_summary.unmatched.length);
+    expect(upserts).toHaveLength(result.match_summary.entity_summary.review_items.length);
     expect(upserts[0]).toMatchObject({
       options: { onConflict: 'unmatched_scope_key,activity' },
+      payload: expect.objectContaining({
+        segment_kind_guess: expect.any(String),
+        suggested_action: expect.any(String),
+        source_context: expect.any(Object),
+      }),
     });
   });
 
@@ -550,6 +586,46 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(events.some(event => event.type === 'transfer')).toBe(true);
     expect(events.some(event => event.type === 'meal')).toBe(true);
     expect(events.filter(event => event.type === 'attraction').map(event => event.raw_text)).toEqual(['Central Garden attraction']);
+  });
+
+  it('keeps regional meal terms scoped by destination without attraction queue pollution', async () => {
+    const raw = [
+      'Product: Regional Meal Scope',
+      'Price: 699,000 KRW / minimum 4',
+      'DAY 1 KE123 Busan departure 10:00 Da Nang arrival 12:00',
+      'DAY 2 Da Nang rice noodle pho lunch',
+      'DAY 3 KE124 Da Nang departure 13:00 Busan arrival 17:00',
+      'Include hotel meal',
+      'Exclude personal expenses',
+    ].join('\n');
+
+    const daNang = await runProductRegistrationV3(raw, { destination: 'Da Nang' });
+    const osaka = await runProductRegistrationV3(raw.replace('Da Nang rice noodle pho lunch', 'Osaka rice noodle pho lunch'), { destination: 'Osaka' });
+    const daNangMeal = daNang.ledger.variants[0].days.flatMap(day => day.events).find(event => event.type === 'meal');
+    const osakaMeal = osaka.ledger.variants[0].days.flatMap(day => day.events).find(event => event.type === 'meal');
+
+    expect(daNangMeal).toBeDefined();
+    expect(osakaMeal).toBeDefined();
+    expect(daNang.match_summary.attraction_unmatched_count).toBe(0);
+    expect(osaka.match_summary.attraction_unmatched_count).toBe(0);
+    expect(daNang.match_summary.entity_summary.meal_structured_count).toBeGreaterThan(0);
+    expect(osaka.match_summary.entity_summary.meal_structured_count).toBeGreaterThan(0);
+
+    const daNangItem = buildEntityReviewItem({ event: daNangMeal!, dayNumber: 2, destination: 'Da Nang' });
+    const osakaItem = buildEntityReviewItem({ event: osakaMeal!, dayNumber: 2, destination: 'Osaka' });
+    expect(daNangItem.suggested_resolution.global_term).toBe('rice_noodle');
+    expect(osakaItem.suggested_resolution.global_term).toBe('rice_noodle');
+    expect(daNangItem.suggested_resolution.destination_scope).toBe('Da Nang');
+    expect(osakaItem.suggested_resolution.destination_scope).toBe('Osaka');
+  });
+
+  it('blocks customer publish for unreviewed shopping and option entities without blocking the draft', async () => {
+    const result = await runProductRegistrationV3(fixtures[0].raw);
+
+    expect(result.gate_result.status).toBe('needs_review');
+    expect(result.gate_result.customer_publishable).toBe(false);
+    expect(result.gate_result.checks.find(check => check.id === 'entity_option_review_clear')?.status).toBe('fail');
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBeGreaterThan(0);
   });
 
   it('accepts only strict AI structure-plan schema, not extracted customer values', () => {

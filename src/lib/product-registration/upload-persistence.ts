@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 import type { UploadPersistenceRows } from './persistence-rows';
+import { replaceProductPricesForProduct } from './product-price-replacement';
 
 export type UploadPersistenceResult = {
   productInserted: boolean;
@@ -49,11 +50,13 @@ export async function persistUploadRegistrationRows(input: {
   }
 
   if (input.internalCode && input.rows.productPriceRows.length > 0) {
-    const { error: priceError } = await input.supabase
-      .from('product_prices')
-      .insert(input.rows.productPriceRows);
-
-    if (priceError) {
+    try {
+      result.priceRowsSaved = await replaceProductPricesForProduct({
+        supabase: input.supabase,
+        productId: input.internalCode,
+        rows: input.rows.productPriceRows,
+      });
+    } catch (priceError) {
       let rollbackErrorMessage: string | null = null;
       if (result.productInserted) {
         const { error: rollbackError } = await input.supabase
@@ -71,13 +74,13 @@ export async function persistUploadRegistrationRows(input: {
           rollbackErrorMessage = rollbackError.message;
         }
       }
+      const priceErrorMessage = priceError instanceof Error ? priceError.message : String(priceError);
       if (rollbackErrorMessage) {
-        throw new Error(`product_prices save failed: ${priceError.message}; product rollback failed: ${rollbackErrorMessage}`);
+        throw new Error(`${priceErrorMessage}; product rollback failed: ${rollbackErrorMessage}`);
       }
-      throw new Error(`product_prices save failed: ${priceError.message}`);
+      throw new Error(priceErrorMessage);
     }
-    result.priceRowsSaved = input.rows.productPriceRows.length;
-    console.log('[Upload API] product_prices INSERT complete:', input.rows.productPriceRows.length);
+    console.log('[Upload API] product_prices atomic replace complete:', result.priceRowsSaved);
   }
 
   const { data: pkgRes, error: pkgError } = await input.supabase

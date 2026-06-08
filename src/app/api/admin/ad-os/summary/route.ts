@@ -43,6 +43,10 @@ function payloadFlag(row: { response_payload?: unknown }, key: string): boolean 
   return asRecord(row.response_payload)[key] === true;
 }
 
+function conversionPayloadFlag(row: { quality_flags?: unknown; raw_payload?: unknown }, key: string): boolean {
+  return asRecord(row.quality_flags)[key] === true || asRecord(row.raw_payload)[key] === true;
+}
+
 function sampleQueueRow(input: {
   id: string | null | undefined;
   source: string;
@@ -539,7 +543,7 @@ function buildDegradedSummary(error: unknown) {
   };
 }
 
-export async function buildSummaryResponse() {
+async function buildSummaryResponse() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
   }
@@ -669,7 +673,7 @@ export async function buildSummaryResponse() {
       .limit(100),
     supabaseAdmin
       .from('ad_os_change_requests')
-      .select('id, request_type, status, risk_level, platform, title, reason, created_at')
+      .select('id, request_type, target_table, target_id, status, risk_level, platform, title, reason, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
     supabaseAdmin
@@ -689,7 +693,7 @@ export async function buildSummaryResponse() {
       .limit(20),
     supabaseAdmin
       .from('ad_os_conversion_events')
-      .select('id, event_type, platform, quarantine_status, revenue_krw, margin_krw, cost_krw, event_time')
+      .select('id, event_type, platform, quarantine_status, revenue_krw, margin_krw, cost_krw, quality_flags, raw_payload, event_time')
       .gte('event_time', new Date(Date.now() - 30 * 86400_000).toISOString())
       .order('event_time', { ascending: false })
       .limit(500),
@@ -955,6 +959,8 @@ export async function buildSummaryResponse() {
   })));
   const changeRequests = (changeRequestRes.data || []) as Array<{
     request_type: string | null;
+    target_table?: string | null;
+    target_id?: string | null;
     status: string | null;
     risk_level: string | null;
   }>;
@@ -985,6 +991,8 @@ export async function buildSummaryResponse() {
     revenue_krw: number | null;
     margin_krw: number | null;
     cost_krw: number | null;
+    quality_flags?: Record<string, unknown> | null;
+    raw_payload?: Record<string, unknown> | null;
   }>;
   const performanceFacts = (performanceFactRes.data || []) as Array<{
     platform: string | null;
@@ -1355,6 +1363,15 @@ export async function buildSummaryResponse() {
   const factMarginKrw = sum(performanceFacts, (row) => row.margin_krw);
   const attributionEventsClean = conversionEvents.filter((row) => !row.quarantine_status || row.quarantine_status === 'clean').length;
   const attributionEventsQuarantined = conversionEvents.filter((row) => row.quarantine_status && row.quarantine_status !== 'clean').length;
+  const paidAssistedOrganicBookingEvents = conversionEvents.filter((row) =>
+    row.event_type === 'booking' &&
+    (!row.quarantine_status || row.quarantine_status === 'clean') &&
+    conversionPayloadFlag(row, 'paid_assisted_organic')
+  );
+  const paidAssistedOrganicBookings = paidAssistedOrganicBookingEvents.length;
+  const paidAssistedOrganicRevenueKrw = sum(paidAssistedOrganicBookingEvents, (row) => row.revenue_krw);
+  const paidAssistedOrganicMarginKrw = sum(paidAssistedOrganicBookingEvents, (row) => row.margin_krw);
+  const paidAssistedOrganicCostKrw = sum(paidAssistedOrganicBookingEvents, (row) => row.cost_krw);
   const attributionMarginRoasPct = factSpendKrw > 0 ? Math.round((factMarginKrw / factSpendKrw) * 100) : 0;
   const attributionCpaKrw = factConversions > 0 ? Math.round(factSpendKrw / factConversions) : 0;
   const trackedCpaKrw = trackedConversions > 0 ? Math.round(trackedSpendKrw / trackedConversions) : 0;
@@ -1567,6 +1584,10 @@ export async function buildSummaryResponse() {
         fact_conversions_30d: factConversions,
         fact_spend_krw_30d: factSpendKrw,
         fact_margin_krw_30d: factMarginKrw,
+        paid_assisted_organic_bookings_30d: paidAssistedOrganicBookings,
+        paid_assisted_organic_revenue_krw_30d: paidAssistedOrganicRevenueKrw,
+        paid_assisted_organic_margin_krw_30d: paidAssistedOrganicMarginKrw,
+        paid_assisted_organic_cost_krw_30d: paidAssistedOrganicCostKrw,
       },
     },
     tenantPolicy,
@@ -1635,6 +1656,10 @@ export async function buildSummaryResponse() {
       conversion_events_30d: conversionEvents.length,
       conversion_events_clean_30d: attributionEventsClean,
       conversion_events_quarantined_30d: attributionEventsQuarantined,
+      paid_assisted_organic_bookings_30d: paidAssistedOrganicBookings,
+      paid_assisted_organic_revenue_krw_30d: paidAssistedOrganicRevenueKrw,
+      paid_assisted_organic_margin_krw_30d: paidAssistedOrganicMarginKrw,
+      paid_assisted_organic_cost_krw_30d: paidAssistedOrganicCostKrw,
       performance_facts_30d: performanceFacts.length,
       experiments: experiments.length,
       experiments_running: experiments.filter((row) => row.status === 'running').length,
@@ -1793,6 +1818,10 @@ export async function buildSummaryResponse() {
         fact_margin_krw_30d: factMarginKrw,
         fact_margin_roas_pct_30d: attributionMarginRoasPct,
         fact_cpa_krw_30d: attributionCpaKrw,
+        paid_assisted_organic_bookings_30d: paidAssistedOrganicBookings,
+        paid_assisted_organic_revenue_krw_30d: paidAssistedOrganicRevenueKrw,
+        paid_assisted_organic_margin_krw_30d: paidAssistedOrganicMarginKrw,
+        paid_assisted_organic_cost_krw_30d: paidAssistedOrganicCostKrw,
       },
       status: {
         has_click_signal: trackedClicks > 0,

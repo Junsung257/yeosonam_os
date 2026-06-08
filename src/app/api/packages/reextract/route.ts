@@ -19,6 +19,7 @@ import { loadUploadRegistrationContext } from '@/lib/product-registration/upload
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
 import { runMicroAutoQA } from '@/lib/product-registration/auto-qa';
+import { replaceProductPricesForProduct } from '@/lib/product-registration/product-price-replacement';
 import type { ItineraryDataLike } from '@/lib/product-registration/itinerary-normalization';
 
 const PUBLIC_PACKAGE_STATUSES = new Set(['approved', 'active', 'published']);
@@ -207,7 +208,7 @@ const postHandler = async (request: NextRequest) => {
     getRegistrationPolicy(),
   ]);
 
-  const registration = await registerProductFromRaw({
+  let registration = await registerProductFromRaw({
     rawText,
     documentRawText: rawText,
     extractedData: buildExtractedData(pkg, rawText),
@@ -219,10 +220,10 @@ const postHandler = async (request: NextRequest) => {
     enableGeminiFallback: true,
   });
 
-  const priceRows = registration.pricing.productPrices;
-  const priceDates = registration.pricing.priceDates;
-  const netPrice = registration.pricing.minPrice ?? registration.extractedData.price ?? pkg.price ?? 0;
-  const finalized = finalizeUploadRegistration({
+  let priceRows = registration.pricing.productPrices;
+  let priceDates = registration.pricing.priceDates;
+  let netPrice = registration.pricing.minPrice ?? registration.extractedData.price ?? pkg.price ?? 0;
+  let finalized = finalizeUploadRegistration({
     registration,
     rawText,
     title: registration.identity.title ?? pkg.display_title ?? pkg.title,
@@ -235,12 +236,57 @@ const postHandler = async (request: NextRequest) => {
     scheduleItemCount: registration.itinerary.scheduleItemCount,
   });
 
+  const preSaveAutoQA = runMicroAutoQA({
+    uploadId: `reextract:${pkg.id}`,
+    productId: pkg.internal_code,
+    packageId: pkg.id,
+    rawText,
+    sectionRawText: rawText,
+    registration,
+    trustScore: finalized.confidenceV3 * 100,
+  });
+  if (preSaveAutoQA.status === 'AUTO_FIXED' && preSaveAutoQA.repairedRegistration.deliverability.ok) {
+    registration = preSaveAutoQA.repairedRegistration;
+    priceRows = registration.pricing.productPrices;
+    priceDates = registration.pricing.priceDates;
+    netPrice = registration.pricing.minPrice ?? registration.extractedData.price ?? pkg.price ?? 0;
+    finalized = finalizeUploadRegistration({
+      registration,
+      rawText,
+      title: registration.identity.title ?? pkg.display_title ?? pkg.title,
+      netPrice,
+      internalCode: pkg.internal_code,
+      policy,
+      priceRows,
+      itineraryInput: registration.itinerary.itineraryInput,
+      itineraryDataToSave: registration.itinerary.itineraryDataToSave,
+      scheduleItemCount: registration.itinerary.scheduleItemCount,
+    });
+  }
+
   if (!registration.deliverability.ok || finalized.uploadGate === 'BLOCKED') {
     const blockers = [
       ...registration.deliverability.blockers,
       ...finalized.validation.errors,
       ...finalized.failedChecks.map(check => check.message),
     ];
+    const autoQA = preSaveAutoQA.status === 'PASS'
+      ? runMicroAutoQA({
+          uploadId: `reextract:${pkg.id}`,
+          productId: pkg.internal_code,
+          packageId: pkg.id,
+          rawText,
+          sectionRawText: rawText,
+          registration,
+          uploadFailed: true,
+          trustScore: finalized.confidenceV3 * 100,
+        })
+      : preSaveAutoQA;
+    const ledgerResult = await persistImprovementLedgerEvents({
+      supabase: supabaseAdmin,
+      isSupabaseConfigured,
+      events: autoQA.attempts,
+    });
     return NextResponse.json({
       ok: false,
       status: 'blocked',
@@ -248,6 +294,11 @@ const postHandler = async (request: NextRequest) => {
       title: registration.identity.title,
       priceRows: priceRows.length,
       priceDates: priceDates.length,
+      learningEngine: {
+        captured: autoQA.attempts.length,
+        persisted: ledgerResult.saved,
+        error: ledgerResult.error,
+      },
     }, { status: 422 });
   }
 
@@ -302,21 +353,17 @@ const postHandler = async (request: NextRequest) => {
     product_id: pkg.internal_code as string,
   }));
 
-  const { error: priceDeleteError } = await supabaseAdmin
-    .from('product_prices')
-    .delete()
-    .eq('product_id', pkg.internal_code);
-  if (priceDeleteError) {
-    return NextResponse.json({ error: `product_prices delete failed: ${priceDeleteError.message}` }, { status: 500 });
-  }
-
-  if (priceRowsToInsert.length > 0) {
-    const { error: priceInsertError } = await supabaseAdmin
-      .from('product_prices')
-      .insert(priceRowsToInsert);
-    if (priceInsertError) {
-      return NextResponse.json({ error: `product_prices insert failed: ${priceInsertError.message}` }, { status: 500 });
-    }
+  let replacedPriceRows = 0;
+  try {
+    replacedPriceRows = await replaceProductPricesForProduct({
+      supabase: supabaseAdmin,
+      productId: pkg.internal_code,
+      rows: priceRowsToInsert,
+    });
+  } catch (error) {
+    return NextResponse.json({
+      error: error instanceof Error ? error.message : 'product_prices save failed',
+    }, { status: 500 });
   }
 
   const { error: packageUpdateError } = await supabaseAdmin
@@ -335,19 +382,10 @@ const postHandler = async (request: NextRequest) => {
     return NextResponse.json({ error: productUpdateError.message }, { status: 500 });
   }
 
-  const autoQA = runMicroAutoQA({
-    uploadId: `reextract:${pkg.id}`,
-    productId: pkg.internal_code,
-    packageId: pkg.id,
-    rawText,
-    sectionRawText: rawText,
-    registration,
-    trustScore: finalized.confidenceV3 * 100,
-  });
   const ledgerResult = await persistImprovementLedgerEvents({
     supabase: supabaseAdmin,
     isSupabaseConfigured,
-    events: autoQA.attempts,
+    events: preSaveAutoQA.attempts,
   });
 
   return NextResponse.json({
@@ -357,16 +395,18 @@ const postHandler = async (request: NextRequest) => {
     title: registration.identity.title,
     status: refreshedPackageStatus,
     auditStatus: refreshedAuditStatus,
-    priceRows: priceRowsToInsert.length,
+    priceRows: replacedPriceRows,
     priceDates: priceDates.length,
     itineraryDays: registration.itinerary.itineraryDataToSave?.days?.length ?? 0,
     removedPollutedScheduleItems: registration.itinerary.removedPollutedScheduleItems.length,
     deliverability: registration.deliverability,
     v3DraftStatus: registration.evidence.v3DraftStatus,
     learningEngine: {
-      captured: autoQA.attempts.length,
+      captured: preSaveAutoQA.attempts.length,
       persisted: ledgerResult.saved,
       error: ledgerResult.error,
+      status: preSaveAutoQA.status,
+      repaired: preSaveAutoQA.status === 'AUTO_FIXED',
     },
   });
 };

@@ -11,16 +11,25 @@ const noop = () => {};
 const actions: EnterpriseRuntimeActionHandlers = {
   runRuntimeReadiness: noop,
   checkChannelAdapters: noop,
+  checkCredentialPreflight: noop,
   createNaverPausedKeywordPacket: noop,
   createGoogleDraftPacket: noop,
+  createGoogleRsaDrafts: noop,
+  createGoogleDraftFromRsa: noop,
+  createGoogleDraftJobs: noop,
+  runGoogleSafePipeline: noop,
   createMetaCapiTestPacket: noop,
+  runMetaCreativeSafePipeline: noop,
   checkExecutionGate: noop,
+  checkGoogleDraftGate: noop,
+  checkNaverLivePreflight: noop,
   runRollbackDrill: noop,
   runNaverLimitedPilot: noop,
   runPlatformJobs: noop,
   executePlatformJobsDryRun: noop,
   runConversionUploadJobs: noop,
   executeConversionUploadsDryRun: noop,
+  runConversionSafePipeline: noop,
   loadDataQuality: noop,
   runPortfolioPlan: noop,
   applyApprovedPortfolio: noop,
@@ -45,8 +54,18 @@ describe('Ad OS EnterpriseRuntimeActionBar', () => {
 
     expect(html).toContain('Runtime readiness');
     expect(html).toContain('Naver paused packet');
+    expect(html).toContain('Credential preflight');
+    expect(html).toContain('Google RSA drafts');
+    expect(html).toContain('Google RSA packets');
+    expect(html).toContain('Google draft jobs');
+    expect(html).toContain('Google safe pipeline');
+    expect(html).toContain('Meta creative pipeline');
+    expect(html).toContain('Naver gate');
+    expect(html).toContain('Google draft gate');
+    expect(html).toContain('Naver live preflight');
     expect(html).toContain('Platform dry-run');
     expect(html).toContain('Conversion dry-run');
+    expect(html).toContain('Conversion safe pipeline');
     expect(html).toContain('Audit export');
   });
 });

@@ -20,6 +20,12 @@ interface UnmatchedItem {
   region: string | null;
   occurrence_count: number;
   status: string;
+  segment_kind_guess?: string | null;
+  confidence?: number | null;
+  suggested_action?: string | null;
+  suggested_resolution?: Record<string, unknown> | null;
+  source_context?: Record<string, unknown> | null;
+  classification_version?: string | null;
   note: string | null;  // P11-3: Wikidata 제안 JSON / 관리자 메모
   created_at: string;
   suggested_card?: SuggestedCard | null;
@@ -44,6 +50,31 @@ function parseNote(note: string | null): { qid?: string; label?: string; confide
   } catch { /* not JSON */ }
   return null;
 }
+
+const ENTITY_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'attraction', label: 'Attraction' },
+  { value: 'hotel', label: 'Hotel' },
+  { value: 'meal', label: 'Meal' },
+  { value: 'transfer', label: 'Transfer' },
+  { value: 'shopping', label: 'Shopping' },
+  { value: 'optional_tour', label: 'Option' },
+  { value: 'price_noise', label: 'Noise' },
+  { value: 'unknown', label: 'Review' },
+];
+
+const ENTITY_LABELS: Record<string, string> = {
+  attraction: 'Attraction',
+  hotel: 'Hotel',
+  meal: 'Meal',
+  transfer: 'Transfer',
+  shopping: 'Shopping',
+  optional_tour: 'Option',
+  free_time: 'Free time',
+  notice: 'Notice',
+  price_noise: 'Noise',
+  unknown: 'Unknown',
+};
 
 interface UnmatchedSummary {
   counts: { pending: number; ignored: number; added: number; all: number };
@@ -168,6 +199,7 @@ export default function UnmatchedPage() {
   const [items, setItems] = useState<UnmatchedItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('pending');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [summary, setSummary] = useState<UnmatchedSummary | null>(null);
   const [highFreqOnly, setHighFreqOnly] = useState(false);
   const [bootstrapOpen, setBootstrapOpen] = useState(false);
@@ -406,14 +438,15 @@ export default function UnmatchedPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/unmatched?status=${statusFilter}`);
+      const categoryParam = categoryFilter === 'all' ? '' : `&category=${encodeURIComponent(categoryFilter)}`;
+      const res = await fetch(`/api/unmatched?status=${statusFilter}${categoryParam}`);
       const json = await res.json();
       setItems(json.items || []);
     } finally {
       setLoading(false);
       void loadSummary();
     }
-  }, [statusFilter, loadSummary]);
+  }, [statusFilter, categoryFilter, loadSummary]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -424,6 +457,52 @@ export default function UnmatchedPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, status }),
     });
+  };
+
+  const resolveEntity = async (item: UnmatchedItem, category: string, status = 'added') => {
+    await fetch('/api/unmatched', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: item.id,
+        status,
+        segment_kind_guess: category,
+        suggested_action: status === 'ignored'
+          ? 'auto_ignore_noise'
+          : ['shopping', 'optional_tour', 'notice', 'unknown'].includes(category)
+            ? 'needs_review'
+            : 'auto_resolve_existing',
+        suggested_resolution: {
+          category,
+          destination_scope: item.region ?? null,
+          country_scope: item.country ?? null,
+          policy: category === 'attraction' ? 'match-existing-only-no-auto-create' : 'admin-confirmed-entity-category',
+        },
+        source_context: {
+          package_id: item.package_id,
+          package_title: item.package_title,
+          day_number: item.day_number,
+          destination: item.region ?? item.country,
+          customer_visible: !['price_noise', 'free_time'].includes(category),
+        },
+        classification_version: 'admin-entity-confirm-v1',
+        resolved_kind: status === 'ignored' ? `manual_ignore_${category}` : `manual_entity_${category}`,
+      }),
+    });
+    if (status === 'pending') {
+      setItems(prev => prev.map(i => i.id === item.id
+        ? {
+            ...i,
+            segment_kind_guess: category,
+            suggested_action: ['shopping', 'optional_tour', 'notice', 'unknown'].includes(category)
+              ? 'needs_review'
+              : i.suggested_action,
+            classification_version: 'admin-entity-confirm-v1',
+          }
+        : i));
+      return;
+    }
+    setItems(prev => prev.filter(i => i.id !== item.id));
   };
 
   const addToAttractions = async (item: UnmatchedItem) => {
@@ -602,6 +681,19 @@ export default function UnmatchedPage() {
             {s === 'pending' ? '대기중' : s === 'ignored' ? '무시됨' : s === 'added' ? '추가됨' : '전체'}
           </button>
         ))}
+        <div className="flex gap-1 flex-wrap border-l border-admin-border-mid pl-3">
+          {ENTITY_FILTERS.map(filter => (
+            <button
+              key={filter.value}
+              onClick={() => { setCategoryFilter(filter.value); setSelectedIds(new Set()); }}
+              className={`px-2.5 py-1.5 text-xs rounded-lg ${
+                categoryFilter === filter.value ? 'bg-slate-900 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'
+              }`}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
         <span className="text-sm text-admin-muted self-center ml-auto">
           {selectedIds.size > 0 ? `${selectedIds.size}건 선택 / ` : ''}표시 {displayedItems.length}건
           {highFreqOnly ? ` (전체 ${items.length}건 중)` : ''}
@@ -657,6 +749,21 @@ export default function UnmatchedPage() {
                   {item.note && !item.note.startsWith('auto-') && (
                     <p className="text-[10px] text-admin-muted-2 mt-0.5 line-clamp-2">{item.note}</p>
                   )}
+                  <div className="flex flex-wrap gap-1.5 mt-2 text-[10px]">
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold">
+                      {ENTITY_LABELS[item.segment_kind_guess || 'attraction'] ?? item.segment_kind_guess ?? 'Attraction'}
+                    </span>
+                    {typeof item.confidence === 'number' && (
+                      <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">
+                        conf {Math.round(item.confidence * 100)}%
+                      </span>
+                    )}
+                    {item.suggested_action && (
+                      <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-700">
+                        {item.suggested_action}
+                      </span>
+                    )}
+                  </div>
                   </div>
                 </div>
                 <div className="flex gap-2">
@@ -698,6 +805,19 @@ export default function UnmatchedPage() {
               </div>
 
               {/* 🤖 자동 추천 패널 */}
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <button onClick={() => resolveEntity(item, 'meal')}
+                  className="px-2 py-1 bg-emerald-50 text-emerald-700 text-[11px] rounded border border-emerald-100 hover:bg-emerald-100">Meal</button>
+                <button onClick={() => resolveEntity(item, 'transfer')}
+                  className="px-2 py-1 bg-cyan-50 text-cyan-700 text-[11px] rounded border border-cyan-100 hover:bg-cyan-100">Transfer</button>
+                <button onClick={() => resolveEntity(item, 'shopping', 'pending')}
+                  className="px-2 py-1 bg-amber-50 text-amber-700 text-[11px] rounded border border-amber-100 hover:bg-amber-100">Shopping review</button>
+                <button onClick={() => resolveEntity(item, 'optional_tour', 'pending')}
+                  className="px-2 py-1 bg-violet-50 text-violet-700 text-[11px] rounded border border-violet-100 hover:bg-violet-100">Option review</button>
+                <button onClick={() => resolveEntity(item, 'price_noise', 'ignored')}
+                  className="px-2 py-1 bg-slate-50 text-slate-600 text-[11px] rounded border border-slate-200 hover:bg-slate-100">Noise</button>
+              </div>
+
               {suggestingId === item.id && (
                 <div className="mt-3 pt-3 border-t border-amber-100 bg-amber-50/50 rounded-lg p-3">
                   <p className="text-xs text-amber-700 mb-2 font-medium">

@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { V3PipelineResult } from './types';
+import type { V3EntityReviewItem, V3PipelineResult } from './types';
 
 async function queueUnmatchedAttractions(
   sb: SupabaseClient,
@@ -11,7 +11,18 @@ async function queueUnmatchedAttractions(
     result: V3PipelineResult;
   },
 ): Promise<{ saved: number; error: string | null }> {
-  const items = input.result.match_summary.unmatched;
+  const items: V3EntityReviewItem[] = input.result.match_summary.entity_summary?.review_items
+    ?? input.result.match_summary.unmatched.map(item => ({
+      raw_text: item.raw_text,
+      category: 'attraction' as const,
+      day_number: item.day_number,
+      evidence: item.evidence,
+      confidence: 0.6,
+      suggested_action: 'needs_review' as const,
+      customer_visible: true,
+      blocks_publish: true,
+      suggested_resolution: { category: 'attraction', policy: 'match-existing-only-no-auto-create' },
+    }));
   if (items.length === 0) return { saved: 0, error: null };
 
   let saved = 0;
@@ -24,6 +35,20 @@ async function queueUnmatchedAttractions(
         p_day_number: item.day_number,
         p_country: input.destination ?? null,
         p_region: input.destination ?? null,
+        p_segment_kind_guess: item.category,
+        p_confidence: item.confidence,
+        p_suggested_action: item.suggested_action,
+        p_suggested_resolution: item.suggested_resolution,
+        p_source_context: {
+          draft_id: input.draftId ?? null,
+          package_id: input.packageId ?? null,
+          package_title: input.packageTitle ?? null,
+          destination: input.destination ?? null,
+          customer_visible: item.customer_visible,
+          blocks_publish: item.blocks_publish,
+          evidence: item.evidence,
+        },
+        p_classification_version: 'product-registration-v3-entity-v1',
       }).single();
       if (!rpc.error) {
         saved++;
@@ -44,10 +69,22 @@ async function queueUnmatchedAttractions(
         region: input.destination ?? null,
         occurrence_count: 1,
         status: 'pending',
-        segment_kind_guess: 'attraction',
+        segment_kind_guess: item.category,
         raw_label: item.evidence.quote,
         normalizer_version: 'product-registration-v3',
-        confidence: 0.6,
+        confidence: item.confidence,
+        suggested_action: item.suggested_action,
+        suggested_resolution: item.suggested_resolution,
+        source_context: {
+          draft_id: input.draftId ?? null,
+          package_id: input.packageId ?? null,
+          package_title: input.packageTitle ?? null,
+          destination: input.destination ?? null,
+          customer_visible: item.customer_visible,
+          blocks_publish: item.blocks_publish,
+          evidence: item.evidence,
+        },
+        classification_version: 'product-registration-v3-entity-v1',
         note: input.draftId ? `Queued from product_registration_drafts ${input.draftId}` : 'Queued from product_registration_v3',
       }, { onConflict: 'unmatched_scope_key,activity' });
     if (error) return { saved, error: error.message };

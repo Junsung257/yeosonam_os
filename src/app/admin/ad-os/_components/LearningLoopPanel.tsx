@@ -24,13 +24,16 @@ export function LearningLoopPanel({ learningLoop }: { learningLoop: LearningLoop
       </div>
 
       <MetricGrid
-        columns="md:grid-cols-4"
+        columns="md:grid-cols-4 xl:grid-cols-6"
         metrics={[
           { label: 'Clicks', value: metrics.clicks.toLocaleString('ko-KR') },
           { label: 'CTA rate', value: `${metrics.cta_rate_pct}%` },
           { label: 'Conversion rate', value: `${metrics.conversion_rate_pct}%` },
           { label: 'CPA', value: metrics.cpa_krw ? fmtWon(metrics.cpa_krw) : '-' },
           { label: 'ROAS', value: metrics.roas_pct ? `${metrics.roas_pct}%` : '-' },
+          { label: 'Paid assist', value: Number(metrics.paid_assisted_organic_bookings_30d || 0).toLocaleString('ko-KR') },
+          { label: 'Assist margin', value: fmtWon(Number(metrics.paid_assisted_organic_margin_krw_30d || 0)) },
+          { label: 'Assist revenue', value: fmtWon(Number(metrics.paid_assisted_organic_revenue_krw_30d || 0)) },
           { label: '30d sessions', value: metrics.engagement_sessions_30d.toLocaleString('ko-KR') },
           { label: 'Bounce rate', value: metrics.bounce_rate_pct === null ? '-' : `${metrics.bounce_rate_pct}%` },
           { label: 'Avg time', value: `${metrics.avg_time_on_page_seconds}s` },

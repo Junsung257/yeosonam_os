@@ -27,6 +27,7 @@ const KNOWN_HISTORICAL_COLLISION_PREFIXES = new Set([
   '20260513400000',
   '20260519100000',
   '20260524000000',
+  '20260601142000',
 ]);
 
 if (!fs.existsSync(migrationsDir)) {

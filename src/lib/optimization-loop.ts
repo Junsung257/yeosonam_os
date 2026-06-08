@@ -76,9 +76,15 @@ export async function runDailyOptimization(
     // ── Step 1: 성과 데이터 수집 ────────────────────────────
     console.log('[optimization-loop] 성과 데이터 수집 시작');
     const performanceData = await fetchAllPerformance(keywords);
+    const livePerformanceData = performanceData.filter(
+      (perf) => !perf.isMock && perf.sourceQuality !== 'mock' && !perf.excludedFromLearning,
+    );
+    if (livePerformanceData.length < performanceData.length) {
+      result.errors.push(`mock performance excluded from learning: ${performanceData.length - livePerformanceData.length}`);
+    }
 
     // DB에 성과 저장
-    const savePromises = performanceData.map(async (perf) => {
+    const savePromises = livePerformanceData.map(async (perf) => {
       const kw = keywords.find((k) => k.id === perf.keywordId);
       if (!kw) return;
 
@@ -94,7 +100,7 @@ export async function runDailyOptimization(
     });
     await Promise.allSettled(savePromises);
 
-    result.totalSpend = performanceData.reduce((sum, p) => sum + p.spend, 0);
+    result.totalSpend = livePerformanceData.reduce((sum, p) => sum + p.spend, 0);
 
     // ── Step 2: Search Terms 수집 ──────────────────────────
     console.log('[optimization-loop] Search Terms 수집 시작');

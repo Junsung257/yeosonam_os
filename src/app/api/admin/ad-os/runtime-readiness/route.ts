@@ -93,7 +93,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .from('ad_os_automation_runs')
     .insert({
       run_type: 'runtime_readiness',
-      mode: apply ? 'persist' : 'dry_run',
+      mode: apply ? 'guarded' : 'dry_run',
       status: 'running',
       summary: { apply, ...result.summary },
     })

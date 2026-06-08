@@ -25,6 +25,8 @@ type TrackingPayload =
       campaign_name?: string;
       keyword?: string;
       gclid?: string;
+      gbraid?: string;
+      wbraid?: string;
       fbclid?: string;
       n_keyword?: string;
       current_cpc?: number;
@@ -142,6 +144,58 @@ async function incrementMappingMetric(
   await supabaseAdmin.from('ad_landing_mappings').update(patch).eq('id', id);
 }
 
+function normalizeSource(value?: string | null): string {
+  return String(value || '').trim().toLowerCase();
+}
+
+function isPaidTraffic(traffic?: {
+  source?: string | null;
+  medium?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  fbclid?: string | null;
+  n_keyword?: string | null;
+} | null): boolean {
+  if (!traffic) return false;
+  const source = normalizeSource(traffic.source);
+  const medium = normalizeSource(traffic.medium);
+  return Boolean(
+    traffic.gclid ||
+      traffic.gbraid ||
+      traffic.wbraid ||
+      traffic.fbclid ||
+      traffic.n_keyword ||
+      ['google', 'naver', 'facebook', 'meta', 'kakao'].includes(source) ||
+      ['cpc', 'ppc', 'paid', 'paid_search', 'display', 'social_paid'].includes(medium),
+  );
+}
+
+function classifyPaidSource(traffic?: {
+  source?: string | null;
+  gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
+  fbclid?: string | null;
+  n_keyword?: string | null;
+} | null): string {
+  if (!traffic) return 'organic';
+  const source = normalizeSource(traffic.source);
+  if (traffic.gclid || traffic.gbraid || traffic.wbraid || source === 'google') return 'google';
+  if (traffic.n_keyword || source === 'naver') return 'naver';
+  if (traffic.fbclid || source === 'facebook' || source === 'meta') return 'meta';
+  if (source === 'kakao') return 'kakao';
+  return source || 'organic';
+}
+
+function isOrganicLikeTraffic(traffic?: { source?: string | null; medium?: string | null } | null): boolean {
+  if (!traffic) return true;
+  const source = normalizeSource(traffic.source);
+  const medium = normalizeSource(traffic.medium);
+  if (isPaidTraffic(traffic)) return false;
+  return medium === 'organic' || medium === 'content' || source.includes('google') || source.includes('naver') || !source;
+}
+
 // ── POST /api/tracking ────────────────────────────────────────
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -181,6 +235,8 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         campaign_name: body.campaign_name ?? null,
         keyword: body.keyword ?? null,
         gclid: consent ? (body.gclid ?? null) : null,
+        gbraid: consent ? (body.gbraid ?? null) : null,
+        wbraid: consent ? (body.wbraid ?? null) : null,
         fbclid: consent ? (body.fbclid ?? null) : null,
         n_keyword: body.n_keyword ?? null,
         current_cpc: body.current_cpc ?? null,
@@ -295,14 +351,18 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       let allocated_ad_spend = 0;
       let attributed_source = 'organic';
       let attributed_gclid: string | null = null;
+      let attributed_gbraid: string | null = null;
+      let attributed_wbraid: string | null = null;
       let attributed_fbclid: string | null = null;
 
-      if (traffic?.gclid) {
+      if (traffic?.gclid || traffic?.gbraid || traffic?.wbraid) {
         attributed_source = 'google';
-        attributed_gclid = traffic.gclid;
+        attributed_gclid = traffic.gclid ?? null;
+        attributed_gbraid = traffic.gbraid ?? null;
+        attributed_wbraid = traffic.wbraid ?? null;
         allocated_ad_spend = traffic.current_cpc ?? 0;
       } else if (traffic?.fbclid) {
-        attributed_source = 'facebook';
+        attributed_source = 'meta';
         attributed_fbclid = traffic.fbclid;
         allocated_ad_spend = traffic.current_cpc ?? 0;
       } else if (traffic?.n_keyword) {
@@ -318,9 +378,19 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const first_touch_landing_page = firstTraffic?.landing_page || null;
       const first_touch_creative_id = firstTraffic?.content_creative_id || null;
       const first_touch_at = firstTraffic?.created_at || null;
+      const first_touch_ad_landing_mapping_id = firstTraffic?.ad_landing_mapping_id || null;
+      const first_touch_gclid = firstTraffic?.gclid || null;
+      const first_touch_gbraid = firstTraffic?.gbraid || null;
+      const first_touch_wbraid = firstTraffic?.wbraid || null;
+      const first_touch_fbclid = firstTraffic?.fbclid || null;
+      const first_touch_n_keyword = firstTraffic?.n_keyword || null;
       // Last-touch 콘텐츠 귀속
       const content_creative_id = traffic?.content_creative_id || null;
       const ad_landing_mapping_id = traffic?.ad_landing_mapping_id || null;
+      const firstTouchPaid = isPaidTraffic(firstTraffic);
+      const lastTouchPaid = isPaidTraffic(traffic);
+      const paid_assisted_organic = firstTouchPaid && !lastTouchPaid && isOrganicLikeTraffic(traffic);
+      const attribution_path = `${classifyPaidSource(firstTraffic)}>${classifyPaidSource(traffic)}`;
 
       // net_profit는 DB GENERATED ALWAYS 컬럼 — insertConversionLog에서 제외됨
       void insertConversionLog({
@@ -332,12 +402,22 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         allocated_ad_spend,
         attributed_source,
         attributed_gclid,
+        attributed_gbraid,
+        attributed_wbraid,
         attributed_fbclid,
         first_touch_source,
         first_touch_keyword,
         first_touch_landing_page,
         first_touch_creative_id,
         first_touch_at,
+        first_touch_ad_landing_mapping_id,
+        first_touch_gclid,
+        first_touch_gbraid,
+        first_touch_wbraid,
+        first_touch_fbclid,
+        first_touch_n_keyword,
+        paid_assisted_organic,
+        attribution_path,
         content_creative_id,
         ad_landing_mapping_id,
       });

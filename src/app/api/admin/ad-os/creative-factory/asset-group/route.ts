@@ -25,10 +25,13 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
     .insert({
       run_type: 'creative_asset_group',
       platform: null,
+      mode: apply ? 'guarded' : 'dry_run',
       status: 'running',
-      trigger_source: 'admin_api',
       started_at: new Date().toISOString(),
-      config: { apply, tenant_id: tenantId, product_id: productId },
+      summary: {
+        config: { apply, tenant_id: tenantId, product_id: productId, source: 'asset_group_v1' },
+        external_api_write: false,
+      },
     })
     .select('*')
     .single();

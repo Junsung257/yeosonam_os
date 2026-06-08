@@ -153,6 +153,24 @@ Excluded: personal expenses, weekend golf surcharge 15,000원
     expect(result.blockers.join(' | ')).toContain('price storage mismatch');
   });
 
+  it('blocks calendar summaries that omit product price dates', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [
+        { target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null },
+        { target_date: '2026-07-05', day_of_week: null, net_price: 1099000, adult_selling_price: 1099000, child_price: null, note: null },
+      ],
+      priceDates: [{ date: '2026-07-04', price: 999000, confirmed: false }],
+      destination: 'Clark',
+      destinationCode: 'CRK',
+      internalCode: 'PUS-AA-CRK-05-0001',
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }, { day: 5 }],
+      durationDays: 5,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join(' | ')).toContain('price_dates missing date 2026-07-05');
+  });
+
   it('blocks positive product price rows that still have no customer selling price', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: null, child_price: null, note: null }],

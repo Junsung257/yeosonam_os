@@ -10,6 +10,7 @@ function event(overrides: Partial<ImprovementLedgerEvent> = {}): ImprovementLedg
     productId: 'PUS-LA-PQC-05-0001',
     packageId: '550e8400-e29b-41d4-a716-446655440000',
     attemptNo: 1,
+    attemptPhase: 'deterministic_source_recompare',
     rawTextHash: 'a'.repeat(64),
     sectionRawTextHash: null,
     parserVersion: 'product-registration-central',
@@ -41,6 +42,7 @@ function candidate(overrides: Partial<PatternCandidate> = {}): PatternCandidate 
     kind: 'deterministic_fix',
     signature: 'price_dates',
     evidenceCount: 3,
+    independentSourceCount: 3,
     successCount: 3,
     failureCount: 0,
     autoFixSuccessRate: 1,
@@ -85,5 +87,61 @@ describe('buildPromotionWorkItems', () => {
     });
 
     expect(workItems).toEqual([]);
+  });
+
+  it('keeps evidence links for detected-format macro candidate families', () => {
+    const workItems = buildPromotionWorkItems({
+      candidates: [
+        candidate({
+          id: 'price_table_alias:weekday_period_table',
+          kind: 'price_table_alias',
+          signature: 'weekday_period_table',
+          evidenceCount: 3,
+        }),
+      ],
+      events: [
+        event({
+          detectedFormat: 'weekday_period_table',
+          rawTextHash: 'b'.repeat(64),
+          packageId: '660e8400-e29b-41d4-a716-446655440000',
+        }),
+      ],
+    });
+
+    expect(workItems[0]).toEqual(expect.objectContaining({
+      evidenceRawTextHashes: ['b'.repeat(64)],
+      evidencePackageIds: ['660e8400-e29b-41d4-a716-446655440000'],
+    }));
+    expect(workItems[0].parserRulePlan.targetModules).toContain('src/lib/product-registration/price-recovery.ts');
+  });
+
+  it('routes itinerary entity candidates through review-gated work items', () => {
+    const workItems = buildPromotionWorkItems({
+      candidates: [
+        candidate({
+          id: 'entity_classification_pattern:day_table',
+          kind: 'entity_classification_pattern',
+          signature: 'day_table',
+        }),
+      ],
+      events: [
+        event({
+          detectedFormat: 'day_table',
+          rawTextHash: 'c'.repeat(64),
+          blockersBefore: ['entity.attraction_unresolved: rice noodle needs meal classification'],
+        }),
+      ],
+    });
+
+    expect(workItems[0].parserRulePlan.targetModules).toEqual(expect.arrayContaining([
+      'src/lib/product-registration-v3/entity-normalizer.ts',
+      'src/lib/product-registration-v3/gate.ts',
+    ]));
+    expect(workItems[0].fixturePlan.assertions).toEqual(expect.arrayContaining([
+      expect.stringContaining('new attraction master records are never created automatically'),
+    ]));
+    expect(workItems[0].parserRulePlan.safetyChecks).toEqual(expect.arrayContaining([
+      expect.stringContaining('Never auto-create new attractions'),
+    ]));
   });
 });

@@ -24,6 +24,7 @@ export type ProductRegistrationImprovementEventRow = {
   product_id: string | null;
   package_id: string | null;
   attempt_no: number | null;
+  attempt_phase?: string | null;
   raw_text_hash: string;
   section_raw_text_hash: string | null;
   parser_version: string | null;
@@ -114,6 +115,12 @@ export function mapImprovementLedgerRowToEvent(row: ProductRegistrationImproveme
     productId: row.product_id,
     packageId: row.package_id,
     attemptNo: row.attempt_no ?? 0,
+    attemptPhase: row.attempt_phase === 'normal_registration'
+      || row.attempt_phase === 'deterministic_source_recompare'
+      || row.attempt_phase === 'render_payload_audit_repair'
+      || row.attempt_phase === 'final_reregistration_deliverability_audit'
+      ? row.attempt_phase
+      : 'normal_registration',
     rawTextHash: row.raw_text_hash,
     sectionRawTextHash: row.section_raw_text_hash,
     parserVersion: row.parser_version ?? 'product-registration-central',
@@ -141,6 +148,7 @@ export function buildProductRegistrationLearningReport(input: {
   limit: number;
   generatedAt?: string;
   fullRegressionVerified?: boolean;
+  loadError?: string | null;
 }): ProductRegistrationLearningReport {
   const generatedAt = input.generatedAt ?? new Date().toISOString();
   const statuses = input.events.reduce<Record<string, number>>((acc, event) => {
@@ -165,7 +173,12 @@ export function buildProductRegistrationLearningReport(input: {
     fullRegressionVerified: Boolean(input.fullRegressionVerified),
     operatorReportAvailable: true,
   }));
-  const nextAction = promotionWorkItems.length > 0
+  const scoreBlockers = input.loadError
+    ? [`learning report load failed: ${input.loadError}`, ...score.blockers]
+    : score.blockers;
+  const nextAction = input.loadError
+    ? 'Check product_registration_improvement_events migration and service-role read access.'
+    : promotionWorkItems.length > 0
     ? 'Review promotion work items, add fixtures, then promote deterministic parser rules through full regression.'
     : macroMining.shouldRun
       ? 'Review macro candidates and collect source examples before promotion.'
@@ -200,8 +213,8 @@ export function buildProductRegistrationLearningReport(input: {
       micro: score.micro.total,
       macro: score.macro.total,
       combined: score.combined,
-      productionReady: score.productionReady,
-      blockers: score.blockers,
+      productionReady: score.productionReady && !input.loadError,
+      blockers: scoreBlockers,
     },
     safety: {
       readOnly: true,

@@ -28,6 +28,21 @@ interface UnmatchedSingle {
   id: string;
 }
 
+type UnmatchedEntityPayload = {
+  activity: string;
+  package_id?: string;
+  package_title?: string;
+  day_number?: number;
+  country?: string;
+  region?: string;
+  segment_kind_guess?: string;
+  confidence?: number;
+  suggested_action?: string;
+  suggested_resolution?: Record<string, unknown>;
+  source_context?: Record<string, unknown>;
+  classification_version?: string;
+};
+
 /**
  * POST /api/unmatched — 미매칭 관광지 자동 수집
  * 랜딩페이지 로드 시 미매칭 activity 목록 전송 → upsert
@@ -48,11 +63,11 @@ export async function POST(request: NextRequest) {
     // CONCURRENCY=10 — 큰 배치(50+)에서도 connection pool 안전.
     const valid = items.filter((item: { activity?: string }) =>
       typeof item.activity === 'string' && item.activity.length >= 3
-    );
+    ) as UnmatchedEntityPayload[];
 
     const CONCURRENCY = 10;
     let saved = 0;
-    const upsertOne = async (item: { activity: string; package_id?: string; package_title?: string; day_number?: number; country?: string; region?: string }) => {
+    const upsertOne = async (item: UnmatchedEntityPayload) => {
       const { error } = await supabaseAdmin.rpc('upsert_unmatched_activity', {
         p_activity: item.activity,
         p_package_id: item.package_id || null,
@@ -60,6 +75,12 @@ export async function POST(request: NextRequest) {
         p_day_number: item.day_number || null,
         p_country: item.country || null,
         p_region: item.region || null,
+        p_segment_kind_guess: item.segment_kind_guess || 'attraction',
+        p_confidence: item.confidence ?? null,
+        p_suggested_action: item.suggested_action || null,
+        p_suggested_resolution: item.suggested_resolution || null,
+        p_source_context: item.source_context || null,
+        p_classification_version: item.classification_version || null,
       }).single();
 
       if (error) {
@@ -75,6 +96,12 @@ export async function POST(request: NextRequest) {
             region: item.region || null,
             occurrence_count: 1,
             status: 'pending',
+            segment_kind_guess: item.segment_kind_guess || 'attraction',
+            confidence: item.confidence ?? null,
+            suggested_action: item.suggested_action || null,
+            suggested_resolution: item.suggested_resolution || null,
+            source_context: item.source_context || null,
+            classification_version: item.classification_version || null,
           }, { onConflict: 'unmatched_scope_key,activity' });
         return !e2;
       }
@@ -147,6 +174,8 @@ export async function GET(request: NextRequest) {
         .order('occurrence_count', { ascending: false })
         .order('created_at', { ascending: false });
       if (status !== 'all') q = q.eq('status', status);
+      const category = searchParams.get('category');
+      if (category && category !== 'all') q = q.eq('segment_kind_guess', category);
       return q;
     };
 
@@ -632,9 +661,25 @@ export async function PATCH(request: NextRequest) {
     const { status } = body;
     if (!status) return NextResponse.json({ error: 'status 필요' }, { status: 400 });
 
+    const updatePayload: Record<string, unknown> = { status };
+    if (typeof body.segment_kind_guess === 'string') updatePayload.segment_kind_guess = body.segment_kind_guess;
+    if (typeof body.suggested_action === 'string') updatePayload.suggested_action = body.suggested_action;
+    if (body.suggested_resolution && typeof body.suggested_resolution === 'object') {
+      updatePayload.suggested_resolution = body.suggested_resolution;
+    }
+    if (body.source_context && typeof body.source_context === 'object') {
+      updatePayload.source_context = body.source_context;
+    }
+    if (typeof body.classification_version === 'string') updatePayload.classification_version = body.classification_version;
+    if (status !== 'pending') {
+      updatePayload.resolved_at = new Date().toISOString();
+      updatePayload.resolved_kind = typeof body.resolved_kind === 'string' ? body.resolved_kind : `manual_${status}`;
+      updatePayload.resolved_by = 'admin_api';
+    }
+
     const { error } = await supabaseAdmin
       .from('unmatched_activities')
-      .update({ status })
+      .update(updatePayload)
       .eq('id', id);
 
     if (error) throw error;

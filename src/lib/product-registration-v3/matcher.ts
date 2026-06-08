@@ -1,5 +1,6 @@
 import { matchAttraction, type AttractionData } from '@/lib/attraction-matcher';
 import type { V3DraftLedger, V3MatchSummary } from './types';
+import { buildV3EntitySummary } from './entity-normalizer';
 
 function cloneLedger(ledger: V3DraftLedger): V3DraftLedger {
   return JSON.parse(JSON.stringify(ledger)) as V3DraftLedger;
@@ -43,14 +44,20 @@ export function applyProductRegistrationV3Matching(
     }
   }
 
+  const entitySummary = buildV3EntitySummary({
+    ledger: next,
+    destination,
+  });
+
   return {
     ledger: next,
     matchSummary: {
       attraction_matched_count: attractionMatched,
       attraction_unmatched_count: attractionUnmatched,
-      option_review_count: optionReview,
-      shopping_count: shoppingCount,
+      option_review_count: Math.max(optionReview, entitySummary.option_review_needed_count),
+      shopping_count: Math.max(shoppingCount, entitySummary.shopping_review_needed_count),
       unmatched,
+      entity_summary: entitySummary,
     },
   };
 }

@@ -53,6 +53,7 @@ export type BudgetOperationActionKey =
   | 'dryRunExternalPublish'
   | 'probeGooglePublisher'
   | 'runBudgetPacing'
+  | 'runOptimizationSafePipeline'
   | 'loadTenantReport'
   | 'buildOpsPlan'
   | 'runKeywordBrain'
@@ -104,6 +105,7 @@ const BUDGET_OPERATION_ACTIONS: BudgetOperationActionSpec[] = [
   { key: 'dryRunExternalPublish', id: 'external-publish', label: 'External publish dry-run', icon: Rocket },
   { key: 'probeGooglePublisher', id: 'probe-google', label: 'Google publisher probe', icon: KeyRound },
   { key: 'runBudgetPacing', id: 'budget-pacing', label: 'Budget pacing', icon: Wallet },
+  { key: 'runOptimizationSafePipeline', id: 'optimization-safe-pipeline', label: 'Optimization safe pipeline', icon: Gauge },
   { key: 'loadTenantReport', id: 'tenant-report', label: 'Load tenant report', icon: Download },
   { key: 'buildOpsPlan', id: 'ops-plan', label: 'Build ops plan', icon: Bot },
   { key: 'runKeywordBrain', id: 'keyword-brain', label: 'Keyword Brain', icon: Search },

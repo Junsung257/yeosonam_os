@@ -3,6 +3,26 @@ import Button from '@/components/ui/Button';
 import type { Summary } from '../_lib/types';
 import { StatusPill } from './StatusPill';
 
+type ChangeRequestRow = NonNullable<Summary['samples']['change_requests']>[number];
+
+function isGoogleRsaDraftRequest(row: ChangeRequestRow): boolean {
+  return (
+    String(row.platform || '') === 'google' &&
+    String(row.request_type || '') === 'create_creative_draft' &&
+    String(row.target_table || '') === 'ad_os_creative_asset_variants'
+  );
+}
+
+function isPortfolioOptimizerRequest(row: ChangeRequestRow): boolean {
+  return String(row.target_table || '') === 'ad_os_portfolio_budget_plans';
+}
+
+function requestPriority(row: ChangeRequestRow): number {
+  if (isPortfolioOptimizerRequest(row)) return 3;
+  if (isGoogleRsaDraftRequest(row)) return 2;
+  return 1;
+}
+
 export function ChangeRequestsPanel({
   count,
   rows,
@@ -14,11 +34,23 @@ export function ChangeRequestsPanel({
   loadingId: string | null;
   onUpdate: (id: string, status: 'approved' | 'rejected' | 'applied' | 'rolled_back') => void;
 }) {
+  const googleRsaDraftCount = rows.filter(isGoogleRsaDraftRequest).length;
+  const portfolioOptimizerCount = rows.filter(isPortfolioOptimizerRequest).length;
+  const displayRows = [...rows].sort((a, b) => requestPriority(b) - requestPriority(a));
+
   return (
     <section className="admin-card p-4">
       <div className="flex items-center justify-between">
         <h2 className="text-admin-base font-semibold text-admin-text-2">Change requests</h2>
-        <StatusPill tone={count > 0 ? 'warn' : 'neutral'}>{count}</StatusPill>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {portfolioOptimizerCount > 0 && (
+            <StatusPill tone="warn">Portfolio approvals {portfolioOptimizerCount}</StatusPill>
+          )}
+          {googleRsaDraftCount > 0 && (
+            <StatusPill tone="good">Google RSA drafts {googleRsaDraftCount}</StatusPill>
+          )}
+          <StatusPill tone={count > 0 ? 'warn' : 'neutral'}>{count}</StatusPill>
+        </div>
       </div>
       <div className="mt-3 space-y-2">
         {rows.length === 0 ? (
@@ -26,9 +58,11 @@ export function ChangeRequestsPanel({
             No change requests are waiting for approval. High-risk budget, bid, and content changes will appear here.
           </div>
         ) : (
-          rows.slice(0, 6).map((row, idx) => {
+          displayRows.slice(0, 6).map((row, idx) => {
             const id = String(row.id || '');
             const status = String(row.status || '');
+            const googleRsaDraft = isGoogleRsaDraftRequest(row);
+            const portfolioOptimizer = isPortfolioOptimizerRequest(row);
 
             return (
               <div key={String(row.id || idx)} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2">
@@ -38,9 +72,13 @@ export function ChangeRequestsPanel({
                     {String(row.status || '-')}
                   </StatusPill>
                 </div>
-                <p className="mt-1 text-admin-2xs text-admin-muted">
-                  {String(row.platform || 'internal')} - {String(row.risk_level || 'medium')} - {String(row.reason || '').slice(0, 70)}
-                </p>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-admin-2xs text-admin-muted">
+                  {portfolioOptimizer && <StatusPill tone="warn">Portfolio optimizer</StatusPill>}
+                  {googleRsaDraft && <StatusPill tone="good">Google RSA draft</StatusPill>}
+                  <span>
+                    {String(row.platform || 'internal')} - {String(row.risk_level || 'medium')} - {String(row.reason || '').slice(0, 70)}
+                  </span>
+                </div>
                 {status === 'proposed' && id && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     <Button size="sm" variant="secondary" onClick={() => onUpdate(id, 'approved')} loading={loadingId === id}>

@@ -96,6 +96,10 @@ function trustScore(row) {
   add(row.v3 === 'needs_review', 'v3.needs_review', 'high', 20);
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
   add(row.standard_notices === 0 && row.structured_facts === 0, 'v3.facts_missing', 'medium', 15);
+  add(row.entity_attraction_unresolved > 0, 'entity.attraction_unresolved', 'high', Math.min(30, 10 + row.entity_attraction_unresolved * 5));
+  add(row.entity_shopping_review_needed > 0, 'entity.shopping_review_needed', 'high', Math.min(20, 8 + row.entity_shopping_review_needed * 3));
+  add(row.entity_option_review_needed > 0, 'entity.option_review_needed', 'high', Math.min(20, 8 + row.entity_option_review_needed * 3));
+  add(row.entity_unknown_customer_visible > 0, 'entity.unknown_customer_visible', 'high', Math.min(25, 10 + row.entity_unknown_customer_visible * 5));
   add(row.unmatched_activities > 0, 'attraction.unmatched', 'medium', Math.min(20, 5 + Math.ceil(row.unmatched_activities / 10)));
   const score = issues.some(issue => issue.severity === 'critical' && issue.deduction >= 100)
     ? 0
@@ -152,8 +156,11 @@ function normalizedPriceDates(pkg) {
 
 function priceStorageMismatch(pkg, productPriceRows) {
   const priceDates = Array.isArray(pkg.price_dates) ? [...pkg.price_dates].filter(row => row?.date) : [];
-  if (priceDates.length === 0) return null;
   const datedRows = productPriceRows.filter(row => row?.target_date);
+  const priceDateByDate = new Map();
+  for (const row of priceDates) {
+    priceDateByDate.set(row.date, Number(row.price));
+  }
   const pricesByDate = new Map();
   for (const row of datedRows) {
     const price = Number(row.net_price);
@@ -161,6 +168,12 @@ function priceStorageMismatch(pkg, productPriceRows) {
     const prices = pricesByDate.get(row.target_date) ?? [];
     prices.push(price);
     pricesByDate.set(row.target_date, prices);
+  }
+  if (priceDates.length === 0) {
+    return pricesByDate.size > 0 ? 'price_dates missing all product_prices dates' : null;
+  }
+  for (const targetDate of pricesByDate.keys()) {
+    if (!priceDateByDate.has(targetDate)) return `price_dates missing date ${targetDate}`;
   }
   for (const priceDate of priceDates) {
     const prices = pricesByDate.get(priceDate.date);
@@ -244,6 +257,24 @@ function gateStatus(draft) {
   return draft?.gate_result?.status ?? draft?.status ?? 'none';
 }
 
+function draftAttractionUnmatchedCount(draft) {
+  const count = Number(draft?.match_summary?.attraction_unmatched_count);
+  return Number.isFinite(count) && count >= 0 ? count : null;
+}
+
+function draftEntitySummary(draft) {
+  const summary = draft?.match_summary?.entity_summary;
+  return {
+    attraction_unresolved: Number(summary?.attraction_unresolved_count ?? draft?.match_summary?.attraction_unmatched_count ?? 0) || 0,
+    shopping_review_needed: Number(summary?.shopping_review_needed_count ?? 0) || 0,
+    option_review_needed: Number(summary?.option_review_needed_count ?? draft?.match_summary?.option_review_count ?? 0) || 0,
+    unknown_customer_visible: Number(summary?.unknown_customer_visible_count ?? 0) || 0,
+    noise_removed: Number(summary?.auto_ignored_noise_count ?? 0) || 0,
+    meal_structured: Number(summary?.meal_structured_count ?? 0) || 0,
+    transfer_structured: Number(summary?.transfer_structured_count ?? 0) || 0,
+  };
+}
+
 function readinessFor(row) {
   const failures = [];
   const warnings = [];
@@ -258,9 +289,16 @@ function readinessFor(row) {
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
   if (row.v3 === 'blocked') failures.push('v3_blocked');
+  if (row.entity_attraction_unresolved > 0) failures.push('entity_attraction_unresolved');
+  if (row.entity_unknown_customer_visible > 0) failures.push('entity_unknown_customer_visible');
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
+  if (row.entity_shopping_review_needed > 0) warnings.push('entity_shopping_review_needed');
+  if (row.entity_option_review_needed > 0) warnings.push('entity_option_review_needed');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
+  if (row.entity_noise_removed > 0) warnings.push('entity_noise_removed');
+  if (row.entity_meal_structured > 0) warnings.push('entity_meal_structured');
+  if (row.entity_transfer_structured > 0) warnings.push('entity_transfer_structured');
 
   return {
     status: failures.length ? 'fail' : warnings.length ? 'warn' : 'pass',
@@ -293,6 +331,7 @@ const priceCountMap = new Map();
 const productPriceRowsByCode = new Map();
 const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
+const unmatchedEntityMap = new Map();
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
 
@@ -308,7 +347,7 @@ let unmatchedScopeError = null;
 if (packageIds.length > 0) {
   const { data: drafts, error: draftError } = await supabase
     .from('product_registration_drafts')
-    .select('id, package_id, status, gate_result, ledger, created_at')
+    .select('id, package_id, status, gate_result, ledger, match_summary, created_at')
     .in('package_id', packageIds)
     .order('created_at', { ascending: false });
   if (draftError) {
@@ -347,12 +386,25 @@ if (packageIds.length > 0) {
 
   const { data: unmatchedRows, error: unmatchedError } = await supabase
     .from('unmatched_activities')
-    .select('package_id')
+    .select('package_id, segment_kind_guess, suggested_action')
     .in('package_id', packageIds)
-    .neq('status', 'ignored');
+    .eq('status', 'pending')
+    .is('resolved_attraction_id', null);
   if (!unmatchedError) {
     for (const item of unmatchedRows ?? []) {
       unmatchedCountMap.set(item.package_id, (unmatchedCountMap.get(item.package_id) ?? 0) + 1);
+      const current = unmatchedEntityMap.get(item.package_id) ?? {
+        attraction_unresolved: 0,
+        shopping_review_needed: 0,
+        option_review_needed: 0,
+        unknown_customer_visible: 0,
+      };
+      const kind = item.segment_kind_guess ?? 'attraction';
+      if (kind === 'attraction') current.attraction_unresolved++;
+      if (kind === 'shopping') current.shopping_review_needed++;
+      if (kind === 'optional_tour') current.option_review_needed++;
+      if (kind === 'unknown') current.unknown_customer_visible++;
+      unmatchedEntityMap.set(item.package_id, current);
     }
   }
 }
@@ -409,6 +461,8 @@ const rows = allPackageRows
   .filter(pkg => scopedPackageIds.has(pkg.id))
   .map(pkg => {
     const draft = draftMap.get(pkg.id);
+    const draftEntities = draftEntitySummary(draft);
+    const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
     const row = {
       id: pkg.id,
       code: pkg.internal_code ?? pkg.short_code ?? '',
@@ -425,7 +479,14 @@ const rows = allPackageRows
       itinerary_days: countItineraryDays(pkg),
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
-      unmatched_activities: unmatchedCountMap.get(pkg.id) ?? 0,
+      unmatched_activities: draftAttractionUnmatchedCount(draft) ?? unmatchedCountMap.get(pkg.id) ?? 0,
+      entity_attraction_unresolved: draftEntities.attraction_unresolved || queueEntities.attraction_unresolved || 0,
+      entity_shopping_review_needed: draftEntities.shopping_review_needed || queueEntities.shopping_review_needed || 0,
+      entity_option_review_needed: draftEntities.option_review_needed || queueEntities.option_review_needed || 0,
+      entity_unknown_customer_visible: draftEntities.unknown_customer_visible || queueEntities.unknown_customer_visible || 0,
+      entity_noise_removed: draftEntities.noise_removed,
+      entity_meal_structured: draftEntities.meal_structured,
+      entity_transfer_structured: draftEntities.transfer_structured,
       code_unk: hasUnresolvedCodeOrDestination(pkg),
       raw_notice_leak_risk: hasRawLeakRisk(pkg),
       price_storage_mismatch: priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
@@ -466,6 +527,13 @@ const summary = {
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
   unmatched_activity_packages: rows.filter(row => row.unmatched_activities > 0).length,
+  entity_attraction_unresolved_packages: rows.filter(row => row.entity_attraction_unresolved > 0).length,
+  entity_shopping_review_packages: rows.filter(row => row.entity_shopping_review_needed > 0).length,
+  entity_option_review_packages: rows.filter(row => row.entity_option_review_needed > 0).length,
+  entity_unknown_customer_visible_packages: rows.filter(row => row.entity_unknown_customer_visible > 0).length,
+  entity_noise_removed_packages: rows.filter(row => row.entity_noise_removed > 0).length,
+  entity_meal_structured_packages: rows.filter(row => row.entity_meal_structured > 0).length,
+  entity_transfer_structured_packages: rows.filter(row => row.entity_transfer_structured > 0).length,
   unmatched_queue_scope_ready: unmatchedScopeReady,
   unmatched_queue_scope_error: unmatchedScopeError,
   schema_failures: unmatchedScopeReady ? 0 : 1,
@@ -536,6 +604,8 @@ if (strict) {
   if (summary.itinerary_policy_leak > 0) strictFailures.push('itinerary_policy_leak');
   if (summary.no_itinerary_days > 0) strictFailures.push('no_itinerary_days');
   if (summary.v3_blocked > 0) strictFailures.push('v3_blocked');
+  if (summary.v3_needs_review > 0) strictFailures.push('v3_needs_review');
+  if (summary.missing_v3_draft > 0) strictFailures.push('missing_v3_draft');
   if (strictFailures.length > 0) {
     console.error(`Strict product mobile readiness audit failed: ${strictFailures.join(', ')}`);
     process.exit(1);

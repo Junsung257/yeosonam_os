@@ -37,12 +37,14 @@ export function ledgerToRenderPackageInputs(ledger: V3DraftLedger): RenderPackag
       return {
         day: day.day,
         regions: day.route,
-        schedule: day.events.map(event => ({
-          type: event.type === 'meeting' || event.type === 'activity' ? 'normal' : event.type,
-          time: event.time,
-          activity: event.raw_text,
-          attraction_ids: event.canonical_id ? [event.canonical_id] : undefined,
-        })),
+        schedule: day.events
+          .filter(event => event.type !== 'price_noise')
+          .map(event => ({
+            type: event.type === 'meeting' || event.type === 'activity' ? 'normal' : event.type,
+            time: event.time,
+            activity: event.raw_text,
+            attraction_ids: event.canonical_id ? [event.canonical_id] : undefined,
+          })),
         meals,
         hotel: renderHotel(day.hotel),
       };

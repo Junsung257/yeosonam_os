@@ -155,6 +155,7 @@ beforeEach(() => {
     improvementEvents: [],
     improvementEventsSaved: 0,
     improvementEventsSaveError: null,
+    skippedDuplicateSections: 0,
   });
   mocks.completeUploadRegistration.mockResolvedValue({ success: true, dbIds: ['pkg-1'] });
 });
@@ -220,6 +221,7 @@ describe('runUploadRegistrationPipeline', () => {
       irLandOperatorName: 'Land A',
       tempDestination: 'Cebu',
       normalizedCatalogHash: 'normalized-hash',
+      forceReprocess: false,
     }));
     expect(mocks.completeUploadRegistration).toHaveBeenCalledWith(expect.objectContaining({
       registrationProductsResult: expect.objectContaining({

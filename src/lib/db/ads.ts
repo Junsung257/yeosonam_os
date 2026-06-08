@@ -201,6 +201,8 @@ export interface AdTrafficLog {
   campaign_name?: string | null;
   keyword?: string | null;
   gclid?: string | null;
+  gbraid?: string | null;
+  wbraid?: string | null;
   fbclid?: string | null;
   n_keyword?: string | null;
   current_cpc?: number | null;
@@ -270,12 +272,22 @@ export interface AdConversionLog {
   net_profit: number; // GENERATED ALWAYS
   attributed_source?: string | null;
   attributed_gclid?: string | null;
+  attributed_gbraid?: string | null;
+  attributed_wbraid?: string | null;
   attributed_fbclid?: string | null;
   first_touch_source?: string | null;
   first_touch_keyword?: string | null;
   first_touch_landing_page?: string | null;
   first_touch_creative_id?: string | null;
   first_touch_at?: string | null;
+  first_touch_ad_landing_mapping_id?: string | null;
+  first_touch_gclid?: string | null;
+  first_touch_gbraid?: string | null;
+  first_touch_wbraid?: string | null;
+  first_touch_fbclid?: string | null;
+  first_touch_n_keyword?: string | null;
+  paid_assisted_organic?: boolean | null;
+  attribution_path?: string | null;
   content_creative_id?: string | null;
   ad_landing_mapping_id?: string | null;
   created_at: string;

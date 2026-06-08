@@ -33,6 +33,7 @@ import {
 } from './_lib/naver-keyword-csv';
 import { loadInitialReadinessPanels } from './_lib/initial-readiness-loader';
 import {
+  parseAdOsJsonResponse,
   useAdOsJsonActionRunner,
   useAdOsJsonBatchActionRunner,
   useAdOsJsonIdActionRunner,
@@ -102,16 +103,16 @@ export default function AdOsPage() {
   const {
     savingBudget, savingTenantPolicy, runningAutomation, runningGuardedApply, runningPilotSetup,
     publishingDrafts, publishingNaverKeywords, activatingNaverKeywords, harvestingLearning, optimizingPerformance,
-    runningBudgetPacing, probingPublisher, runningLaunchAudit, probingNaverAdgroups, probingNaverAssets,
+    runningBudgetPacing, runningOptimizationSafePipeline, probingPublisher, runningLaunchAudit, probingNaverAdgroups, probingNaverAssets,
     syncingNaverAssets, generatingNaverPacket, approvingNaverCandidates, runningExpiryCleanup, runningKillSwitch,
     generatingCandidates, syncingPerformance, applyingLearning, publishingExternal, harvestingSearchTerms,
     planningExperiments, probingGooglePublisher, loadingTenantReport, buildingOpsPlan, creatingCreativeDrafts,
     syncingBookingFunnel, runningConversionAttribution, runningKeywordBrain, runningSeoKeywordBridge, runningSearchTermGrowth, creatingNaverAssets, executingNaverGate,
     exportingGoogleConversions, exportingMetaConversions, runningBidOptimizer, runningExperiments, applyingBlogEvolution,
-    runningPlatformJobs, runningConversionUpload, loadingDataQuality, planningPortfolio, applyingPortfolio,
+    runningPlatformJobs, runningConversionUpload, runningConversionSafePipeline, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
-    standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
-    creatingMetaCapiPacket, checkingExecutionGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
+    standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, checkingCredentialPreflight, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
+    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, runningMetaCreativeSafePipeline, checkingExecutionGate, checkingGoogleDraftGate, checkingNaverLivePreflight, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
 
@@ -234,6 +235,28 @@ export default function AdOsPage() {
     setError,
     setAutomationMessage,
   });
+
+  const postAdOsJson = async (
+    url: string,
+    body: Record<string, unknown>,
+    errorMessage: string,
+  ) => {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return parseAdOsJsonResponse(response, errorMessage);
+  };
+
+  const createPipelineAuditExportDraft = async () => {
+    const audit = await postAdOsJson(
+      '/api/admin/ad-os/tenant-audit-export',
+      { apply: true },
+      'Tenant audit export failed.',
+    );
+    return getAdOsRecord(audit.summary);
+  };
 
   const runStagingSmoke = async () => {
     await runReadinessCheck({
@@ -605,6 +628,54 @@ export default function AdOsPage() {
         return `Budget pacing dry-run complete: channels ${formatAdOsNumber(summary.checked_channels)}, over pacing ${formatAdOsNumber(summary.over_pacing)}, under pacing ${formatAdOsNumber(summary.under_pacing)}, near loss cap ${formatAdOsNumber(summary.loss_limit_near)}, blocked ${formatAdOsNumber(summary.blocked)}.`;
       },
     });
+  };
+
+  const runOptimizationSafePipeline = async () => {
+    setActionFlag('runningOptimizationSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const performance = await postAdOsJson(
+        '/api/admin/ad-os/performance-sync',
+        { days: 30, apply: true },
+        'Performance fact sync failed.',
+      );
+      const attribution = await postAdOsJson(
+        '/api/admin/ad-os/conversion-attribution',
+        { days: 30, apply: true, limit: 3000 },
+        'Conversion attribution failed.',
+      );
+      const bidOptimizer = await postAdOsJson(
+        '/api/admin/ad-os/bid-optimizer/apply',
+        { apply: true, limit: 200 },
+        'Bid optimizer failed.',
+      );
+      const portfolio = await postAdOsJson(
+        '/api/admin/ad-os/optimizer/portfolio-plan',
+        { apply: true, days: 30 },
+        'Portfolio optimizer planning failed.',
+      );
+      const pacing = await postAdOsJson(
+        '/api/admin/ad-os/budget-pacing',
+        { mode: 'dry_run' },
+        'Budget pacing failed.',
+      );
+      const audit = await createPipelineAuditExportDraft();
+
+      await refresh();
+      const performanceSummary = getAdOsRecord(performance.summary);
+      const attributionSummary = getAdOsRecord(attribution.summary);
+      const bidSummary = getAdOsRecord(bidOptimizer.summary);
+      const portfolioSummary = getAdOsRecord(portfolio.summary);
+      const pacingSummary = getAdOsRecord(pacing.summary);
+      setAutomationMessage(
+        `Optimization safe pipeline complete: facts ${formatAdOsNumber(performanceSummary.facts_prepared)}, attribution conversions ${formatAdOsNumber(attributionSummary.conversions)}, bid candidates ${formatAdOsNumber(bidSummary.candidates)}, portfolio plans ${formatAdOsNumber(portfolioSummary.inserted)}, pacing checked ${formatAdOsNumber(pacingSummary.checked_channels)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Optimization safe pipeline failed.');
+    } finally {
+      setActionFlag('runningOptimizationSafePipeline', false);
+    }
   };
 
   const probePublisher = async () => {
@@ -1043,13 +1114,62 @@ export default function AdOsPage() {
       };
     } & Record<string, unknown>>({
       flag: 'loadingDataQuality',
-      url: '/api/admin/ad-os/data-quality?days=14',
+      url: '/api/admin/ad-os/data-quality',
+      body: { apply: true, days: 14 },
       errorMessage: 'Conversion data quality load failed.',
       successMessage: (json) => {
         const summary = json.summary;
-        return `Conversion data quality: ${String(summary?.status || 'unknown')}, uploadable ${formatAdOsNumber(summary?.uploadable_conversions)}, blocked ${formatAdOsNumber(summary?.blocked_conversions)}, attribution coverage ${Math.round(Number(summary?.attribution_coverage || 0) * 100)}%.`;
+        return `Conversion data quality saved: ${String(summary?.status || 'unknown')}, uploadable ${formatAdOsNumber(summary?.uploadable_conversions)}, blocked ${formatAdOsNumber(summary?.blocked_conversions)}, attribution coverage ${Math.round(Number(summary?.attribution_coverage || 0) * 100)}%.`;
       },
     });
+  };
+
+  const runConversionSafePipeline = async () => {
+    setActionFlag('runningConversionSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const googleJobs = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/run',
+        { apply: true, platform: 'google', limit: 100 },
+        'Google conversion upload job failed.',
+      );
+      const metaJobs = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/run',
+        { apply: true, platform: 'meta', limit: 100 },
+        'Meta conversion upload job failed.',
+      );
+      const googleDryRun = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/execute',
+        { apply: true, platform: 'google', limit: 50 },
+        'Google conversion upload dry-run failed.',
+      );
+      const metaDryRun = await postAdOsJson(
+        '/api/admin/ad-os/conversion-upload/execute',
+        { apply: true, platform: 'meta', limit: 50 },
+        'Meta conversion upload dry-run failed.',
+      );
+      const dataQuality = await postAdOsJson(
+        '/api/admin/ad-os/data-quality',
+        { apply: true, days: 14 },
+        'Conversion data quality snapshot failed.',
+      );
+      const audit = await createPipelineAuditExportDraft();
+
+      await refresh();
+      const googleJobSummary = getAdOsRecord(googleJobs.summary);
+      const metaJobSummary = getAdOsRecord(metaJobs.summary);
+      const googleDryRunSummary = getAdOsRecord(googleDryRun.summary);
+      const metaDryRunSummary = getAdOsRecord(metaDryRun.summary);
+      const dataQualitySummary = getAdOsRecord(dataQuality.summary);
+      setAutomationMessage(
+        `Conversion safe pipeline complete: Google jobs ${formatAdOsNumber(googleJobSummary.jobs_written)}, Meta jobs ${formatAdOsNumber(metaJobSummary.jobs_written)}, dry-run ready ${formatAdOsNumber(Number(googleDryRunSummary.upload_ready_dry_run || 0) + Number(metaDryRunSummary.upload_ready_dry_run || 0))}, blocked ${formatAdOsNumber(Number(googleJobSummary.blocked || 0) + Number(metaJobSummary.blocked || 0) + Number(googleDryRunSummary.blocked || 0) + Number(metaDryRunSummary.blocked || 0))}, quality ${String(dataQualitySummary.status || 'unknown')}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External upload 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Conversion safe pipeline failed.');
+    } finally {
+      setActionFlag('runningConversionSafePipeline', false);
+    }
   };
 
   const runPortfolioPlan = async () => {
@@ -1240,6 +1360,19 @@ export default function AdOsPage() {
     });
   };
 
+  const checkCredentialPreflight = async () => {
+    await runJsonAction({
+      flag: 'checkingCredentialPreflight',
+      url: '/api/admin/ad-os/credential-preflight',
+      body: { apply: true },
+      errorMessage: 'Credential preflight failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Credential preflight complete: ready ${formatAdOsNumber(summary.ready)}, partial ${formatAdOsNumber(summary.partial)}, missing ${formatAdOsNumber(summary.missing)}, live-write safe ${summary.live_write_safe ? 'yes' : 'no'}. Secret values exposed 0.`;
+      },
+    });
+  };
+
   const createNaverPausedKeywordPacket = async () => {
     await runJsonAction({
       flag: 'creatingNaverAdapterPacket',
@@ -1278,6 +1411,103 @@ export default function AdOsPage() {
     });
   };
 
+  const createGoogleRsaDrafts = async () => {
+    await runJsonAction({
+      flag: 'creatingGoogleRsaDrafts',
+      url: '/api/admin/ad-os/creative-factory/search-rsa',
+      body: {
+        apply: true,
+        limit: 3,
+      },
+      errorMessage: 'Google RSA draft generation failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google RSA drafts complete: sets ${formatAdOsNumber(summary.rsa_sets_generated)}, variants ${formatAdOsNumber(summary.variants_inserted)}, approval requests ${formatAdOsNumber(summary.change_requests_created)}. External API write 0.`;
+      },
+    });
+  };
+
+  const createGoogleDraftFromRsa = async () => {
+    await runJsonAction({
+      flag: 'creatingGoogleDraftFromRsa',
+      url: '/api/admin/ad-os/channel-adapters/google/draft-from-rsa',
+      body: {
+        apply: true,
+        include_drafts: false,
+        limit: 20,
+      },
+      errorMessage: 'Google RSA draft packet generation failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google RSA packets complete: prepared ${formatAdOsNumber(summary.packets_prepared)}, written ${formatAdOsNumber(summary.packets_written)}, blocked ${formatAdOsNumber(summary.blocked_packets)}. External API write 0.`;
+      },
+    });
+  };
+
+  const createGoogleDraftJobs = async () => {
+    await runJsonAction({
+      flag: 'creatingGoogleDraftJobs',
+      url: '/api/admin/ad-os/channel-adapters/google/jobs-from-packets',
+      body: {
+        apply: true,
+        limit: 50,
+      },
+      errorMessage: 'Google draft platform job preparation failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google draft jobs complete: prepared ${formatAdOsNumber(summary.jobs_prepared)}, written ${formatAdOsNumber(summary.jobs_written)}, approved ${formatAdOsNumber(summary.approved_jobs)}, blocked ${formatAdOsNumber(summary.blocked_jobs)}. External API write 0.`;
+      },
+    });
+  };
+
+  const runGoogleSafePipeline = async () => {
+    setActionFlag('runningGoogleSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const drafts = await postAdOsJson(
+        '/api/admin/ad-os/creative-factory/search-rsa',
+        { apply: true, limit: 3 },
+        'Google RSA draft generation failed.',
+      );
+      const packets = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/google/draft-from-rsa',
+        { apply: true, include_drafts: false, limit: 20 },
+        'Google RSA draft packet generation failed.',
+      );
+      const gate = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/execution-gate',
+        { apply: true, platform: 'google', requested_mode: 'approve', human_approved: false, limit: 20 },
+        'Google draft gate check failed.',
+      );
+      const jobs = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/google/jobs-from-packets',
+        { apply: true, limit: 50 },
+        'Google draft platform job preparation failed.',
+      );
+      const attempts = await postAdOsJson(
+        '/api/admin/ad-os/platform-jobs/execute',
+        { apply: true, mode: 'dry_run', platform: 'google', limit: 50 },
+        'Google draft platform dry-run failed.',
+      );
+      const audit = await createPipelineAuditExportDraft();
+
+      await refresh();
+      const draftSummary = getAdOsRecord(drafts.summary);
+      const packetSummary = getAdOsRecord(packets.summary);
+      const gateSummary = getAdOsRecord(gate.summary);
+      const jobSummary = getAdOsRecord(jobs.summary);
+      const attemptSummary = getAdOsRecord(attempts.summary);
+      setAutomationMessage(
+        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, dry-run attempts ${formatAdOsNumber(attemptSummary.attempts_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0) + Number(attemptSummary.blocked || 0))}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');
+    } finally {
+      setActionFlag('runningGoogleSafePipeline', false);
+    }
+  };
+
   const createMetaCapiTestPacket = async () => {
     await runJsonAction({
       flag: 'creatingMetaCapiPacket',
@@ -1296,6 +1526,57 @@ export default function AdOsPage() {
     });
   };
 
+  const runMetaCreativeSafePipeline = async () => {
+    setActionFlag('runningMetaCreativeSafePipeline', true);
+    setError(null);
+    setAutomationMessage(null);
+    try {
+      const assetGroup = await postAdOsJson(
+        '/api/admin/ad-os/creative-factory/asset-group',
+        { apply: true, limit: 20 },
+        'Meta creative asset group generation failed.',
+      );
+      const product = getAdOsRecord(assetGroup.product);
+      const seedPacket = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/meta/creative-seed',
+        {
+          apply: true,
+          product_id: product.id,
+          creative_name: product.title ? `Meta seed: ${String(product.title).slice(0, 80)}` : 'Meta creative seed',
+          landing_url: '/blog/danang-family-package',
+          headline: product.title ? String(product.title).slice(0, 40) : 'Family travel comparison',
+          primary_text: 'Compare itinerary, inclusions, and booking fit before inquiry.',
+          call_to_action: 'LEARN_MORE',
+        },
+        'Meta creative seed packet failed.',
+      );
+      const gate = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/execution-gate',
+        {
+          apply: true,
+          platform: 'meta',
+          requested_mode: 'approve',
+          human_approved: false,
+          limit: 20,
+        },
+        'Meta creative execution gate failed.',
+      );
+      const audit = await createPipelineAuditExportDraft();
+
+      await refresh();
+      const assetSummary = getAdOsRecord(assetGroup.summary);
+      const packetSummary = getAdOsRecord(seedPacket.summary);
+      const gateSummary = getAdOsRecord(gate.summary);
+      setAutomationMessage(
+        `Meta creative pipeline complete: intent signals ${formatAdOsNumber(assetSummary.generated_signals)}, variants ${formatAdOsNumber(assetSummary.generated_variants)}, seed ${String(packetSummary.lifecycle_status || 'unknown')}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}, audit ${String(audit.export_status || 'blocked')} ${formatAdOsNumber(audit.written)}. External API write 0.`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Meta creative pipeline failed.');
+    } finally {
+      setActionFlag('runningMetaCreativeSafePipeline', false);
+    }
+  };
+
   const checkExecutionGate = async () => {
     await runJsonAction({
       flag: 'checkingExecutionGate',
@@ -1311,6 +1592,39 @@ export default function AdOsPage() {
       successMessage: (json) => {
         const summary = getAdOsRecord(json.summary);
         return `Execution gate check complete: eligible ${formatAdOsNumber(summary.eligible)}, blocked ${formatAdOsNumber(summary.blocked)}, high risk ${formatAdOsNumber(summary.high_or_critical_risk)}. External API write 0.`;
+      },
+    });
+  };
+
+  const checkGoogleDraftGate = async () => {
+    await runJsonAction({
+      flag: 'checkingGoogleDraftGate',
+      url: '/api/admin/ad-os/channel-adapters/execution-gate',
+      body: {
+        apply: true,
+        platform: 'google',
+        requested_mode: 'approve',
+        human_approved: false,
+        limit: 20,
+      },
+      errorMessage: 'Google draft gate check failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google draft gate complete: monitor ${formatAdOsNumber(summary.monitor_only)}, blocked ${formatAdOsNumber(summary.blocked)}, high risk ${formatAdOsNumber(summary.high_or_critical_risk)}. Live publish disabled.`;
+      },
+    });
+  };
+
+  const checkNaverLivePreflight = async () => {
+    await runJsonAction({
+      flag: 'checkingNaverLivePreflight',
+      url: '/api/admin/ad-os/channel-adapters/naver/live-preflight',
+      body: { apply: true, limit: 20 },
+      errorMessage: 'Naver live preflight failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        const blockers = Array.isArray(summary.blockers) ? summary.blockers : [];
+        return `Naver live preflight complete: ${String(summary.preflight_status || 'unknown')}, ready jobs ${formatAdOsNumber(summary.ready_jobs)}, blocked jobs ${formatAdOsNumber(summary.blocked_jobs)}, env ${summary.env_flag_enabled ? 'on' : 'off'}, first blocker ${String(blockers[0] || 'none')}. External API write 0.`;
       },
     });
   };
@@ -1474,6 +1788,7 @@ export default function AdOsPage() {
     dryRunExternalPublish,
     probeGooglePublisher,
     runBudgetPacing,
+    runOptimizationSafePipeline,
     loadTenantReport,
     buildOpsPlan,
     runKeywordBrain,
@@ -1514,6 +1829,7 @@ export default function AdOsPage() {
     dryRunExternalPublish: publishingExternal,
     probeGooglePublisher: probingGooglePublisher,
     runBudgetPacing: runningBudgetPacing,
+    runOptimizationSafePipeline: runningOptimizationSafePipeline,
     loadTenantReport: loadingTenantReport,
     buildOpsPlan: buildingOpsPlan,
     runKeywordBrain: runningKeywordBrain,
@@ -1532,16 +1848,25 @@ export default function AdOsPage() {
   const enterpriseRuntimeActions: EnterpriseRuntimeActionHandlers = {
     runRuntimeReadiness,
     checkChannelAdapters,
+    checkCredentialPreflight,
     createNaverPausedKeywordPacket,
     createGoogleDraftPacket,
+    createGoogleRsaDrafts,
+    createGoogleDraftFromRsa,
+    createGoogleDraftJobs,
+    runGoogleSafePipeline,
     createMetaCapiTestPacket,
+    runMetaCreativeSafePipeline,
     checkExecutionGate,
+    checkGoogleDraftGate,
+    checkNaverLivePreflight,
     runRollbackDrill,
     runNaverLimitedPilot,
     runPlatformJobs,
     executePlatformJobsDryRun,
     runConversionUploadJobs,
     executeConversionUploadsDryRun,
+    runConversionSafePipeline,
     loadDataQuality,
     runPortfolioPlan,
     applyApprovedPortfolio,
@@ -1553,16 +1878,25 @@ export default function AdOsPage() {
   const enterpriseRuntimeLoading: EnterpriseRuntimeActionLoading = {
     runRuntimeReadiness: checkingRuntimeReadiness,
     checkChannelAdapters: checkingChannelAdapters,
+    checkCredentialPreflight: checkingCredentialPreflight,
     createNaverPausedKeywordPacket: creatingNaverAdapterPacket,
     createGoogleDraftPacket: creatingGoogleDraftPacket,
+    createGoogleRsaDrafts: creatingGoogleRsaDrafts,
+    createGoogleDraftFromRsa: creatingGoogleDraftFromRsa,
+    createGoogleDraftJobs: creatingGoogleDraftJobs,
+    runGoogleSafePipeline: runningGoogleSafePipeline,
     createMetaCapiTestPacket: creatingMetaCapiPacket,
+    runMetaCreativeSafePipeline: runningMetaCreativeSafePipeline,
     checkExecutionGate: checkingExecutionGate,
+    checkGoogleDraftGate: checkingGoogleDraftGate,
+    checkNaverLivePreflight: checkingNaverLivePreflight,
     runRollbackDrill: runningRollbackDrill,
     runNaverLimitedPilot: runningLimitedPilot,
     runPlatformJobs: runningPlatformJobs,
     executePlatformJobsDryRun: executingPlatformDryRun,
     runConversionUploadJobs: runningConversionUpload,
     executeConversionUploadsDryRun: executingConversionDryRun,
+    runConversionSafePipeline: runningConversionSafePipeline,
     loadDataQuality: loadingDataQuality,
     runPortfolioPlan: planningPortfolio,
     applyApprovedPortfolio: applyingPortfolio,

@@ -3,9 +3,11 @@ import { renderPackage } from '@/lib/render-contract';
 import type { PriceDate } from '@/lib/price-dates';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import type { StandardProductRegistrationObject } from './types';
+import { evaluateUploadDeliverability } from './deliverability-gate';
 import {
   buildImprovementLedgerEvent,
   type AutoFixRecord,
+  attemptPhaseFor,
   type ImprovementFinalStatus,
   type ImprovementLedgerEvent,
   type RenderAuditResult,
@@ -31,6 +33,7 @@ export type MicroAutoQAResult = {
   recommendedFixes: AutoFixRecord[];
   packagesAudit: RenderAuditResult;
   a4Audit: RenderAuditResult;
+  repairedRegistration: StandardProductRegistrationObject;
 };
 
 const COMPARED_FIELDS = [
@@ -68,10 +71,40 @@ function priceDatesAligned(rows: ProductPriceRowInput[], priceDates: PriceDate[]
     if (!row.target_date || !Number.isFinite(row.net_price) || row.net_price <= 0) continue;
     byDate.set(row.target_date, [...(byDate.get(row.target_date) ?? []), row.net_price]);
   }
+  const priceDateByDate = new Map(priceDates.map(priceDate => [priceDate.date, priceDate]));
+  if (byDate.size !== priceDateByDate.size) return false;
+  for (const date of byDate.keys()) {
+    if (!priceDateByDate.has(date)) return false;
+  }
   return priceDates.every(priceDate => {
     const prices = byDate.get(priceDate.date);
     return Array.isArray(prices) && prices.length > 0 && Math.min(...prices) === priceDate.price;
   });
+}
+
+function rebuildPriceDatesFromProductPrices(
+  rows: ProductPriceRowInput[],
+  currentPriceDates: PriceDate[],
+): PriceDate[] | null {
+  const byDate = new Map<string, ProductPriceRowInput[]>();
+  for (const row of rows) {
+    if (!row.target_date || !Number.isFinite(row.net_price) || row.net_price <= 0) continue;
+    byDate.set(row.target_date, [...(byDate.get(row.target_date) ?? []), row]);
+  }
+  if (byDate.size === 0) return null;
+
+  const existingByDate = new Map(currentPriceDates.map(priceDate => [priceDate.date, priceDate]));
+  return [...byDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([date, dateRows]) => {
+      const minRow = dateRows.reduce((best, row) => (row.net_price < best.net_price ? row : best));
+      return {
+        date,
+        price: minRow.net_price,
+        child_price: typeof minRow.child_price === 'number' ? minRow.child_price : undefined,
+        confirmed: existingByDate.get(date)?.confirmed ?? false,
+      };
+    });
 }
 
 function buildRenderPackageInput(registration: StandardProductRegistrationObject): Record<string, unknown> {
@@ -188,14 +221,93 @@ function recommendDeterministicFixes(input: {
     });
   }
   if (input.triggers.includes('price_storage_mismatch')) {
+    const repairedPriceDates = rebuildPriceDatesFromProductPrices(
+      input.registration.pricing.productPrices,
+      input.registration.pricing.priceDates,
+    );
     fixes.push({
       field: 'price_dates',
-      kind: 'manual_review_candidate',
-      reason: 'rebuild date-level minimum from product_prices only when source evidence confirms rows',
-      confidence: 0.7,
+      kind: repairedPriceDates ? 'deterministic' : 'manual_review_candidate',
+      reason: repairedPriceDates
+        ? 'rebuild date-level minimum from product_prices before customer render'
+        : 'rebuild date-level minimum from product_prices only when source evidence confirms rows',
+      before: input.registration.pricing.priceDates,
+      after: repairedPriceDates ?? undefined,
+      confidence: repairedPriceDates ? 0.95 : 0.7,
     });
   }
   return fixes;
+}
+
+function applyDeterministicRepairs(input: {
+  registration: StandardProductRegistrationObject;
+  fixes: AutoFixRecord[];
+  rawText: string;
+}): StandardProductRegistrationObject {
+  const registration = input.registration;
+  const hasCustomerPriceRepair = input.fixes.some(fix => (
+    fix.kind === 'deterministic' && fix.field === 'product_prices.adult_selling_price'
+  ));
+  const hasPriceDateRepair = input.fixes.some(fix => (
+    fix.kind === 'deterministic' && fix.field === 'price_dates'
+  ));
+  if (!hasCustomerPriceRepair && !hasPriceDateRepair) return registration;
+
+  const productPrices = hasCustomerPriceRepair
+    ? registration.pricing.productPrices.map(row => (
+      (typeof row.adult_selling_price !== 'number' || row.adult_selling_price <= 0)
+      && typeof row.net_price === 'number'
+      && Number.isFinite(row.net_price)
+      && row.net_price > 0
+        ? { ...row, adult_selling_price: row.net_price }
+        : row
+    ))
+    : registration.pricing.productPrices;
+  const rebuiltPriceDates = hasPriceDateRepair
+    ? rebuildPriceDatesFromProductPrices(productPrices, registration.pricing.priceDates)
+    : null;
+  const priceDates = rebuiltPriceDates ?? registration.pricing.priceDates;
+  const minPrice = priceDates.length > 0
+    ? Math.min(...priceDates.map(priceDate => priceDate.price))
+    : registration.pricing.minPrice;
+  const deliverability = evaluateUploadDeliverability({
+    priceRows: productPrices,
+    priceDates,
+    destination: registration.identity.destination,
+    destinationCode: registration.identity.destinationCode,
+    internalCode: registration.identity.internalCode,
+    itineraryDays: registration.itinerary.itineraryDataToSave?.days ?? registration.itinerary.itineraryInput?.days ?? [],
+    durationDays: registration.identity.durationDays,
+    rawText: input.rawText,
+    priceRecoveryFailures: registration.priceRecovery.failures,
+  });
+
+  return {
+    ...registration,
+    pricing: {
+      ...registration.pricing,
+      productPrices,
+      priceDates,
+      minPrice,
+      ok: productPrices.length > 0 && priceDates.length > 0,
+    },
+    priceRecovery: {
+      ...registration.priceRecovery,
+      priceRows: productPrices,
+      priceDates,
+      minPrice,
+      ok: productPrices.length > 0 && priceDates.length > 0,
+    },
+    extractedData: {
+      ...registration.extractedData,
+      price: minPrice ?? registration.extractedData.price,
+    },
+    deliverability,
+    failures: deliverability.ok
+      ? registration.failures.filter(failure => !failure.includes('price storage mismatch') && !failure.includes('adult_selling_price'))
+      : [...new Set([...registration.failures, ...deliverability.blockers])],
+    publishable: productPrices.length > 0 && priceDates.length > 0 && deliverability.ok,
+  };
 }
 
 function finalStatusFor(input: {
@@ -228,37 +340,75 @@ export function runMicroAutoQA(input: {
   maxAttempts?: number;
   createdAt?: string;
 }): MicroAutoQAResult {
-  const packagesAudit = auditPackagesPayload(input.registration);
-  const a4Audit = auditA4Payload(input.registration);
+  const initialPackagesAudit = auditPackagesPayload(input.registration);
+  const initialA4Audit = auditA4Payload(input.registration);
   const triggers = detectTriggers({
     registration: input.registration,
     rawText: input.rawText,
     uploadFailed: input.uploadFailed,
     trustScore: input.trustScore,
     trustThreshold: input.trustThreshold ?? 85,
-    packagesAudit,
-    a4Audit,
+    packagesAudit: initialPackagesAudit,
+    a4Audit: initialA4Audit,
   });
   const recommendedFixes = recommendDeterministicFixes({ registration: input.registration, triggers });
-  const status = finalStatusFor({ triggers, fixes: recommendedFixes, packagesAudit, a4Audit });
-  const maxAttempts = Math.max(1, Math.min(3, input.maxAttempts ?? (triggers.length > 0 ? 3 : 1)));
+  const repairedRegistration = applyDeterministicRepairs({
+    registration: input.registration,
+    fixes: recommendedFixes,
+    rawText: input.rawText,
+  });
+  const packagesAudit = auditPackagesPayload(repairedRegistration);
+  const a4Audit = auditA4Payload(repairedRegistration);
+  const remainingTriggers = detectTriggers({
+    registration: repairedRegistration,
+    rawText: input.rawText,
+    uploadFailed: input.uploadFailed,
+    trustScore: input.trustScore,
+    trustThreshold: input.trustThreshold ?? 85,
+    packagesAudit,
+    a4Audit,
+  }).filter(trigger => {
+    if (trigger === 'schedule_pollution_removed') return false;
+    return !recommendedFixes.some(fix => (
+      fix.kind === 'deterministic'
+      && (
+        (trigger === 'customer_selling_price_missing' && fix.field === 'product_prices.adult_selling_price')
+        || (trigger === 'price_storage_mismatch' && fix.field === 'price_dates')
+      )
+    ));
+  });
+  const status = triggers.length === 0
+    ? 'PASS'
+    : remainingTriggers.length === 0
+      ? 'AUTO_FIXED'
+      : finalStatusFor({ triggers: remainingTriggers, fixes: recommendedFixes, packagesAudit, a4Audit });
+  const maxRepairAttempts = triggers.length > 0
+    ? Math.max(0, Math.min(3, input.maxAttempts ?? 3))
+    : 0;
+  const attemptCount = 1 + maxRepairAttempts;
   const blockersBefore = [
     ...input.registration.deliverability.blockers,
-    ...packagesAudit.failures,
-    ...a4Audit.failures,
+    ...initialPackagesAudit.failures,
+    ...initialA4Audit.failures,
     ...triggers.map(trigger => `trigger:${trigger}`),
   ];
   const blockersAfter = status === 'PASS' || status === 'AUTO_FIXED'
     ? []
-    : blockersBefore;
-  const attempts = Array.from({ length: maxAttempts }, (_, index) => buildImprovementLedgerEvent({
+    : [
+      ...repairedRegistration.deliverability.blockers,
+      ...packagesAudit.failures,
+      ...a4Audit.failures,
+      ...remainingTriggers.map(trigger => `trigger:${trigger}`),
+    ];
+  const attempts = Array.from({ length: attemptCount }, (_, index) => buildImprovementLedgerEvent({
     uploadId: input.uploadId,
     productId: input.productId,
     packageId: input.packageId,
     attemptNo: index,
+    attemptPhase: attemptPhaseFor(index),
     rawText: input.rawText,
     sectionRawText: input.sectionRawText,
-    registration: input.registration,
+    registration: index === 0 ? input.registration : repairedRegistration,
     blockersBefore: index === 0 ? blockersBefore : blockersAfter,
     blockersAfter,
     comparedFields: COMPARED_FIELDS,
@@ -276,5 +426,6 @@ export function runMicroAutoQA(input: {
     recommendedFixes,
     packagesAudit,
     a4Audit,
+    repairedRegistration,
   };
 }

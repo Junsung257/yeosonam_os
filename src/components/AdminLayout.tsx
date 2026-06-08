@@ -313,8 +313,9 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [cmdOpen, setCmdOpen] = useState(false);
   const [usageCounts, setUsageCounts] = useState<Record<string, number>>({});
+  const [hasHydrated, setHasHydrated] = useState(false);
   const { favs, isFav, toggle: toggleFav } = useFavorites();
-  const { role: userRole, isLoading: roleLoading } = useUserRole();
+  const { role: userRole } = useUserRole();
   const { trackNavClick } = useNavLogger();
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
     // 처음엔 빈 Set — 초기 상태는 frequency 기반으로 아래 useMemo에서 결정
@@ -323,10 +324,16 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
 
   useAutoRefreshSession();
 
+  useEffect(() => {
+    setHasHydrated(true);
+  }, []);
+
+  const navRole = hasHydrated ? userRole : undefined;
+
   /** 사용자 역할에 따라 필터링된 메뉴 */
   const visibleGroups = useMemo(
-    () => filterNavGroups(adminNavGroups, userRole),
-    [userRole],
+    () => filterNavGroups(adminNavGroups, navRole),
+    [navRole],
   );
 
   /** 그룹 위치는 안정적으로 유지하고, 방문 빈도는 hydration 이후 추천/접힘 판단에만 사용한다. */
@@ -378,7 +385,8 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
     dedupingInterval: 30_000,
   });
 
-  const missionItems = useMemo(() => buildAdminMissionItems(badges), [badges]);
+  const visibleBadges = hasHydrated ? badges : undefined;
+  const missionItems = useMemo(() => buildAdminMissionItems(visibleBadges), [visibleBadges]);
 
   // ShortcutsBridge → CommandPalette 토글 이벤트 수신
   useEffect(() => {
@@ -420,13 +428,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
   );
 
   const itemBadge = useCallback(
-    (item: NavItem): number | undefined => getNavItemBadge(item, badges),
-    [badges],
+    (item: NavItem): number | undefined => getNavItemBadge(item, visibleBadges),
+    [visibleBadges],
   );
 
   // ── ⌘K 명령 카탈로그 (네비 + 액션) ──────────────────────────
   const staticCommands: AdminCommand[] = useMemo(() => {
-    const missionCmds: AdminCommand[] = filterActiveMissionItems(missionItems, userRole).map((item) => ({
+    const missionCmds: AdminCommand[] = filterActiveMissionItems(missionItems, navRole).map((item) => ({
       id: `mission:${item.id}`,
       kind: 'navigate' as const,
       label: `${item.label} ${item.count}건`,
@@ -474,7 +482,7 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
       },
     ];
     return [...missionCmds, ...navCmds, ...actionCmds];
-  }, [missionItems, userRole, visibleGroups]);
+  }, [missionItems, navRole, visibleGroups]);
 
   return (
     <div className="admin-scope min-h-screen bg-admin-bg flex" data-density={density}>
@@ -513,15 +521,15 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
           {sidebarMode === 'full' && (
             <MissionControlRail
               items={missionItems}
-              userRole={userRole}
+              userRole={navRole}
               onNavClick={handleNavClick}
-              computedAt={badges?.computedAt}
+              computedAt={visibleBadges?.computedAt}
             />
           )}
           {sidebarMode === 'slim' && (
             <MissionControlSlimRail
               items={missionItems}
-              userRole={userRole}
+              userRole={navRole}
               onNavClick={handleNavClick}
             />
           )}

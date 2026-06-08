@@ -91,7 +91,7 @@ export type GoldenCorpusReport = {
 };
 
 function corpusPath(...parts: string[]): string {
-  return join(__dirname, ...parts);
+  return join(process.cwd(), 'src/lib/product-registration/golden-corpus', ...parts);
 }
 
 function buildSyntheticItinerary(dayCount: number): { days: Array<{ day: number; regions: string[]; schedule: Array<{ activity: string }>; meals: Record<string, string>; hotel: { name: string | null; grade: string | null } }> } {
@@ -112,11 +112,15 @@ function assertPriceStorageAligned(
 ): string | null {
   const datedRows = priceRows.filter(row => row.target_date);
   const pricesByDate = new Map<string, number[]>();
+  const priceDateByDate = new Map(priceDates.map(row => [row.date, row.price]));
   for (const row of datedRows) {
     if (!row.target_date || !Number.isFinite(row.net_price) || row.net_price <= 0) continue;
     const prices = pricesByDate.get(row.target_date) ?? [];
     prices.push(row.net_price);
     pricesByDate.set(row.target_date, prices);
+  }
+  for (const targetDate of pricesByDate.keys()) {
+    if (!priceDateByDate.has(targetDate)) return `priceDatesMissing:${targetDate}`;
   }
   for (const priceDate of priceDates) {
     const prices = pricesByDate.get(priceDate.date);

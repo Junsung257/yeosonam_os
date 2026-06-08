@@ -122,6 +122,10 @@ export type Summary = {
       fact_margin_krw_30d?: number;
       fact_margin_roas_pct_30d?: number;
       fact_cpa_krw_30d?: number;
+      paid_assisted_organic_bookings_30d?: number;
+      paid_assisted_organic_revenue_krw_30d?: number;
+      paid_assisted_organic_margin_krw_30d?: number;
+      paid_assisted_organic_cost_krw_30d?: number;
     };
     status: Record<string, boolean>;
     next_action: string;

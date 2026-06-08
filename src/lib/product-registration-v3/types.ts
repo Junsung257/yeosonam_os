@@ -17,7 +17,28 @@ export type V3EventType =
   | 'option'
   | 'shopping'
   | 'free_time'
-  | 'notice';
+  | 'notice'
+  | 'price_noise'
+  | 'unknown';
+
+export type V3EntityCategory =
+  | 'attraction'
+  | 'hotel'
+  | 'meal'
+  | 'transfer'
+  | 'shopping'
+  | 'optional_tour'
+  | 'free_time'
+  | 'notice'
+  | 'price_noise'
+  | 'unknown';
+
+export type V3EntitySuggestedAction =
+  | 'auto_resolve_existing'
+  | 'auto_ignore_noise'
+  | 'suggest_alias'
+  | 'needs_new_master'
+  | 'needs_review';
 
 export type V3MatchStatus = 'matched' | 'unmatched' | 'ignored' | 'review';
 
@@ -145,6 +166,34 @@ export interface V3MatchSummary {
   option_review_count: number;
   shopping_count: number;
   unmatched: Array<{ raw_text: string; day_number: number | null; evidence: V3Evidence }>;
+  entity_summary: V3EntitySummary;
+}
+
+export interface V3EntityReviewItem {
+  raw_text: string;
+  category: V3EntityCategory;
+  day_number: number | null;
+  evidence: V3Evidence;
+  confidence: number;
+  suggested_action: V3EntitySuggestedAction;
+  customer_visible: boolean;
+  blocks_publish: boolean;
+  suggested_resolution: Record<string, unknown>;
+}
+
+export interface V3EntitySummary {
+  counts: Record<V3EntityCategory, number>;
+  review_required_count: number;
+  attraction_unresolved_count: number;
+  shopping_review_needed_count: number;
+  option_review_needed_count: number;
+  unknown_customer_visible_count: number;
+  auto_ignored_noise_count: number;
+  meal_structured_count: number;
+  transfer_structured_count: number;
+  hotel_structured_count: number;
+  free_time_structured_count: number;
+  review_items: V3EntityReviewItem[];
 }
 
 export interface V3GateCheck {

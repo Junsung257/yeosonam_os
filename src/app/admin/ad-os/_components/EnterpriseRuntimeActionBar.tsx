@@ -3,16 +3,25 @@ import Button from '@/components/ui/Button';
 export type EnterpriseRuntimeActionKey =
   | 'runRuntimeReadiness'
   | 'checkChannelAdapters'
+  | 'checkCredentialPreflight'
   | 'createNaverPausedKeywordPacket'
   | 'createGoogleDraftPacket'
+  | 'createGoogleRsaDrafts'
+  | 'createGoogleDraftFromRsa'
+  | 'createGoogleDraftJobs'
+  | 'runGoogleSafePipeline'
   | 'createMetaCapiTestPacket'
+  | 'runMetaCreativeSafePipeline'
   | 'checkExecutionGate'
+  | 'checkGoogleDraftGate'
+  | 'checkNaverLivePreflight'
   | 'runRollbackDrill'
   | 'runNaverLimitedPilot'
   | 'runPlatformJobs'
   | 'executePlatformJobsDryRun'
   | 'runConversionUploadJobs'
   | 'executeConversionUploadsDryRun'
+  | 'runConversionSafePipeline'
   | 'loadDataQuality'
   | 'runPortfolioPlan'
   | 'applyApprovedPortfolio'
@@ -27,16 +36,25 @@ export type EnterpriseRuntimeActionLoading = Record<EnterpriseRuntimeActionKey, 
 const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label: string }> = [
   { key: 'runRuntimeReadiness', label: 'Runtime readiness' },
   { key: 'checkChannelAdapters', label: 'Channel adapters' },
+  { key: 'checkCredentialPreflight', label: 'Credential preflight' },
   { key: 'createNaverPausedKeywordPacket', label: 'Naver paused packet' },
   { key: 'createGoogleDraftPacket', label: 'Google draft packet' },
+  { key: 'createGoogleRsaDrafts', label: 'Google RSA drafts' },
+  { key: 'createGoogleDraftFromRsa', label: 'Google RSA packets' },
+  { key: 'createGoogleDraftJobs', label: 'Google draft jobs' },
+  { key: 'runGoogleSafePipeline', label: 'Google safe pipeline' },
   { key: 'createMetaCapiTestPacket', label: 'Meta CAPI packet' },
-  { key: 'checkExecutionGate', label: 'Execution gate' },
+  { key: 'runMetaCreativeSafePipeline', label: 'Meta creative pipeline' },
+  { key: 'checkExecutionGate', label: 'Naver gate' },
+  { key: 'checkGoogleDraftGate', label: 'Google draft gate' },
+  { key: 'checkNaverLivePreflight', label: 'Naver live preflight' },
   { key: 'runRollbackDrill', label: 'Rollback drill' },
   { key: 'runNaverLimitedPilot', label: 'Naver limited pilot' },
   { key: 'runPlatformJobs', label: 'Run platform jobs' },
   { key: 'executePlatformJobsDryRun', label: 'Platform dry-run' },
   { key: 'runConversionUploadJobs', label: 'Conversion upload jobs' },
   { key: 'executeConversionUploadsDryRun', label: 'Conversion dry-run' },
+  { key: 'runConversionSafePipeline', label: 'Conversion safe pipeline' },
   { key: 'loadDataQuality', label: 'Data quality' },
   { key: 'runPortfolioPlan', label: 'Portfolio plan' },
   { key: 'applyApprovedPortfolio', label: 'Apply portfolio' },

@@ -16,6 +16,10 @@ import { runMicroAutoQA } from '@/lib/product-registration/auto-qa';
 import type { ImprovementLedgerEvent } from '@/lib/product-registration/improvement-ledger';
 import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
 import { recordUploadSectionSignals } from '@/lib/product-registration/section-signal-recording';
+import {
+  claimUploadProductSection,
+  updateUploadProductSectionJob,
+} from '@/lib/product-registration/upload-section-idempotency';
 import type { StandardProductRegistrationObject } from '@/lib/product-registration/types';
 import {
   logUploadPostSaveAuditStatus,
@@ -58,6 +62,7 @@ export type ProcessUploadProductsResult = {
   improvementEvents: ImprovementLedgerEvent[];
   improvementEventsSaved: number;
   improvementEventsSaveError: string | null;
+  skippedDuplicateSections: number;
 };
 
 export async function processUploadRegistrationProducts(input: {
@@ -84,6 +89,7 @@ export async function processUploadRegistrationProducts(input: {
   catalogGroupId: string | null;
   landOperators: UploadLandOperatorRow[];
   irCanaryPrimary: boolean;
+  forceReprocess: boolean;
 }): Promise<ProcessUploadProductsResult> {
   const savedIds: string[] = [];
   const savedTitles: string[] = [];
@@ -98,6 +104,16 @@ export async function processUploadRegistrationProducts(input: {
   const attractionSeededCount = 0;
   const attractionReflectedCount = 0;
   const improvementEvents: ImprovementLedgerEvent[] = [];
+  let skippedDuplicateSections = 0;
+
+  const attachPersistedIdsToEvents = (
+    events: ImprovementLedgerEvent[],
+    ids: { productId?: string | null; packageId?: string | null },
+  ): ImprovementLedgerEvent[] => events.map(event => ({
+    ...event,
+    productId: ids.productId ?? event.productId,
+    packageId: ids.packageId ?? event.packageId,
+  }));
 
   for (let productIndex = 0; productIndex < input.productsToSave.length; productIndex++) {
     const product = input.productsToSave[productIndex];
@@ -114,9 +130,32 @@ export async function processUploadRegistrationProducts(input: {
 
     let internalCode: string | null = null;
     let productInserted = false;
+    let sectionJobId: string | null = null;
 
     try {
       const rawForDeterm = productRawText || input.parsedDocument.rawText || '';
+      const sectionClaim = await claimUploadProductSection({
+        supabase: input.supabase,
+        isSupabaseConfigured: input.isSupabaseConfigured,
+        forceReprocess: input.forceReprocess,
+        uploadId: input.fileHash,
+        documentRawText: input.parsedDocument.rawText ?? rawForDeterm,
+        sectionRawText: rawForDeterm,
+        supplierCode: input.effectiveSupplierCode,
+        title,
+      });
+      sectionJobId = sectionClaim.jobId;
+      if (!sectionClaim.shouldProcess) {
+        skippedDuplicateSections++;
+        console.log('[Upload API] duplicate section skipped:', {
+          title,
+          reason: sectionClaim.reason,
+          productId: sectionClaim.productId,
+          packageId: sectionClaim.packageId,
+        });
+        continue;
+      }
+
       const autoGatePolicy = await getRegistrationPolicy();
       const registrationResult: StandardProductRegistrationObject = await registerProductFromRaw({
         rawText: rawForDeterm,
@@ -144,6 +183,17 @@ export async function processUploadRegistrationProducts(input: {
         );
       }
 
+      const preSaveAutoQA = runMicroAutoQA({
+        uploadId: input.fileHash,
+        rawText: rawForDeterm,
+        sectionRawText: productRawText,
+        registration: registrationResult,
+      });
+      if (preSaveAutoQA.status === 'AUTO_FIXED' && preSaveAutoQA.repairedRegistration.deliverability.ok) {
+        Object.assign(registrationResult, preSaveAutoQA.repairedRegistration);
+        Object.assign(ed, registrationResult.extractedData);
+      }
+
       const priceRecovery = registrationResult.priceRecovery;
       const priceRows = registrationResult.pricing.productPrices;
       const projectedPriceDates = registrationResult.pricing.priceDates;
@@ -155,13 +205,15 @@ export async function processUploadRegistrationProducts(input: {
 
       if (!deliverability.ok) {
         const errorReason = `Customer landing/A4 blocked: ${deliverability.blockers.join(' | ')}`;
-        const autoQA = runMicroAutoQA({
-          uploadId: input.fileHash,
-          rawText: rawForDeterm,
-          sectionRawText: productRawText,
-          registration: registrationResult,
-          uploadFailed: true,
-        });
+        const autoQA = preSaveAutoQA.status === 'PASS'
+          ? runMicroAutoQA({
+              uploadId: input.fileHash,
+              rawText: rawForDeterm,
+              sectionRawText: productRawText,
+              registration: registrationResult,
+              uploadFailed: true,
+            })
+          : preSaveAutoQA;
         improvementEvents.push(...autoQA.attempts);
         saveErrors.push({ title, error: errorReason });
         scheduleUploadReviewInsert({
@@ -176,6 +228,13 @@ export async function processUploadRegistrationProducts(input: {
           parsedDraftJson: ed as unknown as Record<string, unknown>,
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
+        });
+        void updateUploadProductSectionJob({
+          supabase: input.supabase,
+          isSupabaseConfigured: input.isSupabaseConfigured,
+          jobId: sectionJobId,
+          status: 'blocked',
+          errorMessage: errorReason,
         });
         console.warn('[Upload API] customer deliverable guard blocked insert:', errorReason);
         continue;
@@ -252,6 +311,13 @@ export async function processUploadRegistrationProducts(input: {
           productTitle: title,
           landOperatorId: input.effectiveLandOperatorId,
         });
+        void updateUploadProductSectionJob({
+          supabase: input.supabase,
+          isSupabaseConfigured: input.isSupabaseConfigured,
+          jobId: sectionJobId,
+          status: 'blocked',
+          errorMessage: errorReason,
+        });
         console.warn('[Upload API] finalized upload gate blocked insert:', errorReason);
         continue;
       }
@@ -307,21 +373,36 @@ export async function processUploadRegistrationProducts(input: {
       const pkgResult = persistenceResult.packageRow as { id: string } | null;
 
       if (pkgResult?.id) {
-        const autoQA = runMicroAutoQA({
-          uploadId: input.fileHash,
-          productId: internalCode,
-          packageId: pkgResult.id,
-          rawText: rawForDeterm,
-          sectionRawText: productRawText,
-          registration: registrationResult,
-          trustScore: confidenceV3 * 100,
-        });
-        improvementEvents.push(...autoQA.attempts);
+        if (preSaveAutoQA.status === 'AUTO_FIXED') {
+          improvementEvents.push(...attachPersistedIdsToEvents(preSaveAutoQA.attempts, {
+            productId: internalCode,
+            packageId: pkgResult.id,
+          }));
+        } else {
+          const autoQA = runMicroAutoQA({
+            uploadId: input.fileHash,
+            productId: internalCode,
+            packageId: pkgResult.id,
+            rawText: rawForDeterm,
+            sectionRawText: productRawText,
+            registration: registrationResult,
+            trustScore: confidenceV3 * 100,
+          });
+          improvementEvents.push(...autoQA.attempts);
+        }
 
         savedIds.push(pkgResult.id);
         savedTitles.push(title);
         savedConfidences.push(confidenceV3);
         savedPriceRowsByPackageId.set(pkgResult.id, priceRows.length);
+        void updateUploadProductSectionJob({
+          supabase: input.supabase,
+          isSupabaseConfigured: input.isSupabaseConfigured,
+          jobId: sectionJobId,
+          status: 'completed',
+          productId: internalCode,
+          packageId: pkgResult.id,
+        });
 
         const llmMeta = (ed as { _llm_meta?: Record<string, unknown> })._llm_meta ?? {};
         void recordUploadAiQualityLog({
@@ -416,6 +497,14 @@ export async function processUploadRegistrationProducts(input: {
       }
 
       const errMsg = saveErr instanceof Error ? saveErr.message : String(saveErr);
+      void updateUploadProductSectionJob({
+        supabase: input.supabase,
+        isSupabaseConfigured: input.isSupabaseConfigured,
+        jobId: sectionJobId,
+        status: 'failed',
+        productId: internalCode,
+        errorMessage: errMsg,
+      });
       console.error('[Upload API] product save failed:', { title, error: errMsg });
       scheduleUploadReviewInsert({
         supabase: input.supabase,
@@ -468,5 +557,6 @@ export async function processUploadRegistrationProducts(input: {
     improvementEvents,
     improvementEventsSaved,
     improvementEventsSaveError,
+    skippedDuplicateSections,
   };
 }

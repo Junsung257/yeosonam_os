@@ -14,6 +14,12 @@ function createSupabaseMock(options: {
   const deleteProduct = vi.fn(() => ({ eq: deleteEq }));
   const insertProductPrices = vi.fn(async () => ({ error: options.productPricesInsertError ?? null }));
   const insertTravelPackage = vi.fn(() => ({ select }));
+  const rpc = vi.fn(async (_fn: string, args: { p_rows?: unknown[] }) => ({
+    data: args.p_rows?.length ?? 0,
+    error: options.productPricesInsertError
+      ? { message: options.productPricesInsertError.message }
+      : null,
+  }));
   const from = vi.fn((table: string) => {
     if (table === 'products') return { select, upsert, delete: deleteProduct };
     if (table === 'product_prices') return { insert: insertProductPrices };
@@ -22,8 +28,8 @@ function createSupabaseMock(options: {
   });
 
   return {
-    client: { from },
-    calls: { from, upsert, deleteProduct, deleteEq, insertProductPrices, insertTravelPackage },
+    client: { from, rpc },
+    calls: { from, upsert, deleteProduct, deleteEq, insertProductPrices, insertTravelPackage, rpc },
   };
 }
 
@@ -51,6 +57,9 @@ describe('persistUploadRegistrationRows', () => {
     })).rejects.toThrow('product_prices save failed: duplicate product price');
 
     expect(supabase.calls.insertTravelPackage).not.toHaveBeenCalled();
+    expect(supabase.calls.rpc).toHaveBeenCalledWith('replace_product_prices_for_product', expect.objectContaining({
+      p_product_id: 'PUS-ETC-CEB-05-0001',
+    }));
     expect(supabase.calls.deleteProduct).toHaveBeenCalledTimes(1);
     expect(supabase.calls.deleteEq).toHaveBeenCalledWith('internal_code', 'PUS-ETC-CEB-05-0001');
   });
@@ -90,6 +99,9 @@ describe('persistUploadRegistrationRows', () => {
     })).rejects.toThrow('product_prices save failed: duplicate product price');
 
     expect(supabase.calls.insertTravelPackage).not.toHaveBeenCalled();
+    expect(supabase.calls.rpc).toHaveBeenCalledWith('replace_product_prices_for_product', expect.objectContaining({
+      p_product_id: 'PUS-ETC-CEB-05-0001',
+    }));
     expect(supabase.calls.deleteProduct).not.toHaveBeenCalled();
     expect(supabase.calls.upsert).toHaveBeenNthCalledWith(1, expect.objectContaining({
       display_name: 'New Cebu package',

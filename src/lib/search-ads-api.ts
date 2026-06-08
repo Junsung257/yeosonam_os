@@ -65,6 +65,9 @@ export interface SearchAdPerformance {
   spend: number;
   avgPosition: number;
   date: string;
+  sourceQuality?: 'live' | 'mock';
+  isMock?: boolean;
+  excludedFromLearning?: boolean;
 }
 
 // ── Naver SearchAd API 기본 설정 ──────────────────────────
@@ -475,6 +478,9 @@ function generateMockPerformance(keywords: SearchAdKeyword[]): SearchAdPerforman
         spend,
         avgPosition: Math.round((Math.random() * 5 + 1) * 10) / 10,
         date: new Date().toISOString().slice(0, 10),
+        sourceQuality: 'mock',
+        isMock: true,
+        excludedFromLearning: true,
       };
     });
 }
@@ -912,7 +918,12 @@ export async function fetchAllPerformance(keywords: SearchAdKeyword[]): Promise<
     fetchNaverPerformance(keywords),
     fetchGooglePerformance(keywords),
   ]);
-  return [...naver, ...google];
+  return [...naver, ...google].map((row) => ({
+    ...row,
+    sourceQuality: row.sourceQuality ?? 'live',
+    isMock: row.isMock ?? false,
+    excludedFromLearning: row.excludedFromLearning ?? false,
+  }));
 }
 
 export async function updateBid(keyword: SearchAdKeyword, newBid: number): Promise<boolean> {

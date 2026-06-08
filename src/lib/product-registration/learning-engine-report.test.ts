@@ -12,6 +12,7 @@ function event(overrides: Partial<ImprovementLedgerEvent> = {}): ImprovementLedg
     productId: 'PUS-LA-PQC-05-0001',
     packageId: '550e8400-e29b-41d4-a716-446655440000',
     attemptNo: 0,
+    attemptPhase: 'normal_registration',
     rawTextHash: 'a'.repeat(64),
     sectionRawTextHash: null,
     parserVersion: 'product-registration-central',
@@ -45,6 +46,7 @@ describe('product registration learning engine report', () => {
       product_id: 'PUS-LA-PQC-05-0001',
       package_id: '550e8400-e29b-41d4-a716-446655440000',
       attempt_no: 2,
+      attempt_phase: 'render_payload_audit_repair',
       raw_text_hash: 'a'.repeat(64),
       section_raw_text_hash: null,
       parser_version: null,
@@ -64,6 +66,7 @@ describe('product registration learning engine report', () => {
 
     expect(mapped).toEqual(expect.objectContaining({
       attemptNo: 2,
+      attemptPhase: 'render_payload_audit_repair',
       finalStatus: 'BLOCKED',
       blockersBefore: ['missing price'],
       packagesAudit: { status: 'fail', failures: ['no price'], warnings: [] },
@@ -75,6 +78,7 @@ describe('product registration learning engine report', () => {
   it('builds a read-only macro report from repeated durable events', () => {
     const events = Array.from({ length: 50 }, (_, index) => event({
       uploadId: `upload-${index}`,
+      rawTextHash: String(index).padStart(64, 'a').slice(-64),
       createdAt: `2026-06-07T00:${String(index).padStart(2, '0')}:00.000Z`,
     }));
 

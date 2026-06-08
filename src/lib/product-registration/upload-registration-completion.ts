@@ -101,5 +101,6 @@ export async function completeUploadRegistration(input: {
     improvementEvents: result.improvementEvents,
     improvementEventsSaved: result.improvementEventsSaved,
     improvementEventsSaveError: result.improvementEventsSaveError,
+    skippedDuplicateSections: result.skippedDuplicateSections,
   });
 }
