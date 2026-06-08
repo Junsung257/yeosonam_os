@@ -456,7 +456,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   const registrationTitle = normalizeUploadTitle(input.title, ed.title) ?? ed.title ?? input.title ?? null;
   if (registrationTitle) ed.title = registrationTitle;
 
-  const priceRecovery = await recoverUploadPriceData(ed, {
+  let priceRecovery = await recoverUploadPriceData(ed, {
     rawText,
     title: registrationTitle ?? ed.title,
     accommodations: ed.accommodations ?? [],
@@ -466,6 +466,26 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     year: input.priceYear,
     enableGeminiFallback: input.enableGeminiFallback,
   });
+  const documentRawText = input.documentRawText?.trim() ?? '';
+  if (!priceRecovery.ok && documentRawText && documentRawText !== rawText.trim()) {
+    const documentPriceRecovery = await recoverUploadPriceData(ed, {
+      rawText: documentRawText,
+      title: registrationTitle ?? ed.title,
+      accommodations: ed.accommodations ?? [],
+      includeAllHotelColumns: false,
+      durationDays: ed.duration,
+      departureDays: ed.departure_days,
+      year: input.priceYear,
+      enableGeminiFallback: false,
+    });
+    if (documentPriceRecovery.ok) {
+      priceRecovery = {
+        ...documentPriceRecovery,
+        source: `document_raw:${documentPriceRecovery.source}`,
+        failures: priceRecovery.failures,
+      };
+    }
+  }
   priceRecovery.priceRows = ensureCustomerSellingPrices(priceRecovery.priceRows);
   ed.price_tiers = priceRecovery.tiers;
   if (priceRecovery.minPrice != null) ed.price = priceRecovery.minPrice;

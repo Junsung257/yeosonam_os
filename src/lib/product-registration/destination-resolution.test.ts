@@ -91,4 +91,19 @@ describe('upload destination resolution Korean aliases', () => {
     expect(result.destinationCode).toBe('TYO');
     expect(result.failures).toEqual([]);
   });
+
+  it('falls back from a bad existing destination string to a resolvable Kyushu alias', () => {
+    const result = resolveUploadDestinationAndCodes({
+      destination: '큐슈 조석 스기노이',
+      departureAirport: '부산',
+      durationDays: 3,
+      productRawText: '크라운 · 후쿠오카 · 2박 3일 · BX142\n후쿠오카 출발\n후쿠오카 호텔 스기노이',
+      documentRawText: '',
+    });
+
+    expect(result.destination).toBe('큐슈 조석 스기노이');
+    expect(result.destinationCode).toBe('FUK');
+    expect(result.source).toBe('existing');
+    expect(result.failures).toEqual([]);
+  });
 });

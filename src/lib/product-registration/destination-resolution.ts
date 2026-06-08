@@ -22,6 +22,13 @@ export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
   죠시: 'TYO',
   조시: 'TYO',
   후쿠오카: 'FUK',
+  큐슈: 'FUK',
+  규슈: 'FUK',
+  북큐슈: 'FUK',
+  벳부: 'FUK',
+  벳푸: 'FUK',
+  유후인: 'FUK',
+  쿠로가와: 'FUK',
   삿포로: 'CTS',
   오키나와: 'OKA',
   방콕: 'BKK',
@@ -144,17 +151,23 @@ export function resolveUploadDestinationAndCodes(input: {
   tempDestination?: string | null;
 }): UploadDestinationResolution {
   const failures: string[] = [];
-  const existingDestination = input.destination?.trim();
+  const existingDestination = input.destination?.trim() ?? '';
   const productInferred = inferUploadDestinationFromText(input.productRawText);
   const documentInferred = inferUploadDestinationFromText(input.documentRawText);
   const tempDestination = input.tempDestination?.trim() ?? '';
 
-  const destination = existingDestination || productInferred || documentInferred || tempDestination || null;
+  const existingDestinationCode = resolveUploadCode(existingDestination, UPLOAD_DEST_CODE_MAP, 'UNK');
+  const trustedExistingDestination = existingDestination && existingDestinationCode !== 'UNK'
+    ? existingDestination
+    : '';
+
+  const destination = trustedExistingDestination || productInferred || documentInferred || tempDestination || existingDestination || null;
   const source: UploadDestinationResolution['source'] =
-    existingDestination ? 'existing'
+    trustedExistingDestination ? 'existing'
       : productInferred ? 'product_raw'
         : documentInferred ? 'document_raw'
           : tempDestination ? 'temp_filename'
+            : existingDestination ? 'existing'
             : 'unresolved';
 
   if (!destination) failures.push('destination:unresolved');

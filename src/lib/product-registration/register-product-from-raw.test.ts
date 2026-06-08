@@ -131,4 +131,48 @@ describe('registerProductFromRaw', () => {
     expect(result.deliverability.ok).toBe(false);
     expect(result.failures.join('\n')).toContain('fixture-block');
   });
+
+  it('recovers shared document price tables when the product section has no local price table', async () => {
+    const testCase = GOLDEN_CORPUS_CASES.find(item => item.id === 'fukuoka-golf-spot-weekday-cash-receipt');
+    if (!testCase) throw new Error('missing fukuoka fixture');
+    const documentRawText = readGoldenText(testCase.fixture);
+    const expected = readGoldenExpected(testCase.expected);
+    const sectionRawText = `
+BX후쿠오카 파라다이스 골프 패키지 54H 초석 2박3일
+요금표참조
+일자
+1일차
+후쿠오카 국제공항 도착
+2일차
+골프 18홀
+3일차
+후쿠오카 국제공항 출발
+`;
+
+    const result = await registerProductFromRaw({
+      rawText: sectionRawText,
+      documentRawText,
+      extractedData: {
+        title: expected.title,
+        destination: expected.destination,
+        duration: testCase.duration,
+        rawText: sectionRawText,
+        price_tiers: [],
+      },
+      itineraryData: {
+        days: [{ day: 1 }, { day: 2 }, { day: 3 }],
+      },
+      title: expected.title,
+      activeAttractions: [],
+      destinationCode: expected.destinationCode,
+      internalCode: `PUS-AA-${expected.destinationCode}-03-0001`,
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    expect(result.pricing.source).toBe('document_raw:deterministic:spot_weekday_table');
+    expect(result.pricing.productPrices.length).toBeGreaterThan(0);
+    expect(result.pricing.priceDates.length).toBeGreaterThan(0);
+    expect(result.publishable).toBe(true);
+  });
 });
