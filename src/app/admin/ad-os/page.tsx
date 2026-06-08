@@ -112,7 +112,7 @@ export default function AdOsPage() {
     runningPlatformJobs, runningConversionUpload, loadingDataQuality, planningPortfolio, applyingPortfolio,
     creatingAssetGroup, savingTenantWorkspace, checkingRuntimeReadiness, executingPlatformDryRun, executingConversionDryRun,
     standardizingExperiments, creatingTenantAuditExport, checkingChannelAdapters, creatingNaverAdapterPacket, creatingGoogleDraftPacket,
-    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, runningGoogleSafePipeline, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
+    creatingGoogleRsaDrafts, creatingGoogleDraftFromRsa, creatingGoogleDraftJobs, runningGoogleSafePipeline, creatingMetaCapiPacket, checkingExecutionGate, checkingGoogleDraftGate, runningRollbackDrill, runningLimitedPilot, checkingStagingSmoke,
     checkingOperatingInventory, checkingStagingValidation, checkingAdminSurfaceQa,
   } = actionFlags;
 
@@ -1325,6 +1325,22 @@ export default function AdOsPage() {
     });
   };
 
+  const createGoogleDraftJobs = async () => {
+    await runJsonAction({
+      flag: 'creatingGoogleDraftJobs',
+      url: '/api/admin/ad-os/channel-adapters/google/jobs-from-packets',
+      body: {
+        apply: true,
+        limit: 50,
+      },
+      errorMessage: 'Google draft platform job preparation failed.',
+      successMessage: (json) => {
+        const summary = getAdOsRecord(json.summary);
+        return `Google draft jobs complete: prepared ${formatAdOsNumber(summary.jobs_prepared)}, written ${formatAdOsNumber(summary.jobs_written)}, approved ${formatAdOsNumber(summary.approved_jobs)}, blocked ${formatAdOsNumber(summary.blocked_jobs)}. External API write 0.`;
+      },
+    });
+  };
+
   const runGoogleSafePipeline = async () => {
     setActionFlag('runningGoogleSafePipeline', true);
     setError(null);
@@ -1345,13 +1361,19 @@ export default function AdOsPage() {
         { apply: true, platform: 'google', requested_mode: 'approve', human_approved: false, limit: 20 },
         'Google draft gate check failed.',
       );
+      const jobs = await postAdOsJson(
+        '/api/admin/ad-os/channel-adapters/google/jobs-from-packets',
+        { apply: true, limit: 50 },
+        'Google draft platform job preparation failed.',
+      );
 
       await refresh();
       const draftSummary = getAdOsRecord(drafts.summary);
       const packetSummary = getAdOsRecord(packets.summary);
       const gateSummary = getAdOsRecord(gate.summary);
+      const jobSummary = getAdOsRecord(jobs.summary);
       setAutomationMessage(
-        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, blocked ${formatAdOsNumber(gateSummary.blocked)}. External API write 0.`,
+        `Google safe pipeline complete: RSA sets ${formatAdOsNumber(draftSummary.rsa_sets_generated)}, packets ${formatAdOsNumber(packetSummary.packets_written)}, monitor ${formatAdOsNumber(gateSummary.monitor_only)}, draft jobs ${formatAdOsNumber(jobSummary.jobs_written)}, blocked ${formatAdOsNumber(Number(gateSummary.blocked || 0) + Number(jobSummary.blocked_jobs || 0))}. External API write 0.`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google safe pipeline failed.');
@@ -1637,6 +1659,7 @@ export default function AdOsPage() {
     createGoogleDraftPacket,
     createGoogleRsaDrafts,
     createGoogleDraftFromRsa,
+    createGoogleDraftJobs,
     runGoogleSafePipeline,
     createMetaCapiTestPacket,
     checkExecutionGate,
@@ -1662,6 +1685,7 @@ export default function AdOsPage() {
     createGoogleDraftPacket: creatingGoogleDraftPacket,
     createGoogleRsaDrafts: creatingGoogleRsaDrafts,
     createGoogleDraftFromRsa: creatingGoogleDraftFromRsa,
+    createGoogleDraftJobs: creatingGoogleDraftJobs,
     runGoogleSafePipeline: runningGoogleSafePipeline,
     createMetaCapiTestPacket: creatingMetaCapiPacket,
     checkExecutionGate: checkingExecutionGate,

@@ -7,6 +7,7 @@ export type EnterpriseRuntimeActionKey =
   | 'createGoogleDraftPacket'
   | 'createGoogleRsaDrafts'
   | 'createGoogleDraftFromRsa'
+  | 'createGoogleDraftJobs'
   | 'runGoogleSafePipeline'
   | 'createMetaCapiTestPacket'
   | 'checkExecutionGate'
@@ -35,6 +36,7 @@ const ENTERPRISE_RUNTIME_ACTIONS: Array<{ key: EnterpriseRuntimeActionKey; label
   { key: 'createGoogleDraftPacket', label: 'Google draft packet' },
   { key: 'createGoogleRsaDrafts', label: 'Google RSA drafts' },
   { key: 'createGoogleDraftFromRsa', label: 'Google RSA packets' },
+  { key: 'createGoogleDraftJobs', label: 'Google draft jobs' },
   { key: 'runGoogleSafePipeline', label: 'Google safe pipeline' },
   { key: 'createMetaCapiTestPacket', label: 'Meta CAPI packet' },
   { key: 'checkExecutionGate', label: 'Naver gate' },
