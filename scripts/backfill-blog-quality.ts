@@ -1,14 +1,27 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import { finalizeBlogPost } from '../src/lib/blog-post-finalizer';
-import { normalizeBlogDescription, normalizeBlogTitle } from '../src/lib/blog-quality-normalizer';
-import { evaluateBlogPublishQuality } from '../src/lib/blog-publish-quality';
-import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '../src/lib/pexels';
-import { extractDestination } from '../src/lib/slug-utils';
-import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
+
+let finalizeBlogPost: typeof import('../src/lib/blog-post-finalizer').finalizeBlogPost;
+let normalizeBlogDescription: typeof import('../src/lib/blog-quality-normalizer').normalizeBlogDescription;
+let normalizeBlogTitle: typeof import('../src/lib/blog-quality-normalizer').normalizeBlogTitle;
+let evaluateBlogPublishQuality: typeof import('../src/lib/blog-publish-quality').evaluateBlogPublishQuality;
+let destToEnKeyword: typeof import('../src/lib/pexels').destToEnKeyword;
+let getRandomPexelsPhoto: typeof import('../src/lib/pexels').getRandomPexelsPhoto;
+let isPexelsConfigured: typeof import('../src/lib/pexels').isPexelsConfigured;
+let extractDestination: typeof import('../src/lib/slug-utils').extractDestination;
+let repairBlogEditorialQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogEditorialQuality;
+
+async function loadLocalModules() {
+  ({ finalizeBlogPost } = await import('../src/lib/blog-post-finalizer'));
+  ({ normalizeBlogDescription, normalizeBlogTitle } = await import('../src/lib/blog-quality-normalizer'));
+  ({ evaluateBlogPublishQuality } = await import('../src/lib/blog-publish-quality'));
+  ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
+  ({ extractDestination } = await import('../src/lib/slug-utils'));
+  ({ repairBlogEditorialQuality } = await import('../src/lib/blog-editorial-repair'));
+}
 
 type BlogRow = {
   id: string;
@@ -130,6 +143,8 @@ async function revalidate(paths: string[]) {
 }
 
 async function main() {
+  await loadLocalModules();
+
   let query = supabase
     .from('content_creatives')
     .select('id, slug, seo_title, seo_description, og_image_url, destination, blog_html')
@@ -292,6 +307,10 @@ async function main() {
     highlightMaxBefore: highlightCountsBefore.length > 0 ? Math.max(...highlightCountsBefore) : 0,
     highlightMaxAfter: highlightCountsAfter.length > 0 ? Math.max(...highlightCountsAfter) : 0,
     samples: auditRows.filter((row) => row.changed).slice(0, 10).map((row) => row.slug),
+    failedSamples: auditRows
+      .filter((row) => !row.qualityGatePassed)
+      .slice(0, 10)
+      .map((row) => ({ slug: row.slug, reason: row.qualityGateSummary })),
   };
 
   console.log(JSON.stringify(summary, null, 2));

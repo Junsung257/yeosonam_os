@@ -472,14 +472,19 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   const slugPrefix = input.slug.split('-').slice(0, 2).join('-'); // 단어 2개만 사용 (짧은 목적지도 커버)
   if (slugPrefix.length >= 4 && /^[a-z0-9-]+$/.test(slugPrefix)) {
     // 순수 영문 prefix만 Postgres 문자열 범위 검색 (한글 포함 시 정렬이 다름)
-    const { data: prefixDupes } = await supabaseAdmin
+    const prefixQuery = supabaseAdmin
       .from('content_creatives')
       .select('id, slug')
       .eq('channel', 'naver_blog')
       .in('status', ['published', 'scheduled', 'draft'])
       .gte('slug', slugPrefix)
-      .lt('slug', slugPrefix + '~') // 문자열 범위 검색
-      .limit(1);
+      .lt('slug', slugPrefix + '~'); // 문자열 범위 검색
+
+    if (input.excludeContentCreativeId) {
+      prefixQuery.neq('id', input.excludeContentCreativeId);
+    }
+
+    const { data: prefixDupes } = await prefixQuery.limit(1);
 
     if (prefixDupes && prefixDupes.length > 0) {
       return {
@@ -494,15 +499,20 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   // 2) (destination + angle_type) 14일 내 중복 — travel_packages JOIN + content_creatives.destination 둘 다 확인
   if (input.destination && input.angle_type) {
     // 2a) travel_packages JOIN 경로 (상품 블로그)
-    const { data: angleDupes } = await supabaseAdmin
+    const angleQuery = supabaseAdmin
       .from('content_creatives')
       .select('id, slug, travel_packages!inner(destination)')
       .eq('angle_type', input.angle_type)
       .eq('travel_packages.destination', input.destination)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
-      .gte('published_at', sinceIso)
-      .limit(1);
+      .gte('published_at', sinceIso);
+
+    if (input.excludeContentCreativeId) {
+      angleQuery.neq('id', input.excludeContentCreativeId);
+    }
+
+    const { data: angleDupes } = await angleQuery.limit(1);
 
     if (angleDupes && angleDupes.length > 0) {
       return {
@@ -514,7 +524,7 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
     }
 
     // 2b) 정보성 글(product_id=null)을 위한 content_creatives.destination 직접 비교
-    const { data: infoDupes } = await supabaseAdmin
+    const infoQuery = supabaseAdmin
       .from('content_creatives')
       .select('id, slug')
       .eq('angle_type', input.angle_type)
@@ -522,8 +532,13 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
       .is('product_id', null) // 정보성 글만
-      .gte('published_at', sinceIso)
-      .limit(1);
+      .gte('published_at', sinceIso);
+
+    if (input.excludeContentCreativeId) {
+      infoQuery.neq('id', input.excludeContentCreativeId);
+    }
+
+    const { data: infoDupes } = await infoQuery.limit(1);
 
     if (infoDupes && infoDupes.length > 0) {
       return {
