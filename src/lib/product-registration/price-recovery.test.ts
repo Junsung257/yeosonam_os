@@ -186,4 +186,102 @@ describe('recoverUploadPriceData', () => {
     ]);
     expect(result.priceRows.some(row => row.net_price === 150000)).toBe(false);
   });
+
+  it('recovers Baekdu shared grade-pattern price matrix without Gemini fallback', async () => {
+    const rawText = `
+★연길/백두산 7-8월 목/일 출발 증편★
+2명부터 출발확정 목3박4일 / 일4박5일
+출발일
+패턴
+세이브
+스탠다드
+프리미엄
+크라운
+7월
+목요일
+3박4일
+7월2일 (목)
+859,000
+1,129,000
+1,299,000
+1,429,000
+7월9일 (목)
+7월16일 (목)
+1,099,000
+1,359,000
+1,529,000
+1,649,000
+7월23일 (목)
+859,000
+1,129,000
+1,299,000
+1,429,000
+7월30일 (목)
+7월
+일요일
+4박5일
+7월5일 (일)
+799,000
+1,149,000
+1,339,000
+1,429,000
+7월12일 (일)
+7월19일 (일)
+7월26일 (일)
+8월
+목요일
+3박4일
+8월6일 (목)
+859,000
+1,129,000
+1,299,000
+1,429,000
+8월13일 (목)
+979,000
+1,259,000
+1,429,000
+1,539,000
+8월20일 (목)
+859,000
+1,129,000
+1,299,000
+1,429,000
+8월
+일요일
+4박5일
+8월2일 (일)
+799,000
+1,149,000
+1,339,000
+1,429,000
+8월9일 (일)
+8월16일 (일)
+---
+프리미엄노노노
+연길/백두산(북+서파) 3박4일
+`;
+    const ed: ExtractedData = {
+      title: '연길/백두산(북+서파) 3박4일',
+      destination: '연길/백두산',
+      duration: 4,
+      rawText,
+      price_tiers: [],
+    };
+
+    const result = await recoverUploadPriceData(ed, {
+      rawText,
+      title: ed.title,
+      durationDays: 4,
+      year: 2026,
+      enableGeminiFallback: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.source).toBe('deterministic:grade_pattern_date_matrix');
+    expect(result.priceRows.length).toBeGreaterThan(0);
+    expect(result.priceDates.find(row => row.date === '2026-07-02')?.price).toBe(1299000);
+    expect(result.priceDates.find(row => row.date === '2026-07-16')?.price).toBe(1529000);
+    expect(result.priceDates.find(row => row.date === '2026-07-05')).toBeUndefined();
+    expect(result.minPrice).toBe(1299000);
+  });
 });
