@@ -30,6 +30,7 @@
 
 ## Recent Blog Error Addition
 
+- **ERR-BLOG-mobile-heading-flex-overflow@2026-06-09** - `.prose-blog h2` must not use unwrapped flex layout for generated article headings. Long FAQ/body text and `.num` emphasis nodes can become flex items and push mobile page width even when images, tables, and Markdown artifacts are clean. Keep heading text in normal wrapping flow and require `audit:blog-visual --strict` before/after deploy.
 - **ERR-BLOG-external-image-client-block@2026-06-09** - Pexels image URLs returned HTTP 200 from server audits, but real browsers/ad blockers could block `images.pexels.com`, leaving article images with `naturalWidth=0` and collapsed height. Blog render and card surfaces must pass proxyable external images through `/api/blog/image`, and visual audits must judge browser-loaded `naturalWidth`, not URL reachability alone.
 
 ---

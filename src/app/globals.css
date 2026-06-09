@@ -337,9 +337,7 @@ td, th {
   margin-bottom: 1.5rem;
   padding: 0;
   border-left: none;
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
+  display: block;
   font-size: 1.5rem;
   font-weight: 800;
   line-height: 1.35;
@@ -361,8 +359,9 @@ td, th {
   font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0;
-  flex-shrink: 0;
   font-variant-numeric: tabular-nums;
+  margin-right: 0.75rem;
+  vertical-align: 0.15em;
 }
 
 @media (min-width: 768px) {
