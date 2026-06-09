@@ -12,6 +12,7 @@ const files = {
   engagement: 'src/app/api/blog-engagement/route.ts',
   recommendationApi: 'src/app/api/tracking/recommendation/route.ts',
   recommendationEvents: 'src/lib/recommendation-events.ts',
+  blogRecommendationTracker: 'src/components/blog/BlogProductRecommendationTracker.tsx',
   recommendBest: 'src/lib/scoring/recommend.ts',
   packageSearch: 'src/app/api/packages/search/route.ts',
   packageDetail: 'src/app/packages/[id]/DetailClient.tsx',
@@ -69,8 +70,11 @@ const checks = [
   {
     id: 'blog_product_impressions_are_recorded',
     weight: 8,
-    passed: /recommendation_outcomes/.test(source.blogPage) || /\/api\/tracking\/recommendation/.test(source.blogPage),
-    evidence: files.blogPage,
+    passed: /BlogProductRecommendationTracker/.test(source.blogPage) &&
+      /\/api\/tracking\/recommendation/.test(source.blogRecommendationTracker) &&
+      /source:\s*'blog'/.test(source.blogRecommendationTracker) &&
+      /content_creative_id/.test(source.blogRecommendationTracker),
+    evidence: files.blogRecommendationTracker,
     remediation: 'Record product-card impressions with content_creative_id, rank, intent, and session_id.',
   },
   {

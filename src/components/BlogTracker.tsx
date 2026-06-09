@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { trackContentView } from '@/lib/tracker';
+import { getSessionId, trackContentView } from '@/lib/tracker';
 import { hasAnalyticsConsent } from '@/lib/consent';
 
 /**
@@ -70,13 +70,37 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
       });
     };
 
-    // CTA 클릭 감지 (/packages/[id] 링크)
+    // CTA 클릭 감지 (/packages/[id], /packages?destination=... 링크)
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
       if (!target) return;
       const link = target.closest('a') as HTMLAnchorElement | null;
-      if (link && /\/packages\//.test(link.getAttribute('href') || '')) {
+      if (!link) return;
+      const href = link.getAttribute('href') || '';
+      if (/\/packages(?:\/|\?)/.test(href)) {
         ctaClicked = true;
+      }
+      const packageId = link.dataset.blogProductId;
+      if (packageId) {
+        fetch('/api/tracking/recommendation', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            package_id: packageId,
+            source: 'blog',
+            outcome: 'click',
+            session_id: getSessionId(),
+            intent: link.dataset.blogIntent || 'blog',
+            recommended_rank: link.dataset.recommendationRank
+              ? Number(link.dataset.recommendationRank)
+              : null,
+            notes: JSON.stringify({
+              content_creative_id: contentCreativeId,
+              placement: link.dataset.recommendationPlacement || null,
+            }),
+          }),
+          keepalive: true,
+        }).catch(() => {});
       }
     };
 

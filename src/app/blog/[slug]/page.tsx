@@ -19,6 +19,7 @@ import { removeUnreachableBlogAssetImages, renderBlogContentToHtml } from '@/lib
 import LandingHero from '@/components/blog/LandingHero';
 import StickyMobileCta from '@/components/blog/StickyMobileCta';
 import DestinationCuration from '@/components/blog/DestinationCuration';
+import BlogProductRecommendationTracker from '@/components/blog/BlogProductRecommendationTracker';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { resolveDki } from '@/lib/dki-resolver';
@@ -29,6 +30,8 @@ import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { classifyBlogIntent } from '@/lib/blog-content-intent';
+import { recommendBestPackages } from '@/lib/scoring/recommend';
 
 function isNextNotFoundError(err: unknown): boolean {
   return (
@@ -284,8 +287,51 @@ async function getPost(slug: string): Promise<BlogPost | null> {
 async function getRelatedProducts(
   currentProductId: string | null | undefined,
   destination: string | undefined,
+  intent: string = 'blog',
 ): Promise<RelatedProductLite[]> {
   if (!isSupabaseConfigured || !destination) return [];
+  try {
+    const scored = await recommendBestPackages({
+      destination,
+      limit: currentProductId ? 5 : 4,
+    });
+    const ranked = scored.ranked
+      .filter((item) => item.package_id !== currentProductId)
+      .slice(0, 4);
+    if (ranked.length > 0) {
+      const ids = ranked.map((item) => item.package_id);
+      const { data: detailRows } = await supabaseAdmin
+        .from('travel_packages')
+        .select('id, title, destination, price, duration, nights, airline, departure_airport')
+        .in('id', ids);
+      const detailById = new Map(
+        ((detailRows || []) as unknown as RelatedProductLite[]).map((row) => [row.id, row]),
+      );
+      return ranked.map((item) => {
+        const detail = detailById.get(item.package_id);
+        return {
+          id: item.package_id,
+          title: detail?.title || item.title,
+          destination: detail?.destination || item.destination,
+          price: detail?.price ?? item.effective_price ?? item.list_price,
+          duration: detail?.duration ?? item.duration_days,
+          nights: detail?.nights ?? Math.max(0, item.duration_days - 1),
+          airline: detail?.airline ?? null,
+          departure_airport: detail?.departure_airport ?? null,
+          recommended_rank: item.rank,
+          policy_id: null,
+          recommendation_intent: intent,
+        };
+      });
+    }
+  } catch (err) {
+    logError('[blog/getRelatedProducts] scored recommendation failed', err, {
+      destination,
+      currentProductId,
+      intent,
+    });
+  }
+
   let query = supabaseAdmin
     .from('travel_packages')
     .select('id, title, destination, price, duration, nights, airline, departure_airport')
@@ -295,7 +341,11 @@ async function getRelatedProducts(
     .limit(4);
   if (currentProductId) query = query.neq('id', currentProductId);
   const { data } = await query;
-  return (data as unknown as RelatedProductLite[]) || [];
+  return ((data as unknown as RelatedProductLite[]) || []).map((item, index) => ({
+    ...item,
+    recommended_rank: index + 1,
+    recommendation_intent: `${intent}:fallback_price`,
+  }));
 }
 
 /**
@@ -366,6 +416,8 @@ async function getRelatedPosts(
 // ── 정보성 블로그 하단 큐레이션 상품 3개 (가격 분산) ─────────
 async function getCurationProductsForInfo(destination: string) {
   if (!isSupabaseConfigured) return [];
+  const scored = await getRelatedProducts(null, destination, 'info_curation');
+  if (scored.length > 0) return scored.slice(0, 3);
   const today = new Date().toISOString().split('T')[0];
 
   interface CurationPackage {
@@ -569,6 +621,18 @@ async function renderBlogDetail({
   // 블로그 유형 판별
   const isInfoBlog = !post.product_id;
   const isLanding = !!post.landing_enabled && !!post.product_id;
+  const intentProfile = classifyBlogIntent({
+    title,
+    slug: post.slug,
+    angleType: post.angle_type,
+    productId: post.product_id,
+    blogHtml: post.blog_html,
+  });
+  const blogRecommendationIntent = [
+    intentProfile.mode,
+    intentProfile.infoSubtype || intentProfile.productSubtype || intentProfile.readerIntent,
+  ].filter(Boolean).join(':');
+  const effectiveDestination = post.destination || pkg?.destination || undefined;
 
   // ── A/B 테스트: headline 실험 ────────────────────────────
   // visitorId = post.id (고유 식별자, 결정론적 할당용)
@@ -626,8 +690,8 @@ async function renderBlogDetail({
           },
         )
       : Promise.resolve(null),
-    getRelatedPosts(slug, pkg?.destination, post.angle_type),
-    getRelatedProducts(pkg?.id, pkg?.destination),
+    getRelatedPosts(slug, effectiveDestination, post.angle_type),
+    getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -725,6 +789,14 @@ async function renderBlogDetail({
       )}
 
       <BlogTracker contentCreativeId={post.id} />
+      {pkg && (
+        <BlogProductRecommendationTracker
+          contentCreativeId={post.id}
+          intent={blogRecommendationIntent}
+          placement="primary_product_cta"
+          products={[{ package_id: pkg.id, recommended_rank: 1, policy_id: null }]}
+        />
+      )}
 
       {/* A/B 테스트 전환 추적 (스크롤 50% + CTA 클릭) */}
       {abTestExperimentId && abTestVariantId && (
@@ -901,9 +973,11 @@ async function renderBlogDetail({
                         dangerouslySetInnerHTML={{ __html: split.before }}
                       />
                       <InlineRelated
-                        destination={pkg?.destination}
+                        destination={effectiveDestination}
                         relatedProducts={relatedProducts}
                         relatedPosts={inlineRelatedLites}
+                        contentCreativeId={post.id}
+                        intent={blogRecommendationIntent}
                       />
                       <div
                         className="prose prose-lg prose-blue prose-blog max-w-none scroll-smooth"
@@ -959,6 +1033,11 @@ async function renderBlogDetail({
                 </div>
                 <Link
                   href={`/packages/${pkg.id}`}
+                  data-blog-product-id={pkg.id}
+                  data-recommendation-source="blog"
+                  data-recommendation-rank="1"
+                  data-recommendation-placement="primary_product_cta"
+                  data-blog-intent={blogRecommendationIntent}
                   className="mt-6 inline-flex items-center gap-1 rounded-md bg-slate-900 px-6 py-3 text-sm font-bold text-white transition hover:opacity-80"
                 >
                   상품 상세 보기
@@ -971,7 +1050,7 @@ async function renderBlogDetail({
             <AuthorBox
               publishedAt={post.published_at}
               updatedAt={post.updated_at}
-              destination={pkg?.destination}
+              destination={effectiveDestination}
             />
 
             {/* 공유 버튼 */}
@@ -979,11 +1058,16 @@ async function renderBlogDetail({
 
             {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (PPR Suspense) */}
             <Suspense fallback={<div className="animate-pulse h-32 bg-gray-100 rounded my-8" />}>
-              <CurationSection destination={post.destination} isInfoBlog={isInfoBlog} />
+              <CurationSection
+                destination={effectiveDestination ?? null}
+                isInfoBlog={isInfoBlog}
+                contentCreativeId={post.id}
+                intent={blogRecommendationIntent}
+              />
             </Suspense>
 
             {/* 참고 · 출처 */}
-            <BlogCitations destination={pkg?.destination} airline={pkg?.airline ?? undefined} />
+            <BlogCitations destination={effectiveDestination} airline={pkg?.airline ?? undefined} />
           </article>
 
           {/* 데스크톱 사이드바 — Jiwonnote 패턴: TOC + 추천 포스팅 */}
@@ -991,7 +1075,7 @@ async function renderBlogDetail({
             <div className="sticky top-24 space-y-10">
               {showToc && <TableOfContents items={toc} variant="desktop" />}
               <Suspense fallback={<div className="animate-pulse h-24 bg-gray-100 rounded" />}>
-                <SidebarRelatedPosts currentSlug={slug} destination={pkg?.destination} angleType={post.angle_type} />
+                <SidebarRelatedPosts currentSlug={slug} destination={effectiveDestination} angleType={post.angle_type} />
               </Suspense>
             </div>
           </aside>
@@ -999,7 +1083,7 @@ async function renderBlogDetail({
 
         {/* 관련 글 섹션 — PPR: 동적 데이터는 Suspense로 분리 */}
         <Suspense fallback={<div className="animate-pulse h-48 bg-gray-100 rounded mx-auto max-w-6xl my-8" />}>
-          <RelatedPostsSection currentSlug={slug} destination={pkg?.destination} angleType={post.angle_type} />
+          <RelatedPostsSection currentSlug={slug} destination={effectiveDestination} angleType={post.angle_type} />
         </Suspense>
 
         {/* 하단 네비 — 이전/다음 글 — PPR: Suspense로 분리 */}
@@ -1013,6 +1097,9 @@ async function renderBlogDetail({
         <StickyMobileCta
           priceKrw={pkg.price ?? null}
           productUrl={`/packages/${pkg.id}`}
+          packageId={pkg.id}
+          intent={blogRecommendationIntent}
+          placement="sticky_mobile_cta"
         />
       )}
     </>
@@ -1145,9 +1232,13 @@ async function SidebarRelatedPosts({
 async function CurationSection({
   destination,
   isInfoBlog,
+  contentCreativeId,
+  intent,
 }: {
   destination: string | null;
   isInfoBlog: boolean;
+  contentCreativeId?: string | null;
+  intent?: string | null;
 }) {
   if (!isInfoBlog || !destination) return null;
   const curationProducts = await getCurationProductsForInfo(destination);
@@ -1156,6 +1247,8 @@ async function CurationSection({
   return (
     <DestinationCuration
       destination={destination}
+      contentCreativeId={contentCreativeId}
+      intent={intent}
       products={curationProducts.map((p: any) => ({
         id: p.id,
         title: p.title,
@@ -1167,6 +1260,9 @@ async function CurationSection({
         hero_image_url: p.hero_image_url,
         airline: p.airline,
         departure_airport: p.departure_airport,
+        recommended_rank: p.recommended_rank,
+        policy_id: p.policy_id,
+        recommendation_intent: p.recommendation_intent,
       }))}
     />
   );

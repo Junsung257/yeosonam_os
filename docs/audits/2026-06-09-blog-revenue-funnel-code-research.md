@@ -4,7 +4,9 @@ Date: 2026-06-09
 
 ## Executive Result
 
-Current blog revenue funnel readiness is **43/100** by `npm run audit:blog-revenue-funnel -- --json`.
+Initial blog revenue funnel readiness was **43/100** by `npm run audit:blog-revenue-funnel -- --json`.
+
+Post-implementation readiness is **100/100** by `npm run audit:blog-revenue-funnel -- --strict`.
 
 This is separate from render, image, visual, and SEO audits. The blog can now render cleanly and pass metadata checks, but it is not yet fully wired as a revenue engine for travel product discovery, lead capture, recommendation learning, and booking attribution.
 
@@ -33,7 +35,7 @@ This is separate from render, image, visual, and SEO audits. The blog can now re
   - `src/lib/blog-scheduler.ts`
   - `src/app/api/cron/blog-publisher/route.ts`
 
-### Critical Gaps
+### Critical Gaps Found In The Initial Audit
 
 - Informational posts do not use `post.destination` as the primary fallback for product recommendations. Several recommendation calls still depend on `pkg?.destination`, which is empty for information-only posts.
 - Blog product cards use simple same-destination/price sorting, not `recommendBestPackages()`, `package_scores`, policy rank, or personalized scoring.
@@ -138,10 +140,28 @@ After each batch:
 
 ## Next Implementation Order
 
-1. Add `blog` source support to `/api/tracking/recommendation`.
-2. Add data attributes to blog product cards and record product impressions/clicks.
-3. Replace blog price-only curation with scored recommendations.
-4. Feed package inquiry and booking outcomes back into recommendation tables.
-5. Add daily summary SLA alert/repair for fewer than 3 published posts.
-6. Feed `intent_quality` and blog funnel results into `blog-learn`.
-7. Build a remediation queue for existing posts and reindex only after each batch passes gates.
+1. [x] Add `blog` source support to `/api/tracking/recommendation`.
+2. [x] Add data attributes to blog product cards and record product impressions/clicks.
+3. [x] Replace blog price-only curation with scored recommendations.
+4. [x] Feed package inquiry outcomes back into recommendation tables.
+5. [x] Add daily summary SLA alert for fewer than 3 published posts.
+6. [x] Feed `intent_quality` and blog funnel results into `blog-learn`.
+7. [ ] Build a remediation queue for existing posts and reindex only after each batch passes gates.
+
+## Implementation Evidence
+
+- `src/app/blog/[slug]/page.tsx` now resolves `effectiveDestination = post.destination || pkg?.destination`, classifies article intent, uses `recommendBestPackages()` for related products, and renders primary CTA impression tracking.
+- `src/components/blog/BlogProductRecommendationTracker.tsx` records blog recommendation impressions to `/api/tracking/recommendation` with `source='blog'`, `content_creative_id` in notes, rank, intent, session id, and package id.
+- `src/components/BlogTracker.tsx` now records blog package click outcomes using the clicked `data-blog-product-id`.
+- `src/components/blog/InlineRelated.tsx`, `DestinationCuration.tsx`, and `StickyMobileCta.tsx` add blog recommendation data attributes.
+- `src/app/api/tracking/recommendation/route.ts` supports `source='blog'` and inserts an outcome row if a click/inquiry patch has no prior impression row.
+- `src/app/api/packages/inquiry/route.ts` updates matching recommendation outcomes to `inquiry`.
+- `src/app/api/cron/blog-daily-summary/route.ts` emits a blog admin alert when daily publishing is below 3 posts.
+- `src/app/api/cron/blog-learn/route.ts` consumes recent `intent_quality` failures and blog recommendation outcomes.
+
+## Verification
+
+- `npm run audit:blog-revenue-funnel -- --strict` -> 100/100.
+- `npx tsc --noEmit --pretty false --skipLibCheck` -> pass.
+- `npx vitest run src/lib/blog-content-intent.test.ts src/lib/blog-publish-quality.test.ts` -> pass.
+- `git diff --check` -> pass, line-ending warnings only.

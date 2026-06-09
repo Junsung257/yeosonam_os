@@ -16,6 +16,8 @@ export const runtime = 'nodejs';
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
 
+const MIN_DAILY_BLOG_POSTS = 3;
+
 async function runDailySummary(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -79,6 +81,8 @@ async function runDailySummary(request: NextRequest) {
   const summary = {
     date: yStart.toISOString().split('T')[0],
     published: pubRes.count || 0,
+    min_daily_target: MIN_DAILY_BLOG_POSTS,
+    under_daily_target: (pubRes.count || 0) < MIN_DAILY_BLOG_POSTS,
     queue_pending: queueCounts.queued || 0,
     queue_failed: queueCounts.failed || 0,
     rank_alerts_open: alertRes.count || 0,
@@ -86,6 +90,26 @@ async function runDailySummary(request: NextRequest) {
     avg_readability: avgReadability,
     destination_distribution: destDist,
   };
+
+  if (summary.under_daily_target) {
+    const message = `블로그 일일 발행 SLA 미달: ${summary.date} published=${summary.published}, min=${MIN_DAILY_BLOG_POSTS}`;
+    errors.push(message);
+    await supabaseAdmin.from('admin_alerts').insert({
+      category: 'blog',
+      severity: summary.published === 0 ? 'high' : 'medium',
+      title: '블로그 일일 발행 SLA 미달',
+      message,
+      ref_type: 'blog_daily_summary',
+      ref_id: summary.date,
+      meta: {
+        published: summary.published,
+        min_daily_target: MIN_DAILY_BLOG_POSTS,
+        queue_pending: summary.queue_pending,
+        queue_failed: summary.queue_failed,
+        recommendation: '품질 게이트 실패 또는 큐 부족 원인을 확인하고 대체 토픽을 큐잉하세요.',
+      },
+    });
+  }
 
   // 2) 저성과 글 재생성 트리거 (정책 ON 시)
   let regenInfo: { count: number } | null = null;

@@ -517,4 +517,4 @@ Existing posts should be improved in batches, not mass-deleted or blindly regene
 
 ### Current Baseline
 
-2026-06-09 code audit result: `43/100` revenue funnel readiness. Evidence: `docs/audits/2026-06-09-blog-revenue-funnel-code-research.md`.
+2026-06-09 initial code audit result: `43/100` revenue funnel readiness. Post-implementation result: `100/100` by `npm run audit:blog-revenue-funnel -- --strict`. Evidence: `docs/audits/2026-06-09-blog-revenue-funnel-code-research.md`.

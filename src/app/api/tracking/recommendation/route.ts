@@ -16,7 +16,7 @@ export const runtime = 'nodejs';
 
 interface Payload {
   package_id: string;
-  source: 'jarvis' | 'mobile_card' | 'list_badge' | 'admin';
+  source: 'jarvis' | 'mobile_card' | 'list_badge' | 'admin' | 'blog';
   recommended_rank?: number;
   policy_id?: string;
   intent?: string;                  // family/couple/filial/budget/no-option 등
@@ -87,6 +87,26 @@ export async function PATCH(req: NextRequest) {
 
     const { data, error } = await q.select('id');
     if (error) throw error;
+    if ((data?.length ?? 0) === 0 && body.source) {
+      const { data: inserted, error: insertError } = await supabaseAdmin
+        .from('recommendation_outcomes')
+        .insert({
+          package_id: body.package_id,
+          source: body.source,
+          recommended_rank: body.recommended_rank ?? null,
+          policy_id: body.policy_id ?? null,
+          intent: body.intent ?? null,
+          session_id: body.session_id ?? null,
+          user_id: body.user_id ?? null,
+          outcome: body.outcome,
+          outcome_at: new Date().toISOString(),
+          outcome_value: body.outcome_value ?? null,
+          notes: body.notes ?? null,
+        })
+        .select('id');
+      if (insertError) throw insertError;
+      return NextResponse.json({ ok: true, updated: 0, inserted: inserted?.length ?? 0 });
+    }
     return NextResponse.json({ ok: true, updated: data?.length ?? 0 });
   } catch (e) {
     console.error('[recommendation update]', e);
