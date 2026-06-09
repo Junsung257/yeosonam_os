@@ -2,6 +2,16 @@
 
 Last updated: 2026-06-09
 
+## ERR-BLOG-editorial-intent-blindspot@2026-06-09
+
+- [x] **ERR-BLOG-editorial-intent-blindspot@2026-06-09**: Existing audits reported render/image/SEO as 100, but production samples still contained bad article quality: informational weather posts with product-sales wording, preparation posts without checklist shape, weak tables/lists, wall-of-text paragraphs, and missing required blocks for the article intent.
+- **Root cause**: The system used mostly shared prompts and shared publish checks. It validated that pages rendered and had metadata, but it did not enforce per-intent contracts such as weather/monthly table, preparation/checklist, itinerary/day structure, or product/price-departure facts. The old "100점" was therefore a technical render/SEO score, not an editorial quality score.
+- **Fix**: Added `src/lib/blog-content-intent.ts`, `intent_quality` in `runQualityGates()`, prompt injection through `buildBlogIntentPromptContract()`, and `npm run audit:blog-editorial`.
+- **Prevention**: New blog posts must pass `intent_quality`. Repeated audit issues must become a deterministic rule, fixture test, or publish gate before being considered learned.
+- **Verification**: `npx vitest run src/lib/blog-content-intent.test.ts`; `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --limit=20` found the previous blind spot with score 72/100 and 15/20 failures.
+
+---
+
 ## ERR-BLOG-publish-quality-bypass@2026-06-09
 
 - [x] **ERR-BLOG-publish-quality-bypass@2026-06-09**: `/api/blog` publish path was protected, but other live-entry paths could still flip a blog post to public without the same SEO/readability/render/image/structure gate. The missed paths were content queue approval, content hub publish/manual publish, distribution publisher `blog_body`, MRT hotel ranking immediate publish, backfill writes, and zero-click regeneration.

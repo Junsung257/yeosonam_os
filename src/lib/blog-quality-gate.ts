@@ -17,6 +17,7 @@ import { getActiveThresholds, type AdaptiveThresholds } from './blog-bayesian-op
 import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
 import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectBlogStructure } from './blog-structure-audit';
+import { inspectBlogIntentQuality } from './blog-content-intent';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -42,7 +43,7 @@ const THRESHOLDS = {
 const DEDUP_WINDOW_DAYS = 14;
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'image_quality';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'intent_quality' | 'image_quality';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -63,6 +64,9 @@ interface CheckInput {
   excludeContentCreativeId?: string | null;
   blog_type?: 'product' | 'info';   // 임계값 분기 (기본 product)
   primary_keyword?: string | null;  // 키워드 밀도 측정 대상
+  category?: string | null;
+  content_type?: string | null;
+  product_id?: string | null;
 }
 
 export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
@@ -405,6 +409,37 @@ export function checkImageQuality(input: CheckInput): GateResult {
   };
 }
 
+export function checkIntentQuality(input: CheckInput): GateResult {
+  const report = inspectBlogIntentQuality({
+    title: input.primary_keyword,
+    slug: input.slug,
+    primaryKeyword: input.primary_keyword,
+    angleType: input.angle_type,
+    category: input.category,
+    contentType: input.content_type,
+    productId: input.product_id ?? (input.blog_type === 'product' ? 'product' : null),
+    blogHtml: input.blog_html,
+  });
+
+  return {
+    gate: 'intent_quality',
+    passed: report.passed,
+    reason: report.passed
+      ? undefined
+      : `intent/design quality ${report.score}/100: ${report.issues
+          .slice(0, 5)
+          .map((issue) => issue.code)
+          .join(', ')}`,
+    evidence: {
+      score: report.score,
+      intent: report.intent,
+      criticalCount: report.issues.filter((issue) => issue.severity === 'critical').length,
+      warningCount: report.issues.filter((issue) => issue.severity === 'warning').length,
+      issues: report.issues.slice(0, 12),
+    },
+  };
+}
+
 export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   const since = new Date();
   since.setDate(since.getDate() - DEDUP_WINDOW_DAYS);
@@ -534,6 +569,8 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(await checkRenderIntegrity(input.blog_html));
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
   gates.push(await checkStructureIntegrity(input));
+  // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단
+  gates.push(checkIntentQuality(input));
   // 이미지 품질 기준 검증 — 깨진 URL, 중복, 빈 alt, 주제 무관 alt/caption 차단
   gates.push(checkImageQuality(input));
 
