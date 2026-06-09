@@ -77,4 +77,24 @@ describe('computeSeoScore', () => {
     expect(result.score).toBeLessThan(BLOG_SEO_MIN_SCORE.info);
     expect(result.details.filter((detail) => detail.status === 'fail').length).toBeGreaterThan(0);
   });
+
+  it('matches hyphenated slug keywords against readable spaced article text', () => {
+    const result = computeSeoScore({
+      blogHtml: [
+        '# 6월 유럽 여행 성수기 전 항공권 가이드',
+        '',
+        '6월 유럽 여행 성수기 전 항공권은 출발일, 경유 시간, 수하물 조건을 같이 봐야 합니다.',
+        '6월 유럽 여행 성수기 전 항공권을 비교할 때는 총액 기준으로 확인하세요.',
+      ].join('\n'),
+      slug: 'june-europe-flight-ticket',
+      seoTitle: '6월 유럽 여행 성수기 전 항공권 가이드 2026',
+      seoDescription: '6월 유럽 여행 성수기 전 항공권 비교 기준과 예약 전 확인할 비용, 일정, 수하물 조건을 정리했습니다.',
+      primaryKeyword: '6월-유럽-여행-성수기-전-항공권',
+      blogType: 'info',
+    });
+
+    const primary = result.details.find((detail) => detail.name === 'primary_keyword');
+    expect(primary?.score).toBeGreaterThan(0);
+    expect(primary?.message).not.toContain('0회');
+  });
 });

@@ -291,9 +291,10 @@ function countMatches(value: string, pattern: RegExp): number {
 }
 
 function renderResidualMarkdownLinks(html: string): string {
-  return html.replace(/\[([^\]]+)]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_match, label: string, href: string) => {
+  return html.replace(/\[([\s\S]*?)]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_match, label: string, href: string) => {
+    const cleanLabel = label.replace(/\s+/g, ' ').trim();
     const safeHref = href.replace(/"/g, '&quot;');
-    return `<a href="${safeHref}">${label}</a>`;
+    return `<a href="${safeHref}">${cleanLabel}</a>`;
   });
 }
 
@@ -312,6 +313,13 @@ function renderResidualMarkdownImages(html: string): string {
       const safeSrc = src.replace(/"/g, '&quot;').trim();
       return `<img src="${safeSrc}" alt="${safeAlt}" loading="lazy">`;
     });
+}
+
+function normalizeAnchorTextWhitespace(html: string): string {
+  return html.replace(/(<a\b[^>]*>)([\s\S]*?)(<\/a>)/gi, (_match, open: string, label: string, close: string) => {
+    const cleanLabel = label.replace(/\s+/g, ' ').trim();
+    return `${open}${cleanLabel}${close}`;
+  });
 }
 
 function normalizeRenderedHeadingArtifacts(html: string): string {
@@ -369,7 +377,7 @@ export async function renderBlogContentToHtml(
 
   if (!shouldParseAsMarkdown(source)) {
     const normalizedHtml = normalizeRenderedHeadingArtifacts(
-      renderResidualMarkdownLinks(renderResidualMarkdownImages(source)),
+      normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(source))),
     );
     return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
   }
@@ -383,7 +391,7 @@ export async function renderBlogContentToHtml(
   const { marked } = await import('marked');
   const rawHtml = await marked.parse(mdAccented, { gfm: true });
   const normalizedHtml = normalizeRenderedHeadingArtifacts(
-    renderResidualMarkdownLinks(renderResidualMarkdownImages(String(rawHtml))),
+    normalizeAnchorTextWhitespace(renderResidualMarkdownLinks(renderResidualMarkdownImages(String(rawHtml)))),
   );
   return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
 }

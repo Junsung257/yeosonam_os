@@ -58,6 +58,22 @@ function normalizeToken(value: string): string {
   return value.toLowerCase().replace(/[^\p{Script=Hangul}\p{Letter}\p{Number}]+/gu, '');
 }
 
+function isWeakContextToken(token: string): boolean {
+  const hasHangul = /\p{Script=Hangul}/u.test(token);
+  const hasLatin = /[a-z]/i.test(token);
+  const hasDigit = /\d/.test(token);
+
+  if (!token || token.length < 2) return true;
+  if (STOP_WORDS.has(token)) return true;
+  if (hasHangul && hasDigit && token.length >= 8) return true;
+  if (hasHangul && token.includes('여행') && token.length >= 8) return true;
+  if (!hasHangul && hasLatin && hasDigit) return true;
+  if (!hasHangul && /^(?:top|best|post|guide|travel|complete|weather|itinerary)\d*$/i.test(token)) return true;
+  if (hasHangul && token.length >= 14) return true;
+  if (!hasHangul && token.length >= 14) return true;
+  return false;
+}
+
 function buildContextTokens(options: BlogImageQualityOptions): string[] {
   const raw = [options.destination, options.primaryKeyword]
     .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -65,7 +81,7 @@ function buildContextTokens(options: BlogImageQualityOptions): string[] {
 
   const tokens = raw
     .map(normalizeToken)
-    .filter((token) => token.length >= 2 && !STOP_WORDS.has(token));
+    .filter((token) => !isWeakContextToken(token));
 
   return [...new Set(tokens)].slice(0, 8);
 }
