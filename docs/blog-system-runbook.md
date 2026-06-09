@@ -484,3 +484,37 @@ Render, image, and metadata audits are not enough. A post can score 100 on those
 - Add the incident to `docs/errors/blog.md` and, if current, `db/error-registry.md`.
 - Prompt changes are not enough. Each promoted lesson needs one of: deterministic classifier rule, publish gate, audit script check, or fixture test.
 - This follows Google Search Central guidance: helpful, reliable, people-first content is required regardless of whether AI assisted the writing; scaled low-value automation must be blocked.
+
+---
+
+## Blog Revenue Funnel Gate (2026-06-09)
+
+SEO 100 is not complete if the blog does not move qualified readers toward sellable travel products. Blog quality is now judged by two independent scores:
+
+- Content quality: render, image, visual, SEO, structure, editorial intent.
+- Revenue funnel readiness: article-intent-aware product recommendations, product impression/click/inquiry/booking tracking, and learning feedback.
+
+### Required Command
+
+- Current codebase audit: `npm run audit:blog-revenue-funnel`
+- JSON output: `npm run audit:blog-revenue-funnel -- --json`
+- Strict release gate after implementation: `npm run audit:blog-revenue-funnel -- --strict`
+
+### 100-Point Standard
+
+- Information posts must use `post.destination` as a fallback for product recommendations.
+- Blog product cards must use `recommendBestPackages()`, `package_scores`, or an equivalent scoring policy, not price-only sorting.
+- `recommendation_outcomes.source` must support `blog`.
+- Product impressions from blog cards must record `content_creative_id`, `package_id`, rank, intent, policy id, and session id.
+- Product clicks must capture the clicked `package_id`, not only a boolean CTA click.
+- Package inquiry and booking paths must update recommendation outcomes/events when the session came from a blog product recommendation.
+- Daily publishing must alert or repair if fewer than 3 posts were published the previous day.
+- `blog-learn` must consume both editorial failures and recommendation funnel outcomes before claiming self-improvement.
+
+### Operating Rule
+
+Existing posts should be improved in batches, not mass-deleted or blindly regenerated. Prioritize posts with GSC potential, editorial failures, active sellable products, engagement/CTA opportunity, and seasonal freshness risk. After meaningful changes, keep the canonical URL when possible, update `lastmod`, run all blog audits, then request reindexing through the existing bulk reindex path.
+
+### Current Baseline
+
+2026-06-09 code audit result: `43/100` revenue funnel readiness. Evidence: `docs/audits/2026-06-09-blog-revenue-funnel-code-research.md`.
