@@ -58,11 +58,22 @@ type AuditRow = {
   readabilityScore: number | null;
   titleChanged: boolean;
   descriptionChanged: boolean;
+  changeReasons: string[];
+  firstHtmlDiff?: {
+    index: number;
+    beforeLength: number;
+    afterLength: number;
+    beforeCharCode: number | null;
+    afterCharCode: number | null;
+    before: string;
+    after: string;
+  } | null;
   changed: boolean;
 };
 
 const args = new Set(process.argv.slice(2));
 const dryRun = !args.has('--write');
+const debugDiff = args.has('--debug-diff');
 const limitArg = process.argv.find((arg) => arg.startsWith('--limit='));
 const slugArg = process.argv.find((arg) => arg.startsWith('--slug='));
 const limit = limitArg ? Number.parseInt(limitArg.split('=')[1] || '', 10) : 100;
@@ -168,6 +179,13 @@ function sanitizeInfoSalesPhrases(markdown: string): string {
     .replace(/출발가/g, '예상 비용')
     .replace(/특가/g, '가격 변동')
     .replace(/노팁|노쇼핑/g, '현지 조건');
+}
+
+function normalizeMarkdownLinkLabels(markdown: string): string {
+  return markdown.replace(/(?<!!)\[([\s\S]*?)]\(((?:https?:\/\/|\/)[^)]+)\)/g, (_match, label: string, href: string) => {
+    const cleanLabel = label.replace(/\s+/g, ' ').trim();
+    return `[${cleanLabel}](${href})`;
+  });
 }
 
 function softenKeywordDensity(markdown: string, primaryKeyword?: string | null, blogType: 'product' | 'info' = 'info'): string {
@@ -473,6 +491,29 @@ function percentile(values: number[], ratio: number): number {
   return sorted[index];
 }
 
+function firstDiffSummary(before: string, after: string): AuditRow['firstHtmlDiff'] {
+  if (before === after) return null;
+  let index = 0;
+  const max = Math.min(before.length, after.length);
+  while (index < max && before[index] === after[index]) index += 1;
+  const start = Math.max(0, index - 80);
+  const endBefore = Math.min(before.length, index + 160);
+  const endAfter = Math.min(after.length, index + 160);
+  return {
+    index,
+    beforeLength: before.length,
+    afterLength: after.length,
+    beforeCharCode: index < before.length ? before.charCodeAt(index) : null,
+    afterCharCode: index < after.length ? after.charCodeAt(index) : null,
+    before: before.slice(start, endBefore).replace(/\s+/g, ' ').trim(),
+    after: after.slice(start, endAfter).replace(/\s+/g, ' ').trim(),
+  };
+}
+
+function isSameStoredBlogHtml(before: string, after: string): boolean {
+  return before.trim() === after.trim();
+}
+
 function primaryKeywordFor(row: BlogRow): string {
   const titleLooksLikePriceOffer = /\d|만원|부터|특가|할인/.test(row.seo_title || '');
   const basis = normalizePrimaryKeyword(row.destination)
@@ -563,6 +604,9 @@ function buildSecondaryKeywords(primaryKeyword: string, destination?: string | n
 }
 
 function ensureLongtailCoverageSection(markdown: string, secondaryKeywords: string[]): string {
+  if (/^##\s*\uD568\uAED8\s*\uCC3E\uB294\s*\uC138\uBD80\s*\uD0A4\uC6CC\uB4DC/m.test(markdown)) {
+    return markdown;
+  }
   const missing = secondaryKeywords.filter((keyword) => keyword.length > 2 && !markdown.includes(keyword)).slice(0, 4);
   if (missing.length === 0) return markdown;
 
@@ -773,7 +817,7 @@ async function main() {
       primaryKeyword,
       'info',
     );
-    const nextHtml = ensureInternalFunnelLinks(repairedFinal, destination, slug);
+    const nextHtml = normalizeMarkdownLinkLabels(ensureInternalFunnelLinks(repairedFinal, destination, slug));
     const nextOg = finalized.ogImageUrl;
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
@@ -789,11 +833,18 @@ async function main() {
       excludeContentCreativeId: row.id,
       skipFuzzyDuplicate: true,
     });
+    const htmlChanged = !isSameStoredBlogHtml(originalHtml, nextHtml);
     const changed =
-      nextHtml !== originalHtml ||
+      htmlChanged ||
       nextOg !== originalOg ||
       normalizedTitle !== originalTitle ||
       normalizedDescription !== originalDescription;
+    const changeReasons = [
+      htmlChanged ? 'blog_html' : null,
+      nextOg !== originalOg ? 'og_image_url' : null,
+      normalizedTitle !== originalTitle ? 'seo_title' : null,
+      normalizedDescription !== originalDescription ? 'seo_description' : null,
+    ].filter((value): value is string => Boolean(value));
 
     auditRows.push({
       slug,
@@ -822,6 +873,8 @@ async function main() {
       readabilityScore: qaReport.readability.score,
       titleChanged: normalizedTitle !== originalTitle,
       descriptionChanged: normalizedDescription !== originalDescription,
+      changeReasons,
+      firstHtmlDiff: debugDiff && htmlChanged ? firstDiffSummary(originalHtml, nextHtml) : null,
       changed,
     });
 
@@ -861,6 +914,10 @@ async function main() {
 
   const highlightCountsBefore = auditRows.map((row) => row.highlightCountBefore);
   const highlightCountsAfter = auditRows.map((row) => row.highlightCountAfter);
+  const changeReasonCounts = auditRows.reduce<Record<string, number>>((acc, row) => {
+    for (const reason of row.changeReasons) acc[reason] = (acc[reason] || 0) + 1;
+    return acc;
+  }, {});
   const summary = {
     mode: dryRun ? 'dry-run' : 'write',
     scanned: auditRows.length,
@@ -891,7 +948,18 @@ async function main() {
     highlightP75After: percentile(highlightCountsAfter, 0.75),
     highlightMaxBefore: highlightCountsBefore.length > 0 ? Math.max(...highlightCountsBefore) : 0,
     highlightMaxAfter: highlightCountsAfter.length > 0 ? Math.max(...highlightCountsAfter) : 0,
+    changeReasonCounts,
     samples: auditRows.filter((row) => row.changed).slice(0, 10).map((row) => row.slug),
+    debugDiffSamples: debugDiff
+      ? auditRows
+        .filter((row) => row.changed)
+        .slice(0, 5)
+        .map((row) => ({
+          slug: row.slug,
+          changeReasons: row.changeReasons,
+          firstHtmlDiff: row.firstHtmlDiff,
+        }))
+      : undefined,
     failedSamples: auditRows
       .filter((row) => !row.qualityGatePassed)
       .slice(0, 10)

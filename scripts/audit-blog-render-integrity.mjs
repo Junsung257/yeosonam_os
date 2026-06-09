@@ -66,6 +66,7 @@ function count(text, pattern) {
 
 function inspectArticle(html, path) {
   const $ = cheerio.load(html);
+  $('script, style, template, noscript').remove();
   const article = $('article').first();
   const root = article.length ? article : $('body');
   const text = root.text();
@@ -94,6 +95,27 @@ function inspectArticle(html, path) {
     tableCount,
     ...artifacts,
   };
+}
+
+function shouldRetryArticle(row) {
+  return !row.error && row.imgCount === 0 && row.h2Count === 0;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function inspectArticleWithRetry(path) {
+  const url = absolutize(path);
+  let lastRow = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const html = await fetchText(url);
+    const row = inspectArticle(html, path);
+    if (!shouldRetryArticle(row)) return row;
+    lastRow = { ...row, retryReason: 'empty_article_shell', attempts: attempt + 1 };
+    await sleep(500 * (attempt + 1));
+  }
+  return lastRow;
 }
 
 async function inspectArticleInBrowser(browser, path) {
@@ -159,8 +181,7 @@ async function main() {
   const rows = [];
   for (const path of links) {
     try {
-      const html = await fetchText(absolutize(path));
-      rows.push(inspectArticle(html, path));
+      rows.push(await inspectArticleWithRetry(path));
     } catch (error) {
       rows.push({
         path,
