@@ -20,6 +20,8 @@ describe('blog-renderer', () => {
 
     expect(html).toContain('<h2');
     expect(html).toContain('<img');
+    expect(html).toContain('/api/blog/image?src=');
+    expect(html).not.toContain('src="https://images.pexels.com');
     expect(html).toContain('<figcaption>');
     expect(html).toContain('<a href="/packages?destination=zhangjiajie"');
     expect(html).not.toContain('![장가계 핵심 요약]');

@@ -28,6 +28,12 @@
 
 ---
 
+## Recent Blog Error Addition
+
+- **ERR-BLOG-external-image-client-block@2026-06-09** - Pexels image URLs returned HTTP 200 from server audits, but real browsers/ad blockers could block `images.pexels.com`, leaving article images with `naturalWidth=0` and collapsed height. Blog render and card surfaces must pass proxyable external images through `/api/blog/image`, and visual audits must judge browser-loaded `naturalWidth`, not URL reachability alone.
+
+---
+
 ## Domain Error Files
 
 | Domain | Detail file | Notes |

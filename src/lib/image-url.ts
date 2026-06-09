@@ -6,6 +6,7 @@ export function isSafeImageSrc(url: unknown): url is string {
   const u = url.trim();
   if (!u) return false;
   if (u.startsWith('//')) return true;
+  if (u.startsWith('/')) return true;
   return /^https?:\/\//i.test(u);
 }
 

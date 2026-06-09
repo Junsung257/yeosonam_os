@@ -28,6 +28,7 @@ import { safeDecodeSlug } from '@/lib/decode-slug';
 import { assignVariant } from '@/lib/ab-test-engine';
 import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
+import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 
 function isNextNotFoundError(err: unknown): boolean {
   return (
@@ -468,7 +469,7 @@ export async function generateMetadata({
   const metadataTitle = buildSeoTitleWithSuffix(cleanedTitle, duplicateTitleSuffix);
 
   const description = buildSeoDescription(post);
-  const dbOgImage = post.og_image_url;
+  const dbOgImage = toBlogImageDisplaySrc(post.og_image_url, BASE_URL);
 
   const angleLabel = ANGLE_LABELS[post.angle_type] || post.angle_type;
   const dest = post.travel_packages?.destination || post.destination || null;
@@ -661,7 +662,7 @@ async function renderBlogDetail({
     description: post.seo_description || '',
     publishedAt: post.published_at,
     modifiedAt: post.updated_at,
-    ogImageUrl: post.og_image_url,
+    ogImageUrl: toBlogImageDisplaySrc(post.og_image_url, BASE_URL),
     blogHtmlMarkdown: post.blog_html || '',
     bodyHtmlForWordCount: bodyHtml,
     readingMinutes,
@@ -843,7 +844,7 @@ async function renderBlogDetail({
             <LandingHero
               headline={dki.headline}
               subtitle={dki.subtitle || post.landing_subtitle || (pkg?.product_highlights?.slice(0, 3).join(' · ') ?? undefined)}
-              heroImage={post.og_image_url || pkg?.hero_image_url || null}
+              heroImage={toBlogImageDisplaySrc(post.og_image_url || pkg?.hero_image_url)}
               priceKrw={pkg?.price ?? null}
               productUrl={pkg ? `/packages/${pkg.id}` : null}
               trustBadges={['운영팀 검증', '노팁·노옵션', pkg?.airline || '직항']}
@@ -857,7 +858,7 @@ async function renderBlogDetail({
           <figure className="mx-auto mb-4 max-w-3xl px-4">
             <div className="relative aspect-[16/9] overflow-hidden rounded-md bg-slate-100">
               <img
-                src={post.og_image_url}
+                src={toBlogImageDisplaySrc(post.og_image_url) || post.og_image_url}
                 alt={[pkg?.destination || post.destination, title].filter(Boolean).join(' — ')}
                 className="absolute inset-0 h-full w-full object-cover"
                 loading="eager"
@@ -1063,7 +1064,7 @@ async function RelatedPostsSection({
                 {rp.og_image_url ? (
                   <div className="relative aspect-[16/9] overflow-hidden bg-slate-100">
                     <img
-                      src={rp.og_image_url}
+                      src={toBlogImageDisplaySrc(rp.og_image_url) || rp.og_image_url}
                       alt={rpTitle}
                       className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                       sizes="(max-width: 640px) 100vw, 33vw"
@@ -1199,7 +1200,7 @@ async function PrevNextSection({
               {prevNext.prev.og_image_url && (
                 <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
                   <img
-                    src={prevNext.prev.og_image_url}
+                    src={toBlogImageDisplaySrc(prevNext.prev.og_image_url) || prevNext.prev.og_image_url}
                     alt=""
                     className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     sizes="96px"
@@ -1245,7 +1246,7 @@ async function PrevNextSection({
               {prevNext.next.og_image_url && (
                 <div className="relative w-24 shrink-0 overflow-hidden bg-slate-100">
                   <img
-                    src={prevNext.next.og_image_url}
+                    src={toBlogImageDisplaySrc(prevNext.next.og_image_url) || prevNext.next.og_image_url}
                     alt=""
                     className="absolute inset-0 h-full w-full object-cover transition duration-300 group-hover:scale-105"
                     sizes="96px"

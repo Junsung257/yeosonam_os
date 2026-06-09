@@ -1,4 +1,5 @@
 import { applyHtmlAccents, applyMarkdownAccents } from '@/lib/blog-accent';
+import { proxyBlogImageUrlsInHtml } from '@/lib/blog-image-proxy';
 
 export interface RenderBlogContentOptions {
   stripDecorativeBold?: boolean;
@@ -270,7 +271,7 @@ export async function renderBlogContentToHtml(
   if (!source.trim()) return '';
 
   if (!shouldParseAsMarkdown(source)) {
-    return applyHtmlAccents(source);
+    return proxyBlogImageUrlsInHtml(applyHtmlAccents(source));
   }
 
   const normalizedSource = normalizeStoredBlogMarkdownStructure(source);
@@ -281,7 +282,7 @@ export async function renderBlogContentToHtml(
   const mdAccented = applyMarkdownAccents(markdownSource);
   const { marked } = await import('marked');
   const rawHtml = await marked.parse(mdAccented, { gfm: true });
-  return applyHtmlAccents(renderResidualMarkdownLinks(String(rawHtml)));
+  return proxyBlogImageUrlsInHtml(applyHtmlAccents(renderResidualMarkdownLinks(String(rawHtml))));
 }
 
 async function isReachableUrl(url: string): Promise<boolean> {

@@ -6,6 +6,7 @@ import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { getDestinationUrl } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
+import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -94,8 +95,8 @@ function extractFirstBlogImageUrl(source: string | null | undefined): string | n
 }
 
 function getDisplayImageUrl(post: BlogPost): string | null {
-  if (!isGenericBlogImageUrl(post.og_image_url)) return post.og_image_url;
-  return extractFirstBlogImageUrl(post.blog_html);
+  if (!isGenericBlogImageUrl(post.og_image_url)) return toBlogImageDisplaySrc(post.og_image_url);
+  return toBlogImageDisplaySrc(extractFirstBlogImageUrl(post.blog_html));
 }
 
 async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<{

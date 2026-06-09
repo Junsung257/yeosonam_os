@@ -2,6 +2,7 @@
 
 import { useState, useEffect, type ReactNode } from 'react';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 
 type CoverProps = {
   src: string | null | undefined;
@@ -14,7 +15,8 @@ type CoverProps = {
 
 /** 풀블리드 배경용 — 로드 실패·비안전 URL 시 fallback 만 표시 */
 export function SafeCoverImg({ src, alt, className, loading = 'lazy', fetchPriority, fallback }: CoverProps) {
-  const ok = typeof src === 'string' && isSafeImageSrc(src);
+  const displaySrc = toBlogImageDisplaySrc(src);
+  const ok = typeof displaySrc === 'string' && isSafeImageSrc(displaySrc);
   const [broken, setBroken] = useState(false);
   useEffect(() => {
     setBroken(false);
@@ -22,7 +24,7 @@ export function SafeCoverImg({ src, alt, className, loading = 'lazy', fetchPrior
   if (!ok || broken) return <>{fallback}</>;
   return (
     <img
-      src={src.trim()}
+      src={displaySrc.trim()}
       alt={alt}
       className={className}
       loading={loading}
@@ -47,13 +49,14 @@ type CoverNextProps = {
  * 부모 요소에 position: relative/absolute/fixed 가 있어야 함.
  */
 export function SafeCoverNextImg({ src, alt, sizes, priority = false, className, fallback }: CoverNextProps) {
-  const ok = typeof src === 'string' && isSafeImageSrc(src);
+  const displaySrc = toBlogImageDisplaySrc(src);
+  const ok = typeof displaySrc === 'string' && isSafeImageSrc(displaySrc);
   const [broken, setBroken] = useState(false);
   useEffect(() => { setBroken(false); }, [src]);
   if (!ok || broken) return <>{fallback}</>;
   return (
     <img
-      src={src.trim()}
+      src={displaySrc.trim()}
       alt={alt}
       className={`absolute inset-0 h-full w-full object-cover${className ? ` ${className}` : ''}`}
       sizes={sizes ?? '100vw'}
@@ -73,7 +76,8 @@ type MagazineProps = {
 /** 블로그/매거진 카드 16:9 썸네일 — 임의 OG 도메인용 일반 img */
 export function SafeMagazineThumb({ url, title, placeholderClassName }: MagazineProps) {
   const [hide, setHide] = useState(false);
-  const ok = typeof url === 'string' && isSafeImageSrc(url) && !hide;
+  const displaySrc = toBlogImageDisplaySrc(url);
+  const ok = typeof displaySrc === 'string' && isSafeImageSrc(displaySrc) && !hide;
   useEffect(() => {
     setHide(false);
   }, [url]);
@@ -92,7 +96,7 @@ export function SafeMagazineThumb({ url, title, placeholderClassName }: Magazine
   return (
     <div className="aspect-[16/9] bg-slate-100 overflow-hidden">
       <img
-        src={url.trim()}
+        src={displaySrc.trim()}
         alt={title}
         className="w-full h-full object-cover"
         loading="lazy"
