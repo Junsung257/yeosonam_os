@@ -1,5 +1,18 @@
 # Product Registration Errors
 
+## ERR-BAEKDU-cross-region-attraction-card@2026-06-10
+
+- **Discovered**: 2026-06-10
+- **Domain**: product registration | mobile landing | attractions
+- **Source vs result**: A Baekdu/Yanji itinerary line containing `화산폭포` rendered a customer attraction card for Xi'an/Huashan `화산`; a massage service line could also attach a Bohol massage attraction card.
+- **Root cause**: Attraction enrichment trusted existing `attraction_ids` and short substring matches too much. A two-syllable canonical name such as `화산` could match inside a different word such as `화산폭포`, and saved attraction IDs were not rechecked against the package destination/region before customer render.
+- **Fix**: Short Korean substring matches now require term boundaries, no-space substring matching requires at least three characters, direct scan and alias matching are destination scoped, and existing `attraction_ids` are stripped when the attraction region does not fit the package destination. Baekdu transfer/massage lines are classified as transfer/perk, not attraction visits.
+- **Verification rule**: Mobile/A4 readiness must fail on cross-region attraction cards. Regression fixtures must prove `화산폭포` does not match Xi'an `화산`, and service/perk lines such as massage do not produce attraction cards.
+- **Status**: FIXED
+- **Recurrence prevention**: Any future attraction card must be supported by a source phrase plus destination-compatible master data. If the region is ambiguous or mismatched, keep the phrase as itinerary text and send it to unmatched/review, never customer card render.
+
+---
+
 Last updated: 2026-06-07
 
 상품 등록, A4, 모바일 렌더, 가격·날짜 복구, 일정 파싱, 관광지 매칭, `/register` 절차 반복 오류 상세.

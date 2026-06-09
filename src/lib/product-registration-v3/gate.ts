@@ -57,14 +57,20 @@ export function evaluateProductRegistrationV3Gate(
     check(
       checks,
       `${variant.variant_key}.options_reflected`,
-      plan.option_section_locations.length === 0 || variant.options.length > 0,
+      plan.option_section_locations.length === 0
+        || variant.options.length > 0
+        || variant.standard_notices.some(notice => notice.category === 'optional_tour' && notice.template_key === 'optional.none')
+        || (variant.structured_facts ?? []).some(fact => fact.category === 'optional_tour' && fact.values.none === true),
       'high',
       'source option section is reflected in ledger',
     );
     check(
       checks,
       `${variant.variant_key}.shopping_reflected`,
-      plan.shopping_section_locations.length === 0 || variant.shopping.length > 0,
+      plan.shopping_section_locations.length === 0
+        || variant.shopping.length > 0
+        || variant.standard_notices.some(notice => notice.category === 'shopping_visit' && notice.template_key === 'shopping.none')
+        || (variant.structured_facts ?? []).some(fact => fact.category === 'shopping_policy' && fact.values.none === true),
       'high',
       'source shopping section is reflected in ledger',
     );

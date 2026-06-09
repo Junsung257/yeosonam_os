@@ -3,8 +3,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { createClient } from '@supabase/supabase-js';
-import { mapTravelPackageToLandingData } from '../src/lib/map-travel-package-to-lp';
-import { renderPackage } from '../src/lib/render-contract';
 
 function loadEnvFile(file) {
   if (!fs.existsSync(file)) return;
@@ -34,6 +32,10 @@ const strict = process.argv.includes('--strict');
 const repairPriceStorage = process.argv.includes('--repair-price-storage');
 const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
 const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
+const codeFilter = (process.argv.find(arg => arg.startsWith('--codes='))?.split('=')[1] ?? '')
+  .split(',')
+  .map(code => code.trim())
+  .filter(Boolean);
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -145,7 +147,11 @@ function trustScore(row) {
   add(row.raw_notice_leak_risk, 'notice.raw_leak_risk', 'critical', 100);
   add(row.price_dates === 0 && row.price_tiers === 0 && row.product_prices === 0, 'price.missing', 'critical', 35);
   add(row.price_storage_mismatch, 'price.storage_mismatch', 'critical', 60);
+  add(row.customer_price_option_mismatch, 'price.customer_option_mismatch', 'critical', 60);
   add(row.product_ledger_price_mismatch, 'price.product_ledger_mismatch', 'critical', 60);
+  add(row.price_source_evidence_mismatch, 'price.source_evidence_mismatch', 'critical', 70);
+  add(row.attraction_context_mismatch, 'attraction.context_mismatch', 'critical', 80);
+  add(row.itinerary_semantic_mismatch, 'itinerary.semantic_mismatch', 'critical', 70);
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
@@ -291,14 +297,126 @@ function customerPriceOptionMismatch(pkg, productPriceRows) {
   return null;
 }
 
+function priceDateSourceEvidenceMismatch(pkg) {
+  const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates.filter(row => row?.date && Number(row?.price) > 0) : [];
+  const raw = String(pkg.raw_text ?? '');
+  if (priceDates.length === 0 || !raw.trim()) return null;
+  const lines = raw.split(/\r?\n/).map(line => line.replace(/\s+/g, ' ').trim());
+  const dateOnlyRe = /^\d{1,2}\s*\uC6D4\s*\d{1,2}\s*\uC77C(?:\s*\([^)]+\))?$/;
+  const headerRe = /^(?:\d{1,2}\s*\uC6D4|\uC6D4\uC694\uC77C|\uD654\uC694\uC77C|\uC218\uC694\uC77C|\uBAA9\uC694\uC77C|\uAE08\uC694\uC77C|\uD1A0\uC694\uC77C|\uC77C\uC694\uC77C|\uCD9C\s*\uBC1C\s*\uC77C|\uD328\uD134|\uc77c\s*\uc790|\uC120\ud0dd\uAD00\uAD11|\uC1FC\uD551\uC13C\uD130|---)$/;
+  const amountFor = price => {
+    const n = Number(price);
+    return Number.isFinite(n) ? n.toLocaleString('ko-KR') : '';
+  };
+  const dateLabel = iso => {
+    const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
+    if (!month || !day) return null;
+    return `${Number(month)}\uC6D4${Number(day)}\uC77C`;
+  };
+
+  for (const row of priceDates) {
+    const label = dateLabel(row.date);
+    const amount = amountFor(row.price);
+    if (!label || !amount) continue;
+    const start = lines.findIndex(line => line.replace(/\s+/g, '').includes(label));
+    if (start < 0) return `source missing date ${row.date}`;
+
+    let cursor = start + 1;
+    let sawAnotherDateBeforePrice = false;
+    let found = false;
+    for (let i = cursor; i < Math.min(lines.length, cursor + 8); i++) {
+      const line = lines[i];
+      if (!line) continue;
+      if (dateOnlyRe.test(line)) {
+        sawAnotherDateBeforePrice = true;
+        break;
+      }
+      if (headerRe.test(line)) break;
+      if (line.includes(amount)) {
+        found = true;
+        break;
+      }
+    }
+    if (!found || sawAnotherDateBeforePrice) return `source price evidence missing for ${row.date} ${amount}`;
+  }
+  return null;
+}
+
+function normalizeTerm(value) {
+  return String(value ?? '').toLowerCase().replace(/\s+/g, '').trim();
+}
+
+function destinationAllowsAttraction(destination, attraction) {
+  const dest = normalizeTerm(destination);
+  if (!dest) return true;
+  const region = normalizeTerm(attraction?.region);
+  if (!region) return true;
+  const regionTokens = region.split(/[,/|&]+/).map(token => token.trim()).filter(Boolean);
+  return dest.includes(region) || region.includes(dest) || regionTokens.some(token => token.length >= 2 && dest.includes(token));
+}
+
+function attractionContextMismatch(pkg, attractionById) {
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
+  for (const day of days) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    for (const item of schedule) {
+      const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids.filter(Boolean) : [];
+      for (const id of ids) {
+        const attraction = attractionById.get(String(id));
+        if (!attraction) continue;
+        if (!destinationAllowsAttraction(pkg.destination, attraction)) {
+          return `${item.activity ?? ''}: attraction ${attraction.name ?? id} region ${attraction.region ?? 'unknown'} mismatches destination ${pkg.destination ?? 'unknown'}`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function itinerarySemanticMismatch(pkg) {
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
+  const routeOnlyRe = /^(?:\uBD80\s*\uC0B0|\uC5F0\s*\uAE38|\uB3C4\s*\uBB38|\uC6A9\s*\uC815|\uC774\uB3C4\uBC31\uD558|\uC1A1\uAC15\uD558|\uB0A8\s*\uD30C|\uBD81\s*\uD30C|\uC11C\s*\uD30C)$/;
+  const mealOnlyRe = /^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFC8\uBC14\uB85C\uC6B0|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/;
+  for (const day of days) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    for (const item of schedule) {
+      const activity = String(item?.activity ?? '').replace(/\s+/g, ' ').trim();
+      const compact = activity.replace(/\s+/g, '');
+      const kind = String(item?.entity_kind ?? '');
+      const type = String(item?.type ?? '');
+      const hasAttraction = Array.isArray(item?.attraction_ids) && item.attraction_ids.length > 0;
+      if (!activity) continue;
+      if (routeOnlyRe.test(compact)) return `day ${day?.day ?? '?'} route-only token visible: ${activity}`;
+      if (mealOnlyRe.test(compact) && kind !== 'meal') return `day ${day?.day ?? '?'} meal token not structured: ${activity}`;
+      if (type === 'flight' || kind === 'flight') {
+        const flightLike = /\b[A-Z0-9]{2}\s*\d{3,4}\b/.test(activity)
+          || (/\uACF5\uD56D/.test(activity) && /(\uCD9C\uBC1C|\uB3C4\uCC29|\uBBF8\uD305)/.test(activity))
+          || (/(\uCD9C\uBC1C|\uB3C4\uCC29)$/.test(compact) && !/(\uAD00\uAD11|\uCCB4\uD5D8|\uB4F1\uC815|\uC0B0\uCC45|\uC870\uB9DD)/.test(activity));
+        if (!flightLike) return `day ${day?.day ?? '?'} non-flight line classified as flight: ${activity}`;
+      }
+      if ((kind === 'attraction_visit' || hasAttraction) && /(?:HOTEL|hotel|\uD638\uD154|\uC8FC\uC810|\uB3D9\uAE09|\uC900\s*5\uC131|\uC815\s*5\uC131|5\uC131)/.test(activity)) {
+        return `day ${day?.day ?? '?'} hotel-like line classified as attraction: ${activity}`;
+      }
+    }
+  }
+  return null;
+}
+
 function renderFailure(pkg) {
   try {
-    const view = renderPackage(pkg);
-    const landing = mapTravelPackageToLandingData(pkg, null);
-    if (!Array.isArray(view.days) || view.days.length === 0) return 'renderPackage.days=0';
-    if (!landing.priceFrom || landing.priceFrom <= 0) return 'landing.priceFrom=0';
-    if (!Array.isArray(landing.price_dates) || landing.price_dates.length === 0) return 'landing.price_dates=0';
-    if (!Array.isArray(landing.itinerary?.days) || landing.itinerary.days.length === 0) return 'landing.itinerary.days=0';
+    const priceFrom = Number(pkg.price);
+    const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates.filter(row => row?.date && Number(row?.price) > 0) : [];
+    const days = Array.isArray(pkg.itinerary_data?.days)
+      ? pkg.itinerary_data.days
+      : Array.isArray(pkg.itinerary)
+        ? pkg.itinerary
+        : [];
+    if (!Number.isFinite(priceFrom) || priceFrom <= 0) return 'landing.priceFrom=0';
+    if (priceDates.length === 0) return 'landing.price_dates=0';
+    if (days.length === 0) return 'landing.itinerary.days=0';
+    for (const day of days) {
+      if (!Array.isArray(day?.schedule) || day.schedule.length === 0) return `landing.itinerary.day_${day?.day ?? '?'} schedule=0`;
+    }
     return null;
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
@@ -344,6 +462,9 @@ function readinessFor(row) {
   if (row.price_storage_mismatch) failures.push('price_storage_mismatch');
   if (row.customer_price_option_mismatch) failures.push('customer_price_option_mismatch');
   if (row.product_ledger_price_mismatch) failures.push('product_ledger_price_mismatch');
+  if (row.price_source_evidence_mismatch) failures.push('price_source_evidence_mismatch');
+  if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
+  if (row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
   if (row.render_failure) failures.push('render_blocked');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
@@ -367,12 +488,18 @@ function readinessFor(row) {
   };
 }
 
-const { data: packages, error } = await supabase
+let packageQuery = supabase
   .from('travel_packages')
-  .select('id, title, short_code, internal_code, status, audit_status, created_at, price, destination, duration, price_dates, price_tiers, itinerary, itinerary_data, notices_parsed, customer_notes, inclusions, excludes')
+  .select('id, title, short_code, internal_code, status, audit_status, created_at, price, destination, duration, price_dates, price_tiers, itinerary, itinerary_data, raw_text, notices_parsed, customer_notes, inclusions, excludes')
   .gte('created_at', since)
   .order('created_at', { ascending: false })
   .limit(limit);
+
+if (codeFilter.length > 0) {
+  packageQuery = packageQuery.in('internal_code', codeFilter);
+}
+
+const { data: packages, error } = await packageQuery;
 
 if (error) {
   console.error(error.message);
@@ -386,6 +513,29 @@ const scopedPackageRows = allPackageRows
 const scopedPackageIds = new Set(scopedPackageRows.map(pkg => pkg.id));
 const packageIds = allPackageRows.map(pkg => pkg.id);
 const internalCodes = allPackageRows.map(pkg => pkg.internal_code).filter(code => typeof code === 'string' && code.length > 0);
+const attractionIds = new Set();
+for (const pkg of allPackageRows) {
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
+  for (const day of days) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    for (const item of schedule) {
+      const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids : [];
+      for (const id of ids) if (typeof id === 'string' && id) attractionIds.add(id);
+    }
+  }
+}
+const attractionById = new Map();
+if (attractionIds.size > 0) {
+  const { data: attractionRows, error: attractionError } = await supabase
+    .from('attractions')
+    .select('id,name,region,country')
+    .in('id', Array.from(attractionIds));
+  if (attractionError) {
+    console.error(attractionError.message);
+    process.exit(1);
+  }
+  for (const row of attractionRows ?? []) attractionById.set(String(row.id), row);
+}
 const draftMap = new Map();
 const priceCountMap = new Map();
 const productPriceRowsByCode = new Map();
@@ -553,10 +703,10 @@ const rows = allPackageRows
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
       unmatched_activities: draftAttractionUnmatchedCount(draft) ?? unmatchedCountMap.get(pkg.id) ?? 0,
-      entity_attraction_unresolved: draftEntities.attraction_unresolved || queueEntities.attraction_unresolved || 0,
-      entity_shopping_review_needed: draftEntities.shopping_review_needed || queueEntities.shopping_review_needed || 0,
-      entity_option_review_needed: draftEntities.option_review_needed || queueEntities.option_review_needed || 0,
-      entity_unknown_customer_visible: draftEntities.unknown_customer_visible || queueEntities.unknown_customer_visible || 0,
+      entity_attraction_unresolved: draft && !draftLookupFailed ? draftEntities.attraction_unresolved : queueEntities.attraction_unresolved || 0,
+      entity_shopping_review_needed: draft && !draftLookupFailed ? draftEntities.shopping_review_needed : queueEntities.shopping_review_needed || 0,
+      entity_option_review_needed: draft && !draftLookupFailed ? draftEntities.option_review_needed : queueEntities.option_review_needed || 0,
+      entity_unknown_customer_visible: draft && !draftLookupFailed ? draftEntities.unknown_customer_visible : queueEntities.unknown_customer_visible || 0,
       entity_noise_removed: draftEntities.noise_removed,
       entity_meal_structured: draftEntities.meal_structured,
       entity_transfer_structured: draftEntities.transfer_structured,
@@ -566,6 +716,9 @@ const rows = allPackageRows
       price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
+      price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg),
+      attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
+      itinerary_semantic_mismatch: itinerarySemanticMismatch(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
     };
@@ -726,6 +879,9 @@ const summary = {
   price_storage_mismatch: rows.filter(row => row.price_storage_mismatch).length,
   customer_price_option_mismatch: rows.filter(row => row.customer_price_option_mismatch).length,
   product_ledger_price_mismatch: rows.filter(row => row.product_ledger_price_mismatch).length,
+  price_source_evidence_mismatch: rows.filter(row => row.price_source_evidence_mismatch).length,
+  attraction_context_mismatch: rows.filter(row => row.attraction_context_mismatch).length,
+  itinerary_semantic_mismatch: rows.filter(row => row.itinerary_semantic_mismatch).length,
   render_blocked: rows.filter(row => row.render_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
@@ -775,6 +931,9 @@ const report = {
     price_storage_mismatch: row.price_storage_mismatch,
     customer_price_option_mismatch: row.customer_price_option_mismatch,
     product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+    price_source_evidence_mismatch: row.price_source_evidence_mismatch,
+    attraction_context_mismatch: row.attraction_context_mismatch,
+    itinerary_semantic_mismatch: row.itinerary_semantic_mismatch,
     render_failure: row.render_failure,
   })),
   warnings: warnedRows.slice(0, 50).map(row => ({ id: row.id, code: row.code, title: row.title, status: row.status, warnings: row.readiness.warnings })),
@@ -791,6 +950,9 @@ if (!jsonOnly) {
     storage: row.price_storage_mismatch ? 'mismatch' : 'ok',
     options: row.customer_price_option_mismatch ? 'mismatch' : 'ok',
     product_ledger: row.product_ledger_price_mismatch ? 'mismatch' : 'ok',
+    price_source: row.price_source_evidence_mismatch ? 'mismatch' : 'ok',
+    attraction_ctx: row.attraction_context_mismatch ? 'mismatch' : 'ok',
+    itinerary_semantic: row.itinerary_semantic_mismatch ? 'mismatch' : 'ok',
     render: row.render_failure ? 'fail' : 'ok',
     policy: row.itinerary_policy_leak ? 'leak' : 'ok',
     days: row.itinerary_days,
@@ -818,6 +980,9 @@ if (strict) {
   if (summary.price_storage_mismatch > 0) strictFailures.push('price_storage_mismatch');
   if (summary.customer_price_option_mismatch > 0) strictFailures.push('customer_price_option_mismatch');
   if (summary.product_ledger_price_mismatch > 0) strictFailures.push('product_ledger_price_mismatch');
+  if (summary.price_source_evidence_mismatch > 0) strictFailures.push('price_source_evidence_mismatch');
+  if (summary.attraction_context_mismatch > 0) strictFailures.push('attraction_context_mismatch');
+  if (summary.itinerary_semantic_mismatch > 0) strictFailures.push('itinerary_semantic_mismatch');
   if (summary.render_blocked > 0) strictFailures.push('render_blocked');
   if (summary.itinerary_policy_leak > 0) strictFailures.push('itinerary_policy_leak');
   if (summary.no_itinerary_days > 0) strictFailures.push('no_itinerary_days');

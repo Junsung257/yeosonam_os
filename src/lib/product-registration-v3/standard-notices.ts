@@ -396,7 +396,7 @@ export function detectStandardNoticeFromLine(
     });
   }
 
-  if (/미\s*참여|불참|패널티|노쇼|개별\s*일정/.test(source) && !/캔슬|취소|파이널|확정\s*후/.test(source)) {
+  if (/미\s*참여|불참|패널티|노쇼|개별\s*일정/.test(source) && !/캔슬|취소|파이널|확정\s*후|노\s*쇼핑|NO\s*SHOPPING|노\s*옵션|NO\s*OPTION/i.test(source)) {
     const amount = parseUsd(source);
     return buildStandardNoticeDraft({
       source_text: source,
@@ -454,8 +454,36 @@ export function detectStandardNoticeFromLine(
 export function extractStandardNoticesFromRemarkLines(lines: Array<{ text: string; evidence: V3Evidence }>): StandardNoticeDraft[] {
   const out: StandardNoticeDraft[] = [];
   const seen = new Set<string>();
+  let currentCostSection: 'include' | 'exclude' | null = null;
   for (const item of lines) {
-    const parsed = detectStandardNoticeFromLine(item.text, item.evidence);
+    const text = item.text.trim();
+    if (/^(?:포\s*함\s*내\s*역|포함사항|포함\s*내역)$/i.test(text)) {
+      currentCostSection = 'include';
+      continue;
+    }
+    if (/^(?:불\s*포\s*함\s*내\s*역|불포함사항|불포함\s*내역)$/i.test(text)) {
+      currentCostSection = 'exclude';
+      continue;
+    }
+    if (/^(?:선택관광|쇼핑센터|비\s*고|일\s*자|REMARK)$/i.test(text)) {
+      currentCostSection = null;
+    }
+    let parsed = detectStandardNoticeFromLine(item.text, item.evidence);
+    if (
+      parsed?.category === 'tip_guideline'
+      && parsed.review_status === 'review_needed'
+      && currentCostSection === 'include'
+      && /가이드|기사/.test(text)
+      && !/불포함|별도|현지\s*지불|현지지불|개인경비/i.test(text)
+    ) {
+      parsed = buildStandardNoticeDraft({
+        source_text: text,
+        category: 'tip_guideline',
+        template_key: 'guide.tip_included',
+        values: { included: true },
+        evidence: [item.evidence],
+      });
+    }
     if (!parsed) continue;
     const key = `${parsed.category}:${parsed.template_key}:${parsed.standard_text}`;
     if (seen.has(key)) continue;
