@@ -509,14 +509,29 @@ Verification:
 - Current production without repair preview may expose historical content debt.
 - Repair preview command: `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --repair-preview --json`
 - 2026-06-09 result after this repair layer: 101/101 passed, average editorial score 100.
-- Write path for existing posts: `npm run backfill:blog-quality -- --write` after dry-run review and backup.
+- Dry-run path for existing posts: `npm run backfill:blog-quality -- --limit=120`.
+- Write path for existing posts: `npm run backfill:blog-quality:write -- --limit=120` after dry-run review and backup.
+
+### Legacy Backfill Safety Status
+
+Do not run the write command just because editorial repair preview is 100/100. Preview only proves the intent repair layer can make article text acceptable for the editorial audit; the DB write path must also pass the full publish gate: render integrity, structure integrity, image quality, SEO, CTA/internal links, and readability.
+
+2026-06-09 backfill dry-run findings:
+
+- `npm run backfill:blog-quality -- --limit=10`: 10 scanned, 0 quality-gate failures after renderer/backfill safety fixes.
+- `npm run backfill:blog-quality -- --limit=120`: 101 scanned, 43 quality-gate failures remain.
+- Main remaining class: old generated posts where headings, paragraphs, tables, FAQ, and checklist blocks were stored as one collapsed line.
+- Therefore `backfill:blog-quality:write` remains blocked until full dry-run reports `qualityGateFailed=0`, or until an intentionally scoped slug batch reports zero failures.
+
+The dry-run summary must include `failedSamples.failedGates` evidence. A one-line failure reason is not enough for future learning.
 
 External basis:
 
-- Google Search Central "helpful, reliable, people-first content": automation is acceptable only when the result is useful and transparent.
-- Google Search spam policies: scaled content without added value must be blocked.
-- Google SEO Starter Guide: useful content, descriptive links, images/alt, and crawlable structure are a combined quality surface.
-- Google structured data docs: Article/FAQ schema is support, not a substitute for useful visible content.
+- Google Search Central "helpful, reliable, people-first content": automation is acceptable only when the result is useful and transparent. https://developers.google.com/search/docs/fundamentals/creating-helpful-content
+- Google Search guidance on AI-generated content: AI assistance is not the issue; usefulness, originality, and quality are. https://developers.google.com/search/docs/fundamentals/using-gen-ai-content
+- Google Search spam policies: scaled content without added value must be blocked. https://developers.google.com/search/docs/essentials/spam-policies
+- Google SEO Starter Guide: useful content, descriptive links, images/alt, and crawlable structure are a combined quality surface. https://developers.google.com/search/docs/fundamentals/seo-starter-guide
+- Google structured data docs: Article/FAQ schema is support, not a substitute for useful visible content. https://developers.google.com/search/docs/appearance/structured-data/article
 
 ---
 

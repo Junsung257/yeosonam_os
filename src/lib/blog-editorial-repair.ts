@@ -142,9 +142,10 @@ function addReadingDesignAid(markdown: string): { text: string; changed: boolean
 
   const block = [
     '',
-    ':::tip',
-    '처음 읽는 분은 표와 체크리스트를 먼저 보고, 세부 설명은 필요한 부분만 골라 읽으면 됩니다.',
-    ':::',
+    '<aside class="blog-callout blog-callout-tip">',
+    '<strong>읽는 순서</strong>',
+    '<p>처음 읽는 분은 표와 체크리스트를 먼저 보고, 세부 설명은 필요한 부분만 골라 읽으면 됩니다.</p>',
+    '</aside>',
     '',
   ].join('\n');
   return { text: `${markdown.trim()}\n${block}`, changed: true };

@@ -15,6 +15,7 @@ export interface RenderedBlogIntegrityReport {
     renderedHeadingCount: number;
     artifactCount: number;
     artifacts: string[];
+    artifactSamples?: string[];
   };
 }
 
@@ -53,7 +54,19 @@ const LONG_HEADING_SPLIT_KEYWORDS = [
 ];
 
 function normalizeLongHeadingLine(line: string): string {
-  if (!/^#{1,6}\s+\S/.test(line) || line.length < 80) return line;
+  if (!/^#{1,6}\s+\S/.test(line)) return line;
+
+  const faqQuestionSplit = line.match(/^(#{1,6}\s+자주\s*묻는\s*질문)\s+(Q\d+[.)]\s+.+)$/i);
+  if (faqQuestionSplit) {
+    return `${faqQuestionSplit[1].trim()}\n\n### ${faqQuestionSplit[2].trim()}`;
+  }
+
+  const numberedSectionSplit = line.match(/^(#{1,6}\s+[^#\n]{4,60}?)\s+(\d+\.\s+\S.+)$/);
+  if (numberedSectionSplit) {
+    return `${numberedSectionSplit[1].trim()}\n\n${numberedSectionSplit[2].trim()}`;
+  }
+
+  if (line.length < 80) return line;
 
   const colonSplit = line.match(/^(#{1,6}\s+[^:：]{12,100}?)[\:：]\s+(.+)$/);
   if (colonSplit && colonSplit[2].trim().length >= 20) {
@@ -80,7 +93,25 @@ function normalizeCollapsedBulletLines(source: string): string {
     .map((line) => {
       const trimmed = line.trimStart();
       if (!trimmed.startsWith('- ')) return line;
-      return line.replace(/\s+-\s+(?=\S)/g, '\n- ');
+      return line
+        .replace(/\s+-\s+(?=\S)/g, '\n- ')
+        .replace(/\s+(\d+\.\s+\S)/g, '\n$1')
+        .replace(/\s+체크리스트\s+-\s+/g, '\n\n### 체크리스트\n- ');
+    })
+    .join('\n');
+}
+
+function removeDuplicateCoreHeadings(source: string): string {
+  const seen = new Set<string>();
+  return source
+    .split('\n')
+    .filter((line) => {
+      const match = line.trim().match(/^#{2,3}\s+(핵심\s*요약|자주\s*묻는\s*질문|FAQ|Q&A)\s*$/i);
+      if (!match) return true;
+      const key = match[1].replace(/\s+/g, ' ').toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     })
     .join('\n');
 }
@@ -228,6 +259,7 @@ export function normalizeStoredBlogMarkdownStructure(source: string): string {
     .map(normalizeLongHeadingLine)
     .map((line) => line.replace(/\s+---\s*$/, '\n\n---'))
     .join('\n');
+  out = removeDuplicateCoreHeadings(out);
 
   return out.replace(/\n{4,}/g, '\n\n\n').trim();
 }
@@ -264,6 +296,29 @@ function renderResidualMarkdownLinks(html: string): string {
   });
 }
 
+function normalizeRenderedHeadingArtifacts(html: string): string {
+  const seenCore = new Set<string>();
+  return html
+    .replace(
+      /<h2([^>]*)>\s*(자주\s*묻는\s*질문)\s+(Q\d+[.)]\s+[^<]+?)\s*<\/h2>/gi,
+      '<h2$1>$2</h2>\n<h3>$3</h3>',
+    )
+    .replace(
+      /<h2([^>]*)>\s*([^<]{4,60}?)\s+(\d+\.\s+[^<]+?)\s*<\/h2>/gi,
+      '<h2$1>$2</h2>\n<p>$3</p>',
+    )
+    .replace(
+      /<h([23])([^>]*)>\s*([^<]*(?:체크리스트|요약표)[^<]*(?:서류|필수|비고|상의|추천|주의사항|아이템)[^<]*)\s*<\/h\1>/gi,
+      '<p>$3</p>',
+    )
+    .replace(/<h([23])([^>]*)>\s*(핵심\s*요약|자주\s*묻는\s*질문|FAQ|Q&amp;A|Q&A)\s*<\/h\1>/gi, (full, level, attrs, text) => {
+      const key = String(text).replace(/\s+/g, ' ').toLowerCase();
+      if (seenCore.has(key)) return '';
+      seenCore.add(key);
+      return `<h${level}${attrs}>${text}</h${level}>`;
+    });
+}
+
 export async function renderBlogContentToHtml(
   source: string,
   options: RenderBlogContentOptions = {},
@@ -282,7 +337,8 @@ export async function renderBlogContentToHtml(
   const mdAccented = applyMarkdownAccents(markdownSource);
   const { marked } = await import('marked');
   const rawHtml = await marked.parse(mdAccented, { gfm: true });
-  return proxyBlogImageUrlsInHtml(applyHtmlAccents(renderResidualMarkdownLinks(String(rawHtml))));
+  const normalizedHtml = normalizeRenderedHeadingArtifacts(renderResidualMarkdownLinks(String(rawHtml)));
+  return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
 }
 
 async function isReachableUrl(url: string): Promise<boolean> {
@@ -353,13 +409,41 @@ export function inspectRenderedBlogIntegrity(
   const renderedHeadingCount = countMatches(renderedHtml, RENDERED_HEADING_RE);
   const renderedText = stripHtmlForArtifactScan(renderedHtml);
   const artifacts: string[] = [];
+  const artifactSamples: string[] = [];
 
-  if (/!\[[^\]]*]\([^)]+\)/.test(renderedText)) artifacts.push('literal_markdown_image');
-  if (/(^|\s)#{1,6}\s+\S/.test(renderedText)) artifacts.push('literal_markdown_heading');
-  if (/\[[^\]]+]\((?:https?:\/\/|\/)[^)]+\)/.test(renderedText)) artifacts.push('literal_markdown_link');
-  if (/\*\*[^*]+?\*\*/.test(renderedText)) artifacts.push('literal_markdown_bold');
-  if (/~~[^~]+?~~/.test(renderedText) || /<(del|s|strike)\b/i.test(renderedHtml)) artifacts.push('literal_markdown_strike');
-  if (/(^|\s)\|?---+\|/.test(renderedText)) artifacts.push('literal_markdown_table_separator');
+  const literalImage = renderedText.match(/.{0,40}!\[[^\]]*]\([^)]+\).{0,40}/);
+  if (literalImage) {
+    artifacts.push('literal_markdown_image');
+    artifactSamples.push(literalImage[0]);
+  }
+  const literalHeading =
+    renderedHtml.match(/<p>\s*#{1,6}\s+[^<]+<\/p>/i) ||
+    renderedHtml.match(/<[^>]+>\s*#{2,6}\s+[^<]+<\/[^>]+>/i) ||
+    renderedText.match(/.{0,40}(?:^|\s)#{2,6}\s+\S.{0,40}/);
+  if (literalHeading) {
+    artifacts.push('literal_markdown_heading');
+    artifactSamples.push(literalHeading[0]);
+  }
+  const literalLink = renderedText.match(/.{0,40}\[[^\]]+]\((?:https?:\/\/|\/)[^)]+\).{0,40}/);
+  if (literalLink) {
+    artifacts.push('literal_markdown_link');
+    artifactSamples.push(literalLink[0]);
+  }
+  const literalBold = renderedText.match(/.{0,40}\*\*[^*]+?\*\*.{0,40}/);
+  if (literalBold) {
+    artifacts.push('literal_markdown_bold');
+    artifactSamples.push(literalBold[0]);
+  }
+  const literalStrike = renderedText.match(/.{0,40}~~[^~]+?~~.{0,40}/);
+  if (literalStrike || /<(del|s|strike)\b/i.test(renderedHtml)) {
+    artifacts.push('literal_markdown_strike');
+    if (literalStrike) artifactSamples.push(literalStrike[0]);
+  }
+  const literalSeparator = renderedText.match(/.{0,40}(?:^|\s)\|?---+\|.{0,40}/);
+  if (literalSeparator) {
+    artifacts.push('literal_markdown_table_separator');
+    artifactSamples.push(literalSeparator[0]);
+  }
   if (markdownImageCount > 0 && renderedImageCount < markdownImageCount) artifacts.push('missing_rendered_images');
   if (markdownHeadingCount >= 2 && renderedHeadingCount < Math.min(markdownHeadingCount, 2)) {
     artifacts.push('missing_rendered_headings');
@@ -375,6 +459,7 @@ export function inspectRenderedBlogIntegrity(
       renderedHeadingCount,
       artifactCount: artifacts.length,
       artifacts,
+      artifactSamples,
     },
   };
 }
