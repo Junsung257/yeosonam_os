@@ -5,6 +5,7 @@ import { normalizeBlogDescription, normalizeBlogTitle } from '../src/lib/blog-qu
 import { evaluateBlogPublishQuality } from '../src/lib/blog-publish-quality';
 import { destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } from '../src/lib/pexels';
 import { extractDestination } from '../src/lib/slug-utils';
+import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -160,9 +161,19 @@ async function main() {
     const resolvedOgImage = await resolveOgImage(row);
     const normalizedTitle = normalizeBlogTitle(row.seo_title) || row.seo_title || row.slug || '여행 가이드';
     const normalizedDescription = normalizeBlogDescription(row.seo_description) || row.seo_description || null;
+    const slug = row.slug || row.id;
+    const editorialRepair = repairBlogEditorialQuality({
+      title: normalizedTitle,
+      slug,
+      primaryKeyword,
+      category: null,
+      contentType: 'guide',
+      productId: null,
+      blogHtml: originalHtml,
+    });
 
     const finalized = await finalizeBlogPost({
-      blogHtml: originalHtml,
+      blogHtml: editorialRepair.blogHtml,
       destination,
       primaryKeyword,
       ogImageUrl: resolvedOgImage,
@@ -174,7 +185,6 @@ async function main() {
 
     const nextHtml = finalized.blogHtml;
     const nextOg = finalized.ogImageUrl;
-    const slug = row.slug || row.id;
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,

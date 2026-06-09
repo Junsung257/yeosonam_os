@@ -36,6 +36,7 @@ import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
+import { repairBlogEditorialQuality } from '@/lib/blog-editorial-repair';
 import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 
 /**
@@ -688,6 +689,21 @@ async function processQueueItem(
 
     // 이미지/CTA 후처리 이후에도 공식 외부 링크 기준을 최종 보장한다.
     generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+
+    const editorialRepair = repairBlogEditorialQuality({
+      title: generated.seo_title,
+      slug: generated.slug,
+      primaryKeyword,
+      angleType: item.angle_type,
+      category: item.category,
+      contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+      productId: item.product_id ?? null,
+      blogHtml: generated.blog_html,
+    });
+    if (editorialRepair.changed) {
+      generated.blog_html = editorialRepair.blogHtml;
+      console.log(`[blog-publisher] 에디토리얼 자동 보강: ${editorialRepair.changes.join(', ')}`);
+    }
 
     // 🆕 가독성 점수 계산 (한국어 휴리스틱)
     const readability = computeReadability(generated.blog_html);

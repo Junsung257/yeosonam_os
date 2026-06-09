@@ -75,17 +75,17 @@ export interface BlogIntentQualityReport {
 const PRODUCT_SALES_RE = /(상품을\s*고른\s*이유|이\s*상품|상품\s*상세|출발가|특가|노팁|노쇼핑|포함\s*사항|불포함\s*사항|예약\s*마감|잔여\s*좌석)/;
 
 const INFO_SUBTYPE_PATTERNS: Array<[BlogInfoSubtype, RegExp, string]> = [
-  ['weather', /(날씨|옷차림|월별|우기|건기|기온|강수량|장마|계절)/, 'weather terms'],
-  ['preparation', /(준비물|체크리스트|챙겨|필수\s*아이템|짐\s*싸기|출국\s*준비)/, 'preparation terms'],
-  ['itinerary', /(일정|코스|동선|몇\s*박|당일치기|1일차|2일차|DAY\s*\d+)/i, 'itinerary terms'],
-  ['cost', /(비용|가격|예산|경비|얼마|가성비|요금)/, 'cost terms'],
-  ['visa', /(비자|입국|여권|서류|면세|체류|출입국)/, 'visa terms'],
-  ['currency', /(환전|환율|달러|카드|현금|결제|트래블월렛|트래블로그)/, 'currency terms'],
-  ['transport', /(공항|항공권|비행|교통|이동|버스|기차|택시|픽업)/, 'transport terms'],
-  ['food', /(맛집|음식|먹거리|식당|카페|메뉴|현지식)/, 'food terms'],
-  ['attraction', /(관광지|명소|가볼만한|입장권|투어|액티비티|스팟)/, 'attraction terms'],
-  ['comparison', /(비교|차이|vs|대비|어디가\s*좋|선택)/i, 'comparison terms'],
-  ['faq', /(질문|FAQ|Q&A|궁금|어떻게|왜|무엇)/i, 'faq terms'],
+  ['weather', /(weather|날씨|옷차림|월별|우기|건기|기온|강수량|장마|계절)/i, 'weather terms'],
+  ['preparation', /(preparation|checklist|준비물|체크리스트|챙겨|필수\s*아이템|짐\s*싸기|출국\s*준비)/i, 'preparation terms'],
+  ['itinerary', /(itinerary|route|course|일정|코스|동선|몇\s*박|당일치기|1일차|2일차|DAY\s*\d+)/i, 'itinerary terms'],
+  ['cost', /(cost|budget|expense|비용|가격|예산|경비|얼마|가성비|요금)/i, 'cost terms'],
+  ['visa', /(visa|immigration|passport|비자|입국|여권|서류|면세|체류|출입국)/i, 'visa terms'],
+  ['currency', /(currency|exchange|money|tip|환전|환율|화폐|달러|카드|현금|결제|팁\s*문화|트래블월렛|트래블로그)/i, 'currency terms'],
+  ['transport', /(transport|flight|airport|transfer|공항|항공권|비행|교통|이동|버스|기차|택시|픽업)/i, 'transport terms'],
+  ['food', /(food|restaurant|cafe|맛집|음식|먹거리|식당|카페|메뉴|현지식)/i, 'food terms'],
+  ['attraction', /(attraction|activity|tour|spot|관광지|명소|가볼만한|입장권|투어|액티비티|스팟)/i, 'attraction terms'],
+  ['comparison', /(comparison|compare|pros|cons|analysis|best|ranking|recommend|비교|차이|장단점|분석|추천|BEST|베스트|순위|랭킹|vs|대비|어디가\s*좋|선택)/i, 'comparison terms'],
+  ['faq', /(faq|question|질문|FAQ|Q&A|궁금|어떻게|왜|무엇)/i, 'faq terms'],
 ];
 
 const PRODUCT_SUBTYPE_PATTERNS: Array<[BlogProductSubtype, RegExp, string]> = [
@@ -99,6 +99,18 @@ const PRODUCT_SUBTYPE_PATTERNS: Array<[BlogProductSubtype, RegExp, string]> = [
   ['package_intro', /(패키지|상품|출발|포함|불포함|항공|요금)/, 'package intro terms'],
 ];
 
+function compactText(values: Array<string | null | undefined>): string {
+  return values
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function bodyText(input: BlogIntentInput): string {
+  return input.blogHtml ? stripMarkup(input.blogHtml).slice(0, 2500) : '';
+}
+
 function asText(input: BlogIntentInput): string {
   return [
     input.title,
@@ -107,7 +119,7 @@ function asText(input: BlogIntentInput): string {
     input.angleType,
     input.category,
     input.contentType,
-    input.blogHtml ? stripMarkup(input.blogHtml).slice(0, 2500) : '',
+    bodyText(input),
   ]
     .filter(Boolean)
     .join(' ')
@@ -115,24 +127,54 @@ function asText(input: BlogIntentInput): string {
     .trim();
 }
 
-function matchFirst<T extends string>(
-  text: string,
+function matchBestWeighted<T extends string>(
+  input: BlogIntentInput,
   patterns: Array<[T, RegExp, string]>,
-): { value: T | null; evidence: string[] } {
+): { value: T | null; evidence: string[]; score: number } {
+  const titleKeywordText = compactText([input.title, input.primaryKeyword]);
+  const taxonomyText = compactText([input.angleType, input.category, input.contentType, input.slug]);
+  const body = bodyText(input);
+  let best: { value: T | null; evidence: string[]; score: number } = {
+    value: null,
+    evidence: [],
+    score: 0,
+  };
+
   for (const [value, pattern, reason] of patterns) {
-    if (pattern.test(text)) return { value, evidence: [reason] };
+    let score = 0;
+    const evidence: string[] = [];
+    if (pattern.test(titleKeywordText)) {
+      score += 8;
+      evidence.push(`${reason} in title/keyword`);
+    }
+    if (pattern.test(taxonomyText)) {
+      score += 6;
+      evidence.push(`${reason} in category/type`);
+    }
+    if (pattern.test(body)) {
+      score += 1;
+      evidence.push(`${reason} in body`);
+    }
+    if (score > best.score) {
+      best = { value, evidence, score };
+    }
   }
-  return { value: null, evidence: [] };
+
+  return best.score >= 2 ? best : { value: null, evidence: [], score: 0 };
 }
 
 export function classifyBlogIntent(input: BlogIntentInput): BlogIntentProfile {
   const text = asText(input);
   const evidence: string[] = [];
-  const hasProduct = Boolean(input.productId) || /package_intro|product|상품|패키지/i.test(`${input.contentType || ''} ${input.category || ''}`);
+  const hasProduct = Boolean(input.productId) || /package_intro|product|상품|패키지|출발가|노팁|노쇼핑/i.test(
+    `${input.title || ''} ${input.slug || ''} ${input.primaryKeyword || ''} ${input.contentType || ''} ${input.category || ''}`,
+  );
   const isPillar = /pillar/i.test(input.contentType || '');
 
-  const info = matchFirst(text, INFO_SUBTYPE_PATTERNS);
-  const product = matchFirst(text, PRODUCT_SUBTYPE_PATTERNS);
+  const info = matchBestWeighted(input, INFO_SUBTYPE_PATTERNS);
+  const product = hasProduct
+    ? matchBestWeighted(input, PRODUCT_SUBTYPE_PATTERNS)
+    : { value: null, evidence: [], score: 0 };
   evidence.push(...info.evidence, ...product.evidence);
 
   let mode: BlogContentMode = 'info';

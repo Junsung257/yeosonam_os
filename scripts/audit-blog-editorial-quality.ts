@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 import * as cheerio from 'cheerio';
 import { inspectBlogIntentQuality } from '../src/lib/blog-content-intent';
+import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
 
 type BlogListPost = {
   id?: string | null;
@@ -30,6 +31,7 @@ const baseUrl = (argValue('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://
 const limit = Number(argValue('--limit', '0')) || 0;
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
+const repairPreview = hasFlag('--repair-preview');
 const concurrency = Math.max(1, Math.min(8, Number(argValue('--concurrency', '4')) || 4));
 
 function destinationFrom(post: BlogListPost): string | null {
@@ -132,6 +134,10 @@ async function inspectPost(post: BlogListPost) {
     } catch {
       row = await fetchRenderedPostSource(post);
     }
+    if (!row?.blog_html && post.slug) {
+      row = await fetchRenderedPostSource(post);
+    }
+
     if (!row?.blog_html) {
       return {
         id: post.id,
@@ -144,7 +150,7 @@ async function inspectPost(post: BlogListPost) {
       };
     }
 
-    const report = inspectBlogIntentQuality({
+    const input = {
       title: row.seo_title ?? post.seo_title,
       slug: row.slug ?? post.slug,
       primaryKeyword: row.seo_title ?? post.seo_title ?? row.slug ?? post.slug,
@@ -153,7 +159,9 @@ async function inspectPost(post: BlogListPost) {
       contentType: row.product_id ? 'package_intro' : 'guide',
       productId: row.product_id ?? post.product_id ?? null,
       blogHtml: row.blog_html,
-    });
+    };
+    const repair = repairPreview ? repairBlogEditorialQuality(input) : null;
+    const report = repair?.after ?? inspectBlogIntentQuality(input);
 
     return {
       id: row.id ?? post.id,
@@ -164,6 +172,12 @@ async function inspectPost(post: BlogListPost) {
       score: report.score,
       intent: report.intent,
       issues: report.issues,
+      repairPreview: repair ? {
+        changed: repair.changed,
+        changes: repair.changes,
+        beforeScore: repair.before.score,
+        afterScore: repair.after.score,
+      } : undefined,
     };
   } catch (error) {
     return {
@@ -202,6 +216,7 @@ function summarize(rows: Awaited<ReturnType<typeof inspectPost>>[]) {
   const failed = rows.filter((row) => !row.passed);
   return {
     baseUrl,
+    repairPreview,
     total: rows.length,
     passed: rows.length - failed.length,
     failed: failed.length,
