@@ -2,7 +2,6 @@ import type { ExtractedData, PriceTier } from '@/lib/parser';
 import { extractPriceIR } from '@/lib/parser/deterministic/price-ir';
 import { tiersToDatePrices, type PriceDate } from '@/lib/price-dates';
 import { hydratePriceTiers } from '@/lib/period-label-dates';
-import { getSecret } from '@/lib/secret-registry';
 import { extractSupplierRawDeterministicFacts } from '@/lib/supplier-raw-deterministic-facts';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { inferDepartureDaysFromRawText } from './departure-days';
@@ -206,33 +205,73 @@ function explainCandidate(prefix: string, candidate: Pick<UploadPriceRecoveryRes
   return failures;
 }
 
-async function extractPriceTiersWithGemini(rawText: string): Promise<PriceTier[]> {
-  const geminiKey = getSecret('GOOGLE_AI_API_KEY');
-  if (!geminiKey) return [];
-
-  const { GoogleGenerativeAI } = await import('@google/generative-ai');
-  const genAI = new GoogleGenerativeAI(geminiKey);
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-2.5-flash',
-    generationConfig: { temperature: 0, maxOutputTokens: 1024 },
+async function extractPriceTiersWithAiGateway(rawText: string): Promise<{
+  tiers: PriceTier[];
+  provider: string | null;
+  errors: string[];
+}> {
+  const { llmCall } = await import('@/lib/llm-gateway');
+  const result = await llmCall<{ price_tiers?: unknown }>({
+    task: 'parse_travel_doc',
+    systemPrompt: [
+      'You extract only customer package prices from Korean travel product source text.',
+      'Return strict JSON with price_tiers only.',
+      'Do not include optional tours, entrance tickets, tips, visa, fuel surcharge, hotel single charge, or shopping amounts as product prices.',
+      'Each tier must include adult_price as a KRW integer and at least one usable date source.',
+    ].join('\n'),
+    userPrompt: [
+      '다음 여행상품 원문에서 상품가 가격표만 추출하세요.',
+      '선택관광, 입장권, 팁, 비자, 유류할증료, 독실료, 쇼핑 금액은 상품가로 넣지 마세요.',
+      '반드시 JSON object 형식으로만 답하세요.',
+      '',
+      '응답 형식:',
+      '{ "price_tiers": [{ "period_label": "...", "departure_dates": ["2026-05-27"], "adult_price": 1059000, "status": "available" }] }',
+      '',
+      '원문:',
+      '---',
+      rawText.slice(0, 6000),
+      '---',
+    ].join('\n'),
+    jsonSchema: {
+      type: 'object',
+      properties: {
+        price_tiers: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              period_label: { type: 'string' },
+              departure_dates: { type: 'array', items: { type: 'string' } },
+              departure_day_of_week: { type: 'string' },
+              adult_price: { type: 'number' },
+              child_price: { type: 'number' },
+              status: { type: 'string' },
+              note: { type: 'string' },
+            },
+          },
+        },
+      },
+      required: ['price_tiers'],
+    },
+    temperature: 0,
+    maxTokens: 1200,
+    maxRetries: 1,
+    autoEscalate: false,
   });
-  const prompt = `다음 여행상품 원문에서 상품가 가격표만 price_tiers로 추출하세요.
-선택관광, 입장권, 팁, 써차지 단독 금액은 상품가로 넣지 마세요.
-각 tier는 adult_price(원화 정수), departure_dates(YYYY-MM-DD 배열), departure_day_of_week(optional), period_label을 포함합니다.
 
-원문:
----
-${rawText.slice(0, 6000)}
----
+  if (!result.success) {
+    return {
+      tiers: [],
+      provider: result.provider ?? null,
+      errors: result.errors ?? ['unknown ai gateway failure'],
+    };
+  }
 
-JSON 배열로만 응답:
-[{ "period_label": "...", "departure_dates": ["2026-05-27"], "adult_price": 1059000 }]`;
-
-  const res = await model.generateContent(prompt);
-  const txt = res.response.text();
-  const jsonMatch = txt.match(/\[[\s\S]*\]/);
-  if (!jsonMatch) return [];
-  return normalizeStrictFallbackPriceTiers(JSON.parse(jsonMatch[0]));
+  return {
+    tiers: normalizeStrictFallbackPriceTiers(result.data?.price_tiers),
+    provider: result.provider ?? null,
+    errors: [],
+  };
 }
 
 export async function recoverUploadPriceData(
@@ -317,22 +356,24 @@ export async function recoverUploadPriceData(
 
   if (options.enableGeminiFallback && rawText.length >= 100) {
     try {
-      const geminiTiers = await extractPriceTiersWithGemini(rawText);
-      const geminiCandidate = evaluateCandidate(ed, geminiTiers, ctx);
-      if (geminiCandidate.priceRows.length > 0 && geminiCandidate.priceDates.length > 0) {
+      const aiFallback = await extractPriceTiersWithAiGateway(rawText);
+      const aiCandidate = evaluateCandidate(ed, aiFallback.tiers, ctx);
+      const aiPrefix = aiFallback.provider ? `ai_fallback:${aiFallback.provider}` : 'ai_fallback';
+      if (aiCandidate.priceRows.length > 0 && aiCandidate.priceDates.length > 0) {
         return {
           ok: true,
-          source: 'gemini',
+          source: aiPrefix,
           failures,
-          ...geminiCandidate,
+          ...aiCandidate,
         };
       }
-      failures.push(...explainCandidate('gemini', geminiCandidate));
+      failures.push(...aiFallback.errors.map(error => `${aiPrefix}:실패:${error}`));
+      failures.push(...explainCandidate(aiPrefix, aiCandidate));
     } catch (e) {
-      failures.push(`gemini:실패:${e instanceof Error ? e.message : String(e)}`);
+      failures.push(`ai_fallback:실패:${e instanceof Error ? e.message : String(e)}`);
     }
   } else {
-    failures.push('gemini:비활성 또는 원문 길이 부족');
+    failures.push('ai_fallback:비활성 또는 원문 길이 부족');
   }
 
   return {
