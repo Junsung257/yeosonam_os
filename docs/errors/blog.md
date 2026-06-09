@@ -2,6 +2,16 @@
 
 Last updated: 2026-06-09
 
+## ERR-BLOG-legacy-backfill-preview-vs-write@2026-06-09
+
+- [ ] **ERR-BLOG-legacy-backfill-preview-vs-write@2026-06-09**: Editorial repair preview can pass the whole corpus while the DB write path still fails full publish quality. On 2026-06-09, `npm run backfill:blog-quality -- --limit=10` passed 10/10 after renderer/backfill fixes, but `npm run backfill:blog-quality -- --limit=120` scanned 101 posts and still found 43 failures.
+- **Root cause**: Older generated posts stored headings, prose, tables, FAQ, hashtags, and checklist blocks as collapsed one-line Markdown. Editorial intent repair catches the article contract, but write safety must also pass render, structure, image, SEO, CTA/internal links, and readability gates.
+- **Fix in progress**: Backfill is now dry-run by default, write mode is explicit, failed samples include `failedGates` evidence, renderer no longer treats hashtags as literal headings, raw `:::tip` insertion was replaced by safe HTML, and legacy table/heading/checklist repair handles the recent 10-post sample with 0 failures.
+- **Prevention**: Never run `backfill:blog-quality:write` from preview results alone. Full write requires `qualityGateFailed=0` for the full batch, or a deliberately scoped slug batch with 0 failures and reviewable evidence.
+- **Verification**: `npx vitest run src/lib/blog-renderer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-content-intent.test.ts`; `npm run backfill:blog-quality -- --limit=10`; `npm run backfill:blog-quality -- --limit=120`.
+
+---
+
 ## ERR-BLOG-editorial-intent-blindspot@2026-06-09
 
 - [x] **ERR-BLOG-editorial-intent-blindspot@2026-06-09**: Existing audits reported render/image/SEO as 100, but production samples still contained bad article quality: informational weather posts with product-sales wording, preparation posts without checklist shape, weak tables/lists, wall-of-text paragraphs, and missing required blocks for the article intent.
