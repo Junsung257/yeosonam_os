@@ -22,6 +22,7 @@ export interface BlogPublishQualityInput {
   primary_keyword?: string | null;
   secondary_keywords?: string[] | null;
   excludeContentCreativeId?: string | null;
+  skipFuzzyDuplicate?: boolean;
 }
 
 export interface BlogPublishQualityReport {
@@ -108,6 +109,7 @@ export async function evaluateBlogPublishQuality(
     content_type: input.content_type ?? null,
     product_id: input.product_id ?? null,
     excludeContentCreativeId: input.excludeContentCreativeId ?? input.id ?? null,
+    skipFuzzyDuplicate: input.skipFuzzyDuplicate ?? false,
   });
   const seoScore = computeSeoScore({
     blogHtml: input.blog_html,
