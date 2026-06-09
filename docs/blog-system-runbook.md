@@ -509,7 +509,8 @@ Verification:
 - Current production without repair preview may expose historical content debt.
 - Repair preview command: `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --repair-preview --json`
 - 2026-06-09 result after this repair layer: 101/101 passed, average editorial score 100.
-- Write path for existing posts: `npm run backfill:blog-quality -- --write` after dry-run review and backup.
+- Dry-run path for existing posts: `npm run backfill:blog-quality -- --limit=120`.
+- Write path for existing posts: `npm run backfill:blog-quality:write -- --limit=120` after dry-run review and backup.
 
 External basis:
 
