@@ -350,6 +350,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - `<del>`, `<s>`, `<strike>`, `.line-through`가 블로그 본문에 노출되면 실패다.
 - 모바일에서 table이 article container 또는 viewport를 밀면 실패다.
 - horizontal overflow가 발생하면 실패다.
+- 본문 heading은 generated text를 담으므로 unwrapped flex layout을 금지한다. 번호 배지가 필요하면 `h2::before`를 inline/block flow 안에서 배치하고, 제목 텍스트는 자연 줄바꿈되어야 한다.
 
 ### 이미지 배치 기준
 
@@ -370,6 +371,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 
 - 기존 `audit:blog-render`, `audit:blog-images`, `audit:blog-seo`는 DOM과 URL 중심이라 삭제선, 모바일 표 overflow, 실제 viewport horizontal overflow를 놓쳤다.
 - lazy image는 스크롤 전에 검사하면 깨진 이미지처럼 보일 수 있다. `audit:blog-visual`은 페이지를 스크롤한 뒤 이미지 로딩을 판정한다.
+- `.prose-blog h2` 같은 typography wrapper를 `display:flex`로 만들면, 긴 FAQ/본문 텍스트와 `.num` 강조가 flex item으로 분리되어 모바일 페이지 폭을 밀 수 있다.
 - 이전 세션 작업은 main이 아닌 기능 브랜치에서 진행된 흔적이 있어, 블로그 복구 작업은 반드시 `origin/main` 기준 새 브랜치에서 시작한다.
 
 ---

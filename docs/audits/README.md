@@ -76,6 +76,7 @@ These audits contain recent evidence for the current product-registration engine
 | 2026-06-08 | `2026-06-08-blog-production-visual-audit.md` | Blog visual QA, GSC canonical/domain evidence, and 100-point prevention gate. |
 | 2026-06-09 | `2026-06-09-blog-publish-quality-reverification.md` | Blog publish-path SEO/readability/render quality gate reverification. |
 | 2026-06-09 | `2026-06-09-blog-image-proxy-reverification.md` | Browser-side Pexels image blocking root cause and image proxy verification. |
+| 2026-06-09 | `2026-06-09-blog-mobile-overflow-reverification.md` | Mobile horizontal overflow root cause from article heading typography and prevention rule. |
 | 2026-06-06 | `2026-06-06-blog-automation-hardening.md` | Blog automation hardening evidence. |
 | 2026-06-05 | `2026-06-05-serpapi-naver-rank-provider.md` | SERP/Naver rank provider evidence. |
 | 2026-06-04 | `2026-06-04-blog-automation-audit.md` | Blog automation audit evidence. |
