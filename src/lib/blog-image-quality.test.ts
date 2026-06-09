@@ -66,4 +66,20 @@ describe('blog-image-quality', () => {
       blogType: 'info',
     }).evidence.issues).toContain('image_count_below_minimum');
   });
+
+  it('does not require image captions to match generated slug fragments', () => {
+    const markdown = [
+      '![가족 여행 준비 풍경](https://images.pexels.com/photos/1/pexels-photo-1.jpeg)',
+      '![공항 이동 체크 이미지](https://images.pexels.com/photos/2/pexels-photo-2.jpeg)',
+      '![현지 일정 비교 사진](https://images.pexels.com/photos/3/pexels-photo-3.jpeg)',
+    ].join('\n\n');
+
+    const report = inspectBlogImageQuality(markdown, {
+      primaryKeyword: 'june-family-travel-best-3',
+      blogType: 'info',
+    });
+
+    expect(report.passed).toBe(true);
+    expect(report.evidence.contextTokens).toEqual([]);
+  });
 });

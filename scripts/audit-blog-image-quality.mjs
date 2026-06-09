@@ -34,10 +34,53 @@ const STOP_WORDS = new Set([
   'best',
 ]);
 
+const ADDITIONAL_STOP_WORDS = new Set([
+  '2026',
+  '예산',
+  '경비',
+  '비용',
+  '체크',
+  '현지팁',
+  '준비물',
+  '가이드',
+  '여소남',
+  'vs',
+  'at',
+  'cost',
+  'saving',
+  'family',
+  'june',
+]);
+
+const TOKEN_ALIASES = new Map([
+  ['danang', '다낭'],
+  ['busan', '부산'],
+  ['guam', '괌'],
+  ['cebu', '세부'],
+  ['bohol', '보홀'],
+  ['travelwallet', '트래블월렛'],
+]);
+
 function normalizeToken(value) {
   return String(value || '')
     .toLowerCase()
     .replace(/[^\p{Script=Hangul}\p{Letter}\p{Number}]+/gu, '');
+}
+
+function isWeakContextToken(token) {
+  const hasHangul = /\p{Script=Hangul}/u.test(token);
+  const hasLatin = /[a-z]/i.test(token);
+  const hasDigit = /\d/.test(token);
+
+  if (!token || (token.length < 2 && !/^\p{Script=Hangul}$/u.test(token))) return true;
+  if (STOP_WORDS.has(token) || ADDITIONAL_STOP_WORDS.has(token)) return true;
+  if (hasHangul && hasDigit && token.length >= 8) return true;
+  if (hasHangul && token.includes('여행') && token.length >= 8) return true;
+  if (!hasHangul && hasLatin && hasDigit) return true;
+  if (!hasHangul && /^(?:top|best|post|guide|travel|complete|weather|itinerary|shill)\d*$/i.test(token)) return true;
+  if (hasHangul && token.length >= 14) return true;
+  if (!hasHangul && token.length >= 14) return true;
+  return false;
 }
 
 function titleTokens(title) {
@@ -45,7 +88,7 @@ function titleTokens(title) {
     .replace(/\|\s*여소남.*$/i, '')
     .split(/[^\p{Script=Hangul}\p{Letter}\p{Number}]+/gu)
     .map(normalizeToken)
-    .filter((token) => (token.length >= 2 || /^[\p{Script=Hangul}]$/u.test(token)) && !STOP_WORDS.has(token)))]
+    .filter((token) => !isWeakContextToken(token)))]
     .slice(0, 10);
 }
 
@@ -188,7 +231,8 @@ async function auditPage(page, path) {
 }
 
 function judge(row) {
-  const tokens = titleTokens(row.title);
+  const tokens = [...new Set(titleTokens(row.title)
+    .flatMap((token) => TOKEN_ALIASES.has(token) ? [token, TOKEN_ALIASES.get(token)] : [token]))];
   const seen = new Set();
   const duplicateUrls = [];
   let missingAlt = 0;

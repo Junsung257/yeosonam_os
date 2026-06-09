@@ -149,8 +149,20 @@ function extractLinks(markdownOrHtml: string): string[] {
 
 function countOccurrences(text: string, keyword: string): number {
   if (!keyword) return 0;
-  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return (text.match(new RegExp(escaped, 'gi')) || []).length;
+  const variants = [
+    keyword,
+    keyword.replace(/[-_]+/g, ' '),
+    keyword.replace(/[-_\s]+/g, ''),
+  ]
+    .map((value) => value.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  return Math.max(
+    ...[...new Set(variants)].map((variant) => {
+      const escaped = variant.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      return (text.match(new RegExp(escaped, 'gi')) || []).length;
+    }),
+  );
 }
 
 function scoreTitle(input: ScorerInput, keyword: string, dest: string): SeoScoreDetail {

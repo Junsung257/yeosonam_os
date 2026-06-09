@@ -134,6 +134,53 @@ function ensurePreparationChecklist(markdown: string): { text: string; changed: 
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }
 
+function ensureScannableInfoStructure(markdown: string, subtype: BlogInfoSubtype | null): { text: string; changed: boolean } {
+  const listItems = countMatches(markdown, /(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g);
+  const tableRows = countMatches(markdown, /(^|\n)\s*\|.+\|/g);
+  if (listItems >= 3 || tableRows >= 3) return { text: markdown, changed: false };
+
+  const label = subtype === 'transport'
+    ? '이동/항공'
+    : subtype === 'cost' || subtype === 'currency'
+      ? '비용'
+      : '여행 판단';
+
+  const block = [
+    '',
+    `## ${label} 빠른 판단표`,
+    '',
+    '| 확인 항목 | 보면 좋은 기준 | 예약 전 체크 |',
+    '| --- | --- | --- |',
+    '| 일정 영향 | 이동 시간, 대기 시간, 현지 체류 시간 | 첫날과 마지막 날 일정은 여유 있게 잡습니다. |',
+    '| 비용 영향 | 항공, 숙소, 현지 결제, 선택 관광 | 총액과 현장 추가 비용을 나누어 봅니다. |',
+    '| 동행자 적합도 | 부모님, 아이, 초행자, 자유시간 선호 | 무리한 이동과 늦은 귀가 동선을 줄입니다. |',
+    '',
+  ].join('\n');
+
+  return { text: `${markdown.trim()}\n${block}`, changed: true };
+}
+
+function ensureCostAnchorBlock(markdown: string, subtype: BlogInfoSubtype | null): { text: string; changed: boolean } {
+  if (subtype !== 'cost' && subtype !== 'currency') return { text: markdown, changed: false };
+  if (/##\s*비용 기준 다시 보기/.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const block = [
+    '',
+    '## 비용 기준 다시 보기',
+    '',
+    '| 항목 | 대략적인 확인 범위 | 왜 봐야 하나요 |',
+    '| --- | --- | --- |',
+    '| 현지 교통 | 1회 이동비와 1일 교통비 1만원 단위 | 일정이 길수록 총액 차이가 커집니다. |',
+    '| 식사/간식 | 1인 1끼 기준 예산 2만원 단위 | 가족 여행은 식비 변동이 큽니다. |',
+    '| 선택 관광 | 1인 추가 비용 3만원 이상 여부 | 상품가와 별도 비용을 분리해 봅니다. |',
+    '',
+  ].join('\n');
+
+  return { text: `${markdown.trim()}\n${block}`, changed: true };
+}
+
 function ensureItineraryStructure(markdown: string): { text: string; changed: boolean } {
   const dayMarkers = countMatches(markdown, /(^|\n)\s*(?:#{2,4}\s*)?(?:DAY\s*\d+|Day\s*\d+|\d+\s*일차|\d+\s*일\s*차|\d+일차)/gi);
   const timeMarkers = countMatches(markdown, /\b(?:오전|오후|아침|점심|저녁|\d{1,2}:\d{2})\b/g);
@@ -262,6 +309,18 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (sourceRepair.changed) {
       blogHtml = sourceRepair.text;
       changes.push('added_official_reference_links');
+    }
+
+    const costRepair = ensureCostAnchorBlock(blogHtml, intent.infoSubtype);
+    if (costRepair.changed) {
+      blogHtml = costRepair.text;
+      changes.push('added_cost_anchor_block');
+    }
+
+    const scanRepair = ensureScannableInfoStructure(blogHtml, intent.infoSubtype);
+    if (scanRepair.changed) {
+      blogHtml = scanRepair.text;
+      changes.push('added_scannable_info_table');
     }
   }
 

@@ -229,4 +229,15 @@ describe('blog-renderer', () => {
     expect(html).not.toContain('~~');
     expect(report.passed).toBe(true);
   });
+
+  it('renders residual markdown links even when the label wraps across lines', async () => {
+    const source = '[세부\n6월 맞춤 패키지 보기](https://www.yeosonam.com/packages?destination=cebu)';
+
+    const html = await renderBlogContentToHtml(source);
+    const report = inspectRenderedBlogIntegrity(source, html);
+
+    expect(html).toContain('<a href="https://www.yeosonam.com/packages?destination=cebu">세부 6월 맞춤 패키지 보기</a>');
+    expect(html).not.toContain('[세부');
+    expect(report.passed).toBe(true);
+  });
 });
