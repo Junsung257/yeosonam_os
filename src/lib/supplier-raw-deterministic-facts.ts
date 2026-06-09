@@ -5,6 +5,7 @@ import {
   standardizeKnownMojibakeTitle,
   type KnownMojibakeProfile,
 } from '@/lib/product-registration/supplier-mojibake-standardization';
+import { buildKoreanDayLineTableItinerary } from '@/lib/parser/deterministic/korean-day-line-table';
 
 export type SupplierRawDeterministicFacts = {
   title: string | null;
@@ -978,6 +979,9 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
 
   const catalogTableItinerary = buildCatalogTableItinerary(rawText);
   if (catalogTableItinerary) return catalogTableItinerary;
+
+  const koreanDayLineItinerary = buildKoreanDayLineTableItinerary(rawText);
+  if (koreanDayLineItinerary) return koreanDayLineItinerary;
 
   const facts = extractSupplierRawDeterministicFacts(rawText);
   const dayHeader = '(?:DAY\\s*(\\d+)|제\\s*(\\d+)\\s*일|(\\d+)\\s*일차)\\s+([^\\n]+)';

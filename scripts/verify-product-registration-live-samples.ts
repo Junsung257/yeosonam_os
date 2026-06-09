@@ -3,7 +3,7 @@
 import { createHash } from 'node:crypto';
 import process from 'node:process';
 import dotenv from 'dotenv';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 import type { ExtractedData } from '@/lib/parser';
 import { mapTravelPackageToLandingData } from '@/lib/map-travel-package-to-lp';
@@ -163,6 +163,29 @@ function buildExtractedData(pkg: PackageRow, rawText: string): ExtractedData {
   };
 }
 
+async function loadProductPriceRowsByCode(input: {
+  supabase: SupabaseClient;
+  codes: string[];
+}): Promise<Map<string, ProductPriceRow[]>> {
+  const rowsByCode = new Map<string, ProductPriceRow[]>();
+  for (const code of input.codes) {
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await input.supabase
+        .from('product_prices')
+        .select('product_id,target_date,net_price,adult_selling_price,note')
+        .eq('product_id', code)
+        .range(from, from + 999);
+      if (error) throw new Error(error.message);
+      const page = (data ?? []) as ProductPriceRow[];
+      const rows = rowsByCode.get(code) ?? [];
+      rows.push(...page);
+      rowsByCode.set(code, rows);
+      if (page.length < 1000) break;
+    }
+  }
+  return rowsByCode;
+}
+
 async function main(): Promise<void> {
   const options = parseOptions(process.argv.slice(2));
   dotenv.config({ path: '.env.local' });
@@ -201,21 +224,10 @@ async function main(): Promise<void> {
   const internalCodes = sampledPackages
     .map(pkg => pkg.internal_code)
     .filter((code): code is string => Boolean(code));
-  const productPriceRowsByCode = new Map<string, ProductPriceRow[]>();
-
-  if (internalCodes.length > 0) {
-    const { data: priceRows, error: priceError } = await supabase
-      .from('product_prices')
-      .select('product_id,target_date,net_price,adult_selling_price,note')
-      .in('product_id', internalCodes);
-    if (priceError) throw new Error(priceError.message);
-    for (const row of (priceRows ?? []) as ProductPriceRow[]) {
-      if (!row.product_id) continue;
-      const rows = productPriceRowsByCode.get(row.product_id) ?? [];
-      rows.push(row);
-      productPriceRowsByCode.set(row.product_id, rows);
-    }
-  }
+  const productPriceRowsByCode = await loadProductPriceRowsByCode({
+    supabase,
+    codes: internalCodes,
+  });
 
   const sampleResults = [];
   for (const pkg of sampledPackages) {

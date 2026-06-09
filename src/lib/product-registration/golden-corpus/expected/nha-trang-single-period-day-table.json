@@ -1,0 +1,13 @@
+{
+  "title": "나트랑/달랏 3박5일 - 5성급 호캉스와 특급 힐링 [노팁/노옵션]",
+  "destination": "나트랑",
+  "destinationCode": "CXR",
+  "minPrice": 399000,
+  "specificDate": "2026-05-04",
+  "specificDatePrice": 399000,
+  "priceRowsMinCount": 1,
+  "priceDatesMinCount": 1,
+  "forbiddenPrices": [150000, 26000],
+  "itineraryDaysValid": true,
+  "customerDeliverableBlocked": false
+}

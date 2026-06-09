@@ -32,6 +32,8 @@ const publicOnly = process.argv.includes('--public-only');
 const jsonOnly = process.argv.includes('--json');
 const strict = process.argv.includes('--strict');
 const repairPriceStorage = process.argv.includes('--repair-price-storage');
+const demoteUnsafePublic = process.argv.includes('--demote-unsafe-public');
+const archiveFailedNonPublic = process.argv.includes('--archive-failed-nonpublic');
 const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
@@ -46,6 +48,61 @@ const supabase = createClient(url, serviceKey, { auth: { persistSession: false }
 
 const PUBLIC_STATUSES = new Set(['approved', 'active', 'published']);
 const ARCHIVED_STATUSES = new Set(['archived', 'inactive']);
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function runSupabaseQuery(label, queryFactory) {
+  let lastResult = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    const result = await queryFactory();
+    lastResult = result;
+    if (!result.error) return result;
+    const message = String(result.error.message ?? result.error);
+    if (!/fetch failed|timeout|network|ECONNRESET|ETIMEDOUT/i.test(message)) break;
+    if (attempt < 3) await sleep(250 * attempt);
+  }
+  if (lastResult?.error) {
+    console.error(`${label} lookup failed: ${lastResult.error.message ?? lastResult.error}`);
+  }
+  return lastResult;
+}
+
+function chunks(values, size) {
+  const out = [];
+  for (let i = 0; i < values.length; i += size) out.push(values.slice(i, i + size));
+  return out;
+}
+
+async function fetchProductPricesByCodes(codes) {
+  const rowsByCode = new Map();
+  const countsByCode = new Map();
+  const errors = [];
+
+  for (const code of codes) {
+    const { data, error } = await runSupabaseQuery(
+      `Product price rows ${code}`,
+      () => supabase
+        .from('product_prices')
+        .select('product_id, target_date, net_price, adult_selling_price, note')
+        .eq('product_id', code),
+    );
+    if (error) {
+      errors.push({ code, message: error.message ?? String(error) });
+      continue;
+    }
+    for (const price of data ?? []) {
+      const key = price.product_id;
+      countsByCode.set(key, (countsByCode.get(key) ?? 0) + 1);
+      const rows = rowsByCode.get(key) ?? [];
+      rows.push(price);
+      rowsByCode.set(key, rows);
+    }
+  }
+
+  return { rowsByCode, countsByCode, errors };
+}
 
 function isRecord(value) {
   return typeof value === 'object' && value !== null;
@@ -92,6 +149,7 @@ function trustScore(row) {
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
+  add(row.v3 === 'lookup_failed', 'v3.lookup_failed', 'critical', 40);
   add(row.v3 === 'blocked', 'v3.blocked', 'critical', 40);
   add(row.v3 === 'needs_review', 'v3.needs_review', 'high', 20);
   add(row.v3 === 'none', 'v3.missing', 'high', 25);
@@ -253,7 +311,8 @@ function countLedgerRows(draft, key) {
   return variants.reduce((sum, variant) => sum + (Array.isArray(variant?.[key]) ? variant[key].length : 0), 0);
 }
 
-function gateStatus(draft) {
+function gateStatus(draft, lookupFailed = false) {
+  if (lookupFailed) return 'lookup_failed';
   return draft?.gate_result?.status ?? draft?.status ?? 'none';
 }
 
@@ -288,12 +347,13 @@ function readinessFor(row) {
   if (row.render_failure) failures.push('render_blocked');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
+  if (row.v3 === 'lookup_failed') failures.push('v3_lookup_failed');
   if (row.v3 === 'blocked') failures.push('v3_blocked');
   if (row.entity_attraction_unresolved > 0) failures.push('entity_attraction_unresolved');
+  if (row.entity_shopping_review_needed > 0) failures.push('entity_shopping_review_needed');
+  if (row.entity_option_review_needed > 0) failures.push('entity_option_review_needed');
   if (row.entity_unknown_customer_visible > 0) failures.push('entity_unknown_customer_visible');
   if (row.v3 === 'needs_review') warnings.push('v3_needs_review');
-  if (row.entity_shopping_review_needed > 0) warnings.push('entity_shopping_review_needed');
-  if (row.entity_option_review_needed > 0) warnings.push('entity_option_review_needed');
   if (row.public && row.standard_notices === 0 && row.structured_facts === 0) warnings.push('public_without_v3_facts');
   if (row.unmatched_activities > 0) warnings.push('unmatched_activities_pending');
   if (row.entity_noise_removed > 0) warnings.push('entity_noise_removed');
@@ -332,6 +392,9 @@ const productPriceRowsByCode = new Map();
 const productRowsByCode = new Map();
 const unmatchedCountMap = new Map();
 const unmatchedEntityMap = new Map();
+const priceRowsLookupFailedCodes = new Set();
+const draftLookupFailedPackageIds = new Set();
+const auditDataErrors = [];
 let unmatchedScopeReady = false;
 let unmatchedScopeError = null;
 
@@ -345,31 +408,38 @@ let unmatchedScopeError = null;
 }
 
 if (packageIds.length > 0) {
-  const { data: drafts, error: draftError } = await supabase
-    .from('product_registration_drafts')
-    .select('id, package_id, status, gate_result, ledger, match_summary, created_at')
-    .in('package_id', packageIds)
-    .order('created_at', { ascending: false });
-  if (draftError) {
-    console.error(`Draft lookup failed: ${draftError.message}`);
-  } else {
+  for (const chunk of chunks(packageIds, 25)) {
+    const { data: drafts, error: draftError } = await runSupabaseQuery(
+      `Draft rows ${chunk[0]}`,
+      () => supabase
+        .from('product_registration_drafts')
+        .select('id, package_id, status, gate_result, ledger, match_summary, created_at')
+        .in('package_id', chunk)
+        .order('created_at', { ascending: false }),
+    );
+    if (draftError) {
+      const message = draftError.message ?? String(draftError);
+      for (const packageId of chunk) draftLookupFailedPackageIds.add(packageId);
+      auditDataErrors.push({ scope: 'product_registration_drafts', package_ids: chunk, message });
+      continue;
+    }
     for (const draft of drafts ?? []) {
       if (!draftMap.has(draft.package_id)) draftMap.set(draft.package_id, draft);
     }
   }
 
   if (internalCodes.length > 0) {
-    const { data: priceRows, error: priceError } = await supabase
-      .from('product_prices')
-      .select('product_id, target_date, net_price, adult_selling_price, note')
-      .in('product_id', internalCodes);
-    if (!priceError) {
-      for (const price of priceRows ?? []) {
-        const key = price.product_id;
-        priceCountMap.set(key, (priceCountMap.get(key) ?? 0) + 1);
-        const rows = productPriceRowsByCode.get(key) ?? [];
-        rows.push(price);
-        productPriceRowsByCode.set(key, rows);
+    const priceLookup = await fetchProductPricesByCodes(internalCodes);
+    for (const [code, rows] of priceLookup.rowsByCode.entries()) {
+      productPriceRowsByCode.set(code, rows);
+    }
+    for (const [code, count] of priceLookup.countsByCode.entries()) {
+      priceCountMap.set(code, count);
+    }
+    if (priceLookup.errors.length > 0) {
+      for (const item of priceLookup.errors) {
+        priceRowsLookupFailedCodes.add(item.code);
+        auditDataErrors.push({ scope: 'product_prices', code: item.code, message: item.message });
       }
     }
 
@@ -461,8 +531,10 @@ const rows = allPackageRows
   .filter(pkg => scopedPackageIds.has(pkg.id))
   .map(pkg => {
     const draft = draftMap.get(pkg.id);
+    const draftLookupFailed = draftLookupFailedPackageIds.has(pkg.id);
     const draftEntities = draftEntitySummary(draft);
     const queueEntities = unmatchedEntityMap.get(pkg.id) ?? {};
+    const priceRowsLookupFailed = priceRowsLookupFailedCodes.has(pkg.internal_code);
     const row = {
       id: pkg.id,
       code: pkg.internal_code ?? pkg.short_code ?? '',
@@ -471,11 +543,12 @@ const rows = allPackageRows
       public: isPublicStatus(pkg.status),
       audit: pkg.audit_status ?? '',
       created_at: pkg.created_at,
-      v3: gateStatus(draft),
+      v3: gateStatus(draft, draftLookupFailed),
       draft_id: draft?.id ?? null,
+      draft_lookup_failed: draftLookupFailed,
       price_dates: Array.isArray(pkg.price_dates) ? pkg.price_dates.length : 0,
       price_tiers: Array.isArray(pkg.price_tiers) ? pkg.price_tiers.length : 0,
-      product_prices: priceCountMap.get(pkg.internal_code) ?? 0,
+      product_prices: priceRowsLookupFailed ? null : priceCountMap.get(pkg.internal_code) ?? 0,
       itinerary_days: countItineraryDays(pkg),
       standard_notices: countLedgerRows(draft, 'standard_notices'),
       structured_facts: countLedgerRows(draft, 'structured_facts'),
@@ -489,8 +562,9 @@ const rows = allPackageRows
       entity_transfer_structured: draftEntities.transfer_structured,
       code_unk: hasUnresolvedCodeOrDestination(pkg),
       raw_notice_leak_risk: hasRawLeakRisk(pkg),
-      price_storage_mismatch: priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
-      customer_price_option_mismatch: customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
+      price_lookup_failed: priceRowsLookupFailed,
+      price_storage_mismatch: priceRowsLookupFailed ? false : priceStorageMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
+      customer_price_option_mismatch: priceRowsLookupFailed ? false : customerPriceOptionMismatch(pkg, productPriceRowsByCode.get(pkg.internal_code) ?? []),
       product_ledger_price_mismatch: productLedgerPriceMismatch(pkg, productRowsByCode.get(pkg.internal_code)),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
@@ -501,6 +575,138 @@ const rows = allPackageRows
 const publicRows = rows.filter(row => row.public);
 const failedRows = rows.filter(row => row.readiness.status === 'fail');
 const warnedRows = rows.filter(row => row.readiness.status === 'warn');
+const demotionCandidates = rows.filter(row =>
+  row.public
+  && row.readiness.status === 'fail'
+  && !row.draft_lookup_failed
+  && !row.price_lookup_failed
+);
+const demotions = [];
+const archiveCandidates = rows.filter(row =>
+  archiveFailedNonPublic
+  && !row.public
+  && row.readiness.status === 'fail'
+  && !isArchivedStatus(row.status)
+  && !row.draft_lookup_failed
+  && !row.price_lookup_failed
+);
+const archives = [];
+
+if (demoteUnsafePublic) {
+  const checkedAt = new Date().toISOString();
+  for (const row of demotionCandidates) {
+    const auditReport = {
+      source: 'mobile-landing-readiness-demotion',
+      checked_at: checkedAt,
+      previous_status: row.status,
+      readiness: row.readiness,
+      trust_score: row.trust_score,
+      v3_status: row.v3,
+      draft_id: row.draft_id,
+      entity_counts: {
+        attraction_unresolved: row.entity_attraction_unresolved,
+        shopping_review_needed: row.entity_shopping_review_needed,
+        option_review_needed: row.entity_option_review_needed,
+        unknown_customer_visible: row.entity_unknown_customer_visible,
+      },
+      price_storage_mismatch: row.price_storage_mismatch,
+      customer_price_option_mismatch: row.customer_price_option_mismatch,
+      product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      render_failure: row.render_failure,
+    };
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        status: 'pending_review',
+        audit_status: 'blocked',
+        audit_checked_at: checkedAt,
+        audit_report: auditReport,
+        updated_at: checkedAt,
+      })
+      .eq('id', row.id);
+    if (packageError) {
+      demotions.push({ id: row.id, code: row.code, title: row.title, ok: false, reason: packageError.message });
+      continue;
+    }
+
+    let productStatusUpdated = false;
+    if (row.code) {
+      const { error: productError } = await supabase
+        .from('products')
+        .update({ status: 'pending_review', updated_at: checkedAt })
+        .eq('internal_code', row.code);
+      productStatusUpdated = !productError;
+    }
+    demotions.push({
+      id: row.id,
+      code: row.code,
+      title: row.title,
+      ok: true,
+      previous_status: row.status,
+      new_status: 'pending_review',
+      product_status_updated: productStatusUpdated,
+      failures: row.readiness.failures,
+    });
+  }
+}
+
+if (archiveFailedNonPublic) {
+  const checkedAt = new Date().toISOString();
+  for (const row of archiveCandidates) {
+    const auditReport = {
+      source: 'mobile-landing-readiness-nonpublic-archive',
+      checked_at: checkedAt,
+      previous_status: row.status,
+      readiness: row.readiness,
+      trust_score: row.trust_score,
+      v3_status: row.v3,
+      draft_id: row.draft_id,
+      entity_counts: {
+        attraction_unresolved: row.entity_attraction_unresolved,
+        shopping_review_needed: row.entity_shopping_review_needed,
+        option_review_needed: row.entity_option_review_needed,
+        unknown_customer_visible: row.entity_unknown_customer_visible,
+      },
+      price_storage_mismatch: row.price_storage_mismatch,
+      customer_price_option_mismatch: row.customer_price_option_mismatch,
+      product_ledger_price_mismatch: row.product_ledger_price_mismatch,
+      render_failure: row.render_failure,
+    };
+    const { error: packageError } = await supabase
+      .from('travel_packages')
+      .update({
+        status: 'archived',
+        audit_status: 'blocked',
+        audit_checked_at: checkedAt,
+        audit_report: auditReport,
+        updated_at: checkedAt,
+      })
+      .eq('id', row.id);
+    if (packageError) {
+      archives.push({ id: row.id, code: row.code, title: row.title, ok: false, reason: packageError.message });
+      continue;
+    }
+
+    let productStatusUpdated = false;
+    if (row.code) {
+      const { error: productError } = await supabase
+        .from('products')
+        .update({ status: 'archived', updated_at: checkedAt })
+        .eq('internal_code', row.code);
+      productStatusUpdated = !productError;
+    }
+    archives.push({
+      id: row.id,
+      code: row.code,
+      title: row.title,
+      ok: true,
+      previous_status: row.status,
+      new_status: 'archived',
+      product_status_updated: productStatusUpdated,
+      failures: row.readiness.failures,
+    });
+  }
+}
 
 const summary = {
   since,
@@ -523,6 +729,7 @@ const summary = {
   render_blocked: rows.filter(row => row.render_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
   no_itinerary_days: rows.filter(row => row.itinerary_days === 0).length,
+  v3_lookup_failed: rows.filter(row => row.v3 === 'lookup_failed').length,
   v3_blocked: rows.filter(row => row.v3 === 'blocked').length,
   v3_needs_review: rows.filter(row => row.v3 === 'needs_review').length,
   missing_v3_draft: rows.filter(row => row.v3 === 'none').length,
@@ -537,7 +744,14 @@ const summary = {
   unmatched_queue_scope_ready: unmatchedScopeReady,
   unmatched_queue_scope_error: unmatchedScopeError,
   schema_failures: unmatchedScopeReady ? 0 : 1,
+  data_query_failures: auditDataErrors.length,
   repaired_price_storage: priceStorageRepairs.filter(repair => repair.ok).length,
+  demote_unsafe_public: demoteUnsafePublic,
+  demotion_candidates: demotionCandidates.length,
+  demoted_public: demotions.filter(row => row.ok).length,
+  archive_failed_nonpublic: archiveFailedNonPublic,
+  archive_failed_nonpublic_candidates: archiveCandidates.length,
+  archived_nonpublic: archives.filter(row => row.ok).length,
 };
 
 const report = {
@@ -547,7 +761,10 @@ const report = {
     unmatched_queue_scope_error: unmatchedScopeError,
     required_migration: unmatchedScopeReady ? null : 'supabase/migrations/20260605001000_unmatched_activities_package_scope.sql',
   },
+  data_query_errors: auditDataErrors,
   repairs: priceStorageRepairs,
+  demotions,
+  archives,
   failed: failedRows.map(row => ({
     id: row.id,
     code: row.code,
@@ -587,11 +804,12 @@ if (!jsonOnly) {
   })));
 }
 
-console.log(JSON.stringify(jsonOnly ? report : { summary, repairs: report.repairs, failed: report.failed, warnings: report.warnings }, null, 2));
+console.log(JSON.stringify(jsonOnly ? report : { summary, repairs: report.repairs, demotions: report.demotions, archives: report.archives, failed: report.failed, warnings: report.warnings }, null, 2));
 
 if (strict) {
   const strictFailures = [];
   if (summary.schema_failures > 0) strictFailures.push('schema_failures');
+  if (summary.data_query_failures > 0) strictFailures.push('data_query_failures');
   if (summary.fail > 0) strictFailures.push('readiness_fail');
   if (summary.public_fail > 0) strictFailures.push('public_fail');
   if (summary.raw_notice_leak_risk > 0) strictFailures.push('raw_notice_leak_risk');
@@ -603,6 +821,7 @@ if (strict) {
   if (summary.render_blocked > 0) strictFailures.push('render_blocked');
   if (summary.itinerary_policy_leak > 0) strictFailures.push('itinerary_policy_leak');
   if (summary.no_itinerary_days > 0) strictFailures.push('no_itinerary_days');
+  if (summary.v3_lookup_failed > 0) strictFailures.push('v3_lookup_failed');
   if (summary.v3_blocked > 0) strictFailures.push('v3_blocked');
   if (summary.v3_needs_review > 0) strictFailures.push('v3_needs_review');
   if (summary.missing_v3_draft > 0) strictFailures.push('missing_v3_draft');

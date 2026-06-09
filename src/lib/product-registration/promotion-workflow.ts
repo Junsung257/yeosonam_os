@@ -26,6 +26,25 @@ export type PromotionWorkItem = {
   nextAction: string;
 };
 
+export type CandidateReviewQueueItem = {
+  id: string;
+  candidateId: string;
+  kind: PatternCandidate['kind'];
+  signature: string;
+  status: 'promotion_ready_review_required' | 'blocked_by_evidence' | 'blocked_by_risk' | 'blocked_by_regression';
+  risk: PatternCandidate['risk'];
+  evidenceCount: number;
+  independentSourceCount: number;
+  autoFixSuccessRate: number | null;
+  evidenceRawTextHashes: string[];
+  evidencePackageIds: string[];
+  blockingReasons: string[];
+  fixturePlan: PromotionWorkItem['fixturePlan'];
+  parserRulePlan: PromotionWorkItem['parserRulePlan'];
+  verificationCommands: string[];
+  nextAction: string;
+};
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -251,6 +270,136 @@ function assertionsFor(candidate: PatternCandidate): string[] {
   ];
 }
 
+const VERIFICATION_COMMANDS = [
+  'npx vitest run src/lib/parser/deterministic src/lib/product-registration src/lib/upload-validator.test.ts src/lib/price-dates.test.ts src/lib/upload-verify.test.ts',
+  'npm run eval:product-registration:ci',
+  'npm run type-check',
+  'node --check scripts/audit-product-mobile-landing-readiness.mjs',
+];
+
+const SAFETY_CHECKS = [
+  'Do not edit src/app/api/upload/route.ts for supplier-specific logic',
+  'Add or update a full raw-text golden fixture before parser changes',
+  'Keep macro output as a reviewed patch candidate; do not auto-mutate production parser rules',
+  'Never auto-create new attractions or other master records from unmatched entity text',
+];
+
+function evidenceForCandidate(input: {
+  candidate: PatternCandidate;
+  events: ImprovementLedgerEvent[];
+}): {
+  sourceHashes: string[];
+  evidencePackageIds: string[];
+} {
+  const evidenceEvents = input.events.filter(event => eventMatchesCandidate(event, input.candidate));
+  return {
+    sourceHashes: unique(evidenceEvents.map(event => event.rawTextHash)).slice(0, 5),
+    evidencePackageIds: unique(evidenceEvents.map(event => event.packageId).filter((id): id is string => Boolean(id))).slice(0, 5),
+  };
+}
+
+function blockingReasonsFor(candidate: PatternCandidate): string[] {
+  const reasons = [
+    candidate.independentSourceCount < 3
+      ? `needs at least 3 independent source documents; currently ${candidate.independentSourceCount}`
+      : null,
+    candidate.risk === 'high'
+      ? 'false-positive or customer-impact risk is high'
+      : null,
+    candidate.autoFixSuccessRate != null && candidate.autoFixSuccessRate < 0.8
+      ? `deterministic auto-fix success rate ${Math.round(candidate.autoFixSuccessRate * 100)}% < 80%`
+      : null,
+    !candidate.promotionReady
+      ? 'not promotion-ready until fixture and regression evidence are attached'
+      : null,
+  ].filter((reason): reason is string => Boolean(reason));
+  return unique(reasons);
+}
+
+function reviewStatusFor(candidate: PatternCandidate): CandidateReviewQueueItem['status'] {
+  if (candidate.promotionReady) return 'promotion_ready_review_required';
+  if (candidate.risk === 'high') return 'blocked_by_risk';
+  if (candidate.independentSourceCount < 3) return 'blocked_by_evidence';
+  return 'blocked_by_regression';
+}
+
+function buildPlanForCandidate(input: {
+  candidate: PatternCandidate;
+  events: ImprovementLedgerEvent[];
+}): Omit<PromotionWorkItem, 'id' | 'status'> & {
+  sourceHashes: string[];
+  evidencePackageIds: string[];
+} {
+  const { candidate } = input;
+  const { sourceHashes, evidencePackageIds } = evidenceForCandidate(input);
+  const fixtureId = `macro-${candidate.kind}-${slugify(candidate.signature)}`;
+
+  return {
+    candidateId: candidate.id,
+    kind: candidate.kind,
+    signature: candidate.signature,
+    risk: candidate.risk,
+    evidenceCount: candidate.evidenceCount,
+    independentSourceCount: candidate.independentSourceCount,
+    evidenceRawTextHashes: sourceHashes,
+    evidencePackageIds,
+    fixturePlan: {
+      fixtureId,
+      sourceHashes,
+      assertions: assertionsFor(candidate),
+    },
+    parserRulePlan: {
+      targetModules: targetModulesFor(candidate),
+      ruleSummary: `Promote reviewed ${candidate.kind} pattern: ${candidate.signature}`,
+      safetyChecks: SAFETY_CHECKS,
+    },
+    verificationCommands: VERIFICATION_COMMANDS,
+    nextAction: candidate.promotionReady
+      ? 'Review evidence hashes, add the fixture, implement the deterministic rule, then run the verification commands.'
+      : 'Attach source examples to a fixture, prove the before/after behavior, then re-run macro promotion scoring.',
+    sourceHashes,
+  };
+}
+
+export function buildCandidateReviewQueue(input: {
+  candidates: PatternCandidate[];
+  events: ImprovementLedgerEvent[];
+  maxItems?: number;
+}): CandidateReviewQueueItem[] {
+  return input.candidates
+    .slice()
+    .sort((a, b) => {
+      if (a.promotionReady !== b.promotionReady) return a.promotionReady ? -1 : 1;
+      if (a.risk !== b.risk) {
+        const order = { high: 0, medium: 1, low: 2 };
+        return order[a.risk] - order[b.risk];
+      }
+      return b.evidenceCount - a.evidenceCount;
+    })
+    .slice(0, input.maxItems ?? 20)
+    .map(candidate => {
+      const plan = buildPlanForCandidate({ candidate, events: input.events });
+      return {
+        id: `review:${candidate.id}`.slice(0, 200),
+        candidateId: candidate.id,
+        kind: candidate.kind,
+        signature: candidate.signature,
+        status: reviewStatusFor(candidate),
+        risk: candidate.risk,
+        evidenceCount: candidate.evidenceCount,
+        independentSourceCount: candidate.independentSourceCount,
+        autoFixSuccessRate: candidate.autoFixSuccessRate,
+        evidenceRawTextHashes: plan.evidenceRawTextHashes,
+        evidencePackageIds: plan.evidencePackageIds,
+        blockingReasons: blockingReasonsFor(candidate),
+        fixturePlan: plan.fixturePlan,
+        parserRulePlan: plan.parserRulePlan,
+        verificationCommands: plan.verificationCommands,
+        nextAction: plan.nextAction,
+      };
+    });
+}
+
 export function buildPromotionWorkItems(input: {
   candidates: PatternCandidate[];
   events: ImprovementLedgerEvent[];
@@ -260,43 +409,22 @@ export function buildPromotionWorkItems(input: {
     .filter(candidate => candidate.promotionReady)
     .slice(0, input.maxItems ?? 10)
     .map(candidate => {
-      const evidenceEvents = input.events.filter(event => eventMatchesCandidate(event, candidate));
-      const sourceHashes = unique(evidenceEvents.map(event => event.rawTextHash)).slice(0, 5);
-      const evidencePackageIds = unique(evidenceEvents.map(event => event.packageId).filter((id): id is string => Boolean(id))).slice(0, 5);
-      const fixtureId = `macro-${candidate.kind}-${slugify(candidate.signature)}`;
+      const plan = buildPlanForCandidate({ candidate, events: input.events });
       return {
         id: `promotion:${candidate.id}`.slice(0, 200),
-        candidateId: candidate.id,
-        kind: candidate.kind,
-        signature: candidate.signature,
+        candidateId: plan.candidateId,
+        kind: plan.kind,
+        signature: plan.signature,
         status: 'review_required',
-        risk: candidate.risk,
-        evidenceCount: candidate.evidenceCount,
-        independentSourceCount: candidate.independentSourceCount,
-        evidenceRawTextHashes: sourceHashes,
-        evidencePackageIds,
-        fixturePlan: {
-          fixtureId,
-          sourceHashes,
-          assertions: assertionsFor(candidate),
-        },
-        parserRulePlan: {
-          targetModules: targetModulesFor(candidate),
-          ruleSummary: `Promote reviewed ${candidate.kind} pattern: ${candidate.signature}`,
-          safetyChecks: [
-            'Do not edit src/app/api/upload/route.ts for supplier-specific logic',
-            'Add or update a full raw-text golden fixture before parser changes',
-            'Keep macro output as a reviewed patch candidate; do not auto-mutate production parser rules',
-            'Never auto-create new attractions or other master records from unmatched entity text',
-          ],
-        },
-        verificationCommands: [
-          'npx vitest run src/lib/parser/deterministic src/lib/product-registration src/lib/upload-validator.test.ts src/lib/price-dates.test.ts src/lib/upload-verify.test.ts',
-          'npm run eval:product-registration:ci',
-          'npm run type-check',
-          'node --check scripts/audit-product-mobile-landing-readiness.mjs',
-        ],
-        nextAction: 'Review evidence hashes, add the fixture, implement the deterministic rule, then run the verification commands.',
+        risk: plan.risk,
+        evidenceCount: plan.evidenceCount,
+        independentSourceCount: plan.independentSourceCount,
+        evidenceRawTextHashes: plan.evidenceRawTextHashes,
+        evidencePackageIds: plan.evidencePackageIds,
+        fixturePlan: plan.fixturePlan,
+        parserRulePlan: plan.parserRulePlan,
+        verificationCommands: plan.verificationCommands,
+        nextAction: plan.nextAction,
       };
     });
 }

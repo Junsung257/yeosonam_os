@@ -12,7 +12,9 @@ import {
 } from './learning-engine-scorecard';
 import { mineProductRegistrationPatterns } from './pattern-mining';
 import {
+  buildCandidateReviewQueue,
   buildPromotionWorkItems,
+  type CandidateReviewQueueItem,
   type PromotionWorkItem,
 } from './promotion-workflow';
 import type { SourceEvidenceSpan } from './types';
@@ -64,6 +66,7 @@ export type ProductRegistrationLearningReport = {
   };
   promotion: {
     workItems: PromotionWorkItem[];
+    reviewQueue: CandidateReviewQueueItem[];
     requiresReview: true;
     autoMutationEnabled: false;
   };
@@ -160,6 +163,10 @@ export function buildProductRegistrationLearningReport(input: {
     candidates: macroMining.candidates,
     events: input.events,
   });
+  const reviewQueue = buildCandidateReviewQueue({
+    candidates: macroMining.candidates,
+    events: input.events,
+  });
   const score = scoreCentralLearningEngine(buildLearningEngineEvidenceFromRuntime({
     microEventsCaptured: input.events.length,
     macroCandidatesGenerated: macroMining.candidates.length,
@@ -180,6 +187,8 @@ export function buildProductRegistrationLearningReport(input: {
     ? 'Check product_registration_improvement_events migration and service-role read access.'
     : promotionWorkItems.length > 0
     ? 'Review promotion work items, add fixtures, then promote deterministic parser rules through full regression.'
+    : reviewQueue.length > 0
+      ? 'Review blocked macro candidates, attach source fixtures, then re-run promotion scoring.'
     : macroMining.shouldRun
       ? 'Review macro candidates and collect source examples before promotion.'
       : 'Keep collecting upload events until macro thresholds are reached.';
@@ -206,6 +215,7 @@ export function buildProductRegistrationLearningReport(input: {
     },
     promotion: {
       workItems: promotionWorkItems,
+      reviewQueue,
       requiresReview: true,
       autoMutationEnabled: false,
     },

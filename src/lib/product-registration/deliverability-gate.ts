@@ -23,6 +23,25 @@ export type UploadDeliverabilityInput = {
 const RISK_CONTEXT_RE =
   /(optional|option|tour|ticket|admission|surcharge|cancel|cancellation|penalty|fee|charge|\uC120\uD0DD\s*\uAD00\uAD11|\uCD94\uCC9C\s*\uAD00\uAD11|\uC785\uC7A5\uAD8C|\uCD94\uAC00\s*\uC694\uAE08|\uCD94\uAC00\uAE08|\uCC28\uC9C0|\uC368\uCC28\uC9C0|\uD604\uC9C0\s*\uC9C0\uC0C1\uBE44|\uCEE8\uC2DC\uC9C0\uC5B4|2B|3B|\uCE90\uB514|\uC218\uC218\uB8CC|\uCDE8\uC18C|\uC608\uC57D\uAE08)/i;
 const AMOUNT_RE = /(\d{1,3}(?:,\d{3})+|\d+)\s*(\uB9CC\uC6D0|\uC6D0|krw|,-)?/gi;
+const PRICE_MIN = 10_000;
+const PRICE_MAX = 50_000_000;
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function isValidIsoDate(value: string | null | undefined): value is string {
+  if (!value || !ISO_DATE_RE.test(value)) return false;
+  const [year, month, day] = value.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year
+    && date.getMonth() === month - 1
+    && date.getDate() === day;
+}
+
+function isValidCustomerPrice(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isInteger(value)
+    && value >= PRICE_MIN
+    && value <= PRICE_MAX;
+}
 
 function minNetPrice(rows: ProductPriceRowInput[]): number | null {
   const prices = rows
@@ -97,6 +116,45 @@ function findPriceStorageMismatch(input: UploadDeliverabilityInput): string | nu
   return null;
 }
 
+function findPriceShapeError(input: UploadDeliverabilityInput): string | null {
+  const seenPriceDates = new Set<string>();
+  for (const priceDate of input.priceDates) {
+    if (!isValidIsoDate(priceDate.date)) return `price_dates invalid date ${priceDate.date}`;
+    if (seenPriceDates.has(priceDate.date)) return `price_dates duplicate date ${priceDate.date}`;
+    seenPriceDates.add(priceDate.date);
+    if (!isValidCustomerPrice(priceDate.price)) {
+      return `price_dates invalid price ${priceDate.date}: ${String(priceDate.price)}`;
+    }
+    if (priceDate.child_price != null && !isValidCustomerPrice(priceDate.child_price)) {
+      return `price_dates invalid child_price ${priceDate.date}: ${String(priceDate.child_price)}`;
+    }
+  }
+
+  for (const row of input.priceRows) {
+    if (row.target_date != null && !isValidIsoDate(row.target_date)) {
+      return `product_prices invalid target_date ${row.target_date}`;
+    }
+    if (!isValidCustomerPrice(row.net_price)) {
+      return `product_prices invalid net_price ${row.target_date ?? row.day_of_week ?? 'undated'}: ${String(row.net_price)}`;
+    }
+    if (row.adult_selling_price != null && !isValidCustomerPrice(row.adult_selling_price)) {
+      return `product_prices invalid adult_selling_price ${row.target_date ?? row.day_of_week ?? 'undated'}: ${String(row.adult_selling_price)}`;
+    }
+    if (
+      row.adult_selling_price != null
+      && isValidCustomerPrice(row.adult_selling_price)
+      && row.adult_selling_price < row.net_price
+    ) {
+      return `product_prices adult_selling_price below net_price ${row.target_date ?? row.day_of_week ?? 'undated'}`;
+    }
+    if (row.child_price != null && (!Number.isInteger(row.child_price) || row.child_price < 0 || row.child_price > PRICE_MAX)) {
+      return `product_prices invalid child_price ${row.target_date ?? row.day_of_week ?? 'undated'}: ${String(row.child_price)}`;
+    }
+  }
+
+  return null;
+}
+
 function findMissingCustomerSellingPrice(input: UploadDeliverabilityInput): string | null {
   const missing = input.priceRows.find(row => (
     typeof row.net_price === 'number'
@@ -127,6 +185,11 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
 
   if (input.priceDates.length === 0) {
     blockers.push(`price_dates missing: ${recoveryFailures.join(' | ') || 'no recognized departure-date price range'}`);
+  }
+
+  const priceShapeError = findPriceShapeError(input);
+  if (priceShapeError) {
+    blockers.push(`price shape error: ${priceShapeError}`);
   }
 
   const priceStorageMismatch = findPriceStorageMismatch(input);

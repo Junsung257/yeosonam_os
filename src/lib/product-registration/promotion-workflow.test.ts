@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ImprovementLedgerEvent } from './improvement-ledger';
 import type { PatternCandidate } from './pattern-mining';
-import { buildPromotionWorkItems } from './promotion-workflow';
+import { buildCandidateReviewQueue, buildPromotionWorkItems } from './promotion-workflow';
 
 function event(overrides: Partial<ImprovementLedgerEvent> = {}): ImprovementLedgerEvent {
   return {
@@ -87,6 +87,46 @@ describe('buildPromotionWorkItems', () => {
     });
 
     expect(workItems).toEqual([]);
+  });
+
+  it('keeps non-promotion-ready high-risk candidates in the review queue with blocking reasons', () => {
+    const reviewQueue = buildCandidateReviewQueue({
+      candidates: [
+        candidate({
+          id: 'price_table_alias:day_table',
+          kind: 'price_table_alias',
+          signature: 'day_table',
+          promotionReady: false,
+          risk: 'high',
+          evidenceCount: 12,
+          independentSourceCount: 2,
+          autoFixSuccessRate: 0.5,
+        }),
+      ],
+      events: [
+        event({
+          detectedFormat: 'day_table',
+          rawTextHash: 'd'.repeat(64),
+          packageId: '770e8400-e29b-41d4-a716-446655440000',
+        }),
+      ],
+    });
+
+    expect(reviewQueue).toHaveLength(1);
+    expect(reviewQueue[0]).toEqual(expect.objectContaining({
+      status: 'blocked_by_risk',
+      risk: 'high',
+      evidenceRawTextHashes: ['d'.repeat(64)],
+      evidencePackageIds: ['770e8400-e29b-41d4-a716-446655440000'],
+    }));
+    expect(reviewQueue[0].blockingReasons).toEqual(expect.arrayContaining([
+      expect.stringContaining('false-positive'),
+      expect.stringContaining('3 independent'),
+      expect.stringContaining('80%'),
+    ]));
+    expect(reviewQueue[0].fixturePlan.assertions).toEqual(expect.arrayContaining([
+      expect.stringContaining('price table'),
+    ]));
   });
 
   it('keeps evidence links for detected-format macro candidate families', () => {

@@ -188,3 +188,97 @@ describe('extractPriceIR multi-column spot weekday table', () => {
     expect(result.rows.some(row => row.adult_price === 1159000 || row.adult_price === 1369000)).toBe(false);
   });
 });
+
+describe('extractPriceIR product price vertical date table', () => {
+  it('recovers 상품가 date lists followed by full KRW prices', () => {
+    const rawText = `
+[크라운] 큐슈 BX조석 스기노이 2박 3일
+상품가
+7/1, 6, 8, 13, 15
+1,299,000원
+7/20, 22, 27, 29
+1,399,000원
+8/3, 5
+1,499,000원
+포함 내역
+왕복항공권
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 3 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toHaveLength(11);
+    expect(result.rows.find(row => row.date === '2026-07-01')?.adult_price).toBe(1299000);
+    expect(result.rows.find(row => row.date === '2026-07-29')?.adult_price).toBe(1399000);
+    expect(result.rows.find(row => row.date === '2026-08-05')?.adult_price).toBe(1499000);
+    expect(result.rows.some(row => row.date === '1,299,000원')).toBe(false);
+    expect(result.tiers.length).toBe(3);
+  });
+});
+
+describe('extractPriceIR single travel-period product price', () => {
+  it('recovers a source-backed package price from travel period plus product price labels', () => {
+    const rawText = `
+품격
+♡TW항공 부산출발♡ 나트랑/달랏 3박5일
+여행기간 2026년 5월 4일 ~ 5월 8일 까지 ★노팁+노옵션★
+상품가 ₩399,000원/인 (*성인/아동 동일)
+포함 사항
+왕복 항공료, TAX, 유류할증료(2월기준), 호텔(2인1실), 식사
+불포함 사항
+유류할증료 변동분, 매너팁, 싱글룸 사용 시 1인 전일정 15만원 추가됩니다.
+날짜|지역|교통편|시간|여행 일정|식사
+제1일|부산|TW 041|21:10|부산 김해 국제공항 출발|기내식 불포함
+|나트랑|전용차량|00:10+1|나트랑 깜란 국제공항 도착 후 입국 수속 및 가이드 미팅
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('single_period_product_price');
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        date: '2026-05-04',
+        adult_price: 399000,
+        child_price: null,
+        status: 'available',
+      }),
+    ]);
+    expect(result.rows.some(row => row.adult_price === 150000)).toBe(false);
+  });
+});
+
+describe('extractPriceIR labeled departure date list price', () => {
+  it('recovers source-backed prices from 출발일 list plus 요금표 adult child line', () => {
+    const rawText = `
+투어코코넛 나트랑/달랏 5성 3박5일 상품 안내
+상품명: [RAW-E2E3P] 나트랑/달랏 5성 3박5일
+출발공항 부산 / 항공 LJ 진에어
+출발일: 2027-02-04, 2027-02-11
+최소출발 6명 이상
+발권마감 출발 7일 전
+
+요금표
+성인 889,000원 / 아동 889,000원
+
+불포함사항
+가이드/기사 경비, 개인경비 및 매너팁
+`;
+
+    const result = extractPriceIR(rawText, { year: 2027 });
+
+    expect(result.source).toBe('labeled_date_list_price');
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        date: '2027-02-04',
+        adult_price: 889000,
+        child_price: 889000,
+      }),
+      expect.objectContaining({
+        date: '2027-02-11',
+        adult_price: 889000,
+        child_price: 889000,
+      }),
+    ]);
+    expect(result.rows.some(row => row.adult_price === 7)).toBe(false);
+  });
+});

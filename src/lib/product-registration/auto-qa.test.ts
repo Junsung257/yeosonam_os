@@ -95,7 +95,7 @@ function registration(overrides: Partial<StandardProductRegistrationObject> = {}
 }
 
 describe('runMicroAutoQA', () => {
-  it('passes a clean publishable registration and records one ledger event', () => {
+  it('passes a clean publishable registration and still records the full three-step verification ledger', () => {
     const result = runMicroAutoQA({
       uploadId: 'upload-1',
       rawText: 'Cebu golf package raw with price 859,000',
@@ -106,13 +106,21 @@ describe('runMicroAutoQA', () => {
 
     expect(result.status).toBe('PASS');
     expect(result.triggers).toHaveLength(0);
-    expect(result.attempts).toHaveLength(1);
+    expect(result.attempts).toHaveLength(4);
+    expect(result.attempts.map(event => event.attemptPhase)).toEqual([
+      'normal_registration',
+      'deterministic_source_recompare',
+      'render_payload_audit_repair',
+      'final_reregistration_deliverability_audit',
+    ]);
     expect(result.attempts[0]).toEqual(expect.objectContaining({
       uploadId: 'upload-1',
       attemptNo: 0,
       finalStatus: 'PASS',
       fixtureCandidate: false,
     }));
+    expect(result.attempts.every(event => event.finalStatus === 'PASS')).toBe(true);
+    expect(result.attempts.every(event => event.autoFixesApplied.length === 0)).toBe(true);
   });
 
   it('caps automatic improvement at three repair attempts after the normal attempt', () => {

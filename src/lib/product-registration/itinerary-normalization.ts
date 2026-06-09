@@ -10,6 +10,7 @@ import {
   findItineraryScheduleQualityIssues,
   type ItineraryScheduleQualityDay,
 } from './itinerary-quality-gate';
+import { compileItineraryForLanding } from '@/lib/itinerary-schedule-compiler';
 
 export type { ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 
@@ -109,7 +110,7 @@ export async function normalizeUploadItinerary(input: {
     }
   }
   const initialPrune = prunePollutedScheduleItems(itineraryInput);
-  itineraryInput = initialPrune.itineraryData;
+  itineraryInput = compileItineraryForLanding(initialPrune.itineraryData);
 
   const enrichment = enrichItineraryWithAttractionReferences(
     itineraryInput,
@@ -127,7 +128,9 @@ export async function normalizeUploadItinerary(input: {
   }
 
   const finalPrune = prunePollutedScheduleItems(
-    (postProcessItineraryData(enrichment.itineraryData ?? itineraryInput ?? input.itineraryData ?? null) ?? null) as ItineraryDataLike | null,
+    compileItineraryForLanding(
+      (postProcessItineraryData(enrichment.itineraryData ?? itineraryInput ?? input.itineraryData ?? null) ?? null) as ItineraryDataLike | null,
+    ),
   );
   const itineraryDataToSave = attachShoppingHighlight(
     finalPrune.itineraryData,
