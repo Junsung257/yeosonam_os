@@ -213,11 +213,23 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
   const notices: StandardNoticeDraft[] = [];
   const patch: StructuredFactCustomerFieldPatch = {};
   const lines = sourceLines(input);
+  let currentCostSection: 'include' | 'exclude' | null = null;
 
   for (const line of lines) {
     const source = line.quote.trim();
     if (!source) continue;
     const evidence = evidenceFromLine(line);
+    if (/^(?:포\s*함\s*내\s*역|포함사항|포함\s*내역)$/i.test(source)) {
+      currentCostSection = 'include';
+      continue;
+    }
+    if (/^(?:불\s*포\s*함\s*내\s*역|불포함사항|불포함\s*내역)$/i.test(source)) {
+      currentCostSection = 'exclude';
+      continue;
+    }
+    if (/^(?:선택관광|쇼핑센터|비\s*고|일\s*자|REMARK)$/i.test(source)) {
+      currentCostSection = null;
+    }
 
     if (/한국어\s*가이드|현지\s*가이드|가이드\s*(동행|미팅|안내|포함|없음|불포함|미포함|NO|전문)|인솔자\s*(동행|포함|없음|불포함|미동행)/i.test(source)) {
       const absent = /가이드\s*(없음|불포함|미포함|NO\s*가이드)|인솔자\s*(없음|불포함|미동행)/i.test(source);
@@ -231,7 +243,8 @@ export function extractStructuredFactsFromSupplierText(input: StructuredFactsInp
     }
 
     if ((/가이드|기사/.test(source) && /(팁|경비|매너팁|TIP)/i.test(source)) || /노\s*팁|NO\s*TIP/i.test(source)) {
-      const included = /포함|노\s*팁|NO\s*TIP/i.test(source);
+      const included = /포함|노\s*팁|NO\s*TIP/i.test(source)
+        || (currentCostSection === 'include' && !/불포함|별도|현지\s*지불|현지지불|개인경비/i.test(source));
       const amount = parseUsd(source);
       const values = included
         ? { included: true, amount: null, currency: null, payment: null }

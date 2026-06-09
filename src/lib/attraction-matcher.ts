@@ -91,6 +91,29 @@ function isKeywordPrefixSpillover(
 // 비관광 활동 패턴 (매칭 시도하지 않음)
 const SKIP_PATTERN = /^(호텔|리조트)?\s*(조식|투숙|체크|휴식|이동|출발|도착|귀환|수속|공항|탑승|기내|자유시간|석식|중식|면세점|쇼핑센터|가이드|미팅)/;
 
+function isHangulSyllable(value: string): boolean {
+  return /^[\uAC00-\uD7A3]$/.test(value);
+}
+
+function hasTermBoundary(text: string, term: string): boolean {
+  const needle = term.trim();
+  if (!needle) return false;
+  let index = text.indexOf(needle);
+  while (index >= 0) {
+    const before = index > 0 ? text[index - 1] : '';
+    const after = text[index + needle.length] ?? '';
+    if (!isHangulSyllable(before) && !isHangulSyllable(after)) return true;
+    index = text.indexOf(needle, index + 1);
+  }
+  return false;
+}
+
+function allowsSubstringMatch(text: string, term: string): boolean {
+  const compactTerm = term.replace(/\s+/g, '');
+  if (compactTerm.length <= 2) return hasTermBoundary(text, term);
+  return text.includes(term);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 //  성능 최적화: 인덱스 기반 매칭
 // ═══════════════════════════════════════════════════════════════════════════
@@ -177,8 +200,8 @@ export function matchAttractionIndexed(
     const nameLower = a.name.toLowerCase();
     const nameNoSpace = nameLower.replace(/\s+/g, '');
     // DB name ⊂ activity
-    if (actLower.includes(nameLower)) return a;
-    if (nameNoSpace.length >= 2 && actLowerNoSpace.includes(nameNoSpace)) return a;
+    if (allowsSubstringMatch(actLower, nameLower)) return a;
+    if (nameNoSpace.length >= 3 && actLowerNoSpace.includes(nameNoSpace)) return a;
     // activity ⊂ DB name
     if (activity.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameLower.includes(actLower)) return a;
     if (actNoSpace.length >= 2 && !MATCH_STOP_WORDS.has(activity) && nameNoSpace.includes(actLowerNoSpace)) return a;
@@ -191,7 +214,7 @@ export function matchAttractionIndexed(
       if (!alias || alias.length < 2 || MATCH_STOP_WORDS.has(alias)) continue;
       const aliasLower = alias.toLowerCase();
       const aliasNoSpace = alias.replace(/\s+/g, '').toLowerCase();
-      if (actLower.includes(aliasLower) || actLowerNoSpace.includes(aliasNoSpace)) return a;
+      if (allowsSubstringMatch(actLower, aliasLower) || (aliasNoSpace.length >= 3 && actLowerNoSpace.includes(aliasNoSpace))) return a;
     }
   }
 

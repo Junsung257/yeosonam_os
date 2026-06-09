@@ -51,6 +51,33 @@ function confidenceFor(category: V3EntityCategory, event: V3LedgerEvent): number
   return 0.5;
 }
 
+function normalizeOptionDisclosureText(rawText: string): string {
+  return rawText
+    .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b()]+/, '')
+    .replace(/[()]+$/g, '')
+    .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
+    .replace(/\$\s*\d+(?:\.\d+)?/g, '')
+    .replace(/\s*\/\s*\uc778/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function optionalEventHasCustomerSafeDisclosure(rawText: string): boolean {
+  const compact = rawText
+    .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b()]+/, '')
+    .replace(/[()]+$/g, '')
+    .replace(/\s+/g, '');
+  if (/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158)$/.test(compact)) return true;
+  if (/^(?:\uc120\ud0dd\uad00\uad11\ube44\uc6a9|\uc720\ub958\ubcc0\ub3d9\ubd84|\ub9e4\ub108\ud301\ubc0f\uac1c\uc778\uacbd\ube44|\uac1c\uc778\uacbd\ube44)$/.test(compact)) return true;
+  if (/^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)\$?\d+/i.test(compact)) return true;
+  return /\$\s*\d+(?:\.\d+)?/.test(rawText) && normalizeOptionDisclosureText(rawText).length >= 2;
+}
+
+function shoppingEventHasCustomerSafeDisclosure(rawText: string): boolean {
+  return /쇼핑(?:센터)?\s*\d+\s*회|\d+\s*회/.test(rawText)
+    && /(침향|한약|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|잡화|토산품|기념품|면세|노니|커피)/i.test(rawText);
+}
+
 function suggestedActionFor(category: V3EntityCategory, event: V3LedgerEvent): V3EntitySuggestedAction {
   if (category === 'attraction') {
     return event.match_status === 'matched' ? 'auto_resolve_existing' : 'needs_review';
@@ -58,7 +85,12 @@ function suggestedActionFor(category: V3EntityCategory, event: V3LedgerEvent): V
   if (category === 'hotel') return 'suggest_alias';
   if (category === 'meal' || category === 'transfer') return 'auto_resolve_existing';
   if (category === 'free_time' || category === 'price_noise') return 'auto_ignore_noise';
-  if (category === 'shopping' || category === 'optional_tour' || category === 'notice') return 'needs_review';
+  if (category === 'shopping' || category === 'optional_tour') {
+    if (category === 'optional_tour' && optionalEventHasCustomerSafeDisclosure(event.raw_text)) return 'auto_resolve_existing';
+    if (category === 'shopping' && shoppingEventHasCustomerSafeDisclosure(event.raw_text)) return 'auto_resolve_existing';
+    return event.match_status === 'review' ? 'needs_review' : 'auto_resolve_existing';
+  }
+  if (category === 'notice') return event.match_status === 'review' ? 'needs_review' : 'auto_resolve_existing';
   return event.match_status === 'ignored' ? 'auto_ignore_noise' : 'needs_review';
 }
 
@@ -68,6 +100,8 @@ function customerVisible(category: V3EntityCategory): boolean {
 
 function blocksPublish(category: V3EntityCategory, event: V3LedgerEvent): boolean {
   if (category === 'attraction') return event.match_status !== 'matched';
+  if (category === 'optional_tour' && optionalEventHasCustomerSafeDisclosure(event.raw_text)) return false;
+  if (category === 'shopping' && shoppingEventHasCustomerSafeDisclosure(event.raw_text)) return false;
   if (category === 'shopping' || category === 'optional_tour' || category === 'notice') return event.match_status === 'review';
   if (category === 'unknown') return event.match_status !== 'ignored' && customerVisible(category);
   return false;
@@ -80,6 +114,48 @@ function reviewKey(item: V3EntityReviewItem): string {
     item.evidence.line_start,
     item.evidence.line_end,
   ].join('|');
+}
+
+function hasAutoCleanOptionalDisclosure(variant: V3DraftLedger['variants'][number]): boolean {
+  return variant.structured_facts.some(fact =>
+    fact.category === 'optional_tour'
+    && fact.review_status === 'auto_clean'
+  ) || variant.standard_notices.some(notice =>
+    notice.category === 'optional_tour'
+    && notice.review_status === 'auto_clean'
+  );
+}
+
+function hasAutoCleanShoppingDisclosure(variant: V3DraftLedger['variants'][number]): boolean {
+  return variant.structured_facts.some(fact =>
+    fact.category === 'shopping_policy'
+    && fact.review_status === 'auto_clean'
+  ) || variant.standard_notices.some(notice =>
+    notice.category === 'shopping_visit'
+    && notice.review_status === 'auto_clean'
+  );
+}
+
+function optionHasCustomerSafeDisclosure(option: { raw_name: string; normalized_name: string; price_amount: number | null; currency: string | null }): boolean {
+  return Boolean(
+    option.normalized_name?.trim()
+    && typeof option.price_amount === 'number'
+    && option.price_amount > 0
+    && option.currency,
+  );
+}
+
+function optionIsGenericCostOrHeading(option: { raw_name: string }): boolean {
+  const compact = option.raw_name
+    .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663()]+/, '')
+    .replace(/\s+/g, '');
+  return /^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uc120\ud0dd\uad00\uad11\ube44\uc6a9|\uc720\ub958\ubcc0\ub3d9\ubd84|\ub9e4\ub108\ud301\ubc0f\uac1c\uc778\uacbd\ube44|\uac1c\uc778\uacbd\ube44)$/.test(compact)
+    || /^(?:\uae30\uc0ac\/?\uac00\uc774\ub4dc\uacbd\ube44|\uac00\uc774\ub4dc\/?\uae30\uc0ac\uacbd\ube44)\$?\d+/i.test(compact);
+}
+
+function shoppingHasCustomerSafeDisclosure(value: string): boolean {
+  return /쇼핑(?:센터)?\s*\d+\s*회|\d+\s*회/.test(value)
+    && /(침향|한약|라텍스|차가버섯|죽탄|콜라겐|보이차|농산물|잡화|토산품|기념품|면세|노니|커피)/i.test(value);
 }
 
 export function buildEntityReviewItem(input: {
@@ -153,13 +229,16 @@ export function buildV3EntitySummary(input: {
     }
 
     for (const option of variant.options) {
+      const optionClean = hasAutoCleanOptionalDisclosure(variant)
+        || optionHasCustomerSafeDisclosure(option)
+        || optionIsGenericCostOrHeading(option);
       const event: V3LedgerEvent = {
         type: 'option',
         time: null,
         raw_text: option.raw_name,
         canonical_id: null,
         canonical_type: 'option',
-        match_status: option.match_status,
+        match_status: optionClean ? 'matched' : option.match_status,
         evidence: option.evidence,
       };
       const item = buildEntityReviewItem({
@@ -172,13 +251,14 @@ export function buildV3EntitySummary(input: {
     }
 
     for (const shopping of variant.shopping) {
+      const shoppingClean = hasAutoCleanShoppingDisclosure(variant) || shoppingHasCustomerSafeDisclosure(shopping.value);
       const event: V3LedgerEvent = {
         type: 'shopping',
         time: null,
         raw_text: shopping.value,
         canonical_id: null,
         canonical_type: 'shopping',
-        match_status: 'review',
+        match_status: shoppingClean ? 'matched' : 'review',
         evidence: shopping.evidence,
       };
       const item = buildEntityReviewItem({

@@ -18,7 +18,7 @@ const FLIGHT_CODE_RE = /\b([A-Z0-9]{2})\s*(\d{3,4})\b/;
 const PRICE_RE = /(?:KRW|\u20a9|\uc6d0)?\s*([1-9]\d{1,2}(?:,\d{3})+|[1-9]\d{5,})\s*(\uc6d0|KRW|USD|\$)?/i;
 const ABBREVIATED_PRICE_RE = /^[1-9]\d{1,2},\s*-$/;
 const USD_RE = /\$\s*(\d+(?:\.\d+)?)/;
-const DAY_HEADER_RE = /(?:day\s*(\d{1,2})|\uc81c\s*(\d{1,2})\s*\uc77c|(\d{1,2})\s*\uc77c\ucc28)/i;
+const DAY_HEADER_RE = /^(?:day\s*(\d{1,2})(?:\b|\s|$)|\uc81c\s*(\d{1,2})\s*\uc77c(?:\s|$)|(\d{1,2})\s*\uc77c\ucc28(?:\s|$))/i;
 const PRODUCT_HEADER_RE = /^(?:#{1,4}\s*)?(?:\uc0c1\ud488|product|variant|\ucf54\uc2a4|\ub4f1\uae09)\s*[:\-]/i;
 const PRICE_HEADER_RE = /^price\s*[:\-]|^(?:\uac00\uaca9|\uc694\uae08)\s*[:\-]?/i;
 const PRICE_TABLE_OR_DOCUMENT_HEADER_RE =
@@ -55,6 +55,20 @@ const FREE_TIME_RE = /free\s*time|\uc790\uc720\s*\uc2dc\uac04|\ud734\uc2dd/i;
 const NOTICE_RE = /include|exclude|\ud3ec\ud568|\ubd88\ud3ec\ud568|\ucd5c\uc18c|\uc8fc\uc758|\uc548\ub0b4|notice/i;
 const REMARK_RE = /비고|주의\s*사항|remark|안내|공지|싱글\s*차지|여권|전자\s*담배|룸\s*배정|객실\s*배정|개런티|일정|마사지\s*팁|패널티|도보\s*이동|공항\s*미팅|관광지\s*방문|현지\s*가이드|차량에서\s*설명|가이드|기사\s*팁|쇼핑|선택\s*관광|노\s*옵션|노\s*쇼핑|노\s*팁/i;
 const ATTRACTION_DECOY_RE = PRODUCT_HEADER_RE;
+const KOREAN_MEAL_TERM_RE =
+  /(?:\uc0bc\uacb9\uc0b4|\uaf88\ubc14\ub85c\uc6b0|\uafd4\ubc14\ub85c\uc6b0|\ub0c9\uba74|\ube44\ube54\ubc25|\ub9e4\uc6b4\ud0d5|\ud604\uc9c0\uc2dd|\ud638\ud154\uc2dd|\uc0e4\ube0c\uc0e4\ube0c|\uae40\s*\ubc25|\uc591\uaf2c\uce58|\uc18c\ubd88\uace0\uae30|\uc1a1\uc774\uad6c\uc774|\ubd88\uace0\uae30|\ub3d9\ubd81\uc694\ub9ac|\uac00\uc815\uc2dd|\uc911\s*:|\uc11d\s*:|\uc870\s*:)/i;
+const ROUTE_CELL_ONLY_RE =
+  /^(?:\ubd80\s*\uc0b0|\uc5f0\s*\uae38|\ub3c4\s*\ubb38|\uc6a9\s*\uc815|\uc774\ub3c4\ubc31\ud558(?:\s*(?:\ub0a8|\ubd81|\uc11c)\s*\ud30c)?|\uc1a1\uac15\ud558|\ub0a8\s*\ud30c|\ubd81\s*\ud30c|\uc11c\s*\ud30c|\uc7a5\ubc31\uc0b0|\ubc31\ub450\uc0b0)$/;
+const TIME_CELL_ONLY_RE = /^:?\d{1,2}(?::\d{2})?$/;
+const STANDALONE_USD_PRICE_RE = /^\$?\s*\d+(?:\.\d+)?\s*(?:\/\s*\uc778)?(?:\s*\(?\ud301\ubcc4\ub3c4\)?)?$/i;
+const HOTEL_OCCURRENCE_RE =
+  /(?:\ud638\ud154|hotel|resort|\ub9ac\uc870\ud2b8|\uc8fc\uc810).*(?:\ub3d9\uae09|\uc900\s*5\uc131|\uc815\s*5\uc131|5\uc131|\ud22c\uc219|\uccb4\ud06c\uc778|\ud734\uc2dd)|(?:\ud638\ud154\s*(?:\uc774\ub3d9|\uc870\uc2dd|\ud22c\uc219|\uccb4\ud06c\uc778))/i;
+const ITINERARY_TABLE_LABEL_RE =
+  /^(?:\uc77c\s*\uc790|\uc9c0\s*\uc5ed|\uad50\s*\ud1b5\s*\ud3b8?|\uc2dc\s*\uac04|\uc77c\s*\uc815|\uc2dd\s*\uc0ac|\uc81c\d+\uc77c|\uc804\uc77c|\ucd5c\s*\uc18c\s*\ucd9c\s*\ubc1c|\uac1d\s*\uc2e4\s*\uc885\s*\ub958|\ud3ec\s*\ud568\s*\ub0b4\s*\uc5ed|\ubd88\s*\ud3ec\s*\ud568\s*\ub0b4\s*\uc5ed|\ube44\s*\uace0|\uc120\ubc1c\uc81c\uc678\uc77c|---)$/i;
+const PRICE_MATRIX_FRAGMENT_RE =
+  /^(?:\ud328\ud134|\d{1,2}\uc6d4|(?:\uc6d4|\ud654|\uc218|\ubaa9|\uae08|\ud1a0|\uc77c)\uc694\uc77c|\d{1,2}\uc6d4\d{1,2}\uc77c\s*\([^)]+\)|\d+\uba85\ubd80\ud130\ucd9c\ubc1c\ud655\uc815.*\d\ubc15\d\uc77c)$/;
+const BAKEKDU_DESCRIPTION_FRAGMENT_RE =
+  /(?:\uacbd\uacc4\ube44|\uc218\ubaa9\ud55c\uacc4\uc120|\ud574\ubc1c\s*\d|고산초원지대)/;
 
 function normalizePrice(token: string): number {
   const number = Number(token.replace(/[,\s]/g, ''));
@@ -67,11 +81,20 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (!text) return null;
   const compact = text.replace(/\s+/g, '');
   if (ABBREVIATED_PRICE_RE.test(compact)) return 'price_noise';
+  if (/^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(compact)) return 'notice';
+  if (/^(?:\ub178\uc635\uc158|no\s*option)$/i.test(compact)) return 'notice';
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return 'shopping';
   if (/^\(\+\d+\)$/.test(compact)) return null;
   if (/^(?:부산|클락|푸꾸옥|세부|다낭|나트랑|호치민|방콕)$/.test(compact)) return null;
   if (/^(?:살펴보기|여권|입국|이트래블|eTravel)/i.test(compact)) return 'notice';
   if (/기내박/.test(compact)) return 'hotel';
+  if (ITINERARY_TABLE_LABEL_RE.test(compact)) return 'price_noise';
+  if (PRICE_MATRIX_FRAGMENT_RE.test(compact)) return 'price_noise';
+  if (TIME_CELL_ONLY_RE.test(compact)) return 'price_noise';
+  if (STANDALONE_USD_PRICE_RE.test(compact)) return 'price_noise';
+  if (ROUTE_CELL_ONLY_RE.test(compact)) return 'transfer';
+  if (BAKEKDU_DESCRIPTION_FRAGMENT_RE.test(text)) return 'activity';
+  if (!/[▶]/.test(text) && !TRANSFER_RE.test(text) && HOTEL_OCCURRENCE_RE.test(text)) return 'hotel';
   if (
     PRODUCT_HEADER_RE.test(text)
     || PRICE_HEADER_RE.test(text)
@@ -82,6 +105,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if (MEAL_CELL_RE.test(text)) return 'meal';
   if (FOOD_ONLY_RE.test(compact)) return 'meal';
   if (FOOD_TERM_RE.test(text)) return 'meal';
+  if (KOREAN_MEAL_TERM_RE.test(text)) return 'meal';
   if (ACTIVITY_NOTE_LINE_RE.test(text)) return 'notice';
   if (/^\s*[※*]/.test(text) && /\uacb0\uc81c|\uc774\uc6a9/.test(text)) return 'notice';
   if (MEETING_RE.test(text)) return 'meeting';
@@ -91,6 +115,7 @@ function eventTypeForLine(line: string): V3EventType | null {
     || (/\uacf5\ud56d/.test(text) && /(?:\ucd9c\ubc1c|\ub3c4\ucc29)/.test(text))
     || (/(?:출발|향발|도착)/.test(text) && /(?:부산|세부|김해|공항)/.test(text))
   ) return 'flight';
+  if (/(?:출발|도착)$/.test(compact)) return 'flight';
   if (TRANSFER_RE.test(text)) return 'transfer';
   if (MEAL_RE.test(text)) return 'meal';
   if (HOTEL_RE.test(text)) return 'hotel';
@@ -99,6 +124,7 @@ function eventTypeForLine(line: string): V3EventType | null {
   if ((USD_RE.test(text) || /\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(text)) && /\ud638\ud551\ud22c\uc5b4|\uc120\ud0dd|\uc635\uc158/i.test(text)) return 'option';
   if (/^\s*[-–]/.test(text) && ACTIVITY_NOTE_LINE_RE.test(text)) return 'notice';
   if (INCLUDED_ACTIVITY_RE.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(text)) return 'activity';
+  if (/\ub9c8\uc0ac\uc9c0|\uc628\ucc9c\uc695/.test(text) && !USD_RE.test(text) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc9c0\ubd88|\ud604\uc9c0\uc9c0\ubd88/i.test(text)) return 'activity';
   if (OPTION_RE.test(text)) return 'option';
   if (SHOPPING_RE.test(text) || SHOPPING_DETAIL_RE.test(text)) return 'shopping';
   if (FREE_TIME_RE.test(text)) return 'free_time';
@@ -149,10 +175,14 @@ function optionDurationMinutes(text: string): number | null {
 
 function normalizeOptionName(text: string): string {
   return text
+    .replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-\u2663\u220e\u203b]+/, '')
+    .replace(/^(?:\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\ucd94\ucc9c\uc635\uc158|\uad00\uad11|\ub9c8\uc0ac\uc9c0|\uc2dd\uc0ac)\s*[:：]\s*/i, '')
     .replace(/\(\s*\$\s*\d+(?:\.\d+)?\s*\)/g, '')
     .replace(/\s*\/\s*\ud604\uc9c0\s*\uc635\uc158\uac00\s*(?:\/\s*\uc778)?/gi, '')
     .replace(USD_RE, '')
     .replace(/\s*\/\s*\uc778/g, '')
+    .replace(/\s*\uc778\.?$/g, '')
+    .replace(/\(\s*\ud301\ubcc4\ub3c4\s*\)/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -160,9 +190,13 @@ function normalizeOptionName(text: string): string {
 function isOptionHeadingOrNonCustomerOption(text: string): boolean {
   const normalized = text.replace(/^[\s\u25b6\u25cf\u2022\u00b7\u25c6\u25c7\u25a0\u25a1\u2605\u2606+\-○▪◦*\u2663]+/, '').trim();
   const compact = normalized.replace(/\s+/g, '');
+  if (/^(?:현지지불옵션|강력추천옵션|추천옵션|\(?현지지불옵션\)?)$/i.test(compact)) return true;
+  if (/^(?:선택관광비용|유류변동분|매너팁및개인경비|개인경비)$/.test(compact)) return true;
+  if (/^(?:기사\/?가이드경비|가이드\/?기사경비)\$?\d+/i.test(compact)) return true;
   if (/^(?:\uc120\ud0dd\uad00\uad11|\ucd94\ucc9c\uc120\ud0dd\uad00\uad11|\uc635\uc158|\uc635\uc158\ud22c\uc5b4)$/.test(compact)) return true;
   if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compact)) return true;
   if (INCLUDED_ACTIVITY_RE.test(normalized) && !USD_RE.test(normalized) && !/\uc120\ud0dd|\uc635\uc158|\ud604\uc9c0\s*\uc635\uc158\uac00/i.test(normalized)) return true;
+  if (/^(?:\ub178\uc635\uc158|no\s*option|\uc120\ud0dd\uad00\uad11\s*(?:\uc5c6\uc74c|\ubb34|0\ud68c))$/i.test(compact)) return true;
   return false;
 }
 
@@ -269,6 +303,13 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       itineraryClosed = true;
       continue;
     }
+    if (
+      seenItineraryDay
+      && /^(?:include|exclude|remark|\ud3ec\ud568\s*\ub0b4\uc5ed|\ubd88\s*\ud3ec\ud568\s*\ub0b4\uc5ed|\uc120\ud0dd\uad00\uad11|\ud604\uc9c0\uc9c0\ubd88\uc635\uc158|\uac15\ub825\ucd94\ucc9c\uc635\uc158|\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)(?:\b|\s|$)/i.test(trimmed)
+    ) {
+      itineraryClosed = true;
+      continue;
+    }
     if (itineraryClosed) continue;
     const dayMatch = trimmed.match(DAY_HEADER_RE);
     let eventText = line.quote;
@@ -330,9 +371,33 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
   const exclusions = sectionLines
     .filter(line => EXCLUSION_LINE_RE.test(line.quote))
     .map(line => ({ value: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
-  const shopping = sectionLines
-    .filter(line => eventTypeForLine(line.quote) === 'shopping')
-    .map(line => ({ value: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
+  const shopping: V3LedgerVariant['shopping'] = [];
+  for (let index = 0; index < sectionLines.length; index++) {
+    const line = sectionLines[index];
+    if (eventTypeForLine(line.quote) !== 'shopping') continue;
+    const value = line.quote.trim();
+    const compactValue = value.replace(/\s+/g, '');
+    const nextDetail = sectionLines
+      .slice(index + 1, Math.min(sectionLines.length, index + 4))
+      .find(next => {
+        const candidate = next.quote.trim();
+        return candidate
+          && !DAY_HEADER_RE.test(candidate)
+          && !/^(?:비\s*고|REMARK|선택관광)$/i.test(candidate)
+          && eventTypeForLine(candidate) !== 'price_noise';
+      });
+    if (/^(?:\uc1fc\ud551\uc13c\ud130|\uc1fc\ud551)$/.test(compactValue)) {
+      const detailText = nextDetail?.quote.trim() ?? '';
+      if (!detailText || /^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(detailText.replace(/\s+/g, ''))) continue;
+      shopping.push({
+        value: `${value} ${detailText}`.trim(),
+        evidence: evidenceFromLines(lines, line.lineNumber),
+      });
+      continue;
+    }
+    if (/^(?:\ub178\uc1fc\ud551|no\s*shopping)$/i.test(compactValue)) continue;
+    shopping.push({ value, evidence: evidenceFromLines(lines, line.lineNumber) });
+  }
   const remarkLines = sectionLines
     .filter(line => REMARK_RE.test(line.quote))
     .map(line => ({ text: line.quote.trim(), evidence: evidenceFromLines(lines, line.lineNumber) }));
@@ -349,6 +414,26 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
       mergedStandardNotices.push(notice);
     }
   }
+  const cleanStandardNotices = mergedStandardNotices.filter(notice => {
+    if (
+      notice.category !== 'tip_guideline'
+      || notice.template_key !== 'guide.tip_amount_local_payment'
+      || notice.review_status !== 'review_needed'
+      || notice.values.amount != null
+    ) {
+      return true;
+    }
+    return !mergedStandardNotices.some(other =>
+      other.category === 'tip_guideline'
+      && other.template_key === 'guide.tip_included'
+      && other.evidence.some(evidence =>
+        notice.evidence.some(existing =>
+          existing.line_start === evidence.line_start
+          && existing.line_end === evidence.line_end
+        )
+      )
+    );
+  });
   const minDepartureLine = sectionLines.find(line =>
     /minimum|min\.?|\ucd5c\uc18c|\uc778\s*\uc6d0|\d+\s*(?:\uba85|\uc778)\s*\uc774\uc0c1\s*\ucd9c\ubc1c/i.test(line.quote)
     && /\d+/.test(line.quote)
@@ -383,7 +468,7 @@ function buildVariant(lines: V3SourceLine[], boundary: V3StructurePlan['product_
     options,
     shopping,
     structured_facts: structured.structuredFacts,
-    standard_notices: mergedStandardNotices,
+    standard_notices: cleanStandardNotices,
     minimum_departure,
     evidence_coverage: {
       price: prices.length > 0,
