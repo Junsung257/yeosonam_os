@@ -182,6 +182,7 @@ function summarize(rows) {
 async function auditPage(page, path) {
   await page.goto(`${baseUrl}${path}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
   await page.waitForSelector('article, body', { timeout: 15000 }).catch(() => undefined);
+  await page.waitForSelector('article img', { timeout: 7000 }).catch(() => undefined);
   await page.evaluate(async () => {
     const article = document.querySelector('article') || document.body;
     const imgs = [...article.querySelectorAll('img')];
@@ -228,6 +229,17 @@ async function auditPage(page, path) {
   })));
 
   return row;
+}
+
+async function auditPageWithRetry(page, path) {
+  let lastRow = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const row = await auditPage(page, path);
+    if (row.images.length > 0) return row;
+    lastRow = { ...row, retryReason: 'no_article_images', attempts: attempt + 1 };
+    await page.waitForTimeout(500 * (attempt + 1));
+  }
+  return lastRow;
 }
 
 function judge(row) {
@@ -289,7 +301,7 @@ async function main() {
       const path = links[cursor];
       cursor += 1;
       try {
-        const row = await auditPage(page, path);
+        const row = await auditPageWithRetry(page, path);
         rows.push(judge(row));
       } catch (error) {
         rows.push({ path, error: error instanceof Error ? error.message : String(error), failed: true });

@@ -182,6 +182,9 @@ function ensureCostAnchorBlock(markdown: string, subtype: BlogInfoSubtype | null
 }
 
 function ensureItineraryStructure(markdown: string): { text: string; changed: boolean } {
+  if (/^##\s*\uC77C\uC815\s*\uD750\uB984\s*\uBE60\uB978\s*\uBCF4\uAE30/m.test(markdown)) {
+    return { text: markdown, changed: false };
+  }
   const dayMarkers = countMatches(markdown, /(^|\n)\s*(?:#{2,4}\s*)?(?:DAY\s*\d+|Day\s*\d+|\d+\s*일차|\d+\s*일\s*차|\d+일차)/gi);
   const timeMarkers = countMatches(markdown, /\b(?:오전|오후|아침|점심|저녁|\d{1,2}:\d{2})\b/g);
   if (dayMarkers >= 2 || timeMarkers >= 3) return { text: markdown, changed: false };
