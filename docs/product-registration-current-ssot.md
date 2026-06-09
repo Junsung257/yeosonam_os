@@ -544,6 +544,8 @@ After deployment or remote DB/data changes, run the live readiness audit with `n
 
 The strict live audit must fail customer-visible samples when the latest V3 draft is `blocked`, `needs_review`, or missing. For attraction matching, the latest `product_registration_drafts.match_summary.attraction_unmatched_count` is authoritative; the legacy `unmatched_activities` queue is only a fallback when no draft summary exists, and only unresolved pending rows count.
 
+When a live data sweep finds customer-invisible rows that fail mobile/A4 readiness, `npx tsx scripts/audit-product-mobile-landing-readiness.mjs --days=3650 --limit=2000 --json --archive-failed-nonpublic` may be used to quarantine those rows as `archived` with `audit_status=blocked` and an `audit_report`. This does not delete source data and must not be used to bypass the public V3 gate; public failures use `--demote-unsafe-public` instead.
+
 ## Agent/Harness Setup
 
 General AI harness and documentation automation rules live in `docs/ai-agent-doc-automation.md`.
