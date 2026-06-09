@@ -8,6 +8,7 @@ export type PriceIRSource =
   | 'labeled_date_list_price'
   | 'single_period_product_price'
   | 'product_price_vertical_date_table'
+  | 'grade_pattern_date_matrix'
   | 'weekday_period_table'
   | 'month_dow_table'
   | 'vertical_grade_table'

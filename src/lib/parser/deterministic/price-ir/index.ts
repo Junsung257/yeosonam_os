@@ -6,6 +6,7 @@ import { extractPeriodDowMatrixRows } from './period-dow-matrix';
 import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
 import { extractSinglePeriodProductPriceRows } from './single-period-product-price';
 import { extractSpotWeekdayRows } from './spot-weekday-table';
+import { extractGradePatternDateMatrixRows } from './grade-pattern-date-matrix';
 import { rowsToTiers } from './utils';
 import { extractVerticalGradePriceIR } from './vertical-grade-table';
 import { extractWeekdayPeriodRows } from './weekday-period-table';
@@ -53,6 +54,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
       source: 'hotel_column_matrix',
       rows: hotelColumnRows,
       tiers: rowsToTiers(hotelColumnRows),
+    };
+  }
+
+  const gradePatternDateRows = extractGradePatternDateMatrixRows(rawText, options);
+  if (gradePatternDateRows.length > 0) {
+    return {
+      source: 'grade_pattern_date_matrix',
+      rows: gradePatternDateRows,
+      tiers: rowsToTiers(gradePatternDateRows),
     };
   }
 
