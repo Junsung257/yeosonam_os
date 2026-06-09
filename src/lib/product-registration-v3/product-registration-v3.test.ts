@@ -299,6 +299,59 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(scheduleActivities).toContain('City Garden attraction');
   });
 
+  it('keeps Baekdu price matrix labels out of itinerary entities and fallback-matches existing scoped attractions', async () => {
+    const raw = [
+      '6/11(목) 까지 항공권 발권조건 2명부터 출발확정',
+      '출발일',
+      '6/1 월 3박',
+      '999,000',
+      '연길/백두산(북+서파) 3박4일',
+      'Price: 859,000 KRW / minimum 2',
+      'BX3175',
+      'BX3185',
+      '일 자',
+      '제1일',
+      '연  길',
+      '도  문',
+      'BX3175',
+      '06:00',
+      '부산 출발',
+      '▶중국-북한 두만강 중조국경지대, 두만강 강변공원',
+      '중:냉면+',
+      '꿔바로우',
+      '󰆹 금수학호텔 또는 동급 (준5성)',
+      '제2일',
+      '연  길',
+      'BX3185',
+      '16:00',
+      '부산 도착',
+      '조:호텔식',
+      '포함 호텔',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      destination: '연길/백두산',
+      attractions: [
+        {
+          id: 'tumen-river-park',
+          name: '두만강 강변공원',
+          region: '도문',
+          country: 'CN',
+        },
+      ],
+    });
+    const events = result.ledger.variants[0].days.flatMap(day => day.events);
+
+    expect(result.ledger.variants[0].days.map(day => day.day)).toEqual([1, 2]);
+    expect(events.map(event => event.raw_text)).not.toContain('/11(목) 까지 항공권 발권조건 2명부터 출발확정');
+    expect(events.find(event => event.raw_text === '연  길')?.type).toBe('transfer');
+    expect(events.find(event => event.raw_text === '도  문')?.type).toBe('transfer');
+    expect(events.find(event => event.raw_text === '꿔바로우')?.type).toBe('meal');
+    expect(result.match_summary.attraction_unmatched_count).toBe(0);
+    expect(result.match_summary.attraction_matched_count).toBe(1);
+  });
+
   it('keeps Phu Quoc optional golf details out of the attraction unmatched queue', async () => {
     const raw = [
       '상품: [부산출발][가족여행] 푸꾸옥 뉴월드 풀빌라 자유여행 5일',
@@ -619,13 +672,66 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(osakaItem.suggested_resolution.destination_scope).toBe('Osaka');
   });
 
-  it('blocks customer publish for unreviewed shopping and option entities without blocking the draft', async () => {
-    const result = await runProductRegistrationV3(fixtures[0].raw);
+  it('blocks customer publish for unpriced shopping and option entities without blocking the draft', async () => {
+    const result = await runProductRegistrationV3([
+      '상품: Review Needed Option Package',
+      '가격: 719,000원 / 최소출발 4명',
+      'DAY 1 LJ115 부산 출발 21:35 세부 도착 00:25',
+      'DAY 2 자유시간',
+      'DAY 2 optional tour local payment extra',
+      '쇼핑센터 방문 예정',
+      'DAY 3 LJ116 세부 출발 01:00 부산 도착 06:40',
+      '포함 호텔',
+      '불포함 개인경비',
+    ].join('\n'));
 
     expect(result.gate_result.status).toBe('needs_review');
     expect(result.gate_result.customer_publishable).toBe(false);
     expect(result.gate_result.checks.find(check => check.id === 'entity_option_review_clear')?.status).toBe('fail');
     expect(result.match_summary.entity_summary.option_review_needed_count).toBeGreaterThan(0);
+  });
+
+  it('auto-structures local paid options and shopping count when source names and amounts are explicit', async () => {
+    const raw = [
+      '상품: 백두산 현지지불옵션 패키지 3박4일',
+      'Price: 1,129,000 KRW / minimum 2 people',
+      'DAY 1 BX3175 부산 출발 06:00 연길 도착 08:00',
+      'DAY 1 hotel check-in',
+      'DAY 2 백두산 천지 관광',
+      'DAY 2 lunch local meal',
+      'DAY 3 자유시간',
+      'DAY 4 BX3185 연길 출발 16:00 부산 도착 20:00',
+      'Include flights hotels meals',
+      '왕복항공권, 호텔, 식사',
+      'Exclude personal expenses',
+      '기사/가이드경비 $40/인, 매너팁 및 개인경비, 선택관광비용, 유류변동분',
+      '★현지지불옵션 : 삼겹살 무제한 $30/인, 전신마사지(발제외/50분) $30/인',
+      '∎관광 : 5D비행체험 $40, 북파 VIP $65',
+      '쇼핑센터',
+      '2회+농산물) 침향, 한약방, 라텍스, 차가버섯, 죽탄, 콜라겐, 보이차 中',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw, {
+      attractions: [{ id: 'baekdu-cheonji', name: '백두산 천지', country: 'CN', region: '백두산' }],
+      destination: '백두산',
+    });
+    const preview = result.render_contract_preview[0];
+
+    const failedEntityChecks = result.gate_result.checks
+      .filter(check => check.status === 'fail')
+      .map(check => check.id)
+      .filter(id => id.startsWith('entity_'));
+
+    expect(failedEntityChecks).toEqual([]);
+    expect(result.match_summary.entity_summary.shopping_review_needed_count).toBe(0);
+    expect(result.match_summary.entity_summary.option_review_needed_count).toBe(0);
+    expect((preview.optional_tours ?? []).map(tour => tour.name)).toEqual(expect.arrayContaining([
+      '삼겹살 무제한',
+      '전신마사지(발제외/50분)',
+      '5D비행체험',
+      '북파 VIP',
+    ]));
+    expect(preview.itinerary_data?.highlights?.shopping).toContain('2회+농산물');
   });
 
   it('accepts only strict AI structure-plan schema, not extracted customer values', () => {
