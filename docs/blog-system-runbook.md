@@ -427,3 +427,23 @@ If either `quality_gate.passed` or `seo_score.passed` is false, the publishing p
 ### Editorial Standard
 
 SEO is not complete from metadata alone. The body must be readable, non-duplicative, table-safe on mobile, free of Markdown artifacts, and written in the correct intent for the article type. Direct-answer paragraphs, FAQ blocks, specific longtail modifiers, source-backed claims, internal links, and image alt text are all part of the publish gate.
+
+---
+
+## Blog Image Delivery Gate (2026-06-09)
+
+External image URL reachability is not enough. A URL can return `200` in a server-side audit and still render as a broken image in a real browser because of client blocking, privacy extensions, CDN policy, or third-party host failures.
+
+### Rule
+
+- Public blog HTML must not expose `https://images.pexels.com/...` directly to the reader viewport.
+- Rendered article HTML, blog listing cards, angle tabs, destination tabs, related posts, previous/next cards, metadata images, and JSON-LD image fields must use `toBlogImageDisplaySrc()` for proxyable blog images.
+- The only approved runtime delivery path for Pexels blog images is `/api/blog/image?src=...`.
+- `/api/blog/image` must allowlist hosts. Do not turn it into an open proxy.
+- Visual QA must check browser-loaded `naturalWidth/naturalHeight` and visible box height. HTTP `200`, `<img>` count, or non-empty `src` is not sufficient.
+
+### Verification
+
+- Unit: `npx vitest run src/lib/blog-image-proxy.test.ts src/lib/blog-renderer.test.ts`
+- Local endpoint: open `/api/blog/image?src=<encoded pexels url>` and confirm the browser image has non-zero natural dimensions.
+- Production: `npm run audit:blog-visual -- --base=https://www.yeosonam.com --full --strict --json` must report `visible_broken_or_tiny_images=0`.
