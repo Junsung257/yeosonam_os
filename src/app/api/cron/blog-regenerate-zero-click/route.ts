@@ -23,7 +23,7 @@ import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { runQualityGates } from '@/lib/blog-quality-gate';
+import { evaluateBlogPublishQuality } from '@/lib/blog-publish-quality';
 import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
 
@@ -148,7 +148,7 @@ async function runRegenerator(request: NextRequest) {
     // 3) content_creatives 매칭 — info 글(product_id NULL)만
     const { data: posts, error: postErr } = await supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, blog_html, destination, angle_type, product_id, travel_packages(destination)')
+      .select('id, slug, seo_title, seo_description, blog_html, destination, angle_type, product_id, travel_packages(destination)')
       .in('slug', candidateSlugs)
       .eq('channel', 'naver_blog')
       .eq('status', 'published')
@@ -218,12 +218,14 @@ async function runRegenerator(request: NextRequest) {
           ? post.travel_packages[0]?.destination
           : post.travel_packages?.destination) ?? post.destination ?? null;
 
-        const qa = await runQualityGates({
+        const qa = await evaluateBlogPublishQuality({
+          id: post.id,
           blog_html: newHtml,
           slug,
+          seo_title: post.seo_title ?? null,
+          seo_description: post.seo_description ?? null,
           destination: dest,
           angle_type: post.angle_type ?? null,
-          blog_type: 'info',
           primary_keyword: dest,
           excludeContentCreativeId: post.id,
         });
@@ -246,7 +248,10 @@ async function runRegenerator(request: NextRequest) {
           .update({
             blog_html: newHtml,
             updated_at: new Date().toISOString(),
-            quality_gate: qa,
+            quality_gate: qa.qualityGate,
+            seo_score: qa.seoScore,
+            readability_score: qa.readability.score,
+            readability_issues: qa.readability.issues,
           })
           .eq('id', post.id);
 

@@ -13,7 +13,8 @@
 
 > **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
 
-1. **ERR-BLOG-visual-blindspot@2026-06-08** — 블로그 DOM/URL 감사 100점이어도 실제 viewport에서 삭제선, 모바일 table overflow, 카드 generic image가 남을 수 있음. → `audit:blog-visual --full --strict`를 배포 전후 필수 실행하고, 본문 `<del>/<s>/<strike>`와 `~~...~~`는 일반 텍스트화, table은 모바일 overflow 방어, 카드 `/og-image.png`는 본문 첫 실제 이미지로 승격.
+1. **ERR-BLOG-publish-quality-bypass@2026-06-09** — 메인 자동 발행기는 통과해도 다른 관리자/배포 경로가 `content_creatives.status`를 `published`로 바꾸면 깨진 글이 공개될 수 있음. → 모든 publish/manual publish/공개 본문 교체 경로는 `evaluateBlogPublishQuality()`를 먼저 호출하고 `quality_gate`, `seo_score`, `readability_score`, `readability_issues`를 함께 저장해야 한다. 실패 시 status 변경, 색인 요청, 공개 revalidate를 금지.
+2. **ERR-BLOG-visual-blindspot@2026-06-08** — 블로그 DOM/URL 감사 100점이어도 실제 viewport에서 삭제선, 모바일 table overflow, 카드 generic image가 남을 수 있음. → `audit:blog-visual --full --strict`를 배포 전후 필수 실행하고, 본문 `<del>/<s>/<strike>`와 `~~...~~`는 일반 텍스트화, table은 모바일 overflow 방어, 카드 `/og-image.png`는 본문 첫 실제 이미지로 승격.
 2. **ERR-BLOG-gsc-property-split-audit@2026-06-08** — GSC Domain property와 www/non-www URL-prefix property 공존은 정상이나 자동화는 canonical origin을 `https://www.yeosonam.com` 하나로 고정해야 함. → `audit:blog-gsc-domain --strict` 통과 후 색인 요청.
 3. **ERR-FUK-spot-weekday-title-itinerary@2026-06-07** — Fukuoka spot-weekday price tables and cash-receipt notices must never leak into DAY schedule/title. `spot price`, `6/8~7/16`, weekday clusters, `1,999,-`, hotel date-surcharge notices, and standalone Yufuin/Tosu region tokens belong to price/region/evidence only; final proof is clean `/packages`, LP, and A4 render text.
 4. **ERR-XIY-pkg-boundary-price-a4@2026-06-07** — 명시 `PKG` 4개 원문은 variant 라벨보다 `PKG` 경계를 우선해야 하며, `출 발 일`/`판 매 가`처럼 띄어진 제목도 deterministic 가격·날짜로 복구해야 함. A4는 `price_dates` 실제 날짜와 제목의 `N박M일`을 우선하고, 포함/불포함/선택관광 section 오염을 차단.
@@ -22,8 +23,6 @@
 7. **ERR-shared-price-column-mix@2026-06-06** — 다중 상품 공통 가격표에서 정규화/LLM `price_tiers`가 두 컬럼을 모두 담으면 모바일/A4에 상품별 가격이 섞일 수 있음. → 원문 deterministic 가격표가 인식되면 상품 제목/숙소 기준 컬럼 선택이 `price_tiers`보다 우선.
 8. **ERR-catalog-table-itinerary-pollution@2026-06-06** — 붙여넣기 표형 일정에서 지역/교통편/시간/식사/HOTEL/URL 열 값이 고객 `/packages/{id}` 일정·안내문에 섞이면 안 됨. → 표형 일정 deterministic parser가 호텔/식사/항공 segment를 분리하고, LLM 일정이 오염됐으면 원문 일정이 우선. 고객 검수 기준은 `/lp`가 아니라 `/packages/{id}`.
 9. **ERR-product-prices-customer-options@2026-06-05** — 업로드는 성공했지만 고객 모바일/A4 옵션 가격이 깨질 수 있는 상태. 원인: 과거 문서와 검증이 `price_dates` 중심이라 `product_prices` 저장 실패, 동일 날짜 호텔 옵션 보존, `adult_selling_price` 누락을 blocker로 보지 못함. → 현재 SSOT는 `docs/product-registration-current-ssot.md`; 성공 기준은 `product_prices + price_dates + adult_selling_price`; 저장 실패는 rollback/blocker; golden corpus와 live readiness audit 필수.
-10. **ERR-blog-encoded-slug@2026-05-16** — `/blog/[slug]` 정보성 블로그 25건 일괄 404 (5월 1~16일 발행 전부 사망). 원인: Next.js dynamic route가 한글 slug를 URL-encoded(`%EC%84%9D…`) 상태로 page handler에 전달했는데 `getPost(slug)`가 그대로 `.eq('slug', param)` → DB의 한글 원본과 매칭 0건 → `notFound()`. 다른 route(`destination/[dest]`)는 이미 `decodeURIComponent` 호출하고 있었으나 `[slug]` 만 누락. → `src/lib/decode-slug.ts` 의 `safeDecodeSlug()` 박제 + `page.tsx`/`opengraph-image.tsx` 둘 다 적용 + `getPost` error 분기에 `admin_alerts` 적재(silent fail 차단). 회귀 fixture: `tests/unit/lib/decode-slug.spec.ts` 5건.
-
 > **신규 ERR 추가 시**: 상세는 먼저 해당 `docs/errors/*.md`에 append하고, 이 체크리스트에서는 가장 오래된 항목(현재 #10)을 제거한 뒤 새 항목을 #1로 prepend한다.
 
 
