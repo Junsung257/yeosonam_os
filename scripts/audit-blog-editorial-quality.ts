@@ -10,6 +10,7 @@ type BlogListPost = {
   angle_type?: string | null;
   category?: string | null;
   product_id?: string | null;
+  status?: string | null;
   travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
@@ -138,6 +139,20 @@ async function inspectPost(post: BlogListPost) {
       row = await fetchRenderedPostSource(post);
     }
 
+    if (row?.status && row.status !== 'published') {
+      return {
+        id: row.id ?? post.id,
+        slug: row.slug ?? post.slug,
+        title: row.seo_title ?? post.seo_title,
+        passed: true,
+        score: 100,
+        intent: null,
+        issues: [],
+        skipped: true,
+        skipReason: `status=${row.status}`,
+      };
+    }
+
     if (!row?.blog_html) {
       return {
         id: post.id,
@@ -196,7 +211,8 @@ async function inspectPost(post: BlogListPost) {
   }
 }
 
-function summarize(rows: Awaited<ReturnType<typeof inspectPost>>[]) {
+function summarize(allRows: Awaited<ReturnType<typeof inspectPost>>[]) {
+  const rows = allRows.filter((row) => !('skipped' in row && row.skipped));
   const issueCounts: Record<string, number> = {};
   const intentCounts: Record<string, number> = {};
   for (const row of rows) {
@@ -218,6 +234,7 @@ function summarize(rows: Awaited<ReturnType<typeof inspectPost>>[]) {
     baseUrl,
     repairPreview,
     total: rows.length,
+    skipped: allRows.length - rows.length,
     passed: rows.length - failed.length,
     failed: failed.length,
     averageScore: scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0,

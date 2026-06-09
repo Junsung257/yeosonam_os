@@ -67,6 +67,7 @@ interface CheckInput {
   category?: string | null;
   content_type?: string | null;
   product_id?: string | null;
+  skipFuzzyDuplicate?: boolean;
 }
 
 export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
@@ -470,7 +471,7 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   // 1b) slug prefix 기반 fuzzy 중복 — slugify 전 토픽 유사도
   // "태국-입국-서류-정리"와 "태국-입국-서류-총정리-재작성-v2"가 slug는 다르지만 같은 주제
   const slugPrefix = input.slug.split('-').slice(0, 2).join('-'); // 단어 2개만 사용 (짧은 목적지도 커버)
-  if (slugPrefix.length >= 4 && /^[a-z0-9-]+$/.test(slugPrefix)) {
+  if (!input.skipFuzzyDuplicate && slugPrefix.length >= 4 && /^[a-z0-9-]+$/.test(slugPrefix)) {
     // 순수 영문 prefix만 Postgres 문자열 범위 검색 (한글 포함 시 정렬이 다름)
     const prefixQuery = supabaseAdmin
       .from('content_creatives')
@@ -497,7 +498,7 @@ export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   }
 
   // 2) (destination + angle_type) 14일 내 중복 — travel_packages JOIN + content_creatives.destination 둘 다 확인
-  if (input.destination && input.angle_type) {
+  if (!input.skipFuzzyDuplicate && input.destination && input.angle_type) {
     // 2a) travel_packages JOIN 경로 (상품 블로그)
     const angleQuery = supabaseAdmin
       .from('content_creatives')

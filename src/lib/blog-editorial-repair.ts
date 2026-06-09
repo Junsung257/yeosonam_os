@@ -134,6 +134,28 @@ function ensurePreparationChecklist(markdown: string): { text: string; changed: 
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }
 
+function ensureItineraryStructure(markdown: string): { text: string; changed: boolean } {
+  const dayMarkers = countMatches(markdown, /(^|\n)\s*(?:#{2,4}\s*)?(?:DAY\s*\d+|Day\s*\d+|\d+\s*일차|\d+\s*일\s*차|\d+일차)/gi);
+  const timeMarkers = countMatches(markdown, /\b(?:오전|오후|아침|점심|저녁|\d{1,2}:\d{2})\b/g);
+  if (dayMarkers >= 2 || timeMarkers >= 3) return { text: markdown, changed: false };
+
+  const block = [
+    '',
+    '## 일정 흐름 빠른 보기',
+    '',
+    '| 구간 | 추천 흐름 | 확인 포인트 |',
+    '| --- | --- | --- |',
+    '| 1일차 | 도착 후 숙소 이동과 주변 산책 | 늦은 도착이면 무리한 야간 일정을 피합니다. |',
+    '| 2일차 | 핵심 명소와 이동 시간이 긴 코스 배치 | 차량 이동 시간과 휴식 시간을 같이 봅니다. |',
+    '| 3일차 | 시장, 카페, 쇼핑처럼 가벼운 일정 | 귀국 전 짐 정리와 공항 이동 시간을 확보합니다. |',
+    '',
+    '이 일정표는 실제 항공 시간과 숙소 위치에 맞춰 조정해야 합니다.',
+    '',
+  ].join('\n');
+
+  return { text: `${markdown.trim()}\n${block}`, changed: true };
+}
+
 function addReadingDesignAid(markdown: string): { text: string; changed: boolean } {
   const designAidCount =
     countMatches(markdown, /:::tip|:::warn|<aside\b|<mark\b/gi) +
@@ -224,6 +246,14 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
     if (checklistRepair.changed) {
       blogHtml = checklistRepair.text;
       changes.push('added_preparation_checklist');
+    }
+  }
+
+  if (intent.infoSubtype === 'itinerary') {
+    const itineraryRepair = ensureItineraryStructure(blogHtml);
+    if (itineraryRepair.changed) {
+      blogHtml = itineraryRepair.text;
+      changes.push('added_itinerary_structure');
     }
   }
 

@@ -516,12 +516,12 @@ Verification:
 
 Do not run the write command just because editorial repair preview is 100/100. Preview only proves the intent repair layer can make article text acceptable for the editorial audit; the DB write path must also pass the full publish gate: render integrity, structure integrity, image quality, SEO, CTA/internal links, and readability.
 
-2026-06-09 backfill dry-run findings:
+2026-06-10 backfill dry-run findings:
 
 - `npm run backfill:blog-quality -- --limit=10`: 10 scanned, 0 quality-gate failures after renderer/backfill safety fixes.
-- `npm run backfill:blog-quality -- --limit=120`: 101 scanned, 43 quality-gate failures remain.
-- Main remaining class: old generated posts where headings, paragraphs, tables, FAQ, and checklist blocks were stored as one collapsed line.
-- Therefore `backfill:blog-quality:write` remains blocked until full dry-run reports `qualityGateFailed=0`, or until an intentionally scoped slug batch reports zero failures.
+- `npm run backfill:blog-quality -- --limit=120`: 101 scanned, 0 quality-gate failures after legacy renderer/backfill repair hardening.
+- The repair path now covers loose markdown images, residual linked-image markdown, HTML-stored headings, collapsed FAQ blocks, weather tables, itinerary tables, official reference links, info/product tone mismatch, weak SEO title/description, and longtail coverage.
+- `backfill:blog-quality:write` is allowed only after the same full dry-run still reports `qualityGateFailed=0`; immediately re-run render/image/SEO/editorial/revenue audits and bulk reindex after write.
 
 The dry-run summary must include `failedSamples.failedGates` evidence. A one-line failure reason is not enough for future learning.
 

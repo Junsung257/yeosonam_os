@@ -1,14 +1,14 @@
 # Blog Errors
 
-Last updated: 2026-06-09
+Last updated: 2026-06-10
 
 ## ERR-BLOG-legacy-backfill-preview-vs-write@2026-06-09
 
-- [ ] **ERR-BLOG-legacy-backfill-preview-vs-write@2026-06-09**: Editorial repair preview can pass the whole corpus while the DB write path still fails full publish quality. On 2026-06-09, `npm run backfill:blog-quality -- --limit=10` passed 10/10 after renderer/backfill fixes, but `npm run backfill:blog-quality -- --limit=120` scanned 101 posts and still found 43 failures.
+- [x] **ERR-BLOG-legacy-backfill-preview-vs-write@2026-06-09**: Editorial repair preview can pass the whole corpus while the DB write path still fails full publish quality. On 2026-06-10, `npm run backfill:blog-quality -- --limit=120` scanned 101 published posts and reported `qualityGateFailed=0`.
 - **Root cause**: Older generated posts stored headings, prose, tables, FAQ, hashtags, and checklist blocks as collapsed one-line Markdown. Editorial intent repair catches the article contract, but write safety must also pass render, structure, image, SEO, CTA/internal links, and readability gates.
-- **Fix in progress**: Backfill is now dry-run by default, write mode is explicit, failed samples include `failedGates` evidence, renderer no longer treats hashtags as literal headings, raw `:::tip` insertion was replaced by safe HTML, and legacy table/heading/checklist repair handles the recent 10-post sample with 0 failures.
-- **Prevention**: Never run `backfill:blog-quality:write` from preview results alone. Full write requires `qualityGateFailed=0` for the full batch, or a deliberately scoped slug batch with 0 failures and reviewable evidence.
-- **Verification**: `npx vitest run src/lib/blog-renderer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-content-intent.test.ts`; `npm run backfill:blog-quality -- --limit=10`; `npm run backfill:blog-quality -- --limit=120`.
+- **Fix**: Backfill is now dry-run by default, write mode is explicit, failed samples include `failedGates` evidence, renderer no longer treats hashtags as literal headings, raw `:::tip` insertion was replaced by safe HTML, legacy table/heading/checklist/FAQ repair handles the full published corpus, loose image Markdown is normalized, residual linked-image Markdown is rendered, official reference links are topped up, and SEO title/description/longtail coverage are repaired by topic type.
+- **Prevention**: Never run `backfill:blog-quality:write` from preview results alone. Full write requires `qualityGateFailed=0` for the full batch, or a deliberately scoped slug batch with 0 failures and reviewable evidence. After write, re-run render/image/SEO/editorial/revenue audits and bulk reindex.
+- **Verification**: `npx vitest run src/lib/blog-renderer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-content-intent.test.ts src/lib/blog-publish-quality.test.ts`; `npm run backfill:blog-quality -- --limit=120`; `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --repair-preview`; `npm run audit:blog-revenue-funnel -- --strict`.
 
 ---
 

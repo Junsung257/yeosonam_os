@@ -56,7 +56,7 @@ const LONG_HEADING_SPLIT_KEYWORDS = [
 function normalizeLongHeadingLine(line: string): string {
   if (!/^#{1,6}\s+\S/.test(line)) return line;
 
-  const faqQuestionSplit = line.match(/^(#{1,6}\s+자주\s*묻는\s*질문)\s+(Q\d+[.)]\s+.+)$/i);
+  const faqQuestionSplit = line.match(/^(#{1,6}\s+자주\s*묻는\s*질문)\s+(Q\d+[.)]?\s+.+)$/i);
   if (faqQuestionSplit) {
     return `${faqQuestionSplit[1].trim()}\n\n### ${faqQuestionSplit[2].trim()}`;
   }
@@ -242,6 +242,7 @@ export function normalizeStoredBlogMarkdownStructure(source: string): string {
   out = out.replace(/(<\/figcaption>)\n(?=\S)/gi, '$1\n\n');
   out = out.replace(/(<\/aside>)\n(?=\S)/gi, '$1\n\n');
   out = out.replace(/(\[[^\]]+]\((?:https?:\/\/|\/)[^)]+\))(?=[가-힣A-Za-z])/g, '$1 ');
+  out = out.replace(/!\[([^\]]*)]\(\s+([^)]+?)\s+\)/g, '![$1]($2)');
 
   // Recover collapsed GFM tables where a heading and the first table row share a line,
   // or multiple table rows were squeezed together as "||".
@@ -296,16 +297,57 @@ function renderResidualMarkdownLinks(html: string): string {
   });
 }
 
+function renderResidualMarkdownImages(html: string): string {
+  return html
+    .replace(
+      /!\[([^\]]*)]\(\s*<a\b[^>]*href=["']([^"']+)["'][^>]*>[\s\S]*?<\/a>\s*\)/gi,
+      (_match, alt: string, src: string) => {
+        const safeAlt = alt.replace(/"/g, '&quot;').trim();
+        const safeSrc = src.replace(/"/g, '&quot;').trim();
+        return `<img src="${safeSrc}" alt="${safeAlt}" loading="lazy">`;
+      },
+    )
+    .replace(/!\[([^\]]*)]\(\s*(https?:\/\/[^)\s]+[^)]*?)\s*\)/g, (_match, alt: string, src: string) => {
+      const safeAlt = alt.replace(/"/g, '&quot;').trim();
+      const safeSrc = src.replace(/"/g, '&quot;').trim();
+      return `<img src="${safeSrc}" alt="${safeAlt}" loading="lazy">`;
+    });
+}
+
 function normalizeRenderedHeadingArtifacts(html: string): string {
   const seenCore = new Set<string>();
   return html
     .replace(
-      /<h2([^>]*)>\s*(자주\s*묻는\s*질문)\s+(Q\d+[.)]\s+[^<]+?)\s*<\/h2>/gi,
-      '<h2$1>$2</h2>\n<h3>$3</h3>',
+      /<h([23])([^>]*)>\s*([^<]*?)\s*<strong>\s*(Q\d+[.:)]?\s*[^<]+?)<\/strong>\s*<\/h\1>/gi,
+      (_full, level, attrs, prefix, question) => {
+        const heading = String(prefix || '').trim() || 'FAQ';
+        return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${String(question).trim()}</h3>`;
+      },
+    )
+    .replace(/<h([23])([^>]*)>\s*([^<]{0,60}?)(Q\d+[.)]?\s+[^<]{20,}?)\s*<\/h\1>/gi, (_full, level, attrs, prefix, qaText) => {
+      const heading = String(prefix || '').trim() || 'FAQ';
+      const qa = String(qaText || '').trim();
+      const answerSplit = qa.match(/^(Q\d+[.)]?\s+.*?)(\s+A\d?[:.]?\s+.*)$/i);
+      if (answerSplit) {
+        return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${answerSplit[1].trim()}</h3>\n<p>${answerSplit[2].trim()}</p>`;
+      }
+      return `<h${level}${attrs}>${heading}</h${level}>\n<h3>${qa}</h3>`;
+    })
+    .replace(
+      /<h([23])([^>]*)>\s*(자주\s*묻는\s*질문)\s+(Q\d+[.)]?\s+[^<]+?)\s*<\/h\1>/gi,
+      '<h2$2>$3</h2>\n<h3>$4</h3>',
     )
     .replace(
       /<h2([^>]*)>\s*([^<]{4,60}?)\s+(\d+\.\s+[^<]+?)\s*<\/h2>/gi,
       '<h2$1>$2</h2>\n<p>$3</p>',
+    )
+    .replace(
+      /<h([2-4])([^>]*)>\s*(\d+\.\s+[^<.]{8,100}\.)\s+[-*]\s+([^<]{40,}?)\s*<\/h\1>/gi,
+      '<h$1$2>$3</h$1>\n<p>$4</p>',
+    )
+    .replace(
+      /<h([2-4])([^>]*)>\s*([^<]{10,100}?)\s+[-*]\s+([^<]{40,}?)\s*<\/h\1>/gi,
+      '<h$1$2>$3</h$1>\n<p>$4</p>',
     )
     .replace(
       /<h([23])([^>]*)>\s*([^<]*(?:체크리스트|요약표)[^<]*(?:서류|필수|비고|상의|추천|주의사항|아이템)[^<]*)\s*<\/h\1>/gi,
@@ -326,7 +368,10 @@ export async function renderBlogContentToHtml(
   if (!source.trim()) return '';
 
   if (!shouldParseAsMarkdown(source)) {
-    return proxyBlogImageUrlsInHtml(applyHtmlAccents(source));
+    const normalizedHtml = normalizeRenderedHeadingArtifacts(
+      renderResidualMarkdownLinks(renderResidualMarkdownImages(source)),
+    );
+    return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
   }
 
   const normalizedSource = normalizeStoredBlogMarkdownStructure(source);
@@ -337,7 +382,9 @@ export async function renderBlogContentToHtml(
   const mdAccented = applyMarkdownAccents(markdownSource);
   const { marked } = await import('marked');
   const rawHtml = await marked.parse(mdAccented, { gfm: true });
-  const normalizedHtml = normalizeRenderedHeadingArtifacts(renderResidualMarkdownLinks(String(rawHtml)));
+  const normalizedHtml = normalizeRenderedHeadingArtifacts(
+    renderResidualMarkdownLinks(renderResidualMarkdownImages(String(rawHtml))),
+  );
   return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
 }
 

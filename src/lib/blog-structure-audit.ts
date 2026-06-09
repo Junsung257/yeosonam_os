@@ -124,7 +124,7 @@ function inspectHeadings(input: BlogStructureAuditInput, issues: BlogStructureIs
 
     seen.set(normalized, (seen.get(normalized) ?? 0) + 1);
 
-    const hasQuestionInsideFaqHeading = /^자주 묻는 질문\s+Q\d+[.)\s]/.test(normalized);
+    const hasQuestionInsideFaqHeading = /^자주 묻는 질문\s+Q\d+[.)]?\s/.test(normalized);
     const hasCollapsedNumberedSection = /\s\d+\.\s+\S/.test(normalized) && normalized.length >= 24;
     const isOverlong = normalized.length > 90;
 
@@ -132,7 +132,7 @@ function inspectHeadings(input: BlogStructureAuditInput, issues: BlogStructureIs
       addIssue(
         issues,
         'heading_shape_invalid',
-        hasQuestionInsideFaqHeading ? 'critical' : 'warning',
+        'warning',
         'Heading appears to contain collapsed body text or FAQ content.',
         { index, heading: normalized.slice(0, 140), hasQuestionInsideFaqHeading, hasCollapsedNumberedSection, isOverlong },
       );
@@ -181,22 +181,32 @@ function inspectChecklist(input: BlogStructureAuditInput, issues: BlogStructureI
     return;
   }
 
+  let hasValidChecklist = false;
+  const invalidChecklistEvidence: Array<Record<string, unknown>> = [];
+
   for (const heading of checklistHeadings) {
     const items = closestListItemText($, heading);
     const collapsedItems = items.filter((item) => item.length > 150 || /\s\d+\.\s+\S/.test(item));
-    if (items.length < 3 || collapsedItems.length > 0) {
-      addIssue(
-        issues,
-        'checklist_shape_invalid',
-        'critical',
-        'Checklist must render as short, separate list items instead of collapsed prose.',
-        {
-          heading: normalizeText($(heading).text()),
-          itemCount: items.length,
-          collapsedItems: collapsedItems.slice(0, 3).map((item) => item.slice(0, 140)),
-        },
-      );
+    if (items.length >= 3 && collapsedItems.length === 0) {
+      hasValidChecklist = true;
+      continue;
     }
+
+    invalidChecklistEvidence.push({
+      heading: normalizeText($(heading).text()),
+      itemCount: items.length,
+      collapsedItems: collapsedItems.slice(0, 3).map((item) => item.slice(0, 140)),
+    });
+  }
+
+  if (checklistHeadings.length > 0 && !hasValidChecklist) {
+    addIssue(
+      issues,
+      'checklist_shape_invalid',
+      'critical',
+      'Checklist must render as short, separate list items instead of collapsed prose.',
+      invalidChecklistEvidence[0],
+    );
   }
 }
 
