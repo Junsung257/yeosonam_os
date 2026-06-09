@@ -16,6 +16,8 @@ export interface BlogPublishQualityInput {
   seo_description?: string | null;
   destination?: string | null;
   angle_type?: string | null;
+  category?: string | null;
+  content_type?: string | null;
   product_id?: string | null;
   primary_keyword?: string | null;
   secondary_keywords?: string[] | null;
@@ -102,6 +104,9 @@ export async function evaluateBlogPublishQuality(
     angle_type: input.angle_type ?? null,
     blog_type: blogType,
     primary_keyword: primaryKeyword,
+    category: input.category ?? null,
+    content_type: input.content_type ?? null,
+    product_id: input.product_id ?? null,
     excludeContentCreativeId: input.excludeContentCreativeId ?? input.id ?? null,
   });
   const seoScore = computeSeoScore({

@@ -449,3 +449,38 @@ External image URL reachability is not enough. A URL can return `200` in a serve
 - Unit: `npx vitest run src/lib/blog-image-proxy.test.ts src/lib/blog-renderer.test.ts`
 - Local endpoint: open `/api/blog/image?src=<encoded pexels url>` and confirm the browser image has non-zero natural dimensions.
 - Production: `npm run audit:blog-visual -- --base=https://www.yeosonam.com --full --strict --json` must report `visible_broken_or_tiny_images=0`.
+
+---
+
+## Blog Editorial Intent Gate (2026-06-09)
+
+Render, image, and metadata audits are not enough. A post can score 100 on those checks and still be bad if the writing intent is wrong, the article is wall-of-text, a weather guide contains sales copy, or a preparation guide has no checklist.
+
+### Required Gate
+
+- Every public publish path must pass `runQualityGates()` with `intent_quality.passed=true`.
+- The gate is implemented in `src/lib/blog-content-intent.ts` and connected through `src/lib/blog-quality-gate.ts`.
+- Production-wide audit command: `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --strict`.
+
+### Intent Contracts
+
+- Weather info: monthly/season table, clothing checklist, rainy/season risk, best timing, FAQ.
+- Preparation info: at least five checklist items, documents/money/connectivity/medicine grouping, warning/tip block.
+- Itinerary info: day-by-day or time-by-time route, movement time, rest point, budget note.
+- Visa/currency/transport info: at least one authoritative external source link because the facts change.
+- Product/package content: itinerary/value proof, included/excluded, price/departure facts, reader-fit explanation, CTA.
+
+### Reading Design Contract
+
+- No paragraph wall: long paragraphs are a failure, not a style preference.
+- At least four H2 sections.
+- Real list or table structure for scanning.
+- Use `==highlight==`, numeric facts, and tip/warn boxes where useful.
+- Informational posts must not contain product-sales headings such as "이 상품을 고른 이유", "특가", "출발가", or "예약 마감" unless the post is explicitly hybrid/product.
+
+### Learning Loop
+
+- When `audit:blog-editorial` finds a repeated issue, add or update a regression test in `src/lib/blog-content-intent.test.ts`.
+- Add the incident to `docs/errors/blog.md` and, if current, `db/error-registry.md`.
+- Prompt changes are not enough. Each promoted lesson needs one of: deterministic classifier rule, publish gate, audit script check, or fixture test.
+- This follows Google Search Central guidance: helpful, reliable, people-first content is required regardless of whether AI assisted the writing; scaled low-value automation must be blocked.

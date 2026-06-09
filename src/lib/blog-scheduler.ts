@@ -21,9 +21,11 @@ import { analyzeCoverageGaps } from './blog-coverage-analyzer';
 import { researchKeywordsBatch, classifyKeywordTier, type KeywordTier } from './keyword-research';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
-export const DAILY_PUBLISH_SLOTS = ['08:00', '10:00', '12:00', '14:00', '16:00', '18:00', '20:00', '22:00'];
+export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
 
-export const DEFAULT_POSTS_PER_DAY = 8;
+export const MIN_POSTS_PER_DAY = 3;
+export const MAX_POSTS_PER_DAY = 4;
+export const DEFAULT_POSTS_PER_DAY = 4;
 export const PRODUCT_RATIO = 0.4; // 40% — multi-angle drip 도입으로 상품 비중 상향
 
 export interface PublishingPolicy {
@@ -40,6 +42,16 @@ export interface PublishingPolicy {
   daily_summary_webhook?: string | null;
 }
 
+export function normalizeDailyPostTarget(value: unknown): number {
+  const parsed = typeof value === 'number'
+    ? value
+    : typeof value === 'string'
+      ? Number.parseInt(value, 10)
+      : DEFAULT_POSTS_PER_DAY;
+  if (!Number.isFinite(parsed)) return DEFAULT_POSTS_PER_DAY;
+  return Math.min(MAX_POSTS_PER_DAY, Math.max(MIN_POSTS_PER_DAY, parsed));
+}
+
 export async function getBlogPublishingPolicy(scope: string = 'global'): Promise<PublishingPolicy> {
   try {
     const { data } = await supabaseAdmin
@@ -48,7 +60,14 @@ export async function getBlogPublishingPolicy(scope: string = 'global'): Promise
       .eq('scope', scope)
       .eq('enabled', true)
       .limit(1);
-    if (data?.[0]) return data[0] as PublishingPolicy;
+    if (data?.[0]) {
+      const policy = data[0] as PublishingPolicy;
+      return {
+        ...policy,
+        posts_per_day: normalizeDailyPostTarget(policy.posts_per_day),
+        slot_times: (policy.slot_times?.length ? policy.slot_times : DAILY_PUBLISH_SLOTS).slice(0, MAX_POSTS_PER_DAY),
+      };
+    }
   } catch { /* fallback */ }
   return {
     scope: 'global',
@@ -79,7 +98,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
   total_added: number;
 }> {
   const policy = await getBlogPublishingPolicy('global');
-  const postsPerDay = opts?.postsPerDay ?? policy.posts_per_day;
+  const postsPerDay = normalizeDailyPostTarget(opts?.postsPerDay ?? policy.posts_per_day);
   const weeklyTarget = postsPerDay * 7;
   const productTarget = Math.floor(weeklyTarget * policy.product_ratio);
   const infoTarget = weeklyTarget - productTarget;
@@ -306,8 +325,8 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
  */
 export async function assignPublishSlots(postsPerDay?: number): Promise<{ assigned: number }> {
   const policy = await getBlogPublishingPolicy('global');
-  const ppd = postsPerDay ?? policy.posts_per_day;
-  const slots = policy.slot_times.length > 0 ? policy.slot_times : DAILY_PUBLISH_SLOTS;
+  const ppd = normalizeDailyPostTarget(postsPerDay ?? policy.posts_per_day);
+  const slots = (policy.slot_times.length > 0 ? policy.slot_times : DAILY_PUBLISH_SLOTS).slice(0, MAX_POSTS_PER_DAY);
   const destCap = policy.per_destination_daily_cap;
 
   const { data: queued } = await supabaseAdmin

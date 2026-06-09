@@ -9,6 +9,7 @@ import { SerpAnalysis, buildSerpPromptBlock } from '@/lib/serp-analyzer';
 import { analyzeSerpGap, type SerpGapResult } from '@/lib/serp-gap-analyzer';
 import { generateSectionImage } from '@/lib/blog-image-gen';
 import { selectTemplate, applyTemplateToBrief } from '@/lib/content-pipeline/templates';
+import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 
 /**
  * Call 3: 여소남 블로그 에디터 (큐레이터 페르소나)
@@ -61,6 +62,13 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
   let brief = briefInput;
   let slideImageMapLocal = input.slideImageMap ?? {};
   let pexelsImageMapLocal = input.pexelsImageMap ?? {};
+  let intentProfile = classifyBlogIntent({
+    title: brief.h1,
+    primaryKeyword: brief.h1,
+    productId: productContext?.product_id ?? null,
+    contentType: productContext ? 'package_intro' : 'guide',
+    category: productContext ? 'product_intro' : null,
+  });
 
   if (!hasBlogApiKey()) {
     return buildFallbackBlog(input);
@@ -73,6 +81,13 @@ export async function generateBlogBody(input: BlogBodyInput): Promise<string> {
     if (template.id !== 'pillar') {
       const originalSections = brief.sections;
       brief = applyTemplateToBrief(brief, template, keyword);
+      intentProfile = classifyBlogIntent({
+        title: brief.h1,
+        primaryKeyword: keyword,
+        productId: productContext?.product_id ?? null,
+        contentType: productContext ? 'package_intro' : 'guide',
+        category: productContext ? 'product_intro' : template.id,
+      });
       console.log(`[blog-body] 템플릿 "${template.name}"(${template.id}) 적용 — "${keyword}"`);
       // 이미지 맵이 sections 위치 기준으로 구성되어 있으므로, 템플릿 적용 후 재조정
       slideImageMapLocal = {};
@@ -208,6 +223,8 @@ ${reviewQuotesMarkdown.trim()}
 ` : ''}
 
 ${serpPromptBlock}
+${buildBlogIntentPromptContract(intentProfile)}
+
 ${serpGapResult && serpGapResult.missingTopics.length > 0 ? `## 경쟁사 대비 부족한 주제 (반드시 포함)
 
 아래는 경쟁사 상위 글들이 공통으로 다루지만 **이번 글에는 없는 주제**들입니다.

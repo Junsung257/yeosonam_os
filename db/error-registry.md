@@ -13,7 +13,8 @@
 
 > **에이전트 지침**: `/register` 또는 등록 검증 작업 시 아래 10건만 빠르게 훑고 본문 상세는 필요할 때만 점프. 이 섹션이 갱신되면 가장 오래된 항목은 본문(아래)에 남아있되 체크리스트에서는 빠진다.
 
-1. **ERR-BLOG-publish-quality-bypass@2026-06-09** — 메인 자동 발행기는 통과해도 다른 관리자/배포 경로가 `content_creatives.status`를 `published`로 바꾸면 깨진 글이 공개될 수 있음. → 모든 publish/manual publish/공개 본문 교체 경로는 `evaluateBlogPublishQuality()`를 먼저 호출하고 `quality_gate`, `seo_score`, `readability_score`, `readability_issues`를 함께 저장해야 한다. 실패 시 status 변경, 색인 요청, 공개 revalidate를 금지.
+1. **ERR-BLOG-editorial-intent-blindspot@2026-06-09** — Render/image/SEO audits can be 100 while article quality is still broken: wrong intent, sales tone in info posts, missing checklist/table, wall-of-text, or no required weather/preparation/itinerary block. → All publish paths must pass `intent_quality`; repeated failures must become a deterministic rule, fixture test, or audit gate. Run `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --strict`.
+2. **ERR-BLOG-publish-quality-bypass@2026-06-09** — 메인 자동 발행기는 통과해도 다른 관리자/배포 경로가 `content_creatives.status`를 `published`로 바꾸면 깨진 글이 공개될 수 있음. → 모든 publish/manual publish/공개 본문 교체 경로는 `evaluateBlogPublishQuality()`를 먼저 호출하고 `quality_gate`, `seo_score`, `readability_score`, `readability_issues`를 함께 저장해야 한다. 실패 시 status 변경, 색인 요청, 공개 revalidate를 금지.
 2. **ERR-BLOG-visual-blindspot@2026-06-08** — 블로그 DOM/URL 감사 100점이어도 실제 viewport에서 삭제선, 모바일 table overflow, 카드 generic image가 남을 수 있음. → `audit:blog-visual --full --strict`를 배포 전후 필수 실행하고, 본문 `<del>/<s>/<strike>`와 `~~...~~`는 일반 텍스트화, table은 모바일 overflow 방어, 카드 `/og-image.png`는 본문 첫 실제 이미지로 승격.
 2. **ERR-BLOG-gsc-property-split-audit@2026-06-08** — GSC Domain property와 www/non-www URL-prefix property 공존은 정상이나 자동화는 canonical origin을 `https://www.yeosonam.com` 하나로 고정해야 함. → `audit:blog-gsc-domain --strict` 통과 후 색인 요청.
 3. **ERR-FUK-spot-weekday-title-itinerary@2026-06-07** — Fukuoka spot-weekday price tables and cash-receipt notices must never leak into DAY schedule/title. `spot price`, `6/8~7/16`, weekday clusters, `1,999,-`, hotel date-surcharge notices, and standalone Yufuin/Tosu region tokens belong to price/region/evidence only; final proof is clean `/packages`, LP, and A4 render text.
@@ -22,7 +23,6 @@
 6. **ERR-catalog-split-recovery@2026-06-06** — `PKG` 다중 상품 원문이 parser 일시 실패로 1개 처리될 때 수동 분리 안내로 새면 안 됨. → 저장 준비 단계에서 `multiProducts < 2`이면 원문 deterministic split recovery를 먼저 실행하고, 복구 불가능할 때만 `CATALOG_SPLIT_REQUIRED`.
 7. **ERR-shared-price-column-mix@2026-06-06** — 다중 상품 공통 가격표에서 정규화/LLM `price_tiers`가 두 컬럼을 모두 담으면 모바일/A4에 상품별 가격이 섞일 수 있음. → 원문 deterministic 가격표가 인식되면 상품 제목/숙소 기준 컬럼 선택이 `price_tiers`보다 우선.
 8. **ERR-catalog-table-itinerary-pollution@2026-06-06** — 붙여넣기 표형 일정에서 지역/교통편/시간/식사/HOTEL/URL 열 값이 고객 `/packages/{id}` 일정·안내문에 섞이면 안 됨. → 표형 일정 deterministic parser가 호텔/식사/항공 segment를 분리하고, LLM 일정이 오염됐으면 원문 일정이 우선. 고객 검수 기준은 `/lp`가 아니라 `/packages/{id}`.
-9. **ERR-product-prices-customer-options@2026-06-05** — 업로드는 성공했지만 고객 모바일/A4 옵션 가격이 깨질 수 있는 상태. 원인: 과거 문서와 검증이 `price_dates` 중심이라 `product_prices` 저장 실패, 동일 날짜 호텔 옵션 보존, `adult_selling_price` 누락을 blocker로 보지 못함. → 현재 SSOT는 `docs/product-registration-current-ssot.md`; 성공 기준은 `product_prices + price_dates + adult_selling_price`; 저장 실패는 rollback/blocker; golden corpus와 live readiness audit 필수.
 > **신규 ERR 추가 시**: 상세는 먼저 해당 `docs/errors/*.md`에 append하고, 이 체크리스트에서는 가장 오래된 항목(현재 #10)을 제거한 뒤 새 항목을 #1로 prepend한다.
 
 
@@ -30,6 +30,7 @@
 
 ## Recent Blog Error Addition
 
+- **ERR-BLOG-editorial-intent-blindspot@2026-06-09** - Existing render/image/SEO audits missed editorial quality. New `intent_quality` gate blocks wrong intent, info/product tone mismatch, missing weather/preparation/itinerary required blocks, weak tables/lists, and paragraph walls; `audit:blog-editorial` is the production-wide check.
 - **ERR-BLOG-mobile-heading-flex-overflow@2026-06-09** - `.prose-blog h2` must not use unwrapped flex layout for generated article headings. Long FAQ/body text and `.num` emphasis nodes can become flex items and push mobile page width even when images, tables, and Markdown artifacts are clean. Keep heading text in normal wrapping flow and require `audit:blog-visual --strict` before/after deploy.
 - **ERR-BLOG-external-image-client-block@2026-06-09** - Pexels image URLs returned HTTP 200 from server audits, but real browsers/ad blockers could block `images.pexels.com`, leaving article images with `naturalWidth=0` and collapsed height. Blog render and card surfaces must pass proxyable external images through `/api/blog/image`, and visual audits must judge browser-loaded `naturalWidth`, not URL reachability alone.
 

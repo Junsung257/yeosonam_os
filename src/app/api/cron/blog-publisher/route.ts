@@ -35,6 +35,8 @@ import { VALID_CATEGORIES } from '@/lib/blog-categories';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
+import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
+import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -63,9 +65,40 @@ export const runtime = 'nodejs';
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
-const MAX_BATCH = 10; // 10건×20초=200s → Vercel 300s, 매 30분 10건씩 소진
+const MAX_BATCH = 4; // daily quality quota: 3-4 posts/day, never bulk-publish beyond the target.
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
+
+function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
+  const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const y = kst.getUTCFullYear();
+  const m = kst.getUTCMonth();
+  const d = kst.getUTCDate();
+  const startUtc = new Date(Date.UTC(y, m, d, -9, 0, 0, 0));
+  const endUtc = new Date(Date.UTC(y, m, d + 1, -9, 0, 0, 0));
+  return {
+    startIso: startUtc.toISOString(),
+    endIso: endUtc.toISOString(),
+    dayKey: `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`,
+  };
+}
+
+async function getTodayBlogPublishCount(): Promise<{ count: number; dayKey: string }> {
+  const range = getKstDayRangeUtc();
+  const { count, error } = await supabaseAdmin
+    .from('content_creatives')
+    .select('id', { count: 'exact', head: true })
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .gte('published_at', range.startIso)
+    .lt('published_at', range.endIso);
+
+  if (error) {
+    logWarning('[cron/blog-publisher] daily publish quota count failed', error);
+    return { count: 0, dayKey: range.dayKey };
+  }
+  return { count: count ?? 0, dayKey: range.dayKey };
+}
 
 /** 크론 1회 실행당 스타일 가이드 1회만 로드 (N+1 방지) */
 let blogStyleGuideCache: { content: string; version: string } | null = null;
@@ -307,11 +340,42 @@ async function runBlogPublisher(request: NextRequest) {
 
   try {
     blogStyleGuideCache = null;
+    const targetPostsToday = normalizeDailyPostTarget(process.env.BLOG_DAILY_PUBLISH_TARGET);
+    const todayQuota = await getTodayBlogPublishCount();
+    const remainingToday = Math.max(0, targetPostsToday - todayQuota.count);
+    if (remainingToday <= 0) {
+      return {
+        processed: 0,
+        published: 0,
+        skipped: true,
+        reason: 'daily_publish_quota_reached',
+        dailyQuota: {
+          day: todayQuota.dayKey,
+          target: targetPostsToday,
+          alreadyPublished: todayQuota.count,
+          remaining: remainingToday,
+        },
+        errors,
+      };
+    }
+
     // 원자적 큐 클레임 — FOR UPDATE SKIP LOCKED 로 중복 발행 방지
-    const { data: queue } = await supabaseAdmin.rpc('claim_queue_items', { limit_rows: MAX_BATCH });
+    const { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
+      limit_rows: Math.min(MAX_BATCH, remainingToday),
+    });
 
     if (!queue || queue.length === 0) {
-      return { processed: 0, message: '발행할 토픽 없음', errors };
+      return {
+        processed: 0,
+        message: '발행할 토픽 없음',
+        dailyQuota: {
+          day: todayQuota.dayKey,
+          target: targetPostsToday,
+          alreadyPublished: todayQuota.count,
+          remaining: remainingToday,
+        },
+        errors,
+      };
     }
 
     const cardNewsIds = [...new Set(queue.map((q: { card_news_id?: string | null }) => q.card_news_id).filter(Boolean))] as string[];
@@ -420,6 +484,12 @@ async function runBlogPublisher(request: NextRequest) {
     return {
       processed: results.length,
       published: results.filter(r => r.status === 'published').length,
+      dailyQuota: {
+        day: todayQuota.dayKey,
+        target: targetPostsToday,
+        alreadyPublishedBeforeRun: todayQuota.count,
+        remainingBeforeRun: remainingToday,
+      },
       results,
       errors,
       ranAt: new Date().toISOString(),
@@ -629,6 +699,9 @@ async function processQueueItem(
       angle_type: item.angle_type,
       blog_type: blogType,
       primary_keyword: primaryKeyword,
+      category: item.category,
+      content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+      product_id: item.product_id ?? null,
     });
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
@@ -640,6 +713,9 @@ async function processQueueItem(
         angle_type: item.angle_type,
         blog_type: blogType,
         primary_keyword: primaryKeyword,
+        category: item.category,
+        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        product_id: item.product_id ?? null,
       });
     }
 
@@ -652,6 +728,9 @@ async function processQueueItem(
         angle_type: item.angle_type,
         blog_type: blogType,
         primary_keyword: primaryKeyword,
+        category: item.category,
+        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        product_id: item.product_id ?? null,
       });
     }
 
@@ -665,6 +744,9 @@ async function processQueueItem(
         angle_type: item.angle_type,
         blog_type: blogType,
         primary_keyword: primaryKeyword,
+        category: item.category,
+        content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        product_id: item.product_id ?? null,
       });
     }
 
@@ -1173,6 +1255,15 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   const primaryKw = item.primary_keyword || item.destination || item.topic.split(' ')[0];
   const volume = item.monthly_search_volume;
   const trendScore = item.trend_score;
+  const intentPromptBlock = buildBlogIntentPromptContract(classifyBlogIntent({
+    title: item.topic,
+    slug: queueSlug,
+    primaryKeyword: primaryKw,
+    angleType: item.angle_type,
+    category: item.category,
+    contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+    productId: item.product_id ?? null,
+  }));
 
   const tierGuidance: Record<string, string> = {
     head: `
@@ -1265,6 +1356,8 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 ${reviewPromptBlock}
 ${originalityPromptBlock}
 ${freshnessPromptBlock}
+${intentPromptBlock}
+
 ${tierGuidance[tier]}
 ${trendBlock}
 ${serpBlock}
