@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import BlogProductRecommendationTracker from './BlogProductRecommendationTracker';
 
 export interface RelatedProductLite {
   id: string;
@@ -9,6 +10,9 @@ export interface RelatedProductLite {
   nights: number | null;
   airline: string | null;
   departure_airport?: string | null;
+  recommended_rank?: number | null;
+  policy_id?: string | null;
+  recommendation_intent?: string | null;
 }
 
 export interface RelatedPostLite {
@@ -21,6 +25,9 @@ interface Props {
   destination?: string | null;
   relatedProducts?: RelatedProductLite[];
   relatedPosts?: RelatedPostLite[];
+  contentCreativeId?: string | null;
+  intent?: string | null;
+  placement?: string;
 }
 
 function formatDur(duration: number | string | null | undefined, nights: number | null | undefined): string {
@@ -42,7 +49,14 @@ function cleanTitle(s: string | null | undefined): string {
  * 기존 글 DB를 수정하지 않고 렌더 타임에 H2 사이로 끼워 넣는 방식으로 동작한다.
  * "허브 & 스포크" 내부 링크 전략 + 체류시간/탐색 깊이 증대 목적.
  */
-export default function InlineRelated({ destination, relatedProducts = [], relatedPosts = [] }: Props) {
+export default function InlineRelated({
+  destination,
+  relatedProducts = [],
+  relatedPosts = [],
+  contentCreativeId,
+  intent,
+  placement = 'inline_related',
+}: Props) {
   const products = relatedProducts.slice(0, 3);
   const posts = relatedPosts.slice(0, 2);
 
@@ -53,6 +67,16 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
       className="not-prose my-12 rounded-2xl border border-blue-200 bg-gradient-to-br from-brand-light/50 to-blue-50/30 p-5 md:p-6"
       aria-label="함께 보면 좋은 여행"
     >
+      <BlogProductRecommendationTracker
+        contentCreativeId={contentCreativeId}
+        intent={intent}
+        placement={placement}
+        products={products.map((p, index) => ({
+          package_id: p.id,
+          recommended_rank: p.recommended_rank ?? index + 1,
+          policy_id: p.policy_id ?? null,
+        }))}
+      />
       <div className="mb-4 flex items-center gap-2">
         <span
           aria-hidden="true"
@@ -79,6 +103,11 @@ export default function InlineRelated({ destination, relatedProducts = [], relat
                 <li key={p.id}>
                   <Link
                     href={`/packages/${encodeURIComponent(p.id)}`}
+                    data-blog-product-id={p.id}
+                    data-recommendation-source="blog"
+                    data-recommendation-rank={p.recommended_rank ?? undefined}
+                    data-recommendation-placement={placement}
+                    data-blog-intent={p.recommendation_intent ?? intent ?? undefined}
                     className="group flex items-center justify-between gap-3 rounded-xl border border-white bg-white/90 p-3 backdrop-blur transition hover:border-blue-200 hover:shadow-sm"
                   >
                     <div className="min-w-0 flex-1">

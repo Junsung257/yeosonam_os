@@ -484,3 +484,70 @@ Render, image, and metadata audits are not enough. A post can score 100 on those
 - Add the incident to `docs/errors/blog.md` and, if current, `db/error-registry.md`.
 - Prompt changes are not enough. Each promoted lesson needs one of: deterministic classifier rule, publish gate, audit script check, or fixture test.
 - This follows Google Search Central guidance: helpful, reliable, people-first content is required regardless of whether AI assisted the writing; scaled low-value automation must be blocked.
+
+### Editorial Auto-Repair Layer
+
+Use `src/lib/blog-editorial-repair.ts` for safe deterministic repairs before publishing or backfilling old posts.
+
+Allowed automatic repairs:
+
+- informational sales wording -> neutral informational wording
+- missing weather table -> non-fabricated monthly checklist table
+- visa/currency/transport source gap -> official reference block
+- preparation checklist under five items -> practical checklist supplement
+- paragraph wall -> sentence-group paragraph split
+- weak reading design -> tip box supplement
+
+Not allowed:
+
+- inventing exact temperatures, prices, flight times, opening hours, review scores, or first-hand experience
+- deleting canonical URLs to hide bad historical posts
+- reindexing a repaired post before `evaluateBlogPublishQuality()` passes
+
+Verification:
+
+- Current production without repair preview may expose historical content debt.
+- Repair preview command: `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --repair-preview --json`
+- 2026-06-09 result after this repair layer: 101/101 passed, average editorial score 100.
+- Write path for existing posts: `npm run backfill:blog-quality -- --write` after dry-run review and backup.
+
+External basis:
+
+- Google Search Central "helpful, reliable, people-first content": automation is acceptable only when the result is useful and transparent.
+- Google Search spam policies: scaled content without added value must be blocked.
+- Google SEO Starter Guide: useful content, descriptive links, images/alt, and crawlable structure are a combined quality surface.
+- Google structured data docs: Article/FAQ schema is support, not a substitute for useful visible content.
+
+---
+
+## Blog Revenue Funnel Gate (2026-06-09)
+
+SEO 100 is not complete if the blog does not move qualified readers toward sellable travel products. Blog quality is now judged by two independent scores:
+
+- Content quality: render, image, visual, SEO, structure, editorial intent.
+- Revenue funnel readiness: article-intent-aware product recommendations, product impression/click/inquiry/booking tracking, and learning feedback.
+
+### Required Command
+
+- Current codebase audit: `npm run audit:blog-revenue-funnel`
+- JSON output: `npm run audit:blog-revenue-funnel -- --json`
+- Strict release gate after implementation: `npm run audit:blog-revenue-funnel -- --strict`
+
+### 100-Point Standard
+
+- Information posts must use `post.destination` as a fallback for product recommendations.
+- Blog product cards must use `recommendBestPackages()`, `package_scores`, or an equivalent scoring policy, not price-only sorting.
+- `recommendation_outcomes.source` must support `blog`.
+- Product impressions from blog cards must record `content_creative_id`, `package_id`, rank, intent, policy id, and session id.
+- Product clicks must capture the clicked `package_id`, not only a boolean CTA click.
+- Package inquiry and booking paths must update recommendation outcomes/events when the session came from a blog product recommendation.
+- Daily publishing must alert or repair if fewer than 3 posts were published the previous day.
+- `blog-learn` must consume both editorial failures and recommendation funnel outcomes before claiming self-improvement.
+
+### Operating Rule
+
+Existing posts should be improved in batches, not mass-deleted or blindly regenerated. Prioritize posts with GSC potential, editorial failures, active sellable products, engagement/CTA opportunity, and seasonal freshness risk. After meaningful changes, keep the canonical URL when possible, update `lastmod`, run all blog audits, then request reindexing through the existing bulk reindex path.
+
+### Current Baseline
+
+2026-06-09 initial code audit result: `43/100` revenue funnel readiness. Post-implementation result: `100/100` by `npm run audit:blog-revenue-funnel -- --strict`. Evidence: `docs/audits/2026-06-09-blog-revenue-funnel-code-research.md`.

@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const { packageId, type } = await request.json();
+    const { packageId, type, session_id, sessionId, user_id, userId } = await request.json();
 
     if (!packageId) {
       return NextResponse.json({ error: 'packageId 필요' }, { status: 400 });
@@ -18,6 +18,19 @@ export async function POST(request: NextRequest) {
       await supabaseAdmin.rpc('increment_package_inquiry_count', {
         package_id: packageId,
       });
+      let q = supabaseAdmin
+        .from('recommendation_outcomes')
+        .update({
+          outcome: 'inquiry',
+          outcome_at: new Date().toISOString(),
+        })
+        .eq('package_id', packageId)
+        .is('outcome', null);
+      const sid = session_id || sessionId;
+      const uid = user_id || userId;
+      if (sid) q = q.eq('session_id', sid);
+      if (uid) q = q.eq('user_id', uid);
+      await q;
     } else {
       // 기본: view_count 증가
       await supabaseAdmin.rpc('increment_package_view_count', {

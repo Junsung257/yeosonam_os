@@ -15,12 +15,18 @@ interface Props {
   priceKrw?: number | null;
   productUrl?: string | null;
   kakaoUrl?: string;
+  packageId?: string | null;
+  intent?: string | null;
+  placement?: string;
 }
 
 export default function StickyMobileCta({
   priceKrw,
   productUrl,
   kakaoUrl = 'https://pf.kakao.com/_yeosonam',
+  packageId,
+  intent,
+  placement = 'sticky_mobile_cta',
 }: Props) {
   const [visible, setVisible] = useState(false);
 
@@ -65,6 +71,11 @@ export default function StickyMobileCta({
           </a>
           <a
             href={productUrl}
+            data-blog-product-id={packageId ?? undefined}
+            data-recommendation-source="blog"
+            data-recommendation-rank="1"
+            data-recommendation-placement={placement}
+            data-blog-intent={intent ?? undefined}
             className="flex-1 px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white text-[13px] font-bold rounded-lg text-center"
           >
             예약 문의

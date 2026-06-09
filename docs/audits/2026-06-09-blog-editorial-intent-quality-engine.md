@@ -106,3 +106,50 @@ The old checks can still be 100 while editorial quality fails. A blog post is no
 - Run full production editorial audit without `--limit`.
 - Put failed posts into a regenerate/backfill queue after validating that the new gate blocks bad replacements.
 - For every repeated failure, add a fixture test and update `docs/errors/blog.md`.
+
+## Follow-Up Implementation — Intent Classifier and Auto-Repair
+
+Date: 2026-06-09
+
+The first implementation found the right audit surface, but the classifier still over-weighted incidental body terms. Example: a preparation or food article that mentioned rainy weather could be scored as a weather post. The fix changes intent selection from first-match body regex to weighted evidence:
+
+- title and primary keyword: strongest signal
+- category/content type/slug: strong signal
+- body text: weak supporting signal
+
+The repair layer is implemented in `src/lib/blog-editorial-repair.ts` and shared by:
+
+- `GET /api/cron/blog-publisher`
+- `scripts/backfill-blog-quality.ts`
+- `scripts/audit-blog-editorial-quality.ts --repair-preview`
+
+Safe deterministic repairs now cover:
+
+- information articles with product-sales wording
+- missing weather tables
+- visa/currency/transport posts without official links
+- preparation posts with fewer than five checklist items
+- wall-of-text paragraphs
+- insufficient reading-design aids
+
+Validation:
+
+```bash
+npx vitest run src/lib/blog-content-intent.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-publish-quality.test.ts
+npm run audit:blog-editorial -- --base=https://www.yeosonam.com --repair-preview --json
+npm run audit:blog-revenue-funnel -- --strict
+npx tsc --noEmit --pretty false --skipLibCheck
+```
+
+Results:
+
+- Production editorial sample without repair improved from 72/100 to 86/100 after classifier fixes.
+- Production editorial sample with repair preview: 20/20 passed, average 100.
+- Full production corpus with repair preview: 101/101 passed, average 100.
+- Blog revenue funnel readiness remains 100/100.
+- TypeScript validation passed.
+
+Important distinction:
+
+- `--repair-preview` proves the engine can repair historical posts safely.
+- The live production pages keep old content until the backfill write path is run, deployed, revalidated, and reindexed.

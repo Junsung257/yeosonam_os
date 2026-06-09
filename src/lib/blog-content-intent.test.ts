@@ -1,7 +1,44 @@
 import { describe, expect, it } from 'vitest';
-import { inspectBlogIntentQuality } from './blog-content-intent';
+import { classifyBlogIntent, inspectBlogIntentQuality } from './blog-content-intent';
 
 describe('blog content intent quality', () => {
+  it('does not apply product ranking contracts to information-only posts', () => {
+    const intent = classifyBlogIntent({
+      title: '나가사키 현지 맛집 BEST와 호텔 근처 음식 가이드',
+      category: 'food',
+      contentType: 'guide',
+      blogHtml: '나가사키 여행자가 참고할 현지 음식, 이동 동선, 예산 정보를 정리합니다.',
+    });
+
+    expect(intent.mode).toBe('info');
+    expect(intent.productSubtype).toBeNull();
+  });
+
+  it('uses title and category over incidental weather terms in the body', () => {
+    const preparation = classifyBlogIntent({
+      title: '보홀 여행 준비물 체크리스트',
+      category: 'preparation',
+      contentType: 'guide',
+      blogHtml: '보홀은 우기와 건기 차이가 있어 날씨, 옷차림, 기온을 함께 확인하면 좋습니다.',
+    });
+    const food = classifyBlogIntent({
+      title: '나가사키 현지 맛집 BEST와 음식 동선',
+      category: 'food',
+      contentType: 'guide',
+      blogHtml: '비 오는 날씨에는 실내 식당을 먼저 잡고, 우기에는 택시 이동을 고려하세요.',
+    });
+    const itinerary = classifyBlogIntent({
+      title: '보홀 3박4일 일정과 이동 코스',
+      category: 'itinerary',
+      contentType: 'guide',
+      blogHtml: '우기에는 해상 날씨에 따라 이동 시간이 달라질 수 있습니다.',
+    });
+
+    expect(preparation.infoSubtype).toBe('preparation');
+    expect(food.infoSubtype).toBe('food');
+    expect(itinerary.infoSubtype).toBe('itinerary');
+  });
+
   it('blocks sales tone in informational weather posts', () => {
     const report = inspectBlogIntentQuality({
       title: '장가계 날씨 월별 옷차림',

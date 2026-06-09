@@ -176,6 +176,70 @@ const handleBlogLearn = async (request: NextRequest) => {
   }
 
   // ── E) 베이지안 임계값 최적화 (월 1회) ────────────────────
+  try {
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+
+    const [qualityRes, funnelRes] = await Promise.all([
+      supabaseAdmin
+        .from('content_creatives')
+        .select('id, slug, seo_title, quality_gate')
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .gte('published_at', since.toISOString())
+        .limit(200),
+      supabaseAdmin
+        .from('recommendation_outcomes')
+        .select('outcome, package_id, recommended_rank, intent, notes')
+        .eq('source', 'blog')
+        .gte('recommended_at', since.toISOString())
+        .limit(1000),
+    ]);
+
+    const intentFailures = ((qualityRes.data || []) as Array<{
+      id: string;
+      slug: string | null;
+      seo_title: string | null;
+      quality_gate: unknown;
+    }>).filter((row) => {
+      const gate = row.quality_gate as { details?: Array<{ gate?: string; passed?: boolean }> } | null;
+      return Array.isArray(gate?.details)
+        ? gate.details.some((detail) => detail.gate === 'intent_quality' && detail.passed === false)
+        : false;
+    });
+
+    const funnelRows = (funnelRes.data || []) as Array<{
+      outcome: string | null;
+      package_id: string;
+      recommended_rank: number | null;
+      intent: string | null;
+      notes: string | null;
+    }>;
+    const funnel = funnelRows.reduce((acc, row) => {
+      const key = row.outcome || 'impression';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    result.editorial_funnel_learning = {
+      since: since.toISOString(),
+      intent_quality_failures: intentFailures.length,
+      intent_failure_samples: intentFailures.slice(0, 5).map((row) => ({
+        id: row.id,
+        slug: row.slug,
+        title: row.seo_title,
+      })),
+      blog_recommendation_funnel: funnel,
+      blog_recommendation_events: funnelRows.length,
+      note: 'Feeds next prompt/gate/scoring review with editorial quality failures and blog recommendation funnel data.',
+    };
+  } catch (err) {
+    logWarning('[cron/blog-learn] editorial/funnel learning input failed', err);
+    const msg = sanitizeDbError(err);
+    result.editorial_funnel_learning = { error: msg };
+    errors.push(`editorial_funnel: ${msg}`);
+  }
+
   const today = new Date().getDate();
   if (today <= 2) {
     try {

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import BlogProductRecommendationTracker from './BlogProductRecommendationTracker';
 
 /**
  * 정보성 블로그 하단 상품 큐레이션
@@ -25,11 +26,17 @@ interface CuratedProduct {
   hero_image_url?: string | null;
   airline?: string | null;
   departure_airport?: string | null;
+  recommended_rank?: number | null;
+  policy_id?: string | null;
+  recommendation_intent?: string | null;
 }
 
 interface Props {
   destination: string;
   products: CuratedProduct[];
+  contentCreativeId?: string | null;
+  intent?: string | null;
+  placement?: string;
 }
 
 function priceTierLabel(price: number | null, minPrice: number, maxPrice: number): string {
@@ -42,7 +49,13 @@ function priceTierLabel(price: number | null, minPrice: number, maxPrice: number
   return '프리미엄';
 }
 
-export default function DestinationCuration({ destination, products }: Props) {
+export default function DestinationCuration({
+  destination,
+  products,
+  contentCreativeId,
+  intent,
+  placement = 'destination_curation',
+}: Props) {
   if (!products || products.length === 0) return null;
 
   const prices = products.map(p => p.price || 0).filter(p => p > 0);
@@ -51,6 +64,16 @@ export default function DestinationCuration({ destination, products }: Props) {
 
   return (
     <section className="my-10 p-5 md:p-6 bg-gradient-to-br from-slate-50 to-brand-light/40 border border-slate-200 rounded-2xl">
+      <BlogProductRecommendationTracker
+        contentCreativeId={contentCreativeId}
+        intent={intent}
+        placement={placement}
+        products={products.slice(0, 3).map((p, index) => ({
+          package_id: p.id,
+          recommended_rank: p.recommended_rank ?? index + 1,
+          policy_id: p.policy_id ?? null,
+        }))}
+      />
       <header className="mb-5">
         <p className="text-[11px] font-semibold text-brand tracking-wider uppercase mb-1">
           여소남이 추천하는
@@ -73,6 +96,11 @@ export default function DestinationCuration({ destination, products }: Props) {
             <Link
               key={p.id}
               href={`/packages/${encodeURIComponent(p.id)}`}
+              data-blog-product-id={p.id}
+              data-recommendation-source="blog"
+              data-recommendation-rank={p.recommended_rank ?? undefined}
+              data-recommendation-placement={placement}
+              data-blog-intent={p.recommendation_intent ?? intent ?? undefined}
               className="group relative flex flex-col bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-brand/40 hover:shadow-md transition"
             >
               {/* 이미지 */}
