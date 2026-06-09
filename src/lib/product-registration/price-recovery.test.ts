@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExtractedData } from '@/lib/parser';
 import { SUPPLIER_RAW_GOLDEN_FIXTURES } from '@/lib/product-registration-golden-fixtures';
 import {
@@ -7,6 +7,14 @@ import {
   readGoldenText,
 } from './golden-corpus/evaluator';
 import { normalizeStrictFallbackPriceTiers, recoverUploadPriceData } from './price-recovery';
+
+const mocks = vi.hoisted(() => ({
+  llmCall: vi.fn(),
+}));
+
+vi.mock('@/lib/llm-gateway', () => ({
+  llmCall: mocks.llmCall,
+}));
 
 function phuQuocCase() {
   const testCase = GOLDEN_CORPUS_CASES.find(item => item.id === 'phu-quoc-full-upload');
@@ -17,6 +25,10 @@ function phuQuocCase() {
 }
 
 describe('recoverUploadPriceData', () => {
+  beforeEach(() => {
+    mocks.llmCall.mockReset();
+  });
+
   it('accepts only schema-valid LLM fallback price tiers with usable date evidence', () => {
     const tiers = normalizeStrictFallbackPriceTiers([
       { period_label: 'valid date', departure_dates: ['2026-07-24'], adult_price: 859000, status: 'available' },
@@ -283,5 +295,54 @@ describe('recoverUploadPriceData', () => {
     expect(result.priceDates.find(row => row.date === '2026-07-16')?.price).toBe(1529000);
     expect(result.priceDates.find(row => row.date === '2026-07-05')).toBeUndefined();
     expect(result.minPrice).toBe(1299000);
+  });
+
+  it('uses the llm gateway DeepSeek fallback before direct Gemini price extraction', async () => {
+    mocks.llmCall.mockResolvedValue({
+      success: true,
+      provider: 'deepseek',
+      model: 'deepseek-v4-flash',
+      data: {
+        price_tiers: [{
+          period_label: 'DeepSeek recovered package price',
+          departure_dates: ['2026-09-03'],
+          adult_price: 777000,
+          status: 'available',
+        }],
+      },
+    });
+    const rawText = `
+신규 공급사 자유형 문서입니다.
+이 문서는 의도적으로 deterministic 가격표 모양을 만들지 않습니다.
+가격 정보는 AI fallback 검증용 mock 결과에서만 공급됩니다.
+선택관광이나 팁 금액을 상품가로 오인하지 않는지 확인하기 위한 충분한 길이의 원문입니다.
+반복 설명 텍스트를 추가하여 100자를 넘깁니다.
+`;
+    const ed: ExtractedData = {
+      title: 'DeepSeek fallback price product',
+      destination: '테스트',
+      duration: 4,
+      rawText,
+      price_tiers: [],
+    };
+
+    const result = await recoverUploadPriceData(ed, {
+      rawText,
+      title: ed.title,
+      durationDays: 4,
+      year: 2026,
+      enableGeminiFallback: true,
+    });
+
+    expect(mocks.llmCall).toHaveBeenCalledWith(expect.objectContaining({
+      task: 'parse_travel_doc',
+      autoEscalate: false,
+    }));
+    expect(result.ok).toBe(true);
+    expect(result.source).toBe('ai_fallback:deepseek');
+    expect(result.priceDates).toEqual([
+      expect.objectContaining({ date: '2026-09-03', price: 777000 }),
+    ]);
+    expect(result.minPrice).toBe(777000);
   });
 });
