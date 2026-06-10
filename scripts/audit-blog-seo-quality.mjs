@@ -16,6 +16,7 @@ const expectedCanonicalOriginInput = (getArg('--canonical-origin', process.env.B
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(10, Number(getArg('--concurrency', '5')) || 5));
 const outputJson = hasFlag('--json');
+const strictWarnings = hasFlag('--strict-warnings');
 
 const LONGTAIL_MODIFIERS = /20\d{2}|비용|가격|일정|코스|날씨|월별|준비물|체크|체크리스트|환전|입국|서류|항공권|숙소|맛집|추천|가이드|후기|예약|포함|주의/i;
 const RAW_MARKDOWN_ARTIFACTS = /!\[[^\]]*]\(|\[[^\]]+]\((?:https?:\/\/|\/)|(^|\n)#{1,6}\s|\*\*[^*]+\*\*/m;
@@ -32,7 +33,12 @@ const AUTHORITY_HOST_HINTS = [
   'embassy',
   'consulate',
   'iata.org',
+  'iatatravelcentre.com',
   'who.int',
+  'japan.travel',
+  'travel-europe.europa.eu',
+  'travel.state.gov',
+  'cbp.dhs.gov',
 ];
 
 async function fetchText(path) {
@@ -197,6 +203,8 @@ function isAllowedCanonicalOrigin(origin, expectedOrigin) {
 async function auditPage(page, path) {
   await page.goto(absolutize(path), { waitUntil: 'domcontentloaded', timeout: 120000 });
   await page.waitForSelector('article, body', { timeout: 30000 }).catch(() => undefined);
+  await page.waitForSelector('article h1, h1', { timeout: 10000 }).catch(() => undefined);
+  await page.waitForSelector('script[type="application/ld+json"]', { timeout: 10000 }).catch(() => undefined);
   await page.waitForTimeout(500);
   return page.evaluate((auditPath) => {
     const meta = (name) =>
@@ -260,6 +268,27 @@ async function auditPage(page, path) {
   }, path);
 }
 
+function shouldRetrySeoRow(row) {
+  return !row.error && (
+    row.h1Count !== 1 ||
+    row.h2Count < 3 ||
+    row.imageCount < 2 ||
+    !row.hasBlogPostingJsonLd ||
+    !row.hasBreadcrumbJsonLd
+  );
+}
+
+async function auditPageWithRetry(page, path) {
+  let lastRow = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const row = await auditPage(page, path);
+    if (!shouldRetrySeoRow(row)) return row;
+    lastRow = { ...row, retryReason: 'incomplete_seo_dom', attempts: attempt + 1 };
+    await page.waitForTimeout(800 * (attempt + 1));
+  }
+  return lastRow;
+}
+
 function addCrossPageIssues(rows) {
   const titleCounts = new Map();
   const descriptionCounts = new Map();
@@ -284,7 +313,7 @@ function addCrossPageIssues(rows) {
 
 function summarize(rows) {
   const fetched = rows.filter((row) => !row.error);
-  const failed = fetched.filter((row) => row.failed);
+  const failed = fetched.filter((row) => row.failed || (strictWarnings && row.warnings?.length));
   const warningCount = fetched.reduce((sum, row) => sum + (row.warnings?.length || 0), 0);
   return {
     baseUrl,
@@ -294,6 +323,7 @@ function summarize(rows) {
     failed: failed.length,
     passed: fetched.length - failed.length,
     score: fetched.length === 0 ? 0 : Math.round(((fetched.length - failed.length) / fetched.length) * 100),
+    strictWarnings,
     warningCount,
     avgTitleLength: Number((fetched.reduce((sum, row) => sum + (row.title?.length || 0), 0) / Math.max(1, fetched.length)).toFixed(1)),
     avgDescriptionLength: Number((fetched.reduce((sum, row) => sum + (row.description?.length || 0), 0) / Math.max(1, fetched.length)).toFixed(1)),
@@ -317,7 +347,7 @@ async function main() {
       const path = links[cursor];
       cursor += 1;
       try {
-        const row = await auditPage(page, path);
+        const row = await auditPageWithRetry(page, path);
         row.internalLinkCount = row.links.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href)).length;
         row.externalAuthorityLinkCount = row.links.filter((href) => /^https?:\/\//i.test(href) && !/yeosonam\.com/i.test(href) && hostMatchesAuthority(href)).length;
         rows.push(judge(row));
@@ -354,7 +384,7 @@ async function main() {
     }
   }
 
-  if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
+  if (summary.failed > 0 || summary.errors > 0 || (strictWarnings && summary.warningCount > 0)) process.exitCode = 1;
 }
 
 main().catch((error) => {

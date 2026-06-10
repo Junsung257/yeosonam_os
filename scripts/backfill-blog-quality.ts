@@ -583,6 +583,68 @@ function improveBackfillSeoDescription(description: string | null, primaryKeywor
   return `${keyword} 여행 전 꼭 볼 일정, 비용, 준비물, 현지 이동 팁을 정리했습니다. 예약 전 체크리스트와 상품 비교 포인트까지 한 번에 확인하세요.`;
 }
 
+function cleanDescriptionPart(value: string | null | undefined): string {
+  return (normalizePrimaryKeyword(value) || '')
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function topicLabelForDescription(row: BlogRow, primaryKeyword: string): string {
+  const kind = topicKindFor(row, primaryKeyword);
+  if (kind === 'weather') return '월별 날씨와 옷차림';
+  if (kind === 'communication') return 'eSIM·유심·로밍 선택';
+  if (kind === 'visa') return '입국 서류와 비자 조건';
+  if (kind === 'currency') return '환전·결제·팁 문화';
+  if (kind === 'cost') return '예산·경비·현지 비용';
+  if (kind === 'itinerary') return '일정·동선·이동 시간';
+  return '일정·비용·준비물';
+}
+
+function angleLabelForDescription(row: BlogRow): string {
+  const slug = row.slug || '';
+  const text = `${slug} ${row.seo_title || ''}`.toLowerCase();
+  if (/달랏/.test(slug) && /화폐|환전|팁/.test(slug)) return '나트랑·달랏 환전 팁 중심으로';
+  if (/nhatrangdalat|nha\s*trang\s*dalat|달랏/.test(text)) return '나트랑·달랏 연계 여행 중심으로';
+  if (/visa-free|무비자/.test(text)) return '무비자 체류 조건 중심으로';
+  if (/가족|아이|child|kid/.test(text)) return '가족 액티비티 중심으로';
+  if (/food|맛집|음식|먹거리/.test(text)) return '맛집과 현지 음식 중심으로';
+  if (/(?:^|-)34(?:-|$)|3n4d|3박\s*4일|3박4일/.test(text)) return '3박4일 일정 중심으로';
+  if (/(?:^|-)6(?:-|$)|6월|june/.test(text)) return '6월 출발 준비 중심으로';
+  if (/best|추천|액티비티|activity|activities/.test(text)) return '추천 코스와 액티비티 중심으로';
+  if (/currency|화폐|환전|결제|팁/.test(text)) return '환전과 현지 결제 중심으로';
+  if (/weather|날씨|옷차림/.test(text)) return '날씨와 옷차림 중심으로';
+  if (/preparation|준비물|체크리스트/.test(text)) return '출발 준비물 중심으로';
+  if (/itinerary|일정|코스|동선|route/.test(text)) return '일정과 이동 동선 중심으로';
+  if (/visa|esta|etias|입국|무비자|서류|면세/.test(text)) return '입국 조건과 서류 중심으로';
+  if (/complete|guide|총정리|완벽/.test(text)) return '종합 여행 준비 관점으로';
+  if (/cost|경비|비용|saving|절약/.test(text)) return '예산과 비용 절감 중심으로';
+  return '예약 전 실전 체크 중심으로';
+}
+
+function improveBackfillSeoDescriptionV2(description: string | null, row: BlogRow, primaryKeyword: string): string {
+  const keyword = normalizePrimaryKeyword(primaryKeyword) || '여행';
+  const cleaned = normalizeBlogDescription(description) || '';
+  const duplicateVariant = /(?:재작성|rewrite|v2|2편|-2\b)/i.test(`${row.slug || ''} ${row.seo_title || ''}`);
+  const angle = angleLabelForDescription(row);
+  const awkwardGeneratedTrace = /관점의|[a-z]{5,}\s+[a-z]{3,}/i.test(cleaned);
+  const staleAngleTrace = /(?:중심으로|관점으로)/.test(cleaned) && !cleaned.includes(angle);
+  const genericGeneratedTrace = /(?:월별 날씨와 옷차림|eSIM · 유심 · 로밍 선택|입국 서류와 비자 조건|환전 · 결제 · 팁 문화|예산 · 경비 · 현지 비용|일정 · 동선 · 이동 시간|일정 · 비용 · 준비물) 정보를 (?:2편 보완판으로 )?2026년 기준으로 정리했습니다/.test(cleaned);
+  if (!staleAngleTrace && !awkwardGeneratedTrace && !genericGeneratedTrace && /2026년 기준으로 정리했습니다/.test(cleaned) && /예약 전 체크 포인트/.test(cleaned) && !(duplicateVariant && !/2편|보완판|업데이트/.test(cleaned))) return cleaned;
+  const hasKeyword = keyword.length > 1 && cleaned.includes(keyword);
+  const hasIntent = /\d|비용|일정|준비|예약|포함|날씨|월별|체크/.test(cleaned);
+  const generic = /여행 전 꼭 볼 일정, 비용, 준비물, 현지 이동 팁|예약 전 체크리스트와 상품 비교 포인트|실용적인 여행 정보와 팁을 여소남이 정리한 완벽 가이드|2026년 최신 입국 정보 · 필요 서류/.test(cleaned);
+  if (cleaned.length >= 70 && cleaned.length <= 160 && hasKeyword && hasIntent && !generic && !staleAngleTrace && !genericGeneratedTrace && !awkwardGeneratedTrace && !(duplicateVariant && !/2편|보완판|업데이트/.test(cleaned))) return cleaned;
+
+  const destination = cleanDescriptionPart(row.destination) || cleanDescriptionPart(keyword) || '여행지';
+  const topic = topicLabelForDescription(row, primaryKeyword);
+  const variantLabel = duplicateVariant ? '2편 보완판으로 ' : '';
+  const candidate = `${destination} ${angle} ${variantLabel}2026년 기준으로 정리했습니다. ${topic} 핵심 정보와 예상 비용, 준비물, 이동 동선, 예약 전 체크 포인트를 확인하세요.`;
+  if (candidate.length <= 160) return normalizeBlogDescription(candidate) || candidate;
+  const compact = `${destination} ${angle} ${variantLabel}2026년 기준으로 정리했습니다. ${topic} 핵심 정보와 비용, 준비물, 예약 전 체크 포인트를 확인하세요.`;
+  return normalizeBlogDescription(compact) || compact;
+}
+
 function buildSecondaryKeywords(primaryKeyword: string, destination?: string | null): string[] {
   const keyword = normalizePrimaryKeyword(primaryKeyword) || normalizePrimaryKeyword(destination) || '여행';
   if (/와이파이|유심|esim|eSIM|로밍|통신/i.test(keyword)) {
@@ -641,7 +703,10 @@ function ensureOfficialReferenceLinks(markdown: string, row: BlogRow, primaryKey
     .map((match) => match[1] || '')
     .filter((href) => !/yeosonam\.com/i.test(href))
     .filter((href) => !/\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(href));
-  if (externalLinks.length >= 2) return markdown;
+  const authorityLinks = externalLinks.filter((href) =>
+    /\.go\.kr|\.gov|mofa\.go\.kr|0404\.go\.kr|visit|tourism|weather|airport|immigration|embassy|consulate|iata\.org|iatatravelcentre\.com|who\.int|japan\.travel|travel-europe\.europa\.eu|travel\.state\.gov|cbp\.dhs\.gov/i.test(href),
+  );
+  if (authorityLinks.length >= 1) return markdown;
 
   const topicText = `${row.slug || ''} ${row.seo_title || ''} ${primaryKeyword}`.toLowerCase();
   const links = /esta|미국|비자|visa/.test(topicText)
@@ -754,8 +819,9 @@ async function main() {
       row,
       primaryKeyword,
     );
-    const normalizedDescription = improveBackfillSeoDescription(
+    const normalizedDescription = improveBackfillSeoDescriptionV2(
       normalizeBlogDescription(row.seo_description) || row.seo_description || null,
+      row,
       primaryKeyword,
     );
     const secondaryKeywords = buildSecondaryKeywords(primaryKeyword, destination);

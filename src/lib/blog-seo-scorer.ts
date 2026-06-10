@@ -31,7 +31,12 @@ const AUTHORITATIVE_HOST_HINTS = [
   'embassy',
   'consulate',
   'iata.org',
+  'iatatravelcentre.com',
   'who.int',
+  'japan.travel',
+  'travel-europe.europa.eu',
+  'travel.state.gov',
+  'cbp.dhs.gov',
 ];
 
 export const BLOG_SEO_MAX_SCORE = 100;
