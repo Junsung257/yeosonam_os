@@ -107,7 +107,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     for (const dest of destinations) {
       routes.push({
-        url: `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`,
+        url: `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(dest)}`,
         lastModified: new Date(),
         changeFrequency: 'weekly' as const,
         priority: 0.75,
