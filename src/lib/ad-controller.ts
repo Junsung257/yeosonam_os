@@ -28,6 +28,7 @@ import {
   fetchNaverKeywordIdeas,
   isNaverAdsConfigured,
   isGoogleAdsConfigured,
+  generateGoogleHistoricalMetrics,
 } from '@/lib/search-ads-api';
 
 // ── 설정 상수 ────────────────────────────────────────────────
@@ -311,8 +312,13 @@ export async function discoverLongtailKeywords(params: {
         for (const idea of ideas) {
           const monthly = (idea.monthlyPcQcCnt || 0) + (idea.monthlyMobileQcCnt || 0);
           // CPC 추정: 경쟁도 × 기준단가 — 네이버는 직접 CPC 안 줌, 경쟁도 → CPC 매핑
-          const compFactor = idea.compIdx === '높음' ? 200 : idea.compIdx === '중간' ? 100 : 50;
-          const estimatedCpc = compFactor;
+          const compIdx = Number(idea.compIdx || 0);
+          const compFactor = compIdx >= 80 ? 200 : compIdx >= 40 ? 100 : 50;
+          const lowPrice = Number(idea.lowPrice || 0);
+          const highPrice = Number(idea.highPrice || 0);
+          const estimatedCpc = lowPrice > 0 && highPrice > 0
+            ? Math.round((lowPrice + highPrice) / 2)
+            : compFactor;
           if (estimatedCpc < maxCpc) {
             allIdeas.push({
               keyword: idea.relKeyword,
@@ -331,13 +337,12 @@ export async function discoverLongtailKeywords(params: {
   // 구글: Keyword Plan Idea Service
   if (params.platform === 'google' && isGoogleAdsConfigured()) {
     try {
-      const { generateKeywordIdeas } = await import('./google-ads/client');
-      const ideas = await generateKeywordIdeas(params.seedKeywords);
+      const ideas = await generateGoogleHistoricalMetrics(params.seedKeywords);
       return ideas
         .map((i) => ({
           keyword: i.keyword,
           // 구글은 lowTopOfPageBidKrw ~ highTopOfPageBidKrw 범위 제공 — 중간값 사용
-          estimated_cpc: Math.round((i.lowTopOfPageBidKrw + i.highTopOfPageBidKrw) / 2),
+          estimated_cpc: Math.round((i.lowTopOfPageBid + i.highTopOfPageBid) / 2),
           monthly_search: i.avgMonthlySearches,
         }))
         .filter((r) => r.estimated_cpc < maxCpc && r.estimated_cpc > 0);
