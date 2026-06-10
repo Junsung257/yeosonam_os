@@ -140,9 +140,9 @@ async function auditOne(page, targetPath, viewport) {
   });
   await page.evaluate(async () => {
     const images = [...document.querySelectorAll('main img, article img')];
-    await Promise.all(images.map((img) => {
-      if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) return undefined;
-      const timeout = new Promise((resolve) => window.setTimeout(resolve, 2500));
+    const waitForImage = (img) => {
+      if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) return Promise.resolve(undefined);
+      const timeout = new Promise((resolve) => window.setTimeout(resolve, 1800));
       if (typeof img.decode === 'function') {
         return Promise.race([img.decode().catch(() => undefined), timeout]);
       }
@@ -152,7 +152,15 @@ async function auditOne(page, targetPath, viewport) {
         img.addEventListener('error', done, { once: true });
       });
       return Promise.race([loaded, timeout]);
-    }));
+    };
+    for (const img of images) {
+      if (!(img.complete && img.naturalWidth > 0 && img.naturalHeight > 0)) {
+        img.scrollIntoView({ block: 'center', inline: 'nearest' });
+        await new Promise((resolve) => window.setTimeout(resolve, 120));
+      }
+      await waitForImage(img);
+    }
+    window.scrollTo(0, 0);
   });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => undefined);
   await page.waitForTimeout(300);
