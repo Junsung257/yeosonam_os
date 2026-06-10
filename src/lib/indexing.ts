@@ -129,11 +129,13 @@ export async function notifyIndexing(
         body: JSON.stringify(indexNowPayload),
       });
       report.indexnow = globalRes.status === 200 || globalRes.status === 202 ? 'success' : 'failed';
+      report.sitemap_pings.push({ provider: 'global_indexnow', ok: report.indexnow === 'success' });
       if (report.indexnow !== 'success') {
         report.indexnow_error = `global HTTP ${globalRes.status}`;
       }
     } catch (err) {
       report.indexnow_error = err instanceof Error ? err.message : String(err);
+      report.sitemap_pings.push({ provider: 'global_indexnow', ok: false });
     }
     // 네이버 전용 IndexNow (별도 엔드포인트 — 동일 key 사용)
     try {
@@ -144,6 +146,7 @@ export async function notifyIndexing(
       });
       // 성공 시 indexnow 상태 유지, 실패 시에도 전체 실패로 처리하지 않음
       const naverOk = naverRes.status === 200 || naverRes.status === 202;
+      report.sitemap_pings.push({ provider: 'naver_indexnow', ok: naverOk });
       if (!naverOk) {
         // naver 실패는 별도 로그만 (Bing/Yandex 경로는 이미 성공했을 수 있음)
         report.indexnow_error = report.indexnow_error
@@ -155,6 +158,7 @@ export async function notifyIndexing(
       }
     } catch (err) {
       const naverErr = err instanceof Error ? err.message : String(err);
+      report.sitemap_pings.push({ provider: 'naver_indexnow', ok: false });
       report.indexnow_error = report.indexnow_error
         ? `${report.indexnow_error}; naver ${naverErr}`
         : `naver ${naverErr}`;
@@ -237,6 +241,7 @@ export async function notifyIndexingBatch(
   const indexNowKey = getIndexNowKey();
   let indexnowOk = false;
   let indexnowError: string | undefined;
+  const indexnowPings: { provider: string; ok: boolean }[] = [];
   if (indexNowKey) {
     const indexNowPayload = {
       host,
@@ -252,9 +257,11 @@ export async function notifyIndexingBatch(
         body: JSON.stringify(indexNowPayload),
       });
       indexnowOk = globalRes.status === 200 || globalRes.status === 202;
+      indexnowPings.push({ provider: 'global_indexnow', ok: indexnowOk });
       if (!indexnowOk) indexnowError = `global HTTP ${globalRes.status}`;
     } catch (err) {
       indexnowError = err instanceof Error ? err.message : String(err);
+      indexnowPings.push({ provider: 'global_indexnow', ok: false });
     }
     // 네이버 전용 IndexNow
     try {
@@ -264,6 +271,7 @@ export async function notifyIndexingBatch(
         body: JSON.stringify(indexNowPayload),
       });
       const naverOk = naverRes.status === 200 || naverRes.status === 202;
+      indexnowPings.push({ provider: 'naver_indexnow', ok: naverOk });
       if (!naverOk) {
         indexnowError = indexnowError
           ? `${indexnowError}; naver HTTP ${naverRes.status}`
@@ -271,6 +279,7 @@ export async function notifyIndexingBatch(
       }
     } catch (err) {
       const naverErr = err instanceof Error ? err.message : String(err);
+      indexnowPings.push({ provider: 'naver_indexnow', ok: false });
       indexnowError = indexnowError
         ? `${indexnowError}; naver ${naverErr}`
         : `naver ${naverErr}`;
@@ -288,7 +297,7 @@ export async function notifyIndexingBatch(
     google_error: googleResults[idx].error,
     indexnow: indexnowStatus,
     indexnow_error: indexnowError,
-    sitemap_pings: [{ provider: 'google_search_console_sitemap', ok: googleSitemap.ok }],
+    sitemap_pings: [{ provider: 'google_search_console_sitemap', ok: googleSitemap.ok }, ...indexnowPings],
     duration_ms: durationMs,
   }));
 }
