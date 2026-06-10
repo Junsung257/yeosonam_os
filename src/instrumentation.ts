@@ -12,6 +12,14 @@ export async function register() {
       // env-check 실패해도 서버 시작은 계속
     }
 
+    // 환경변수 누락 체크 (개발 서버 시작 시 경고)
+    try {
+      const { checkMissingEnvVars } = await import('@/lib/env-check');
+      checkMissingEnvVars();
+    } catch {
+      // env-check 실패해도 서버 시작은 계속
+    }
+
     // OpenTelemetry — Vercel OTel 자동 export.
     // Vercel 배포 환경에서는 OTel collector 가 자동 활성화 (수동 endpoint 불필요).
     // 로컬/타사 환경은 OTEL_EXPORTER_OTLP_ENDPOINT 설정 시 동작.

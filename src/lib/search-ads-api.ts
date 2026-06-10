@@ -228,6 +228,12 @@ export async function fetchNaverKeywordTool(
   }
 }
 
+export async function fetchNaverKeywordIdeas(
+  hintKeywords: string[],
+): Promise<NaverKeywordToolItem[]> {
+  return fetchNaverKeywordTool(hintKeywords);
+}
+
 export async function createNaverPausedKeywords(input: {
   nccAdgroupId: string;
   keywords: Array<{ keyword: string; bidAmt?: number }>;

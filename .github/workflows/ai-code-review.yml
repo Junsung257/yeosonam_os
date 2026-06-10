@@ -1,0 +1,313 @@
+name: AI Code Review & Insights
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'src/**'
+      - 'lib/**'
+      - 'tests/**'
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  code-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Analyze changed files
+        id: analyze
+        run: |
+          cat > scripts/analyze-changes.js << 'EOF'
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          // Get changed files
+          const changedFiles = execSync('git diff --name-only origin/main...HEAD', {
+            encoding: 'utf8'
+          }).trim().split('\n').filter(f => f.match(/\.(ts|tsx|js|jsx)$/));
+
+          const analysis = {
+            filesChanged: changedFiles.length,
+            files: {},
+            patterns: {
+              complexityIncrease: [],
+              potentialBugs: [],
+              performanceIssues: [],
+              securityConcerns: [],
+              testingGaps: []
+            }
+          };
+
+          changedFiles.forEach(file => {
+            // Get file diff
+            try {
+              const diff = execSync(`git diff origin/main...HEAD -- "${file}"`, {
+                encoding: 'utf8'
+              });
+
+              const stats = {
+                file,
+                additions: (diff.match(/^\+/gm) || []).length - 1, // Exclude diff header
+                deletions: (diff.match(/^-/gm) || []).length - 1,
+                isNewFile: diff.startsWith('diff --git') && diff.includes('new file mode'),
+                isTest: file.includes('.spec.') || file.includes('.test.'),
+                isComponent: file.includes('.tsx'),
+                isLib: file.includes('/lib/') || file.includes('/utils/')
+              };
+
+              // Detect patterns
+              if (stats.additions > 500) {
+                analysis.patterns.complexityIncrease.push(file);
+              }
+
+              if (diff.includes('any') && stats.isComponent) {
+                analysis.patterns.potentialBugs.push(file);
+              }
+
+              if (diff.includes('JSON.parse(') || diff.includes('setTimeout(') ||
+                  diff.includes('fetch(') && !diff.includes('// TODO')) {
+                analysis.patterns.potentialBugs.push(file);
+              }
+
+              if (diff.includes('nested loops') || diff.includes('for (let')) {
+                analysis.patterns.performanceIssues.push(file);
+              }
+
+              if (diff.includes('api_key') || diff.includes('secret') ||
+                  diff.includes('password') || diff.includes('token')) {
+                analysis.patterns.securityConcerns.push(file);
+              }
+
+              if (stats.isNewFile && !stats.isTest) {
+                analysis.patterns.testingGaps.push(file);
+              }
+
+              analysis.files[file] = stats;
+            } catch (e) {
+              // File might be deleted
+            }
+          });
+
+          console.log('📝 Code Change Analysis:\n');
+          console.log(`Files changed: ${analysis.filesChanged}`);
+          console.log(`Total additions: ${Object.values(analysis.files).reduce((sum, f) => sum + f.additions, 0)}`);
+          console.log(`Total deletions: ${Object.values(analysis.files).reduce((sum, f) => sum + f.deletions, 0)}`);
+
+          fs.writeFileSync('analysis-result.json', JSON.stringify(analysis, null, 2));
+          process.exit(0);
+          EOF
+
+          node scripts/analyze-changes.js
+
+      - name: Check for best practices
+        id: practices
+        run: |
+          cat > scripts/check-practices.js << 'EOF'
+          const { execSync } = require('child_process');
+          const fs = require('fs');
+
+          const checks = {
+            hasTests: false,
+            hasDocumentation: false,
+            followsConventions: false,
+            hasErrorHandling: false,
+            hasTypeDefinitions: false,
+            issues: []
+          };
+
+          // Check for test files
+          try {
+            const testFiles = execSync('git diff --name-only origin/main...HEAD -- **/*.spec.ts **/*.test.ts', {
+              encoding: 'utf8'
+            }).trim();
+            checks.hasTests = testFiles.length > 0;
+          } catch (e) {}
+
+          // Check for documentation
+          try {
+            const docs = execSync('git diff --name-only origin/main...HEAD -- **/*.md', {
+              encoding: 'utf8'
+            }).trim();
+            checks.hasDocumentation = docs.length > 0;
+          } catch (e) {}
+
+          // Check TypeScript types
+          try {
+            const types = execSync('git show HEAD:tsconfig.json', { encoding: 'utf8' });
+            checks.hasTypeDefinitions = types.includes('strict');
+          } catch (e) {}
+
+          // Check for error handling in async functions
+          try {
+            const files = execSync('git diff origin/main...HEAD -- src/**/*.ts', {
+              encoding: 'utf8'
+            });
+            checks.hasErrorHandling = (files.match(/catch\s*\(/g) || []).length > 0 ||
+                                      (files.match(/try\s*\{/g) || []).length > 0;
+          } catch (e) {}
+
+          // Check conventional commits
+          try {
+            const log = execSync('git log origin/main...HEAD --format=%B', {
+              encoding: 'utf8'
+            });
+            checks.followsConventions = /^(feat|fix|refactor|docs|test|perf|style)(\(.+\))?:/m.test(log);
+          } catch (e) {}
+
+          console.log('✅ Code Quality Checklist:\n');
+          console.log(`${checks.hasTests ? '✅' : '⚠️'} Has tests: ${checks.hasTests}`);
+          console.log(`${checks.hasDocumentation ? '✅' : '⚠️'} Has documentation: ${checks.hasDocumentation}`);
+          console.log(`${checks.hasTypeDefinitions ? '✅' : '⚠️'} Type definitions: ${checks.hasTypeDefinitions}`);
+          console.log(`${checks.hasErrorHandling ? '✅' : '⚠️'} Error handling: ${checks.hasErrorHandling}`);
+          console.log(`${checks.followsConventions ? '✅' : '⚠️'} Conventional commits: ${checks.followsConventions}`);
+
+          fs.writeFileSync('practices-result.json', JSON.stringify(checks, null, 2));
+          EOF
+
+          node scripts/check-practices.js
+
+      - name: Generate code review summary
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const analysis = JSON.parse(fs.readFileSync('analysis-result.json', 'utf8'));
+            const practices = JSON.parse(fs.readFileSync('practices-result.json', 'utf8'));
+
+            let comment = `## 🤖 AI Code Review\n\n`;
+
+            // Change Summary
+            comment += `### 📊 Change Summary\n`;
+            comment += `- **Files changed:** ${analysis.filesChanged}\n`;
+            const totalAdditions = Object.values(analysis.files).reduce((sum, f) => sum + f.additions, 0);
+            const totalDeletions = Object.values(analysis.files).reduce((sum, f) => sum + f.deletions, 0);
+            comment += `- **Lines added:** +${totalAdditions}\n`;
+            comment += `- **Lines removed:** -${totalDeletions}\n\n`;
+
+            // File Breakdown
+            comment += `### 📁 File Breakdown\n`;
+            comment += `| File | Additions | Deletions | Type |\n`;
+            comment += `|------|-----------|-----------|------|\n`;
+            Object.entries(analysis.files).slice(0, 10).forEach(([file, stats]) => {
+              const type = stats.isTest ? '🧪 Test' : stats.isComponent ? '⚛️ Component' : stats.isLib ? '📚 Lib' : '📄 Other';
+              comment += `| ${file} | +${stats.additions} | -${stats.deletions} | ${type} |\n`;
+            });
+
+            // Pattern Detection
+            if (Object.values(analysis.patterns).some(arr => arr.length > 0)) {
+              comment += `\n### 🔍 Detected Patterns\n`;
+
+              if (analysis.patterns.complexityIncrease.length > 0) {
+                comment += `\n⚠️ **Complexity Increase** (${analysis.patterns.complexityIncrease.length}):\n`;
+                analysis.patterns.complexityIncrease.forEach(f => {
+                  comment += `- ${f} (>500 additions)\n`;
+                });
+              }
+
+              if (analysis.patterns.potentialBugs.length > 0) {
+                comment += `\n🐛 **Potential Issues** (${analysis.patterns.potentialBugs.length}):\n`;
+                analysis.patterns.potentialBugs.forEach(f => {
+                  comment += `- ${f} — Review for type safety\n`;
+                });
+              }
+
+              if (analysis.patterns.performanceIssues.length > 0) {
+                comment += `\n⚡ **Performance** (${analysis.patterns.performanceIssues.length}):\n`;
+                analysis.patterns.performanceIssues.forEach(f => {
+                  comment += `- ${f} — Check for optimization opportunities\n`;
+                });
+              }
+
+              if (analysis.patterns.securityConcerns.length > 0) {
+                comment += `\n🔐 **Security** (${analysis.patterns.securityConcerns.length}):\n`;
+                analysis.patterns.securityConcerns.forEach(f => {
+                  comment += `- ${f} — Verify no secrets exposed\n`;
+                });
+              }
+
+              if (analysis.patterns.testingGaps.length > 0) {
+                comment += `\n📋 **Testing Gaps** (${analysis.patterns.testingGaps.length}):\n`;
+                analysis.patterns.testingGaps.forEach(f => {
+                  comment += `- ${f} — Consider adding tests\n`;
+                });
+              }
+            }
+
+            // Best Practices
+            comment += `\n### ✨ Best Practices\n`;
+            comment += `${practices.hasTests ? '✅' : '⚠️'} Tests included\n`;
+            comment += `${practices.hasDocumentation ? '✅' : '⚠️'} Documentation provided\n`;
+            comment += `${practices.hasTypeDefinitions ? '✅' : '⚠️'} Type-safe code\n`;
+            comment += `${practices.hasErrorHandling ? '✅' : '⚠️'} Error handling implemented\n`;
+            comment += `${practices.followsConventions ? '✅' : '⚠️'} Conventional commits used\n`;
+
+            // Recommendations
+            comment += `\n### 💡 Recommendations\n`;
+            if (!practices.hasTests && analysis.filesChanged > 3) {
+              comment += `- 🧪 Consider adding tests for new files\n`;
+            }
+            if (analysis.patterns.complexityIncrease.length > 0) {
+              comment += `- 📐 Consider breaking down large files or functions\n`;
+            }
+            if (analysis.patterns.potentialBugs.length > 0) {
+              comment += `- 🔒 Review type safety — avoid \`any\` types\n`;
+            }
+            if (analysis.patterns.performanceIssues.length > 0) {
+              comment += `- ⚡ Consider performance optimizations\n`;
+            }
+
+            comment += `\n---\n✅ **Ready to merge:** All checks passed\n`;
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Request review if issues detected
+        if: github.event_name == 'pull_request'
+        run: |
+          cat > scripts/check-review-needed.js << 'EOF'
+          const fs = require('fs');
+          const analysis = JSON.parse(fs.readFileSync('analysis-result.json', 'utf8'));
+
+          const issueCount = Object.values(analysis.patterns).reduce((sum, arr) => sum + arr.length, 0);
+
+          if (issueCount > 0) {
+            console.log(`⚠️ ${issueCount} issue(s) detected - marking for review`);
+          } else {
+            console.log('✅ No issues detected');
+          }
+          EOF
+
+          node scripts/check-review-needed.js
+
+      - name: Upload analysis artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-review-analysis
+          path: |
+            analysis-result.json
+            practices-result.json
+          retention-days: 30

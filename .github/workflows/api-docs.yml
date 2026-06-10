@@ -1,0 +1,115 @@
+name: API Documentation Generation
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/app/api/**'
+      - 'scripts/generate-api-docs.js'
+  pull_request:
+    paths:
+      - 'src/app/api/**'
+      - 'scripts/generate-api-docs.js'
+
+jobs:
+  generate-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Generate API documentation
+        run: node scripts/generate-api-docs.js
+
+      - name: Check for changes
+        id: changes
+        run: |
+          if [ -n "$(git status --porcelain docs/api-spec.json docs/API_REFERENCE.md)" ]; then
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "📝 API documentation needs updating"
+          else
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "✅ API documentation is up to date"
+          fi
+
+      - name: Post documentation diff to PR
+        if: github.event_name == 'pull_request' && steps.changes.outputs.has_changes == 'true'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const { execSync } = require('child_process');
+
+            let diffSummary = '';
+            try {
+              const stat = execSync('git diff --stat docs/api-spec.json docs/API_REFERENCE.md', {
+                encoding: 'utf8'
+              });
+              diffSummary = stat.trim();
+            } catch (e) {
+              diffSummary = 'Unable to generate diff';
+            }
+
+            const spec = JSON.parse(fs.readFileSync('docs/api-spec.json', 'utf8'));
+            const endpointCount = Object.keys(spec.paths).length;
+            const totalOperations = Object.values(spec.paths)
+              .reduce((sum, methods) => sum + Object.keys(methods).length, 0);
+
+            const comment = `## 📚 API Documentation Update
+
+API changes detected. Documentation will be regenerated.
+
+### Summary
+- **Total endpoints:** ${endpointCount}
+- **Total operations:** ${totalOperations}
+
+### Files affected
+\`\`\`
+${diffSummary}
+\`\`\`
+
+After merge, the following will be regenerated:
+- \`docs/api-spec.json\` (OpenAPI 3.0 specification)
+- \`docs/API_REFERENCE.md\` (Markdown reference)
+
+💡 **Run locally:** \`node scripts/generate-api-docs.js\`
+`;
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+
+      - name: Commit updated docs
+        if: github.ref == 'refs/heads/main' && steps.changes.outputs.has_changes == 'true'
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/api-spec.json docs/API_REFERENCE.md
+          git commit -m "docs(api): auto-regenerate API documentation [skip ci]"
+          git push
+
+      - name: Upload generated docs
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-documentation
+          path: |
+            docs/api-spec.json
+            docs/API_REFERENCE.md
+          retention-days: 90
