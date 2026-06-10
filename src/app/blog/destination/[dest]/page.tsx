@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { encodeDestinationPathSegment } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
@@ -72,7 +73,7 @@ export async function generateMetadata({ params }: { params: Promise<{ dest?: st
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
   const destination = safeDecodePathSegment(dest);
-  const canonical = `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`;
+  const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
   return {
     title: `${destination} 여행 가이드`,
     description: `${destination} 여행의 모든 것. 가성비 패키지부터 럭셔리까지, 여소남이 엄선한 ${destination} 여행 정보를 만나보세요.`,
@@ -89,7 +90,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
   const destination = safeDecodePathSegment(dest);
-  const canonical = `${BASE_URL}/blog/destination/${encodeURIComponent(dest)}`;
+  const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
   const { posts, packages } = await getPostsByDestination(dest);
 
   return (

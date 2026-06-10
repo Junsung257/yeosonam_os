@@ -566,3 +566,37 @@ Existing posts should be improved in batches, not mass-deleted or blindly regene
 ### Current Baseline
 
 2026-06-09 initial code audit result: `43/100` revenue funnel readiness. Post-implementation result: `100/100` by `npm run audit:blog-revenue-funnel -- --strict`. Evidence: `docs/audits/2026-06-09-blog-revenue-funnel-code-research.md`.
+
+---
+
+## Search Indexability Gate (2026-06-10)
+
+Google Search Console and Naver Search Advisor reports are not satisfied by successful submission alone. A URL must be crawlable, indexable, canonical-clean, and title-distinct before reindexing.
+
+Required command:
+
+- `npm run audit:site-indexability -- --base=https://www.yeosonam.com --strict`
+
+This gate fails on sitemap URLs with:
+
+- robots.txt blocking
+- `noindex`
+- 3xx/4xx/5xx responses
+- missing title or canonical
+- canonical mismatch
+- duplicate title among indexable sitemap URLs
+
+Sitemap rules:
+
+- Do not include `/rfq/*`, `/share/*`, `/auth/*`, `/admin/*`, or other private/action URLs.
+- Do not include filter/search URLs such as `/packages?destination=...` when their canonical is `/packages`.
+- Blog destination hubs must come from a real destination field, not a slug prefix such as `5월`, `6월`, or `여름방학`.
+- A sitemap URL's canonical must point to itself after normal trailing-slash normalization.
+- Product detail titles must include enough differentiators such as product type, price, or product id suffix when many package rows share the same supplier title.
+
+After fixing indexability issues:
+
+1. Deploy.
+2. Run `npm run audit:site-indexability -- --base=https://www.yeosonam.com --strict`.
+3. Run `/api/blog/bulk-reindex` or the relevant sitemap submission path.
+4. In Google Search Console/Naver Search Advisor, start validation only after the live audit is clean.
