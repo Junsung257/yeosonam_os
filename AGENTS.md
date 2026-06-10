@@ -16,6 +16,7 @@
 | **API 응답 포맷·인증 패턴** | `.cursor/rules/api-response-format.mdc` |
 | **DB 변경·마이그레이션** | `.cursor/rules/db-migration-policy.mdc`, `CURRENT_STATUS.md`, `db/FIELD_POLICY.md` |
 | **반복 실수·문서 자동 정리·SSOT 정리** | `docs/ai-agent-doc-automation.md` + `db/error-registry.md` |
+| **Git 정리·커밋·푸시·PR·머지·배포** | `docs/git-commit-handoff.md` 먼저 Read. 사용자는 비개발자이므로 AI가 안전한 기본값으로 판단하고, 폐기·되돌리기·강제푸시 전에는 멈춘다 |
 | **오타·import 한 줄·사용자가 지정한 단일 파일 기계적 수정** | 생략 가능 (프로젝트 규칙은 `.cursor/rules` 참고) |
 
 사용자가 「CLAUDE 읽고」「상태 확인」이라고 하면 해당 턴에서 위 문서를 **실제로 연 뒤** 진행한다.
@@ -31,6 +32,13 @@
 - **★ AI 운영·세션 전략·판단 기준 (필독):** `.cursor/rules/yeosonam-operating-model.mdc`
 
 채팅 **메모리**에만 두는 도메인 지식은 오래된 오답이 될 수 있으므로, 반복되는 결정은 **이 레포의 Markdown으로 옮기고 PR로 갱신**하는 것을 우선한다.
+
+### Git/PR 자동 운영 원칙
+
+- 사용자가 "알아서 깃 정리"를 요청하면 AI가 브랜치 생성, 커밋 분할, 푸시, PR 생성, 체크 확인, 머지 가능 여부 판단까지 주도한다.
+- 다른 세션/작업 폴더가 있으면 먼저 `git worktree`, 열린 PR, 현재 브랜치 차이를 확인하고, 반영 여부를 사용자에게 기술 용어 없이 설명한다.
+- 오래된 브랜치는 그대로 머지하지 않는다. 현재 `main` 기준으로 필요한 변경만 선별 반영하고, 삭제·폐기·강제 되돌리기는 명시 승인 없이는 하지 않는다.
+- 스쿼시/리베이스 때문에 브랜치 커밋이 남아 보여도 곧바로 "미반영"으로 판단하지 말고, 패치 동등성(`git cherry`)과 실제 파일 내용을 대조한다.
 
 ### docs/ 주제별 (빠른 찾기)
 
