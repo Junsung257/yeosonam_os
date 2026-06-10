@@ -46,6 +46,22 @@ function resolveOgImage(candidate: unknown) {
   return `${BASE_URL}/og-image.png`;
 }
 
+function buildPackageSeoTitle(input: {
+  title: string;
+  productType?: unknown;
+  price?: unknown;
+  id: string;
+}): string {
+  const parts = [input.title.trim()];
+  if (typeof input.productType === 'string' && input.productType.trim()) {
+    parts.push(input.productType.trim());
+  }
+  const price = Number(input.price);
+  if (Number.isFinite(price)) parts.push(`${price.toLocaleString('ko-KR')}원~`);
+  parts.push(`상품번호 ${input.id.slice(0, 8)}`);
+  return parts.filter(Boolean).join(' | ');
+}
+
 export async function generateMetadata({
   params,
 }: {
@@ -68,6 +84,12 @@ export async function generateMetadata({
   const title = rawTitle
     .replace(/투어폰|랜드부산|더투어|투어비|현지투어/g, '')
     .trim();
+  const seoTitle = buildPackageSeoTitle({
+    title,
+    productType: (pkg as { product_type?: unknown }).product_type,
+    price: (pkg as { price?: unknown }).price,
+    id,
+  });
 
   // 설명: 핵심 정보 조합
   const parts: string[] = [];
@@ -106,10 +128,10 @@ export async function generateMetadata({
   const ogImage = resolveOgImage(heroCandidate);
 
   return {
-    title,
+    title: { absolute: `${seoTitle} | 여소남` },
     description,
     openGraph: {
-      title,
+      title: seoTitle,
       description,
       url: canonical,
       siteName: '여소남',

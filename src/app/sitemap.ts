@@ -83,7 +83,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const { data: posts } = await supabaseAdmin
       .from('content_creatives')
-      .select('slug, published_at, updated_at')
+      .select('slug, destination, published_at, updated_at')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
@@ -92,17 +92,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
     const postList = (posts || []) as Array<{
       slug: string;
+      destination: string | null;
       published_at: string | null;
       updated_at: string | null;
     }>;
 
     const destinations = new Set<string>();
     for (const post of postList) {
-      if (post.slug) {
-        // destination 추출: slug 접두사에서 추론 가능
-        const parts = post.slug.split('-');
-        if (parts.length > 1) destinations.add(parts[0]);
-      }
+      const destination = post.destination?.trim();
+      if (destination) destinations.add(destination);
     }
 
     const ANGLES = ['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food'];
@@ -140,51 +138,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     console.warn('[sitemap] blog error:', err);
   }
 
-  // 5. RFQ + destination 필터
-  try {
-    const { data: rfqs } = await supabaseAdmin
-      .from('rfqs')
-      .select('id, created_at')
-      .eq('status', 'awaiting_selection')
-      .order('created_at', { ascending: false })
-      .limit(500);
-
-    for (const rfq of rfqs || []) {
-      routes.push({
-        url: `${BASE_URL}/rfq/${rfq.id}`,
-        lastModified: rfq.created_at ? new Date(rfq.created_at) : new Date(),
-        changeFrequency: 'hourly' as const,
-        priority: 0.6,
-      });
-    }
-  } catch {
-    // noop
-  }
-
-  // Destination filter pages
-  try {
-    const { data: pkgs } = await supabaseAdmin
-      .from('travel_packages')
-      .select('destination')
-      .in('status', ['active', 'approved'])
-      .limit(HARD_LIMIT);
-
-    const destinations = new Set<string>();
-    for (const p of pkgs || []) {
-      if (p.destination) destinations.add(p.destination);
-    }
-
-    for (const dest of destinations) {
-      routes.push({
-        url: `${BASE_URL}/packages?destination=${encodeURIComponent(dest)}`,
-        lastModified: new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.7,
-      });
-    }
-  } catch {
-    // noop
-  }
+  // 검색/필터/공유성 URL은 canonical이 대표 페이지로 수렴하므로 sitemap에 넣지 않는다.
+  // - /rfq/* 는 robots.txt에서 차단되는 비공개성 견적 URL이다.
+  // - /packages?destination=* 는 canonical이 /packages인 필터 URL이라 대체 페이지 진단을 만든다.
 
   return routes;
 }

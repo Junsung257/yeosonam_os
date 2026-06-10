@@ -76,6 +76,7 @@
     "audit:blog-visual": "node scripts/audit-blog-visual-system.mjs",
     "audit:blog-gsc-domain": "node scripts/audit-blog-gsc-domain.mjs",
     "audit:blog-revenue-funnel": "node scripts/audit-blog-revenue-funnel.mjs",
+    "audit:site-indexability": "node scripts/audit-site-indexability.mjs",
     "backfill:blog-quality": "npx tsx scripts/backfill-blog-quality.ts",
     "backfill:blog-quality:write": "npx tsx scripts/backfill-blog-quality.ts --write",
     "audit:drift": "node db/audit_schema_drift.js",

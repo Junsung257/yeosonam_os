@@ -50,6 +50,21 @@ function getStringList(value: unknown): string[] {
     : [];
 }
 
+function buildPackageSeoTitle(input: {
+  title: string;
+  productType?: string | null;
+  price?: number | null;
+  id: string;
+}): string {
+  const parts = [input.title.trim()];
+  if (input.productType?.trim()) parts.push(input.productType.trim());
+  if (Number.isFinite(Number(input.price))) {
+    parts.push(`${Number(input.price).toLocaleString('ko-KR')}원~`);
+  }
+  parts.push(`상품번호 ${input.id.slice(0, 8)}`);
+  return parts.filter(Boolean).join(' | ');
+}
+
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
 //   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
@@ -127,6 +142,8 @@ export async function generateMetadata({
   let data: {
     title?: string | null;
     destination?: string | null;
+    price?: number | null;
+    product_type?: string | null;
     product_summary?: string | null;
     status?: string | null;
     audit_status?: string | null;
@@ -134,7 +151,7 @@ export async function generateMetadata({
   try {
     const result = await sb
       .from('travel_packages')
-      .select('title, destination, price, product_summary, status, audit_status')
+      .select('title, destination, price, product_type, product_summary, status, audit_status')
       .eq('id', id)
       .single();
     data = result.data;
@@ -150,14 +167,20 @@ export async function generateMetadata({
     return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: false } };
   }
   const title = String(data.title || data.destination || '여소남 패키지 여행');
+  const seoTitle = buildPackageSeoTitle({
+    title,
+    productType: data.product_type,
+    price: data.price,
+    id,
+  });
   const destination = String(data.destination || '패키지');
   const description = data.product_summary || `${destination} ${title} - 여소남 패키지 여행`;
 
   return {
-    title: `${title} | 여소남`,
+    title: { absolute: `${seoTitle} | 여소남` },
     description,
     openGraph: {
-      title,
+      title: seoTitle,
       description,
       url: canonical,
     },
