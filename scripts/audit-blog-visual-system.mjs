@@ -23,6 +23,7 @@ const maxPages = Number(argValue('--pages', '20')) || 20;
 const outputJson = hasFlag('--json');
 const full = hasFlag('--full');
 const surfaceLimit = Number(argValue('--surface-limit', full ? '0' : '8')) || 0;
+const concurrency = Math.max(1, Math.min(6, Number(argValue('--concurrency', '3')) || 3));
 const reportPath = argValue('--report', null);
 const screenshotDir = argValue('--screenshots', null);
 const strict = hasFlag('--strict');
@@ -136,6 +137,22 @@ async function auditOne(page, targetPath, viewport) {
       await new Promise((resolve) => window.setTimeout(resolve, 80));
     }
     window.scrollTo(0, 0);
+  });
+  await page.evaluate(async () => {
+    const images = [...document.querySelectorAll('main img, article img')];
+    await Promise.all(images.map((img) => {
+      if (img.complete && img.naturalWidth > 0 && img.naturalHeight > 0) return undefined;
+      const timeout = new Promise((resolve) => window.setTimeout(resolve, 2500));
+      if (typeof img.decode === 'function') {
+        return Promise.race([img.decode().catch(() => undefined), timeout]);
+      }
+      const loaded = new Promise((resolve) => {
+        const done = () => resolve(undefined);
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+      });
+      return Promise.race([loaded, timeout]);
+    }));
   });
   await page.waitForLoadState('networkidle', { timeout: 8000 }).catch(() => undefined);
   await page.waitForTimeout(300);
@@ -286,26 +303,39 @@ async function main() {
     locale: 'ko-KR',
     ignoreHTTPSErrors: true,
   });
-  const page = await context.newPage();
   const rows = [];
+  const jobs = [];
+  for (const targetPath of targets) {
+    for (const viewport of VIEWPORTS) jobs.push({ targetPath, viewport });
+  }
+  let cursor = 0;
 
   try {
-    for (const targetPath of targets) {
-      for (const viewport of VIEWPORTS) {
-        try {
-          rows.push(await auditOne(page, targetPath, viewport));
-        } catch (error) {
-          rows.push({
-            path: targetPath,
-            viewport: viewport.name,
-            error: error instanceof Error ? error.message : String(error),
-            failed: true,
-          });
+    async function worker() {
+      const page = await context.newPage();
+      try {
+        while (cursor < jobs.length) {
+          const job = jobs[cursor];
+          cursor += 1;
+          const { targetPath, viewport } = job;
+          try {
+            rows.push(await auditOne(page, targetPath, viewport));
+          } catch (error) {
+            rows.push({
+              path: targetPath,
+              viewport: viewport.name,
+              error: error instanceof Error ? error.message : String(error),
+              failed: true,
+            });
+          }
         }
+      } finally {
+        await page.close().catch(() => undefined);
       }
     }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, jobs.length)) }, () => worker()));
   } finally {
-    await page.close().catch(() => undefined);
     await context.close().catch(() => undefined);
     await browser.close().catch(() => undefined);
   }

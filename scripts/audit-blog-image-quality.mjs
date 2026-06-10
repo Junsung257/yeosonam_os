@@ -13,7 +13,7 @@ const hasFlag = (name) => args.includes(name);
 
 const baseUrl = (getArg('--base', process.env.BLOG_AUDIT_BASE_URL || 'http://localhost:3000') || '').replace(/\/$/, '');
 const limit = Number(getArg('--limit', '0')) || 0;
-const concurrency = Math.max(1, Math.min(12, Number(getArg('--concurrency', '6')) || 6));
+const concurrency = Math.max(1, Math.min(12, Number(getArg('--concurrency', '2')) || 2));
 const outputJson = hasFlag('--json');
 
 const STOP_WORDS = new Set([
