@@ -97,4 +97,32 @@ describe('attraction photo match search planning', () => {
       labels: ['백두산 천지', 'Changbai Mountain Tianchi'],
     })).toBeLessThan(0.45);
   });
+
+  it('rejects regional name collisions when the Pexels alt text points to the wrong place', () => {
+    const photo = {
+      id: 1,
+      width: 1800,
+      height: 1000,
+      url: 'https://www.pexels.com/photo/1',
+      photographer: 'A',
+      photographer_url: '',
+      alt: 'A stunning night view of Myeongdong Cathedral in Seoul, South Korea.',
+      src: {
+        original: '',
+        large2x: '',
+        large: '',
+        medium: '',
+        small: '',
+        portrait: '',
+        landscape: '',
+        tiny: '',
+      },
+    } satisfies PexelsPhoto;
+
+    expect(scorePexelsPhoto({
+      photo,
+      query: { query: 'Myeongdong Church Longjing China attraction', source: 'alias', priority: 80 },
+      labels: ['Myeongdong Church Longjing China'],
+    })).toBeLessThan(0.45);
+  });
 });

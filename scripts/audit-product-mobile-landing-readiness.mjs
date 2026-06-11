@@ -346,13 +346,17 @@ function normalizeTerm(value) {
   return String(value ?? '').toLowerCase().replace(/\s+/g, '').trim();
 }
 
-function destinationAllowsAttraction(destination, attraction) {
+function destinationAllowsAttraction(destination, attraction, context = '') {
   const dest = normalizeTerm(destination);
+  const ctx = normalizeTerm(context);
   if (!dest) return true;
   const region = normalizeTerm(attraction?.region);
   if (!region) return true;
   const regionTokens = region.split(/[,/|&]+/).map(token => token.trim()).filter(Boolean);
-  return dest.includes(region) || region.includes(dest) || regionTokens.some(token => token.length >= 2 && dest.includes(token));
+  if (dest.includes(region) || region.includes(dest)) return true;
+  if (ctx.includes(region) || regionTokens.some(token => token.length >= 2 && ctx.includes(token))) return true;
+  if ((dest.includes('연길') || dest.includes('백두산')) && /(?:연변|도문|용정)/.test(region)) return true;
+  return regionTokens.some(token => token.length >= 2 && dest.includes(token));
 }
 
 function attractionContextMismatch(pkg, attractionById) {
@@ -364,7 +368,9 @@ function attractionContextMismatch(pkg, attractionById) {
       for (const id of ids) {
         const attraction = attractionById.get(String(id));
         if (!attraction) continue;
-        if (!destinationAllowsAttraction(pkg.destination, attraction)) {
+        const dayContext = Array.isArray(day?.regions) ? day.regions.join(' ') : '';
+        const itemContext = [item.activity, item.note, dayContext].filter(Boolean).join(' ');
+        if (!destinationAllowsAttraction(pkg.destination, attraction, itemContext)) {
           return `${item.activity ?? ''}: attraction ${attraction.name ?? id} region ${attraction.region ?? 'unknown'} mismatches destination ${pkg.destination ?? 'unknown'}`;
         }
       }

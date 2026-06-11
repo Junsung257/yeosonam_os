@@ -40,7 +40,7 @@ export interface ReEnrichResult {
  */
 export async function reEnrichAffectedPackages(
   attractionIds: string[],
-  options: { maxPackages?: number; forceRevalidate?: boolean } = {},
+  options: { maxPackages?: number; forceRevalidate?: boolean; packageIds?: string[] } = {},
 ): Promise<ReEnrichResult> {
   const start = Date.now();
   const result: ReEnrichResult = {
@@ -75,6 +75,9 @@ export async function reEnrichAffectedPackages(
     //    (a) unmatched_activities 의 package_id 중 attraction_ids 와 매칭된 것
     //    (b) attractions[].region 과 매칭되는 travel_packages.destination
     const packageIdSet = new Set<string>();
+    for (const packageId of options.packageIds ?? []) {
+      if (packageId) packageIdSet.add(packageId);
+    }
 
     // (a) unmatched 큐 통한 영향
     const { data: viaUnmatched } = await supabaseAdmin

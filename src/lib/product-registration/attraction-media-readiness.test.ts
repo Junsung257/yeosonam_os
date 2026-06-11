@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   evaluateAttractionMediaReadiness,
   extractCustomerAttractionLabel,
+  extractCustomerAttractionLabels,
 } from './attraction-media-readiness';
 
 describe('attraction media readiness', () => {
@@ -84,5 +85,15 @@ describe('attraction media readiness', () => {
       activity: '산책',
       attraction_names: ['쿠로가와 온천마을'],
     })).toBe('쿠로가와 온천마을');
+  });
+
+  it('splits known Baekdu/Yanji composite attraction phrases into separate customer-visible labels', () => {
+    expect(extractCustomerAttractionLabels({
+      activity: '\uB3C5\uB9BD\uC758\uC2DD\uC744 \uACE0\uCDE8\uD558\uB294 \uC0C1\uC9D5 \uBE44\uC554\uC0B0 \uC77C\uC1A1\uC815, \uD574\uB780\uAC15(\uCC28\uCC3D\uAD00\uAD11)',
+    })).toEqual(['\uBE44\uC554\uC0B0 \uC77C\uC1A1\uC815', '\uD574\uB780\uAC15']);
+
+    expect(extractCustomerAttractionLabels({
+      activity: '\uC724\uB3D9\uC8FC\uC0DD\uAC00, \uBA85\uB3D9\uAD50\uD68C \uAD00\uAD11',
+    })).toEqual(['\uC724\uB3D9\uC8FC\uC0DD\uAC00', '\uBA85\uB3D9\uAD50\uD68C']);
   });
 });

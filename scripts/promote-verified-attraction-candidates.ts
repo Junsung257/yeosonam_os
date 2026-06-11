@@ -1,9 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 
-import { runAttractionPhotoMatch } from '../src/lib/attraction-photo-match';
-import { reEnrichAffectedPackages } from '../src/lib/package-reenrich-on-attraction-change';
-
 loadEnv({ path: '.env.local' });
 loadEnv();
 
@@ -49,8 +46,17 @@ function unique(values: string[]): string[] {
   return Array.from(new Set(values.map(clean).filter(Boolean)));
 }
 
+function packageIdsFrom(row: CandidateRow): string[] {
+  const ids = row.source_context?.package_ids;
+  return Array.isArray(ids)
+    ? ids.filter((value): value is string => typeof value === 'string' && value.length > 0)
+    : [];
+}
+
 function isBadMasterName(value: string): boolean {
   if (!value || value.length < 2) return true;
+  if (/^\d+\s*\uD638\s*\uACBD\uACC4\uBE44$/.test(value)) return false;
+  if (/[,\u3001/]/.test(value)) return true;
   if (/(맛집|날씨|주변|합성데크|차광막|WPC|돈까스|돈카츠|재래시장|옵션|마사지|선택관광)/i.test(value)) return true;
   if (/^\d+호\s*경계비$/.test(value)) return true;
   if (value === '강변공원') return true;
@@ -156,6 +162,7 @@ async function promote(row: CandidateRow) {
   }
 
   if (apply) {
+    const { runAttractionPhotoMatch } = await import('../src/lib/attraction-photo-match');
     await runAttractionPhotoMatch(attractionId, {
       keywords: [masterName, ...aliases],
       country: row.country_scope,
@@ -181,11 +188,15 @@ async function main() {
   const rows = await fetchCandidates();
   const results = [];
   const attractionIds: string[] = [];
+  const packageIds = new Set<string>();
   for (const row of rows) {
     try {
       const result = await promote(row);
       results.push(result);
       if ('attractionId' in result && result.attractionId) attractionIds.push(result.attractionId);
+      if ('attractionId' in result && result.attractionId) {
+        for (const packageId of packageIdsFrom(row)) packageIds.add(packageId);
+      }
     } catch (error) {
       results.push({
         status: 'error',
@@ -196,7 +207,14 @@ async function main() {
   }
 
   const reEnrich = apply && attractionIds.length > 0
-    ? await reEnrichAffectedPackages(attractionIds, { maxPackages: 200, forceRevalidate: true })
+    ? await (async () => {
+        const { reEnrichAffectedPackages } = await import('../src/lib/package-reenrich-on-attraction-change');
+        return reEnrichAffectedPackages(attractionIds, {
+          maxPackages: 200,
+          forceRevalidate: true,
+          packageIds: [...packageIds],
+        });
+      })()
     : null;
 
   const output = {

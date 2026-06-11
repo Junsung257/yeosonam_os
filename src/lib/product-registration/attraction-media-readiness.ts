@@ -80,6 +80,63 @@ function stringArray(value: unknown): string[] {
     : [];
 }
 
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values.map(value => normalizeLabel(value)).filter(Boolean)));
+}
+
+function compactHangul(value: string): string {
+  return value.replace(/\s+/g, '');
+}
+
+function knownCustomerAttractionLabels(activity: string): string[] {
+  const compact = compactHangul(activity);
+  const cases: Array<{ includes: string[]; labels: string[] }> = [
+    {
+      includes: ['\uBE44\uC554\uC0B0', '\uC77C\uC1A1\uC815', '\uD574\uB780\uAC15'],
+      labels: ['\uBE44\uC554\uC0B0 \uC77C\uC1A1\uC815', '\uD574\uB780\uAC15'],
+    },
+    {
+      includes: ['\uC724\uB3D9\uC8FC', '\uBA85\uB3D9\uAD50\uD68C'],
+      labels: ['\uC724\uB3D9\uC8FC\uC0DD\uAC00', '\uBA85\uB3D9\uAD50\uD68C'],
+    },
+    {
+      includes: ['\uB450\uB9CC\uAC15', '\uAC15\uBCC0\uACF5\uC6D0'],
+      labels: ['\uB450\uB9CC\uAC15 \uAC15\uBCC0\uACF5\uC6D0'],
+    },
+    {
+      includes: ['36\uD638', '\uACBD\uACC4\uBE44'],
+      labels: ['36\uD638 \uACBD\uACC4\uBE44'],
+    },
+    {
+      includes: ['37\uD638', '\uACBD\uACC4\uBE44'],
+      labels: ['37\uD638 \uACBD\uACC4\uBE44'],
+    },
+    {
+      includes: ['\uC218\uBAA9\uD55C\uACC4\uC120'],
+      labels: ['\uC218\uBAA9\uD55C\uACC4\uC120'],
+    },
+    {
+      includes: ['\uC5F0\uAE38', '\uBBFC\uC18D\uCD0C'],
+      labels: ['\uC5F0\uAE38 \uBBFC\uC18D\uCD0C'],
+    },
+  ];
+
+  return unique(cases
+    .filter(item => item.includes.every(term => compact.includes(term)))
+    .flatMap(item => item.labels));
+}
+
+function splitCompositeAttractionLabel(label: string): string[] {
+  const normalized = normalizeLabel(label);
+  if (!/[,\u3001/]| \+ | & /.test(normalized)) return normalized ? [normalized] : [];
+  return unique(normalized
+    .split(/\s*(?:,|\u3001|\/|\+|&)\s*/g)
+    .map(part => part
+      .replace(/\s*(?:\uCC28\uCC3D\uAD00\uAD11|\uAD00\uAD11|\uC0B0\uCC45|\uBC29\uBB38)\s*$/g, '')
+      .trim())
+    .filter(part => part.length >= 2));
+}
+
 function normalizeLabel(value: string): string {
   return value
     .replace(/^[▶◆★*ㆍ\-\s]+/g, '')
@@ -161,22 +218,29 @@ function hasEnoughAttractionSignal(label: string, activity: string): boolean {
 }
 
 export function extractCustomerAttractionLabel(item: ScheduleItemLike): string | null {
+  return extractCustomerAttractionLabels(item)[0] ?? null;
+}
+
+export function extractCustomerAttractionLabels(item: ScheduleItemLike): string[] {
   const type = text(item.type || item.entity_kind || item.kind).toLowerCase();
-  if (NON_ATTRACTION_TYPES.has(type)) return null;
+  if (NON_ATTRACTION_TYPES.has(type)) return [];
 
   const explicitNames = stringArray(item.attraction_names);
-  if (explicitNames.length > 0) return normalizeLabel(explicitNames[0]);
+  if (explicitNames.length > 0) return unique(explicitNames);
 
   const explicitQueries = stringArray(item.attraction_query);
-  if (explicitQueries.length > 0) return normalizeLabel(explicitQueries[0]);
+  if (explicitQueries.length > 0) return unique(explicitQueries.flatMap(splitCompositeAttractionLabel));
 
   const activity = text(item.activity);
-  if (!activity) return null;
-  if (DROP_FRAGMENT_RE.test(activity)) return null;
+  if (!activity) return [];
+  if (DROP_FRAGMENT_RE.test(activity)) return [];
+
+  const knownLabels = knownCustomerAttractionLabels(activity);
+  if (knownLabels.length > 0) return knownLabels;
 
   const label = labelFromDescriptiveActivity(activity);
-  if (!hasEnoughAttractionSignal(label, activity)) return null;
-  return label;
+  return splitCompositeAttractionLabel(label)
+    .filter(candidate => hasEnoughAttractionSignal(candidate, activity));
 }
 
 function itineraryDays(input: unknown): ItineraryDayLike[] {
@@ -211,25 +275,27 @@ export function evaluateAttractionMediaReadiness(input: {
   for (const day of itineraryDays(input.itineraryData)) {
     const schedule = Array.isArray(day.schedule) ? day.schedule as ScheduleItemLike[] : [];
     for (const item of schedule) {
-      const label = extractCustomerAttractionLabel(item);
-      if (!label) continue;
+      const labels = extractCustomerAttractionLabels(item);
+      if (labels.length === 0) continue;
 
       const ids = stringArray(item.attraction_ids);
       const matchedNames = ids
         .map(id => byId.get(id)?.name)
         .filter((name): name is string => Boolean(name));
       const photoCount = ids.reduce((sum, id) => sum + photoCountFromAttraction(byId.get(id)), 0);
-      candidates.push({
-        label,
-        day: typeof day.day === 'number' ? day.day : null,
-        activity: text(item.activity),
-        matchedIds: ids,
-        matchedNames,
-        photoCount,
-        hasPhoto: photoCount > 0,
-        customerVisible: true,
-        reason: ids.length > 0 ? 'matched_attraction_id' : 'customer_visible_major_attraction_unmatched',
-      });
+      for (const label of labels) {
+        candidates.push({
+          label,
+          day: typeof day.day === 'number' ? day.day : null,
+          activity: text(item.activity),
+          matchedIds: ids,
+          matchedNames,
+          photoCount,
+          hasPhoto: photoCount > 0,
+          customerVisible: true,
+          reason: ids.length > 0 ? 'matched_attraction_id' : 'customer_visible_major_attraction_unmatched',
+        });
+      }
     }
   }
 

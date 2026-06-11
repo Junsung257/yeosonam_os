@@ -84,8 +84,17 @@ function isDirectScanEligibleTerm(term: string, attraction: AttractionData, dest
   if (clean.length < 2 || clean.length > 24) return false;
   if (DIRECT_SCAN_STOP_TERMS.has(clean)) return false;
   if (attraction.category && DIRECT_SCAN_EXCLUDED_CATEGORIES.has(attraction.category)) return false;
-  if (!destinationAllowsAttraction(attraction, destination)) return false;
+  if (!destinationAllowsAttraction(attraction, destination) && normalizeDirectTerm(clean).length < 4) return false;
   return true;
+}
+
+function isDirectScanUnsafeActivity(activity: string): boolean {
+  const compact = activity.replace(/\s+/g, '');
+  if (!compact) return true;
+  if (/(?:\uB9C8\uC0AC\uC9C0|\uC774\uB3D9|\uC18C\uC694|\uD638\uD154|\uACF5\uD56D|\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD|\uAC00\uC774\uB4DC\uBBF8\uD305)/.test(compact)) {
+    return !/(?:\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uAC15\uBCC0\uACF5\uC6D0|\uD3ED\uD3EC|\uD638\uC218|\uBBFC\uC18D\uCD0C)/.test(compact);
+  }
+  return false;
 }
 
 function findRegisteredAttractionTermsInText(
@@ -190,6 +199,10 @@ export function enrichItineraryWithAttractionReferences(
   const attractionById = new Map(attractions.map(a => [String(a.id), a]));
 
   const days = itineraryData.days.map((day) => {
+    const dayRegions = Array.isArray(day.regions)
+      ? day.regions.map(region => String(region)).filter(Boolean)
+      : [];
+    const matchDestination = [destination, ...dayRegions].filter(Boolean).join('/');
     const schedule = (day.schedule ?? []).map((item) => {
       if (item.type && SKIP_TYPES.has(item.type)) return item;
       const existingIds = Array.isArray(item.attraction_ids)
@@ -199,7 +212,7 @@ export function enrichItineraryWithAttractionReferences(
         const values = existingIds
           .map(id => attractionById.get(id))
           .filter((a): a is AttractionData => Boolean(a))
-          .filter(a => destinationAllowsAttraction(a, destination));
+          .filter(a => destinationAllowsAttraction(a, matchDestination));
         if (values.length > 0) {
           matchedScheduleItemCount++;
           values.forEach(v => matchedNames.add(v.name));
@@ -219,7 +232,7 @@ export function enrichItineraryWithAttractionReferences(
 
       const compiledQueries = getAttractionQueries(item);
       if (compiledQueries.length > 0) {
-        const values = findMatchesForQueries(compiledQueries, attractions, destination);
+        const values = findMatchesForQueries(compiledQueries, attractions, matchDestination);
         if (values.length === 0) {
           unmatched.push({ activity: compiledQueries[0], day_number: day.day ?? 0 });
           return item;
@@ -234,11 +247,11 @@ export function enrichItineraryWithAttractionReferences(
         };
       }
 
-      if (!shouldAttemptAttractionMatch(item)) return item;
+      if (isDirectScanUnsafeActivity(item.activity)) return item;
       const directMatches = findRegisteredAttractionTermsInText(
         [item.activity, item.note ?? ''].filter(Boolean).join(' '),
         attractions,
-        destination,
+        matchDestination,
       );
       if (directMatches.length > 0) {
         const values = directMatches;
@@ -252,12 +265,13 @@ export function enrichItineraryWithAttractionReferences(
         };
       }
 
+      if (!shouldAttemptAttractionMatch(item)) return item;
       const candidates = extractAttractionCandidates(item.activity, item.note);
       if (candidates.length === 0) return item;
 
       const found = new Map<string, AttractionData>();
       for (const c of candidates) {
-        const matches = matchAttractions(c, attractions, destination);
+        const matches = matchAttractions(c, attractions, matchDestination);
         for (const m of matches) {
           const key = (m.id ?? m.name).toString();
           found.set(key, m);

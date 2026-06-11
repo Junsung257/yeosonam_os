@@ -46,6 +46,14 @@ function unique(values: string[]): string[] {
 function knownEnglishAliases(label: string): string[] {
   const compact = label.replace(/\s+/g, '').toLowerCase();
   const pairs: Array<[RegExp, string[]]> = [
+    [/\uBC31\uB450\uC0B0\uCC9C\uC9C0|\uBC31\uB450\uC0B0|\uCC9C\uC9C0|paektu|baekdu|tianchi/, ['Changbai Mountain Tianchi', 'Heaven Lake Changbai Mountain', 'Paektu Mountain Heaven Lake']],
+    [/\uC7A5\uBC31\uD3ED\uD3EC|\uC545\uD654\uD3ED\uD3EC/, ['Changbai Waterfall', 'Changbaishan Waterfall']],
+    [/\uB450\uB9CC\uAC15|tumen/, ['Tumen River China North Korea', 'Tumen River Yanbian']],
+    [/\uBE44\uC554\uC0B0|\uC77C\uC1A1\uC815/, ['Biyan Mountain Yanji', 'Yisong Pavilion Longjing China']],
+    [/\uD574\uB780\uAC15/, ['Hailan River Yanbian', 'Hailan River Longjing China']],
+    [/\uC724\uB3D9\uC8FC\uC0DD\uAC00|\uC724\uB3D9\uC8FC/, ['Yun Dongju Birthplace Longjing China', 'Yoon Dong-ju Birthplace Longjing China']],
+    [/\uBA85\uB3D9\uAD50\uD68C/, ['Mingdong Church Longjing China', 'Myeongdong Church Longjing China']],
+    [/\uC5F0\uAE38\s*\uBBFC\uC18D\uCD0C|\uC5F0\uAE38\uBBFC\uC18D\uCD0C/, ['Yanji Folk Village', 'Yanbian Korean Folk Village']],
     [/백두산천지|천지|tianchi/, ['Changbai Mountain Tianchi', 'Heaven Lake Changbai Mountain', 'Paektu Mountain Heaven Lake']],
     [/장백폭포/, ['Changbai Waterfall', 'Changbaishan Waterfall']],
     [/금강대협곡/, ['Jinjiang Grand Canyon Changbai Mountain', 'Changbai Mountain Grand Canyon']],
@@ -154,6 +162,48 @@ function tokenize(value: string): string[] {
     .filter(part => part.length >= 2);
 }
 
+function violatesStrictGeoGate(query: string, alt: string): boolean {
+  const queryTokens = new Set(tokenize(query));
+  const altTokens = new Set(tokenize(alt));
+  const hasAny = (tokens: string[]) => tokens.some(token => queryTokens.has(token));
+  const altHasAny = (tokens: string[]) => tokens.some(token => altTokens.has(token));
+
+  if (
+    hasAny(['longjing', 'yanji', 'yanbian', 'jilin', 'china']) &&
+    !altHasAny(['longjing', 'yanji', 'yanbian', 'jilin', 'china'])
+  ) {
+    return true;
+  }
+
+  if (hasAny(['longjing']) && altHasAny(['hangzhou', 'shenzhen', 'suzhou', 'wuhan', 'guizhou', 'seoul', 'korea'])) {
+    return true;
+  }
+
+  if (
+    hasAny(['yoon', 'yun', 'dongju', 'dong', 'birthplace']) &&
+    !altHasAny(['yoon', 'yun', 'dongju', 'poet', 'birthplace'])
+  ) {
+    return true;
+  }
+
+  if (
+    hasAny(['myeongdong', 'mingdong']) &&
+    !altHasAny(['myeongdong', 'mingdong'])
+  ) {
+    return true;
+  }
+
+  if (
+    hasAny(['myeongdong', 'mingdong']) &&
+    hasAny(['longjing', 'yanbian', 'jilin', 'china']) &&
+    altHasAny(['seoul', 'korea'])
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function scorePexelsPhoto(input: {
   photo: PexelsPhoto;
   query: AttractionPhotoSearchQuery;
@@ -174,11 +224,10 @@ export function scorePexelsPhoto(input: {
   }
   if (overlap > 0) score += Math.min(0.18, overlap * 0.06);
   if (/\?{2,}/.test(input.query.query)) return 0.1;
+  if (violatesStrictGeoGate(input.query.query, input.photo.alt || '')) return 0.1;
   const queryIsAscii = isAscii(input.query.query);
+  if (queryIsAscii && overlap === 0) return Math.min(score, 0.34);
   if (!queryIsAscii && overlap === 0) return 0.36;
-  if (queryIsAscii && overlap === 0 && input.query.source !== 'alias' && input.query.source !== 'wikidata_label') {
-    return Math.min(score, 0.44);
-  }
 
   return Math.max(0, Math.min(1, Number(score.toFixed(4))));
 }
