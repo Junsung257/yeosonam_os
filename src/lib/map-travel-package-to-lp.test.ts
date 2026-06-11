@@ -127,4 +127,40 @@ describe('mapTravelPackageToLandingData', () => {
     expect(labels).toContain('\uAE40\uD574 \uAD6D\uC81C\uACF5\uD56D \uBBF8\uD305');
     expect(labels).toContain('\uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11');
   });
+
+  it('filters day region labels and meal connectors after the shared render contract', () => {
+    const pkg = {
+      id: 'pkg-shizuoka',
+      title: '\uC2DC\uC988\uC624\uCE74 2\uBC153\uC77C',
+      destination: '\uC2DC\uC988\uC624\uCE74',
+      duration: 3,
+      price: 499000,
+      price_dates: [{ date: '2026-06-29', price: 499000, confirmed: false }],
+      inclusions: [],
+      excludes: [],
+      itinerary_data: {
+        days: [
+          {
+            day: 1,
+            regions: ['\uBD80\uC0B0', '\uC2DC\uC988\uC624\uCE74', '\uCE74\uC640\uAD6C\uCE58'],
+            meals: { breakfast: false, lunch: true, dinner: true },
+            schedule: [
+              { activity: '\uC2DC\uC988\uC624\uCE74', type: 'normal' },
+              { activity: '\uCE74\uC640\uAD6C\uCE58', type: 'normal' },
+              { activity: '\uC911\uC2DD \uD6C4', type: 'normal' },
+              { activity: '\uB2C8\uD63C\uB2E4\uC774\uB77C \uB85C\uD504\uC6E8\uC774 \uC655\uBCF5\uD0D1\uC2B9', type: 'normal' },
+            ],
+          },
+        ],
+      },
+    };
+
+    const mapped = mapTravelPackageToLandingData(pkg as unknown as Record<string, unknown>, null);
+    const labels = mapped.itinerary.days[0].activities.map(a => a.label);
+
+    expect(labels).not.toContain('\uC2DC\uC988\uC624\uCE74');
+    expect(labels).not.toContain('\uCE74\uC640\uAD6C\uCE58');
+    expect(labels).not.toContain('\uC911\uC2DD \uD6C4');
+    expect(labels).toContain('\uB2C8\uD63C\uB2E4\uC774\uB77C \uB85C\uD504\uC6E8\uC774 \uC655\uBCF5\uD0D1\uC2B9');
+  });
 });

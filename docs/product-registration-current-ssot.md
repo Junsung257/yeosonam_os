@@ -411,6 +411,18 @@ Do not bypass the engine with one-off `db/insert_*.js` scripts unless the user e
 
 Mobile landing and A4 must share a customer-safe render contract. Renderers should consume standardized view/payload helpers rather than reparsing raw `travel_packages` fields.
 
+Every raw-source upload investigation or parser fix must verify the complete customer path, not only extraction. The minimum acceptance path is:
+
+```text
+raw supplier text
+  -> registerProductFromRaw
+  -> deliverability gate
+  -> renderPackage A4/mobile shared view
+  -> mapTravelPackageToLandingData mobile payload
+```
+
+The work is not complete until the mobile payload has a positive `priceFrom`, non-empty source-backed `price_dates`, non-empty `itinerary.days`, and customer-readable schedule labels. Region-only fragments, meal connector fragments such as `중식 후`, transport/table columns, and supplier-only operational fragments must not appear as standalone sightseeing activities.
+
 Customer-visible fields must have one of these sources:
 
 - copied from raw supplier evidence,
@@ -533,6 +545,7 @@ npm run verify:product-registration-learning
 npm run verify:product-registration-live-samples:ci
 npm run audit:drift:ci
 npx vitest run src/lib/product-registration/learning-engine-integration.test.ts
+npx vitest run src/lib/itinerary-schedule-compiler.test.ts src/lib/map-travel-package-to-lp.test.ts
 npx vitest run src/lib/parser/deterministic src/lib/product-registration src/lib/upload-validator.test.ts src/lib/price-dates.test.ts src/lib/upload-verify.test.ts
 npm run type-check
 npm run eval:product-registration:ci

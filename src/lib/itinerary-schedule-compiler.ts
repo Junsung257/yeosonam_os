@@ -229,7 +229,7 @@ function buildSentencesSafe(activity: string, kind: ScheduleEntityKind, queries:
     return { landing: text, a4: text };
   }
 
-  if (kind === 'hotel_stay' && /\uC628\uCC9C\uC695/.test(text)) {
+  if (kind === 'hotel_stay' && /(?:\uC628\uCC9C\uC695|\uC628\uCC9C\s*\uD734\uC2DD|\uC628\uCC9C\uD734\uC2DD)/.test(text)) {
     return {
       landing: '\uD638\uD154\uB85C \uC774\uB3D9\uD574 \uC11D\uC2DD \uD6C4 \uD734\uC2DD\uD558\uBA70 \uC628\uCC9C\uC695\uC744 \uC990\uAE41\uB2C8\uB2E4.',
       a4: '\uD638\uD154 \uC774\uB3D9 \uD6C4 \uC11D\uC2DD \uBC0F \uD734\uC2DD, \uC628\uCC9C\uC695',
@@ -271,15 +271,27 @@ function buildSentencesSafe(activity: string, kind: ScheduleEntityKind, queries:
   return { landing: text, a4: text };
 }
 
-function shouldDropLandingScheduleItem(item: CompiledScheduleItem): boolean {
+function shouldDropLandingScheduleItem(item: CompiledScheduleItem, regions?: unknown): boolean {
   const text = cleanLine(item.activity);
   const compactText = compact(text);
   if (!compactText) return true;
+  const regionLabels = Array.isArray(regions)
+    ? regions.map(region => compact(String(region))).filter(Boolean)
+    : [];
+  if (regionLabels.includes(compactText)) return true;
+  if (/^(?:\uD638\uD154\s*)?(?:\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD)\s*\uD6C4$/.test(text)) return true;
   if (/^(?:\uBD80\uC0B0|\uC5F0\uAE38|\uB3C4\uBB38|\uC6A9\uC815|\uC774\uB3C4\uBC31\uD558|\uC1A1\uAC15\uD558|\uB0A8\uD30C|\uBD81\uD30C|\uC11C\uD30C)$/.test(compactText)) return true;
   if (/^(?:\uC804\uC77C|\uC804\uC6A9\uCC28\uB7C9|\uBB34\uC81C\uD55C)$/.test(compactText)) return true;
   if (/^\([^)]*\)$/.test(text)) return true;
   if (/^\$?\d+(?:\/\uC778)?$/.test(compactText)) return true;
   if (/^\d{1,2}:\d{2}$/.test(compactText)) return true;
+  if (
+    item.entity_kind === 'unknown'
+    && !item.attraction_query
+    && !(Array.isArray(item.attraction_names) && item.attraction_names.length > 0)
+    && /^[\uAC00-\uD7A3A-Za-z/·.-]{2,12}$/.test(compactText)
+    && !/(\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uD0D1\uC2B9|\uCCB4\uD5D8|\uACF5\uD56D|\uB85C\uD504\uC6E8\uC774|\uC2E0\uC0AC|\uD638\uC218|\uB9C8\uC744|\uACF5\uC6D0|\uAC70\uB9AC|\uD3ED\uD3EC|\uC628\uCC9C|\uC0AC\uC6D0|\uC2DC\uC7A5|\uBC15\uBB3C\uAD00|\uC804\uB9DD\uB300|\uC2A4\uCE74\uC774|\uC6CC\uD06C|\uD56B\uCE74\uC774|\uB9C8\uCE20\uBC14\uB77C|\uC0AC\uC0AC\uBC14|\uB2C8\uD63C\uB2E4\uC774\uB77C)/.test(text)
+  ) return true;
   return false;
 }
 
@@ -329,7 +341,7 @@ export function compileItineraryForLanding<T extends ItineraryDataLike | null>(i
       ...day,
       schedule: coalesceScheduleItems(day.schedule ?? [])
         .map(item => compileScheduleItemForLanding(item))
-        .filter(item => !shouldDropLandingScheduleItem(item)),
+        .filter(item => !shouldDropLandingScheduleItem(item, day.regions)),
     })),
   } as T;
 }

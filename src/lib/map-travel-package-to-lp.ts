@@ -97,17 +97,31 @@ function compactKorean(value: string): string {
   return value.replace(/\s+/g, '').trim();
 }
 
-function isSupplierTableFragment(label: string, type: DayActivity['type'], attractionNames?: string[]): boolean {
+function isSupplierTableFragment(
+  label: string,
+  type: DayActivity['type'],
+  attractionNames?: string[],
+  regions?: string[],
+): boolean {
   const text = label.replace(/\s+/g, ' ').trim();
   const compact = compactKorean(text);
   if (!compact) return true;
   if ((attractionNames?.length ?? 0) > 0) return false;
+  const regionLabels = (regions ?? []).map(region => compactKorean(region)).filter(Boolean);
+  if (regionLabels.includes(compact)) return true;
   if (type === 'hotel' || type === 'optional' || type === 'shopping') return false;
 
   if (/^\d{1,2}:\d{2}$/.test(text)) return true;
   if (/^[A-Z0-9]{2}\d{3,4}$/i.test(compact)) return true;
   if (/^\$?\d+/.test(text)) return true;
   if (/^(?:\uC870|\uC911|\uC11D)\s*:/.test(text)) return true;
+  if (/^(?:\uD638\uD154\s*)?(?:\uC870\uC2DD|\uC911\uC2DD|\uC11D\uC2DD)\s*\uD6C4$/.test(text)) return true;
+  if (
+    type === 'sightseeing'
+    && !attractionNames?.length
+    && /^[\uAC00-\uD7A3A-Za-z/·.-]{2,12}$/.test(compact)
+    && !/(\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uD0D1\uC2B9|\uCCB4\uD5D8|\uACF5\uD56D|\uB85C\uD504\uC6E8\uC774|\uC2E0\uC0AC|\uD638\uC218|\uB9C8\uC744|\uACF5\uC6D0|\uAC70\uB9AC|\uD3ED\uD3EC|\uC628\uCC9C|\uC0AC\uC6D0|\uC2DC\uC7A5|\uBC15\uBB3C\uAD00|\uC804\uB9DD\uB300|\uC2A4\uCE74\uC774|\uC6CC\uD06C|\uD56B\uCE74\uC774|\uB9C8\uCE20\uBC14\uB77C|\uC0AC\uC0AC\uBC14|\uB2C8\uD63C\uB2E4\uC774\uB77C)/.test(text)
+  ) return true;
   if (/^(?:\uBD80\uC0B0|\uC5F0\uAE38|\uB3C4\uBB38|\uC6A9\uC815|\uC774\uB3C4\uBC31\uD558|\uBD81\uD30C|\uC11C\uD30C)$/.test(compact)) return true;
   if (/^(?:\uC804\uC6A9\uCC28\uB7C9|\uC804\uC77C)$/.test(compact)) return true;
   if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compact)) return true;
@@ -125,6 +139,7 @@ function toLpActivities(
     entity_kind?: string | null;
     landing_sentence?: string | null;
   }[],
+  regions?: string[],
 ): DayActivity[] {
   return schedule
     .map((s): DayActivity => {
@@ -138,7 +153,7 @@ function toLpActivities(
         attractionNames,
       };
     })
-    .filter((activity) => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames));
+    .filter((activity) => !isSupplierTableFragment(activity.label, activity.type, activity.attractionNames, regions));
 }
 
 /** 서버에서만 호출 — 채팅 URL 은 env 채널 ID 기준 */
@@ -290,7 +305,7 @@ export function mapTravelPackageToLandingData(
               dinner: !!d.meals?.dinner,
             },
             activities: [
-              ...toLpActivities(d.schedule),
+              ...toLpActivities(d.schedule, d.regions),
               ...(d.hotelCard?.name
                 ? [{
                     type: 'hotel' as const,

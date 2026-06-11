@@ -80,6 +80,34 @@ describe('itinerary schedule landing compiler', () => {
 });
 
 describe('Baekdu landing regression guards', () => {
+  it('cleans Shizuoka-style region and meal connector fragments before mobile landing render', () => {
+    const compiled = compileItineraryForLanding({
+      days: [
+        {
+          day: 1,
+          regions: ['\uBD80\uC0B0', '\uC2DC\uC988\uC624\uCE74', '\uCE74\uC640\uAD6C\uCE58'],
+          schedule: [
+            { activity: '\uC2DC\uC988\uC624\uCE74', type: 'normal' },
+            { activity: '\uCE74\uC640\uAD6C\uCE58', type: 'normal' },
+            { activity: '\uBD80\uC0B0 \uAE40\uD574 \uAD6D\uC81C \uACF5\uD56D 2\uCE35 \uC9D1\uACB0', type: 'normal' },
+            { activity: '\uC911\uC2DD \uD6C4', type: 'normal' },
+            { activity: '\uB2C8\uD63C\uB2E4\uC774\uB77C \uB85C\uD504\uC6E8\uC774 \uC655\uBCF5\uD0D1\uC2B9', type: 'normal' },
+            { activity: '\uD638\uD154\uC548\uB0B4 \uBC0F \uC11D\uC2DD \uD6C4 \uC628\uCC9C\uD734\uC2DD\u2668', type: 'hotel' },
+          ],
+        },
+      ],
+    });
+
+    const labels = compiled.days[0].schedule.map(item => (
+      (item as { landing_sentence?: string | null }).landing_sentence ?? item.activity
+    ));
+
+    expect(labels).not.toContain('\uC2DC\uC988\uC624\uCE74');
+    expect(labels).not.toContain('\uCE74\uC640\uAD6C\uCE58');
+    expect(labels).not.toContain('\uC911\uC2DD \uD6C4');
+    expect(labels).toContain('\uD638\uD154\uB85C \uC774\uB3D9\uD574 \uC11D\uC2DD \uD6C4 \uD734\uC2DD\uD558\uBA70 \uC628\uCC9C\uC695\uC744 \uC990\uAE41\uB2C8\uB2E4.');
+  });
+
   it('removes route-only and table-noise fragments from landing schedules', () => {
     const compiled = compileItineraryForLanding({
       days: [
