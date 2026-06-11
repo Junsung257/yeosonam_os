@@ -34,10 +34,11 @@ function appendPositiveInt(params: URLSearchParams, key: string, value: number |
 }
 
 export function toBlogImageProxySrc(value: string, baseUrl = '', options: BlogImageProxyOptions = {}): string {
-  const params = new URLSearchParams({ src: value.trim() });
+  const params = new URLSearchParams();
   appendPositiveInt(params, 'w', options.width);
   appendPositiveInt(params, 'q', options.quality);
-  const path = `${BLOG_IMAGE_PROXY_PATH}?${params.toString()}`;
+  const optionQuery = params.toString();
+  const path = `${BLOG_IMAGE_PROXY_PATH}?src=${encodeURIComponent(value.trim())}${optionQuery ? `&${optionQuery}` : ''}`;
   if (!baseUrl) return path;
   return `${baseUrl.replace(/\/$/, '')}${path}`;
 }
