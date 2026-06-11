@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { extractPriceIR } from './index';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 const HOTEL_COLUMN_MATRIX = `
 부산出 세부 세미 PKG 3박 5일 진에어(LJ)
@@ -363,6 +367,28 @@ describe('extractPriceIR product price vertical date table', () => {
     expect(result.rows.find(row => row.date === '2026-07-06')?.adult_price).toBe(629000);
     expect(result.rows.find(row => row.date === '2026-08-26')?.adult_price).toBe(899000);
     expect(result.rows.some(row => row.date.startsWith('2024-'))).toBe(false);
+  });
+
+  it('treats January departures uploaded in December as next year when no explicit year exists', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-12-10T09:00:00+09:00'));
+    const rawText = `
+출발일 &상품가
+1월
+1/5, 12, 19
+899,000원
+포함 사항
+왕복항공권
+`;
+
+    const result = extractPriceIR(rawText, { durationDays: 3 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows.map(row => row.date)).toEqual([
+      '2027-01-05',
+      '2027-01-12',
+      '2027-01-19',
+    ]);
   });
 });
 
