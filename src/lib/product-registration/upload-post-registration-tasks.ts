@@ -10,6 +10,7 @@ import { persistIntakeSnapshot } from '@/lib/persist-intake-snapshot';
 import { runUploadIrShadowIfSampled } from '@/lib/upload-ir-shadow';
 import { runUploadVerify } from '@/lib/upload-verify';
 import { persistProductRegistrationDraftV3, runProductRegistrationV3 } from '@/lib/product-registration-v3';
+import { persistAttractionMediaCandidates } from '@/lib/product-registration/attraction-media-readiness';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import type { AlertInput } from '@/lib/admin-alerts';
 import type { LeakIncident } from '@/lib/customer-leak-sanitizer';
@@ -94,6 +95,7 @@ export function scheduleUploadPostRegistrationTasks(input: {
   packageId: string;
   packageTitle: string;
   packageRow: Record<string, unknown>;
+  itineraryData?: unknown;
   internalCode: string | null;
   destination: string | null;
   sourceType: string | null;
@@ -152,6 +154,24 @@ export function scheduleUploadPostRegistrationTasks(input: {
   });
 
   if (input.isSupabaseConfigured) {
+    input.safeAfter(async () => {
+      try {
+        const result = await persistAttractionMediaCandidates({
+          supabase: input.supabase,
+          packageId: input.packageId,
+          packageTitle: input.packageTitle,
+          itineraryData: input.itineraryData,
+          destination: input.destination,
+          activeAttractions: input.activeAttractions,
+        });
+        if (result.upserted > 0) {
+          console.log('[upload-after] attraction media candidates:', result.upserted, result.candidates.slice(0, 5).map(c => c.label).join(', '));
+        }
+      } catch (e) {
+        console.warn('[upload-after] attraction media candidate save failed:', e instanceof Error ? e.message : e);
+      }
+    });
+
     input.safeAfter(async () => {
       try {
         const snap = await persistIntakeSnapshot(input.supabase, {

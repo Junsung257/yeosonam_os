@@ -23,6 +23,7 @@ import {
 import { readSupplierDocumentLikeHuman } from './ai-human-reader';
 import { auditPriceExtractionAgainstSource } from './price-red-team-auditor';
 import { evaluateUploadDeliverability } from './deliverability-gate';
+import { evaluateAttractionMediaReadiness } from './attraction-media-readiness';
 import { inferAccommodationsFromRawText } from './accommodations';
 import { inferDepartureDaysFromRawText } from './departure-days';
 import { normalizeUploadItinerary, type ItineraryDataLike } from './itinerary-normalization';
@@ -522,6 +523,11 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     activeAttractions: input.activeAttractions,
   });
   if (!ed.airline && itinerary.fallbackAirline) ed.airline = itinerary.fallbackAirline;
+  const attractionMedia = evaluateAttractionMediaReadiness({
+    itineraryData: itinerary.itineraryDataToSave,
+    attractions: input.activeAttractions,
+    includePhotoAudit: false,
+  });
 
   const v3GateFailures = v3.result?.gate_result.status === 'blocked'
     ? v3.result.gate_result.checks
@@ -556,6 +562,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ...priceAudit.warnings.map(reason => `price_source_audit:${reason}`),
     ...v3GateFailures,
     ...itinerary.warnings,
+    ...attractionMedia.warnings.map(reason => `mobile_media:${reason}`),
     ...(v3.result?.gate_result.status === 'needs_review' ? ['v3:needs_review'] : []),
   ];
 

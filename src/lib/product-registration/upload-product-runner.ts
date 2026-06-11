@@ -437,6 +437,7 @@ export async function processUploadRegistrationProducts(input: {
           packageId: pkgResult.id,
           packageTitle: title,
           packageRow: pkgResult as unknown as Record<string, unknown>,
+          itineraryData: itineraryDataToSave,
           internalCode,
           destination: ed.destination ?? null,
           sourceType: input.parsedDocument.fileType,
