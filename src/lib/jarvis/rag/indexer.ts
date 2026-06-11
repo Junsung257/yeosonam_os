@@ -76,6 +76,7 @@ async function contextualize(docTitle: string, docSummary: string, chunk: string
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: AbortSignal.timeout(8_000),
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: `${CTX_PROMPT}\n\n문서 제목: ${docTitle}\n문서 요약: ${docSummary}` }] },
           contents: [{ parts: [{ text: `청크:\n${chunk}` }] }],
@@ -99,6 +100,7 @@ async function embed(text: string): Promise<number[] | null> {
     const res = await fetch(`${EMBED_ENDPOINT}?key=${apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10_000),
       body: JSON.stringify({
         content: { parts: [{ text }] },
         taskType: 'RETRIEVAL_DOCUMENT',

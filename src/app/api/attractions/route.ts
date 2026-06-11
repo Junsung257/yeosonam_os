@@ -3,6 +3,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getSecret } from '@/lib/secret-registry';
 import { resweepUnmatchedActivities } from '@/lib/unmatched-resweep';
 import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 // GET /api/attractions — 전체 관광지 목록
 export async function GET(request: NextRequest) {
@@ -94,7 +95,7 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (error) {
-    console.error('[Attractions API] 조회 오류:', error);
+    console.error('[Attractions API] 조회 오류:', sanitizeDbError(error));
     return NextResponse.json({ attractions: [] });
   }
 }
@@ -190,8 +191,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ attraction: data, sweep }, { status: 201 });
   } catch (error) {
-    console.error('[Attractions API] 등록 오류:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '등록 실패' }, { status: 500 });
+    console.error('[Attractions API] 등록 오류:', sanitizeDbError(error));
+    return NextResponse.json({ error: sanitizeDbError(error, '등록 실패') }, { status: 500 });
   }
 }
 
@@ -384,8 +385,8 @@ JSON 객체만 응답:`;
 
     return NextResponse.json({ success: true, sweep });
   } catch (error) {
-    console.error('[Attractions API] 수정 오류:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '수정 실패' }, { status: 500 });
+    console.error('[Attractions API] 수정 오류:', sanitizeDbError(error));
+    return NextResponse.json({ error: sanitizeDbError(error, '수정 실패') }, { status: 500 });
   }
 }
 
@@ -486,7 +487,7 @@ export async function PUT(request: NextRequest) {
         continue;
       }
       // 배치 실패 → 단건 fallback 으로 성공 건 최대화 + 실패 건 식별
-      console.error('[Attractions CSV] 배치 upsert 오류:', error.message);
+      console.error('[Attractions CSV] 배치 upsert 오류:', sanitizeDbError(error));
       for (const row of chunk) {
         const { error: rowErr } = await supabaseAdmin
           .from('attractions')
@@ -505,8 +506,8 @@ export async function PUT(request: NextRequest) {
       totalErrors: rowErrors.length,
     });
   } catch (error) {
-    console.error('[Attractions API] 일괄 업로드 오류:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '업로드 실패' }, { status: 500 });
+    console.error('[Attractions API] 일괄 업로드 오류:', sanitizeDbError(error));
+    return NextResponse.json({ error: sanitizeDbError(error, '업로드 실패') }, { status: 500 });
   }
 }
 
@@ -540,7 +541,7 @@ export async function DELETE(request: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ success: true, mode: 'soft' });
   } catch (error) {
-    console.error('[Attractions API] 삭제 오류:', error);
-    return NextResponse.json({ error: error instanceof Error ? error.message : '삭제 실패' }, { status: 500 });
+    console.error('[Attractions API] 삭제 오류:', sanitizeDbError(error));
+    return NextResponse.json({ error: sanitizeDbError(error, '삭제 실패') }, { status: 500 });
   }
 }

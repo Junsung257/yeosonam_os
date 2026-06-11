@@ -252,7 +252,7 @@ async function executeTool(toolName: string, args: any): Promise<any> {
         method: 'GET',
         headers: {
           // 서버-to-서버 admin 인증 (route handler 가 isAdmin 체크)
-          Authorization: `Bearer ${getSecret('SUPABASE_SERVICE_ROLE_KEY') || ''}`,
+          'x-admin-token': getSecret('ADMIN_API_TOKEN') || '',
         },
       });
       return await res.json();

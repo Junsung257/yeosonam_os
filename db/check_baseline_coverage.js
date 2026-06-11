@@ -105,7 +105,11 @@ async function main() {
   const { spawnSync } = require('child_process');
   const visualScript = path.join(__dirname, 'generate_visual_baseline.js');
   console.log(`\n▶ 누락 ${ids.length}건 baseline 일괄 생성 중...`);
-  const r = spawnSync('node', [visualScript, ...ids], { stdio: 'inherit', cwd: ROOT });
+  const r = spawnSync('node', [visualScript, ...ids], {
+    stdio: 'inherit',
+    cwd: ROOT,
+    env: { ...process.env, BASELINE_STRICT: '1' },
+  });
   process.exit(r.status ?? 0);
 }
 

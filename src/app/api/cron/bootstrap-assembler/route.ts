@@ -33,6 +33,14 @@ const DEST_TO_SLUG: Record<string, string> = {
   '북경': 'pek', '상해': 'sha', '계림': 'kwl', '황산': 'hfe',
   '대만': 'tpe', '타이베이': 'tpe',
 };
+const DEST_TO_CODE: Record<string, string> = {
+  '다낭': 'DAD', '서안': 'XIY', '청도': 'TAO', '칭다오': 'TAO',
+  '보홀': 'BHO', '하노이': 'HAN', '후쿠오카': 'FUK', '세부': 'CEB',
+  '오사카': 'OSA', '도쿄': 'TYO', '삿포로': 'CTS', '나트랑': 'CXR',
+  '푸꾸옥': 'PQC', '방콕': 'BKK', '치앙마이': 'CNX', '장가계': 'DYG',
+  '북경': 'PEK', '상해': 'SHA', '계림': 'KWL', '황산': 'HFE',
+  '대만': 'TPE', '타이베이': 'TPE',
+};
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
@@ -69,6 +77,7 @@ export async function GET(request: NextRequest) {
       destination: string;
       packages: number;
       slug: string | null;
+      destCode: string | null;
       action: 'bootstrap' | 'manual_review';
     }> = [];
 
@@ -81,7 +90,8 @@ export async function GET(request: NextRequest) {
         destination: dest,
         packages: n,
         slug,
-        action: slug ? 'bootstrap' : 'manual_review',
+        destCode: DEST_TO_CODE[dest] ?? null,
+        action: slug && DEST_TO_CODE[dest] ? 'bootstrap' : 'manual_review',
       });
     }
     candidates.sort((a, b) => b.packages - a.packages);
@@ -102,7 +112,7 @@ export async function GET(request: NextRequest) {
     const queuedOnly: string[] = [];
 
     for (const c of candidates) {
-      if (!c.slug || isServerless) {
+      if (!c.slug || !c.destCode || isServerless) {
         queuedOnly.push(c.destination);
         continue;
       }
@@ -110,7 +120,7 @@ export async function GET(request: NextRequest) {
         const scriptPath = path.resolve(process.cwd(), 'db', 'auto_bootstrap_assembler.js');
         const proc = spawn(
           'node',
-          [scriptPath, `--region=${c.destination}`, `--slug=${c.slug}`, `--min=${MIN_PACKAGES}`],
+          [scriptPath, `--region=${c.destination}`, `--dest-code=${c.destCode}`, `--slug=${c.slug}`, `--min=${MIN_PACKAGES}`],
           { detached: true, stdio: 'ignore' },
         );
         proc.unref();

@@ -282,7 +282,7 @@ export default function YeosonamA4Template({ pkg, attractions, resolvedNotices }
   //
   // 알고리즘:
   //   1. 월 그룹을 순회하면서 행 수 누적
-  //   2. Page 1 예산(12행) / 이후 페이지 예산(22행) 초과 시 새 청크 시작
+  //   2. Page 1 예산(18행) / 이후 페이지 예산(24행) 초과 시 새 청크 시작
   //   3. 한 월이 한 페이지 예산도 초과하면 그 월을 price 그룹별로 분할 (Fallback)
   //      (예: 한 달에 30행 이상 = "매일 출발" 상품)
   //

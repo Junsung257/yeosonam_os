@@ -21,13 +21,23 @@ export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 300;
 
-const MAX_PER_RUN = 50;
+const DEFAULT_PER_TYPE = 5;
+const HARD_MAX_PER_TYPE = 20;
+const DEADLINE_MS = 240_000;
+
+function readPerTypeLimit(req: NextRequest): number {
+  const raw = Number(req.nextUrl.searchParams.get('limit') || DEFAULT_PER_TYPE);
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_PER_TYPE;
+  return Math.min(Math.floor(raw), HARD_MAX_PER_TYPE);
+}
 
 async function handle(req: NextRequest) {
   if (!isCronAuthorized(req)) return cronUnauthorizedResponse();
   if (!isSupabaseConfigured) return apiResponse({ skipped: true, reason: 'Supabase not configured' });
 
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const perTypeLimit = readPerTypeLimit(req);
+  const deadlineAt = Date.now() + DEADLINE_MS;
 
   // 1. 최근 변경된 패키지 (active/approved 만)
   const { data: pkgs } = await supabaseAdmin
@@ -36,7 +46,7 @@ async function handle(req: NextRequest) {
     .in('status', ['active', 'approved'])
     .gte('updated_at', since)
     .order('updated_at', { ascending: false })
-    .limit(MAX_PER_RUN);
+    .limit(perTypeLimit);
 
   // 2. 최근 발행된 블로그
   const { data: blogs } = await supabaseAdmin
@@ -47,7 +57,7 @@ async function handle(req: NextRequest) {
     .not('slug', 'is', null)
     .gte('updated_at', since)
     .order('updated_at', { ascending: false })
-    .limit(MAX_PER_RUN);
+    .limit(perTypeLimit);
 
   // 3. 최근 변경된 관광지 (long_desc 있는 것만)
   const { data: attrs } = await supabaseAdmin
@@ -56,7 +66,7 @@ async function handle(req: NextRequest) {
     .or('long_desc.not.is.null,short_desc.not.is.null')
     .gte('updated_at', since)
     .order('updated_at', { ascending: false })
-    .limit(MAX_PER_RUN);
+    .limit(perTypeLimit);
 
   // 4. 최근 변경된 약관 (terms_templates)
   const { data: terms } = await supabaseAdmin
@@ -65,40 +75,42 @@ async function handle(req: NextRequest) {
     .eq('is_active', true)
     .gte('updated_at', since)
     .order('updated_at', { ascending: false })
-    .limit(MAX_PER_RUN);
+    .limit(perTypeLimit);
 
   const pkgResult = { inserted: 0, skipped: 0, failed: 0 };
   const blogResult = { inserted: 0, skipped: 0, failed: 0 };
   const attrResult = { inserted: 0, skipped: 0, failed: 0 };
   const policyResult = { inserted: 0, skipped: 0, failed: 0 };
 
-  for (const p of pkgs ?? []) {
-    const r = await indexPackage(p.id);
-    pkgResult.inserted += r.inserted;
-    pkgResult.skipped += r.skipped;
-    pkgResult.failed += r.failed;
+  let truncated = false;
+
+  async function runWithBudget(
+    rows: Array<{ id: string }> | null | undefined,
+    indexOne: (id: string) => Promise<{ inserted: number; skipped: number; failed: number }>,
+    aggregate: { inserted: number; skipped: number; failed: number },
+  ) {
+    for (const row of rows ?? []) {
+      if (Date.now() > deadlineAt) {
+        truncated = true;
+        break;
+      }
+      const r = await indexOne(row.id);
+      aggregate.inserted += r.inserted;
+      aggregate.skipped += r.skipped;
+      aggregate.failed += r.failed;
+    }
   }
-  for (const b of blogs ?? []) {
-    const r = await indexBlog(b.id);
-    blogResult.inserted += r.inserted;
-    blogResult.skipped += r.skipped;
-    blogResult.failed += r.failed;
-  }
-  for (const a of attrs ?? []) {
-    const r = await indexAttraction(a.id);
-    attrResult.inserted += r.inserted;
-    attrResult.skipped += r.skipped;
-    attrResult.failed += r.failed;
-  }
-  for (const t of terms ?? []) {
-    const r = await indexPolicy(t.id);
-    policyResult.inserted += r.inserted;
-    policyResult.skipped += r.skipped;
-    policyResult.failed += r.failed;
-  }
+
+  await runWithBudget(pkgs, indexPackage, pkgResult);
+  await runWithBudget(blogs, indexBlog, blogResult);
+  await runWithBudget(attrs, indexAttraction, attrResult);
+  await runWithBudget(terms, indexPolicy, policyResult);
 
   return apiResponse({
     ok: true,
+    truncated,
+    per_type_limit: perTypeLimit,
+    deadline_ms: DEADLINE_MS,
     window_hours: 24,
     packages: { scanned: pkgs?.length ?? 0, ...pkgResult },
     blogs: { scanned: blogs?.length ?? 0, ...blogResult },

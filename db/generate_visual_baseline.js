@@ -22,13 +22,19 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const dotenv = require('dotenv');
 const { createClient } = require('@supabase/supabase-js');
 
 function loadEnv() {
-  const envFile = fs.readFileSync(path.resolve(__dirname, '..', '.env.local'), 'utf-8');
-  const env = {};
-  envFile.split('\n').forEach(l => { const [k, ...v] = l.split('='); if (k) env[k.trim()] = v.join('=').trim(); });
-  return env;
+  const envPath = path.resolve(__dirname, '..', '.env.local');
+  const parsed = fs.existsSync(envPath) ? dotenv.config({ path: envPath }).parsed : {};
+  return { ...(parsed || {}), ...process.env };
+}
+
+function strictExit(code = 1) {
+  if (process.env.BASELINE_STRICT === '1') {
+    process.exit(code);
+  }
 }
 
 const FIXTURES = path.resolve(__dirname, '..', 'tests', 'visual', 'fixtures.json');
@@ -82,22 +88,23 @@ async function main() {
   console.log(`  대상: ${products.join(', ')}`);
   console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
 
+  const playwrightCli = require.resolve('@playwright/test/cli');
   const result = spawnSync(
-    'npx',
-    ['playwright', 'test', 'tests/visual',
+    process.execPath,
+    [playwrightCli, 'test', 'tests/visual',
       '--grep', grepPattern,
       '--update-snapshots',
       '--workers=1',
       '--reporter=line'],
     {
       stdio: 'inherit',
-      shell: true,
       env: { ...process.env, UPDATE_BASELINE: '1' },
       cwd: path.resolve(__dirname, '..'),
     },
   );
 
   if (result.status !== 0) {
+    strictExit(result.status || 1);
     console.log(`\n⚠️  baseline 생성 일부/전체 실패 (exit ${result.status}).`);
     console.log(`   수동 재실행: UPDATE_BASELINE=1 npx playwright test tests/visual --grep "${grepPattern}" --update-snapshots --workers=1`);
     console.log(`   dev 서버가 localhost:3000 에서 응답 가능한지 확인 필요.`);

@@ -154,6 +154,13 @@ describe('formatCancellationDates — 출발일 기준 날짜 자동 병기', ()
     expect(r[0].text).toContain('15일전(2026.06.15까지)');
   });
 
+  it('범위형 "14일 ~ 7일 전" 양끝 날짜를 모두 병기 (ERR-LB-DAD-cancel-14day)', () => {
+    const notices = [notice({ type: 'RESERVATION', text: '14일 ~ 7일 전 취소 시 위약금 50%' })];
+    const r = formatCancellationDates(notices, '2026-06-30');
+    expect(r[0].text).toContain('14일(2026.06.16까지) ~ 7일전(2026.06.23까지)');
+    expect(r[0].text).not.toMatch(/2026\.06\.23까지,\s*2026\.06\.23까지/);
+  });
+
   it('다른 type 은 변경 없음', () => {
     const notices = [notice({ type: 'PASSPORT', text: '여권 30일전 발급' })];
     const r = formatCancellationDates(notices, '2026-06-30');

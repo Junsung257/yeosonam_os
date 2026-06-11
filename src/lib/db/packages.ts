@@ -4,7 +4,8 @@
  * travel_packages 테이블 CRUD.
  * lib/supabase.ts 의 패키지 관련 함수를 분리한 모듈.
  */
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabase, getSupabaseAdmin, supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 // ── SELECT 상수 ──────────────────────────────────────────────
 
@@ -240,7 +241,9 @@ export async function approvePackage(packageId: string) {
 // 특정 패키지 단건 조회
 export async function getPackageById(id: string) {
   try {
-    const { data, error } = await supabaseAdmin
+    const sb = (getSupabaseAdmin() ?? getSupabase()) as SupabaseClient | null;
+    if (!sb) return null;
+    const { data, error } = await sb
       .from('travel_packages')
       .select('*')
       .eq('id', id)

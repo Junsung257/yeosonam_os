@@ -1,7 +1,8 @@
 import type React from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { getSupabase, getSupabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import DetailClient from './DetailClient';
 import UnmatchedActivitiesBeacon from '@/components/customer/UnmatchedActivitiesBeacon';
 import ReviewsSection from '@/components/reviews/ReviewsSection';
@@ -101,7 +102,9 @@ export const dynamicParams = true;
 export async function generateStaticParams(): Promise<Array<{ id: string }>> {
   if (!isSupabaseConfigured) return [];
   try {
-    const { data } = await supabaseAdmin
+    const sb = getPackageReadClient();
+    if (!sb) return [];
+    const { data } = await sb
       .from('travel_packages')
       .select('id')
       .in('status', ['active', 'approved'])
@@ -117,6 +120,10 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
 }
 const ENABLE_UNMATCHED_QUEUE_ON_VIEW = process.env.ENABLE_UNMATCHED_QUEUE_ON_VIEW === '1';
 
+function getPackageReadClient(): SupabaseClient | null {
+  return (getSupabaseAdmin() ?? getSupabase()) as SupabaseClient | null;
+}
+
 // 2026-05-16 박제 (시즈오카 사고 결정타): 존재하지 않는 컬럼 `min_people`, `thumbnail_urls`
 //   가 DETAIL_FIELDS 에 포함되어 PostgREST select 가 일부 fields(destination/itinerary_data)
 //   를 silent 누락. pkg.destination=undefined → matchAttractions destination 매칭 fail →
@@ -126,7 +133,7 @@ const DETAIL_FIELDS = `
   id, title, destination, duration, nights, price, airline, departure_airport, departure_days,
   min_participants, ticketing_deadline, product_type,
   price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
-  product_highlights, customer_notes, internal_notes, notices_parsed, itinerary_data,
+  product_highlights, customer_notes, notices_parsed, itinerary_data,
   display_title, hero_tagline, product_summary, is_airtel,
   land_operator_id, audit_status, status,
   catalog_id,
@@ -153,7 +160,10 @@ export async function generateMetadata({
   if (!isSupabaseConfigured) {
     return buildPackageNoindexMetadata(id, canonical);
   }
-  const sb = supabaseAdmin;
+  const sb = getPackageReadClient();
+  if (!sb) {
+    return { title: '?곹뭹 ?곸꽭', alternates: { canonical }, robots: { index: false, follow: true } };
+  }
   let data: {
     title?: string | null;
     destination?: string | null;
@@ -214,7 +224,9 @@ export default async function PackageDetailPage({
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
   if (!id || !isUuid(id)) notFound();
-  const sb = supabaseAdmin;
+  const sbOrNull = getPackageReadClient();
+  if (!sbOrNull) notFound();
+  const sb = sbOrNull;
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
@@ -327,28 +339,16 @@ export default async function PackageDetailPage({
   // 기존 fallback 호환 — 매칭 0건 시 전체 대신 경량 목록 전달 (payload 과다 방지)
   const attrResult = { data: relevantAttractions };
 
-  // raw_text — 고객 응답에는 포함하지 않고 서버에서만 주의사항·추가요금 enrichment
-  let rawTextForEnrichment = '';
-  if (pkg?.id) {
-    const { data: rawRow } = await sb
-      .from('travel_packages')
-      .select('raw_text')
-      .eq('id', id)
-      .maybeSingle();
-    rawTextForEnrichment = String((rawRow as { raw_text?: string } | null)?.raw_text ?? '');
-  }
-
   const parserVersion = String((pkg as { parser_version?: string } | null)?.parser_version ?? '');
   const writeTimeProcessed = parserVersion.includes(POSTPROCESS_VERSION);
-  const pkgWithRaw = pkg
+  const pkgBase = pkg
     ? {
         ...pkg,
-        raw_text: rawTextForEnrichment || (pkg as { raw_text?: string }).raw_text,
         products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
       }
     : null;
   let productPriceRows: Array<{ target_date: string | null; adult_selling_price: number | null; note: string | null }> = [];
-  const priceProductCode = pkgWithRaw?.products?.internal_code ?? (pkgWithRaw as { internal_code?: string | null } | null)?.internal_code ?? null;
+  const priceProductCode = pkgBase?.products?.internal_code ?? (pkgBase as { internal_code?: string | null } | null)?.internal_code ?? null;
   if (priceProductCode) {
     const { data: priceRows } = await sb
       .from('product_prices')
@@ -358,10 +358,11 @@ export default async function PackageDetailPage({
       .order('adult_selling_price', { ascending: true, nullsFirst: false });
     productPriceRows = (priceRows ?? []) as typeof productPriceRows;
   }
-  const normalizedPkg = pkgWithRaw
-    ? writeTimeProcessed
-      ? { ...pkgWithRaw, product_prices: productPriceRows }
-      : { ...postProcessPackageRow(pkgWithRaw), product_prices: productPriceRows }
+  const normalizedPkg = pkgBase
+    ? (() => {
+        const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow(pkgBase);
+        return { ...processed, product_prices: productPriceRows };
+      })()
     : null;
 
   // 관련 블로그 글 조회 (1) — 이 상품을 홍보하는 글 (product_id 직접 매칭)

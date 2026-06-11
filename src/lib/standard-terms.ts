@@ -303,7 +303,34 @@ export function formatCancellationDates(
     // (?<!\d) 추가 이유 — 기존 (?<!출발\s?) 만으로는 \d+ 의 greedy 가
     //   "출발 30일전" 에서 lookbehind 차단을 회피해 "0일전" 부분 매칭으로 우회됨.
     //   숫자 중간 매칭 차단을 추가해 의도된 동작 회복.
-    const enriched = n.text.replace(/(?<!출발\s?)(?<!\d)(\d+)일\s*전(\s*\(([^)]*)\))?/g, (match, daysStr, bracket, inner) => {
+    const withRangeDates = n.text.replace(/(?<!출발\s?)(?<!\d)(\d+)일\s*~\s*(\d+)일\s*전(\s*\(([^)]*)\))?/g, (match, fromDaysStr, toDaysStr, bracket, inner) => {
+      const fromDays = parseInt(fromDaysStr, 10);
+      const toDays = parseInt(toDaysStr, 10);
+      if (
+        !Number.isFinite(fromDays) ||
+        !Number.isFinite(toDays) ||
+        fromDays < 0 ||
+        toDays < 0 ||
+        fromDays > 365 ||
+        toDays > 365
+      ) {
+        return match;
+      }
+
+      const fromTarget = new Date(dep);
+      fromTarget.setDate(fromTarget.getDate() - fromDays);
+      const toTarget = new Date(dep);
+      toTarget.setDate(toTarget.getDate() - toDays);
+      const fromYmd = toYMD(fromTarget);
+      const toYmd = toYMD(toTarget);
+      const toText = bracket
+        ? `${toDaysStr}일전(${inner}, ${toYmd}까지)`
+        : `${toDaysStr}일전(${toYmd}까지)`;
+      return `${fromDaysStr}일(${fromYmd}까지) ~ ${toText}`;
+    });
+
+    const enriched = withRangeDates.replace(/(?<!출발\s?)(?<!\d)(\d+)일\s*전(\s*\(([^)]*)\))?/g, (match, daysStr, bracket, inner) => {
+      if (inner && /\d{4}\.\d{2}\.\d{2}까지/.test(inner)) return match;
       const days = parseInt(daysStr, 10);
       if (!Number.isFinite(days) || days < 0 || days > 365) return match;
       const target = new Date(dep);
