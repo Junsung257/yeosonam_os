@@ -22,20 +22,50 @@ interface Props {
   timezone: string; // IANA TZ — 라이브 표시용
 }
 
-function fmtTimeInTz(now: Date, timezone: string): string {
+const WEEKDAY_KO = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+function getTzParts(now: Date, timezone: string): { hour: number; minute: number; month: number; day: number; weekday: number } | null {
   try {
-    return new Intl.DateTimeFormat('ko-KR', {
-      timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true,
-    }).format(now);
-  } catch { return '—'; }
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone,
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+    const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value;
+    const hour = Number(value('hour'));
+    const minute = Number(value('minute'));
+    const month = Number(value('month'));
+    const day = Number(value('day'));
+    const weekdayText = value('weekday') ?? '';
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(weekdayText);
+
+    if (![hour, minute, month, day, weekday].every(Number.isFinite) || weekday < 0) {
+      return null;
+    }
+    return { hour, minute, month, day, weekday };
+  } catch {
+    return null;
+  }
 }
 
-function fmtDateInTz(now: Date, timezone: string): string {
-  try {
-    return new Intl.DateTimeFormat('ko-KR', {
-      timeZone: timezone, month: 'numeric', day: 'numeric', weekday: 'short',
-    }).format(now);
-  } catch { return ''; }
+function fmtTimeInTz(now: Date | null, timezone: string): string {
+  if (!now) return '--:--';
+  const parts = getTzParts(now, timezone);
+  if (!parts) return '—';
+  const period = parts.hour < 12 ? '오전' : '오후';
+  const hour12 = parts.hour % 12 === 0 ? 12 : parts.hour % 12;
+  return `${period} ${hour12}:${String(parts.minute).padStart(2, '0')}`;
+}
+
+function fmtDateInTz(now: Date | null, timezone: string): string {
+  if (!now) return '';
+  const parts = getTzParts(now, timezone);
+  if (!parts) return '';
+  return `${parts.month}. ${parts.day}. (${WEEKDAY_KO[parts.weekday]})`;
 }
 
 /** 시차 폭에 따른 실용 팁 자동 생성 */
@@ -79,9 +109,10 @@ function timezoneTips(offsetMinutes: number): string[] {
 }
 
 export default function TimezoneCard({ destination, primaryCity, country, offsetMinutes, timezone }: Props) {
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
+    setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(id);
   }, []);
@@ -93,10 +124,7 @@ export default function TimezoneCard({ destination, primaryCity, country, offset
       ? `한국보다 ${offsetH % 1 === 0 ? offsetH : offsetH.toFixed(1)}시간 빠름`
       : `한국보다 ${offsetH % 1 === 0 ? offsetH : offsetH.toFixed(1)}시간 느림`;
 
-  const seoulFmt = new Intl.DateTimeFormat('ko-KR', {
-    timeZone: 'Asia/Seoul', hour: 'numeric', minute: '2-digit', hour12: true,
-  });
-  const seoulTime = seoulFmt.format(now);
+  const seoulTime = fmtTimeInTz(now, 'Asia/Seoul');
   const localTime = fmtTimeInTz(now, timezone);
   const localDate = fmtDateInTz(now, timezone);
   const displayCity = primaryCity || destination;

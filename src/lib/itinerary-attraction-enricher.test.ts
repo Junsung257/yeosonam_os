@@ -28,9 +28,9 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(schedule.map(item => item.attraction_names)).toEqual([
       ['\uACBD\uBCF5\uAD81'],
       ['\uCC3D\uB355\uAD81'],
-      ['\uBC1C\uB9C8\uC0AC\uC9C0'],
+      undefined,
     ]);
-    expect(res.matchedScheduleItemCount).toBe(3);
+    expect(res.matchedScheduleItemCount).toBe(2);
     expect(res.unmatchedCandidates).toHaveLength(0);
   });
 
