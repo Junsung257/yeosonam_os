@@ -30,6 +30,12 @@ jobs:
       - name: npm audit (high severity)
         run: npm audit --audit-level=high
 
+      - name: Secret usage lint
+        run: npm run lint:secrets:all
+
+      - name: Sensitive API guard audit
+        run: npm run audit:sensitive-api-guards
+
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
         env:
