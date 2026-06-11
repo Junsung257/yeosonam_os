@@ -67,6 +67,11 @@ scratch/
 
 # Playwright 실패 덤프 (재현용)
 test-results/
+playwright-report/
+admin-screenshots/
+screenshots/
+test-screenshots/
+tmp_screenshots/
 
 # Claude Code 런타임 산출물
 .claude/scheduled_tasks.lock
@@ -193,6 +198,7 @@ tmp-*.png
 
 # Local toolchains and generated app bundles
 /tools/
+/Lib/
 
 # Local desktop cleanup archives
 .desktop-dev-archive/
