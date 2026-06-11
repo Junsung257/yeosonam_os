@@ -1,17 +1,7 @@
 #!/usr/bin/env node
 /**
- * @file tests/regression/err-coverage.js
- * @description error registry docs ↔ tests/regression/cases/ 커버리지 리포트 (P3 #4)
- *
- * 목적:
- *   - db/error-registry.md 및 docs/errors/*.md 의 모든 ERR 항목을 추출
- *   - tests/regression/cases/ 의 회귀 fixture 와 매칭
- *   - "어느 ERR 가 회귀 보호 받고 있는지" / "어느 ERR 가 다음 변환 후보인지" 가시화
- *
- * 사용:
- *   node tests/regression/err-coverage.js              # 한 화면 리포트
- *   node tests/regression/err-coverage.js --uncovered  # 미커버 ERR 만 (다음 후보)
- *   node tests/regression/err-coverage.js --json       # 머신 가독 JSON
+ * Report coverage between documented ERR incidents and executable regression
+ * fixtures in tests/regression/cases.
  */
 
 const fs = require('fs');
@@ -34,46 +24,67 @@ function parseArgs() {
   return {
     uncovered: args.includes('--uncovered'),
     json: args.includes('--json'),
+    allUncovered: args.includes('--all-uncovered'),
   };
 }
 
 function normalizeCode(code) {
-  return code.split('@')[0].replace(/[):：,.;]+$/, '');
+  return code.split('@')[0].replace(/[):\].;,\s]+$/, '');
+}
+
+function cleanBody(body) {
+  return String(body || '').trim().replace(/\s+/g, ' ');
 }
 
 function pushErr(out, seen, code, category, body, source) {
   if (!code || code === 'ERR-YYYYMMDD-NN') return;
-  const fullCode = code.replace(/[):：,.;]+$/, '');
+  const fullCode = code.replace(/[):\].;,\s]+$/, '');
   const normalized = normalizeCode(fullCode);
   if (seen.has(normalized)) return;
   seen.add(normalized);
+
+  const cleaned = cleanBody(body);
   out.push({
     code: normalized,
     fullCode,
     date: fullCode.includes('@') ? fullCode.split('@')[1] : null,
-    category: category ? category.trim() : '',
-    body: body.slice(0, 120) + (body.length > 120 ? '...' : ''),
+    category: cleanBody(category),
+    body: cleaned.slice(0, 180) + (cleaned.length > 180 ? '...' : ''),
     source,
   });
 }
 
-// ERR 항목 파싱: heading 또는 "- [ ] **ERR-XXX@YYYY-MM-DD** (카테고리): ..."
 function parseRegistryFile(file) {
   const out = [];
   const seen = new Set();
   const text = fs.readFileSync(file, 'utf-8');
   const lines = text.split(/\r?\n/);
-  const headingRe = /^#{2,3}\s+(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)(?:[:：]\s*)?(.*)$/;
-  const checklistRe = /^-\s*\[\s*[ x]?\s*\]\s*\*\*(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)\*\*\s*(?:\(([^)]+)\))?\s*[:：]?\s*(.*)$/;
+  const source = path.relative(ROOT, file);
+
+  const headingRe = /^#{2,3}\s+(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)(?:[:\s\-–—]+)?(.*)$/;
+  const checklistRe = /^-\s*\[\s*[ xX]?\s*\]\s*\*\*(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)\*\*\s*(?:\(([^)]+)\))?\s*[:\-–—]?\s*(.*)$/;
+  const numberedBoldRe = /^\d+\.\s+\*\*(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)\*\*\s*(?:\(([^)]+)\))?\s*[\-–—:]?\s*(.*)$/;
+  const bulletBoldRe = /^-\s+\*\*(ERR-[A-Za-z0-9_-]+(?:@[\d-]+)?)\*\*\s*(?:\(([^)]+)\))?\s*[:\-–—]?\s*(.*)$/;
+
   for (const line of lines) {
     const heading = line.match(headingRe);
     if (heading) {
-      pushErr(out, seen, heading[1], '', heading[2] || '', path.relative(ROOT, file));
+      pushErr(out, seen, heading[1], '', heading[2] || '', source);
       continue;
     }
     const checklist = line.match(checklistRe);
     if (checklist) {
-      pushErr(out, seen, checklist[1], checklist[2] || '', checklist[3] || '', path.relative(ROOT, file));
+      pushErr(out, seen, checklist[1], checklist[2] || '', checklist[3] || '', source);
+      continue;
+    }
+    const numbered = line.match(numberedBoldRe);
+    if (numbered) {
+      pushErr(out, seen, numbered[1], numbered[2] || '', numbered[3] || '', source);
+      continue;
+    }
+    const bullet = line.match(bulletBoldRe);
+    if (bullet) {
+      pushErr(out, seen, bullet[1], bullet[2] || '', bullet[3] || '', source);
     }
   }
   return out;
@@ -93,109 +104,109 @@ function parseRegistry() {
   return all;
 }
 
-// fixture 파일에서 @case 헤더 추출
 function parseFixtures(dir) {
   if (!fs.existsSync(dir)) return [];
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.test.js'));
-  const out = [];
-  for (const f of files) {
-    const txt = fs.readFileSync(path.join(dir, f), 'utf-8');
-    const m = txt.match(/@case\s+([A-Z][A-Za-z0-9_-]+(?:@[\d-]+)?)/);
-    const tests = (txt.match(/^test\(/gm) || []).length;
-    out.push({
-      file: f,
-      caseCode: m ? m[1].split('@')[0] : f.replace(/\.test\.js$/, ''),
-      tests,
+  return fs.readdirSync(dir)
+    .filter((file) => file.endsWith('.test.js'))
+    .map((file) => {
+      const text = fs.readFileSync(path.join(dir, file), 'utf-8');
+      const match = text.match(/@case\s+([A-Z][A-Za-z0-9_-]+(?:@[\d-]+)?)/);
+      return {
+        file,
+        caseCode: match ? normalizeCode(match[1]) : file.replace(/\.test\.js$/, ''),
+        tests: (text.match(/^test\(/gm) || []).length,
+      };
     });
-  }
-  return out;
 }
 
-function categorize(category) {
-  const c = (category || '').toLowerCase();
-  if (c.includes('ux')) return 'UX';
-  if (c.includes('구조')) return '구조적';
-  if (c.includes('데이터') || c.includes('파싱')) return '데이터/파싱';
-  if (c.includes('렌더') || c.includes('crc')) return '렌더';
-  return '기타';
+function categorize(err) {
+  const text = `${err.category || ''} ${err.body || ''}`.toLowerCase();
+  if (/security|pii|secret|auth|token|passport|leak|보안|누출/.test(text)) return 'security';
+  if (/ux|visual|render|mobile|a4|ui|viewport|card|화면|노출|렌더|모바일/.test(text)) return 'ux-render';
+  if (/parse|parser|verbatim|raw|itinerary|schedule|price|catalog|split|flight|hotel|일정|가격|원문|파싱|데이터/.test(text)) return 'data-parse';
+  if (/struct|schema|column|field|migration|db|cron|infra|workflow|구조|컬럼|인프라/.test(text)) return 'structure';
+  if (/blog|seo|gsc|index|publish|editorial/.test(text)) return 'blog';
+  return 'other';
 }
 
 function isFixtureCandidate(err) {
-  // UX, 구조적, 데이터/파싱 카테고리는 fixture 변환 적합도 높음
-  // (AI 환각·축약 같은 ai 카테고리는 fixture 화 어려움)
-  const cat = categorize(err.category);
-  if (cat === 'UX' || cat === '구조적' || cat === '데이터/파싱') return true;
-  return false;
+  const category = categorize(err);
+  if (category === 'other') return false;
+  if (/manual|사장님 명시 승인|rotation|운영 URL|production log/i.test(err.body)) return false;
+  return true;
 }
 
 function main() {
   const args = parseArgs();
   const errs = parseRegistry();
   const fixtures = parseFixtures(CASES_DIR);
-  const fixtureCodes = new Set(fixtures.map(f => f.caseCode));
+  const fixtureCodes = new Set(fixtures.map((fixture) => fixture.caseCode));
 
-  const covered = errs.filter(e => fixtureCodes.has(e.code));
-  const uncovered = errs.filter(e => !fixtureCodes.has(e.code));
+  const covered = errs.filter((err) => fixtureCodes.has(err.code));
+  const uncovered = errs.filter((err) => !fixtureCodes.has(err.code));
   const candidates = uncovered.filter(isFixtureCandidate);
+  const summary = {
+    total_errs: errs.length,
+    total_fixtures: fixtures.length,
+    total_tests: fixtures.reduce((sum, fixture) => sum + fixture.tests, 0),
+    covered: covered.length,
+    uncovered: uncovered.length,
+    candidates_for_next: candidates.length,
+    coverage_pct: errs.length > 0 ? Math.round((covered.length / errs.length) * 100) : 0,
+  };
 
   if (args.json) {
     console.log(JSON.stringify({
-      summary: {
-        total_errs: errs.length,
-        total_fixtures: fixtures.length,
-        covered: covered.length,
-        uncovered: uncovered.length,
-        candidates_for_next: candidates.length,
-        coverage_pct: errs.length > 0 ? Math.round((covered.length / errs.length) * 100) : 0,
-      },
-      covered: covered.map(e => ({ code: e.code, category: e.category })),
-      uncovered: uncovered.map(e => ({ code: e.code, category: e.category, body: e.body })),
+      summary,
+      covered: covered.map((err) => ({ code: err.code, category: err.category, inferred_category: categorize(err), source: err.source })),
+      uncovered: uncovered.map((err) => ({ code: err.code, category: err.category, inferred_category: categorize(err), body: err.body, source: err.source })),
       candidates,
     }, null, 2));
     return;
   }
 
-  if (args.uncovered) {
-    console.log(`다음 회귀 fixture 변환 후보 (${candidates.length}건):\n`);
-    for (const e of candidates.slice(0, 30)) {
-      console.log(`  ❑ ${e.code}`);
-      console.log(`    [${e.category}] ${e.body}\n`);
+  if (args.uncovered || args.allUncovered) {
+    const rows = args.allUncovered ? uncovered : candidates;
+    console.log(`Uncovered ERR ${args.allUncovered ? 'items' : 'fixture candidates'}: ${rows.length}\n`);
+    for (const err of rows.slice(0, 80)) {
+      console.log(`  - ${err.code} [${categorize(err)}] ${err.source}`);
+      if (err.body) console.log(`    ${err.body}`);
     }
-    if (candidates.length > 30) console.log(`  ... 외 ${candidates.length - 30}건\n`);
+    if (rows.length > 80) console.log(`  ... ${rows.length - 80} more`);
     return;
   }
 
-  // 한 화면 리포트
-  console.log('═'.repeat(72));
-  console.log(' Regression Fixture Coverage — docs/errors ↔ tests/regression/cases/');
-  console.log('═'.repeat(72));
-  console.log(`📋 ERR 항목 총합:      ${errs.length}개`);
-  console.log(`✅ 회귀 fixture 보유: ${fixtures.length}개 파일 / ${fixtures.reduce((a, f) => a + f.tests, 0)}개 테스트`);
-  console.log(`🟢 커버 ERR:          ${covered.length}건`);
-  console.log(`🟡 미커버 ERR:        ${uncovered.length}건`);
-  console.log(`🎯 변환 후보(미커버 중 적합):  ${candidates.length}건`);
-  console.log(`📊 커버리지:          ${errs.length > 0 ? Math.round((covered.length / errs.length) * 100) : 0}%`);
+  console.log('='.repeat(72));
+  console.log('Regression Fixture Coverage - docs/errors vs tests/regression/cases');
+  console.log('='.repeat(72));
+  console.log(`ERR items:           ${summary.total_errs}`);
+  console.log(`Fixture files/tests: ${summary.total_fixtures} files / ${summary.total_tests} tests`);
+  console.log(`Covered ERR:         ${summary.covered}`);
+  console.log(`Uncovered ERR:       ${summary.uncovered}`);
+  console.log(`Next candidates:     ${summary.candidates_for_next}`);
+  console.log(`Coverage:            ${summary.coverage_pct}%`);
   console.log();
 
   if (covered.length > 0) {
-    console.log('🟢 회귀 보호 중인 ERR:');
-    for (const e of covered) console.log(`   ✓ ${e.code}  [${e.category}]`);
+    console.log('Covered ERR:');
+    for (const err of covered) console.log(`   - ${err.code} [${categorize(err)}]`);
     console.log();
   }
 
   if (candidates.length > 0) {
-    console.log('🎯 다음 fixture 후보 (UX·구조적·데이터):');
-    for (const e of candidates.slice(0, 10)) {
-      console.log(`   ❑ ${e.code}  [${e.category}]`);
+    console.log('Next fixture candidates:');
+    for (const err of candidates.slice(0, 12)) {
+      console.log(`   - ${err.code} [${categorize(err)}] ${err.source}`);
     }
-    if (candidates.length > 10) console.log(`   ... +${candidates.length - 10} more`);
+    if (candidates.length > 12) console.log(`   ... +${candidates.length - 12} more`);
     console.log();
   }
 
-  console.log('명령어:');
-  console.log('   • 미커버 후보 상세: node tests/regression/err-coverage.js --uncovered');
-  console.log('   • JSON 출력: node tests/regression/err-coverage.js --json');
-  console.log('   • 회귀 실행: npm run test:regression');
+  console.log('Commands:');
+  console.log('   node tests/regression/err-coverage.js --uncovered');
+  console.log('   node tests/regression/err-coverage.js --all-uncovered');
+  console.log('   node tests/regression/err-coverage.js --json');
+  console.log('   npm run test:regression');
 }
 
 main();
