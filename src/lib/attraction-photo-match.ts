@@ -1,19 +1,6 @@
-/**
- * @file attraction-photo-match.ts — 관광지 단위 사진 자동 검색
- *
- * Pexels + Wikimedia Commons 에서 관광지 사진을 찾아 attractions.photos 에 저장.
- * runAutoPhotoMatch (제품 단위) 와 달리 관광지(attraction) 자체의 사진을 관리.
- *
- * 호출 시점:
- *   - 신규 관광지 INSERT 직후 (upload route 에서 fire-and-forget)
- *   - cron: photos 가 빈 attractions 대상 배치 처리 (매일)
- */
-
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { searchPexelsPhotos, isPexelsConfigured } from '@/lib/pexels';
-import type { PexelsPhoto } from '@/lib/pexels';
+import { searchPexelsPhotos, isPexelsConfigured, type PexelsPhoto } from '@/lib/pexels';
 
-const WIKIMEDIA_API = 'https://commons.wikimedia.org/w/api.php';
 const UA = 'YeosonamOS/1.0 (https://yeosonam.com; admin@yeosonam.com) attraction-photo-match';
 
 export interface AttractionPhoto {
@@ -21,124 +8,308 @@ export interface AttractionPhoto {
   src_large: string;
   photographer: string;
   source: 'pexels' | 'wikimedia';
-  /** Wikimedia 경우 없음 */
   pexels_id?: number;
+  alt?: string | null;
+  query?: string;
+  locale?: string | null;
+  quality_score?: number;
 }
 
-/**
- * Pexels 로 관광지 사진 검색.
- * 한국어/영어 키워드를 조합해 다양성 확보.
- */
-async function searchPexelsForAttraction(
-  keywords: string[],
-  count: number,
-): Promise<AttractionPhoto[]> {
-  if (!isPexelsConfigured()) return [];
-  const results: AttractionPhoto[] = [];
-  const seen = new Set<string>();
+export type AttractionPhotoSearchQuery = {
+  query: string;
+  locale?: string | null;
+  source: 'name' | 'alias' | 'wikidata_label' | 'destination_context';
+  priority: number;
+};
 
-  for (const kw of keywords) {
-    if (results.length >= count) break;
-    const searchKws = [`${kw} travel`, `${kw} landscape`, `${kw} sightseeing`];
-    for (const sk of searchKws) {
-      if (results.length >= count) break;
-      try {
-        const photos = await searchPexelsPhotos(sk, 3);
-        for (const p of photos) {
-          if (seen.has(p.url)) continue;
-          seen.add(p.url);
-          results.push({
-            src_medium: p.src.medium,
-            src_large: p.src.large,
-            photographer: p.photographer,
-            source: 'pexels',
-            pexels_id: p.id,
-          });
-          if (results.length >= count) break;
-        }
-      } catch {
-        continue;
-      }
+type WikidataMetadata = {
+  labels: string[];
+  photos: AttractionPhoto[];
+};
+
+function cleanText(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function unique(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const value of values.map(cleanText).filter(Boolean)) {
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(value);
+  }
+  return out;
+}
+
+function knownEnglishAliases(label: string): string[] {
+  const compact = label.replace(/\s+/g, '').toLowerCase();
+  const pairs: Array<[RegExp, string[]]> = [
+    [/백두산천지|천지|tianchi/, ['Changbai Mountain Tianchi', 'Heaven Lake Changbai Mountain', 'Paektu Mountain Heaven Lake']],
+    [/장백폭포/, ['Changbai Waterfall', 'Changbaishan Waterfall']],
+    [/금강대협곡/, ['Jinjiang Grand Canyon Changbai Mountain', 'Changbai Mountain Grand Canyon']],
+    [/두만강|tumen/, ['Tumen River China North Korea', 'Tumen River Yanbian']],
+    [/비암산|일송정/, ['Biyan Mountain Yanji', 'Yisong Pavilion Longjing']],
+    [/윤동주|명동교회/, ['Yun Dongju birthplace Longjing', 'Myeongdong Church Longjing China']],
+    [/연길민속촌/, ['Yanji Folk Village', 'Yanbian Korean Folk Village']],
+    [/노천온천지대/, ['Changbai Mountain hot spring area', 'Changbaishan hot spring']],
+    [/니혼다이라|nihondaira/, ['Nihondaira Ropeway', 'Nihondaira Mount Fuji view']],
+    [/미호노마츠바라|mihonomatsubara/, ['Miho no Matsubara', 'Miho Matsubara Shizuoka']],
+    [/오부치사사바|obuchisasaba/, ['Obuchi Sasaba tea fields', 'Obuchi Sasaba Mount Fuji']],
+    [/아라쿠라야마|센겐신사|arakurayama/, ['Arakurayama Sengen Shrine', 'Chureito Pagoda Mount Fuji']],
+    [/후지산파노라마로프웨이/, ['Mount Fuji Panoramic Ropeway', 'Kawaguchiko Ropeway']],
+    [/오시노핫카이|oshinohakkai/, ['Oshino Hakkai', 'Oshino Hakkai Mount Fuji']],
+    [/미시마스카이워크|mishimaskywalk/, ['Mishima Skywalk', 'Mishima Skywalk Mount Fuji']],
+  ];
+  return pairs.find(([pattern]) => pattern.test(compact))?.[1] ?? [];
+}
+
+function isAscii(value: string): boolean {
+  return /^[\x20-\x7E]+$/.test(value);
+}
+
+export function inferPexelsLocale(input: {
+  country?: string | null;
+  region?: string | null;
+  destination?: string | null;
+  label?: string | null;
+}): string | null {
+  const haystack = [input.country, input.region, input.destination, input.label]
+    .map(value => cleanText(value).toLowerCase())
+    .join(' ');
+  if (/(jp|japan|일본|시즈오카|후지|오사카|도쿄|교토|후쿠오카|벳부|유후인|홋카이도|북해도)/i.test(haystack)) return 'ja-JP';
+  if (/(cn|china|중국|연길|백두산|장백|시안|상해|상하이|북경|베이징|청도|장가계)/i.test(haystack)) return 'zh-CN';
+  if (/(vn|vietnam|베트남|다낭|나트랑|하노이|호치민|푸꾸옥|달랏)/i.test(haystack)) return 'vi-VN';
+  if (/(th|thailand|태국|방콕|치앙마이|푸켓|파타야)/i.test(haystack)) return 'th-TH';
+  if (/(tw|taiwan|대만|타이베이|가오슝)/i.test(haystack)) return 'zh-TW';
+  if (/(kr|korea|한국|서울|부산|제주|경주)/i.test(haystack)) return 'ko-KR';
+  return null;
+}
+
+export function buildAttractionPhotoSearchPlan(input: {
+  name: string;
+  aliases?: string[] | null;
+  wikidataLabels?: string[];
+  country?: string | null;
+  region?: string | null;
+  destination?: string | null;
+}): AttractionPhotoSearchQuery[] {
+  const baseLocale = inferPexelsLocale({
+    country: input.country,
+    region: input.region,
+    destination: input.destination,
+    label: input.name,
+  });
+  const labels = unique([
+    input.name,
+    ...(input.aliases ?? []),
+    ...(input.wikidataLabels ?? []),
+  ]);
+  const expandedLabels = unique([
+    ...labels.flatMap(knownEnglishAliases),
+    ...labels,
+  ]).sort((a, b) => Number(isAscii(b)) - Number(isAscii(a)));
+
+  const plan: AttractionPhotoSearchQuery[] = [];
+  for (const label of expandedLabels) {
+    const ascii = isAscii(label);
+    const source: AttractionPhotoSearchQuery['source'] =
+      input.wikidataLabels?.includes(label) ? 'wikidata_label'
+        : input.aliases?.includes(label) ? 'alias'
+          : 'name';
+    const locale = ascii ? null : baseLocale;
+    plan.push({ query: `${label} attraction`, locale, source, priority: source === 'wikidata_label' ? 90 : source === 'alias' ? 80 : 70 });
+    plan.push({ query: `${label} landmark`, locale, source, priority: source === 'wikidata_label' ? 86 : source === 'alias' ? 76 : 66 });
+  }
+
+  const context = cleanText(input.region ?? input.destination ?? input.country);
+  if (context) {
+    for (const label of labels.slice(0, 4)) {
+      plan.push({
+        query: `${context} ${label}`,
+        locale: baseLocale,
+        source: 'destination_context',
+        priority: 55,
+      });
     }
   }
-  return results;
+
+  return unique(plan.map(item => `${item.query}|||${item.locale ?? ''}`))
+    .map(key => {
+      const [query, locale] = key.split('|||');
+      return plan.find(item => item.query === query && (item.locale ?? '') === locale) as AttractionPhotoSearchQuery;
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.priority - a.priority)
+    .slice(0, 12);
 }
 
-/**
- * Wikimedia Commons 에서 qid 기반 이미지 검색.
- */
-async function searchWikimediaForAttraction(
-  qid: string,
-): Promise<AttractionPhoto[]> {
+function tokenize(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+    .split(/\s+/)
+    .map(part => part.trim())
+    .filter(part => part.length >= 2);
+}
+
+export function scorePexelsPhoto(input: {
+  photo: PexelsPhoto;
+  query: AttractionPhotoSearchQuery;
+  labels: string[];
+}): number {
+  const ratio = input.photo.width > 0 && input.photo.height > 0 ? input.photo.width / input.photo.height : 0;
+  let score = 0.35;
+  if (input.photo.width >= 900 && input.photo.height >= 500) score += 0.18;
+  if (ratio >= 1.25 && ratio <= 2.4) score += 0.12;
+  if (input.query.source === 'wikidata_label' || input.query.source === 'alias') score += 0.12;
+  if (input.query.locale) score += 0.04;
+
+  const altTokens = new Set(tokenize(input.photo.alt || ''));
+  const labelTokens = new Set(input.labels.flatMap(tokenize));
+  let overlap = 0;
+  for (const token of labelTokens) {
+    if (altTokens.has(token)) overlap += 1;
+  }
+  if (overlap > 0) score += Math.min(0.18, overlap * 0.06);
+  if (/\?{2,}/.test(input.query.query)) return 0.1;
+  const queryIsAscii = isAscii(input.query.query);
+  if (!queryIsAscii && overlap === 0) return 0.36;
+  if (queryIsAscii && overlap === 0 && input.query.source !== 'alias' && input.query.source !== 'wikidata_label') {
+    return Math.min(score, 0.44);
+  }
+
+  return Math.max(0, Math.min(1, Number(score.toFixed(4))));
+}
+
+async function fetchWikidataMetadata(qid?: string | null): Promise<WikidataMetadata> {
+  if (!qid) return { labels: [], photos: [] };
   try {
-    // 1) wbgetentities 로 P18 image filename 획득
-    const entUrl = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${qid}&props=claims&format=json`;
-    const entRes = await fetch(entUrl, { headers: { 'User-Agent': UA } });
-    if (!entRes.ok) return [];
-    const entJson = await entRes.json() as { entities?: Record<string, { claims?: Record<string, unknown> }> };
-    const entity = entJson.entities?.[qid];
-    if (!entity) return [];
-
-    const p18Claims = entity.claims?.P18 as Array<{ mainsnak?: { datavalue?: { value?: string } } }> | undefined;
-    if (!p18Claims) return [];
-
-    const results: AttractionPhoto[] = [];
+    const url = `https://www.wikidata.org/w/api.php?action=wbgetentities&ids=${encodeURIComponent(qid)}&props=labels|claims&languages=en|ja|zh|ko|vi|th&format=json`;
+    const res = await fetch(url, { headers: { 'User-Agent': UA } });
+    if (!res.ok) return { labels: [], photos: [] };
+    const json = await res.json() as {
+      entities?: Record<string, {
+        labels?: Record<string, { value?: string }>;
+        claims?: Record<string, Array<{ mainsnak?: { datavalue?: { value?: string } } }>>;
+      }>;
+    };
+    const entity = json.entities?.[qid];
+    const labels = unique(Object.values(entity?.labels ?? {}).map(label => label.value ?? ''));
+    const photos: AttractionPhoto[] = [];
+    const p18Claims = entity?.claims?.P18 ?? [];
     for (const claim of p18Claims) {
       const filename = claim.mainsnak?.datavalue?.value;
-      if (!filename || typeof filename !== 'string') continue;
-      results.push({
+      if (!filename) continue;
+      photos.push({
         src_medium: `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=480`,
         src_large: `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}?width=1200`,
         photographer: 'Wikimedia Commons',
         source: 'wikimedia',
+        quality_score: 0.98,
       });
     }
-    return results.slice(0, 5);
+    return { labels, photos: photos.slice(0, 5) };
   } catch {
-    return [];
+    return { labels: [], photos: [] };
   }
 }
 
-/**
- * 단일 관광지의 사진을 검색하여 attractions.photos 에 저장.
- */
+async function searchPexelsForAttraction(input: {
+  plan: AttractionPhotoSearchQuery[];
+  labels: string[];
+  count: number;
+}): Promise<AttractionPhoto[]> {
+  if (!isPexelsConfigured()) return [];
+  const results: AttractionPhoto[] = [];
+  const seen = new Set<string>();
+
+  for (const query of input.plan) {
+    if (results.length >= input.count) break;
+    try {
+      const photos = await searchPexelsPhotos(query.query, 5, 1, {
+        orientation: 'landscape',
+        locale: query.locale ?? undefined,
+      });
+      const scored = photos
+        .map(photo => ({ photo, score: scorePexelsPhoto({ photo, query, labels: input.labels }) }))
+        .filter(item => item.score >= 0.45)
+        .sort((a, b) => b.score - a.score);
+      for (const item of scored) {
+        if (seen.has(item.photo.url)) continue;
+        seen.add(item.photo.url);
+        results.push({
+          src_medium: item.photo.src.medium,
+          src_large: item.photo.src.large2x || item.photo.src.large,
+          photographer: item.photo.photographer,
+          source: 'pexels',
+          pexels_id: item.photo.id,
+          alt: item.photo.alt,
+          query: query.query,
+          locale: query.locale ?? null,
+          quality_score: item.score,
+        });
+        if (results.length >= input.count) break;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return results.sort((a, b) => (b.quality_score ?? 0) - (a.quality_score ?? 0)).slice(0, input.count);
+}
+
+function mergePhotos(input: AttractionPhoto[], maxPhotos: number): AttractionPhoto[] {
+  const seen = new Set<string>();
+  const merged: AttractionPhoto[] = [];
+  for (const photo of input) {
+    const key = photo.pexels_id ? `pexels:${photo.pexels_id}` : photo.src_large || photo.src_medium;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    merged.push(photo);
+    if (merged.length >= maxPhotos) break;
+  }
+  return merged;
+}
+
 export async function runAttractionPhotoMatch(
   attractionId: string,
   options: {
-    /** 검색 키워드 (한국어명, 영어명, aliases...) */
     keywords: string[];
-    /** Wikidata QID (Wikimedia Commons 검색용) */
     qid?: string | null;
-    /** 최대 사진 수 (기본 5) */
     maxPhotos?: number;
+    country?: string | null;
+    region?: string | null;
+    destination?: string | null;
+    replaceExisting?: boolean | 'if_low_quality';
   },
 ): Promise<AttractionPhoto[]> {
   if (!isSupabaseConfigured) return [];
   const maxPhotos = options.maxPhotos ?? 5;
+  const name = cleanText(options.keywords[0]);
+  if (!name) return [];
 
-  // 1) Pexels 검색
-  const pexels = await searchPexelsForAttraction(options.keywords, Math.ceil(maxPhotos * 0.7));
+  const wikidata = await fetchWikidataMetadata(options.qid);
+  const aliases = options.keywords.slice(1);
+  const labels = unique([name, ...aliases, ...wikidata.labels]);
+  const plan = buildAttractionPhotoSearchPlan({
+    name,
+    aliases,
+    wikidataLabels: wikidata.labels,
+    country: options.country,
+    region: options.region,
+    destination: options.destination,
+  });
 
-  // 2) Wikimedia Commons 검색 (qid 있을 때)
-  const wikimedia = options.qid
-    ? await searchWikimediaForAttraction(options.qid)
-    : [];
-
-  // 3) 병합 + 중복 제거
-  const all = [...pexels, ...wikimedia];
-  const seen = new Set<string>();
-  const merged: AttractionPhoto[] = [];
-  for (const p of all) {
-    const key = p.pexels_id ? `pexels:${p.pexels_id}` : p.src_medium;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    merged.push(p);
-    if (merged.length >= maxPhotos) break;
-  }
-
+  const pexels = await searchPexelsForAttraction({
+    plan,
+    labels,
+    count: Math.max(0, maxPhotos - wikidata.photos.length),
+  });
+  const merged = mergePhotos([...wikidata.photos, ...pexels], maxPhotos);
   if (merged.length === 0) return [];
 
-  // 4) DB 저장 (기존 photos 가 비어있을 때만)
   const { data: existing } = await supabaseAdmin
     .from('attractions')
     .select('photos')
@@ -146,7 +317,27 @@ export async function runAttractionPhotoMatch(
     .maybeSingle();
 
   const existingPhotos = (existing as { photos?: AttractionPhoto[] } | null)?.photos ?? [];
-  if (Array.isArray(existingPhotos) && existingPhotos.length === 0) {
+  const existingTopScore = Array.isArray(existingPhotos)
+    ? Math.max(0, ...existingPhotos.map(photo => {
+      const alt = cleanText(photo.alt);
+      if (!alt) return 0.25;
+      const altTokens = new Set(tokenize(alt));
+      const labelTokens = new Set(labels.flatMap(tokenize));
+      let overlap = 0;
+      for (const token of labelTokens) {
+        if (altTokens.has(token)) overlap += 1;
+      }
+      return Math.min(0.8, 0.3 + overlap * 0.12);
+    }))
+    : 0;
+  const newTopScore = Math.max(0, ...merged.map(photo => photo.quality_score ?? 0.5));
+  const shouldUpdate =
+    !Array.isArray(existingPhotos) ||
+    existingPhotos.length === 0 ||
+    options.replaceExisting === true ||
+    (options.replaceExisting === 'if_low_quality' && (existingTopScore < 0.5 || newTopScore > existingTopScore + 0.12));
+
+  if (shouldUpdate) {
     await supabaseAdmin
       .from('attractions')
       .update({
@@ -154,18 +345,11 @@ export async function runAttractionPhotoMatch(
         updated_at: new Date().toISOString(),
       })
       .eq('id', attractionId);
-    console.log(`[AttractionPhoto] ${attractionId}: ${merged.length}장 자동 적용`);
-  } else {
-    console.log(`[AttractionPhoto] ${attractionId}: 기존 photos 있음 — skip`);
   }
 
   return merged;
 }
 
-/**
- * photos 가 빈 모든 attraction 대상 배치 사진 검색.
- * cron 에서 호출.
- */
 export async function batchAttractionPhotoMatch(
   limit = 50,
 ): Promise<{ processed: number; totalPhotos: number }> {
@@ -173,27 +357,36 @@ export async function batchAttractionPhotoMatch(
 
   const { data: rows, error } = await supabaseAdmin
     .from('attractions')
-    .select('id, name, aliases, qid')
+    .select('id, name, aliases, qid, country, region')
     .eq('is_active', true)
     .or('photos.is.null,photos.eq."[]"')
     .limit(limit);
 
   if (error || !rows) {
-    console.warn('[AttractionPhoto] batch fetch 실패:', error?.message);
+    console.warn('[AttractionPhoto] batch fetch failed:', error?.message);
     return { processed: 0, totalPhotos: 0 };
   }
 
   let totalPhotos = 0;
-  for (const row of rows as Array<{ id: string; name: string; aliases: string[]; qid: string | null }>) {
-    const keywords = [row.name, ...(row.aliases ?? [])].filter(Boolean);
+  for (const row of rows as Array<{
+    id: string;
+    name: string;
+    aliases: string[] | null;
+    qid: string | null;
+    country: string | null;
+    region: string | null;
+  }>) {
+    const keywords = unique([row.name, ...(row.aliases ?? [])]);
     const photos = await runAttractionPhotoMatch(row.id, {
       keywords,
       qid: row.qid,
+      country: row.country,
+      region: row.region,
+      destination: row.region,
       maxPhotos: 5,
     });
     totalPhotos += photos.length;
-    // rate limit 방어
-    await new Promise(r => setTimeout(r, 200));
+    await new Promise(resolve => setTimeout(resolve, 250));
   }
 
   return { processed: rows.length, totalPhotos };

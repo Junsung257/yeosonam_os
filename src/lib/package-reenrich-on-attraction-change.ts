@@ -96,7 +96,7 @@ export async function reEnrichAffectedPackages(
           .from('travel_packages')
           .select('id')
           .ilike('destination', `%${region}%`)
-          .eq('is_active', true)
+          .eq('status', 'active')
           .limit(maxPackages);
         for (const r of (viaRegion ?? []) as Array<{ id: string }>) {
           packageIdSet.add(r.id);

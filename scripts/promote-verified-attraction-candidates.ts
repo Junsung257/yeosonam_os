@@ -1,0 +1,218 @@
+import { config as loadEnv } from 'dotenv';
+import { createClient } from '@supabase/supabase-js';
+
+import { runAttractionPhotoMatch } from '../src/lib/attraction-photo-match';
+import { reEnrichAffectedPackages } from '../src/lib/package-reenrich-on-attraction-change';
+
+loadEnv({ path: '.env.local' });
+loadEnv();
+
+const args = new Set(process.argv.slice(2));
+const apply = args.has('--apply');
+const json = args.has('--json');
+const limit = Number(argValue('--limit', '50'));
+const destination = argValue('--destination', '');
+const minScore = Number(argValue('--min-score', '0.44'));
+
+function argValue(name: string, fallback: string): string {
+  const found = process.argv.find(arg => arg.startsWith(`${name}=`));
+  return found ? found.slice(name.length + 1) : fallback;
+}
+
+const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!url || !key) throw new Error('Missing Supabase env');
+
+const supabase = createClient(url, key, { auth: { persistSession: false } });
+
+type CandidateRow = {
+  id: string;
+  candidate_key: string;
+  raw_label: string | null;
+  normalized_label: string | null;
+  canonical_name: string | null;
+  destination_scope: string | null;
+  country_scope: string | null;
+  region_scope: string | null;
+  source_context: Record<string, unknown> | null;
+  suggested_master: Record<string, unknown> | null;
+  external_sources: Array<{ name?: string | null; id?: string | null; source?: string | null }> | null;
+  verification_score: number | null;
+  package_count: number | null;
+};
+
+function clean(value: unknown): string {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function unique(values: string[]): string[] {
+  return Array.from(new Set(values.map(clean).filter(Boolean)));
+}
+
+function isBadMasterName(value: string): boolean {
+  if (!value || value.length < 2) return true;
+  if (/(맛집|날씨|주변|합성데크|차광막|WPC|돈까스|돈카츠|재래시장|옵션|마사지|선택관광)/i.test(value)) return true;
+  if (/^\d+호\s*경계비$/.test(value)) return true;
+  if (value === '강변공원') return true;
+  if (value === '케이블카' || value === '전망대') return true;
+  return false;
+}
+
+function chooseMasterName(row: CandidateRow): string {
+  const raw = clean(row.raw_label);
+  const canonical = clean(row.canonical_name);
+  const normalized = clean(row.normalized_label);
+  if (raw && canonical && raw.includes(canonical) && raw.length > canonical.length + 2) return raw;
+  if (canonical && !isBadMasterName(canonical)) return canonical;
+  if (raw && !isBadMasterName(raw)) return raw;
+  if (normalized && !isBadMasterName(normalized)) return normalized;
+  return '';
+}
+
+async function fetchCandidates(): Promise<CandidateRow[]> {
+  let query = supabase
+    .from('entity_master_candidates')
+    .select('id, candidate_key, raw_label, normalized_label, canonical_name, destination_scope, country_scope, region_scope, source_context, suggested_master, external_sources, verification_score, package_count')
+    .eq('category', 'attraction')
+    .eq('auto_action', 'create_internal_master')
+    .eq('auto_verification_status', 'verified_internal')
+    .eq('promotion_status', 'auto_internal')
+    .gte('verification_score', minScore)
+    .contains('source_context', { mobile_landing_impact: true })
+    .order('package_count', { ascending: false })
+    .limit(limit);
+  if (destination) query = query.eq('destination_scope', destination);
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as CandidateRow[];
+}
+
+async function findExisting(name: string, aliases: string[]) {
+  const terms = unique([name, ...aliases]);
+  for (const term of terms) {
+    const { data, error } = await supabase
+      .from('attractions')
+      .select('id, name, aliases, photos')
+      .or(`name.eq.${term},aliases.cs.{${term}}`)
+      .limit(1);
+    if (error) continue;
+    if (data && data.length > 0) return data[0] as { id: string; name: string; aliases?: string[] | null; photos?: unknown[] | null };
+  }
+  return null;
+}
+
+async function promote(row: CandidateRow) {
+  const masterName = chooseMasterName(row);
+  const aliases = unique([
+    row.raw_label ?? '',
+    row.normalized_label ?? '',
+    row.canonical_name ?? '',
+    ...(row.external_sources ?? []).flatMap(source => [source.name ?? '', source.id ?? '']),
+  ]).filter(value => value !== masterName && !isBadMasterName(value));
+
+  if (!masterName || isBadMasterName(masterName)) {
+    return { status: 'skipped', reason: 'unsafe_master_name', candidate_key: row.candidate_key, masterName };
+  }
+
+  const existing = await findExisting(masterName, aliases);
+  let attractionId = existing?.id ?? null;
+  let created = false;
+
+  if (!attractionId && apply) {
+    const { data, error } = await supabase
+      .from('attractions')
+      .insert({
+        name: masterName,
+        short_desc: null,
+        long_desc: null,
+        country: row.country_scope,
+        region: row.region_scope ?? row.destination_scope,
+        badge_type: 'tour',
+        emoji: '📍',
+        aliases,
+        photos: [],
+        source: 'entity-master-candidate-auto',
+        is_manual_override: false,
+        auto_created: true,
+        verification_status: 'auto_internal',
+        customer_publishable: false,
+        review_required_reason: 'verified internal candidate; customer publishable requires stronger source or admin review',
+        auto_created_at: new Date().toISOString(),
+        source_ids: {
+          entity_master_candidate_key: row.candidate_key,
+          source_context: row.source_context ?? {},
+        },
+        verification_sources: row.external_sources ?? [],
+      })
+      .select('id')
+      .single();
+    if (error) throw error;
+    attractionId = data.id;
+    created = true;
+  }
+
+  if (!attractionId) {
+    return { status: 'dry_run', candidate_key: row.candidate_key, masterName, aliases };
+  }
+
+  if (apply) {
+    await runAttractionPhotoMatch(attractionId, {
+      keywords: [masterName, ...aliases],
+      country: row.country_scope,
+      region: row.region_scope ?? row.destination_scope,
+      destination: row.destination_scope,
+      maxPhotos: 5,
+      replaceExisting: 'if_low_quality',
+    });
+    await supabase
+      .from('entity_master_candidates')
+      .update({
+        promotion_status: 'promoted',
+        promoted_attraction_id: attractionId,
+        promoted_at: new Date().toISOString(),
+      })
+      .eq('candidate_key', row.candidate_key);
+  }
+
+  return { status: created ? 'created' : 'linked_existing', candidate_key: row.candidate_key, attractionId, masterName, aliases };
+}
+
+async function main() {
+  const rows = await fetchCandidates();
+  const results = [];
+  const attractionIds: string[] = [];
+  for (const row of rows) {
+    try {
+      const result = await promote(row);
+      results.push(result);
+      if ('attractionId' in result && result.attractionId) attractionIds.push(result.attractionId);
+    } catch (error) {
+      results.push({
+        status: 'error',
+        candidate_key: row.candidate_key,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  const reEnrich = apply && attractionIds.length > 0
+    ? await reEnrichAffectedPackages(attractionIds, { maxPackages: 200, forceRevalidate: true })
+    : null;
+
+  const output = {
+    apply,
+    scanned: rows.length,
+    promoted_or_existing: results.filter(row => row.status === 'created' || row.status === 'linked_existing').length,
+    skipped: results.filter(row => row.status === 'skipped').length,
+    errors: results.filter(row => row.status === 'error').length,
+    reEnrich,
+    results,
+  };
+  if (json) console.log(JSON.stringify(output, null, 2));
+  else console.log(output);
+}
+
+main().catch(error => {
+  console.error(error);
+  process.exit(1);
+});

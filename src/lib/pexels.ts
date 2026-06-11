@@ -53,7 +53,11 @@ function getPexelsHeaders() {
 export async function searchPexelsPhotos(
   keyword: string,
   perPage = 5,
-  page = 1
+  page = 1,
+  options: {
+    orientation?: 'landscape' | 'portrait' | 'square';
+    locale?: string;
+  } = {},
 ): Promise<PexelsPhoto[]> {
   const params = new URLSearchParams({
     query: keyword,
@@ -61,6 +65,9 @@ export async function searchPexelsPhotos(
     page: String(page),
     orientation: 'landscape', // 카드뉴스 배경용 가로 사진
   });
+
+  params.set('orientation', options.orientation ?? 'landscape');
+  if (options.locale) params.set('locale', options.locale);
 
   const pexelsRequestInit: RequestInit & { next?: { revalidate: number } } = {
     headers: getPexelsHeaders(),
