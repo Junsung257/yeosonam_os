@@ -8,6 +8,10 @@ import {
   inspectUrlIndexState,
   extractBlogSlugFromUrl,
 } from '@/lib/gsc-api';
+import {
+  buildGoogleVisibilitySnapshot,
+  recordBlogVisibilitySnapshot,
+} from '@/lib/blog-visibility-snapshots';
 
 /**
  * GSC 색인/순위 추적 — 발행된 블로그 글의 page-level aggregate + URL Inspection
@@ -114,6 +118,25 @@ async function runGscIndexRank(request: NextRequest) {
         .upsert(rows, { onConflict: 'slug,query,date,source', ignoreDuplicates: false });
       if (upErr) errors.push(`rank_history upsert 실패: ${upErr.message}`);
       else inserted = rows.length;
+
+      await Promise.allSettled(rows.map((row) => recordBlogVisibilitySnapshot(
+        supabaseAdmin,
+        buildGoogleVisibilitySnapshot({
+          slug: String(row.slug),
+          url: String(row.page_url || ''),
+          requestStatus: 'requested',
+          evidence: {
+            impressions: row.impressions,
+            clicks: row.clicks,
+            ctr: row.ctr,
+            date: row.date,
+            source: row.source,
+          },
+          rank: Number(row.position),
+          query: PAGE_AGGREGATE_QUERY_KEY,
+          source: 'gsc_page_rank_history',
+        }),
+      )));
     }
   }
 
@@ -176,6 +199,24 @@ async function runGscIndexRank(request: NextRequest) {
       google_canonical: r.googleCanonical,
       user_canonical: r.userCanonical,
     });
+    await recordBlogVisibilitySnapshot(
+      supabaseAdmin,
+      buildGoogleVisibilitySnapshot({
+        slug,
+        url,
+        requestStatus: 'requested',
+        evidence: {
+          verdict: r.verdict,
+          coverage_state: r.coverageState,
+          indexing_state: r.indexingState,
+          last_crawl_time: r.lastCrawlTime,
+          page_fetch_state: r.pageFetchState,
+          google_canonical: r.googleCanonical,
+          user_canonical: r.userCanonical,
+        },
+        source: 'gsc_url_inspection',
+      }),
+    );
     inspectionResults.push({
       slug,
       verdict: r.verdict,

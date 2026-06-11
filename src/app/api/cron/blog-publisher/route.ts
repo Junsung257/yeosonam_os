@@ -38,6 +38,11 @@ import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import { repairBlogEditorialQuality } from '@/lib/blog-editorial-repair';
 import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import {
+  buildGoogleVisibilitySnapshot,
+  buildNaverVisibilitySnapshot,
+  recordBlogVisibilitySnapshot,
+} from '@/lib/blog-visibility-snapshots';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -439,6 +444,39 @@ async function runBlogPublisher(request: NextRequest) {
                   sitemap_pings: report.sitemap_pings,
                   duration_ms: report.duration_ms,
                 });
+                const naverIndexNowOk = report.sitemap_pings.some(
+                  (ping) => ping.provider === 'naver_indexnow' && ping.ok === true,
+                );
+                await Promise.allSettled([
+                  recordBlogVisibilitySnapshot(
+                    supabaseAdmin,
+                    buildGoogleVisibilitySnapshot({
+                      slug,
+                      url: report.url,
+                      requestStatus: report.google === 'failed' ? 'request_failed' : 'requested',
+                      evidence: {
+                        request_status: report.google,
+                        request_error: report.google_error ?? null,
+                        sitemap_pings: report.sitemap_pings,
+                      },
+                      source: 'publish_indexing_request',
+                    }),
+                  ),
+                  recordBlogVisibilitySnapshot(
+                    supabaseAdmin,
+                    buildNaverVisibilitySnapshot({
+                      slug,
+                      url: report.url,
+                      indexNowOk: naverIndexNowOk,
+                      evidence: {
+                        request_status: report.indexnow,
+                        request_error: report.indexnow_error ?? null,
+                        sitemap_pings: report.sitemap_pings,
+                      },
+                      source: 'publish_indexnow_request',
+                    }),
+                  ),
+                ]);
               })
               .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
           ),
@@ -923,6 +961,8 @@ async function processQueueItem(
       .update({
         status: 'published',
         content_creative_id: creativeId,
+        last_error: null,
+        attempts: 0,
       })
       .eq('id', item.id);
 

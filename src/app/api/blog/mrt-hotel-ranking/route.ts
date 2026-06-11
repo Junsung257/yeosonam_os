@@ -193,6 +193,7 @@ ${filtered.map((hotel, i) => {
         error: 'Blog publish quality gate failed',
         summary: qaReport.summary,
         quality_warnings: blogPublishQualityWarnings(qaReport),
+        blog_quality_score: qaReport.blogQualityScore,
         quality_gate: qaReport.qualityGate,
         seo_score: qaReport.seoScore,
         readability: qaReport.readability,

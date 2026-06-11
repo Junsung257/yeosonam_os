@@ -1,7 +1,11 @@
 #!/usr/bin/env tsx
+import dotenv from 'dotenv';
 import * as cheerio from 'cheerio';
 import { inspectBlogIntentQuality } from '../src/lib/blog-content-intent';
 import { repairBlogEditorialQuality } from '../src/lib/blog-editorial-repair';
+
+dotenv.config({ path: '.env.local', quiet: true });
+dotenv.config({ quiet: true });
 
 type BlogListPost = {
   id?: string | null;
@@ -11,6 +15,7 @@ type BlogListPost = {
   category?: string | null;
   product_id?: string | null;
   status?: string | null;
+  destination?: string | null;
   travel_packages?: { destination?: string | null } | Array<{ destination?: string | null }> | null;
 };
 
@@ -30,12 +35,14 @@ const hasFlag = (name: string) => args.includes(name);
 
 const baseUrl = (argValue('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
 const limit = Number(argValue('--limit', '0')) || 0;
+const source = argValue('--source', 'web') || 'web';
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const repairPreview = hasFlag('--repair-preview');
 const concurrency = Math.max(1, Math.min(8, Number(argValue('--concurrency', '4')) || 4));
 
 function destinationFrom(post: BlogListPost): string | null {
+  if (post.destination) return post.destination;
   const packages = post.travel_packages;
   if (Array.isArray(packages)) return packages[0]?.destination ?? null;
   return packages?.destination ?? null;
@@ -100,6 +107,8 @@ async function fetchRenderedPostSource(post: BlogListPost): Promise<BlogDetailPo
 }
 
 async function collectPosts(): Promise<BlogListPost[]> {
+  if (source === 'db') return collectDbPosts();
+
   const posts: BlogListPost[] = [];
   for (let page = 1; page <= 30; page += 1) {
     const json = await getJson<{ posts?: BlogListPost[]; totalPages?: number }>(`/api/blog?page=${page}&limit=50`);
@@ -109,6 +118,22 @@ async function collectPosts(): Promise<BlogListPost[]> {
     if (batch.length === 0 || (json.totalPages && page >= json.totalPages)) break;
   }
   return limit > 0 ? posts.slice(0, limit) : posts;
+}
+
+async function collectDbPosts(): Promise<BlogDetailPost[]> {
+  const { supabaseAdmin } = await import('../src/lib/supabase');
+  const query = supabaseAdmin
+    .from('content_creatives')
+    .select('id, slug, seo_title, seo_description, angle_type, category, content_type, product_id, status, destination, blog_html, published_at')
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .order('published_at', { ascending: false });
+
+  if (limit > 0) query.limit(limit);
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return (data ?? []) as BlogDetailPost[];
 }
 
 async function mapLimit<T, R>(items: T[], worker: (item: T) => Promise<R>): Promise<R[]> {
@@ -129,11 +154,15 @@ async function mapLimit<T, R>(items: T[], worker: (item: T) => Promise<R>): Prom
 async function inspectPost(post: BlogListPost) {
   try {
     let row: BlogDetailPost | undefined;
-    try {
-      const detail = await getJson<{ post?: BlogDetailPost }>(`/api/blog?id=${post.id}`);
-      row = detail.post;
-    } catch {
-      row = await fetchRenderedPostSource(post);
+    if (source === 'db') {
+      row = post as BlogDetailPost;
+    } else {
+      try {
+        const detail = await getJson<{ post?: BlogDetailPost }>(`/api/blog?id=${post.id}`);
+        row = detail.post;
+      } catch {
+        row = await fetchRenderedPostSource(post);
+      }
     }
     if (!row?.blog_html && post.slug) {
       row = await fetchRenderedPostSource(post);
@@ -177,13 +206,14 @@ async function inspectPost(post: BlogListPost) {
     };
     const repair = repairPreview ? repairBlogEditorialQuality(input) : null;
     const report = repair?.after ?? inspectBlogIntentQuality(input);
+    const passed = report.passed && report.issues.length === 0 && report.score === 100;
 
     return {
       id: row.id ?? post.id,
       slug: row.slug ?? post.slug,
       title: row.seo_title ?? post.seo_title,
       destination: destinationFrom(row) ?? destinationFrom(post),
-      passed: report.passed,
+      passed,
       score: report.score,
       intent: report.intent,
       issues: report.issues,
@@ -232,11 +262,14 @@ function summarize(allRows: Awaited<ReturnType<typeof inspectPost>>[]) {
   const failed = rows.filter((row) => !row.passed);
   return {
     baseUrl,
+    source,
     repairPreview,
     total: rows.length,
     skipped: allRows.length - rows.length,
     passed: rows.length - failed.length,
     failed: failed.length,
+    score100: rows.length - failed.length,
+    fleetScore: rows.length ? Math.floor(((rows.length - failed.length) / rows.length) * 100) : 0,
     averageScore: scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : 0,
     issueCounts,
     intentCounts,

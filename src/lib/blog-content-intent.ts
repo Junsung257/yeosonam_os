@@ -357,7 +357,7 @@ export function inspectBlogIntentQuality(input: BlogIntentInput): BlogIntentQual
   const score = Math.max(0, 100 - criticalCount * 18 - warningCount * 6);
 
   return {
-    passed: criticalCount === 0 && score >= 85,
+    passed: issues.length === 0 && score === 100,
     score,
     intent,
     issues,
