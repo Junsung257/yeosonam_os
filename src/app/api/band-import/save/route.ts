@@ -12,6 +12,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { triggerContentGeneration } from '@/lib/auto-content-trigger';
 import { BAND_SUPPLIER_CODE, DEFAULT_MARGIN_RATE } from '@/lib/band-ai-analyzer';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 interface Preview {
   internal_code: string;
@@ -28,7 +29,7 @@ interface Preview {
   band_post_url: string | null;
 }
 
-export async function POST(request: NextRequest) {
+async function postHandler(request: NextRequest) {
   if (!isSupabaseConfigured) return apiResponse({ error: 'DB 미설정' }, { status: 503 });
 
   try {
@@ -99,3 +100,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAdminGuard(postHandler);

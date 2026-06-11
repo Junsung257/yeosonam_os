@@ -10,6 +10,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import type { SourceEvidenceMap } from '@/lib/source-evidence';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
+import { withAdminGuard } from '@/lib/admin-guard';
 import {
   evaluateV3CustomerNoticeGate,
   hasSupplierRemarkRawLeakRisk,
@@ -26,7 +27,7 @@ interface ApproveBody {
   force?: boolean;
 }
 
-export async function PATCH(request: NextRequest, props: { params: Promise<{ id: string }> }) {
+async function patchHandler(request: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
 
@@ -476,3 +477,5 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
   return NextResponse.json({ ok: true, status: 'draft' });
 }
+
+export const PATCH = withAdminGuard(patchHandler);

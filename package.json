@@ -40,6 +40,7 @@
     "audit:event-taxonomy": "node scripts/audit-event-taxonomy.mjs",
     "audit:pii-surface": "node scripts/audit-pii-surface.mjs",
     "audit:pii-surface:strict": "node scripts/audit-pii-surface.mjs --strict",
+    "audit:sensitive-api-guards": "node scripts/audit-sensitive-api-guards.mjs",
     "audit:admin-dashboard": "node scripts/audit-admin-dashboard-contract.mjs",
     "verify:design-system": "npm run verify:tokens && npm run type-check",
     "test": "vitest run",
