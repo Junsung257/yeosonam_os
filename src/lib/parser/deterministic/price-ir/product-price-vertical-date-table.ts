@@ -27,10 +27,10 @@ function parseDateListLine(line: string, yearHint?: number): string[] {
     .replace(/\s+/g, '')
     .trim();
   if (!/\d{1,2}[./]\d{1,2}/.test(compact)) return [];
-  if (/[가-힣A-Za-z]/.test(compact.replace(/월|일/g, ''))) return [];
+  if (/[가-힣A-Za-z]/.test(compact.replace(/월|일|출발|확정|가능|최저가/g, ''))) return [];
 
-  const normalized = compact.replace(/월/g, '/').replace(/일/g, '');
-  const tokens = normalized.split(/[,，|]+/).map(token => token.trim()).filter(Boolean);
+  const normalized = compact.replace(/[.]/g, '/').replace(/월/g, '/').replace(/일/g, '');
+  const tokens = normalized.split(/[,，、|]+/).map(token => token.trim()).filter(Boolean);
   const dates: string[] = [];
   let month: number | null = null;
 
@@ -54,12 +54,12 @@ function parseDateListLine(line: string, yearHint?: number): string[] {
 }
 
 function sliceProductPriceSection(rawText: string): string {
-  const startMatch = rawText.match(/^\s*(?:상품\s*가|판매\s*가|출발\s*일자|출발\s*날짜)\s*$/m);
+  const startMatch = rawText.match(/^\s*(?:상품\s*가|판매\s*가|요금\s*표|출발\s*일\s*(?:&|및)?\s*상품\s*가|출발\s*일자|출발\s*날짜)\s*$/m);
   if (!startMatch?.index && startMatch?.index !== 0) return '';
 
   const start = startMatch.index;
   const tail = rawText.slice(start);
-  const stop = tail.search(/^\s*(?:포함\s*(?:내역|사항)|불포함|일정표?|여행\s*일정|1\s*일|DAY\s*1|취소|예약|호텔|항공)\b/m);
+  const stop = tail.search(/^\s*(?:포\s*함\s*(?:내역|사항)|불\s*포함|일정표?|여행\s*일정|일\s*시|1\s*일|DAY\s*1|취소|예약|호텔|항공|비\s*고|쇼핑|옵션)\b/m);
   return stop > 0 ? tail.slice(0, stop) : tail;
 }
 

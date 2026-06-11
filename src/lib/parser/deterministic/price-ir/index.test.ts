@@ -324,6 +324,46 @@ describe('extractPriceIR product price vertical date table', () => {
     expect(result.rows.some(row => row.date === '1,299,000원')).toBe(false);
     expect(result.tiers.length).toBe(3);
   });
+
+  it('recovers Shizuoka departure price tables with ticketing notes and month headings', () => {
+    const rawText = `
+[시즈오카] 후지산 핵심일주
+출발일 &상품가
+
+월, 수
+출발
+▶5/26까지 발권조건
+6월
+6/1, 8, 15, 22, 29
+529,000원
+6/29
+499,000원
+6/3, 10, 17, 24
+629,000원
+7월
+7/1, 8, 15, 22, 29
+729,000원
+7/6, 13, 20, 27
+629,000원
+8월
+8/10
+859,000원
+8/3, 17, 24, 31
+799,000원
+8/5, 12, 19, 26
+899,000원
+포 함 사 항
+왕복항공권
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 3 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows.find(row => row.date === '2026-06-29')?.adult_price).toBe(499000);
+    expect(result.rows.find(row => row.date === '2026-07-06')?.adult_price).toBe(629000);
+    expect(result.rows.find(row => row.date === '2026-08-26')?.adult_price).toBe(899000);
+    expect(result.rows.some(row => row.date.startsWith('2024-'))).toBe(false);
+  });
 });
 
 describe('extractPriceIR single travel-period product price', () => {
