@@ -1,5 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import { buildSourceBackedAttractionDescriptions } from '../src/lib/attraction-source-backed-description';
 
 loadEnv({ path: '.env.local' });
 loadEnv();
@@ -51,6 +52,14 @@ function packageIdsFrom(row: CandidateRow): string[] {
   return Array.isArray(ids)
     ? ids.filter((value): value is string => typeof value === 'string' && value.length > 0)
     : [];
+}
+
+function sourceExamplesFrom(row: CandidateRow): string[] {
+  const examples = row.source_context?.examples;
+  if (Array.isArray(examples)) return examples.filter((value): value is string => typeof value === 'string');
+  const rawExamples = row.source_context?.raw_examples;
+  if (Array.isArray(rawExamples)) return rawExamples.filter((value): value is string => typeof value === 'string');
+  return [];
 }
 
 function isBadMasterName(value: string): boolean {
@@ -125,12 +134,18 @@ async function promote(row: CandidateRow) {
   let created = false;
 
   if (!attractionId && apply) {
+    const descriptions = buildSourceBackedAttractionDescriptions({
+      name: masterName,
+      aliases,
+      examples: sourceExamplesFrom(row),
+      region: row.region_scope ?? row.destination_scope,
+    });
     const { data, error } = await supabase
       .from('attractions')
       .insert({
         name: masterName,
-        short_desc: null,
-        long_desc: null,
+        short_desc: descriptions.shortDesc,
+        long_desc: descriptions.longDesc,
         country: row.country_scope,
         region: row.region_scope ?? row.destination_scope,
         badge_type: 'tour',

@@ -404,12 +404,21 @@ export async function batchAttractionPhotoMatch(
 ): Promise<{ processed: number; totalPhotos: number }> {
   if (!isSupabaseConfigured) return { processed: 0, totalPhotos: 0 };
 
-  const { data: rows, error } = await supabaseAdmin
-    .from('attractions')
-    .select('id, name, aliases, qid, country, region')
+  const fetchRows = (select: string) => (supabaseAdmin.from('attractions') as any)
+    .select(select)
     .eq('is_active', true)
     .or('photos.is.null,photos.eq."[]"')
     .limit(limit);
+
+  let { data: rows, error } = await fetchRows('id, name, aliases, qid, country, region');
+
+  if (error && /qid/i.test(error.message ?? '')) {
+    const retry = await fetchRows('id, name, aliases, country, region');
+    rows = Array.isArray(retry.data)
+      ? retry.data.map((row: Record<string, unknown>) => ({ ...row, qid: null }))
+      : null;
+    error = retry.error;
+  }
 
   if (error || !rows) {
     console.warn('[AttractionPhoto] batch fetch failed:', error?.message);
@@ -417,18 +426,18 @@ export async function batchAttractionPhotoMatch(
   }
 
   let totalPhotos = 0;
-  for (const row of rows as Array<{
+  for (const row of rows as unknown as Array<{
     id: string;
     name: string;
     aliases: string[] | null;
-    qid: string | null;
+    qid?: string | null;
     country: string | null;
     region: string | null;
   }>) {
     const keywords = unique([row.name, ...(row.aliases ?? [])]);
     const photos = await runAttractionPhotoMatch(row.id, {
       keywords,
-      qid: row.qid,
+      qid: row.qid ?? null,
       country: row.country,
       region: row.region,
       destination: row.region,

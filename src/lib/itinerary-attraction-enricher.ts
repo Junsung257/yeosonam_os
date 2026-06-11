@@ -247,7 +247,8 @@ export function enrichItineraryWithAttractionReferences(
         };
       }
 
-      if (isDirectScanUnsafeActivity(item.activity)) return item;
+      const noteHasAttractionHint = /(산|궁|공원|호수|폭포|사원|성당|교회|광장|마을|전망|유적|박물관|시장|민속촌)/.test(item.note ?? '');
+      if (isDirectScanUnsafeActivity(item.activity) && !noteHasAttractionHint) return item;
       const directMatches = findRegisteredAttractionTermsInText(
         [item.activity, item.note ?? ''].filter(Boolean).join(' '),
         attractions,
