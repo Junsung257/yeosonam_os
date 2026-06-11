@@ -1,39 +1,9 @@
 import type { Metadata, Viewport } from 'next';
-import localFont from 'next/font/local';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 import './globals.css';
 import PartytownInit from '@/components/PartytownInit';
 import AffiliateAttributionBanner from '@/components/customer/AffiliateAttributionBanner';
 import LayoutClientWidgets from '@/components/LayoutClientWidgets';
-
-// Pretendard — 사용 빈도 높은 4개 weight만 우선 로드 (Light·ExtraBold는 필요 시 fallback)
-const pretendard = localFont({
-  src: [
-    {
-      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Regular.woff2',
-      weight: '400',
-      style: 'normal',
-    },
-    {
-      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Medium.woff2',
-      weight: '500',
-      style: 'normal',
-    },
-    {
-      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-SemiBold.woff2',
-      weight: '600',
-      style: 'normal',
-    },
-    {
-      path: '../../node_modules/pretendard/dist/web/static/woff2/Pretendard-Bold.woff2',
-      weight: '700',
-      style: 'normal',
-    },
-  ],
-  display: 'swap',
-  variable: '--font-pretendard',
-  fallback: ['system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
-});
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
@@ -119,7 +89,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko" className={pretendard.variable}>
+    <html lang="ko">
       <head>
         <meta name="facebook-domain-verification" content="6b5xtc0m174vrt9fz1gtlmj2uaab0t" />
         <link rel="alternate" type="application/rss+xml" title="여소남 블로그 RSS" href="/api/rss" />
@@ -167,7 +137,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           }}
         />
       </head>
-      <body className={`${pretendard.className} bg-gray-50 antialiased`}>
+      <body className="bg-gray-50 antialiased">
         <PartytownInit />
         <AffiliateAttributionBanner />
         {children}

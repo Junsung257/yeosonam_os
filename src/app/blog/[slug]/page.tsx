@@ -505,10 +505,7 @@ export async function generateMetadata({
   const post = await getPost(slug);
   // 404 캐시가 색인되지 않도록 명시적 noindex.
   if (!post) {
-    return {
-      title: '글을 찾을 수 없습니다',
-      robots: { index: false, follow: false, googleBot: { index: false, follow: false } },
-    };
+    notFound();
   }
 
   const rawTitle = post.seo_title || post.travel_packages?.title || '여행 블로그';

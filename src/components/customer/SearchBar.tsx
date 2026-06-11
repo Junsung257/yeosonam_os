@@ -127,6 +127,7 @@ export default function SearchBar({
       <input
         type="search"
         name="q"
+        aria-label={variant === 'packages' ? '목적지 검색' : '여행지 검색'}
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder={variant === 'packages' ? '목적지 검색 (예: 장가계, 다낭)' : '어디로 떠나시나요? (예: 다낭, 후쿠오카)'}
@@ -154,6 +155,7 @@ export default function SearchBar({
   const monthSelect = (
     <select
       name="month"
+      aria-label="출발월"
       value={month}
       onChange={e => setMonth(e.target.value)}
       className={
@@ -179,6 +181,7 @@ export default function SearchBar({
   const priceSelect = (
     <select
       name="priceMax"
+      aria-label={variant === 'home' ? '예산' : '가격'}
       value={priceMax}
       onChange={e => {
         setPriceMax(e.target.value);

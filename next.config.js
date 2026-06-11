@@ -240,6 +240,10 @@ const nextConfig = {
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=300, stale-while-revalidate=1800' }],
       },
       {
+        source: '/api/blog/image',
+        headers: [{ key: 'Cache-Control', value: 'public, max-age=604800, s-maxage=2592000, stale-while-revalidate=604800' }],
+      },
+      {
         source: '/api/blog-categories',
         headers: [{ key: 'Cache-Control', value: 'public, s-maxage=3600, stale-while-revalidate=86400' }],
       },

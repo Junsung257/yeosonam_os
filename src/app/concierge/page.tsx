@@ -301,6 +301,7 @@ export default function ConciergePage() {
               <input
                 ref={inputRef}
                 type="text"
+                aria-label="AI 여행 상품 검색어"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="예: 방콕 3박 4일 호텔이랑 투어 추천해줘"

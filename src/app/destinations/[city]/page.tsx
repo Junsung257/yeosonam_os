@@ -82,6 +82,23 @@ async function getDestinationSocialImage(city: string): Promise<string> {
   }
 }
 
+async function destinationExistsForMetadata(city: string): Promise<boolean | null> {
+  if (!isSupabaseConfigured) return null;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('active_destinations')
+      .select('destination')
+      .eq('destination', city)
+      .limit(1);
+    if (error) return null;
+
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return null;
+  }
+}
+
 interface DestinationMeta {
   tagline: string | null;
   hero_tagline: string | null;
@@ -396,6 +413,11 @@ export async function generateMetadata({ params }: { params: Promise<{ city?: st
 
   const title = `${decoded} 여행 완벽 가이드 | 관광지·일정·비용`;
   const description = `${decoded} 여행의 모든 것 — 운영팀 검증 관광지, 추천 일정, 예상 비용, 계절별 팁까지. 여소남이 정리한 ${decoded} 완벽 가이드.`;
+  const destinationExists = await destinationExistsForMetadata(decoded);
+  if (destinationExists === false) {
+    notFound();
+  }
+
   const socialImage = await getDestinationSocialImage(decoded);
 
   return {
@@ -654,7 +676,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                   상품 보기
                 </a>
                 <a
-                  href="https://pf.kakao.com/_yeosonam"
+                  href="https://pf.kakao.com/_xcFxkBG/chat"
                   target="_blank"
                   rel="noopener"
                   className="inline-flex justify-center items-center gap-2 px-7 py-3.5 bg-[#FEE500] text-[#3C1E1E] font-bold text-base md:text-lg rounded-full hover:bg-[#FEE500]/90 transition shadow-lg"
@@ -855,7 +877,7 @@ export default async function DestinationPillarPage({ params }: { params: Promis
               </div>
 
               <a
-                href="https://pf.kakao.com/_yeosonam"
+                href="https://pf.kakao.com/_xcFxkBG/chat"
                 target="_blank"
                 rel="noopener"
                 className="inline-flex justify-center items-center gap-2 w-full md:w-auto md:px-14 py-4 bg-brand text-white font-bold text-base md:text-lg rounded-2xl hover:bg-brand-dark transition shadow-lg shadow-brand/25"

@@ -638,7 +638,7 @@ export default async function BlogData({ searchParams }: Props) {
 
         {/* ── 카카오 플로팅 CTA ── */}
         <a
-          href="https://pf.kakao.com/_yeosonam"
+          href="https://pf.kakao.com/_xcFxkBG/chat"
           target="_blank"
           rel="noopener"
           className="fixed bottom-24 right-4 md:bottom-6 md:right-6 bg-[#FEE500] text-[#3C1E1E] font-bold text-[13px] px-4 py-3 rounded-full shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all z-40 flex items-center gap-2"

@@ -249,6 +249,88 @@ const PUBLIC_EXACT_SHORT = new Set([
   '/api/package-reviews', '/passport-assist',
 ]);
 
+// 미등록 공개 URL을 로그인 페이지(200)로 오인시키지 않기 위한 최상위 라우트 allow-list.
+// 실제 앱 라우트가 아닌 첫 segment는 middleware 인증 리다이렉트 대신 Next 404로 흘린다.
+const KNOWN_TOP_LEVEL_ROUTES = new Set([
+  'about',
+  'admin',
+  'affiliate',
+  'api',
+  'auth',
+  'blog',
+  'concierge',
+  'destinations',
+  'embed',
+  'free-travel',
+  'group',
+  'group-inquiry',
+  'influencer',
+  'itinerary',
+  'join',
+  'legal',
+  'link',
+  'llms.txt',
+  'login',
+  'lp',
+  'm',
+  'mypage',
+  'packages',
+  'partner',
+  'partner-apply',
+  'passport-assist',
+  'privacy',
+  'private-tour',
+  'r',
+  'reels',
+  'review',
+  'rfq',
+  'share',
+  'tenant',
+  'terms',
+  'things-to-do',
+  'tour',
+  'trip',
+  'with',
+]);
+
+function hasKnownTopLevelRoute(pathname: string): boolean {
+  const firstSegment = pathname.split('/').filter(Boolean)[0] || '';
+  return firstSegment.length === 0 || KNOWN_TOP_LEVEL_ROUTES.has(firstSegment);
+}
+
+function plainNotFound(): NextResponse {
+  return new NextResponse('Not Found', {
+    status: 404,
+    headers: {
+      'content-type': 'text/plain; charset=utf-8',
+      'x-robots-tag': 'noindex, nofollow',
+    },
+  });
+}
+
+function safeDecodePathSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
+}
+
+function getPublicDynamicNotFoundResponse(pathname: string): NextResponse | null {
+  const segments = pathname.split('/').filter(Boolean);
+
+  if (segments[0] === 'packages' && segments.length === 2) {
+    const id = safeDecodePathSegment(segments[1]);
+    if (!isUuid(id)) return plainNotFound();
+  }
+
+  return null;
+}
+
 function isPublicPath(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -376,7 +458,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
+  const dynamicNotFound = getPublicDynamicNotFoundResponse(pathname);
+  if (dynamicNotFound) return dynamicNotFound;
+
   if (isPublicPath(request)) {
+    return response || NextResponse.next();
+  }
+
+  if (!hasKnownTopLevelRoute(pathname)) {
     return response || NextResponse.next();
   }
 

@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Pretendard: next/font/local (layout.tsx) — CDN @font-face 제거로 레이아웃 시프트·외부 의존 감소 */
+/* Public UI uses the OS Korean font stack to avoid multi-megabyte webfont downloads. */
 
 /* ──────────────────────────────────────────────────────────
  * 디자인 토큰 (Toss Blue 기반 통합 팔레트)
@@ -83,7 +83,7 @@ html {
 }
 
 body {
-  /* font-family: next/font local (layout.tsx body className) */
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Segoe UI", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   letter-spacing: -0.02em;

@@ -65,6 +65,18 @@ function buildPackageSeoTitle(input: {
   return parts.filter(Boolean).join(' | ');
 }
 
+function buildPackageNoindexMetadata(id: string, canonical: string): Metadata {
+  return {
+    title: '상품 상세',
+    alternates: { canonical },
+    robots: { index: false, follow: true },
+    openGraph: {
+      title: '상품 상세',
+      url: canonical,
+    },
+  };
+}
+
 // 2026-05-19 박제 (PR #152 후속 — ISR 활성화 완결):
 //   PR #152 (force-dynamic → revalidate=60) 머지 후 production 실측 결과 여전히 MISS 폭주.
 //   원인: Next.js 15 dynamic route ([id]) 는 `revalidate` 만으로는 ISR 미활성화.
@@ -135,8 +147,11 @@ export async function generateMetadata({
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
   const canonical = getPackageUrl(id);
-  if (!id || !isUuid(id) || !isSupabaseConfigured) {
-    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
+  if (!id || !isUuid(id)) {
+    notFound();
+  }
+  if (!isSupabaseConfigured) {
+    return buildPackageNoindexMetadata(id, canonical);
   }
   const sb = supabaseAdmin;
   let data: {
@@ -153,18 +168,21 @@ export async function generateMetadata({
       .from('travel_packages')
       .select('title, destination, price, product_type, product_summary, status, audit_status')
       .eq('id', id)
-      .single();
+      .maybeSingle();
+    if (result.error) {
+      return buildPackageNoindexMetadata(id, canonical);
+    }
     data = result.data;
   } catch {
-    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
+    return buildPackageNoindexMetadata(id, canonical);
   }
 
   // 비공개 상품(REVIEW_NEEDED/draft/blocked 등) 의 메타데이터는 SEO 노출 금지
-  if (!data) return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: true } };
+  if (!data) notFound();
   const status = (data as { status?: string }).status;
   const auditStatus = (data as { audit_status?: string }).audit_status;
   if (auditStatus === 'blocked' || !isCustomerVisibleStatus(status)) {
-    return { title: '상품 상세', alternates: { canonical }, robots: { index: false, follow: false } };
+    notFound();
   }
   const title = String(data.title || data.destination || '여소남 패키지 여행');
   const seoTitle = buildPackageSeoTitle({

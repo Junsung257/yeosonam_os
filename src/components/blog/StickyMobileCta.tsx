@@ -23,7 +23,7 @@ interface Props {
 export default function StickyMobileCta({
   priceKrw,
   productUrl,
-  kakaoUrl = 'https://pf.kakao.com/_yeosonam',
+  kakaoUrl = 'https://pf.kakao.com/_xcFxkBG/chat',
   packageId,
   intent,
   placement = 'sticky_mobile_cta',

@@ -255,6 +255,7 @@ export default function GroupInquiryPage() {
           <div className="max-w-2xl mx-auto flex gap-2 items-end">
             <textarea
               ref={textareaRef}
+              aria-label="단체여행 견적 문의 메시지"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}

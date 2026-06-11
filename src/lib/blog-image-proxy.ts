@@ -22,16 +22,30 @@ export function isProxyableBlogImageUrl(value: unknown): value is string {
   }
 }
 
-export function toBlogImageProxySrc(value: string, baseUrl = ''): string {
-  const path = `${BLOG_IMAGE_PROXY_PATH}?src=${encodeURIComponent(value.trim())}`;
+type BlogImageProxyOptions = {
+  width?: number;
+  quality?: number;
+};
+
+function appendPositiveInt(params: URLSearchParams, key: string, value: number | undefined): void {
+  if (Number.isFinite(value) && Number(value) > 0) {
+    params.set(key, String(Math.round(Number(value))));
+  }
+}
+
+export function toBlogImageProxySrc(value: string, baseUrl = '', options: BlogImageProxyOptions = {}): string {
+  const params = new URLSearchParams({ src: value.trim() });
+  appendPositiveInt(params, 'w', options.width);
+  appendPositiveInt(params, 'q', options.quality);
+  const path = `${BLOG_IMAGE_PROXY_PATH}?${params.toString()}`;
   if (!baseUrl) return path;
   return `${baseUrl.replace(/\/$/, '')}${path}`;
 }
 
-export function toBlogImageDisplaySrc(value: unknown, baseUrl = ''): string | null {
+export function toBlogImageDisplaySrc(value: unknown, baseUrl = '', options: BlogImageProxyOptions = {}): string | null {
   const raw = trimUrl(value);
   if (!raw) return null;
-  return isProxyableBlogImageUrl(raw) ? toBlogImageProxySrc(raw, baseUrl) : raw;
+  return isProxyableBlogImageUrl(raw) ? toBlogImageProxySrc(raw, baseUrl, options) : raw;
 }
 
 export function proxyBlogImageUrlsInHtml(html: string): string {

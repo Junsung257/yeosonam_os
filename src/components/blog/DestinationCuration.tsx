@@ -156,7 +156,7 @@ export default function DestinationCuration({
           <span aria-hidden>→</span>
         </Link>
         <a
-          href="https://pf.kakao.com/_yeosonam"
+          href="https://pf.kakao.com/_xcFxkBG/chat"
           target="_blank"
           rel="noopener"
           className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 rounded-xl bg-[#FEE500] text-[#3C1E1E] text-[13px] font-bold px-6 py-3 hover:shadow-md transition-all"

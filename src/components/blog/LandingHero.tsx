@@ -84,7 +84,7 @@ export default function LandingHero({
             </a>
           )}
           <a
-            href="https://pf.kakao.com/_yeosonam"
+            href="https://pf.kakao.com/_xcFxkBG/chat"
             target="_blank"
             rel="noopener"
             className="px-4 py-2.5 bg-white/10 hover:bg-white/20 border border-white/30 text-white font-semibold text-[13px] md:text-[14px] rounded-lg backdrop-blur-sm transition"
