@@ -320,12 +320,75 @@ function isUuid(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
 }
 
-function getPublicDynamicNotFoundResponse(pathname: string): NextResponse | null {
+function getSupabaseRestConfig(): { url: string; key: string } | null {
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    getSecret('SUPABASE_URL');
+  const key =
+    getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+    getSecret('SUPABASE_ANON_KEY');
+
+  if (!url || !/^https?:\/\//.test(url) || !key || url.includes('your_supabase_url')) {
+    return null;
+  }
+
+  return { url: url.replace(/\/+$/, ''), key };
+}
+
+async function supabaseRowExists(table: string, filters: Record<string, string>): Promise<boolean | null> {
+  const config = getSupabaseRestConfig();
+  if (!config) return null;
+
+  try {
+    const endpoint = new URL(`${config.url}/rest/v1/${table}`);
+    endpoint.searchParams.set('select', table === 'active_destinations' ? 'destination' : 'id');
+    endpoint.searchParams.set('limit', '1');
+    for (const [key, value] of Object.entries(filters)) {
+      endpoint.searchParams.set(key, `eq.${value}`);
+    }
+
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey: config.key,
+        authorization: `Bearer ${config.key}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+
+    const data = await res.json();
+    return Array.isArray(data) && data.length > 0;
+  } catch {
+    return null;
+  }
+}
+
+async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextResponse | null> {
   const segments = pathname.split('/').filter(Boolean);
 
   if (segments[0] === 'packages' && segments.length === 2) {
     const id = safeDecodePathSegment(segments[1]);
     if (!isUuid(id)) return plainNotFound();
+  }
+
+  if (segments[0] === 'blog' && segments.length === 2) {
+    const slug = safeDecodePathSegment(segments[1]).trim();
+    if (!slug) return plainNotFound();
+    const exists = await supabaseRowExists('content_creatives', {
+      slug,
+      status: 'published',
+      channel: 'naver_blog',
+    });
+    if (exists === false) return plainNotFound();
+  }
+
+  if (segments[0] === 'destinations' && segments.length === 2) {
+    const destination = safeDecodePathSegment(segments[1]).trim();
+    if (!destination) return plainNotFound();
+    const exists = await supabaseRowExists('active_destinations', { destination });
+    if (exists === false) return plainNotFound();
   }
 
   return null;
@@ -458,7 +521,7 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
-  const dynamicNotFound = getPublicDynamicNotFoundResponse(pathname);
+  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
   if (dynamicNotFound) return dynamicNotFound;
 
   if (isPublicPath(request)) {
