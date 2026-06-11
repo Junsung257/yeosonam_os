@@ -20,19 +20,19 @@ function appUrl(request: NextRequest): string {
 }
 
 async function postAdminRoute(request: NextRequest, path: string, body: Record<string, unknown>) {
-  const serviceRole = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-  if (!serviceRole) {
+  const adminToken = getSecret('ADMIN_API_TOKEN');
+  if (!adminToken) {
     return {
       ok: false,
       skipped: true,
-      error: 'SUPABASE_SERVICE_ROLE_KEY is required for cron-to-admin Ad OS calls.',
+      error: 'ADMIN_API_TOKEN is required for cron-to-admin Ad OS calls.',
     };
   }
 
   const response = await fetch(`${appUrl(request)}${path}`, {
     method: 'POST',
     headers: {
-      Authorization: `Bearer ${serviceRole}`,
+      'x-admin-token': adminToken,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(body),

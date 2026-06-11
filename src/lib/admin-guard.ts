@@ -2,14 +2,14 @@
  * Admin API guard.
  *
  * - Browser admin calls use a Supabase access token verified against ADMIN_EMAILS.
- * - Server-to-server calls may use the Supabase service-role bearer token.
+ * - Server-to-server calls may use ADMIN_API_TOKEN via x-admin-token.
  * - Non-production keeps the existing dev bypass cookies.
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
+import { isValidAdminApiToken } from '@/lib/api-auth';
 import { verifySupabaseAccessToken, legacyJwtExpValid } from '@/lib/supabase-jwt-verify';
-import { getSecret } from '@/lib/secret-registry';
 
 function isAccessTokenExpired(req: NextRequest): boolean {
   const token = req.cookies.get('sb-access-token')?.value;
@@ -18,9 +18,7 @@ function isAccessTokenExpired(req: NextRequest): boolean {
 }
 
 export async function isAdminRequest(req: NextRequest): Promise<boolean> {
-  const serviceRole = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-  const auth = req.headers.get('authorization') ?? '';
-  if (auth.startsWith('Bearer ') && serviceRole && auth.slice(7) === serviceRole) {
+  if (isValidAdminApiToken(req)) {
     return true;
   }
 
@@ -82,10 +80,8 @@ export function withAdminGuard(handler: NextHandler): NextHandler {
 }
 
 export async function resolveAdminActorLabel(req: NextRequest): Promise<string> {
-  const serviceRole = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-  const auth = req.headers.get('authorization') ?? '';
-  if (auth.startsWith('Bearer ') && serviceRole && auth.slice(7) === serviceRole) {
-    return 'service_role';
+  if (isValidAdminApiToken(req)) {
+    return 'admin_api_token';
   }
 
   const token = req.cookies.get('sb-access-token')?.value;

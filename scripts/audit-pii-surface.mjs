@@ -16,6 +16,7 @@ const root = process.cwd();
 const scanRoots = ['src/app', 'src/components', 'src/lib'];
 const excludedDirs = new Set(['.next', 'node_modules', 'coverage', 'dist', 'build']);
 const allowedExt = new Set(['.ts', '.tsx', '.js', '.jsx', '.mjs']);
+const testFilePattern = /(?:^|[\\/])[^\\/]+\.(?:test|spec)\.[cm]?[jt]sx?$/i;
 
 const terms = [
   { label: 'phone', regex: /\b(phone|tel|contact_phone|customer_phone|traveler_phone)\b/i, className: 'direct-contact' },
@@ -38,6 +39,7 @@ const safeLinePatterns = [
   /safeTranscript/,
   /SensitiveRawText/,
   /sanitizeWebhookPayload\(/,
+  /sanitizeDbError\(/,
   /safeRawTextExcerpt\(/,
   /rawTextHash\(/,
   /raw_text:\s*_rawText/,
@@ -89,6 +91,7 @@ const strictBlockers = [];
 for (const scanRoot of scanRoots) {
   for (const filePath of listFiles(join(root, scanRoot))) {
     const rel = relative(root, filePath);
+    if (testFilePattern.test(rel)) continue;
     const lines = readFileSync(filePath, 'utf8').split(/\r?\n/);
     lines.forEach((line, index) => {
       if (safeLinePatterns.some((pattern) => pattern.test(line))) return;

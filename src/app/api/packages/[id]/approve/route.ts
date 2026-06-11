@@ -7,6 +7,7 @@ import { recomputeGroupForPackage } from '@/lib/scoring/recommend';
 import { indexPackage } from '@/lib/jarvis/rag/indexer';
 import { sendVaContentPackage } from '@/lib/va-email';
 import { getSecret } from '@/lib/secret-registry';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 import type { SourceEvidenceMap } from '@/lib/source-evidence';
 import { evaluateCustomerDeliveryReadiness } from '@/lib/customer-delivery-check';
 import {
@@ -417,7 +418,7 @@ export async function PATCH(request: NextRequest, props: { params: Promise<{ id:
 
     // VA ?대찓???뚮┝ ??fire-and-forget (鍮꾩쨷??
     const vaNotification = await sendVaContentPackage(id).catch(e => {
-      console.warn('[Approve] VA email failed (non-blocking):', e instanceof Error ? e.message : e);
+      console.warn('[Approve] VA email failed (non-blocking):', sanitizeDbError(e));
       return { sent: false, reason: 'error' };
     });
 

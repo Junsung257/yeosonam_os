@@ -100,10 +100,10 @@ const handleBlogLearn = async (request: NextRequest) => {
 
   // ── B) Prompt optimizer ─────────────────────────────────────
   try {
-    const serviceRoleKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
+    const adminToken = getSecret('ADMIN_API_TOKEN');
     const optRes = await fetch(`${baseUrl}/api/agent/prompt-optimizer`, {
       method: 'POST',
-      headers: serviceRoleKey ? { Authorization: `Bearer ${serviceRoleKey}` } : undefined,
+      headers: adminToken ? { 'x-admin-token': adminToken } : undefined,
     });
     const ct = optRes.headers.get('content-type') || '';
     if (!optRes.ok || !ct.includes('application/json')) {

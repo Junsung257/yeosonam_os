@@ -43,6 +43,7 @@
     "audit:admin-dashboard": "node scripts/audit-admin-dashboard-contract.mjs",
     "verify:design-system": "npm run verify:tokens && npm run type-check",
     "test": "vitest run",
+    "test:unit": "vitest run",
     "test:e2e": "playwright test -c playwright.e2e.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -172,11 +173,11 @@
     "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
     "marked": "^18.0.4",
-    "next": "^15.5.18",
+    "next": "15.5.18",
     "openai": "^4.104.0",
     "papaparse": "^5.5.3",
     "pdf-parse": "^1.1.4",
-    "postcss": "^8",
+    "postcss": "8.5.15",
     "pptxgenjs": "^4.0.1",
     "pretendard": "^1.3.9",
     "puppeteer": "^24.43.1",
@@ -200,9 +201,16 @@
     "zod-to-json-schema": "^3.25.2",
     "zustand": "^5.0.13"
   },
+  "overrides": {
+    "postcss": "8.5.15",
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
+  },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.2.6",
     "@playwright/test": "^1.60.0",
+    "@supabase/phoenix": "^0.4.2",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/web-push": "^3.6.4",
@@ -214,9 +222,12 @@
     "cheerio": "^1.2.0",
     "cross-env": "^10.1.0",
     "dependency-cruiser": "^17.4.2",
+    "domhandler": "^6.0.1",
     "eslint-plugin-jsx-a11y": "^6.10.2",
     "knip": "^6.14.2",
+    "playwright": "^1.60.0",
     "schema-dts": "^2.0.0",
+    "tsx": "^4.22.4",
     "vitest": "^4.1.7"
   }
 }

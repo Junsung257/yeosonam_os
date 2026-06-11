@@ -15,6 +15,7 @@ import { getSecret } from '@/lib/secret-registry';
 import { rateLimitAI } from '@/lib/rate-limiter';
 import { getPrompt } from '@/lib/prompt-loader';
 import { rawTextHash, safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { withAdminGuard } from '@/lib/admin-guard';
 
 const PRODUCT_FAQ_FALLBACK = `
 다음 여행상품 원문을 분석하여, 고객이 자주 물어볼 질문 10개와 정확한 답변을 생성하세요.
@@ -86,7 +87,7 @@ function computeVAChecklist(p: {
 
 // ─── GET: 검수 대기 상품 목록 (체크리스트 포함) ────────────────────────────
 
-export async function GET() {
+async function getHandler() {
   try {
     const { data, error } = await supabaseAdmin
       .from('products')
@@ -156,7 +157,7 @@ export async function GET() {
 const VALID_ACTIONS = ['approve', 'reject', 'faq', 'images', 'marketing'] as const;
 type ReviewAction = typeof VALID_ACTIONS[number];
 
-export async function POST(req: NextRequest) {
+async function postHandler(req: NextRequest) {
   const limited = await rateLimitAI(req);
   if (limited) return limited;
 
@@ -185,6 +186,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 500 });
   }
 }
+
+export const GET = withAdminGuard(getHandler);
+export const POST = withAdminGuard(postHandler);
 
 // ── 승인 ─────────────────────────────────────────────────────────────────────
 

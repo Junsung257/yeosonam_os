@@ -20,6 +20,7 @@ import { uploadGuestFile } from '@/lib/magic-link-storage';
 import { encrypt } from '@/lib/encryption';
 import { recordMagicLinkAudit } from '@/lib/magic-link-audit';
 import { rateLimit } from '@/lib/rate-limiter';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
   try {
     encrypted_no = encrypt(passport_no);
   } catch (e) {
-    console.error('[passport] encrypt failed:', e);
+    console.error('[magic-upload] encrypt failed:', sanitizeDbError(e));
     return NextResponse.json({ error: 'encryption_unavailable' }, { status: 500 });
   }
 
@@ -112,7 +113,7 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     .is('used_at', null);
 
   if (updErr) {
-    return NextResponse.json({ error: 'persist_failed', detail: updErr.message }, { status: 500 });
+    return NextResponse.json({ error: 'persist_failed', detail: sanitizeDbError(updErr) }, { status: 500 });
   }
 
   await recordMagicLinkAudit({

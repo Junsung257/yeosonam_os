@@ -71,15 +71,14 @@ let supabaseAdminClient: ReturnType<typeof createClient> | null = null;
  */
 export function getSupabaseAdmin() {
   if (!supabaseAdminClient) {
-    if (!isValidUrl(supabaseUrl)) return getSupabase(); // fallback
-    const key = supabaseServiceKey || supabaseKey;
-    if (!key) return getSupabase();
+    if (!isSupabaseAdminConfigured || !supabaseServiceKey) return null;
     try {
-      supabaseAdminClient = createClient(supabaseUrl!, key, {
+      supabaseAdminClient = createClient(supabaseUrl!, supabaseServiceKey, {
         auth: { persistSession: false, autoRefreshToken: false },
       });
     } catch {
-      return getSupabase();
+      supabaseAdminClient = null;
+      return null;
     }
   }
   return supabaseAdminClient;
@@ -99,7 +98,7 @@ export function getSupabaseAdmin() {
 export const supabaseAdmin = new Proxy({} as SupabaseClient, {
   get(_target, prop) {
     const client = getSupabaseAdmin();
-    if (!client) throw new Error('Supabase가 구성되지 않았습니다.');
+    if (!client) throw new Error('SUPABASE_SERVICE_ROLE_KEY is required for supabaseAdmin');
     const value = client[prop as keyof typeof client];
     return typeof value === 'function' ? value.bind(client) : value;
   },

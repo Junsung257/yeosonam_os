@@ -12,7 +12,7 @@
  *   - force=true 옵션 (깨진 inclusions/excludes 통째 재추출)
  *
  * 사용:
- *   curl -X POST -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
+ *   curl -X POST -H "x-admin-token: $ADMIN_API_TOKEN" \
  *     -H "Content-Type: application/json" \
  *     -d '{"force":true}' \
  *     http://localhost:3000/api/admin/packages/<id>/backfill-sections

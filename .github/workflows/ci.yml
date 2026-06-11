@@ -28,16 +28,15 @@ jobs:
       - run: npm ci
 
       - name: npm audit (high severity)
-        run: npm audit --audit-level=high 2>&1 | head -50
+        run: npm audit --audit-level=high
 
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
         env:
           NODE_OPTIONS: --max-old-space-size=8192
 
-      - name: ESLint (non-blocking legacy debt)
-        continue-on-error: true
-        run: npx eslint src --format=compact
+      - name: ESLint
+        run: npm run lint
 
       - name: a11y lint (jsx-a11y strict)
         run: npx eslint src --no-eslintrc --config eslint-a11y.config.js --format=compact 2>&1 || true

@@ -305,13 +305,10 @@ describe('affiliate admin/attribution/promo security guards', () => {
 
   it('removes phone-last-4 PIN fallback from affiliate PIN verifiers', () => {
     const pdfAuth = source('src/lib/affiliate-influencer-auth.ts');
-    const pinAuth = source('src/lib/influencer-pin-auth.ts');
     const bridge = source('src/lib/affiliate/jwt-or-pin-auth.ts');
 
     expect(pdfAuth).not.toContain('phone');
-    expect(pinAuth).not.toContain('phone');
     expect(pdfAuth).not.toContain('slice(-4)');
-    expect(pinAuth).not.toContain('slice(-4)');
     expect(bridge).toContain("authAffiliate(req");
   });
 

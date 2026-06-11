@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { requireAdminApiToken } from '@/lib/api-auth';
 import { generateBlogJSON, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import {
   buildLearningPostSample,
@@ -63,10 +64,12 @@ function extractJsonObject(raw: string): any | null {
   }
 }
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
   }
+  const authError = requireAdminApiToken(request);
+  if (authError) return authError;
 
   try {
     const { data: performance, error } = await supabaseAdmin

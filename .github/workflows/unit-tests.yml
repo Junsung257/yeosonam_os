@@ -24,11 +24,23 @@ jobs:
 
       - name: Run unit tests
         id: test
+        run: npm run test:unit
+
+      - name: Generate coverage report
+        if: always() && steps.test.outcome == 'success'
         continue-on-error: true
-        run: npm run test:unit -- --coverage
+        run: >
+          npm run test:unit -- --coverage
+          --coverage.thresholds.lines=0
+          --coverage.thresholds.functions=0
+          --coverage.thresholds.branches=0
+          --coverage.thresholds.statements=0
+          --coverage.reporter=json
+          --coverage.reporter=json-summary
+          --coverage.reporter=lcov
 
       - name: Upload coverage
-        if: always()
+        if: always() && hashFiles('coverage/lcov.info') != ''
         uses: codecov/codecov-action@v3
         with:
           files: ./coverage/lcov.info

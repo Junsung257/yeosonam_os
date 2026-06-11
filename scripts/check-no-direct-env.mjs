@@ -5,7 +5,10 @@ import { execSync } from 'node:child_process';
 const ROOT = process.cwd();
 const SRC = path.join(ROOT, 'src');
 const EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs']);
-const PATTERN = /process\.env\.((?!NEXT_PUBLIC_)[A-Z0-9_]*(KEY|SECRET|TOKEN))/g;
+const DIRECT_SERVER_ENV_PATTERN = /process\.env\.((?!NEXT_PUBLIC_)[A-Z0-9_]*(KEY|SECRET|TOKEN))/g;
+const FORBIDDEN_PUBLIC_SECRET_PATTERN = /\bNEXT_PUBLIC_[A-Z0-9_]*(SECRET|TOKEN|PRIVATE)[A-Z0-9_]*\b/g;
+const SERVICE_ROLE_BEARER_PATTERN =
+  /Authorization[^\r\n]*Bearer[^\r\n]*SUPABASE_SERVICE_ROLE_KEY|SUPABASE_SERVICE_ROLE_KEY[^\r\n]*Authorization[^\r\n]*Bearer/g;
 const ALLOW = new Set([
   'src/env.ts',
   'src/env.test.ts',
@@ -55,18 +58,36 @@ const offenders = [];
 for (const file of candidateFiles) {
   if (!fs.existsSync(file)) continue;
   const rel = path.relative(ROOT, file).replace(/\\/g, '/');
-  if (ALLOW.has(rel)) continue;
   if (/\.(test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
-  const text = fs.readFileSync(file, 'utf8')
+  const rawText = fs.readFileSync(file, 'utf8');
+  const publicSecrets = [...rawText.matchAll(FORBIDDEN_PUBLIC_SECRET_PATTERN)].map((m) => m[0]);
+  if (publicSecrets.length > 0) {
+    offenders.push({
+      file: rel,
+      reason: `forbidden public secret env name: ${[...new Set(publicSecrets)].join(', ')}`,
+    });
+  }
+  SERVICE_ROLE_BEARER_PATTERN.lastIndex = 0;
+  if (SERVICE_ROLE_BEARER_PATTERN.test(rawText)) {
+    offenders.push({
+      file: rel,
+      reason: 'service-role key must not be documented or sent as an HTTP Bearer token',
+    });
+  }
+  if (ALLOW.has(rel)) continue;
+  const text = rawText
     // 주석 내부 문자열로 인한 오탐 방지
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '');
-  if (PATTERN.test(text)) offenders.push(rel);
+  DIRECT_SERVER_ENV_PATTERN.lastIndex = 0;
+  if (DIRECT_SERVER_ENV_PATTERN.test(text)) {
+    offenders.push({ file: rel, reason: 'direct process.env secret/key/token access' });
+  }
 }
 
 if (offenders.length > 0) {
   console.error('직접 process.env 키 접근 금지 위반 파일:');
-  for (const f of offenders) console.error(`- ${f}`);
+  for (const offender of offenders) console.error(`- ${offender.file}: ${offender.reason}`);
   process.exit(1);
 }
 

@@ -532,21 +532,12 @@ export async function middleware(request: NextRequest) {
     return response || NextResponse.next();
   }
 
-  // ── 3-0. 서버-to-서버 API 호출 — route guard 와 동일하게 service role Bearer 허용 ──
-  // 미들웨어가 withAdminGuard 보다 먼저 실행되므로, 여기서 막히면 /api/upload 같은
-  // 어드민 API의 programmatic 검증/자동화가 /login HTML 로 리다이렉트된다.
-  if (pathname.startsWith('/api/')) {
-    const serviceRole = getSecret('SUPABASE_SERVICE_ROLE_KEY');
-    const auth = request.headers.get('authorization') ?? '';
-    if (auth.startsWith('Bearer ') && serviceRole && auth.slice(7) === serviceRole) {
-      return response || NextResponse.next();
-    }
-  }
+  // ── 3-0. 서버-to-서버 API 호출은 아래 x-admin-token 검증만 허용 ──
 
   // ── 3-1. /api/admin/* — x-admin-token 헤더 검증 (서버-to-서버 호출용) ──────
   // 크론 작업 등이 Supabase 세션 없이 ADMIN_API_TOKEN으로 인증할 수 있게 함.
   // 토큰이 있으면 검증 후 통과/거부. 토큰이 없으면 아래 Supabase JWT 인증으로 fall through.
-  if (pathname.startsWith('/api/admin/')) {
+  if (pathname.startsWith('/api/admin/') || pathname === '/api/agent/prompt-optimizer') {
     const adminTokenHeader = request.headers.get('x-admin-token');
     if (adminTokenHeader) {
       const { isValidAdminApiToken } = await import('@/lib/api-auth');
