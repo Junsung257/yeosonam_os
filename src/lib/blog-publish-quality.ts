@@ -1,4 +1,5 @@
 import { runQualityGates, type QualityGateReport } from './blog-quality-gate';
+import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-quality-score';
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
 
@@ -30,6 +31,7 @@ export interface BlogPublishQualityReport {
   qualityGate: QualityGateReport;
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
+  blogQualityScore: BlogQualityScoreReport;
   summary: string;
 }
 
@@ -79,8 +81,10 @@ function buildSummary(report: {
   qualityGate: QualityGateReport;
   seoScore: SeoScoreResult;
   readability: ReadabilityResult;
+  blogQualityScore: BlogQualityScoreReport;
 }): string {
   const parts: string[] = [];
+  if (!report.blogQualityScore.passed) parts.push(`[score] ${report.blogQualityScore.summary}`);
   if (!report.qualityGate.passed) parts.push(`[quality] ${report.qualityGate.summary}`);
   if (!report.seoScore.passed) parts.push(`[seo] ${report.seoScore.summary}`);
   if (report.readability.issues.length > 0) {
@@ -88,7 +92,7 @@ function buildSummary(report: {
   }
   return parts.length > 0
     ? parts.join(' | ')
-    : `publish quality passed: SEO ${report.seoScore.score}/100, readability ${report.readability.score}/100`;
+    : `publish quality passed: strict score ${report.blogQualityScore.score}/100, SEO ${report.seoScore.score}/100, readability ${report.readability.score}/100`;
 }
 
 export async function evaluateBlogPublishQuality(
@@ -130,11 +134,12 @@ export async function evaluateBlogPublishQuality(
     },
   });
   const readability = computeReadability(input.blog_html);
-  const report = { qualityGate, seoScore, readability };
+  const blogQualityScore = calculateBlogQualityScore({ qualityGate, seoScore, readability });
+  const report = { qualityGate, seoScore, readability, blogQualityScore };
 
   return {
     ...report,
-    passed: qualityGate.passed && seoScore.passed,
+    passed: blogQualityScore.isPerfect,
     summary: buildSummary(report),
   };
 }
@@ -148,6 +153,9 @@ export function blogPublishQualityWarnings(report: BlogPublishQualityReport | nu
     ...report.seoScore.details
       .filter((detail) => detail.status === 'fail')
       .map((detail) => ({ type: 'seo', gate: detail.name, reason: detail.message })),
+    ...report.blogQualityScore.issues
+      .filter((issue) => issue.source !== 'quality_gate' && issue.source !== 'seo')
+      .map((issue) => ({ type: issue.source, gate: issue.code, reason: issue.message })),
   ];
 }
 

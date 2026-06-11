@@ -3,6 +3,11 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { getSecret } from '@/lib/secret-registry';
+import {
+  buildNaverVisibilitySnapshot,
+  extractBlogSlugFromUrl,
+  recordBlogVisibilitySnapshot,
+} from '@/lib/blog-visibility-snapshots';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -16,6 +21,11 @@ type RankLookup = {
   link: string;
   position: number | null;
   organicLength: number;
+};
+
+type RankTarget = {
+  keyword: string;
+  slug?: string | null;
 };
 
 function isMissingTable(error: DbErrorLike | null | undefined): boolean {
@@ -215,14 +225,47 @@ async function runSerpRankSnapshot(request: NextRequest) {
     .order('priority', { ascending: false })
     .limit(8);
 
-  const keywords = [...new Set((rows ?? []).map((r: { primary_keyword: string | null }) => r.primary_keyword).filter(Boolean))] as string[];
+  const { data: publishedRows } = await supabaseAdmin
+    .from('content_creatives')
+    .select('slug, seo_title, destination, target_ad_keywords, published_at')
+    .eq('channel', 'naver_blog')
+    .eq('status', 'published')
+    .not('slug', 'is', null)
+    .order('published_at', { ascending: false })
+    .limit(16);
+
+  const targets: RankTarget[] = [];
+  for (const row of publishedRows ?? []) {
+    const keywords = Array.isArray((row as any).target_ad_keywords) ? (row as any).target_ad_keywords : [];
+    const keyword = String(keywords[0] || (row as any).destination || (row as any).seo_title || '').trim();
+    if (keyword && (row as any).slug) {
+      targets.push({ keyword, slug: String((row as any).slug) });
+    }
+    if (targets.length >= 6) break;
+  }
+  for (const row of rows ?? []) {
+    const keyword = String((row as { primary_keyword?: string | null }).primary_keyword || '').trim();
+    if (keyword) targets.push({ keyword });
+    if (targets.length >= 8) break;
+  }
+
+  const seenKeywords = new Set<string>();
+  const uniqueTargets = targets.filter((target) => {
+    const key = target.slug ? `${target.slug}:${target.keyword}` : target.keyword;
+    if (seenKeywords.has(key)) return false;
+    seenKeywords.add(key);
+    return true;
+  }).slice(0, 8);
 
   const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
   const inserted: string[] = [];
   const providers: Record<string, RankProvider> = {};
   const errors: string[] = [];
+  const rankHistoryRows: Array<Record<string, unknown>> = [];
+  const today = new Date().toISOString().split('T')[0];
 
-  for (const kw of keywords) {
+  for (const target of uniqueTargets) {
+    const kw = target.keyword;
     try {
       const lookup = await lookupRank(kw, baseUrl);
       const { error: insErr } = await insertSerpSnapshot(kw, lookup, baseUrl);
@@ -232,10 +275,46 @@ async function runSerpRankSnapshot(request: NextRequest) {
       }
       inserted.push(kw);
       providers[kw] = lookup.provider;
+      const slug = target.slug || (lookup.link ? extractBlogSlugFromUrl(lookup.link) : null);
+      if (slug) {
+        rankHistoryRows.push({
+          slug,
+          query: kw,
+          date: today,
+          position: lookup.position,
+          impressions: 0,
+          clicks: 0,
+          ctr: 0,
+          page_url: lookup.link || `${baseUrl}/blog/${slug}`,
+          source: `naver-${lookup.provider}`,
+        });
+        await recordBlogVisibilitySnapshot(
+          supabaseAdmin,
+          buildNaverVisibilitySnapshot({
+            slug,
+            url: lookup.link || `${baseUrl}/blog/${slug}`,
+            rank: lookup.position,
+            query: kw,
+            source: `naver_${lookup.provider}_rank`,
+            evidence: {
+              organic_length: lookup.organicLength,
+              own_domain_found: lookup.position !== null,
+              provider: lookup.provider,
+            },
+          }),
+        );
+      }
       await new Promise(resolve => setTimeout(resolve, lookup.provider === 'serpapi' ? 600 : 250));
     } catch (e) {
       errors.push(`${kw}: ${e instanceof Error ? e.message : String(e)}`);
     }
+  }
+
+  if (rankHistoryRows.length > 0) {
+    const { error: rankErr } = await supabaseAdmin
+      .from('rank_history')
+      .upsert(rankHistoryRows, { onConflict: 'slug,query,date,source', ignoreDuplicates: false });
+    if (rankErr) errors.push(`rank_history naver upsert failed: ${rankErr.message}`);
   }
 
   return {
@@ -243,6 +322,7 @@ async function runSerpRankSnapshot(request: NextRequest) {
     sampled: inserted.length,
     keywords: inserted,
     providers,
+    rank_history_rows: rankHistoryRows.length,
     errors,
   };
 }

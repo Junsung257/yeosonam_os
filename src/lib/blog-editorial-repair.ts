@@ -223,6 +223,21 @@ function addReadingDesignAid(markdown: string): { text: string; changed: boolean
   return { text: `${markdown.trim()}\n${block}`, changed: true };
 }
 
+function splitInlineScanElements(markdown: string): { text: string; changed: boolean } {
+  let text = markdown;
+  const before = text;
+
+  text = text
+    .replace(/\|\s+\|(?=\s*(?::?-{2,}|[가-힣A-Za-z0-9]))/g, '|\n\n|')
+    .replace(/\s+(Q[.:]\s*)/g, '\n\n$1')
+    .replace(/\s+(A[.:]\s*)/g, '\n\n$1')
+    .replace(/\s+(-\s*\[[ xX]\]\s*)/g, '\n\n$1')
+    .replace(/\s+(-\s+(?=\S))/g, '\n\n$1')
+    .replace(/\s+(\d{1,2}\.\s+(?=\S))/g, '\n\n$1');
+
+  return { text, changed: text !== before };
+}
+
 function splitLongParagraphs(markdown: string): { text: string; changed: boolean } {
   const paragraphs = markdown.split(/\n{2,}/);
   let changed = false;
@@ -233,8 +248,6 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
     if (
       plain.length < 520 ||
       /^#{1,6}\s/.test(trimmed) ||
-      /^[-*]\s/.test(trimmed) ||
-      /^\d+\.\s/.test(trimmed) ||
       /^\|/.test(trimmed) ||
       /^:::/m.test(trimmed) ||
       /^!\[/.test(trimmed)
@@ -246,7 +259,27 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
       .split(/(?<=[.!?。！？]|요\.|다\.|죠\.|니다\.)\s+/)
       .map((sentence) => sentence.trim())
       .filter(Boolean);
-    if (sentences.length < 4) return paragraph;
+    if (sentences.length < 4) {
+      const words = trimmed.split(/\s+/).filter(Boolean);
+      if (words.length < 30) return paragraph;
+
+      const chunks: string[] = [];
+      let chunk = '';
+      for (const word of words) {
+        const candidate = chunk ? `${chunk} ${word}` : word;
+        if (stripMarkup(candidate).length > 260 && chunk) {
+          chunks.push(chunk);
+          chunk = word;
+        } else {
+          chunk = candidate;
+        }
+      }
+      if (chunk) chunks.push(chunk);
+      if (chunks.length <= 1) return paragraph;
+
+      changed = true;
+      return chunks.join('\n\n');
+    }
 
     const chunks: string[] = [];
     let chunk = '';
@@ -325,6 +358,12 @@ export function repairBlogEditorialQuality(input: BlogEditorialRepairInput): Blo
       blogHtml = scanRepair.text;
       changes.push('added_scannable_info_table');
     }
+  }
+
+  const inlineSplitRepair = splitInlineScanElements(blogHtml);
+  if (inlineSplitRepair.changed) {
+    blogHtml = inlineSplitRepair.text;
+    changes.push('split_inline_scan_elements');
   }
 
   const paragraphRepair = splitLongParagraphs(blogHtml);

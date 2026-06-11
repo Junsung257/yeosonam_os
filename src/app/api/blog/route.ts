@@ -25,6 +25,7 @@ function qualityGateFailedResponse(report: BlogPublishQualityReport) {
     error: 'Blog publish quality gate failed',
     summary: report.summary,
     quality_warnings: blogPublishQualityWarnings(report),
+    blog_quality_score: report.blogQualityScore,
     quality_gate: report.qualityGate,
     seo_score: report.seoScore,
     readability: report.readability,

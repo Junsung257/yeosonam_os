@@ -197,3 +197,5 @@ tmp-*.png
 # Local desktop cleanup archives
 .desktop-dev-archive/
 .desktop-worktrees/
+
+.vercel
