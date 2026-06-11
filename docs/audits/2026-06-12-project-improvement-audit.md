@@ -892,3 +892,37 @@ Current verification result:
 - PASS: regression coverage remains 127/127 ERR items covered, 100%; 0 uncovered and 0 next candidates.
 - PASS: production Next build, 493 static pages generated.
 - WARN/discovery: PII surface audit reports 1455 findings (`high=182`, `medium=662`, `low=611`) with `strict_blockers=0`. Remaining high findings are largely raw source/payload surfaces that need role-scoped review rather than blanket deletion.
+
+## Implementation Update - Sixteenth Pass - 2026-06-12
+
+Additional fixes completed:
+
+- Added `scripts/audit-sensitive-api-guards.mjs` and `npm run audit:sensitive-api-guards` to fail when API routes touch raw/contact/private fields without an explicit admin, cron, token, webhook, or documented public exception boundary.
+- Hardened `/api/band-import/save` with `withAdminGuard` before service-client product/log writes.
+- Hardened `/api/packages/[id]/approve` with `withAdminGuard` before publish/reject state changes, RAG indexing, score recompute, ISR revalidation, and downstream marketing triggers.
+- Added `sensitive-api-guards.test.js` to keep the audit script and the two newly guarded routes covered by regression.
+- Added the sensitive API guard audit and secret usage lint to the blocking CI quality job.
+
+Verification after the sixteenth pass:
+
+```powershell
+npm run audit:sensitive-api-guards
+node --test --test-reporter=spec tests\regression\cases\sensitive-api-guards.test.js
+npm run type-check
+npm run test:regression
+npm run test:regression:coverage
+npm run lint
+npm run lint:secrets:all
+npm run audit:pii-surface
+npm run build
+```
+
+Current verification result:
+
+- PASS: sensitive API guard audit.
+- PASS: sensitive API guard regression, 3 tests.
+- PASS: TypeScript check, lint, and secret usage lint.
+- PASS: full regression suite, now 133 files and 369 tests.
+- PASS: regression coverage remains 127/127 ERR items covered, 100%; 0 uncovered and 0 next candidates.
+- PASS: production Next build, 493 static pages generated.
+- WARN/discovery: PII surface audit still reports 1455 findings with `strict_blockers=0`; the new guard audit turns one class of that surface into an enforceable CI gate.
