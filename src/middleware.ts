@@ -3,6 +3,7 @@ import { looksLikeReferralCode, normalizeAffiliateReferralCode } from '@/lib/aff
 import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-policy';
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { getSecret } from '@/lib/secret-registry';
+import { isUuid } from '@/lib/uuid';
 
 function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: string, isSecure: boolean) {
   const maxAge = getAffiliateRefCookieMaxAgeSec(request);
@@ -314,10 +315,6 @@ function safeDecodePathSegment(value: string): string {
   } catch {
     return value;
   }
-}
-
-function isUuid(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{12}$/i.test(value);
 }
 
 function getSupabaseRestConfig(): { url: string; key: string } | null {
