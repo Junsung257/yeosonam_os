@@ -101,7 +101,7 @@ async function safeResJson(res: Response): Promise<any> {
   throw new Error(preview || `서버 오류 (HTTP ${res.status})`);
 }
 
-const MAX_CONCURRENT = 5;
+const MAX_CONCURRENT = 1;
 
 const DESTINATION_HINTS = [
   '백두산', '연길', '장가계', '몽골', '다낭', '나트랑', '푸꾸옥', '보홀', '세부',
@@ -164,7 +164,20 @@ function uploadFailureMessage(data: any): string {
         .map((e: any) => [e?.title, e?.error].filter(Boolean).join(': '))
         .filter(Boolean)
     : [];
-  return data?.error || errors.join(' / ') || data?.message || '상품 등록에 실패했습니다.';
+  const message = data?.error || errors.join(' / ') || data?.message || '상품 등록에 실패했습니다.';
+  return data?.uploadRequestId ? `${message} (uploadRequestId: ${data.uploadRequestId})` : message;
+}
+
+function uploadExceptionMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/Failed to fetch|NetworkError|Load failed|The network connection was lost/i.test(message)) {
+    return [
+      '업로드 요청이 서버 응답 전에 끊겼습니다.',
+      '같은 원문은 중복 방지 후 재시도되므로 잠시 후 다시 처리하세요.',
+      '반복되면 최근 등록 상품/업로드 로그의 uploadRequestId 기준으로 확인해야 합니다.',
+    ].join(' ');
+  }
+  return message;
 }
 
 export default function UploadPage() {
@@ -235,7 +248,7 @@ export default function UploadPage() {
     const uploadUrl = buildUploadUrl();
     const res = await fetchWithSessionRefresh(uploadUrl, { method: 'POST', body: formData });
     const data = await safeResJson(res);
-    if (!res.ok) throw new Error(data.error || '업로드 실패');
+    if (!res.ok) throw new Error(uploadFailureMessage(data));
     if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
     const ed = data.data?.extractedData;
@@ -273,7 +286,7 @@ export default function UploadPage() {
         if (result.dbId) runVerify(items[i].id, result.dbId);
       } catch (err) {
         setQueue(prev => prev.map(it =>
-          it.id === items[i].id ? { ...it, status: 'error', errorMsg: err instanceof Error ? err.message : '오류' } : it
+          it.id === items[i].id ? { ...it, status: 'error', errorMsg: uploadExceptionMessage(err) } : it
         ));
       }
     }
@@ -325,7 +338,7 @@ export default function UploadPage() {
         }),
       });
       const data = await safeResJson(res);
-      if (!res.ok) throw new Error((data.error as string) || '처리 실패');
+      if (!res.ok) throw new Error(uploadFailureMessage(data));
       if (data?.success === false) throw new Error(uploadFailureMessage(data));
 
       const ed = data.data?.extractedData;
@@ -358,7 +371,7 @@ export default function UploadPage() {
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
         status: 'error',
-        errorMsg: err instanceof Error ? err.message : '오류',
+        errorMsg: uploadExceptionMessage(err),
       } : it));
     } finally {
       activeCountRef.current--;

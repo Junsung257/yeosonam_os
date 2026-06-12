@@ -10,6 +10,10 @@ function readPackageReextractRoute(): string {
   return readFileSync(join(process.cwd(), 'src/app/api/packages/reextract/route.ts'), 'utf8');
 }
 
+function readAdminUploadPage(): string {
+  return readFileSync(join(process.cwd(), 'src/app/admin/upload/page.tsx'), 'utf8');
+}
+
 function readUploadRegistrationPipeline(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-registration-pipeline.ts'), 'utf8');
 }
@@ -87,6 +91,24 @@ function readUploadResponse(): string {
 }
 
 describe('upload route registration pipeline boundary', () => {
+  it('keeps the production upload request within a long-running Node function envelope', () => {
+    const route = readUploadRoute();
+
+    expect(route).toContain("export const runtime = 'nodejs'");
+    expect(route).toContain("export const dynamic = 'force-dynamic'");
+    expect(route).toContain('export const maxDuration = 300');
+    expect(route).toContain('x-upload-request-id');
+    expect(route).toContain('uploadRequestId');
+    expect(route).toContain('[Upload API] request complete:');
+  });
+
+  it('serializes admin text registration requests to avoid overloading the upload engine', () => {
+    const page = readAdminUploadPage();
+
+    expect(page).toContain('const MAX_CONCURRENT = 1;');
+    expect(page).toContain('uploadExceptionMessage(err)');
+  });
+
   it('keeps request intake, source metadata, and input quality checks outside the route body', () => {
     const route = readUploadRoute();
     const intake = readUploadRequestIntake();
