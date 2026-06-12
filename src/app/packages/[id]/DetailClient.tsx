@@ -449,10 +449,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     () => (pkg ? renderPackage(pkg as Parameters<typeof renderPackage>[0]) : null),
     [pkg],
   );
-  const days: DaySchedule[] = useMemo(
-    () => (pkg ? normalizeDays(pkg.itinerary_data) : []),
-    [pkg],
-  );
+  const days: DaySchedule[] = useMemo(() => {
+    if (!pkg) return [];
+    const sourceDays = normalizeDays<DaySchedule>(pkg.itinerary_data);
+    if (!view?.days?.length) return sourceDays;
+    return view.days.map((day, index) => {
+      const sourceDay = sourceDays[index];
+      return {
+        day: day.day,
+        regions: day.regions,
+        schedule: day.schedule as DaySchedule['schedule'],
+        meals: (day.meals ?? sourceDay?.meals) as DaySchedule['meals'],
+        hotel: sourceDay?.hotel ?? (day.hotelCard
+          ? { name: day.hotelCard.name ?? '', grade: day.hotelCard.grade ?? undefined, note: day.hotelCard.note ?? undefined }
+          : null),
+      };
+    });
+  }, [pkg, view]);
   const tiers = useMemo(
     () => (pkg ? (filterTiersByDepartureDays(pkg.price_tiers as unknown as import('@/lib/parser').PriceTier[] ?? [], pkg.departure_days) as unknown as import('@/lib/parser').PriceTier[]) : []),
     [pkg],
@@ -1587,12 +1600,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                           { label: '조식', emoji: '🍳', note: currentDay.meals.breakfast_note, has: currentDay.meals.breakfast, fallback: '호텔식', colors: { on: 'bg-yellow-50 border-yellow-200 text-yellow-800', off: 'bg-gray-50 border-gray-100 text-gray-400' } },
                           { label: '중식', emoji: '🥘', note: currentDay.meals.lunch_note, has: currentDay.meals.lunch, fallback: '현지식', colors: { on: 'bg-green-50 border-green-200 text-green-800', off: 'bg-gray-50 border-gray-100 text-gray-400' } },
                           { label: '석식', emoji: '🍽️', note: currentDay.meals.dinner_note, has: currentDay.meals.dinner, fallback: '현지식', colors: { on: 'bg-orange-50 border-orange-200 text-orange-800', off: 'bg-gray-50 border-gray-100 text-gray-400' } },
-                        ].map(m => {
+                        ].filter(m => m.has || !!m.note).map(m => {
                           const active = m.has || !!m.note;
                           return (
                             <div key={m.label} className={`rounded-xl px-3 py-2.5 flex-1 text-center border ${active ? m.colors.on : m.colors.off}`}>
                               <p className="text-xs mb-0.5">{m.emoji} {m.label}</p>
-                              <p className="text-sm font-bold">{m.note || (active ? m.fallback : '불포함')}</p>
+                              <p className="text-sm font-bold">{m.note || m.fallback}</p>
                             </div>
                           );
                         })}

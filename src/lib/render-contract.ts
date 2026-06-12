@@ -50,6 +50,7 @@ import {
   type NormalizedTermLine,
 } from '@/lib/terms-catalog';
 import type { CustomerSafeNotice } from '@/lib/product-registration-v3/customer-payload';
+import { normalizeStructuredDayEntities } from '@/lib/itinerary-structured-entities';
 
 // ═══════════════════════════════════════════════════════════════════════════
 //  Input / Output 타입
@@ -953,11 +954,34 @@ function extractHotelCard(schedule: ScheduleItem[], hotel: HotelInfo | null | un
   };
 }
 
+function normalizeMealInfo(value: unknown): MealInfo | null {
+  if (!value || typeof value !== 'object') return null;
+  const source = value as Record<string, unknown>;
+  const noteFor = (slot: 'breakfast' | 'lunch' | 'dinner') => {
+    const note = source[`${slot}_note`];
+    if (typeof note === 'string' && note.trim()) return note.trim();
+    const raw = source[slot];
+    return typeof raw === 'string' && raw.trim() ? raw.trim() : null;
+  };
+  const breakfastNote = noteFor('breakfast');
+  const lunchNote = noteFor('lunch');
+  const dinnerNote = noteFor('dinner');
+  return {
+    breakfast: Boolean(source.breakfast) || Boolean(breakfastNote),
+    lunch: Boolean(source.lunch) || Boolean(lunchNote),
+    dinner: Boolean(source.dinner) || Boolean(dinnerNote),
+    breakfast_note: breakfastNote,
+    lunch_note: lunchNote,
+    dinner_note: dinnerNote,
+  };
+}
+
 function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
   const days = pkg.itinerary_data?.days ?? [];
   if (!Array.isArray(days) || days.length === 0) return [];
 
-  return days.map((d, idx) => {
+  return days.map((sourceDay, idx) => {
+    const d = normalizeStructuredDayEntities(sourceDay as unknown as Parameters<typeof normalizeStructuredDayEntities>[0]);
     const isLastDay = idx === days.length - 1;
     const origSchedule = Array.isArray(d?.schedule)
       ? (d.schedule as ScheduleItem[]).map(item => (
@@ -986,7 +1010,7 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
     });
 
     // 4) 호텔 activity → hotelCard 분리
-    const { schedule, hotelCard } = extractHotelCard(deArrivaled, d?.hotel, isLastDay);
+    const { schedule, hotelCard } = extractHotelCard(deArrivaled, d?.hotel as HotelInfo | null | undefined, isLastDay);
 
     return {
       day: typeof d?.day === 'number' ? d.day : idx + 1,
@@ -994,7 +1018,7 @@ function resolveDays(pkg: RenderPackageInput): CanonicalDay[] {
       schedule,
       flight,
       hotelCard,
-      meals: d?.meals ?? null,
+      meals: normalizeMealInfo(d?.meals),
     };
   });
 }

@@ -393,7 +393,12 @@ function itinerarySemanticMismatch(pkg) {
       const hasAttraction = Array.isArray(item?.attraction_ids) && item.attraction_ids.length > 0;
       if (!activity) continue;
       if (routeOnlyRe.test(compact)) return `day ${day?.day ?? '?'} route-only token visible: ${activity}`;
-      if (mealOnlyRe.test(compact) && kind !== 'meal') return `day ${day?.day ?? '?'} meal token not structured: ${activity}`;
+      if (mealOnlyRe.test(compact)) return `day ${day?.day ?? '?'} meal token visible in schedule: ${activity}`;
+      if (kind === 'meal' || type === 'meal') return `day ${day?.day ?? '?'} meal entity visible in schedule: ${activity}`;
+      if (kind === 'hotel_stay') return `day ${day?.day ?? '?'} hotel stay visible in schedule: ${activity}`;
+      if (type === 'hotel' && /(?:HOTEL|hotel|\uD638\uD154).*(?:\uB3D9\uAE09|\([^)]+\uC131[^)]*\))/.test(activity) && !/(?:\uC628\uCC9C\uC695|\uCCB4\uD5D8|\uD2B9\uC804|\uC0C1\uB2F9)/.test(activity)) {
+        return `day ${day?.day ?? '?'} hotel token visible in schedule: ${activity}`;
+      }
       if (type === 'flight' || kind === 'flight') {
         const flightLike = /\b[A-Z0-9]{2}\s*\d{3,4}\b/.test(activity)
           || (/\uACF5\uD56D/.test(activity) && /(\uCD9C\uBC1C|\uB3C4\uCC29|\uBBF8\uD305)/.test(activity))

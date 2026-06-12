@@ -1,5 +1,29 @@
 # Product Registration Errors
 
+## ERR-BAEKDU-meal-hotel-schedule-leak@2026-06-12
+
+- **Discovered**: 2026-06-12
+- **Domain**: product registration | itinerary structuring | mobile landing | render contract
+- **Products**: 11 active Yanji/Baekdu variants.
+- **Source vs result**: Customer mobile landing showed meal-only tokens such as `꿔바로우`, `삼겹살`, and `매운탕` as plain timeline activities. Hotel stay names such as `풀만호텔 또는 동급 (5성)` also remained as plain schedule text instead of rendering through the hotel card. The page had passed previous readiness because the audit allowed `entity_kind=meal` in schedule and did not require promotion into `day.meals`/`day.hotel`.
+- **Root cause**: The classifier tagged schedule items with `entity_kind=meal` or `entity_kind=hotel_stay`, but `normalizeUploadItinerary()` did not promote those tagged items into structured day fields. The mobile detail component also rendered from raw `normalizeDays(pkg.itinerary_data)` instead of the CRC `view.days`, leaving a render-contract bypass.
+- **Fix**:
+  - Added `normalizeStructuredItineraryEntities()` to promote standalone meal and hotel stay schedule tokens into `day.meals` and `day.hotel`.
+  - Registration normalization now applies this promotion before saving customer itinerary data.
+  - `renderPackage()` applies the same promotion defensively for existing data.
+  - Mobile detail days now consume CRC `view.days` instead of raw schedule where possible.
+  - Mobile meal UI hides unknown meal slots instead of labeling them `불포함`.
+  - Existing 11 active Yanji/Baekdu products were repaired with `scripts/repair-structured-meal-hotel-schedule.ts --apply`.
+- **Verification**:
+  - `npx vitest run src/lib/product-registration/itinerary-normalization.test.ts src/lib/product-registration/register-product-from-raw.test.ts src/lib/product-registration/deliverability-gate.test.ts src/lib/product-registration-v3/product-registration-v3.test.ts src/lib/product-registration-v2/baekdu-v2.test.ts`
+  - `npm run type-check`
+  - `node scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict --limit=200 --json`: `public_fail=0`, `itinerary_semantic_mismatch=0`.
+  - Playwright mobile check on `/packages/06c8cb20-9257-4f58-b246-b3a5cc427d71`: meal tokens render under meal information, hotel names render under hotel cards, and the previous `꿔바로우 -> 풀만호텔` plain-text sequence is absent.
+- **Status**: FIXED
+- **Prevention**: Any meal-only or hotel-stay token left in `itinerary_data.days[].schedule` is now a strict mobile readiness failure. Customer mobile validation must check semantic rendering, not only token existence.
+
+---
+
 ## ERR-BAEKDU-flight-times-and-source-lines-missing@2026-06-12
 
 - **Discovered**: 2026-06-12

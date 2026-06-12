@@ -11,6 +11,7 @@ import {
   type ItineraryScheduleQualityDay,
 } from './itinerary-quality-gate';
 import { compileItineraryForLanding } from '@/lib/itinerary-schedule-compiler';
+import { normalizeStructuredItineraryEntities } from '@/lib/itinerary-structured-entities';
 
 export type { ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 
@@ -133,7 +134,7 @@ export async function normalizeUploadItinerary(input: {
     ),
   );
   const itineraryDataToSave = attachShoppingHighlight(
-    finalPrune.itineraryData,
+    normalizeStructuredItineraryEntities(finalPrune.itineraryData),
     extractCatalogShoppingForRender(input.productRawText),
   );
 
