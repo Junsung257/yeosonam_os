@@ -38,6 +38,7 @@ General documentation automation rules live in `docs/ai-agent-doc-automation.md`
 Use the documents like this:
 
 - `docs/product-registration-current-ssot.md`: current rules and completion contract.
+- `docs/product-mobile-landing-quality-runbook.md`: mandatory customer mobile landing/A4 semantic quality proof before calling a product ready.
 - `db/error-registry.md`: append-only repeated mistake registry and active checklist.
 - `docs/audits/README.md`: archive index for historical evidence, investigation notes, and completed audit reports.
 - `.claude/commands/register-product.md` and `.claude/commands/assemble-product.md`: legacy/manual references only.
@@ -108,6 +109,7 @@ Trigger the micro engine when any of these are true:
 - destination or internal code is `UNK`.
 - mobile `/packages/{id}` payload audit fails.
 - A4 payload audit fails.
+- actual mobile browser render contains wrong, cross-region, duplicate, internal, or source-unsupported attraction cards.
 - supplier/document format is new or unknown.
 
 Micro engine stages:
@@ -131,6 +133,7 @@ Every micro run must create an improvement ledger event with:
 - fields compared: title, destination, price rows, price dates, itinerary days, flights, hotels, meals, inclusions, exclusions, optional tours.
 - auto fixes applied and whether they were deterministic, schema fallback, or manual-review candidates.
 - `/packages` audit result and A4 audit result.
+- mobile browser proof result when a product is active/open or when the fix changes customer-visible landing content.
 - final status: `PASS`, `AUTO_FIXED`, `REVIEW_NEEDED`, or `BLOCKED`.
 - fixture candidate and parser rule candidate flags.
 

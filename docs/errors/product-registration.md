@@ -1,5 +1,33 @@
 # Product Registration Errors
 
+## ERR-BAEKDU-mobile-landing-semantic-gap@2026-06-12
+
+- **Discovered**: 2026-06-12
+- **Domain**: product registration | mobile landing | attraction enrichment | publish gate
+- **Products**: 11 active Yanji/Baekdu variants:
+  `06c8cb20`, `de1c3c29`, `4586930d`, `1d5776d4`, `063825a7`, `ab671acd`, `f0fe98e2`, `d29809e7`, `3c3ed200`, `64019572`, `1af1690c`.
+- **Source vs result**: Products passed structural/open checks, but customer mobile pages could still show poor itinerary enrichment: duplicate Baekdu Heaven Lake cards, internal/non-publishable attraction IDs, wrong Heaven Lake cards on Akhwa waterfall text, and attraction cards attached to optional-tour/price/perk lines.
+- **Root cause**: Verification was too structural. It checked saved rows, publishability blockers, itinerary existence, and page availability, but did not require mobile browser semantic proof. Upload attraction context also loaded all active attractions instead of only `customer_publishable=true`, and enrichment trusted existing `attraction_ids` without enough stripping/deduplication for option/price/header/transfer lines.
+- **Fix**:
+  - `loadUploadRegistrationContext()` now loads only `is_active=true` and `customer_publishable=true` attractions for upload enrichment.
+  - `enrichItineraryWithAttractionReferences()` strips attraction references from supplier commerce/header lines, optional tours, perks, and pure transfers without visit hints.
+  - Enrichment deduplicates overlapping attraction concepts and blocks `악화폭포` from inheriting `백두산 천지`.
+  - Saved Baekdu/Yanji products were repaired with `scripts/repair-baekdu-mobile-landing.ts --apply`.
+  - `docs/product-mobile-landing-quality-runbook.md` now defines the required mobile browser proof.
+- **Verification**:
+  - 11/11 active Baekdu/Yanji `/packages/{id}` pages returned HTTP 200 in mobile Playwright verification.
+  - Itinerary section rendered and required Baekdu/Yanji terms were present.
+  - Forbidden Xi'an/Huashan and Bohol massage copy was absent.
+  - Attraction photo coverage was 101/101.
+  - `npx vitest run src/lib/itinerary-attraction-enricher.test.ts src/lib/product-registration/upload-route-boundary.test.ts --reporter=dot`
+  - `npm run eval:product-registration:ci`
+  - `npm run type-check`
+  - `npm run build`
+- **Status**: FIXED
+- **Prevention**: Completion requires live/mobile render proof, not only DB/open gate success. Any customer-visible attraction enrichment change must update or satisfy `docs/product-mobile-landing-quality-runbook.md`.
+
+---
+
 ## ERR-BAEKDU-cross-region-attraction-card@2026-06-10
 
 - **Discovered**: 2026-06-10
