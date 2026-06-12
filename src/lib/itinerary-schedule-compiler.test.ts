@@ -143,6 +143,25 @@ describe('Baekdu landing regression guards', () => {
     expect(move.landing_sentence).toBe('\uC5F0\uAE38\uB85C \uC774\uB3D9\uD569\uB2C8\uB2E4.');
     expect(massage.entity_kind).toBe('perk');
     expect(massage.attraction_query).toBeNull();
+    expect(massage.service_name).toBe('\uC804\uC2E0+\uBC1C\uB9C8\uC0AC\uC9C0');
+    expect(massage.service_detail).toBe('90\uBD84 / \uB9E4\uB108\uD301 \uBCC4\uB3C4');
+    expect(massage.landing_sentence).toBe('\uC804\uC2E0+\uBC1C\uB9C8\uC0AC\uC9C0 90\uBD84\uC73C\uB85C \uC5EC\uD589\uC758 \uD53C\uB85C\uB97C \uD480\uC5B4\uBD05\uB2C8\uB2E4. \uB9E4\uB108\uD301\uC740 \uBCC4\uB3C4\uC785\uB2C8\uB2E4.');
+  });
+
+  it('classifies included hot spring value items as perk instead of hotel stay', () => {
+    const hotSpring = compileScheduleItemForLanding({
+      activity: '$50 \uC0C1\uB2F9 \uD2B9\uAE09\uD638\uD154 \uC628\uCC9C\uC695 \uCCB4\uD5D8(\uC218\uC601\uBCF5 \uAC1C\uBCC4\uC9C0\uCC38)',
+      type: 'normal',
+    });
+    const hotelRest = compileScheduleItemForLanding({
+      activity: '\uD638\uD154 \uC774\uB3D9 \uD6C4 \uC11D\uC2DD \uBC0F \uD734\uC2DD, \uC628\uCC9C\uC695',
+      type: 'hotel',
+    });
+
+    expect(hotSpring.entity_kind).toBe('perk');
+    expect(hotSpring.service_name).toBe('\uC628\uCC9C\uC695');
+    expect(hotSpring.service_detail).toBe('\uC218\uC601\uBCF5 \uAC1C\uBCC4\uC9C0\uCC38');
+    expect(hotelRest.entity_kind).toBe('hotel_stay');
   });
 
   it('reclassifies stale flight and hotel-like labels before mobile landing render', () => {
@@ -198,7 +217,7 @@ describe('Baekdu landing regression guards', () => {
     );
 
     const schedule = result.itineraryData?.days?.[0]?.schedule ?? [];
-    expect(schedule[0].attraction_ids).toEqual([]);
+    expect(schedule[0].attraction_ids ?? []).toEqual([]);
     expect(schedule[0].attraction_names).toBeUndefined();
     expect(schedule[1].attraction_ids).toBeUndefined();
   });

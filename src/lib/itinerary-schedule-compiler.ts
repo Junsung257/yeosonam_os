@@ -17,6 +17,8 @@ export interface CompiledScheduleItem extends ItineraryScheduleItem {
   attraction_queries?: string[];
   landing_sentence?: string | null;
   a4_sentence?: string | null;
+  service_name?: string | null;
+  service_detail?: string | null;
 }
 
 function cleanLine(value: string | null | undefined): string {
@@ -111,6 +113,36 @@ function joinKoreanList(values: string[]): string {
   return values.join(', ');
 }
 
+function normalizeDuration(value: string | null | undefined): string | null {
+  const clean = cleanLine(value);
+  return clean || null;
+}
+
+function parseIncludedService(activity: string): { name: string; duration: string | null; note: string | null } | null {
+  const text = cleanLine(activity);
+  const massage = text.match(/((?:\uC804\uC2E0\s*\+\s*\uBC1C|\uBC1C\s*\+\s*\uC804\uC2E0|\uC804\uC2E0|\uBC1C|\uC804\uD1B5\s*\uC624\uC77C|\uC624\uC77C|\uC2A4\uD1A4|\uC544\uB85C\uB9C8)?\s*(?:\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0))(?:\s*\(?\s*(\d+\s*(?:\uBD84|\uC2DC\uAC04)(?:\s*\d+\s*\uBD84)?)\s*\)?)?/);
+  if (massage) {
+    const parenNotes = [...text.matchAll(/\(([^)]*)\)/g)].map(match => cleanLine(match[1])).filter(Boolean);
+    const note = parenNotes.length > 0 ? parenNotes.join(', ') : null;
+    return {
+      name: cleanLine(massage[1]).replace(/\s+/g, ''),
+      duration: normalizeDuration(massage[2]),
+      note,
+    };
+  }
+
+  if (/\uC628\uCC9C\uC695/.test(text)) {
+    const parenNotes = [...text.matchAll(/\(([^)]*)\)/g)].map(match => cleanLine(match[1])).filter(Boolean);
+    return {
+      name: '\uC628\uCC9C\uC695',
+      duration: null,
+      note: parenNotes.length > 0 ? parenNotes.join(', ') : null,
+    };
+  }
+
+  return null;
+}
+
 function transferDestination(text: string): string {
   const match = text.match(/([\uAC00-\uD7A3A-Za-z0-9/]+?)(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*\([^)]*\))?$/);
   return match?.[1]?.trim() || text.replace(/\s*(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*\([^)]*\))?$/, '').trim();
@@ -187,12 +219,15 @@ function classifySafe(activity: string, type?: string | null): ScheduleEntityKin
   if (type === 'shopping' || /(\uBA74\uC138|\uC1FC\uD551|\uC1FC\uD551\uC13C\uD130|lala\s*port)/i.test(text)) return 'shopping';
   if (type === 'optional' || /(\uC120\uD0DD\s*\uAD00\uAD11|\uC635\uC158|\uBCC4\uB3C4\s*\uC694\uAE08)/.test(text)) return 'optional_tour';
   if (
+    /(\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0|\uC628\uCC9C\uC695)/.test(text)
+    && !/(?:\uD638\uD154.*(?:\uC774\uB3D9|\uD734\uC2DD|\uD22C\uC219|\uCCB4\uD06C|\uC11D\uC2DD)|\uD22C\uC219)/.test(text)
+  ) return 'perk';
+  if (
     type === 'hotel'
     || (/\uD638\uD154/.test(text) && /(\uCCB4\uD06C|\uD734\uC2DD|\uD22C\uC219|\uC774\uB3D9|\uC628\uCC9C\uC695|\uC11D\uC2DD)/.test(text))
     || /(?:HOTEL|hotel|\uD638\uD154|\uC8FC\uC810|\uB3D9\uAE09|\uC900\s*5\uC131|\uC815\s*5\uC131|5\uC131)/.test(text)
   ) return 'hotel_stay';
   if (/^(?:\uD638\uD154\uC2DD|\uD604\uC9C0\uC2DD|\uAE40\uBC25|\uB0C9\uBA74|\uAFC8\uBC14\uB85C\uC6B0|\uAFD4\uBC14\uB85C\uC6B0|\uC0E4\uBE0C\uC0E4\uBE0C|\uC0BC\uACB9\uC0B4|\uC591\uAF2C\uCE58|\uBE44\uBE54\uBC25|\uBB34\uC81C\uD55C|\uB9E4\uC6B4\uD0D5|\uC624\uB9AC\uAD6C\uC774|\uC0B0\uCC9C\uC5B4\uD68C)$/.test(compactText)) return 'meal';
-  if (/(\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0|\uC628\uCC9C\uC695)/.test(text)) return 'perk';
   if (/^\uD2B9\uC804\s*:/.test(text)) return 'perk';
   if (/^(.+?)\s*(?:\uB85C|\uC73C\uB85C)?\s*\uC774\uB3D9(?:\s*\([^)]*\))?$/.test(text)) return 'transfer';
   if (attractionQueries(text).length > 0 || /(\uAD00\uAD11|\uBC29\uBB38|\uC0B0\uCC45|\uC870\uB9DD|\uCCB4\uD5D8)/.test(text)) return 'attraction_visit';
@@ -225,7 +260,24 @@ function buildSentencesSafe(activity: string, kind: ScheduleEntityKind, queries:
     return { landing: `${destination}${directionParticleSafe(destination)} \uC774\uB3D9\uD569\uB2C8\uB2E4.`, a4: `${destination} \uC774\uB3D9` };
   }
 
-  if (kind === 'perk' || kind === 'shopping' || kind === 'optional_tour' || kind === 'flight' || kind === 'meal') {
+  if (kind === 'perk') {
+    const service = parseIncludedService(text);
+    if (service) {
+      const nameWithDuration = [service.name, service.duration].filter(Boolean).join(' ');
+      const tipSentence = service.note && /\uB9E4\uB108\s*\uD301|\uD301/.test(service.note)
+        ? ' \uB9E4\uB108\uD301\uC740 \uBCC4\uB3C4\uC785\uB2C8\uB2E4.'
+        : service.note
+          ? ` ${service.note}`
+          : '';
+      return {
+        landing: `${nameWithDuration}\uC73C\uB85C \uC5EC\uD589\uC758 \uD53C\uB85C\uB97C \uD480\uC5B4\uBD05\uB2C8\uB2E4.${tipSentence}`.trim(),
+        a4: [nameWithDuration, service.note ? `(${service.note})` : null].filter(Boolean).join(' '),
+      };
+    }
+    return { landing: text, a4: text };
+  }
+
+  if (kind === 'shopping' || kind === 'optional_tour' || kind === 'flight' || kind === 'meal') {
     return { landing: text, a4: text };
   }
 
@@ -319,6 +371,7 @@ export function compileScheduleItemForLanding(item: ItineraryScheduleItem): Comp
   const kind = classifySafe(activity, item.type);
   const queries = kind === 'attraction_visit' ? attractionQueries(activity) : [];
   const sentences = buildSentencesSafe(activity, kind, queries);
+  const service = kind === 'perk' ? parseIncludedService(activity) : null;
   const normalizedType = item.type === 'flight' && kind !== 'flight' ? 'normal' : item.type;
 
   return {
@@ -330,6 +383,8 @@ export function compileScheduleItemForLanding(item: ItineraryScheduleItem): Comp
     attraction_queries: queries.length > 0 ? queries : undefined,
     landing_sentence: sentences.landing,
     a4_sentence: sentences.a4,
+    service_name: service?.name ?? null,
+    service_detail: service ? [service.duration, service.note].filter(Boolean).join(' / ') || null : null,
   };
 }
 

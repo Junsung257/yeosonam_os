@@ -55,7 +55,18 @@ interface DaySchedule {
   day: number;
   regions?: string[];
   meals?: { breakfast?: boolean; lunch?: boolean; dinner?: boolean; breakfast_note?: string; lunch_note?: string; dinner_note?: string };
-  schedule?: { time?: string; activity: string; type?: string; transport?: string; note?: string; badge?: string }[];
+  schedule?: {
+    time?: string;
+    activity: string;
+    type?: string;
+    transport?: string;
+    note?: string;
+    badge?: string;
+    entity_kind?: string | null;
+    landing_sentence?: string | null;
+    service_name?: string | null;
+    service_detail?: string | null;
+  }[];
   hotel?: { name: string; grade?: string; note?: string } | null;
 }
 
@@ -212,6 +223,20 @@ function AttractionPhotoSlide({ src, alt }: { src: string; alt: string }) {
     </div>
   );
 }
+
+function scheduleDisplayText(item: { activity?: string | null; landing_sentence?: string | null }): string {
+  return (item.landing_sentence || item.activity || '').trim();
+}
+
+function isIncludedServiceScheduleItem(item: { activity?: string | null; entity_kind?: string | null; type?: string | null }): boolean {
+  if (item.entity_kind === 'perk') return true;
+  const text = item.activity || '';
+  if (/(?:\uC120\uD0DD\s*\uAD00\uAD11|\uC635\uC158|\uBCC4\uB3C4\s*\uC694\uAE08|\$)/.test(text)) return false;
+  return /(?:\uB9C8\uC0AC\uC9C0|\uB9DB\uC0AC\uC9C0|\uC2A4\uD30C|\uC628\uCC9C\uC695)/.test(text);
+}
+
+const INCLUDED_SERVICE_LABEL = '\uD3EC\uD568 \uC11C\uBE44\uC2A4';
+const INCLUDED_SERVICE_ICON = '\uD83D\uDC86';
 
 function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; title: string; variant: 'row' | 'grid' }) {
   const [hide, setHide] = useState(false);
@@ -1310,6 +1335,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     })
                     .filter((u): u is string => u != null);
                   const hasPhotos = validAttrPhotoUrls.length > 0;
+                  const displayActivity = scheduleDisplayText(item);
+                  const isIncludedService = isIncludedServiceScheduleItem(item);
 
                   // 항공편은 하나투어 스타일 카드로 렌더링 (첫날/마지막날만, 중간DAY는 일반 표시)
                   const isFirstOrLastDay = currentDay.day === 1 || currentDay.day === days[days.length - 1]?.day || currentDay.day === days[days.length - 2]?.day;
@@ -1413,19 +1440,35 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                           <p className="text-brand text-xs font-bold mb-0.5">{item.time}</p>
                         )}
 
-                        {/* [특전] 하이라이트 카드 */}
-                        {/\[특전\]|특전\)/.test(item.activity) ? (
+                        {/* 포함 서비스/특전 하이라이트 카드 */}
+                        {isIncludedService ? (
+                          <div className="bg-rose-50 border border-rose-100 rounded-xl px-3 py-2.5 flex items-start gap-2">
+                            <span className="text-lg shrink-0">{INCLUDED_SERVICE_ICON}</span>
+                            <div>
+                              <span className="text-xs font-bold text-rose-700 bg-white/80 px-1.5 py-0.5 rounded-full">{INCLUDED_SERVICE_LABEL}</span>
+                              {item.service_name && (
+                                <p className="font-black text-base text-gray-950 mt-1">{item.service_name}</p>
+                              )}
+                              <p className={`${item.service_name ? 'text-sm text-gray-700 mt-0.5' : 'font-bold text-base text-text-primary mt-1'} leading-relaxed`}>
+                                {displayActivity}
+                              </p>
+                              {item.service_detail && (
+                                <p className="text-xs text-rose-700 mt-1 font-medium">{item.service_detail}</p>
+                              )}
+                            </div>
+                          </div>
+                        ) : /\[특전\]|특전\)/.test(item.activity) ? (
                           <div className="bg-brand-light border border-brand-light rounded-xl px-3 py-2.5 flex items-start gap-2">
                             <span className="text-lg shrink-0">🎁</span>
                             <div>
                               <span className="text-xs font-bold text-brand bg-brand-light px-1.5 py-0.5 rounded-full">스페셜 포함</span>
-                              <p className="font-bold text-base text-text-primary mt-1">{item.activity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
+                              <p className="font-bold text-base text-text-primary mt-1">{displayActivity.replace(/\[특전\]\s*/g, '').replace(/\(매너팁별도\)/g, '').trim()}</p>
                             </div>
                           </div>
                         ) : (
                         /* 일반 활동명 */
                         <h3 className="font-bold text-base text-gray-900 leading-snug">
-                          {item.activity}
+                          {displayActivity}
                         </h3>
                         )}
 
