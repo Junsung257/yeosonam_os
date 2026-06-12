@@ -28,11 +28,21 @@ describe('normalizeUploadItinerary', () => {
     const result = await normalizeUploadItinerary({
       destination: '연길/백두산',
       activeAttractions: [],
+      productRawText: [
+        '제1일',
+        '중:냉면+',
+        '꿔바로우',
+        '석:샤브샤브',
+        '무제한',
+        '󰆹 풀만호텔 또는 동급 (5성)',
+      ].join('\n'),
       itineraryData: {
         days: [{
           day: 1,
           schedule: [
             { type: 'normal', activity: '두만강 강변공원 관광', entity_kind: 'attraction_visit' },
+            { type: 'normal', activity: '중식 후 도문으로 이동 (1시간30분 소요)', entity_kind: 'transfer' },
+            { type: 'normal', activity: '호텔 조식 후 백두산 남파로 이동 (2시간 소요)', entity_kind: 'transfer' },
             { type: 'normal', activity: '꿔바로우', entity_kind: 'meal' },
             { type: 'hotel', activity: '풀만호텔 또는 동급 (5성)', entity_kind: 'hotel_stay' },
           ],
@@ -42,14 +52,27 @@ describe('normalizeUploadItinerary', () => {
 
     const day = result.itineraryDataToSave?.days?.[0] as {
       schedule?: Array<{ activity?: string }>;
-      meals?: { dinner?: boolean; dinner_note?: string | null };
+      meals?: {
+        breakfast?: boolean;
+        lunch?: boolean;
+        dinner?: boolean;
+        breakfast_note?: string | null;
+        lunch_note?: string | null;
+        dinner_note?: string | null;
+      };
       hotel?: { name?: string | null; grade?: string | null };
     };
     const activities = (day.schedule ?? []).map(item => item.activity);
     expect(activities).not.toContain('꿔바로우');
     expect(activities).not.toContain('풀만호텔 또는 동급 (5성)');
+    expect(activities).toContain('도문으로 이동 (1시간30분 소요)');
+    expect(activities).toContain('백두산 남파로 이동 (2시간 소요)');
+    expect(day.meals?.breakfast).toBe(true);
+    expect(day.meals?.breakfast_note).toBe('호텔식');
+    expect(day.meals?.lunch).toBe(true);
+    expect(day.meals?.lunch_note).toBe('냉면 + 꿔바로우');
     expect(day.meals?.dinner).toBe(true);
-    expect(day.meals?.dinner_note).toBe('꿔바로우');
+    expect(day.meals?.dinner_note).toBe('샤브샤브 무제한');
     expect(day.hotel?.name).toBe('풀만호텔 또는 동급');
     expect(day.hotel?.grade).toBe('5성');
   });

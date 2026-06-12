@@ -22,6 +22,13 @@
 - **Status**: FIXED
 - **Prevention**: Any meal-only or hotel-stay token left in `itinerary_data.days[].schedule` is now a strict mobile readiness failure. Customer mobile validation must check semantic rendering, not only token existence.
 
+### Follow-up: raw meal table precedence
+
+- **Discovered**: 2026-06-12, after mobile review.
+- **Additional issue**: Standalone food lines can be continuation rows in the source meal table, not independent dinner events. Example: Day 1 source has `중:냉면+` then `꿔바로우`, and `석:샤브샤브` then `무제한`. Treating `꿔바로우` as dinner was wrong.
+- **Fix**: Source meal table rows (`조:`, `중:`, `석:` plus continuation lines) now override inferred meal slots. Embedded phrases such as `중식 후 ...` and `호텔 조식 후 ...` still seed meals and clean the schedule sentence, but the explicit source meal table is authoritative.
+- **Verification**: Product `06c8cb20` now renders Day 1 as `중식 냉면 + 꿔바로우`, `석식 샤브샤브 무제한`; Day 2 as `조식 호텔식`, `중식 비빔밥`, `석식 삼겹살 무제한`; Day 3 as `조식 호텔식`, `중식 산천어회 + 매운탕`, `석식 양꼬치 무제한`; Day 4 as `조식 호텔식`, `중식 김밥`.
+
 ---
 
 ## ERR-BAEKDU-flight-times-and-source-lines-missing@2026-06-12

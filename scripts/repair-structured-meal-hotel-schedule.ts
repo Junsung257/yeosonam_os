@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import { normalizeStructuredItineraryEntities } from '@/lib/itinerary-structured-entities';
+import { mergeRawTextMealEvidence, normalizeStructuredItineraryEntities } from '@/lib/itinerary-structured-entities';
 
 for (const file of ['.env.local', '.env']) {
   const fullPath = path.join(process.cwd(), file);
@@ -21,6 +21,7 @@ type PackageRow = {
   id: string;
   title: string | null;
   destination: string | null;
+  raw_text: string | null;
   itinerary_data: Record<string, unknown> | null;
 };
 
@@ -34,6 +35,7 @@ function collectScheduleTokens(itineraryData: Record<string, unknown> | null): s
       const kind = typeof item.entity_kind === 'string' ? item.entity_kind : '';
       const type = typeof item.type === 'string' ? item.type : '';
       if (kind === 'meal' || kind === 'hotel_stay' || type === 'meal') out.push(activity);
+      if (/(?:호텔\s*)?조식\s*후|중식\s*후|석식\s*후/.test(activity)) out.push(activity);
       if (type === 'hotel' && /(?:HOTEL|hotel|호텔).*(?:동급|\([^)]+성[^)]*\))/.test(activity) && !/(?:온천욕|체험|특전|상당)/.test(activity)) {
         out.push(activity);
       }
@@ -45,7 +47,7 @@ function collectScheduleTokens(itineraryData: Record<string, unknown> | null): s
 async function main() {
   const { data, error } = await supabase
     .from('travel_packages')
-    .select('id,title,destination,itinerary_data')
+    .select('id,title,destination,raw_text,itinerary_data')
     .eq('status', 'active')
     .or('title.ilike.%백두산%,title.ilike.%연길%,destination.ilike.%백두산%,destination.ilike.%연길%');
 
@@ -56,9 +58,12 @@ async function main() {
 
   for (const row of rows) {
     const before = collectScheduleTokens(row.itinerary_data);
-    if (before.length === 0) continue;
-    const normalized = normalizeStructuredItineraryEntities(row.itinerary_data as never) as Record<string, unknown> | null;
+    const normalized = mergeRawTextMealEvidence(
+      normalizeStructuredItineraryEntities(row.itinerary_data as never),
+      row.raw_text,
+    ) as Record<string, unknown> | null;
     const after = collectScheduleTokens(normalized);
+    if (before.length === 0 && JSON.stringify(row.itinerary_data) === JSON.stringify(normalized)) continue;
     changed.push({ id: row.id, title: row.title, before, after });
     if (apply) {
       const { error: updateError } = await supabase

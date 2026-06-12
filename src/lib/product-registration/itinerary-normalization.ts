@@ -11,7 +11,7 @@ import {
   type ItineraryScheduleQualityDay,
 } from './itinerary-quality-gate';
 import { compileItineraryForLanding } from '@/lib/itinerary-schedule-compiler';
-import { normalizeStructuredItineraryEntities } from '@/lib/itinerary-structured-entities';
+import { mergeRawTextMealEvidence, normalizeStructuredItineraryEntities } from '@/lib/itinerary-structured-entities';
 
 export type { ItineraryDataLike } from '@/lib/itinerary-attraction-enricher';
 
@@ -110,6 +110,7 @@ export async function normalizeUploadItinerary(input: {
       warnings.push(`day-table fallback 실패: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
+  itineraryInput = normalizeStructuredItineraryEntities(itineraryInput);
   const initialPrune = prunePollutedScheduleItems(itineraryInput);
   itineraryInput = compileItineraryForLanding(initialPrune.itineraryData);
 
@@ -134,7 +135,10 @@ export async function normalizeUploadItinerary(input: {
     ),
   );
   const itineraryDataToSave = attachShoppingHighlight(
-    normalizeStructuredItineraryEntities(finalPrune.itineraryData),
+    mergeRawTextMealEvidence(
+      normalizeStructuredItineraryEntities(finalPrune.itineraryData),
+      input.productRawText,
+    ),
     extractCatalogShoppingForRender(input.productRawText),
   );
 

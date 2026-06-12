@@ -393,6 +393,9 @@ function itinerarySemanticMismatch(pkg) {
       const hasAttraction = Array.isArray(item?.attraction_ids) && item.attraction_ids.length > 0;
       if (!activity) continue;
       if (routeOnlyRe.test(compact)) return `day ${day?.day ?? '?'} route-only token visible: ${activity}`;
+      if (/^(?:\uD638\uD154\s*)?\uC870\uC2DD\s*\uD6C4|^\uC911\uC2DD\s*\uD6C4|^\uC11D\uC2DD\s*\uD6C4/.test(activity)) {
+        return `day ${day?.day ?? '?'} embedded meal phrase visible in schedule: ${activity}`;
+      }
       if (mealOnlyRe.test(compact)) return `day ${day?.day ?? '?'} meal token visible in schedule: ${activity}`;
       if (kind === 'meal' || type === 'meal') return `day ${day?.day ?? '?'} meal entity visible in schedule: ${activity}`;
       if (kind === 'hotel_stay') return `day ${day?.day ?? '?'} hotel stay visible in schedule: ${activity}`;
