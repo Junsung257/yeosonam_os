@@ -132,6 +132,53 @@ describe('registerProductFromRaw', () => {
     expect(result.failures.join('\n')).toContain('fixture-block');
   });
 
+  it('blocks registration when source-backed round-trip flight times are missing from the customer itinerary payload', async () => {
+    const rawText = [
+      'Product: Baekdu flight regression 3N4D',
+      'Price: 1,429,000 KRW / minimum 4',
+      'DAY 1',
+      'BX337',
+      '06:30 airport meeting',
+      '09:40 Gimhae departure',
+      '11:30 Yanji arrival and guide meeting',
+      'DAY 4',
+      'BX338',
+      '12:30 Yanji departure',
+      '16:25 Gimhae arrival',
+      'Include airfare hotel meal',
+      'Exclude personal expenses',
+    ].join('\n');
+
+    const result = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: 'Baekdu flight regression 3N4D',
+        destination: 'Yanji',
+        duration: 4,
+        rawText,
+        price_tiers: [],
+      },
+      itineraryData: {
+        days: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }],
+        flight_segments: [
+          { leg: 'outbound', flight_no: 'BX337', dep_time: null, arr_time: null },
+          { leg: 'inbound', flight_no: 'BX338', dep_time: null, arr_time: null },
+        ],
+      },
+      title: 'Baekdu flight regression 3N4D',
+      activeAttractions: [],
+      destinationCode: 'YNJ',
+      internalCode: 'PUS-ETC-YNJ-04-TEST',
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    expect(result.publishable).toBe(false);
+    expect(result.deliverability.ok).toBe(false);
+    expect(result.deliverability.blockers.join('\n')).toContain('flight time source mismatch');
+  });
+
   it('recovers shared document price tables when the product section has no local price table', async () => {
     const testCase = GOLDEN_CORPUS_CASES.find(item => item.id === 'fukuoka-golf-spot-weekday-cash-receipt');
     if (!testCase) throw new Error('missing fukuoka fixture');
