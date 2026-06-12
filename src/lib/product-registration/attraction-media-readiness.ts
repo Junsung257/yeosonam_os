@@ -39,6 +39,7 @@ export type AttractionMediaReadinessResult = {
   matchedWithPhotos: number;
   unmatchedCandidates: AttractionMediaCandidate[];
   missingPhotoCandidates: AttractionMediaCandidate[];
+  missingDescriptionCandidates: AttractionMediaCandidate[];
   warnings: string[];
   blockers: string[];
 };
@@ -254,6 +255,11 @@ function photoCountFromAttraction(value: unknown): number {
   return Array.isArray(photos) ? photos.length : 0;
 }
 
+function hasCustomerDescription(value: unknown): boolean {
+  const row = value as { short_desc?: unknown; long_desc?: unknown } | null;
+  return text(row?.short_desc).length > 0 || text(row?.long_desc).length > 0;
+}
+
 function attractionMap(attractions: AttractionData[]): Map<string, AttractionData> {
   const map = new Map<string, AttractionData>();
   for (const attraction of attractions) {
@@ -303,9 +309,14 @@ export function evaluateAttractionMediaReadiness(input: {
   const missingPhotoCandidates = input.includePhotoAudit
     ? candidates.filter(candidate => candidate.matchedIds.length > 0 && !candidate.hasPhoto)
     : [];
+  const missingDescriptionCandidates = candidates.filter(candidate => (
+    candidate.matchedIds.length > 0
+    && !candidate.matchedIds.some(id => hasCustomerDescription(byId.get(id)))
+  ));
   const warnings = [
     ...unmatchedCandidates.map(candidate => `attraction.unmatched_major:${candidate.label}`),
     ...missingPhotoCandidates.map(candidate => `attraction.photo_missing:${candidate.label}`),
+    ...missingDescriptionCandidates.map(candidate => `attraction.description_missing:${candidate.label}`),
   ];
 
   return {
@@ -314,9 +325,13 @@ export function evaluateAttractionMediaReadiness(input: {
     matchedWithPhotos: candidates.filter(candidate => candidate.matchedIds.length > 0 && candidate.hasPhoto).length,
     unmatchedCandidates,
     missingPhotoCandidates,
+    missingDescriptionCandidates,
     warnings,
     blockers: input.blockUnmatchedMajor
-      ? unmatchedCandidates.map(candidate => `attraction.unmatched_major:${candidate.label}`)
+      ? [
+          ...unmatchedCandidates.map(candidate => `attraction.unmatched_major:${candidate.label}`),
+          ...missingDescriptionCandidates.map(candidate => `attraction.description_missing:${candidate.label}`),
+        ]
       : [],
   };
 }

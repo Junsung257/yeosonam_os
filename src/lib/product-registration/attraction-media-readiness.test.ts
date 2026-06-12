@@ -80,6 +80,33 @@ describe('attraction media readiness', () => {
     expect(withPhotoAudit.missingPhotoCandidates.map(candidate => candidate.label)).toEqual(['니혼다이라 로프웨이']);
   });
 
+  it('blocks matched customer attractions when no customer description exists', () => {
+    const itineraryData = {
+      days: [
+        {
+          day: 2,
+          schedule: [
+            {
+              activity: '\uBC31\uB450\uC0B0 \uC0BC\uB3C4\uBC31\uD558 \uC0C1\uB958\uC5D0 \uC704\uCE58\uD55C \uC545\uD654\uD3ED\uD3EC',
+              attraction_ids: ['akhwa'],
+              attraction_names: ['\uC545\uD654\uD3ED\uD3EC'],
+            },
+          ],
+        },
+      ],
+    };
+    const attractions = [{ id: 'akhwa', name: '\uC545\uD654\uD3ED\uD3EC', short_desc: null, long_desc: null, photos: [] }];
+
+    const result = evaluateAttractionMediaReadiness({
+      itineraryData,
+      attractions,
+      blockUnmatchedMajor: true,
+    });
+
+    expect(result.missingDescriptionCandidates.map(candidate => candidate.label)).toEqual(['\uC545\uD654\uD3ED\uD3EC']);
+    expect(result.blockers).toContain('attraction.description_missing:\uC545\uD654\uD3ED\uD3EC');
+  });
+
   it('prefers explicit attraction names when the enrichment layer already resolved them', () => {
     expect(extractCustomerAttractionLabel({
       activity: '산책',

@@ -152,6 +152,7 @@ function trustScore(row) {
   add(row.price_source_evidence_mismatch, 'price.source_evidence_mismatch', 'critical', 70);
   add(row.attraction_context_mismatch, 'attraction.context_mismatch', 'critical', 80);
   add(row.attraction_unlinked_registered, 'attraction.unlinked_registered', 'critical', 80);
+  add(row.attraction_description_missing, 'attraction.description_missing', 'critical', 60);
   add(row.itinerary_semantic_mismatch, 'itinerary.semantic_mismatch', 'critical', 70);
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
@@ -429,6 +430,29 @@ function attractionContextMismatch(pkg, attractionById) {
   return null;
 }
 
+function attractionDescriptionMissing(pkg, attractionById) {
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
+  for (const day of days) {
+    const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
+    for (const item of schedule) {
+      const ids = Array.isArray(item?.attraction_ids) ? item.attraction_ids.filter(Boolean) : [];
+      if (ids.length === 0) continue;
+      const activity = String(item?.activity ?? '').replace(/\s+/g, ' ').trim();
+      const itemNote = String(item?.attraction_note ?? '').trim();
+      for (const id of ids) {
+        const attraction = attractionById.get(String(id));
+        if (!attraction) continue;
+        const shortDesc = String(attraction.short_desc ?? '').trim();
+        const longDesc = String(attraction.long_desc ?? '').trim();
+        if (!shortDesc && !longDesc && !itemNote) {
+          return `${activity}: attraction ${attraction.name ?? id} has no customer description`;
+        }
+      }
+    }
+  }
+  return null;
+}
+
 function itinerarySemanticMismatch(pkg) {
   const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
   const routeOnlyRe = /^(?:\uBD80\s*\uC0B0|\uC5F0\s*\uAE38|\uB3C4\s*\uBB38|\uC6A9\s*\uC815|\uC774\uB3C4\uBC31\uD558|\uC1A1\uAC15\uD558|\uB0A8\s*\uD30C|\uBD81\s*\uD30C|\uC11C\s*\uD30C)$/;
@@ -529,6 +553,7 @@ function readinessFor(row) {
   if (row.price_source_evidence_mismatch) failures.push('price_source_evidence_mismatch');
   if (row.attraction_context_mismatch) failures.push('attraction_context_mismatch');
   if (row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
+  if (row.attraction_description_missing) failures.push('attraction_description_missing');
   if (row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
   if (row.render_failure) failures.push('render_blocked');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
@@ -593,7 +618,7 @@ const attractionById = new Map();
 if (attractionIds.size > 0) {
   const { data: attractionRows, error: attractionError } = await supabase
     .from('attractions')
-    .select('id,name,region,country')
+    .select('id,name,region,country,short_desc,long_desc,customer_publishable')
     .in('id', Array.from(attractionIds));
   if (attractionError) {
     console.error(attractionError.message);
@@ -807,6 +832,7 @@ const rows = allPackageRows
       price_source_evidence_mismatch: priceDateSourceEvidenceMismatch(pkg),
       attraction_context_mismatch: attractionContextMismatch(pkg, attractionById),
       attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
+      attraction_description_missing: attractionDescriptionMissing(pkg, attractionById),
       itinerary_semantic_mismatch: itinerarySemanticMismatch(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
@@ -971,6 +997,7 @@ const summary = {
   price_source_evidence_mismatch: rows.filter(row => row.price_source_evidence_mismatch).length,
   attraction_context_mismatch: rows.filter(row => row.attraction_context_mismatch).length,
   attraction_unlinked_registered: rows.filter(row => row.attraction_unlinked_registered).length,
+  attraction_description_missing: rows.filter(row => row.attraction_description_missing).length,
   itinerary_semantic_mismatch: rows.filter(row => row.itinerary_semantic_mismatch).length,
   render_blocked: rows.filter(row => row.render_failure).length,
   itinerary_policy_leak: rows.filter(row => row.itinerary_policy_leak).length,
@@ -1023,6 +1050,7 @@ const report = {
     product_ledger_price_mismatch: row.product_ledger_price_mismatch,
     price_source_evidence_mismatch: row.price_source_evidence_mismatch,
     attraction_context_mismatch: row.attraction_context_mismatch,
+    attraction_description_missing: row.attraction_description_missing,
     itinerary_semantic_mismatch: row.itinerary_semantic_mismatch,
     render_failure: row.render_failure,
   })),
@@ -1041,7 +1069,7 @@ if (!jsonOnly) {
     options: row.customer_price_option_mismatch ? 'mismatch' : 'ok',
     product_ledger: row.product_ledger_price_mismatch ? 'mismatch' : 'ok',
     price_source: row.price_source_evidence_mismatch ? 'mismatch' : 'ok',
-    attraction_ctx: row.attraction_context_mismatch ? 'mismatch' : 'ok',
+    attraction_ctx: row.attraction_context_mismatch ? 'mismatch' : row.attraction_description_missing ? 'desc_missing' : 'ok',
     itinerary_semantic: row.itinerary_semantic_mismatch ? 'mismatch' : 'ok',
     render: row.render_failure ? 'fail' : 'ok',
     policy: row.itinerary_policy_leak ? 'leak' : 'ok',
@@ -1073,6 +1101,7 @@ if (strict) {
   if (summary.price_source_evidence_mismatch > 0) strictFailures.push('price_source_evidence_mismatch');
   if (summary.attraction_context_mismatch > 0) strictFailures.push('attraction_context_mismatch');
   if (summary.attraction_unlinked_registered > 0) strictFailures.push('attraction_unlinked_registered');
+  if (summary.attraction_description_missing > 0) strictFailures.push('attraction_description_missing');
   if (summary.itinerary_semantic_mismatch > 0) strictFailures.push('itinerary_semantic_mismatch');
   if (summary.render_blocked > 0) strictFailures.push('render_blocked');
   if (summary.itinerary_policy_leak > 0) strictFailures.push('itinerary_policy_leak');
