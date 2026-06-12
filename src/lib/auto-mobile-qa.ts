@@ -36,6 +36,7 @@ type ExpectedRender = {
   hasOptionalTours: boolean;
   status: string | null;
   shortCode: string | null;
+  internalCode: string | null;
 };
 
 const AUTO_QA_CHECK_PREFIXES = [
@@ -55,11 +56,11 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, itinerary_data, optional_tours, status, short_code')
+      .select('title, display_title, itinerary_data, optional_tours, status, short_code, internal_code')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
-      return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null };
+      return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null, internalCode: null };
     }
 
     const title = (data as { display_title?: string | null; title?: string | null }).display_title
@@ -84,9 +85,10 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       hasOptionalTours,
       status: (data as { status?: string | null }).status ?? null,
       shortCode: (data as { short_code?: string | null }).short_code ?? null,
+      internalCode: (data as { internal_code?: string | null }).internal_code ?? null,
     };
   } catch {
-    return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null };
+    return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null, internalCode: null };
   }
 }
 
@@ -309,6 +311,33 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
       // G5: high/critical incident 시 admin_alerts 적재 (사장님 어드민 대시보드 빨간 배지)
       const hiSev = incidents.filter(i => i.severity === 'high' || i.severity === 'critical');
       if (hiSev.length > 0) {
+        const checkedAt = new Date().toISOString();
+        try {
+          await supabaseAdmin
+            .from('travel_packages')
+            .update({
+              status: 'pending_review',
+              audit_status: 'blocked',
+              audit_checked_at: checkedAt,
+              audit_report: {
+                source: 'auto_mobile_qa',
+                incidents: hiSev,
+                checked_at: checkedAt,
+              },
+              updated_at: checkedAt,
+            })
+            .eq('id', packageId);
+
+          if (expected.internalCode) {
+            await supabaseAdmin
+              .from('products')
+              .update({ status: 'pending_review', updated_at: checkedAt })
+              .eq('internal_code', expected.internalCode);
+          }
+        } catch (e) {
+          console.warn('[AutoQA] failed to block customer-visible package:', e instanceof Error ? e.message : e);
+        }
+
         try {
           const { postAlert } = await import('@/lib/admin-alerts');
           const summary = hiSev.slice(0, 3).map(i => `[${i.severity}] ${i.message}`).join(' / ');

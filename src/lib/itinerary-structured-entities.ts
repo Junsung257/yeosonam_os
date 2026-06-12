@@ -171,6 +171,33 @@ function mealSlotFromKorean(label: string): MealSlot {
   return 'dinner';
 }
 
+const RAW_MEAL_SECTION_BREAK_RE =
+  /^(?:스팟\s*특가|spot|\*?\s*실시간\s*항공\s*기준|출\s*발\s*일|패턴|스탠다드|프리미엄|크라운|예약금|취소\s*규정|현금\s*영수증|포함\s*사항|불포함\s*사항|선택\s*관광|쇼핑\s*센터|특전|유의\s*사항|\[.*현금\s*영수증)/i;
+
+const RAW_MEAL_POLLUTION_RE =
+  /(?:스팟\s*특가|실시간\s*항공|취소\s*규정|현금\s*영수증|환불|수수료|예약금|출발\s*일|유류|상품가|요금|가격|PKG|패키지\s*상품|호텔\s*예약시\s*날짜별|선택\s*관광|쇼핑\s*센터|\d{1,3}(?:,\d{3})+\s*(?:원|,-)?|\$\s*\d+)/i;
+
+const RAW_MEAL_WEEKDAY_GRID_RE = /^(?:[일월화수목금토](?:\s*[,/ㆍ·~\-]\s*[일월화수목금토])*)$/;
+const RAW_MEAL_PRICE_DATE_RE = /^\d{1,2}\/\d{1,2}(?:\s*[,ㆍ·~\-]\s*\d{1,2}(?:\/\d{1,2})?)*$/;
+
+function isUnsafeRawMealEvidenceLine(value: string): boolean {
+  const line = value.replace(/\s+/g, ' ').trim();
+  const compact = line.replace(/\s+/g, '');
+  if (!line) return true;
+  if (RAW_MEAL_SECTION_BREAK_RE.test(line)) return true;
+  if (RAW_MEAL_POLLUTION_RE.test(line)) return true;
+  if (RAW_MEAL_WEEKDAY_GRID_RE.test(compact)) return true;
+  if (RAW_MEAL_PRICE_DATE_RE.test(compact)) return true;
+  return false;
+}
+
+function isSafeMealContinuationLine(value: string): boolean {
+  const line = value.replace(/\s+/g, ' ').trim();
+  if (isUnsafeRawMealEvidenceLine(line)) return false;
+  if (!/[가-힣A-Za-z]/.test(line)) return false;
+  return Array.from(line).length <= 28;
+}
+
 function normalizeMealNote(value: string): string | null {
   let note = value
     .replace(/[+＋]\s*/g, ' + ')
@@ -180,6 +207,7 @@ function normalizeMealNote(value: string): string | null {
     .trim();
   note = note.replace(/^무제한\s+(.+)$/, '$1 무제한');
   if (!note || /^(?:없음|불포함|-)$/.test(note)) return null;
+  if (isUnsafeRawMealEvidenceLine(note)) return null;
   return note;
 }
 
@@ -219,13 +247,17 @@ function parseRawTextMealEvidence(rawText: string | null | undefined): Map<numbe
     }
 
     if (!currentSlot) continue;
+    if (isUnsafeRawMealEvidenceLine(line)) {
+      currentSlot = null;
+      continue;
+    }
     if (/^(?:호텔|HOTEL|󰆹|☞|\[|※|제\s*\d+\s*일|DAY\s*\d+)/i.test(line)) {
       currentSlot = null;
       continue;
     }
     if (/^(?:시\s*간|일\s*정|식\s*사|전용차량|전일|\d{1,2}:\d{2}|[A-Z0-9]{2}\d{3,4})$/i.test(line)) continue;
     if (/^(?:부\s*산|연\s*길|도\s*문|용\s*정|송강하|남\s*파|북\s*파|서\s*파|이도백하)$/.test(line)) continue;
-    if (/[가-힣A-Za-z]/.test(line) && line.length <= 20) {
+    if (isSafeMealContinuationLine(line)) {
       const dayEvidence = evidence.get(currentDay) ?? {};
       const current = dayEvidence[currentSlot] ?? '';
       dayEvidence[currentSlot] = normalizeMealNote(`${current} ${line}`) ?? current;

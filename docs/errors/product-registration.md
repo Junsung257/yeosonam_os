@@ -60,9 +60,9 @@
 - **Products**: 11 active Yanji/Baekdu variants:
   `06c8cb20`, `de1c3c29`, `4586930d`, `1d5776d4`, `063825a7`, `ab671acd`, `f0fe98e2`, `d29809e7`, `3c3ed200`, `64019572`, `1af1690c`.
 - **Source vs result**: Products passed structural/open checks, but customer mobile pages could still show poor itinerary enrichment: duplicate Baekdu Heaven Lake cards, internal/non-publishable attraction IDs, wrong Heaven Lake cards on Akhwa waterfall text, and attraction cards attached to optional-tour/price/perk lines.
-- **Root cause**: Verification was too structural. It checked saved rows, publishability blockers, itinerary existence, and page availability, but did not require mobile browser semantic proof. Upload attraction context also loaded all active attractions instead of only `customer_publishable=true`, and enrichment trusted existing `attraction_ids` without enough stripping/deduplication for option/price/header/transfer lines.
+- **Root cause**: Verification was too structural. It checked saved rows, publishability blockers, itinerary existence, and page availability, but did not require mobile browser semantic proof. Early mitigation incorrectly treated `customer_publishable=true` as a matching prerequisite, which later hid registered-but-not-yet-rich-card-ready masters from the upload engine. Enrichment also trusted existing `attraction_ids` without enough stripping/deduplication for option/price/header/transfer lines.
 - **Fix**:
-  - `loadUploadRegistrationContext()` now loads only `is_active=true` and `customer_publishable=true` attractions for upload enrichment.
+  - `loadUploadRegistrationContext()` now loads all `is_active=true` attractions for upload enrichment. `customer_publishable` is enforced at customer render/readiness, not at semantic matching.
   - `enrichItineraryWithAttractionReferences()` strips attraction references from supplier commerce/header lines, optional tours, perks, and pure transfers without visit hints.
   - Enrichment deduplicates overlapping attraction concepts and blocks `악화폭포` from inheriting `백두산 천지`.
   - Saved Baekdu/Yanji products were repaired with `scripts/repair-baekdu-mobile-landing.ts --apply`.
@@ -77,7 +77,7 @@
   - `npm run type-check`
   - `npm run build`
 - **Status**: FIXED
-- **Prevention**: Completion requires live/mobile render proof, not only DB/open gate success. Any customer-visible attraction enrichment change must update or satisfy `docs/product-mobile-landing-quality-runbook.md`.
+- **Prevention**: Completion requires live/mobile render proof, not only DB/open gate success. Any customer-visible attraction enrichment change must update or satisfy `docs/product-mobile-landing-quality-runbook.md`. Post-save mobile QA high/critical incidents must block customer visibility instead of only writing logs or alerts.
 
 ---
 

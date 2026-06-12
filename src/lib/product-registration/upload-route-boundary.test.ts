@@ -299,11 +299,21 @@ describe('upload route registration pipeline boundary', () => {
     expect(contextLoader).toContain('export async function loadUploadRegistrationContext');
   });
 
-  it('loads only customer-publishable attractions for upload enrichment', () => {
+  it('loads all active attractions for upload enrichment and keeps publishability as render gate', () => {
     const contextLoader = readUploadContextLoader();
 
     expect(contextLoader).toContain('customer_publishable');
-    expect(contextLoader).toContain(".eq('customer_publishable', true)");
+    expect(contextLoader).toContain(".eq('is_active', true)");
+    expect(contextLoader).not.toContain(".eq('customer_publishable', true)");
+  });
+
+  it('post-save mobile QA blocks customer visibility on high or critical incidents', () => {
+    const autoMobileQa = readFileSync(join(process.cwd(), 'src/lib/auto-mobile-qa.ts'), 'utf8');
+
+    expect(autoMobileQa).toContain("status: 'pending_review'");
+    expect(autoMobileQa).toContain("audit_status: 'blocked'");
+    expect(autoMobileQa).toContain(".from('travel_packages')");
+    expect(autoMobileQa).toContain(".from('products')");
   });
 
   it('keeps archive-mode product persistence outside the route body', () => {

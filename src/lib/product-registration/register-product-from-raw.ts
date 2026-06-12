@@ -317,11 +317,11 @@ function attachRawFactFlightSegments(
   rawText: string,
 ): void {
   const existing = Array.isArray(itinerary.flight_segments) ? itinerary.flight_segments : [];
-  const existingHasTimes = existing.some(segment => {
+  const existingComplete = existing.length >= 2 && existing.every(segment => {
     const row = segment as { dep_time?: unknown; arr_time?: unknown };
-    return Boolean(row.dep_time || row.arr_time);
+    return Boolean(row.dep_time && row.arr_time);
   });
-  if (existingHasTimes) return;
+  if (existingComplete) return;
 
   const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
   const outboundCode = rawFacts.outbound?.code ?? rawFlightCodes[0] ?? itinerary.meta?.flight_out ?? null;
@@ -574,10 +574,19 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ? { days: v3RenderInput.itinerary_data.days ?? [] } as ItineraryDataLike
     : null;
   const preferSupplierItinerary = shouldPreferSupplierItinerary(input.itineraryData, supplierItinerary);
+  const selectedItinerary = preferSupplierItinerary
+    ? supplierItinerary
+    : input.itineraryData ?? supplierItinerary ?? (hasValidSequentialDays(v3ItineraryInput) ? v3ItineraryInput : null);
+  if (selectedItinerary) {
+    attachRawFactFlightSegments(
+      selectedItinerary as ItineraryDataLike & { meta?: Record<string, string | null | undefined>; flight_segments?: unknown },
+      extractSupplierRawDeterministicFacts(rawText),
+      ed,
+      rawText,
+    );
+  }
   const itinerary = await normalizeUploadItinerary({
-    itineraryData: preferSupplierItinerary
-      ? supplierItinerary
-      : input.itineraryData ?? supplierItinerary ?? (hasValidSequentialDays(v3ItineraryInput) ? v3ItineraryInput : null),
+    itineraryData: selectedItinerary,
     productRawText: rawText,
     destination: ed.destination,
     activeAttractions: input.activeAttractions,

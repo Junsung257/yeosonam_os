@@ -202,6 +202,10 @@ function findFlightTimeCompletenessError(input: UploadDeliverabilityInput): stri
   }
   const firstTime = times[0];
   if (outbound.dep_time === firstTime && times.length >= 5) {
+    const firstTimeLine = rawText
+      .split(/\r?\n/)
+      .find(line => line.includes(firstTime)) ?? '';
+    if (outbound.flight_no && firstTimeLine.includes(outbound.flight_no) && /출발/.test(firstTimeLine)) return null;
     return `first source time ${firstTime} looks like a meeting time and must not be reused as outbound flight departure`;
   }
   return null;

@@ -45,6 +45,8 @@ Do not report completion based only on:
 
 Those are prerequisites. They are not final proof.
 
+If post-save mobile QA finds a high or critical incident after a product has already been saved, the product must be removed from customer visibility by setting `travel_packages.status='pending_review'` and `audit_status='blocked'`. Logging to `ai_quality_log` or `admin_alerts` is not enough.
+
 ## Required Checks
 
 For every newly opened product or any repair of already-open products:
@@ -185,6 +187,7 @@ When the user reports a bad mobile landing:
 6. Patch the central engine so the same source shape cannot recreate the same failure.
 7. Add or update tests and this runbook/error registry.
 8. Re-run mobile browser proof after deployment.
+9. If the failure is found after save, confirm the package was demoted to `pending_review`/`blocked` until the repair passes strict readiness.
 
 ## 2026-06-12 Baekdu/Yanji Proof
 
