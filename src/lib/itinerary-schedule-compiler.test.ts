@@ -164,6 +164,22 @@ describe('Baekdu landing regression guards', () => {
     expect(hotelRest.entity_kind).toBe('hotel_stay');
   });
 
+  it('treats paid massage lines without inclusion evidence as optional tours', () => {
+    const paidMassage = compileScheduleItemForLanding({
+      activity: '\uC804\uC2E0\uB9C8\uC0AC\uC9C0(50\uBD84) $30/\uC778',
+      type: 'normal',
+    });
+    const includedMassage = compileScheduleItemForLanding({
+      activity: '$30 \uC0C1\uB2F9 \uC804\uC2E0\uB9C8\uC0AC\uC9C0 50\uBD84 \uC81C\uACF5',
+      type: 'normal',
+    });
+
+    expect(paidMassage.entity_kind).toBe('optional_tour');
+    expect(paidMassage.service_name).toBeNull();
+    expect(includedMassage.entity_kind).toBe('perk');
+    expect(includedMassage.service_name).toBe('\uC804\uC2E0\uB9C8\uC0AC\uC9C0');
+  });
+
   it('reclassifies stale flight and hotel-like labels before mobile landing render', () => {
     const baekduCheonji = compileScheduleItemForLanding({
       activity: '\u0031\u0034\u0034\u0032\uACC4\uB2E8 \uB4F1\uC815 \uB8E8 \uBC31\uB450\uC0B0 \uCC9C\uC9C0 \uAD00\uAD11',
