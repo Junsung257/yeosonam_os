@@ -25,6 +25,8 @@ Earlier checks proved that products existed, prices existed, itinerary days exis
 - attraction photos existed for every rendered attraction card.
 - optional-tour, price, catalog-header, and pure-transfer lines were not converted into attraction cards.
 - duplicate attraction concepts such as `Baekdu Heaven Lake` and `Heaven Lake` were collapsed.
+- source-backed flight departure/arrival times were preserved in the actual mobile flight card.
+- source itinerary lines such as key transfers, visits, and final-day stops were not silently dropped.
 - the live mobile page did not show wrong rich-card copy such as cross-region Huashan/Xi'an or Bohol massage content.
 
 ## Non-Negotiable Rule
@@ -50,16 +52,18 @@ For every newly opened product or any repair of already-open products:
 1. Compare the supplier raw source against the saved product.
 2. Confirm `product_prices` and `price_dates` agree with source-backed dates and amounts.
 3. Confirm itinerary day count and day sequence match the source.
-4. Confirm customer-visible attraction cards are supported by source phrases.
-5. Confirm every rendered attraction ID is `customer_publishable=true`.
-6. Confirm every rendered attraction card has usable media or intentionally renders text-only without wrong media.
-7. Confirm option, price, shopping, notice, catalog-header, and pure-transfer lines do not become attraction cards.
-8. Open `/packages/{id}` in a mobile viewport.
-9. Click or scroll into the itinerary tab/section.
-10. Search the rendered body text for required itinerary terms and known forbidden terms.
-11. Run the A4/mobile readiness audit.
-12. Add or update a regression fixture when the failure came from parser/matcher behavior.
-13. Add an error-registry entry when the failure was user-visible or repeated.
+4. Confirm source-backed outbound/inbound flight departure and arrival times are saved in `itinerary_data.flight_segments`.
+5. Confirm source itinerary lines that affect customer understanding are present in the saved itinerary payload.
+6. Confirm customer-visible attraction cards are supported by source phrases.
+7. Confirm every rendered attraction ID is `customer_publishable=true`.
+8. Confirm every rendered attraction card has usable media or intentionally renders text-only without wrong media.
+9. Confirm option, price, shopping, notice, catalog-header, and pure-transfer lines do not become attraction cards.
+10. Open `/packages/{id}` in a mobile viewport.
+11. Click or scroll into the itinerary tab/section.
+12. Search the rendered body text for required itinerary terms, required flight times, and known forbidden terms.
+13. Run the A4/mobile readiness audit.
+14. Add or update a regression fixture when the failure came from parser/matcher behavior.
+15. Add an error-registry entry when the failure was user-visible or repeated.
 
 ## Commands
 
@@ -91,6 +95,8 @@ Targeted Baekdu/Yanji repair and audit:
 ```bash
 npx tsx scripts/repair-baekdu-mobile-landing.ts
 npx tsx scripts/repair-baekdu-mobile-landing.ts --apply
+npx tsx scripts/repair-baekdu-flight-and-source-lines.ts
+npx tsx scripts/repair-baekdu-flight-and-source-lines.ts --apply
 ```
 
 ## Browser Proof Requirement
@@ -101,9 +107,19 @@ The browser check must verify:
 
 - HTTP status is 200.
 - the itinerary tab/section is reachable.
+- source-backed outbound and inbound flight times are visible.
 - required source terms are visible in the rendered customer text.
 - known wrong terms are absent.
 - images are present when the itinerary contains attraction cards with media.
+
+For Baekdu/Yanji, the required flight-time checks include:
+
+```text
+BX337: 09:40 -> 11:30
+BX338: 12:30 -> 16:25
+BX3175: 09:05 -> 11:00
+BX3185: 12:00 -> 16:00
+```
 
 For Baekdu/Yanji, the forbidden regression terms include:
 

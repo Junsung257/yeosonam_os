@@ -32,6 +32,7 @@ import { normalizeUploadTitle } from './title-normalization';
 import type { SourceEvidenceSpan, StandardProductRegistrationObject } from './types';
 
 const NOTICE_TYPES = new Set<NoticeItem['type']>(['CRITICAL', 'PAYMENT', 'POLICY', 'INFO']);
+type SupplierFlightFacts = ReturnType<typeof extractSupplierRawDeterministicFacts>;
 
 function hashRawText(rawText: string): string {
   return createHash('sha256').update(rawText).digest('hex');
@@ -290,15 +291,74 @@ function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDat
     return null;
   }
 
-  const itinerary = (fallbackItinerary ?? {}) as ItineraryDataLike & { meta?: Record<string, string | null | undefined> };
+  const itinerary = (fallbackItinerary ?? {}) as ItineraryDataLike & {
+    meta?: Record<string, string | null | undefined>;
+    flight_segments?: unknown;
+  };
   itinerary.meta = {
     ...(itinerary.meta ?? {}),
     airline: itinerary.meta?.airline ?? ed.airline ?? rawFacts.airline,
     flight_out: itinerary.meta?.flight_out ?? fallbackFlightOut,
     flight_in: itinerary.meta?.flight_in ?? fallbackFlightIn,
+    flight_out_time: itinerary.meta?.flight_out_time ?? rawFacts.outbound?.departure.time ?? ed.flight_info?.depart,
+    flight_out_arrive_time: itinerary.meta?.flight_out_arrive_time ?? rawFacts.outbound?.arrival.time ?? ed.flight_info?.arrive,
+    flight_in_time: itinerary.meta?.flight_in_time ?? rawFacts.inbound?.departure.time ?? ed.flight_info?.return_depart,
+    flight_in_arrive_time: itinerary.meta?.flight_in_arrive_time ?? rawFacts.inbound?.arrival.time ?? ed.flight_info?.return_arrive,
     departure_airport: itinerary.meta?.departure_airport ?? ed.departure_airport ?? rawFacts.departureAirport,
   };
+  attachRawFactFlightSegments(itinerary, rawFacts, ed, rawText);
   return itinerary;
+}
+
+function attachRawFactFlightSegments(
+  itinerary: ItineraryDataLike & { meta?: Record<string, string | null | undefined>; flight_segments?: unknown },
+  rawFacts: SupplierFlightFacts,
+  ed: ExtractedData,
+  rawText: string,
+): void {
+  const existing = Array.isArray(itinerary.flight_segments) ? itinerary.flight_segments : [];
+  const existingHasTimes = existing.some(segment => {
+    const row = segment as { dep_time?: unknown; arr_time?: unknown };
+    return Boolean(row.dep_time || row.arr_time);
+  });
+  if (existingHasTimes) return;
+
+  const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
+  const outboundCode = rawFacts.outbound?.code ?? rawFlightCodes[0] ?? itinerary.meta?.flight_out ?? null;
+  const inboundCode = rawFacts.inbound?.code ?? rawFlightCodes.at(-1) ?? itinerary.meta?.flight_in ?? null;
+  const outboundDep = rawFacts.outbound?.departure.time ?? itinerary.meta?.flight_out_time ?? ed.flight_info?.depart ?? null;
+  const outboundArr = rawFacts.outbound?.arrival.time ?? itinerary.meta?.flight_out_arrive_time ?? ed.flight_info?.arrive ?? null;
+  const inboundDep = rawFacts.inbound?.departure.time ?? itinerary.meta?.flight_in_time ?? ed.flight_info?.return_depart ?? null;
+  const inboundArr = rawFacts.inbound?.arrival.time ?? itinerary.meta?.flight_in_arrive_time ?? ed.flight_info?.return_arrive ?? null;
+  const days = Array.isArray((itinerary as { days?: unknown }).days) ? (itinerary as { days: unknown[] }).days : [];
+  const lastDayIndex = Math.max(0, days.length - 1);
+
+  const segments = [];
+  if (outboundCode && (outboundDep || outboundArr)) {
+    segments.push({
+      leg: 'outbound',
+      flight_no: outboundCode,
+      dep_airport: rawFacts.outbound?.departure.airport ?? ed.departure_airport ?? rawFacts.departureAirport ?? null,
+      dep_time: outboundDep,
+      arr_airport: rawFacts.outbound?.arrival.airport ?? ed.destination ?? null,
+      arr_time: outboundArr,
+      arr_day_offset: 0,
+      day_pair: [0, 0],
+    });
+  }
+  if (inboundCode && (inboundDep || inboundArr)) {
+    segments.push({
+      leg: 'inbound',
+      flight_no: inboundCode,
+      dep_airport: rawFacts.inbound?.departure.airport ?? ed.destination ?? null,
+      dep_time: inboundDep,
+      arr_airport: rawFacts.inbound?.arrival.airport ?? ed.departure_airport ?? rawFacts.departureAirport ?? null,
+      arr_time: inboundArr,
+      arr_day_offset: 0,
+      day_pair: [lastDayIndex, lastDayIndex],
+    });
+  }
+  if (segments.length > 0) itinerary.flight_segments = segments;
 }
 
 function applyDeterministicProductFieldRecovery(ed: ExtractedData, rawText: string): void {
@@ -540,6 +600,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     destination: ed.destination,
     destinationCode: input.destinationCode ?? destination.destinationCode,
     internalCode: input.internalCode,
+    itineraryData: itinerary.itineraryDataToSave,
     itineraryDays: itinerary.itineraryDataToSave?.days ?? itinerary.itineraryInput?.days ?? [],
     durationDays: ed.duration,
     rawText,

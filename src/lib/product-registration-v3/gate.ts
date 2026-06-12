@@ -29,6 +29,16 @@ export function evaluateProductRegistrationV3Gate(
   for (const variant of ledger.variants) {
     check(checks, `${variant.variant_key}.price`, variant.price_calendar.length > 0, 'info', 'variant has price evidence; final price is owned by ProductRegistrationResult pricing');
     check(checks, `${variant.variant_key}.flight`, variant.flight_segments.length > 0, 'critical', 'variant has flight evidence');
+    check(
+      checks,
+      `${variant.variant_key}.flight_times_complete`,
+      variant.flight_segments
+        .filter(segment => segment.leg === 'outbound' || segment.leg === 'inbound')
+        .filter(segment => Boolean(segment.dep_time || segment.arr_time))
+        .every(segment => Boolean(segment.dep_time && segment.arr_time)),
+      'critical',
+      'source-timed outbound/inbound flight segments must include both departure and arrival times',
+    );
     check(checks, `${variant.variant_key}.days`, variant.days.length > 0, 'critical', 'variant has itinerary days');
     check(checks, `${variant.variant_key}.minimum_departure`, Boolean(variant.minimum_departure), 'high', 'minimum departure evidence exists');
     check(checks, `${variant.variant_key}.inclusions`, variant.inclusions.length > 0, 'high', 'inclusion evidence exists');

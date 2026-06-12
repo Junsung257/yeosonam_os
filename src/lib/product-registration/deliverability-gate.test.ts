@@ -21,6 +21,65 @@ describe('evaluateUploadDeliverability', () => {
     expect(result.blockers.join(' | ')).toContain('itinerary duplicate day number');
   });
 
+  it('blocks source-backed round-trip flight times when saved flight segments are incomplete', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 1429000, adult_selling_price: 1429000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-16', price: 1429000, confirmed: false }],
+      destination: 'Yanji',
+      destinationCode: 'YNJ',
+      internalCode: 'PUS-AA-YNJ-04-0001',
+      durationDays: 4,
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }],
+      itineraryData: {
+        flight_segments: [
+          { leg: 'outbound', flight_no: 'BX337', dep_time: null, arr_time: null },
+          { leg: 'inbound', flight_no: 'BX338', dep_time: null, arr_time: null },
+        ],
+      },
+      rawText: [
+        'BX337',
+        '06:30',
+        '09:40',
+        '11:30',
+        'BX338',
+        '12:30',
+        '16:25',
+      ].join('\n'),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join('\n')).toContain('flight time source mismatch');
+  });
+
+  it('accepts source-backed round-trip flight times when outbound and inbound segments are complete', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-16', day_of_week: null, net_price: 1429000, adult_selling_price: 1429000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-16', price: 1429000, confirmed: false }],
+      destination: 'Yanji',
+      destinationCode: 'YNJ',
+      internalCode: 'PUS-AA-YNJ-04-0001',
+      durationDays: 4,
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }],
+      itineraryData: {
+        flight_segments: [
+          { leg: 'outbound', flight_no: 'BX337', dep_time: '09:40', arr_time: '11:30' },
+          { leg: 'inbound', flight_no: 'BX338', dep_time: '12:30', arr_time: '16:25' },
+        ],
+      },
+      rawText: [
+        'BX337',
+        '06:30',
+        '09:40',
+        '11:30',
+        'BX338',
+        '12:30',
+        '16:25',
+      ].join('\n'),
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('blocks optional-tour price pollution when tiny ticket prices become product candidates', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [{ target_date: '2026-07-01', day_of_week: null, net_price: 50000, adult_selling_price: 50000, child_price: null, note: null }],

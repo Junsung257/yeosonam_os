@@ -197,6 +197,24 @@ describe('product-registration-v3 draft ledger pipeline', () => {
     expect(result.gate_result.checks.find(check => check.id.endsWith('meeting_not_flight'))?.status).toBe('pass');
   });
 
+  it('blocks customer readiness when flight segments lack source-backed arrival times', async () => {
+    const raw = [
+      'Product: Incomplete Flight Times 3D',
+      'Price: 999,000 KRW / minimum 4',
+      'DAY 1 KE123 departure 10:00',
+      'DAY 2 City attraction',
+      'DAY 3 KE124 departure 13:00',
+      'Include hotel meal',
+      'Exclude personal expense',
+    ].join('\n');
+
+    const result = await runProductRegistrationV3(raw);
+
+    expect(result.ledger.variants[0].flight_segments).toHaveLength(2);
+    expect(result.gate_result.status).toBe('blocked');
+    expect(result.gate_result.checks.find(check => check.id.endsWith('flight_times_complete'))?.status).toBe('fail');
+  });
+
   it('uses line-level evidence and never whole raw text as fallback evidence', async () => {
     const result = await runProductRegistrationV3(fixtures[0].raw);
     const option = result.ledger.variants[0].options.find(item => item.duration_minutes === 60);

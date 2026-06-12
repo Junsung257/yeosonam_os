@@ -1,5 +1,27 @@
 # Product Registration Errors
 
+## ERR-BAEKDU-flight-times-and-source-lines-missing@2026-06-12
+
+- **Discovered**: 2026-06-12
+- **Domain**: product registration | flight parsing | mobile landing | publish gate
+- **Products**: 11 active Yanji/Baekdu variants:
+  `06c8cb20`, `de1c3c29`, `4586930d`, `1d5776d4`, `063825a7`, `ab671acd`, `f0fe98e2`, `d29809e7`, `3c3ed200`, `64019572`, `1af1690c`.
+- **Source vs result**: Supplier raw text contained source-backed flight times, for example `BX337 09:40 -> 11:30` and `BX338 12:30 -> 16:25`, but the customer mobile landing rendered flight cards without times. Some source itinerary lines such as Baekdu north/south-slope transfer and Jindallae Square were also missing from mobile text.
+- **Root cause**: The previous verification treated flight-code existence as enough. Registration copied `flight_out` and `flight_in` into itinerary meta, but did not always preserve `flight_out_time`, arrival times, or explicit `flight_segments`. V3 gate and upload deliverability also did not fail when source-backed flight times were missing from the saved customer render payload.
+- **Fix**:
+  - `registerProductFromRaw()` now preserves source-backed outbound/inbound departure and arrival times in itinerary meta and `flight_segments`.
+  - V3 gate now fails source-timed flight segments that have only partial times.
+  - Upload deliverability now blocks when raw text has round-trip flight-time evidence but saved `itinerary_data.flight_segments` is missing or incomplete.
+  - Existing Baekdu/Yanji active products were repaired with `scripts/repair-baekdu-flight-and-source-lines.ts --apply`.
+- **Verification**:
+  - `npx vitest run src/lib/product-registration/deliverability-gate.test.ts src/lib/product-registration-v3/product-registration-v3.test.ts src/lib/product-registration-v2/baekdu-v2.test.ts`
+  - `npm run type-check`
+  - Live mobile Playwright verification across all 11 `/packages/{id}` pages: HTTP 200, expected flight times visible, forbidden Xi'an/Huashan and Bohol terms absent, Jindallae Square visible.
+- **Status**: FIXED
+- **Prevention**: A mobile landing cannot be called ready unless source-backed flight times are visible in the actual mobile page. For supplier documents with flight-code/time tables, tests and live checks must assert departure and arrival times, not only flight numbers.
+
+---
+
 ## ERR-BAEKDU-mobile-landing-semantic-gap@2026-06-12
 
 - **Discovered**: 2026-06-12

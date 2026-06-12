@@ -13,6 +13,7 @@ export type UploadDeliverabilityInput = {
   destination?: string | null;
   destinationCode?: string | null;
   internalCode?: string | null;
+  itineraryData?: unknown;
   itineraryDays?: ItineraryScheduleQualityDay[] | null;
   durationDays?: number | null;
   rawText?: string | null;
@@ -172,6 +173,40 @@ function findMissingCustomerSellingPrice(input: UploadDeliverabilityInput): stri
   return `adult_selling_price missing for positive product_prices row ${date} net ${missing.net_price.toLocaleString()} KRW`;
 }
 
+function findFlightTimeCompletenessError(input: UploadDeliverabilityInput): string | null {
+  const rawText = input.rawText ?? '';
+  const flightCodes = [...rawText.matchAll(/\b[A-Z]{2}\d{2,4}\b/g)].map(match => match[0]);
+  const times = [...rawText.matchAll(/\b\d{1,2}:\d{2}\b/g)].map(match => match[0]);
+  if (new Set(flightCodes).size < 2 || times.length < 4) return null;
+
+  const itineraryData = input.itineraryData as { flight_segments?: unknown } | null | undefined;
+  const segments = Array.isArray(itineraryData?.flight_segments)
+    ? itineraryData.flight_segments as Array<{
+      leg?: string | null;
+      flight_no?: string | null;
+      dep_time?: string | null;
+      arr_time?: string | null;
+    }>
+    : [];
+  const outbound = segments.find(segment => segment.leg === 'outbound') ?? segments[0];
+  const inbound = segments.find(segment => segment.leg === 'inbound') ?? segments[1];
+  if (!outbound || !inbound) {
+    return 'source has round-trip flight times but itinerary_data.flight_segments is missing outbound/inbound segments';
+  }
+  if (!outbound.dep_time || !outbound.arr_time || !inbound.dep_time || !inbound.arr_time) {
+    return [
+      `source has round-trip flight times but saved segments are incomplete`,
+      `outbound ${outbound.flight_no ?? '?'} ${outbound.dep_time ?? '?'}-${outbound.arr_time ?? '?'}`,
+      `inbound ${inbound.flight_no ?? '?'} ${inbound.dep_time ?? '?'}-${inbound.arr_time ?? '?'}`,
+    ].join(': ');
+  }
+  const firstTime = times[0];
+  if (outbound.dep_time === firstTime && times.length >= 5) {
+    return `first source time ${firstTime} looks like a meeting time and must not be reused as outbound flight departure`;
+  }
+  return null;
+}
+
 export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): UploadDeliverabilityResult {
   const blockers: string[] = [];
   const destination = input.destination?.trim();
@@ -244,6 +279,11 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
   }
   if (scheduleQualityIssues.length > 5) {
     blockers.push(`itinerary schedule quality error: ${scheduleQualityIssues.length - 5} additional polluted schedule activities.`);
+  }
+
+  const flightTimeError = findFlightTimeCompletenessError(input);
+  if (flightTimeError) {
+    blockers.push(`flight time source mismatch: ${flightTimeError}`);
   }
 
   const rawText = input.rawText ?? '';
