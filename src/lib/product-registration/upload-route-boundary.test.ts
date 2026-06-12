@@ -299,6 +299,13 @@ describe('upload route registration pipeline boundary', () => {
     expect(contextLoader).toContain('export async function loadUploadRegistrationContext');
   });
 
+  it('loads only customer-publishable attractions for upload enrichment', () => {
+    const contextLoader = readUploadContextLoader();
+
+    expect(contextLoader).toContain('customer_publishable');
+    expect(contextLoader).toContain(".eq('customer_publishable', true)");
+  });
+
   it('keeps archive-mode product persistence outside the route body', () => {
     const route = readUploadRoute();
     const pipeline = readUploadRegistrationPipeline();

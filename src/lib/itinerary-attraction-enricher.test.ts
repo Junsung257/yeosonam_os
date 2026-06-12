@@ -144,4 +144,76 @@ describe('enrichItineraryWithAttractionReferences', () => {
     expect(shouldAttemptAttractionMatch({ activity: '$30/\uC778 \uBC1C\uC81C\uC678/\uD301\uBCC4\uB3C4', type: 'normal' })).toBe(false);
     expect(shouldAttemptAttractionMatch({ activity: '\uC9C4\uB2EC\uB798\uAD11\uC7A5', type: 'normal' })).toBe(true);
   });
+
+  it('does not attach Baekdu heaven lake cards to Akhwa waterfall or optional price rows', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 2,
+            schedule: [
+              {
+                activity: '\uBC31\uB450\uC0B0 \uBD81\uCABD \uBE44\uD0C8\uC5D0 \uBC1C\uB2EC\uB41C \uC0BC\uB3C4\uBC31\uD558 \uC0C1\uB958\uC5D0 \uC704\uCE58\uD55C \uC545\uD654\uD3ED\uD3EC',
+                attraction_ids: ['heaven-lake'],
+              },
+              {
+                activity: '\u203B\uD604\uC9C0\uC9C0\uBD88\uC635\uC158 : \uBC31\uB450\uC0B05D\uD50C\uB77C\uC789 \uCCB4\uD5D8 $40/\uC778',
+                attraction_ids: ['heaven-lake'],
+                entity_kind: 'optional_tour',
+              },
+            ],
+          },
+        ],
+      },
+      [
+        {
+          id: 'heaven-lake',
+          name: '\uBC31\uB450\uC0B0 \uCC9C\uC9C0',
+          short_desc: '\uBC31\uB450\uC0B0 \uC815\uC0C1\uC758 \uD654\uC0B0\uD638',
+          country: 'CN',
+          region: '\uBC31\uB450\uC0B0',
+        },
+      ],
+      '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toBeUndefined();
+    expect(schedule[1].attraction_ids).toBeUndefined();
+    expect(res.matchedScheduleItemCount).toBe(0);
+  });
+
+  it('deduplicates overlapping Baekdu attraction cards and strips pure transfer rows', () => {
+    const res = enrichItineraryWithAttractionReferences(
+      {
+        days: [
+          {
+            day: 3,
+            schedule: [
+              {
+                activity: '\uC9DA\uCC28\uB85C \uBBFC\uC871\uC758 \uC601\uC0B0 \uBC31\uB450\uC0B0 \uC815\uC0C1 \uCC9C\uBB38\uBD09 \uB4F1\uC815, \uCC9C\uC9C0\uC870\uB9DD',
+                attraction_ids: ['heaven-lake', 'cheonji'],
+              },
+              {
+                activity: '\uBC31\uB450\uC0B0 \uC11C\uD30C\uB85C \uC774\uB3D9',
+                attraction_ids: ['west-slope'],
+                entity_kind: 'transfer',
+              },
+            ],
+          },
+        ],
+      },
+      [
+        { id: 'heaven-lake', name: '\uBC31\uB450\uC0B0 \uCC9C\uC9C0', short_desc: '\uBC31\uB450\uC0B0 \uC815\uC0C1\uC758 \uD654\uC0B0\uD638', region: '\uBC31\uB450\uC0B0' },
+        { id: 'cheonji', name: '\uCC9C\uC9C0', short_desc: '\uD654\uC0B0\uD638', region: '\uBC31\uB450\uC0B0' },
+        { id: 'west-slope', name: '\uBC31\uB450\uC0B0\uC11C\uD30C', short_desc: '\uBC31\uB450\uC0B0 \uC11C\uCABD \uC0AC\uBA74', region: '\uBC31\uB450\uC0B0' },
+      ],
+      '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+    );
+
+    const schedule = res.itineraryData?.days?.[0]?.schedule ?? [];
+    expect(schedule[0].attraction_ids).toEqual(['heaven-lake']);
+    expect(schedule[0].attraction_names).toEqual(['\uBC31\uB450\uC0B0 \uCC9C\uC9C0']);
+    expect(schedule[1].attraction_ids).toBeUndefined();
+  });
 });

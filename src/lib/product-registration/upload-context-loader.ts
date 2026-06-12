@@ -6,7 +6,7 @@ import type {
   UploadLandOperatorRow,
 } from '@/lib/product-registration/upload-supplier-context';
 
-const UPLOAD_ATTRACTION_SELECT = 'id, name, short_desc, long_desc, aliases, country, region, category, emoji';
+const UPLOAD_ATTRACTION_SELECT = 'id, name, short_desc, long_desc, aliases, country, region, category, emoji, customer_publishable';
 const UPLOAD_ATTRACTION_PAGE_SIZE = 1000;
 const UPLOAD_ATTRACTION_MAX_ROWS = 8000;
 
@@ -27,6 +27,7 @@ async function loadActiveAttractionsForUpload(input: {
       .from('attractions')
       .select(UPLOAD_ATTRACTION_SELECT)
       .eq('is_active', true)
+      .eq('customer_publishable', true)
       .range(from, to);
 
     if (error) {
