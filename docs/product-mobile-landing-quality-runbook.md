@@ -132,14 +132,21 @@ For Baekdu/Yanji, the forbidden regression terms include:
 
 ## Attraction Matching Rules
 
-Upload enrichment may only use attractions that are publishable for customers:
+Upload enrichment must use all active attraction masters for semantic matching:
 
 ```text
 attractions.is_active = true
-attractions.customer_publishable = true
 ```
 
-If a phrase contains an attraction-looking term but the matching master is internal, unverified, region-mismatched, or media-broken, the itinerary phrase must remain as normal text. Do not attach a wrong rich card.
+Do not filter matching candidates by `customer_publishable`. That flag is a customer-rendering quality flag, not a semantic matching flag. Filtering upload matching by `customer_publishable=true` caused active masters such as `악화폭포`, `연길민속촌`, `수목한계선`, and `36호 경계비` to be invisible to the registration engine even though they were already registered.
+
+Customer rendering must still be protected separately:
+
+- A matched active master may be used to preserve `attraction_ids` and prevent unmatched queues.
+- A rich customer card may render only when the render contract has enough safe customer-facing data: destination-compatible master, source-supported phrase, and usable text/media or intentional text-only fallback.
+- If a master is internal, unverified, region-mismatched, or media-broken, the itinerary phrase must remain visible as normal schedule text and must not attach a wrong rich card.
+
+The mobile readiness audit must fail when a registered active attraction term appears in a customer-visible schedule line but the saved item has no `attraction_ids`. Pure transfer lines such as `백두산 북파로 이동 (15분 소요)` are exempt unless they also contain visit/tour/walk/viewing hints.
 
 Strip attraction references from:
 
@@ -156,6 +163,15 @@ Deduplicate overlapping concepts:
 - prefer a destination-specific spaced canonical name over duplicate spacing variants.
 - never map `36호 경계비` to `37호 경계비`.
 - never map `악화폭포` to `백두산 천지` only because the same sentence contains `백두산`.
+
+Route-scope compatibility must reflect the actual package course, not only the title destination string. For Yanji/Baekdu packages, attraction matching includes the recurring course regions:
+
+```text
+Yanji, Baekdu/Changbai Mountain, Yanbian, Tumen, Longjing,
+Songjianghe, Erdaobaihe, North Slope, West Slope, South Slope
+```
+
+This prevents registered terms such as `두만강 강변공원` from being excluded only because the product destination says `연길/백두산` while the attraction master region says `도문` or `연변`.
 
 ## Incident Response
 

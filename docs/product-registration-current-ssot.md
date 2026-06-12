@@ -1,6 +1,6 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-06-08
+Last updated: 2026-06-12
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -151,6 +151,7 @@ Implementation status:
 - The runner persists events to `product_registration_improvement_events` after the product loop. This is append-only and must not store supplier raw text, only hashes, blockers, evidence spans, render audit results, and rule/fixture candidate flags.
 - Upload responses expose `learningEngine.mode = "shadow"` for macro promotion because production parser mutation remains disabled; micro deterministic repair can affect the current upload only inside the bounded pre-save loop.
 - The integration test `src/lib/product-registration/learning-engine-integration.test.ts` must prove persisted micro events can be loaded into a macro report, produce promotion work items, and score 100 only when full regression is marked verified.
+- Attraction matching candidates for upload enrichment are all `attractions.is_active=true` masters, not only `customer_publishable=true` masters. `customer_publishable` controls rich customer rendering quality, not whether the engine can recognize a registered master. Mobile/A4 readiness must fail if a registered active attraction term appears in a customer-visible schedule line without saved `attraction_ids`, excluding pure transfer-only lines.
 
 ### Macro Pattern Mining Contract
 

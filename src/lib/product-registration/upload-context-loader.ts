@@ -27,7 +27,6 @@ async function loadActiveAttractionsForUpload(input: {
       .from('attractions')
       .select(UPLOAD_ATTRACTION_SELECT)
       .eq('is_active', true)
-      .eq('customer_publishable', true)
       .range(from, to);
 
     if (error) {

@@ -224,3 +224,41 @@ describe('WeakMap 캐시 동작', () => {
     expect(r2?.name).not.toBe('호이안 야경');
   });
 });
+
+describe('regional route scope matching', () => {
+  const baekduRouteAttractions: AttractionData[] = [
+    attr({
+      id: 'tumen-riverside-park',
+      name: '\uB450\uB9CC\uAC15 \uAC15\uBCC0\uACF5\uC6D0',
+      region: '\uB3C4\uBB38',
+      country: 'CN',
+      category: 'sightseeing',
+    }),
+    attr({
+      id: 'yanji-folk-village',
+      name: '\uC5F0\uAE38\uBBFC\uC18D\uCD0C',
+      aliases: ['\uC5F0\uAE38 \uBBFC\uC18D\uCD0C'],
+      region: '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+      country: 'CN',
+      category: 'sightseeing',
+    }),
+  ];
+
+  it('keeps Domun attractions in Yanji/Baekdu route scope', () => {
+    const matches = matchAttractions(
+      '\uC911\uAD6D-\uBD81\uD55C \uB450\uB9CC\uAC15 \uC911\uC870\uAD6D\uACBD\uC9C0\uB300, \uB450\uB9CC\uAC15 \uAC15\uBCC0\uACF5\uC6D0',
+      baekduRouteAttractions,
+      '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+    );
+    expect(matches.map(match => match.name)).toContain('\uB450\uB9CC\uAC15 \uAC15\uBCC0\uACF5\uC6D0');
+  });
+
+  it('matches spaced aliases in Yanji/Baekdu route scope', () => {
+    const matched = matchAttraction(
+      '\uC5F0\uAE38 \uBBFC\uC18D\uCD0C \uAD00\uAD11',
+      baekduRouteAttractions,
+      '\uC5F0\uAE38/\uBC31\uB450\uC0B0',
+    );
+    expect(matched?.name).toBe('\uC5F0\uAE38\uBBFC\uC18D\uCD0C');
+  });
+});

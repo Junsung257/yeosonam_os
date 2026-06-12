@@ -1,4 +1,4 @@
-import { matchAttractions, type AttractionData } from '@/lib/attraction-matcher';
+import { destinationAllowsAttractionScope, matchAttractions, type AttractionData } from '@/lib/attraction-matcher';
 import { extractAttractionCandidates } from '@/lib/itinerary-attraction-candidates';
 
 export interface ItineraryScheduleItem {
@@ -61,14 +61,7 @@ function hasTermBoundary(text: string, term: string): boolean {
 }
 
 function destinationAllowsAttraction(attraction: AttractionData, destination?: string): boolean {
-  const dest = normalizeDirectTerm(destination);
-  if (!dest) return true;
-  const region = normalizeDirectTerm(attraction.region);
-  if (region) {
-    const regionTokens = region.split(/[,/|&]+/).map(token => token.trim()).filter(Boolean);
-    return dest.includes(region) || region.includes(dest) || regionTokens.some(token => token.length >= 2 && dest.includes(token));
-  }
-  return true;
+  return destinationAllowsAttractionScope(attraction, destination);
 }
 
 function directTermOccurs(text: string, term: string): boolean {

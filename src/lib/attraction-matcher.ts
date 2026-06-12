@@ -139,6 +139,39 @@ export interface AttractionIndex {
  */
 const NON_ATTRACTION_CATEGORIES = new Set(['accommodation', 'mrt_product']);
 
+function normalizeScope(value: string | null | undefined): string {
+  return (value ?? '').toLowerCase().replace(/\s+/g, '').trim();
+}
+
+const YANJI_BAEKDU_DESTINATION_RE =
+  /\uC5F0\uAE38|\uBC31\uB450\uC0B0|\uC7A5\uBC31\uC0B0|\uBC31\uB450|\uC5F0\uBCC0/;
+const YANJI_BAEKDU_REGION_RE =
+  /\uC5F0\uAE38|\uBC31\uB450\uC0B0|\uC7A5\uBC31\uC0B0|\uC5F0\uBCC0|\uB3C4\uBB38|\uC6A9\uC815|\uC1A1\uAC15\uD558|\uC774\uB3C4\uBC31\uD558|\uB0A8\uD30C|\uBD81\uD30C|\uC11C\uD30C/;
+
+export function destinationAllowsAttractionScope(
+  attraction: AttractionData,
+  destination?: string,
+): boolean {
+  const dest = normalizeScope(destination);
+  if (!dest) return true;
+
+  const region = normalizeScope(attraction.region);
+  const country = normalizeScope(attraction.country);
+  if (!region) return true;
+  if (dest.includes(region) || region.includes(dest)) return true;
+  if (country && dest.includes(country)) return true;
+
+  const regionTokens = region
+    .split(/[,/|&]+/)
+    .map(token => token.trim())
+    .filter(Boolean);
+  if (regionTokens.some(token => token.length >= 2 && dest.includes(token))) return true;
+
+  if (YANJI_BAEKDU_DESTINATION_RE.test(dest) && YANJI_BAEKDU_REGION_RE.test(region)) return true;
+
+  return false;
+}
+
 export function buildAttractionIndex(
   attractions: AttractionData[],
   destination?: string,
@@ -147,10 +180,7 @@ export function buildAttractionIndex(
   const degraded = destTrim.length === 0;
   // 1차: destination filter
   const destFiltered = destTrim
-    ? attractions.filter(a =>
-        !a.region || !destTrim ||
-        destTrim.includes(a.region) || (a.region && a.region.includes(destTrim)) ||
-        (a.country && destTrim.includes(a.country)))
+    ? attractions.filter(a => destinationAllowsAttractionScope(a, destTrim))
     : attractions;
   // 2차: 호텔/MRT 상품 제외 (활동 매칭 대상 아님)
   const filtered = destFiltered.filter(a => !a.category || !NON_ATTRACTION_CATEGORIES.has(a.category));
