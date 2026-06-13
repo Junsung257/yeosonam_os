@@ -3,7 +3,7 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { BANNED_CLICHES, runQualityGates } from '@/lib/blog-quality-gate';
+import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, ANGLE_PRESETS, type AngleType } from '@/lib/content-generator';
 import { notifyIndexing } from '@/lib/indexing';
@@ -36,13 +36,18 @@ import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
-import { repairBlogEditorialQuality } from '@/lib/blog-editorial-repair';
+import {
+  repairBlogEditorialQuality,
+  repairBlogStructureQuality,
+  repairKeywordDensityToTarget,
+} from '@/lib/blog-editorial-repair';
 import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import {
   buildGoogleVisibilitySnapshot,
   buildNaverVisibilitySnapshot,
   recordBlogVisibilitySnapshot,
 } from '@/lib/blog-visibility-snapshots';
+import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -72,6 +77,9 @@ export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 const MAX_BATCH = 4; // daily quality quota: 3-4 posts/day, never bulk-publish beyond the target.
+const CLAIM_POOL_MULTIPLIER = 5;
+const MAX_CANDIDATE_POOL = 20;
+const MAX_QUALITY_REPAIR_ROUNDS = 3;
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
 
@@ -316,6 +324,114 @@ function repairAiReadableStructure(markdown: string, item: any, primaryKeyword?:
   return repaired;
 }
 
+function buildQualityGateInput(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+) {
+  return {
+    blog_html: generated.blog_html,
+    slug: generated.slug,
+    destination: item.destination,
+    angle_type: item.angle_type,
+    blog_type: blogType,
+    primary_keyword: primaryKeyword,
+    category: item.category,
+    content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+    product_id: item.product_id ?? null,
+  };
+}
+
+async function runGeneratedQualityGates(
+  generated: GeneratedBlog,
+  item: any,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): Promise<QualityGateReport> {
+  return runQualityGates(buildQualityGateInput(generated, item, blogType, primaryKeyword));
+}
+
+function failedGateSet(qa: QualityGateReport): Set<string> {
+  return new Set(qa.gates.filter(gate => !gate.passed).map(gate => gate.gate));
+}
+
+async function repairFailedQualityGates(
+  generated: GeneratedBlog,
+  item: any,
+  qa: QualityGateReport,
+  blogType: 'product' | 'info',
+  primaryKeyword?: string | null,
+): Promise<QualityGateReport> {
+  for (let round = 1; round <= MAX_QUALITY_REPAIR_ROUNDS && !qa.passed; round += 1) {
+    const failed = failedGateSet(qa);
+    const changes: string[] = [];
+    let changed = false;
+
+    if (failed.has('structure_integrity') || failed.has('intent_quality') || failed.has('render_integrity')) {
+      const structureRepair = repairBlogStructureQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        angleType: item.angle_type,
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (structureRepair.changed) {
+        generated.blog_html = structureRepair.blogHtml;
+        changes.push(...structureRepair.changes);
+        changed = true;
+      }
+    }
+
+    if (failed.has('keyword_density')) {
+      const densityRepair = repairKeywordDensityToTarget(generated.blog_html, primaryKeyword, blogType);
+      if (densityRepair.changed) {
+        generated.blog_html = densityRepair.blogHtml;
+        changes.push(`keyword_density_${densityRepair.beforeCount}_to_${densityRepair.afterCount}`);
+        changed = true;
+      }
+    }
+
+    if (failed.has('links')) {
+      const before = generated.blog_html;
+      generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
+      if (generated.blog_html !== before) {
+        changes.push('forced_official_reference_links');
+        changed = true;
+      }
+    }
+
+    if (failed.has('hook')) {
+      const before = generated.blog_html;
+      generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
+      if (generated.blog_html !== before) {
+        changes.push('strengthened_intro_hook');
+        changed = true;
+      }
+    }
+
+    if (failed.has('ai_readability') || failed.has('readability')) {
+      const before = generated.blog_html;
+      generated.blog_html = repairAiReadableStructure(generated.blog_html, item, primaryKeyword);
+      if (generated.blog_html !== before) {
+        changes.push('repaired_ai_readability');
+        changed = true;
+      }
+    }
+
+    if (!changed) break;
+
+    generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
+    qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
+    console.log(`[blog-publisher] quality repair round ${round}: ${changes.join(', ')} -> passed=${qa.passed}`);
+  }
+
+  return qa;
+}
+
 async function getActiveBlogStyleGuide(): Promise<{ content: string; version: string }> {
   if (blogStyleGuideCache) return blogStyleGuideCache;
   const { data: promptRow } = await supabaseAdmin
@@ -366,8 +482,12 @@ async function runBlogPublisher(request: NextRequest) {
     }
 
     // 원자적 큐 클레임 — FOR UPDATE SKIP LOCKED 로 중복 발행 방지
+    const claimLimit = Math.min(
+      MAX_CANDIDATE_POOL,
+      Math.max(MAX_BATCH, remainingToday * CLAIM_POOL_MULTIPLIER),
+    );
     const { data: queue } = await supabaseAdmin.rpc('claim_queue_items', {
-      limit_rows: Math.min(MAX_BATCH, remainingToday),
+      limit_rows: claimLimit,
     });
 
     if (!queue || queue.length === 0) {
@@ -388,7 +508,11 @@ async function runBlogPublisher(request: NextRequest) {
     const eligibleByCardNewsId =
       cardNewsIds.length > 0 ? await getEarliestBlogPublishEligibleMsBatch(cardNewsIds) : new Map<string, number>();
 
+    let publishedThisRun = 0;
     for (const item of queue) {
+      if (publishedThisRun >= remainingToday) {
+        break;
+      }
       // 남은 시간 체크 — 30초 미만이면 중단
       const elapsed = Date.now() - startTime;
       const remaining = MAX_EXEC_MS - elapsed;
@@ -399,6 +523,9 @@ async function runBlogPublisher(request: NextRequest) {
       try {
         const r = await processQueueItem(item, eligibleByCardNewsId);
         results.push(r);
+        if (r.status === 'published') {
+          publishedThisRun += 1;
+        }
         if (r.status !== 'published' && r.status !== 'done' && r.status !== 'deferred_buffer' && r.status !== 'skipped') {
           errors.push(`${r.id} (${r.topic}): ${r.reason ?? r.status}`);
         }
@@ -592,7 +719,14 @@ async function processQueueItem(
     let promoteDraftId: string | null = null;
 
     if (item.source === 'pillar' && item.destination) {
-      generated = await generatePillar(item);
+      const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
+      const pillarContext = await buildPillarContext(item.destination);
+      if (!pillarContext) {
+        const reason = `${item.destination} context missing: attractions+packages 0`;
+        await handleFailure(item, reason, null, true);
+        return { id: item.id, topic: item.topic, status: 'error', reason };
+      }
+      generated = await generatePillar(item, pillarContext);
     } else if (item.card_news_id) {
       promoteDraftId = null;
       const { data: cnCheck } = await supabaseAdmin
@@ -746,17 +880,7 @@ async function processQueueItem(
     // 🆕 가독성 점수 계산 (한국어 휴리스틱)
     const readability = computeReadability(generated.blog_html);
 
-    let qa = await runQualityGates({
-      blog_html: generated.blog_html,
-      slug: generated.slug,
-      destination: item.destination,
-      angle_type: item.angle_type,
-      blog_type: blogType,
-      primary_keyword: primaryKeyword,
-      category: item.category,
-      content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
-      product_id: item.product_id ?? null,
-    });
+    let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
 
     if (!qa.passed && qa.gates.some(gate => gate.gate === 'links' && !gate.passed)) {
       generated.blog_html = forceAppendOfficialReferenceLinks(generated.blog_html);
@@ -802,6 +926,10 @@ async function processQueueItem(
         content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
         product_id: item.product_id ?? null,
       });
+    }
+
+    if (!qa.passed) {
+      qa = await repairFailedQualityGates(generated, item, qa, blogType, primaryKeyword);
     }
 
     if (!qa.passed) {
@@ -996,10 +1124,12 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
   const attempts = (item.attempts || 0) + 1;
   const duplicateFailure = /동일 slug|유사 slug|이미 발행됨|최근 \d+일 내/i.test(reason);
   const duplicateTaggedFailure = /\[duplicate\]|duplicate|slug already|slug .*exists/i.test(reason);
-  const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure;
-  const finalStatus = isDuplicateFailure && item.source !== 'manual'
+  const decision = classifyBlogQueueFailure(reason, qa);
+  const isDuplicateFailure = duplicateFailure || duplicateTaggedFailure || decision.code === 'duplicate_content';
+  const shouldForceFailure = forceFailure || !decision.retryable;
+  const finalStatus = (isDuplicateFailure || decision.skipped) && item.source !== 'manual'
     ? 'skipped'
-    : forceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
+    : shouldForceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
 
   await supabaseAdmin.from('blog_topic_queue')
     .update({
@@ -1013,6 +1143,10 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
       meta: {
         ...(item.meta || {}),
         last_qa: qa,
+        failure_code: decision.code,
+        failure_retryable: decision.retryable,
+        self_heal_blocked: !decision.selfHealAllowed,
+        ...(decision.selfHealAllowed ? {} : { quarantine_reason: 'non_retryable_failure' }),
         last_failed_at: new Date().toISOString(),
         ...(isDuplicateFailure ? { skipped_duplicate: true } : {}),
       },
@@ -1045,6 +1179,14 @@ interface GeneratedBlog {
   generation_meta?: Record<string, unknown>;
   /** 카드뉴스 슬라이드 PNG URL 배열 (섹션별 이미지 배치용) */
   slide_image_urls?: string[];
+}
+
+interface BlogPillarContext {
+  attractions: string[];
+  packageSummary: string;
+  priceRange: string;
+  airlines: string[];
+  seasonHint: string;
 }
 
 /**
@@ -1114,11 +1256,14 @@ async function generateFromCardNews(item: any, eligibleByCardNewsId: Map<string,
  * Pillar 글 생성 — /destinations/[city] 허브 본문
  * 결과는 content_type='pillar', pillar_for=destination 으로 저장됨 (publisher가 처리)
  */
-async function generatePillar(item: any): Promise<GeneratedBlog> {
+async function generatePillar(item: any, prebuiltContext?: BlogPillarContext | null): Promise<GeneratedBlog> {
   if (!hasBlogApiKey()) throw new Error('AI API 키 없음 — pillar 생성 불가');
 
-  const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
-  const ctx = await buildPillarContext(item.destination);
+  let ctx = prebuiltContext ?? null;
+  if (!ctx) {
+    const { buildPillarContext } = await import('@/lib/blog-pillar-generator');
+    ctx = await buildPillarContext(item.destination);
+  }
   if (!ctx) throw new Error(`${item.destination} 컨텍스트 부족 (관광지+상품 0)`);
 
   const { content: styleGuide, version: promptVersion } = await getActiveBlogStyleGuide();

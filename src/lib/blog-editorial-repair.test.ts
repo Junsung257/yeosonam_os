@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { repairBlogEditorialQuality } from './blog-editorial-repair';
+import {
+  repairBlogEditorialQuality,
+  repairBlogStructureQuality,
+  repairKeywordDensityToTarget,
+} from './blog-editorial-repair';
 
 describe('blog editorial repair', () => {
   it('repairs informational sales tone and missing weather table', () => {
@@ -48,5 +52,47 @@ describe('blog editorial repair', () => {
 
     expect(result.changes).toContain('added_official_reference_links');
     expect(result.blogHtml).toContain('외교부 해외안전여행');
+  });
+  it('repairs raw directive leaks and collapsed checklist items', () => {
+    const source = [
+      '# 여행 준비 체크',
+      '',
+      '::: tip',
+      '출발 전에 확인하세요.',
+      ':::',
+      '',
+      '## 준비 체크리스트',
+      '',
+      '- 1. 여권 유효기간을 확인합니다. 2. 항공권 영문 이름을 확인합니다. 3. 현지 결제 카드와 소액 현금을 나눠 챙깁니다. 4. 비상 연락처를 가족에게 공유합니다.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '여행 준비 체크',
+      category: 'preparation',
+      contentType: 'guide',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(
+      expect.arrayContaining(['removed_raw_directive_leaks', 'split_collapsed_checklist_items']),
+    );
+    expect(result.blogHtml).not.toContain(':::');
+    expect(result.blogHtml).toContain('- 여권 유효기간을 확인합니다.');
+    expect(result.blogHtml).toContain('- 항공권 영문 이름을 확인합니다.');
+  });
+
+  it('reduces excessive primary keyword density deterministically', () => {
+    const source = Array.from(
+      { length: 18 },
+      () => '해외여행 비상약은 해외여행 비상약 준비에서 자주 반복되는 주제입니다.',
+    ).join('\n\n');
+
+    const result = repairKeywordDensityToTarget(source, '해외여행 비상약', 'info');
+
+    expect(result.changed).toBe(true);
+    expect(result.beforeCount).toBeGreaterThan(result.allowedCount);
+    expect(result.afterCount).toBeLessThanOrEqual(result.allowedCount);
+    expect(result.blogHtml).toContain('비상약');
   });
 });

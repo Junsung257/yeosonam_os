@@ -119,7 +119,11 @@ const checks = [
     passed: /normalizeDailyPostTarget/.test(source.publisher) &&
       /remainingToday/.test(source.publisher) &&
       /claim_queue_items/.test(source.publisher) &&
-      /Math\.min\(MAX_BATCH,\s*remainingToday\)/.test(source.publisher),
+      (
+        /Math\.min\(MAX_BATCH,\s*remainingToday\)/.test(source.publisher) ||
+        (/publishedThisRun\s*>=\s*remainingToday/.test(source.publisher) &&
+          /MAX_CANDIDATE_POOL/.test(source.publisher))
+      ),
     evidence: files.publisher,
   },
   {

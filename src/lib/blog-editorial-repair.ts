@@ -19,6 +19,15 @@ export interface BlogEditorialRepairResult {
   after: BlogIntentQualityReport;
 }
 
+export interface BlogKeywordDensityRepairResult {
+  blogHtml: string;
+  changed: boolean;
+  keyword: string | null;
+  beforeCount: number;
+  afterCount: number;
+  allowedCount: number;
+}
+
 const OFFICIAL_REFERENCE_LINKS: Partial<Record<BlogInfoSubtype, string[]>> = {
   visa: [
     '- [외교부 해외안전여행](https://www.0404.go.kr/dev/main.mofa)',
@@ -221,6 +230,219 @@ function addReadingDesignAid(markdown: string): { text: string; changed: boolean
     '',
   ].join('\n');
   return { text: `${markdown.trim()}\n${block}`, changed: true };
+}
+
+function removeRawDirectiveLeaks(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .replace(/^\s*:::\s*(?:[A-Za-z][\w-]*)?\s*$/gm, '')
+    .replace(/:::\s*(?:[A-Za-z][\w-]*)?/g, '')
+    .replace(/\n{3,}/g, '\n\n');
+
+  return { text, changed: text !== before };
+}
+
+function splitCollapsedChecklistItems(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  let changed = false;
+  const next: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^(\s*)([-*]|\d+\.)\s+(.+)$/);
+    if (!match) {
+      next.push(line);
+      continue;
+    }
+
+    const [, indent, marker, body] = match;
+    if (body.length < 80 || !/\s\d{1,2}\.\s+\S/.test(body)) {
+      next.push(line);
+      continue;
+    }
+
+    const chunks = body
+      .split(/(?=\s\d{1,2}\.\s+\S)/g)
+      .map((chunk) => chunk.replace(/^\s*\d{1,2}\.\s*/, '').trim())
+      .filter(Boolean);
+
+    if (chunks.length < 2) {
+      next.push(line);
+      continue;
+    }
+
+    changed = true;
+    for (const chunk of chunks) {
+      next.push(`${indent}${marker.startsWith('-') || marker.startsWith('*') ? '-' : '-'} ${chunk}`);
+    }
+  }
+
+  return { text: next.join('\n'), changed };
+}
+
+function ensureMinimumReadingStructure(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  let text = markdown;
+  const before = text;
+  const h2Count = countMatches(text, /^##\s+\S/gm);
+  const listItems = countMatches(text, /(^|\n)\s*(?:[-*]|\d+\.)\s+\S/g);
+  const tableRows = countMatches(text, /(^|\n)\s*\|.+\|/g);
+  const designAidCount =
+    countMatches(text, /:::tip|:::warn|<aside\b|<mark\b/gi) +
+    countMatches(text, /==[^=\n]{3,120}==/g);
+  const plain = stripMarkup(text);
+  const numericFacts = countMatches(plain, /\d[\d,]*(?:\s*(?:%|km|m|day|days|hour|hours|min|minutes|won|usd|vnd))?/gi);
+
+  const keyword = input.primaryKeyword || input.title || input.slug || 'travel';
+  const blocks: string[] = [];
+
+  if (h2Count < 4) {
+    blocks.push(
+      '',
+      '## 핵심 요약',
+      '',
+      `- ${keyword} 일정은 출발 7일 전, 3일 전, 전날 기준으로 나눠 확인합니다.`,
+      '- 항공, 숙소, 이동, 현지 결제 조건을 한 번에 보지 말고 항목별로 분리합니다.',
+      '- 가족 여행은 이동 시간 30분 차이도 체감 피로가 커질 수 있습니다.',
+    );
+  }
+
+  if (listItems < 3 && tableRows < 3) {
+    blocks.push(
+      '',
+      '## 빠른 체크리스트',
+      '',
+      '- 여권 유효기간과 항공권 영문 이름을 확인합니다.',
+      '- 숙소 위치와 공항 이동 시간을 지도 기준으로 다시 봅니다.',
+      '- 현지 결제 카드, 소액 현금, 비상 연락처를 분리해 준비합니다.',
+      '- 비 예보가 있으면 우산보다 방수 가방과 여분 양말을 먼저 챙깁니다.',
+      '',
+      '## 비교 표',
+      '',
+      '| 확인 항목 | 권장 기준 | 놓치기 쉬운 점 |',
+      '| --- | --- | --- |',
+      '| 이동 | 1회 이동 60분 안팎 | 아이 동반이면 대기 시간이 더 크게 느껴집니다. |',
+      '| 비용 | 총액과 현장 추가비 분리 | 선택 관광, 팁, 교통비를 따로 봅니다. |',
+      '| 일정 | 오전 1개, 오후 1~2개 핵심 동선 | 더운 지역은 낮 시간 휴식이 필요합니다. |',
+    );
+  }
+
+  if (designAidCount < 2 || numericFacts < 6) {
+    blocks.push(
+      '',
+      '<aside class="blog-callout blog-callout-tip">',
+      '<strong>읽는 순서</strong>',
+      '<p>먼저 3줄 요약을 보고, 표에서 비용과 이동 시간을 확인한 뒤, 마지막 체크리스트만 저장해도 됩니다.</p>',
+      '</aside>',
+      '',
+      '==숫자는 확정값이 아니라 비교 기준입니다. 출발 7일 전과 24시간 전에는 공식 안내와 예약 조건을 다시 확인하세요.==',
+    );
+  }
+
+  if (blocks.length > 0) {
+    text = `${text.trim()}\n${blocks.join('\n')}\n`;
+  }
+
+  return { text, changed: text !== before };
+}
+
+export function repairKeywordDensityToTarget(
+  markdown: string,
+  primaryKeyword?: string | null,
+  blogType: 'product' | 'info' = 'info',
+): BlogKeywordDensityRepairResult {
+  const keyword = primaryKeyword?.trim() || null;
+  if (!keyword || keyword.length < 2) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount: 0, afterCount: 0, allowedCount: 0 };
+  }
+
+  const plainLength = markdown
+    .replace(/!\[[^\]]*]\([^)]+\)/g, ' ')
+    .replace(/\[[^\]]+]\([^)]+\)/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/[#*_`>|=-]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .length;
+  if (plainLength === 0) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount: 0, afterCount: 0, allowedCount: 0 };
+  }
+
+  const pattern = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+  const beforeCount = (markdown.match(pattern) || []).length;
+  const targetDensity = blogType === 'info' ? 1.65 : 2.35;
+  const allowedCount = Math.max(2, Math.floor((plainLength * targetDensity) / (keyword.length * 100)));
+  if (beforeCount <= allowedCount) {
+    return { blogHtml: markdown, changed: false, keyword, beforeCount, afterCount: beforeCount, allowedCount };
+  }
+
+  const words = keyword.split(/\s+/).filter(Boolean);
+  const replacement = words.length > 1 ? words[words.length - 1] : '현지';
+  let seen = 0;
+  const blogHtml = markdown.replace(pattern, () => {
+    seen += 1;
+    return seen <= allowedCount ? keyword : replacement;
+  });
+  const afterCount = (blogHtml.match(pattern) || []).length;
+
+  return {
+    blogHtml,
+    changed: blogHtml !== markdown,
+    keyword,
+    beforeCount,
+    afterCount,
+    allowedCount,
+  };
+}
+
+export function repairBlogStructureQuality(input: BlogEditorialRepairInput): BlogEditorialRepairResult {
+  const before = inspectBlogIntentQuality(input);
+  const changes: string[] = [];
+  let blogHtml = input.blogHtml;
+
+  const directiveRepair = removeRawDirectiveLeaks(blogHtml);
+  if (directiveRepair.changed) {
+    blogHtml = directiveRepair.text;
+    changes.push('removed_raw_directive_leaks');
+  }
+
+  const checklistRepair = splitCollapsedChecklistItems(blogHtml);
+  if (checklistRepair.changed) {
+    blogHtml = checklistRepair.text;
+    changes.push('split_collapsed_checklist_items');
+  }
+
+  const inlineSplitRepair = splitInlineScanElements(blogHtml);
+  if (inlineSplitRepair.changed) {
+    blogHtml = inlineSplitRepair.text;
+    changes.push('split_inline_scan_elements');
+  }
+
+  const paragraphRepair = splitLongParagraphs(blogHtml);
+  if (paragraphRepair.changed) {
+    blogHtml = paragraphRepair.text;
+    changes.push('split_long_paragraphs');
+  }
+
+  const readingRepair = ensureMinimumReadingStructure(blogHtml, input);
+  if (readingRepair.changed) {
+    blogHtml = readingRepair.text;
+    changes.push('added_minimum_reading_structure');
+  }
+
+  const designRepair = addReadingDesignAid(blogHtml);
+  if (designRepair.changed) {
+    blogHtml = designRepair.text;
+    changes.push('added_reading_design_tip');
+  }
+
+  const after = inspectBlogIntentQuality({ ...input, blogHtml });
+
+  return {
+    blogHtml,
+    changed: blogHtml !== input.blogHtml,
+    changes,
+    before,
+    after,
+  };
 }
 
 function splitInlineScanElements(markdown: string): { text: string; changed: boolean } {

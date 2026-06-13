@@ -18,6 +18,7 @@
  */
 import { supabaseAdmin } from './supabase';
 import { slugifyTopic } from './slug-utils';
+import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from './blog-queue-failure-policy';
 
 /** 크론 1회 실행 기록 */
 interface CronRunRecord {
@@ -291,6 +292,24 @@ export async function autoHealQueue(): Promise<{
         ? { ...(item.meta as Record<string, unknown>) }
         : {};
       const exactDuplicateSlug = item.last_error?.match(/동일 slug 이미 존재:\s*([a-z0-9-]+)/i)?.[1] ?? null;
+      if (!shouldSelfHealBlogQueueItem({ lastError: item.last_error, meta })) {
+        const decision = classifyBlogQueueFailure(item.last_error ?? '');
+        await supabaseAdmin
+          .from('blog_topic_queue')
+          .update({
+            last_error: `self-heal blocked ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+            meta: {
+              ...meta,
+              failure_code: typeof meta.failure_code === 'string' ? meta.failure_code : decision.code,
+              self_heal_blocked: true,
+              quarantine_reason: meta.quarantine_reason ?? 'non_retryable_failure',
+              self_heal_blocked_at: now,
+            } as never,
+          })
+          .eq('id', item.id);
+        details.push(`복구 차단: ${item.topic}`);
+        continue;
+      }
       const topicSlug = slugifyTopic(item.topic || '');
       const canonicalSlug = duplicateSlugSet.has(topicSlug)
         ? topicSlug
