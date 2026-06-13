@@ -277,7 +277,7 @@ export function mergeRawTextMealEvidence<T extends ItineraryDataLike | null>(iti
     const dayNumber = typeof day.day === 'number' ? day.day : null;
     const dayEvidence = dayNumber ? evidence.get(dayNumber) : null;
     if (!dayEvidence) return day;
-    let meals: MealFields = day.meals && typeof day.meals === 'object' ? { ...(day.meals as MealFields) } : {};
+    const meals: MealFields = day.meals && typeof day.meals === 'object' ? { ...(day.meals as MealFields) } : {};
     for (const slot of ['breakfast', 'lunch', 'dinner'] as const) {
       const note = dayEvidence[slot];
       if (!note) continue;
