@@ -2,15 +2,6 @@
 
 import { useEffect, useState } from 'react';
 
-/**
- * 모바일 하단 Sticky CTA Bar
- *
- * 2026 CRO: +15~25% 전환 (리서치 검증)
- * - 스크롤 200px 지나면 자동 노출
- * - 가격 + 카톡 + 예약 3블록
- * - 모바일만 노출 (lg:hidden)
- */
-
 interface Props {
   priceKrw?: number | null;
   productUrl?: string | null;
@@ -31,9 +22,7 @@ export default function StickyMobileCta({
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    const onScroll = () => {
-      setVisible(window.scrollY > 200);
-    };
+    const onScroll = () => setVisible(window.scrollY > 200);
     window.addEventListener('scroll', onScroll, { passive: true });
     onScroll();
     return () => window.removeEventListener('scroll', onScroll);
@@ -65,12 +54,16 @@ export default function StickyMobileCta({
             href={kakaoUrl}
             target="_blank"
             rel="noopener"
+            data-blog-cta="true"
+            data-blog-cta-placement={`${placement}:kakao`}
             className="flex-shrink-0 px-3 py-2 bg-yellow-300 text-slate-900 text-[12px] font-bold rounded-lg"
           >
-            💬 상담
+            상담
           </a>
           <a
             href={productUrl}
+            data-blog-cta="true"
+            data-blog-cta-placement={`${placement}:product`}
             data-blog-product-id={packageId ?? undefined}
             data-recommendation-source="blog"
             data-recommendation-rank="1"

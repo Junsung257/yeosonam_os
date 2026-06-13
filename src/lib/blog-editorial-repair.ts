@@ -242,6 +242,33 @@ function removeRawDirectiveLeaks(markdown: string): { text: string; changed: boo
   return { text, changed: text !== before };
 }
 
+function removeRenderArtifacts(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .replace(/(?:^|[\s>])\$[0-9]+(?=[\s<.,!?]|$)/g, ' ')
+    .replace(/\$\{[^}]+}/g, '')
+    .replace(/\b(?:undefined|NaN|\[object Object\])\b/g, '')
+    .replace(/null원/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n');
+
+  return { text, changed: text !== before };
+}
+
+function softenPromotionalInfoTone(markdown: string): { text: string; changed: boolean } {
+  const before = markdown;
+  const text = markdown
+    .replace(/완벽\s*가이드/g, '실전 가이드')
+    .replace(/완벽\s*정리/g, '핵심 정리')
+    .replace(/완벽\s*체크리스트/g, '실전 체크리스트')
+    .replace(/꿀팁/g, '체크 포인트')
+    .replace(/TOP\s*(\d+)/gi, '$1가지')
+    .replace(/추천하는\s*이유/g, '확인해야 하는 이유')
+    .replace(/놓치면\s*손해/g, '미리 확인');
+
+  return { text, changed: text !== before };
+}
+
 function splitCollapsedChecklistItems(markdown: string): { text: string; changed: boolean } {
   const lines = markdown.split('\n');
   let changed = false;
@@ -325,6 +352,20 @@ function ensureMinimumReadingStructure(markdown: string, input: BlogEditorialRep
     );
   }
 
+  if (tableRows < 3 && listItems >= 3) {
+    blocks.push(
+      '',
+      '## 판단 기준 빠른 비교',
+      '',
+      '| 확인 항목 | 고객이 볼 기준 | 결정 포인트 |',
+      '| --- | --- | --- |',
+      '| 일정 | 이동 시간과 쉬는 시간이 무리 없는지 | 첫날과 마지막 날은 여유를 둡니다. |',
+      '| 비용 | 기본 비용과 현장 추가 비용이 분리됐는지 | 총액 기준으로 비교합니다. |',
+      '| 준비 | 여권, 결제, 통신, 비상 연락이 준비됐는지 | 출발 전날 다시 확인합니다. |',
+      '',
+    );
+  }
+
   if (designAidCount < 2 || numericFacts < 6) {
     blocks.push(
       '',
@@ -397,6 +438,18 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
   const before = inspectBlogIntentQuality(input);
   const changes: string[] = [];
   let blogHtml = input.blogHtml;
+
+  const artifactRepair = removeRenderArtifacts(blogHtml);
+  if (artifactRepair.changed) {
+    blogHtml = artifactRepair.text;
+    changes.push('removed_render_artifacts');
+  }
+
+  const toneRepair = softenPromotionalInfoTone(blogHtml);
+  if (toneRepair.changed) {
+    blogHtml = toneRepair.text;
+    changes.push('softened_promotional_info_tone');
+  }
 
   const directiveRepair = removeRawDirectiveLeaks(blogHtml);
   if (directiveRepair.changed) {

@@ -62,6 +62,7 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
       .from('blog_engagement_logs')
       .select('id, content_creative_id, ad_landing_mapping_id, cta_clicked, max_scroll_depth_pct, time_on_page_seconds, created_at')
       .gte('created_at', since)
+      .eq('event_type', 'summary')
       .limit(1000),
     supabaseAdmin
       .from('ad_conversion_logs')

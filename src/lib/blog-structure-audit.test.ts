@@ -45,6 +45,30 @@ describe('blog-structure-audit', () => {
     );
   });
 
+  it('blocks rendered template artifacts and clickbait tone in informational articles', () => {
+    const html = `
+      <article>
+        <h1>해외여행 비상약 체크리스트</h1>
+        <p>$1 이 문장 앞에 노출되면 고객 입장에서는 미완성 글로 보입니다.</p>
+        <h2>해외여행 비상약 완벽 가이드 TOP 5</h2>
+        <p>놓치면 손해인 꿀팁을 정리했습니다.</p>
+      </article>
+    `;
+
+    const report = inspectBlogStructure({
+      rawMarkdown: html,
+      renderedHtml: html,
+      title: '해외여행 비상약 체크리스트',
+      slug: 'travel-medicine-checklist',
+      primaryKeyword: '해외여행 비상약',
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toEqual(
+      expect.arrayContaining(['render_artifact_leak', 'promotional_info_tone']),
+    );
+  });
+
   it('blocks collapsed FAQ headings and duplicated core blocks', () => {
     const html = `
       <article>

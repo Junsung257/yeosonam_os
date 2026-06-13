@@ -2,23 +2,27 @@
 
 import { useEffect } from 'react';
 import { getSessionId, trackContentView } from '@/lib/tracker';
-import { hasAnalyticsConsent } from '@/lib/consent';
 
-/**
- * 블로그 글 조회 추적 컴포넌트 (자가발전 AI용 데이터 수집)
- *
- * 수집 데이터:
- *   - First-touch 콘텐츠 어트리뷰션 (trackContentView)
- *   - 체류 시간 (beforeunload/pagehide 시점에 sendBeacon)
- *   - 최대 스크롤 깊이
- *   - 상품 CTA 클릭 여부 (a[href*="/packages/"] 클릭 감지)
- */
-// last-touch 콘텐츠 어트리뷰션 (예약 시점 booking.content_creative_id 매칭용)
 const LAST_CONTENT_KEY = 'ys_last_content_creative_id';
 const LAST_CONTENT_TS_KEY = 'ys_last_content_creative_ts';
-const ATTRIBUTION_WINDOW_MS = 24 * 60 * 60 * 1000; // 24h
+const ATTRIBUTION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const SCROLL_MILESTONES = [25, 50, 75, 90] as const;
 
-/** 어트리뷰션 윈도우 내 마지막으로 본 콘텐츠 ID (만료 자동 처리). 예약 페이지에서 호출. */
+type BlogEngagementEventType =
+  | 'summary'
+  | 'scroll_25'
+  | 'scroll_50'
+  | 'scroll_75'
+  | 'scroll_90'
+  | 'cta_impression'
+  | 'cta_click';
+
+type CtaMeta = {
+  href: string;
+  placement: string | null;
+  packageId: string | null;
+};
+
 export function readLastContentCreativeId(): string | null {
   if (typeof window === 'undefined') return null;
   try {
@@ -32,31 +36,125 @@ export function readLastContentCreativeId(): string | null {
   }
 }
 
+function readUserId(): string | null {
+  try {
+    return localStorage.getItem('ys_user_id');
+  } catch {
+    return null;
+  }
+}
+
+function getCtaMeta(link: HTMLAnchorElement): CtaMeta | null {
+  const href = link.getAttribute('href') || '';
+  const isProductCta = href.startsWith('/packages/') || href.startsWith('/packages?') || Boolean(link.dataset.blogProductId);
+  const isKakaoCta = /pf\.kakao\.com/.test(href);
+  const isMarkedCta = link.dataset.blogCta === 'true';
+
+  if (!isProductCta && !isKakaoCta && !isMarkedCta) return null;
+
+  return {
+    href,
+    placement: link.dataset.recommendationPlacement || link.dataset.blogCtaPlacement || null,
+    packageId: link.dataset.blogProductId || null,
+  };
+}
+
+function clampTime(seconds: number) {
+  return Math.max(0, Math.min(3600, Math.round(seconds)));
+}
+
+function clampScroll(pct: number) {
+  return Math.max(0, Math.min(100, Math.round(pct)));
+}
+
 export default function BlogTracker({ contentCreativeId }: { contentCreativeId: string }) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    // 조회수는 비식별 통계 — 동의와 무관하게 항상 기록 (PIPA/GDPR 준수)
+
     trackContentView(contentCreativeId);
 
-    // PIPA: 상세 어트리뷰션(UTM/세션/사용자 식별)은 동의 후에만 기록.
-    // 익명 engagement (체류시간/스크롤)은 비식별 통계 — 그대로 진행.
-
-    // last-touch attribution: 예약 시 booking.content_creative_id 매칭용 24h 캐시
     try {
+      const now = String(Date.now());
       sessionStorage.setItem(LAST_CONTENT_KEY, contentCreativeId);
-      sessionStorage.setItem(LAST_CONTENT_TS_KEY, String(Date.now()));
+      sessionStorage.setItem(LAST_CONTENT_TS_KEY, now);
       localStorage.setItem(LAST_CONTENT_KEY, contentCreativeId);
-      localStorage.setItem(LAST_CONTENT_TS_KEY, String(Date.now()));
-    } catch { /* private mode 등 */ }
+      localStorage.setItem(LAST_CONTENT_TS_KEY, now);
+    } catch {
+      // Ignore storage failures in private browsing modes.
+    }
 
     const startedAt = Date.now();
     const params = new URLSearchParams(window.location.search);
+    const sessionId = getSessionId();
     let maxScrollPct = 0;
     let ctaClicked = false;
-    let sent = false;
-
-    // 스크롤 깊이 측정 (스로틀링)
+    let ctaVisible = false;
+    let summarySent = false;
     let scrollTicking = false;
+    const sentMilestones = new Set<number>();
+    const seenCtaImpressions = new Set<string>();
+
+    const buildPayload = (
+      eventType: BlogEngagementEventType,
+      overrides: Partial<Record<string, unknown>> = {},
+    ) => ({
+      content_creative_id: contentCreativeId,
+      session_id: sessionId,
+      user_id: readUserId(),
+      event_type: eventType,
+      time_on_page_seconds: clampTime((Date.now() - startedAt) / 1000),
+      max_scroll_depth_pct: clampScroll(maxScrollPct),
+      cta_clicked: ctaClicked || eventType === 'cta_click',
+      cta_visible: ctaVisible || eventType === 'cta_impression' || eventType === 'cta_click',
+      ad_landing_mapping_id: params.get('ad_mapping_id') || params.get('ad_landing_mapping_id') || params.get('admid'),
+      utm_source: params.get('utm_source'),
+      utm_medium: params.get('utm_medium'),
+      utm_campaign: params.get('utm_campaign'),
+      utm_term: params.get('utm_term'),
+      ...overrides,
+    });
+
+    const postEngagement = (payload: Record<string, unknown>, preferBeacon = false) => {
+      const body = JSON.stringify(payload);
+      if (preferBeacon && navigator.sendBeacon) {
+        const blob = new Blob([body], { type: 'application/json' });
+        navigator.sendBeacon('/api/blog-engagement', blob);
+        return;
+      }
+
+      fetch('/api/blog-engagement', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        keepalive: true,
+      }).catch(() => {});
+    };
+
+    const sendEvent = (
+      eventType: BlogEngagementEventType,
+      overrides: Partial<Record<string, unknown>> = {},
+      preferBeacon = false,
+    ) => {
+      postEngagement(buildPayload(eventType, overrides), preferBeacon);
+    };
+
+    const sendSummary = () => {
+      if (summarySent) return;
+      summarySent = true;
+      sendEvent('summary', {}, true);
+    };
+
+    const checkMilestones = () => {
+      for (const milestone of SCROLL_MILESTONES) {
+        if (maxScrollPct >= milestone && !sentMilestones.has(milestone)) {
+          sentMilestones.add(milestone);
+          sendEvent(`scroll_${milestone}` as BlogEngagementEventType, {
+            event_payload: { milestone },
+          });
+        }
+      }
+    };
+
     const onScroll = () => {
       if (scrollTicking) return;
       scrollTicking = true;
@@ -64,104 +162,99 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
         const doc = document.documentElement;
         const scrollTop = window.scrollY || doc.scrollTop;
         const scrollHeight = Math.max(doc.scrollHeight - doc.clientHeight, 1);
-        const pct = Math.min(100, Math.round((scrollTop / scrollHeight) * 100));
-        if (pct > maxScrollPct) maxScrollPct = pct;
+        maxScrollPct = Math.max(maxScrollPct, clampScroll((scrollTop / scrollHeight) * 100));
+        checkMilestones();
         scrollTicking = false;
       });
     };
 
-    // CTA 클릭 감지 (/packages/[id], /packages?destination=... 링크)
-    const onClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      const link = target.closest('a') as HTMLAnchorElement | null;
+    const onClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const link = target?.closest('a') as HTMLAnchorElement | null;
       if (!link) return;
-      const href = link.getAttribute('href') || '';
-      if (/\/packages(?:\/|\?)/.test(href)) {
-        ctaClicked = true;
-      }
-      const packageId = link.dataset.blogProductId;
-      if (packageId) {
-        fetch('/api/tracking/recommendation', {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            package_id: packageId,
-            source: 'blog',
-            outcome: 'click',
-            session_id: getSessionId(),
-            intent: link.dataset.blogIntent || 'blog',
-            recommended_rank: link.dataset.recommendationRank
-              ? Number(link.dataset.recommendationRank)
-              : null,
-            notes: JSON.stringify({
-              content_creative_id: contentCreativeId,
-              placement: link.dataset.recommendationPlacement || null,
-            }),
+
+      const cta = getCtaMeta(link);
+      if (!cta) return;
+
+      ctaClicked = true;
+      sendEvent('cta_click', {
+        cta_placement: cta.placement,
+        cta_href: cta.href,
+        event_payload: {
+          package_id: cta.packageId,
+          text: link.textContent?.trim().slice(0, 80) || null,
+        },
+      }, true);
+
+      if (!cta.packageId) return;
+
+      fetch('/api/tracking/recommendation', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package_id: cta.packageId,
+          source: 'blog',
+          outcome: 'click',
+          session_id: sessionId,
+          intent: link.dataset.blogIntent || 'blog',
+          recommended_rank: link.dataset.recommendationRank
+            ? Number(link.dataset.recommendationRank)
+            : null,
+          notes: JSON.stringify({
+            content_creative_id: contentCreativeId,
+            placement: cta.placement,
           }),
-          keepalive: true,
-        }).catch(() => {});
+        }),
+        keepalive: true,
+      }).catch(() => {});
+    };
+
+    const observer = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting || entry.intersectionRatio < 0.2) continue;
+        const link = entry.target as HTMLAnchorElement;
+        const cta = getCtaMeta(link);
+        if (!cta) continue;
+
+        ctaVisible = true;
+        const key = `${cta.placement || 'unknown'}:${cta.href}`;
+        if (seenCtaImpressions.has(key)) continue;
+        seenCtaImpressions.add(key);
+        sendEvent('cta_impression', {
+          cta_placement: cta.placement,
+          cta_href: cta.href,
+          event_payload: {
+            package_id: cta.packageId,
+            text: link.textContent?.trim().slice(0, 80) || null,
+          },
+        });
       }
+    }, { threshold: [0.2, 0.5] });
+
+    const observeCtas = () => {
+      document
+        .querySelectorAll<HTMLAnchorElement>('a[data-blog-cta="true"], a[data-blog-product-id], a[href*="/packages"], a[href*="pf.kakao.com"]')
+        .forEach((link) => observer.observe(link));
     };
 
-    // 세션 ID 가져오기 (클라이언트 전용)
-    const getSessionId = (): string | null => {
-      try { return sessionStorage.getItem('ys_session_id'); } catch { return null; }
-    };
-    const getUserId = (): string | null => {
-      try { return localStorage.getItem('ys_user_id'); } catch { return null; }
-    };
+    observeCtas();
+    onScroll();
 
-    // 이탈 시 한 번만 전송 (sendBeacon으로 보장)
-    const sendEngagement = () => {
-      if (sent) return;
-      sent = true;
-      const timeOnPage = Math.round((Date.now() - startedAt) / 1000);
-      const payload = JSON.stringify({
-        content_creative_id: contentCreativeId,
-        session_id: getSessionId(),
-        user_id: getUserId(),
-        time_on_page_seconds: timeOnPage,
-        max_scroll_depth_pct: maxScrollPct,
-        cta_clicked: ctaClicked,
-        ad_landing_mapping_id: params.get('ad_mapping_id') || params.get('ad_landing_mapping_id') || params.get('admid'),
-        utm_source: params.get('utm_source'),
-        utm_medium: params.get('utm_medium'),
-        utm_campaign: params.get('utm_campaign'),
-        utm_term: params.get('utm_term'),
-      });
-
-      // sendBeacon이 가능하면 사용 (이탈 시에도 전송 보장)
-      if (navigator.sendBeacon) {
-        const blob = new Blob([payload], { type: 'application/json' });
-        navigator.sendBeacon('/api/blog-engagement', blob);
-      } else {
-        fetch('/api/blog-engagement', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload,
-          keepalive: true,
-        }).catch(() => {});
-      }
-    };
-
-    // 이벤트 등록
     window.addEventListener('scroll', onScroll, { passive: true });
     document.addEventListener('click', onClick);
-    window.addEventListener('beforeunload', sendEngagement);
-    window.addEventListener('pagehide', sendEngagement);
-    // 탭 전환 시에도 감지 (모바일)
+    window.addEventListener('beforeunload', sendSummary);
+    window.addEventListener('pagehide', sendSummary);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') sendEngagement();
+      if (document.visibilityState === 'hidden') sendSummary();
     });
 
     return () => {
       window.removeEventListener('scroll', onScroll);
       document.removeEventListener('click', onClick);
-      window.removeEventListener('beforeunload', sendEngagement);
-      window.removeEventListener('pagehide', sendEngagement);
-      // 컴포넌트 언마운트 시에도 전송
-      sendEngagement();
+      window.removeEventListener('beforeunload', sendSummary);
+      window.removeEventListener('pagehide', sendSummary);
+      observer.disconnect();
+      sendSummary();
     };
   }, [contentCreativeId]);
 

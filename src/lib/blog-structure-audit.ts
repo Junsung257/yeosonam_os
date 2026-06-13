@@ -4,10 +4,12 @@ import type { Element } from 'domhandler';
 export type BlogStructureIssueCode =
   | 'table_prose_contamination'
   | 'raw_directive_leak'
+  | 'render_artifact_leak'
   | 'heading_shape_invalid'
   | 'duplicate_core_block'
   | 'checklist_shape_invalid'
-  | 'content_type_tone_mismatch';
+  | 'content_type_tone_mismatch'
+  | 'promotional_info_tone';
 
 export type BlogStructureIssueSeverity = 'critical' | 'warning';
 
@@ -109,6 +111,46 @@ function inspectRawDirectives(input: BlogStructureAuditInput, issues: BlogStruct
       'critical',
       'Raw markdown/admonition directive is visible in the article body.',
       { sample: visibleText.match(/.{0,40}:::.{0,40}/)?.[0] ?? ':::' },
+    );
+  }
+}
+
+function inspectRenderArtifacts(input: BlogStructureAuditInput, issues: BlogStructureIssue[]): void {
+  const $ = load(input.renderedHtml);
+  const visibleText = normalizeText($.root().text());
+  const sourceText = normalizeText(`${input.rawMarkdown} ${visibleText}`);
+  const artifact = sourceText.match(/(?:^|[\s>])(?:\$[0-9]+|\$\{[^}]+}|undefined|null|null원|NaN|object Object)(?:[\s<.,!?]|$)/i);
+
+  if (artifact) {
+    addIssue(
+      issues,
+      'render_artifact_leak',
+      'critical',
+      'Rendered article contains template or substitution artifacts.',
+      { sample: artifact[0].trim().slice(0, 80) },
+    );
+  }
+}
+
+function inspectPromotionalInfoTone(input: BlogStructureAuditInput, issues: BlogStructureIssue[]): void {
+  const $ = load(input.renderedHtml);
+  const visibleText = normalizeText($.root().text());
+  const intentText = normalizeText([
+    input.title,
+    input.slug,
+    input.primaryKeyword,
+    input.angleType,
+  ].filter(Boolean).join(' '));
+  const isInfoPost = !/(package|product|deal|ranking|hotel|상품|패키지|특가|랭킹|추천 상품)/i.test(intentText);
+  const match = visibleText.match(/(완벽\s*(?:가이드|정리|체크리스트)|꿀팁|TOP\s*\d+|Top\s*\d+|추천하는\s*이유|놓치면\s*손해)/i);
+
+  if (isInfoPost && match) {
+    addIssue(
+      issues,
+      'promotional_info_tone',
+      'warning',
+      'Informational article uses promotional or clickbait wording.',
+      { sample: match[0] },
     );
   }
 }
@@ -240,9 +282,11 @@ export function inspectBlogStructure(input: BlogStructureAuditInput): BlogStruct
 
   inspectTables(input, issues);
   inspectRawDirectives(input, issues);
+  inspectRenderArtifacts(input, issues);
   inspectHeadings(input, issues);
   inspectChecklist(input, issues);
   inspectTone(input, issues);
+  inspectPromotionalInfoTone(input, issues);
 
   const criticalCount = issues.filter((issue) => issue.severity === 'critical').length;
   const warningCount = issues.filter((issue) => issue.severity === 'warning').length;

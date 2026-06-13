@@ -82,6 +82,42 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('- 항공권 영문 이름을 확인합니다.');
   });
 
+  it('removes rendered artifacts, softens clickbait wording, and adds a comparison table', () => {
+    const source = [
+      '# 해외여행 비상약 완벽 가이드 TOP 5',
+      '',
+      '$1 출발 전에 확인해야 할 항목입니다.',
+      '',
+      '## 준비 체크리스트',
+      '',
+      '- 해열제와 소화제를 분리합니다.',
+      '- 처방약은 영문 처방전을 같이 챙깁니다.',
+      '- 액체류는 기내 반입 기준을 확인합니다.',
+      '- 여행자보험 긴급 연락처를 저장합니다.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: '해외여행 비상약 체크리스트',
+      category: 'preparation',
+      contentType: 'guide',
+      primaryKeyword: '해외여행 비상약',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(
+      expect.arrayContaining([
+        'removed_render_artifacts',
+        'softened_promotional_info_tone',
+        'added_minimum_reading_structure',
+      ]),
+    );
+    expect(result.blogHtml).not.toContain('$1');
+    expect(result.blogHtml).not.toContain('완벽 가이드');
+    expect(result.blogHtml).not.toContain('TOP 5');
+    expect(result.blogHtml).toContain('판단 기준 빠른 비교');
+  });
+
   it('reduces excessive primary keyword density deterministically', () => {
     const source = Array.from(
       { length: 18 },

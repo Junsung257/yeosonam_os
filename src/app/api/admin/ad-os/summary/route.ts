@@ -644,6 +644,7 @@ async function buildSummaryResponse() {
       .from('blog_engagement_logs')
       .select('content_creative_id, time_on_page_seconds, max_scroll_depth_pct, cta_clicked, created_at')
       .gte('created_at', new Date(Date.now() - 30 * 86400_000).toISOString())
+      .eq('event_type', 'summary')
       .order('created_at', { ascending: false })
       .limit(1000),
     supabaseAdmin
