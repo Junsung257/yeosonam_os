@@ -699,12 +699,14 @@ export default async function PackageDetailPage({
         socialProof={socialProof}
         catalogSiblings={catalogSiblings}
       />
-      {/* 고객 후기 (approved 리뷰 있을 때만 렌더) */}
-      <div className="mx-auto max-w-4xl px-4">
-        <ReviewsSection packageId={id} limit={5} />
+      <div className="pb-64 md:pb-12">
+        {/* 고객 후기 (approved 리뷰 있을 때만 렌더) */}
+        <div className="mx-auto max-w-4xl px-4">
+          <ReviewsSection packageId={id} limit={5} />
+        </div>
+        {/* 최근 본 상품 / 유사 상품 */}
+        <RecentViewsDeferred currentPackageId={id} />
       </div>
-      {/* 최근 본 상품 / 유사 상품 */}
-      <RecentViewsDeferred currentPackageId={id} />
     </>
   );
 }

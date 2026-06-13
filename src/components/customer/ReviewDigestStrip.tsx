@@ -45,20 +45,20 @@ export default function ReviewDigestStrip({ packageId }: { packageId: string }) 
   // fallback: 정상 응답 + 0건 → 리뷰 모집 중 CTA
   if (quotes.length === 0) {
     return (
-      <section className="px-4 py-3 -mt-2 relative z-10">
+      <section className="px-4 py-3 relative z-10">
         <button
           type="button"
           onClick={() => openKakaoChannel()}
-          className="w-full bg-gradient-to-r from-purple-50 via-white to-purple-50 border border-purple-100 rounded-2xl px-4 py-3 shadow-sm text-left active:scale-[0.99] transition-transform"
+          className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm text-left active:scale-[0.99] transition-transform"
         >
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-purple-700 flex items-center gap-1">
-              ✦ 첫 다녀온 분이 되어 주세요
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-xs font-extrabold text-slate-900 flex items-center gap-1">
+              ✦ 상담 전 확인할 수 있어요
             </span>
-            <span className="text-[11px] text-purple-600 font-medium">카톡 상담 →</span>
+            <span className="text-[11px] text-slate-500 font-semibold">카톡 상담 →</span>
           </div>
           <p className="text-[13px] text-gray-600 leading-snug mt-1">
-            아직 등록된 후기가 없어요. 출발 전 궁금한 점은 카톡으로 1:1 상담 받으세요.
+            아직 후기는 없지만, 포함·불포함 비용과 출발 가능 여부를 상담에서 바로 확인해드립니다.
           </p>
         </button>
       </section>

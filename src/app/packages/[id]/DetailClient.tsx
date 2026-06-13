@@ -117,6 +117,7 @@ interface AttractionInfo {
 //   parseCityFromActivity, parseFlightActivity, formatFlightLabel, getAirlineName
 
 const NAV_SECTIONS = ['상품정보', '요금표', '일정표', '선택관광', '유의사항'] as const;
+type NavSection = (typeof NAV_SECTIONS)[number];
 
 // 보라색 테마 아이콘
 function getTimelineIcon(type?: string, activity?: string) {
@@ -299,6 +300,25 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
 
+  useEffect(() => {
+    if (!showForm) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowForm(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showForm]);
+
   // CSR 네비게이션 시 referrer가 홈으로 고정되는 문제 대응 — 현재 URL을 sessionStorage에 저장
   useEffect(() => {
     sessionStorage.setItem('kakao_referrer', window.location.href);
@@ -313,7 +333,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     });
   };
   const [selectedDate, setSelectedDate] = useState('');
-  const [activeSection, setActiveSection] = useState('상품정보');
+  const [activeSection, setActiveSection] = useState<NavSection>('상품정보');
   const [activeDay, setActiveDay] = useState(1);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
@@ -383,26 +403,41 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     }
   }, [id, initialPackage, initialAttractions.length]);
 
-  const intersectingRef = useRef<Set<string>>(new Set());
-  const observerCallback = useCallback((entries: IntersectionObserverEntry[]) => {
-    for (const entry of entries) {
-      const section = entry.target.getAttribute('data-section') || '';
-      if (!section) continue;
-      if (entry.isIntersecting) intersectingRef.current.add(section);
-      else intersectingRef.current.delete(section);
+  const updateActiveSection = useCallback(() => {
+    const anchorY = 132;
+    let current: NavSection = NAV_SECTIONS[0];
+
+    for (const section of NAV_SECTIONS) {
+      const el = sectionRefs.current[section];
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.top <= anchorY) current = section;
     }
-    // NAV_SECTIONS 순서 기준으로 가장 위쪽 섹션만 활성화 (다중 활성화 방지)
-    const ordered = NAV_SECTIONS.filter(s => intersectingRef.current.has(s));
-    if (ordered.length > 0) setActiveSection(ordered[0]);
+
+    setActiveSection(prev => (prev === current ? prev : current));
   }, []);
 
   useEffect(() => {
-    const observer = new IntersectionObserver(observerCallback, { rootMargin: '-80px 0px -70% 0px', threshold: 0 });
-    Object.values(sectionRefs.current).forEach(el => { if (el) observer.observe(el); });
-    return () => observer.disconnect();
-  }, [pkg, observerCallback]);
+    let frame = 0;
+    const onScroll = () => {
+      if (frame) return;
+      frame = window.requestAnimationFrame(() => {
+        frame = 0;
+        updateActiveSection();
+      });
+    };
 
-  /** 한 번 이상 스크롤한 뒤 멈춤 → 15초 체류 시 AI 챗 선제 오픈 */
+    updateActiveSection();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll);
+    return () => {
+      if (frame) window.cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [pkg, updateActiveSection]);
+
+  /** 한 번 이상 스크롤한 뒤 멈춤 → 상담 힌트만 준비, 화면을 자동으로 덮지는 않음 */
   const proactiveChatDoneRef = useRef(false);
   useEffect(() => {
     if (!pkg || isLoading) return;
@@ -432,7 +467,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           const st = useChatStore.getState();
           if (st.messages.length > 0 || st.isOpen) return;
           proactiveChatDoneRef.current = true;
-          st.openChat();
           st.addMessage({
             role: 'assistant',
             content:
@@ -675,11 +709,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <div className="hidden md:block">
         <GlobalNav />
       </div>
-    <main className="min-h-screen bg-white pb-24 md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
+    <main className="min-h-screen bg-[#F8FAFC] pb-32 md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
 
       {/* ═══ 히어로 (사진 배경) ═══ */}
       <div ref={el => { sectionRefs.current['상품정보'] = el; }} data-section="상품정보"
-        className="relative h-[420px] md:h-[560px] w-full overflow-hidden md:rounded-b-3xl">
+        className="relative h-[392px] md:h-[560px] w-full overflow-hidden md:rounded-b-3xl">
         {/* 멀티 슬라이드 갤러리: 수동 스와이프 시 자동전환 중지 */}
         <div
           className="absolute inset-0"
@@ -716,7 +750,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div className="absolute inset-0 bg-gradient-to-br from-text-primary via-brand-dark to-brand" />
           )}
         </div>
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/10" />
 
         {/* 상단 네비 */}
         <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-12">
@@ -729,19 +763,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <span className="text-white text-lg">←</span>
           </button>
           <div className="flex gap-2">
-            <button onClick={handleShare} className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
+            <button type="button" onClick={handleShare} aria-label="상품 링크 공유" className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
               <span className="text-white">↗</span>
             </button>
-            <button className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
+            <button type="button" aria-label="찜하기" className="w-10 h-10 flex items-center justify-center rounded-full bg-black/30 backdrop-blur-md">
               <span className="text-white">♡</span>
             </button>
           </div>
         </div>
 
         {/* 히어로 콘텐츠 */}
-        <div className="absolute bottom-0 left-0 right-0 p-5 pb-8">
+        <div className="absolute bottom-0 left-0 right-0 p-5 pb-7">
           {pkg.product_type && (
-            <span className="bg-brand text-white px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider mb-3 inline-block">{pkg.product_type}</span>
+            <span className="bg-white/90 text-brand px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider mb-3 inline-block shadow-sm">{pkg.product_type}</span>
           )}
           {/* 2-tier hero (2026-04-29):
               ① Headline (h1, 큰 굵은 글씨, 8~14자) — display_title
@@ -756,7 +790,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             const tagline = pkg.hero_tagline || (legacyTail ? legacyTail.split(' + ').slice(0, 2).join(' · ') : '');
             return (
               <>
-                <h1 className="text-white text-[26px] md:text-3xl font-extrabold leading-tight mb-1.5 break-keep">{headline}</h1>
+                <h1 className="text-white text-[25px] md:text-3xl font-extrabold leading-tight mb-1.5 break-keep drop-shadow-sm">{headline}</h1>
                 {tagline && (
                   <p className="text-white/85 text-sm font-medium leading-snug mb-3 break-keep">{tagline}</p>
                 )}
@@ -764,9 +798,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             );
           })()}
           <div className="flex flex-wrap gap-1.5 mt-2">
-            {pkg.destination && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.destination}</span>}
-            {airlineName && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{airlineName}</span>}
-            {pkg.duration && <span className="bg-white/20 backdrop-blur-sm text-white/90 text-xs px-2.5 py-1 rounded-full">#{pkg.duration}일</span>}
+            {pkg.destination && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{pkg.destination}</span>}
+            {airlineName && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{airlineName}</span>}
+            {pkg.duration && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{pkg.duration}일</span>}
           </div>
         </div>
 
@@ -789,27 +823,27 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 같은 카탈로그 다른 분기 selector (P2-A / A3, 2026-05-19 박제) ═══ */}
       {/* 같은 catalog_id 패키지가 있으면 "단수이 vs 베이토우 vs 우라이" 같은 즉시 전환 chips. */}
       {catalogSiblings.length > 0 && (
-        <section className="px-4 mt-4">
-          <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
-            <div className="flex items-center gap-2 mb-2.5">
-              <span className="text-violet-700 text-sm font-bold">📚 같은 카탈로그 다른 옵션</span>
-              <span className="text-violet-600 text-xs">총 {catalogSiblings.length + 1}개 분기 중 선택</span>
+        <section className="px-4 -mt-5 relative z-10">
+          <div className="bg-white/95 backdrop-blur border border-slate-200 rounded-2xl p-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+            <div className="flex items-center justify-between gap-3 mb-2.5">
+              <span className="text-slate-900 text-sm font-extrabold">일정 옵션 선택</span>
+              <span className="text-slate-500 text-[11px] font-medium">총 {catalogSiblings.length + 1}개</span>
             </div>
             {/* 2026-05-19 박제 (Plan 에이전트 design review P1):
                 5+ 분기 wrap 폭발 방지 — chip max-width 180px + truncate.
                 모바일: 가로 스크롤 (overflow-x-auto + flex-nowrap), 데스크탑: wrap (md:flex-wrap). */}
             <div className="flex flex-nowrap md:flex-wrap gap-2 overflow-x-auto md:overflow-visible no-scrollbar -mx-1 px-1">
               {/* 현재 패키지 (selected) */}
-              <span className="inline-flex items-center max-w-[180px] px-3 py-1.5 rounded-full bg-violet-600 text-white text-xs font-semibold shadow-sm shrink-0">
+              <span className="inline-flex items-center max-w-[190px] px-3 py-2 rounded-full bg-slate-950 text-white text-xs font-semibold shadow-sm shrink-0">
                 <span className="truncate">{pkg.display_title || pkg.title}</span>
-                <span className="ml-1.5 opacity-80 shrink-0">현재</span>
+                <span className="ml-1.5 text-white/65 shrink-0">현재</span>
               </span>
               {/* 다른 sibling 패키지 — Link 로 즉시 이동 */}
               {catalogSiblings.map(s => (
                 <Link
                   key={s.id}
                   href={`/packages/${s.id}`}
-                  className="inline-flex items-center max-w-[180px] px-3 py-1.5 rounded-full bg-white border border-violet-300 text-violet-700 text-xs font-semibold hover:bg-violet-100 hover:border-violet-400 transition-colors shrink-0"
+                  className="inline-flex items-center max-w-[190px] px-3 py-2 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-semibold hover:bg-white hover:border-slate-300 transition-colors shrink-0"
                   title={s.display_title || s.title}
                 >
                   <span className="truncate">{s.display_title || s.title}</span>
@@ -824,8 +858,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <ReviewDigestStrip packageId={pkg.id} />
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}
-      <section className="px-4 -mt-6 relative z-10">
-        <div className="bg-white rounded-2xl p-5 shadow-lg border border-gray-100">
+      <section className="px-4 mt-3 relative z-10">
+        <div className="bg-white rounded-2xl p-5 shadow-[0_16px_42px_rgba(15,23,42,0.08)] border border-slate-100">
           {/* Social Proof + 희소성 신호 — 서버에서 내려온 실제 데이터만 표시 */}
           {socialProof && (socialProof.bookings > 0 || socialProof.interest > 0 || (socialProof.todayViews ?? 0) > 0 || (socialProof.nextDepartureBookings ?? 0) > 0) && (
             <div className="mb-3 pb-3 border-b border-gray-50 space-y-1.5">
@@ -862,9 +896,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               })()}
             </div>
           )}
-          <div className="flex justify-between items-start">
+          <div className="flex justify-between items-start gap-4">
             <div>
-              <p className="text-gray-500 text-sm mb-1">판매가</p>
+              <p className="text-gray-500 text-xs font-semibold mb-1">1인 기준 최저가</p>
               <div className="flex items-baseline gap-1">
                 {Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0 ? (
                   <>
@@ -914,6 +948,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               </div>
             );
           })()}
+          <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
+            {pkg.duration && (
+              <div className="rounded-xl bg-slate-50 px-2.5 py-2">
+                <p className="text-[10px] font-semibold text-slate-500">기간</p>
+                <p className="mt-0.5 text-sm font-extrabold text-slate-900">{pkg.duration}일</p>
+              </div>
+            )}
+            {airlineName && (
+              <div className="rounded-xl bg-slate-50 px-2.5 py-2">
+                <p className="text-[10px] font-semibold text-slate-500">항공</p>
+                <p className="mt-0.5 truncate text-sm font-extrabold text-slate-900">{airlineName}</p>
+              </div>
+            )}
+            {(pkg.min_people || pkg.min_participants) && (
+              <div className="rounded-xl bg-slate-50 px-2.5 py-2">
+                <p className="text-[10px] font-semibold text-slate-500">출발</p>
+                <p className="mt-0.5 text-sm font-extrabold text-slate-900">최소 {pkg.min_people || pkg.min_participants}명</p>
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -922,10 +976,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <button
           type="button"
           onClick={() => openInquiryForm('detail_price_card')}
-          className="w-full h-11 rounded-2xl bg-brand text-white font-bold text-sm shadow-sm active:scale-[0.98] transition-all flex items-center justify-center gap-2"
+          className="w-full h-12 rounded-2xl bg-slate-950 text-white font-bold text-sm shadow-[0_10px_24px_rgba(15,23,42,0.18)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
           <span>예약 문의하기</span>
-          <span className="text-white/70 text-xs font-normal">— 날짜·인원 선택</span>
+          <span className="text-white/65 text-xs font-normal">날짜·인원 상담</span>
         </button>
       </div>
 
@@ -1123,12 +1177,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 스티키 탭 ═══ */}
-      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-gray-100">
-        <div className="flex gap-0 px-4">
+      <div className="sticky top-0 z-30 bg-white/95 backdrop-blur-xl border-b border-slate-100 shadow-[0_1px_0_rgba(15,23,42,0.03)]">
+        <div className="flex gap-0 px-3">
           {NAV_SECTIONS.map(section => (
             <button key={section} onClick={() => scrollToSection(section)}
-              className={`flex-1 py-3.5 text-xs font-semibold text-center transition-colors border-b-2 ${
-                activeSection === section ? 'text-brand border-brand' : 'text-gray-500 border-transparent'
+              className={`flex-1 py-3 text-[11px] font-bold text-center transition-colors border-b-2 ${
+                activeSection === section ? 'text-slate-950 border-slate-950' : 'text-gray-500 border-transparent'
               }`}>{section}</button>
           ))}
         </div>
@@ -1254,7 +1308,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <h2 className="text-lg font-extrabold text-gray-900 mb-5">여행 일정</h2>
 
           {/* Day 탭 (Voyager 스타일 pill) — 클릭 시 해당 day로 스크롤 */}
-          <div className="sticky top-[44px] z-20 bg-white/95 backdrop-blur-md -mx-4 px-4 pb-3 pt-1">
+          <div className={`${activeSection === '일정표' ? 'sticky' : 'hidden'} top-[41px] z-20 bg-[#F8FAFC]/95 backdrop-blur-md -mx-4 px-4 pb-3 pt-2 border-b border-slate-100`}>
             <div className="flex gap-2 overflow-x-auto scrollbar-hide">
               {days.map((day, idx) => {
                 const thumb = dayAttractionPhotos[idx];
@@ -1264,10 +1318,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       setActiveDay(day.day);
                       dayRefs.current[day.day]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }}
-                    className={`flex-shrink-0 flex flex-col items-center px-4 py-2.5 rounded-2xl transition-all border ${
+                    className={`flex-shrink-0 flex flex-col items-center min-w-[72px] px-3 py-2 rounded-xl transition-all border ${
                       isActive
-                        ? 'bg-brand text-white border-brand shadow-lg'
-                        : 'bg-white text-gray-500 border-gray-200 hover:border-brand-light'
+                        ? 'bg-slate-950 text-white border-slate-950 shadow-lg'
+                        : 'bg-white text-gray-500 border-slate-200 hover:border-slate-300'
                     }`}>
                     {thumb ? (
                       <div className={`relative w-8 h-8 rounded-full overflow-hidden mb-1.5 ring-2 ${isActive ? 'ring-white/50' : 'ring-gray-100'}`}>
@@ -1275,7 +1329,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       </div>
                     ) : null}
                     <span className="text-xs font-bold uppercase tracking-wider opacity-80">DAY {day.day}</span>
-                    <span className="font-extrabold text-lg leading-none mt-0.5">{String(day.day).padStart(2, '0')}</span>
+                    <span className="font-extrabold text-base leading-none mt-0.5">{String(day.day).padStart(2, '0')}</span>
                     <span className="text-xs mt-1 opacity-70">{day.regions?.[0]?.slice(0, 6) || ''}</span>
                   </button>
                 );
@@ -1854,19 +1908,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약 문의 (Jiwonnote 분석 P3) ═══ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-40 border-t border-gray-100 safe-area-bottom">
+      <div className="fixed bottom-0 left-0 right-0 bg-white z-40 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]">
         {/* 신뢰 배너 — 특약 상품은 방어형 카피, 일반 상품은 전환형 카피 */}
         {(() => {
           const specialTermsProduct = hasSpecialTermsBanner(initialNotices);
           return (
-            <div className={`text-[10px] text-center py-1.5 font-semibold flex items-center justify-center gap-2.5 flex-wrap px-3 ${
-              specialTermsProduct ? 'bg-amber-50 text-amber-900' : 'bg-brand-light text-blue-700'
+            <div className={`text-[10px] text-center py-1.5 font-bold flex items-center justify-center gap-2 px-3 overflow-hidden whitespace-nowrap ${
+              specialTermsProduct ? 'bg-amber-50 text-amber-900' : 'bg-slate-50 text-slate-700'
             }`}>
               <span>{specialTermsProduct ? '✅ 현지 필수비용 투명 공개' : '✅ 숨은 수수료 없음'}</span>
               {pkg.product_type && /노팁|no.?tip/i.test(pkg.product_type) && <span>✅ 팁 없음</span>}
               {pkg.product_type && /노쇼핑|no.?shopping/i.test(pkg.product_type) && <span>✅ 쇼핑 없음</span>}
-              {pkg.product_type && /노옵션|no.?option/i.test(pkg.product_type) && <span>✅ 선택관광 강요 없음</span>}
-              <span>
+              <span className="truncate">
                 ✅ {specialTermsProduct
                   ? '예약 즉시 항공·숙박 확보'
                   : (nextConfirmedDate ? `${nextConfirmedDate} 출발 확정` : '출발 확정 후 안심 예약')}
@@ -1874,7 +1927,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             </div>
           );
         })()}
-        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-4 pt-3 flex items-center gap-2">
+        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-4 pt-3 flex items-center gap-2.5">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
           <div className="flex-1 min-w-0">
             {selectedTier ? (
@@ -1903,6 +1956,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <button
             type="button"
             aria-label="카카오톡으로 문의"
+            data-analytics-id="mobile_kakao_consult"
             onClick={async () => {
               trackLead({
                 content_name: pkg.title || '',
@@ -1936,18 +1990,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 setTimeout(() => setClipboardToast(false), 4000);
               }
             }}
-            className="h-11 px-3.5 rounded-full bg-[#FEE500] text-[#3C1E1E] font-bold text-[13px] shadow-sm active:scale-[0.98] transition-all shrink-0 flex items-center gap-1"
+            className="h-11 w-11 rounded-full bg-[#FEE500] text-[#3C1E1E] font-bold text-[13px] shadow-sm active:scale-[0.98] transition-all shrink-0 flex items-center justify-center"
           >
-            <span className="text-base leading-none">💬</span>
-            <span>카톡</span>
+            <span className="text-base leading-none" aria-hidden="true">💬</span>
           </button>
 
           {/* 예약 문의 — primary, 폼 열기 (상태형: 날짜 선택 여부에 따라 텍스트 변경) */}
           <button
             type="button"
             onClick={() => openInquiryForm('detail_sticky_cta')}
-            className="h-11 px-4 sm:px-5 rounded-full bg-brand text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
+            className="h-11 px-5 sm:px-6 rounded-full bg-slate-950 text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
             aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
+            data-analytics-id="mobile_sticky_reservation"
           >
             {selectedDate
               ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
@@ -1998,14 +2052,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 예약 폼 바텀시트 ═══ */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 flex items-end" style={{ zIndex: 70 }} role="dialog" aria-modal="true" aria-labelledby="reservation-inquiry-title" aria-describedby="reservation-inquiry-description">
           <button
             type="button"
-            aria-label="Close reservation inquiry"
+            aria-label="예약 문의 배경 닫기"
+            tabIndex={-1}
             className="absolute inset-0 bg-black/40"
             onClick={() => setShowForm(false)}
           />
-          <div className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl p-6">
+          <div className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto max-h-[92dvh] overflow-y-auto overscroll-contain rounded-t-3xl p-6 shadow-[0_-20px_50px_rgba(15,23,42,0.18)]">
             {submitted ? (
               <div className="text-center py-8">
                 <p className="text-3xl mb-2">✅</p>
@@ -2015,8 +2070,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             ) : (
               <>
                 <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
-                <h3 className="text-lg font-bold text-gray-900 mb-3">예약 문의</h3>
-                <div className="bg-brand-light rounded-xl p-3 mb-4 text-xs text-text-primary">
+                <button
+                  type="button"
+                  aria-label="예약 문의 닫기"
+                  onClick={() => setShowForm(false)}
+                  className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200"
+                >
+                  ✕
+                </button>
+                <h3 id="reservation-inquiry-title" className="text-lg font-extrabold text-gray-900 mb-2">예약 문의</h3>
+                <p id="reservation-inquiry-description" className="mb-4 text-xs leading-relaxed text-slate-500">
+                  이름과 연락처만 남기면 담당자가 출발 가능일과 인원을 확인해 연락드립니다.
+                </p>
+                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4 text-xs text-text-primary">
                   <p className="font-bold">{pkg.title}</p>
                   {selectedTier ? (
                     <p className="mt-1">📅 {selectedTier.period_label} — ₩{selectedTier.adult_price?.toLocaleString()}</p>
@@ -2025,16 +2091,31 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   ) : null}
                 </div>
                 <div className="space-y-3">
-                  <input placeholder="이름 *" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                  <input placeholder="연락처 *" value={formData.phone} onChange={e => setFormData(f => ({ ...f, phone: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />
-                  {!selectedTier && <input placeholder="희망 출발일" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
-                    className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400" />}
-                  <textarea placeholder="요청사항 (선택)" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
-                    rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 resize-none" />
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold text-slate-700">이름 <span className="text-brand">*</span></span>
+                    <input name="name" autoComplete="name" aria-describedby="reservation-inquiry-description" placeholder="홍길동" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
+                  </label>
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold text-slate-700">연락처 <span className="text-brand">*</span></span>
+                    <input name="phone" autoComplete="tel" inputMode="tel" placeholder="010-0000-0000" value={formData.phone} onChange={e => setFormData(f => ({ ...f, phone: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
+                  </label>
+                  {!selectedTier && <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold text-slate-700">희망 출발일</span>
+                    <input name="departureDate" autoComplete="off" placeholder="예: 7월 23일 또는 날짜 미정" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
+                      className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
+                  </label>}
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-bold text-slate-700">요청사항</span>
+                    <textarea name="message" placeholder="인원, 객실, 부모님 동행 여부 등" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
+                      rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400 resize-none" />
+                  </label>
                   <button onClick={handleSubmit} disabled={!formData.name || !formData.phone || isSubmitting}
-                    className="w-full py-3 bg-gradient-to-r from-brand to-brand-dark text-white font-bold rounded-xl text-sm disabled:opacity-50 shadow-lg flex items-center justify-center gap-2">
+                    aria-disabled={!formData.name || !formData.phone || isSubmitting}
+                    title={!formData.name || !formData.phone ? '이름과 연락처를 입력해 주세요' : undefined}
+                    data-analytics-id="reservation_sheet_submit"
+                    className="w-full py-3 bg-slate-950 text-white font-bold rounded-xl text-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white shadow-lg flex items-center justify-center gap-2">
                     {isSubmitting ? (
                       <>
                         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />

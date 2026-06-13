@@ -34,6 +34,7 @@ export default function ChatWidget() {
 
   // admin 페이지에서는 자비스 플로팅 위젯을 사용하므로 숨김
   if (pathname?.startsWith('/admin')) return null;
+  const isPackageDetail = /^\/packages\/[^/]+/.test(pathname || '');
 
   const handleSend = async () => {
     const text = inputValue.trim();
@@ -79,7 +80,7 @@ export default function ChatWidget() {
       {!isOpen && (
         <button
           onClick={toggleChat}
-          className="fixed right-6 z-[60] w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg flex items-center justify-center transition-all active:scale-95 bottom-24 md:bottom-6"
+          className={`fixed right-6 z-[60] w-14 h-14 bg-violet-600 hover:bg-violet-700 text-white rounded-full shadow-lg items-center justify-center transition-all active:scale-95 bottom-24 md:bottom-6 ${isPackageDetail ? 'hidden md:flex' : 'flex'}`}
           aria-label="채팅 열기"
         >
           <MessageCircle size={26} />

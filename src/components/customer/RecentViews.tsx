@@ -35,6 +35,17 @@ function formatPrice(price: number | null): string {
     : '가격 문의';
 }
 
+function getComparisonBadges(pkg: RecentPkg): string[] {
+  const source = `${pkg.title} ${pkg.destination}`;
+  const badges: string[] = [];
+  const route = source.match(/\(([^)]+)\)/)?.[1];
+  if (route) badges.push(route.replace(/\s+/g, ''));
+  const duration = source.match(/(\d+박\s*\d+일|\d+일)/)?.[1];
+  if (duration) badges.push(duration.replace(/\s+/g, ''));
+  if (/직항|에어부산|이스타|티웨이|진에어|대한항공|아시아나/.test(source)) badges.push('항공 포함');
+  return Array.from(new Set(badges)).slice(0, 3);
+}
+
 export default function RecentViews({ customerId, sessionId, currentPackageId }: Props) {
   const [packages, setPackages] = useState<RecentPkg[]>([]);
   const [loading, setLoading] = useState(true);
@@ -112,24 +123,45 @@ export default function RecentViews({ customerId, sessionId, currentPackageId }:
   if (loading || packages.length === 0) return null;
 
   return (
-    <section className="px-4 mt-6">
-      <h2 className="text-[16px] font-bold text-text-primary mb-3">{heading}</h2>
-      <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide -mx-4 px-4 snap-x snap-mandatory">
+    <section className="mt-8 mb-4">
+      <div className="mb-3 flex items-end justify-between gap-3 px-4">
+        <div>
+          <h2 className="text-[17px] font-extrabold text-slate-950">{heading}</h2>
+          {type === 'similar' && (
+            <p className="mt-1 text-xs text-slate-500">코스와 기간을 비교해 더 맞는 일정을 고르세요.</p>
+          )}
+        </div>
+        <span className="shrink-0 text-[11px] font-semibold text-slate-400">총 {packages.length}개</span>
+      </div>
+      <div className="flex gap-3 overflow-x-auto px-4 pb-3 scrollbar-hide snap-x snap-mandatory scroll-px-4">
         {packages.map((pkg) => (
           <Link
             key={pkg.id}
             href={`/packages/${encodeURIComponent(pkg.id)}`}
-            className="flex-shrink-0 w-[160px] snap-start rounded-xl border border-gray-200 bg-white p-3 hover:border-brand/40 hover:shadow-sm transition-all card-touch"
+            aria-label={`${pkg.title} 자세히 비교하기`}
+            className="flex min-h-[176px] w-[82vw] max-w-[320px] flex-shrink-0 snap-start flex-col rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition-all card-touch hover:border-slate-300 hover:shadow-md"
           >
-            <p className="text-[11px] font-semibold text-text-body mb-1 line-clamp-1">
+            <p className="text-[11px] font-bold text-slate-500 mb-1 line-clamp-1">
               {pkg.destination}
             </p>
-            <p className="text-[13px] font-bold text-text-primary leading-snug line-clamp-2 mb-2 min-h-[2.5em]">
+            <p className="text-[15px] font-extrabold text-slate-950 leading-snug line-clamp-2 mb-3 min-h-[2.65em]">
               {pkg.title}
             </p>
-            <p className="text-[14px] font-extrabold text-brand tabular-nums">
-              {formatPrice(pkg.price)}
-            </p>
+            {type === 'similar' && (
+              <div className="mb-4 flex flex-wrap gap-1.5">
+                {getComparisonBadges(pkg).map((badge) => (
+                  <span key={badge} className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-bold text-slate-600">
+                    {badge}
+                  </span>
+                ))}
+              </div>
+            )}
+            <div className="mt-auto flex items-end justify-between gap-3">
+              <p className="text-[18px] font-black text-slate-950 tabular-nums">
+                {formatPrice(pkg.price)}
+              </p>
+              <p className="shrink-0 text-[12px] font-bold text-brand">비교하기 →</p>
+            </div>
           </Link>
         ))}
       </div>

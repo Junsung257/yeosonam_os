@@ -14,12 +14,21 @@ const JarvisFloatingWidget = dynamic(() => import('@/components/JarvisFloatingWi
 export default function LayoutClientWidgets() {
   const pathname = usePathname();
   const isFocusedLanding = pathname?.startsWith('/lp/');
+  const isPackageDetail = /^\/packages\/[^/]+/.test(pathname || '');
 
   return (
     <>
       <LayoutTrackers />
       {!isFocusedLanding && <JarvisFloatingWidget />}
-      {!isFocusedLanding && <ChatWidget />}
+      {!isFocusedLanding && (
+        isPackageDetail ? (
+          <div className="hidden md:block">
+            <ChatWidget />
+          </div>
+        ) : (
+          <ChatWidget />
+        )
+      )}
       {!isFocusedLanding && <BottomTabBar />}
     </>
   );
