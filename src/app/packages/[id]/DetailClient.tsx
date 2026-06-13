@@ -700,7 +700,24 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     }
   };
 
-  const scrollToSection = (section: string) => sectionRefs.current[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const scrollToSection = (section: string) => {
+    const target = sectionRefs.current[section];
+    if (!target) return;
+
+    const offset = section === '일정표' ? 52 : 88;
+    window.scrollTo({
+      top: target.getBoundingClientRect().top + window.scrollY - offset,
+      behavior: 'smooth',
+    });
+  };
+  const reservationNameMissing = formData.name.trim().length === 0;
+  const reservationPhoneMissing = formData.phone.trim().length === 0;
+  const reservationFormReady = !reservationNameMissing && !reservationPhoneMissing && !isSubmitting;
+  const reservationFormHint = reservationNameMissing
+    ? '이름을 입력하면 문의 접수 버튼이 준비됩니다.'
+    : reservationPhoneMissing
+      ? '연락처를 입력하면 바로 문의를 접수할 수 있어요.'
+      : '담당자가 출발 가능일과 인원을 확인해 연락드립니다.';
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
@@ -2111,11 +2128,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <textarea name="message" placeholder="인원, 객실, 부모님 동행 여부 등" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
                       rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400 resize-none" />
                   </label>
-                  <button onClick={handleSubmit} disabled={!formData.name || !formData.phone || isSubmitting}
-                    aria-disabled={!formData.name || !formData.phone || isSubmitting}
-                    title={!formData.name || !formData.phone ? '이름과 연락처를 입력해 주세요' : undefined}
+                  <p className={`rounded-xl px-3 py-2 text-[11px] font-semibold leading-relaxed ${
+                    reservationFormReady ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'
+                  }`}>
+                    {reservationFormHint}
+                  </p>
+                  <button onClick={handleSubmit} disabled={!reservationFormReady}
+                    aria-disabled={!reservationFormReady}
+                    title={!reservationFormReady ? '이름과 연락처를 입력해 주세요' : undefined}
                     data-analytics-id="reservation_sheet_submit"
-                    className="w-full py-3 bg-slate-950 text-white font-bold rounded-xl text-sm disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-white shadow-lg flex items-center justify-center gap-2">
+                    className="w-full py-3 bg-slate-950 text-white font-bold rounded-xl text-sm disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 shadow-lg disabled:shadow-none flex items-center justify-center gap-2">
                     {isSubmitting ? (
                       <>
                         <span className="w-4 h-4 border-2 border-white/40 border-t-white rounded-full animate-spin" />

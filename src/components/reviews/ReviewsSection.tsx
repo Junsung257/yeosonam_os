@@ -55,23 +55,23 @@ function SourceBadge({ sourceType }: { sourceType: string }) {
 
 function EmptyReviewsState() {
   return (
-    <section className="my-10">
-      <header className="mb-5">
-        <h2 className="text-[18px] md:text-[22px] font-bold text-slate-900">
+    <section className="mb-5 mt-7">
+      <header className="mb-3">
+        <h2 className="text-[17px] md:text-[20px] font-bold text-slate-900">
           ⭐ 고객 후기
         </h2>
       </header>
-      <div className="bg-slate-50 border border-slate-200 border-dashed rounded-2xl p-8 text-center">
-        <div className="flex justify-center gap-0.5 mb-3">
+      <div className="rounded-2xl border border-slate-200 border-dashed bg-slate-50 px-4 py-4 text-center">
+        <div className="mb-2 flex justify-center gap-0.5">
           {[1,2,3,4,5].map(i => (
-            <svg key={i} className="w-7 h-7 text-slate-200" fill="currentColor" viewBox="0 0 20 20">
+            <svg key={i} className="h-5 w-5 text-slate-200" fill="currentColor" viewBox="0 0 20 20">
               <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
             </svg>
           ))}
         </div>
-        <p className="text-slate-700 font-semibold text-[15px] mb-1.5">첫 번째 후기를 기다리고 있어요</p>
-        <p className="text-slate-400 text-[13px] leading-relaxed">
-          이 여행을 다녀오신 분들의 솔직한 후기가<br />다음 여행자에게 큰 도움이 됩니다
+        <p className="mb-1 text-[14px] font-semibold text-slate-700">첫 후기를 기다리고 있어요</p>
+        <p className="text-[12px] leading-relaxed text-slate-400">
+          다녀오신 분들의 후기가 등록되면 이곳에 표시됩니다.
         </p>
       </div>
     </section>
