@@ -13,6 +13,7 @@ import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
 import { appendInterlinkSection } from '@/lib/topical-authority';
 import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
+import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
@@ -972,7 +973,7 @@ async function processQueueItem(
     // 🆕 SEO 점수 측정 — 기준 미만이면 발행 보류 (qualify_gate 후 추가 게이트)
     const imgCount = (generated.blog_html.match(/!\[/g) || []).length;
     const imgWithAlt = (generated.blog_html.match(/!\[[^\]]+\]\(/g) || []).length;
-    const seoScore = computeSeoScore({
+    const buildSeoScoreInput = () => ({
       blogHtml: generated.blog_html,
       slug: generated.slug,
       seoTitle: generated.seo_title,
@@ -990,6 +991,24 @@ async function processQueueItem(
         breadcrumbList: true,
       },
     });
+    let seoScore = computeSeoScore(buildSeoScoreInput());
+
+    if (!seoScore.passed && seoScore.details.some(d => d.status === 'fail' && ['title', 'meta_description'].includes(d.name))) {
+      const seoRepair = repairBlogSeoMetadata({
+        seoTitle: generated.seo_title,
+        seoDescription: generated.seo_description,
+        topic: item.topic,
+        primaryKeyword,
+        destination: item.destination,
+        category: item.category,
+      });
+      if (seoRepair.changed) {
+        generated.seo_title = seoRepair.seoTitle;
+        generated.seo_description = seoRepair.seoDescription;
+        seoScore = computeSeoScore(buildSeoScoreInput());
+        console.log(`[blog-publisher] SEO metadata repair: ${seoRepair.changes.join(', ')} -> ${seoScore.score}/${seoScore.maxScore}`);
+      }
+    }
 
     if (!seoScore.passed) {
       const failedDetails = seoScore.details.filter(d => d.status === 'fail').map(d => d.name).join(', ');
