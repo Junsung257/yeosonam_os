@@ -2,20 +2,15 @@
  * 여행 적합도 카드
  *
  * 예약 직전 고객이 "이 달에 가도 되는지" 빠르게 판단하도록
- * 기본 화면은 결론과 3개 핵심 체크만 보여주고, 월별 추이는 접힘 상세로 둔다.
+ * 결론, 리스크, 준비물을 컨시어지 리포트 형태로 보여준다.
  */
 'use client';
 
 import { useState } from 'react';
 import {
-  Activity,
-  AlertTriangle,
-  Calendar,
   CheckCircle2,
   ChevronDown,
-  Info,
-  Users,
-  type LucideIcon,
+  TrendingUp,
 } from 'lucide-react';
 import type { FitnessScore, MonthlyNormal } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
@@ -46,59 +41,71 @@ function scoreColor(score: number): string {
 
 function scoreTone(score: number): {
   label: string;
+  headline: string;
+  accent: string;
   text: string;
-  bg: string;
-  border: string;
-  chip: string;
   soft: string;
+  border: string;
+  bar: string;
+  chip: string;
 } {
   if (score >= 85) {
     return {
-      label: '매우 좋음',
+      label: '최적',
+      headline: '여행하기 아주 좋은 달',
+      accent: '#059669',
       text: 'text-emerald-700',
-      bg: 'bg-emerald-50',
+      soft: 'bg-emerald-50 text-emerald-800',
       border: 'border-emerald-100',
+      bar: 'bg-emerald-500',
       chip: 'bg-emerald-600 text-white',
-      soft: 'bg-emerald-50 text-emerald-700',
     };
   }
   if (score >= 70) {
     return {
-      label: '좋음',
+      label: '추천',
+      headline: '무난하게 추천할 수 있는 달',
+      accent: '#65A30D',
       text: 'text-lime-700',
-      bg: 'bg-lime-50',
+      soft: 'bg-lime-50 text-lime-800',
       border: 'border-lime-100',
+      bar: 'bg-lime-500',
       chip: 'bg-lime-600 text-white',
-      soft: 'bg-lime-50 text-lime-700',
     };
   }
   if (score >= 55) {
     return {
-      label: '보통',
+      label: '준비 권장',
+      headline: '준비하면 괜찮은 달',
+      accent: '#D97706',
       text: 'text-amber-700',
-      bg: 'bg-amber-50',
+      soft: 'bg-amber-50 text-amber-900',
       border: 'border-amber-100',
+      bar: 'bg-amber-500',
       chip: 'bg-amber-500 text-white',
-      soft: 'bg-amber-50 text-amber-800',
     };
   }
   if (score >= 40) {
     return {
       label: '주의',
+      headline: '일정 여유가 필요한 달',
+      accent: '#EA580C',
       text: 'text-orange-700',
-      bg: 'bg-orange-50',
+      soft: 'bg-orange-50 text-orange-900',
       border: 'border-orange-100',
+      bar: 'bg-orange-500',
       chip: 'bg-orange-500 text-white',
-      soft: 'bg-orange-50 text-orange-800',
     };
   }
   return {
     label: '비추천',
+    headline: '날씨 부담이 큰 달',
+    accent: '#E11D48',
     text: 'text-rose-700',
-    bg: 'bg-rose-50',
+    soft: 'bg-rose-50 text-rose-800',
     border: 'border-rose-100',
+    bar: 'bg-rose-500',
     chip: 'bg-rose-500 text-white',
-    soft: 'bg-rose-50 text-rose-700',
   };
 }
 
@@ -113,61 +120,68 @@ function cleanBadge(badge: string | null | undefined): string | null {
 }
 
 function tempCopy(tempMean: number): string {
-  if (tempMean <= 5) return '패딩·장갑까지 챙기는 겨울 옷차림';
-  if (tempMean <= 12) return '두꺼운 코트와 니트가 안정적';
-  if (tempMean <= 17) return '가디건이나 자켓이 필요한 봄가을 날씨';
-  if (tempMean <= 22) return '낮엔 긴팔, 저녁엔 가디건';
-  if (tempMean <= 27) return '낮 반팔, 아침저녁 얇은 겉옷';
-  if (tempMean <= 32) return '반팔·모자·선크림 중심';
-  return '한낮 더위 주의, 실내 일정 병행';
+  if (tempMean <= 5) return '패딩과 장갑까지 준비';
+  if (tempMean <= 12) return '코트와 니트가 안정적';
+  if (tempMean <= 17) return '가디건이나 자켓 필요';
+  if (tempMean <= 22) return '낮엔 긴팔, 저녁엔 겉옷';
+  if (tempMean <= 27) return '낮 반팔, 아침저녁 겉옷';
+  if (tempMean <= 32) return '모자와 선크림 중심';
+  return '한낮 더위와 실내 일정 병행';
 }
 
 function rainCopy(rainDays: number): string {
   const r = Math.round(rainDays);
-  if (r <= 2) return '비 걱정이 거의 적은 달';
-  if (r <= 5) return '접이식 우산 정도면 충분';
-  if (r <= 9) return '우산을 챙기면 안정적';
-  if (r <= 15) return '우산·방수 신발 필수';
-  return '우기권, 실내 일정도 같이 잡기';
+  if (r <= 2) return '비 걱정이 적음';
+  if (r <= 5) return '접이식 우산 정도';
+  if (r <= 9) return '우산 준비 권장';
+  if (r <= 15) return '우산과 방수 신발 필수';
+  return '우기권, 실내 일정 병행';
 }
 
 function humidityCopy(humidity: number): string {
-  if (humidity <= 40) return '건조, 보습 제품 챙기기';
-  if (humidity <= 55) return '한국보다 건조한 편';
+  if (humidity <= 40) return '건조한 편';
+  if (humidity <= 55) return '한국보다 건조';
   if (humidity <= 70) return '한국과 비슷한 쾌적도';
-  if (humidity <= 80) return '약간 습함, 통풍 좋은 옷';
-  return '습도 높음, 얇고 잘 마르는 옷 추천';
+  if (humidity <= 80) return '약간 습함';
+  return '습도 높음';
 }
 
 function crowdCopy(month: number, popularity?: number): string {
   if (popularity !== undefined) {
-    if (popularity >= 85) return '최성수기, 인기 코스 선예약';
-    if (popularity >= 70) return '인기 시즌, 예약 추천';
-    if (popularity >= 50) return '수요 안정적, 비교적 여유';
-    return '한적한 시기, 가격 이점';
+    if (popularity >= 85) return '최성수기';
+    if (popularity >= 70) return '인기 시즌';
+    if (popularity >= 50) return '수요 안정';
+    return '한적한 시기';
   }
   const peak = { 1: 8, 2: 5, 3: 5, 4: 6, 5: 7, 6: 5, 7: 9, 8: 9, 9: 5, 10: 7, 11: 4, 12: 8 }[month] ?? 5;
-  if (peak >= 8) return '한국 성수기, 혼잡 대비';
-  if (peak >= 6) return '준성수기, 적당한 인기';
-  return '비수기, 한적한 편';
+  if (peak >= 8) return '성수기';
+  if (peak >= 6) return '준성수기';
+  return '비수기';
 }
 
 function climateCaption(score: number, keyConcern: string | null): string {
   const concern = cleanConcern(keyConcern);
-  if (score >= 85) return '날씨 걱정이 적은 최적 시즌이에요.';
-  if (score >= 70) return concern ? `${concern}만 확인하면 대체로 쾌적해요.` : '대체로 쾌적하게 다녀오기 좋아요.';
-  if (score >= 55) return concern ? `${concern} 대비만 하면 충분히 즐길 수 있어요.` : '준비물만 맞추면 무난하게 다녀오기 좋아요.';
-  if (score >= 40) return concern ? `${concern} 영향이 있어 일정과 옷차림을 신경 써야 해요.` : '날씨 변동을 감안해 일정 여유를 두는 게 좋아요.';
-  return '날씨 부담이 큰 달이라 일정과 준비물을 신중히 봐야 해요.';
+  if (score >= 85) return '날씨 걱정이 적어 일정 만족도가 높은 시기입니다.';
+  if (score >= 70) return concern ? `${concern}만 확인하면 대체로 쾌적합니다.` : '대체로 쾌적하게 다녀오기 좋은 시기입니다.';
+  if (score >= 55) return concern ? `${concern} 대비만 하면 충분히 즐길 수 있습니다.` : '준비물만 맞추면 무난하게 다녀오기 좋은 시기입니다.';
+  if (score >= 40) return concern ? `${concern} 영향이 있어 일정과 옷차림을 신경 써야 합니다.` : '날씨 변동을 감안해 일정 여유를 두는 편이 좋습니다.';
+  return '날씨 부담이 커서 일정과 준비물을 신중히 확인해야 합니다.';
 }
 
 function popularityCaption(score: number): string {
   if (score >= 90) return '한국인이 가장 많이 찾는 시즌';
-  if (score >= 75) return '한국인 검색·예약이 활발한 시기';
+  if (score >= 75) return '검색과 예약이 활발한 시기';
   if (score >= 60) return '꾸준히 인기 있는 시즌';
   if (score >= 45) return '평균적인 수요';
-  if (score >= 30) return '비수기, 가격 이점 가능';
-  return '가장 한적한 시기';
+  if (score >= 30) return '가격 이점 가능';
+  return '한적한 시기';
+}
+
+function popularityShortCopy(score: number): string {
+  if (score >= 85) return '선예약 권장';
+  if (score >= 70) return '예약 활발';
+  if (score >= 50) return '수요 안정';
+  return '비교적 여유';
 }
 
 function chartSummary(
@@ -186,15 +200,15 @@ function chartSummary(
     : fitnessScores.reduce((a, b) => (a.score > b.score ? a : b)).month;
 
   if (peakMonth === representativeMonth && pop !== undefined && pop >= 75) {
-    if (climate >= 70) return `${MONTHS[representativeMonth - 1]}은 인기와 날씨가 같이 좋은 달이에요.`;
-    if (climate >= 50) return `${MONTHS[representativeMonth - 1]}은 인기 시즌이에요. 날씨 준비만 하면 만족도가 괜찮습니다.`;
-    return `${MONTHS[representativeMonth - 1]}은 인기 시즌이지만 날씨 대비가 꼭 필요합니다.`;
+    if (climate >= 70) return `${MONTHS[representativeMonth - 1]}은 인기와 날씨가 같이 좋은 달입니다.`;
+    if (climate >= 50) return `${MONTHS[representativeMonth - 1]}은 인기 시즌입니다. 날씨 준비만 하면 만족도가 괜찮습니다.`;
+    return `${MONTHS[representativeMonth - 1]}은 인기 시즌이지만 날씨 대비가 필요합니다.`;
   }
   if (pop !== undefined && pop >= 75) {
-    return `${MONTHS[representativeMonth - 1]} 출발은 한국인 인기 시즌이에요. 피크는 ${MONTHS[peakMonth - 1]}입니다.`;
+    return `${MONTHS[representativeMonth - 1]} 출발은 한국인 인기 시즌입니다. 피크는 ${MONTHS[peakMonth - 1]}입니다.`;
   }
   if (pop !== undefined && pop < 45) {
-    return `${MONTHS[representativeMonth - 1]} 출발은 한적하고 가격 이점을 기대하기 좋은 시기예요.`;
+    return `${MONTHS[representativeMonth - 1]} 출발은 한적하고 가격 이점을 기대하기 좋은 시기입니다.`;
   }
   if (climate >= 70) return `${MONTHS[representativeMonth - 1]} 출발은 날씨 적합도가 좋은 편입니다.`;
   return `${MONTHS[representativeMonth - 1]} 출발은 준비물을 맞추면 합리적으로 다녀오기 좋은 타이밍입니다.`;
@@ -239,99 +253,90 @@ export default function TravelFitnessCard({
   const packingTips = buildPackingTips(norm);
   const hasDetails = safeFitnessScores.length > 1;
   const badge = cleanBadge(sig?.badge);
+  const rainDays = Math.round(norm.rain_days);
+  const tempMean = Math.round(norm.temp_mean);
+  const scoreWidth = Math.max(6, Math.min(100, sel.score));
 
   return (
-    <section className="px-4 mt-4">
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div className={`${tone.bg} ${tone.border} border-b px-4 pb-3 pt-3.5`}>
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/80 text-slate-800 shadow-sm">
-                <Calendar size={19} strokeWidth={2.2} aria-hidden="true" />
-              </div>
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500">
-                  Travel timing
-                </p>
-                <h3 className="mt-0.5 text-[17px] font-extrabold leading-snug text-slate-950 break-keep">
-                  {MONTHS[selectedMonth - 1]} {displayCity} 여행 적합도
-                </h3>
-                {!isRepMonth && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMonth(representativeMonth)}
-                    className="mt-1 text-[11px] font-bold text-slate-600 underline underline-offset-2"
-                  >
-                    출발월로 돌아가기
-                  </button>
-                )}
-              </div>
+    <section className="px-4 mt-5">
+      <div className="overflow-hidden rounded-[28px] border border-slate-200/80 bg-white shadow-[0_18px_45px_rgba(15,23,42,0.08)]">
+        <div className="relative px-5 pb-4 pt-4">
+          <div
+            className="absolute inset-x-0 top-0 h-1"
+            style={{ background: `linear-gradient(90deg, #0f172a 0%, ${tone.accent} 54%, #e2e8f0 100%)` }}
+          />
+
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0">
+              <p className="text-[11px] font-extrabold tracking-[0.14em] text-slate-400">
+                여행 시기 진단
+              </p>
+              <h3 className="mt-1 text-[19px] font-black leading-tight text-slate-950 break-keep">
+                {MONTHS[selectedMonth - 1]} {displayCity} 여행 시기
+              </h3>
+              <p className="mt-1 text-[14px] font-extrabold text-slate-700 break-keep">{tone.headline}</p>
+              {!isRepMonth && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth(representativeMonth)}
+                  className="mt-2 text-[12px] font-bold text-slate-500 underline underline-offset-2"
+                >
+                  대표 출발월로 보기
+                </button>
+              )}
             </div>
+
             <div className="shrink-0 text-right">
               <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ${tone.chip}`}>
                 {tone.label}
               </span>
-              <p className={`mt-1 text-[24px] font-black leading-none tabular-nums ${tone.text}`}>{sel.score}</p>
-              <p className="text-[10px] font-semibold text-slate-500">/ 100</p>
+              <p className={`mt-2 text-[24px] font-black leading-none tabular-nums ${tone.text}`}>
+                {sel.score}
+              </p>
+              <p className="text-[10px] font-bold text-slate-400">점</p>
             </div>
           </div>
 
-          <p className="mt-3 text-[15px] font-extrabold leading-snug text-slate-950 break-keep">
+          <p className="mt-3 text-[14px] font-bold leading-relaxed text-slate-800 break-keep">
             {climateCaption(sel.score, sel.key_concern)}
           </p>
-          {sig && (
-            <p className="mt-1 text-[12px] font-semibold leading-relaxed text-slate-600 break-keep">
-              한국인 인기도는 <span className="font-extrabold text-slate-900">{popularityCaption(sig.popularity_score)}</span>
-              {badge ? ` · ${badge}` : ''}
-            </p>
-          )}
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
+              <span>적합도</span>
+              <span>{sel.score}/100</span>
+            </div>
+            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${scoreWidth}%` }} />
+            </div>
+          </div>
         </div>
 
-        <div className="px-4 py-3.5">
-          <div className="grid gap-2">
-              <DecisionItem
-              icon={AlertTriangle}
-              label="강우"
-              value={`${Math.round(norm.rain_days)}일 / 월`}
-              copy={rainCopy(norm.rain_days)}
-              strong={Math.round(norm.rain_days) >= 10}
-            />
-              <DecisionItem
-              icon={Activity}
-              label="기온"
-              value={`${Math.round(norm.temp_mean)}° (${Math.round(norm.temp_min)}~${Math.round(norm.temp_max)}°)`}
-              copy={tempCopy(norm.temp_mean)}
-            />
-            <DecisionItem
-              icon={Users}
-              label="혼잡"
-              value={crowdCopy(selectedMonth, sig?.popularity_score)}
-              copy={sig ? `${sig.popularity_score}점 · ${sig.label}` : '한국 휴가 시즌 기준'}
-            />
+        <div className="grid grid-cols-3 border-y border-slate-100 bg-slate-50/70">
+          <SnapshotMetric label="비" value={`${rainDays}일`} detail={rainDays >= 10 ? '방수 준비' : rainCopy(norm.rain_days)} />
+          <SnapshotMetric label="기온" value={`${tempMean}°`} detail={`${Math.round(norm.temp_min)}~${Math.round(norm.temp_max)}°`} />
+          <SnapshotMetric label="인기" value={sig ? `${sig.popularity_score}점` : crowdCopy(selectedMonth)} detail={sig ? popularityShortCopy(sig.popularity_score) : '휴가 기준'} />
+        </div>
+
+        <div className="px-5 py-3.5">
+          <div className="flex items-start gap-2">
+            <CheckCircle2 size={16} className={`mt-0.5 shrink-0 ${tone.text}`} strokeWidth={2.3} aria-hidden="true" />
+            <p className="text-[13px] font-extrabold leading-relaxed text-slate-900 break-keep">
+              {packingTips.length ? packingTips.join(' · ') : '기본 여행 준비물'} 중심으로 챙기면 안정적입니다.
+            </p>
           </div>
 
-          {packingTips.length > 0 && (
-            <div className={`mt-3 rounded-2xl border ${tone.border} ${tone.soft} px-3.5 py-2.5`}>
-              <div className="flex items-start gap-2">
-                <CheckCircle2 size={16} className="mt-0.5 shrink-0" strokeWidth={2.3} aria-hidden="true" />
-                <div>
-                  <p className="text-[12px] font-extrabold">챙기면 좋아요</p>
-                  <p className="mt-0.5 text-[12px] font-semibold leading-relaxed break-keep">
-                    {packingTips.join(' · ')}
-                  </p>
-                </div>
-              </div>
-            </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            <DecisionPill strong={rainDays >= 10}>{rainDays >= 10 ? '우기 대비 필요' : rainCopy(norm.rain_days)}</DecisionPill>
+            <DecisionPill>{tempCopy(norm.temp_mean)}</DecisionPill>
+            <DecisionPill>{sig ? popularityShortCopy(sig.popularity_score) : crowdCopy(selectedMonth)}</DecisionPill>
+          </div>
+
+          {sig && badge && (
+            <p className="mt-3 text-[11px] font-semibold leading-relaxed text-slate-500 break-keep">
+              한국인 예약 흐름: {popularityCaption(sig.popularity_score)} · {badge}
+            </p>
           )}
-
-          <div className="mt-2.5 rounded-2xl bg-slate-50 px-3.5 py-2.5">
-            <div className="flex items-start gap-2.5">
-              <Info size={15} className="mt-0.5 shrink-0 text-slate-500" strokeWidth={2.2} aria-hidden="true" />
-              <p className="text-[12px] font-semibold leading-relaxed text-slate-600 break-keep">
-                습도 {Math.round(norm.humidity)}% · {humidityCopy(norm.humidity)}
-              </p>
-            </div>
-          </div>
         </div>
 
         {hasDetails && (
@@ -339,10 +344,13 @@ export default function TravelFitnessCard({
             <button
               type="button"
               onClick={() => setExpanded((value) => !value)}
-              className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left"
+              className="flex w-full items-center justify-between gap-3 bg-slate-50/70 px-5 py-3.5 text-left"
               aria-expanded={expanded}
             >
-              <span className="text-[13px] font-extrabold text-slate-800">월별 날씨·인기 비교</span>
+              <span>
+                <span className="block text-[13px] font-extrabold text-slate-900">12개월 비교</span>
+                <span className="block text-[11px] font-semibold text-slate-500">날씨와 한국인 인기도 흐름</span>
+              </span>
               <ChevronDown
                 size={18}
                 className={`shrink-0 text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}
@@ -351,12 +359,7 @@ export default function TravelFitnessCard({
             </button>
 
             {expanded && (
-              <div className="px-4 pb-4">
-                <p className="mb-2 text-[11px] font-medium text-slate-500">
-                  탭하여 다른 월을 미리 볼 수 있어요
-                  {safeSeasonalSignals && <span className="font-normal text-slate-400"> · 날씨 / 한국인 인기</span>}
-                </p>
-
+              <div className="px-5 pb-4 pt-3">
                 <div className="flex h-16 items-end gap-1">
                   {safeFitnessScores.map((f) => {
                     const isSel = f.month === selectedMonth;
@@ -402,9 +405,12 @@ export default function TravelFitnessCard({
 
                 {summary && (
                   <div className="mt-3 rounded-xl bg-slate-50 px-3 py-2.5">
-                    <p className="text-[12px] font-semibold leading-snug text-slate-700 break-keep">
-                      {summary}
-                    </p>
+                    <div className="flex items-start gap-2">
+                      <TrendingUp size={14} className="mt-0.5 shrink-0 text-slate-500" aria-hidden="true" />
+                      <p className="text-[12px] font-semibold leading-snug text-slate-700 break-keep">
+                        {summary}
+                      </p>
+                    </div>
                   </div>
                 )}
 
@@ -415,13 +421,10 @@ export default function TravelFitnessCard({
                   {safeSeasonalSignals && <Legend color="bg-slate-700" label="한국인 인기" />}
                 </div>
 
-                <div className="mt-3 flex items-start gap-1.5 text-[10px] leading-relaxed text-slate-400">
-                  <Info size={12} className="mt-0.5 shrink-0" aria-hidden="true" />
-                  <p>
-                    날씨: Open-Meteo 10년 평균 / 한국인 인기도: Naver DataLab + Wikipedia 트래픽
-                    {country ? ` · ${country} 기준 자동 갱신` : ' · 자동 갱신'}
-                  </p>
-                </div>
+                <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+                  날씨: Open-Meteo 10년 평균 / 한국인 인기도: Naver DataLab + Wikipedia 트래픽
+                  {country ? ` · ${country} 기준 자동 갱신` : ' · 자동 갱신'}
+                </p>
               </div>
             )}
           </div>
@@ -431,35 +434,23 @@ export default function TravelFitnessCard({
   );
 }
 
-function DecisionItem({
-  icon: Icon,
-  label,
-  value,
-  copy,
-  strong = false,
-}: {
-  icon: LucideIcon;
-  label: string;
-  value: string;
-  copy: string;
-  strong?: boolean;
-}) {
+function SnapshotMetric({ label, value, detail }: { label: string; value: string; detail: string }) {
   return (
-    <div className="flex items-start gap-3 rounded-2xl border border-slate-100 bg-white px-3 py-2.5">
-      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ${
-        strong ? 'bg-amber-50 text-amber-700' : 'bg-slate-50 text-slate-600'
-      }`}>
-        <Icon size={17} strokeWidth={2.2} aria-hidden="true" />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="flex items-baseline justify-between gap-2">
-          <p className="text-[11px] font-bold text-slate-400">{label}</p>
-          {strong && <span className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-800">주의</span>}
-        </div>
-        <p className="text-[14px] font-extrabold leading-snug text-slate-950 break-keep">{value}</p>
-        <p className="mt-0.5 text-[11px] font-semibold leading-snug text-slate-500 break-keep">{copy}</p>
-      </div>
+    <div className="min-w-0 px-3 py-3 text-center [&+&]:border-l [&+&]:border-slate-100">
+      <p className="text-[11px] font-bold text-slate-400">{label}</p>
+      <p className="mt-0.5 text-[16px] font-black leading-tight text-slate-950 tabular-nums">{value}</p>
+      <p className="mt-0.5 truncate text-[10px] font-semibold text-slate-500">{detail}</p>
     </div>
+  );
+}
+
+function DecisionPill({ children, strong = false }: { children: string; strong?: boolean }) {
+  return (
+    <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ${
+      strong ? 'bg-amber-100 text-amber-900' : 'bg-slate-100 text-slate-600'
+    }`}>
+      {children}
+    </span>
   );
 }
 
