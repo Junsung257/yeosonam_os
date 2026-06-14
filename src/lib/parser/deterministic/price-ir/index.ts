@@ -2,6 +2,7 @@ import type { PriceIROptions, PriceIRResult } from './types';
 import { extractHotelColumnMatrixRows } from './hotel-column-matrix';
 import { extractLabeledDateListPriceRows } from './labeled-date-list-price';
 import { extractMonthDowPriceIR } from './month-dow-table';
+import { extractMonthDurationPriceRows } from './month-duration-price-table';
 import { extractPeriodDowMatrixRows } from './period-dow-matrix';
 import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
 import { extractSinglePeriodProductPriceRows } from './single-period-product-price';
@@ -86,6 +87,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
 
   const monthDow = extractMonthDowPriceIR(rawText, options);
   if (monthDow.rows.length > 0) return monthDow;
+
+  const monthDurationRows = extractMonthDurationPriceRows(rawText, options);
+  if (monthDurationRows.length > 0) {
+    return {
+      source: 'month_duration_price_table',
+      rows: monthDurationRows,
+      tiers: rowsToTiers(monthDurationRows),
+    };
+  }
 
   const verticalGrade = extractVerticalGradePriceIR(rawText, options);
   if (verticalGrade.rows.length > 0) return verticalGrade;

@@ -11,6 +11,7 @@ export type PriceIRSource =
   | 'grade_pattern_date_matrix'
   | 'weekday_period_table'
   | 'month_dow_table'
+  | 'month_duration_price_table'
   | 'vertical_grade_table'
   | 'none';
 

@@ -109,6 +109,51 @@ const BAEKDU_GRADE_PATTERN_MATRIX = `
 연길/백두산(북+서파) 3박4일
 `;
 
+const XIAN_MONTH_DURATION_PRICE_TABLE = `
+5. 부산출발 :양방향_화살표: 서안 칠채산 PKG
+(황하석림/바단지린사막)
+항공 스케줄
+부산-서안 BX341 22:00/00:35+1
+서안-부산 BX342 02:10/06:30
+주 2회 운항 -- 수 3박5일 / 토 4박6일
+
+출 발 일
+칠채산+황하석림+바단지린사막
+7월
+(수) 1, 8
+3박5일
+1,099,000
+(수) 15, 22
+3박5일
+1,099,000
+(토) 4, 18
+4박6일
+1,129,000
+8월
+(수) 5
+3박5일
+1,119,000
+(토) 1
+4박6일
+1,139,000
+9월
+(수) 16
+3박5일
+999,000
+(토) 19
+4박6일
+1,039,000
+10월
+(수) 7
+3박5일
+1,429,000
+(토) 17
+4박6일
+1,299,000부산-서안 칠채산(황하석림/바단지린사막) 3박5일 PKG
+출발날짜
+2026년 수요일출발
+`;
+
 describe('extractPriceIR', () => {
   it('provides the new price IR entrypoint for existing deterministic parsers', () => {
     const result = extractPriceIR(`
@@ -138,6 +183,43 @@ describe('extractPriceIR', () => {
     expect(hotel.rows.length).toBeGreaterThan(0);
     expect(period.source).toBe('period_dow_matrix');
     expect(period.rows.length).toBeGreaterThan(0);
+  });
+
+  it('recovers month + weekday + duration + price vertical tables and filters by product duration', () => {
+    const threeNight = extractPriceIR(XIAN_MONTH_DURATION_PRICE_TABLE, {
+      year: 2026,
+      title: '부산-서안 칠채산(황하석림/바단지린사막) 3박5일 PKG',
+      durationDays: 5,
+    });
+    const fourNight = extractPriceIR(XIAN_MONTH_DURATION_PRICE_TABLE, {
+      year: 2026,
+      title: '부산-서안 칠채산(황하석림/바단지린사막) 4박6일 PKG',
+      durationDays: 6,
+    });
+
+    expect(threeNight.source).toBe('month_duration_price_table');
+    expect(threeNight.rows.map(row => row.date)).toEqual([
+      '2026-07-01',
+      '2026-07-08',
+      '2026-07-15',
+      '2026-07-22',
+      '2026-08-05',
+      '2026-09-16',
+      '2026-10-07',
+    ]);
+    expect(threeNight.rows.find(row => row.date === '2026-09-16')?.adult_price).toBe(999000);
+    expect(threeNight.rows.find(row => row.date === '2026-07-04')).toBeUndefined();
+
+    expect(fourNight.source).toBe('month_duration_price_table');
+    expect(fourNight.rows.map(row => row.date)).toEqual([
+      '2026-07-04',
+      '2026-07-18',
+      '2026-08-01',
+      '2026-09-19',
+      '2026-10-17',
+    ]);
+    expect(fourNight.rows.find(row => row.date === '2026-10-17')?.adult_price).toBe(1299000);
+    expect(fourNight.rows.find(row => row.date === '2026-07-01')).toBeUndefined();
   });
 });
 

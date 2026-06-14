@@ -256,6 +256,7 @@ export function collectPkgBlockStarts(raw: string): number[] {
   const patterns = [
     /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g,
     /(?:^|\n)([^\n]{2,80}出\s*[^\n]{2,80}PKG\s*\d+\s*박\s*\d+\s*일[^\n]{0,60})/g,
+    /([가-힣A-Za-z\[][^\n.。]{0,60}?(?:[-/]|出)[^\n.。]{2,80}?\d+\s*박\s*\d+\s*일\s*PKG[^\n]{0,40})/g,
   ];
 
   for (const re of patterns) {

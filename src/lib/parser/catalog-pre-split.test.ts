@@ -306,6 +306,47 @@ PKG
 });
 
 describe('inline PKG catalog headers', () => {
+  it('splits line-end PKG titles even when pasted directly after the last price', () => {
+    const raw = `5. 부산출발 :양방향_화살표: 서안 칠채산 PKG
+(황하석림/바단지린사막)
+항공 스케줄
+부산-서안 BX341 22:00/00:35+1
+서안-부산 BX342 02:10/06:30
+주 2회 운항 -- 수 3박5일 / 토 4박6일
+
+출 발 일
+칠채산+황하석림+바단지린사막
+10월
+(토) 17
+4박6일
+1,299,000부산-서안 칠채산(황하석림/바단지린사막) 3박5일 PKG
+출발날짜
+2026년 수요일출발
+날 짜
+제1일
+부산 김해 국제공항 출발
+제5일
+부산 도착
+
+부산-서안 칠채산(황하석림/바단지린사막) 4박6일 PKG
+출발날짜
+2026년 토요일출발
+날 짜
+제1일
+부산 김해 국제공항 출발
+제6일
+부산 도착`;
+
+    expect(collectPkgBlockStarts(raw)).toHaveLength(2);
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+    expect(sharedPrefix).toContain('주 2회 운항 -- 수 3박5일 / 토 4박6일');
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('3박5일 PKG');
+    expect(sections[0]).not.toContain('4박6일 PKG');
+    expect(sections[1]).toContain('4박6일 PKG');
+  });
+
   it('splits 출발지出 + PKG + duration product titles', () => {
     const raw = `공통 가격표
 출발일

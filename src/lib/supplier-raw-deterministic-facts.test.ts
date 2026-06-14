@@ -144,6 +144,54 @@ BX111
     expect(facts.inbound?.code).toBeUndefined();
   });
 
+  it('uses header flight schedule codes without treating years as flight numbers', () => {
+    const raw = `
+5. 부산출발 :양방향_화살표: 서안 칠채산 PKG
+항공 스케줄
+부산-서안 BX341 22:00/00:35+1
+서안-부산 BX342 02:10/06:30
+부산-서안 칠채산(황하석림/바단지린사막) 3박5일 PKG
+출발날짜
+2026년 수요일출발
+날 짜
+지 역
+교통편
+시 간
+주 요 일 정
+식 사
+제1일
+부 산
+서 안
+
+BX341
+22:00
+00:35(+1)
+부산 김해 국제공항 출발
+서안 도착 후 가이드 미팅
+호텔 체크인 및 휴식
+석:불포함
+HOTEL: [서안] 홀리데인익스프레호텔 또는 동급 (4성)
+제5일
+서 안
+부 산
+
+BX342
+02:10
+06:30
+서안 국제공항 출발
+부산 김해 국제공항 도착
+조:불포함
+`;
+
+    const itinerary = buildSupplierRawDeterministicItinerary(raw);
+    const activityText = itinerary?.days.flatMap(day => day.schedule.map(item => item.activity)).join('\n') ?? '';
+
+    expect(itinerary?.meta.flight_out).toBe('BX341');
+    expect(itinerary?.meta.flight_in).toBe('BX342');
+    expect(itinerary?.meta.flight_in).not.toBe('2026');
+    expect(activityText).not.toMatch(/^(BX341|BX342|22:00|00:35\(\+1\)|02:10|06:30)$/m);
+  });
+
   it('keeps pasted catalog table columns out of the customer itinerary and notices', () => {
     const rawText = readFileSync(
       join(process.cwd(), 'src/lib/product-registration/golden-corpus/fixtures/joshi-golf-menu-multiproduct.txt'),

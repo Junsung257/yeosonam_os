@@ -3,8 +3,8 @@ import type { DaySchedule, ScheduleItem, TravelItinerary } from '@/types/itinera
 type DayBlock = { day: number; body: string };
 
 const DAY_LINE_RE = /^\s*(?:DAY\s*)?(\d+)\s*(?:일|일차|day)?\s*$/i;
-const FLIGHT_CODE_RE = /\b([A-Z0-9]{2}\d{2,4})\b/;
-const FLIGHT_CODE_GLOBAL_RE = /\b([A-Z0-9]{2}\d{2,4})\b/g;
+const FLIGHT_CODE_RE = /\b([A-Z]{2}\d{2,4})\b/;
+const FLIGHT_CODE_GLOBAL_RE = /\b([A-Z]{2}\d{2,4})\b/g;
 const TIME_ONLY_RE = /^\d{1,2}:\d{2}(?:\+\d)?$/;
 const STRUCTURAL_LINE_RE = /^(?:지역|교통편|교통|시간|일정|식사|비고|상품가|포함\s*내역|불포함|호텔|HOTEL)$/i;
 const STOP_LINE_RE = /^(?:포함\s*(?:내역|사항)|불포함|취소|예약|안내|주의\s*사항|특약|약관|상품가)$/;

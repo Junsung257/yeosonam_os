@@ -1003,7 +1003,11 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
       if (/^(호텔|숙박|식사)\s*[:：]?/.test(line)) continue;
       const time = line.match(/^(\d{1,2}:\d{2})\s*(.+)$/);
       const activity = (time?.[2] ?? line).trim();
-      const explicitFlight = activity.match(/\b([A-Z0-9]{2}\d{2,4})\b/)?.[1] ?? null;
+      if (/^[A-Z]{2}\d{2,4}$/.test(activity) || /^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/.test(activity)) {
+        continue;
+      }
+
+      const explicitFlight = activity.match(/\b([A-Z]{2}\d{2,4})\b/)?.[1] ?? null;
       const inferredInboundArrival = blockIndex === blocks.length - 1 && /도착/.test(activity)
         ? facts.inbound?.code ?? null
         : null;
@@ -1039,6 +1043,10 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
     };
   });
 
+  const fallbackFlights = extractFlights(rawText);
+  const fallbackFlightOut = facts.outbound?.code ?? fallbackFlights.outbound ?? null;
+  const fallbackFlightIn = facts.inbound?.code ?? fallbackFlights.inbound ?? null;
+
   return {
     meta: {
       title: facts.title ?? '랜드사 원문 상품',
@@ -1048,8 +1056,8 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
       days: facts.durationDays ?? days.length,
       departure_airport: facts.departureAirport,
       airline: facts.airline,
-      flight_out: facts.outbound?.code ?? null,
-      flight_in: facts.inbound?.code ?? null,
+      flight_out: fallbackFlightOut,
+      flight_in: fallbackFlightIn,
       departure_days: null,
       min_participants: facts.minParticipants ?? 1,
       room_type: null,
