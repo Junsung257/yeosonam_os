@@ -42,22 +42,18 @@ function scoreColor(score: number): string {
 function scoreTone(score: number): {
   label: string;
   headline: string;
+  action: string;
   accent: string;
   text: string;
-  soft: string;
-  border: string;
-  bar: string;
   chip: string;
 } {
   if (score >= 85) {
     return {
       label: '최적',
       headline: '여행하기 아주 좋은 달',
+      action: '일정 만족도 높음',
       accent: '#059669',
       text: 'text-emerald-700',
-      soft: 'bg-emerald-50 text-emerald-800',
-      border: 'border-emerald-100',
-      bar: 'bg-emerald-500',
       chip: 'bg-emerald-600 text-white',
     };
   }
@@ -65,11 +61,9 @@ function scoreTone(score: number): {
     return {
       label: '추천',
       headline: '무난하게 추천할 수 있는 달',
+      action: '편하게 출발 가능',
       accent: '#65A30D',
       text: 'text-lime-700',
-      soft: 'bg-lime-50 text-lime-800',
-      border: 'border-lime-100',
-      bar: 'bg-lime-500',
       chip: 'bg-lime-600 text-white',
     };
   }
@@ -77,11 +71,9 @@ function scoreTone(score: number): {
     return {
       label: '준비 권장',
       headline: '준비하면 괜찮은 달',
+      action: '준비하면 충분',
       accent: '#D97706',
       text: 'text-amber-700',
-      soft: 'bg-amber-50 text-amber-900',
-      border: 'border-amber-100',
-      bar: 'bg-amber-500',
       chip: 'bg-amber-500 text-white',
     };
   }
@@ -89,22 +81,18 @@ function scoreTone(score: number): {
     return {
       label: '주의',
       headline: '일정 여유가 필요한 달',
+      action: '일정 여유 필요',
       accent: '#EA580C',
       text: 'text-orange-700',
-      soft: 'bg-orange-50 text-orange-900',
-      border: 'border-orange-100',
-      bar: 'bg-orange-500',
       chip: 'bg-orange-500 text-white',
     };
   }
   return {
     label: '비추천',
     headline: '날씨 부담이 큰 달',
+    action: '대체 월 비교 권장',
     accent: '#E11D48',
     text: 'text-rose-700',
-    soft: 'bg-rose-50 text-rose-800',
-    border: 'border-rose-100',
-    bar: 'bg-rose-500',
     chip: 'bg-rose-500 text-white',
   };
 }
@@ -136,14 +124,6 @@ function rainCopy(rainDays: number): string {
   if (r <= 9) return '우산 준비 권장';
   if (r <= 15) return '우산과 방수 신발 필수';
   return '우기권, 실내 일정 병행';
-}
-
-function humidityCopy(humidity: number): string {
-  if (humidity <= 40) return '건조한 편';
-  if (humidity <= 55) return '한국보다 건조';
-  if (humidity <= 70) return '한국과 비슷한 쾌적도';
-  if (humidity <= 80) return '약간 습함';
-  return '습도 높음';
 }
 
 function crowdCopy(month: number, popularity?: number): string {
@@ -255,7 +235,7 @@ export default function TravelFitnessCard({
   const badge = cleanBadge(sig?.badge);
   const rainDays = Math.round(norm.rain_days);
   const tempMean = Math.round(norm.temp_mean);
-  const scoreWidth = Math.max(6, Math.min(100, sel.score));
+  const actionCopy = cleanConcern(sel.key_concern) ? `${cleanConcern(sel.key_concern)} 대비` : tone.action;
 
   return (
     <section className="px-4 mt-5">
@@ -290,10 +270,9 @@ export default function TravelFitnessCard({
               <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-extrabold ${tone.chip}`}>
                 {tone.label}
               </span>
-              <p className={`mt-2 text-[24px] font-black leading-none tabular-nums ${tone.text}`}>
-                {sel.score}
+              <p className="mt-2 text-[11px] font-extrabold leading-snug text-slate-400 break-keep">
+                {actionCopy}
               </p>
-              <p className="text-[10px] font-bold text-slate-400">점</p>
             </div>
           </div>
 
@@ -301,13 +280,18 @@ export default function TravelFitnessCard({
             {climateCaption(sel.score, sel.key_concern)}
           </p>
 
-          <div className="mt-4">
-            <div className="flex items-center justify-between text-[11px] font-bold text-slate-400">
-              <span>적합도</span>
-              <span>{sel.score}/100</span>
+          <div className="mt-3 rounded-2xl bg-slate-50 px-3.5 py-2.5">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-extrabold text-slate-400">추천 포인트</span>
+              <span className="text-[12px] font-extrabold text-slate-900">
+                {sig ? popularityShortCopy(sig.popularity_score) : crowdCopy(selectedMonth)}
+              </span>
             </div>
-            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-slate-100">
-              <div className={`h-full rounded-full ${tone.bar}`} style={{ width: `${scoreWidth}%` }} />
+            <div className="mt-1 flex items-center justify-between gap-3">
+              <span className="text-[11px] font-extrabold text-slate-400">준비 포인트</span>
+              <span className="text-[12px] font-extrabold text-slate-900">
+                {rainDays >= 10 ? '우기 대비' : rainCopy(norm.rain_days)}
+              </span>
             </div>
           </div>
         </div>
@@ -411,6 +395,9 @@ export default function TravelFitnessCard({
                         {summary}
                       </p>
                     </div>
+                    <p className="mt-1.5 text-[10px] font-semibold text-slate-400">
+                      데이터 기준 적합도 {sel.score}/100
+                    </p>
                   </div>
                 )}
 
