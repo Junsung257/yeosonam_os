@@ -281,6 +281,31 @@ function extractFlightSegment(rawText: string, labels: string[]) {
   };
 }
 
+function extractRouteFlightSegments(rawText: string): {
+  outbound: ReturnType<typeof extractFlightSegment>;
+  inbound: ReturnType<typeof extractFlightSegment>;
+} {
+  const rows = rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .map((line) => {
+      const match = line.match(/^([가-힣A-Za-z/()\s]+?)\s*[-–—→]\s*([가-힣A-Za-z/()\s]+?)\s+([A-Z]{2}\d{2,4})\s+(\d{1,2}:\d{2})\s*\/\s*(\d{1,2}:\d{2})(?:\+(\d+))?$/);
+      if (!match) return null;
+      return {
+        code: match[3],
+        departure: { time: match[4], airport: match[1].trim() },
+        arrival: { time: match[5], airport: match[2].trim() },
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+
+  if (rows.length === 0) return { outbound: null, inbound: null };
+  return {
+    outbound: rows[0] ?? null,
+    inbound: rows.length > 1 ? rows[rows.length - 1] : null,
+  };
+}
+
 function splitTopLevelCommaList(text: string): string[] {
   const normalized = text
     .replace(/\)\s+(?=호텔)/g, '), ')
@@ -457,6 +482,7 @@ export function extractSupplierRawDeterministicFacts(rawText: string): SupplierR
   if (known) return known;
 
   const flights = extractFlights(rawText);
+  const routeFlights = extractRouteFlightSegments(rawText);
   return {
     title: extractTitle(rawText),
     region: extractRegion(rawText),
@@ -465,8 +491,8 @@ export function extractSupplierRawDeterministicFacts(rawText: string): SupplierR
     departureAirport: extractDepartureAirport(rawText),
     minParticipants: extractMinParticipants(rawText),
     airline: flights.airline ?? null,
-    outbound: extractFlightSegment(rawText, ['출발편', '가는편', '출국편', '왕복항공\\s*출발']),
-    inbound: extractFlightSegment(rawText, ['귀국편', '오는편', '복편', '왕복항공\\s*귀국']),
+    outbound: extractFlightSegment(rawText, ['출발편', '가는편', '출국편', '왕복항공\\s*출발']) ?? routeFlights.outbound,
+    inbound: extractFlightSegment(rawText, ['귀국편', '오는편', '복편', '왕복항공\\s*귀국']) ?? routeFlights.inbound,
     inclusions: extractCommaListSection(rawText, '포함사항').length
       ? extractCommaListSection(rawText, '포함사항')
       : extractCommaListSection(rawText, '포함내역'),
@@ -1001,6 +1027,7 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
 
     for (const line of body.split(/\r?\n/).map(v => v.trim()).filter(Boolean)) {
       if (/^(호텔|숙박|식사)\s*[:：]?/.test(line)) continue;
+      if (/^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/.test(line)) continue;
       const time = line.match(/^(\d{1,2}:\d{2})\s*(.+)$/);
       const activity = (time?.[2] ?? line).trim();
       if (/^[A-Z]{2}\d{2,4}$/.test(activity) || /^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/.test(activity)) {
@@ -1046,6 +1073,7 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
   const fallbackFlights = extractFlights(rawText);
   const fallbackFlightOut = facts.outbound?.code ?? fallbackFlights.outbound ?? null;
   const fallbackFlightIn = facts.inbound?.code ?? fallbackFlights.inbound ?? null;
+  const fallbackFlightSegments = makeRawFactFlightSegments(facts, days.length);
 
   return {
     meta: {
@@ -1078,7 +1106,38 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): TravelI
       price_krw: null,
       note: tour.note,
     })),
+    ...(fallbackFlightSegments.length > 0 ? { flight_segments: fallbackFlightSegments } : {}),
   };
+}
+
+function makeRawFactFlightSegments(facts: SupplierRawDeterministicFacts, dayCount: number) {
+  const segments = [];
+  const lastDayIndex = Math.max(0, dayCount - 1);
+  if (facts.outbound?.code && facts.outbound.departure.time && facts.outbound.arrival.time) {
+    segments.push({
+      leg: 'outbound' as const,
+      flight_no: facts.outbound.code,
+      dep_airport: facts.outbound.departure.airport,
+      dep_time: facts.outbound.departure.time,
+      arr_airport: facts.outbound.arrival.airport,
+      arr_time: facts.outbound.arrival.time,
+      arr_day_offset: 0 as const,
+      day_pair: [0, 0] as [number, number],
+    });
+  }
+  if (facts.inbound?.code && facts.inbound.departure.time && facts.inbound.arrival.time) {
+    segments.push({
+      leg: 'inbound' as const,
+      flight_no: facts.inbound.code,
+      dep_airport: facts.inbound.departure.airport,
+      dep_time: facts.inbound.departure.time,
+      arr_airport: facts.inbound.arrival.airport,
+      arr_time: facts.inbound.arrival.time,
+      arr_day_offset: 0 as const,
+      day_pair: [lastDayIndex, lastDayIndex] as [number, number],
+    });
+  }
+  return segments;
 }
 
 export function canUseSupplierRawDeterministicPreflight(rawText: string): boolean {

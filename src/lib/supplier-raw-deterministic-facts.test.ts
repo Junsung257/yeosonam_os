@@ -183,12 +183,24 @@ BX342
 조:불포함
 `;
 
+    const facts = extractSupplierRawDeterministicFacts(raw);
     const itinerary = buildSupplierRawDeterministicItinerary(raw);
     const activityText = itinerary?.days.flatMap(day => day.schedule.map(item => item.activity)).join('\n') ?? '';
 
+    expect(facts.outbound).toMatchObject({
+      code: 'BX341',
+      departure: { time: '22:00', airport: '부산' },
+      arrival: { time: '00:35', airport: '서안' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX342',
+      departure: { time: '02:10', airport: '서안' },
+      arrival: { time: '06:30', airport: '부산' },
+    });
     expect(itinerary?.meta.flight_out).toBe('BX341');
     expect(itinerary?.meta.flight_in).toBe('BX342');
     expect(itinerary?.meta.flight_in).not.toBe('2026');
+    expect((itinerary as { flight_segments?: unknown[] } | null)?.flight_segments).toHaveLength(2);
     expect(activityText).not.toMatch(/^(BX341|BX342|22:00|00:35\(\+1\)|02:10|06:30)$/m);
   });
 

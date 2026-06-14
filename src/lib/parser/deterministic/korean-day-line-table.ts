@@ -1,11 +1,21 @@
 import type { DaySchedule, ScheduleItem, TravelItinerary } from '@/types/itinerary';
 
 type DayBlock = { day: number; body: string };
+type HeaderFlightSegment = {
+  leg: 'outbound' | 'inbound';
+  flight_no: string;
+  dep_airport: string;
+  dep_time: string;
+  arr_airport: string;
+  arr_time: string;
+  arr_day_offset: number;
+  day_pair: [number, number];
+};
 
 const DAY_LINE_RE = /^\s*(?:DAY\s*)?(\d+)\s*(?:일|일차|day)?\s*$/i;
 const FLIGHT_CODE_RE = /\b([A-Z]{2}\d{2,4})\b/;
 const FLIGHT_CODE_GLOBAL_RE = /\b([A-Z]{2}\d{2,4})\b/g;
-const TIME_ONLY_RE = /^\d{1,2}:\d{2}(?:\+\d)?$/;
+const TIME_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/;
 const STRUCTURAL_LINE_RE = /^(?:지역|교통편|교통|시간|일정|식사|비고|상품가|포함\s*내역|불포함|호텔|HOTEL)$/i;
 const STOP_LINE_RE = /^(?:포함\s*(?:내역|사항)|불포함|취소|예약|안내|주의\s*사항|특약|약관|상품가)$/;
 const REGION_HINT_RE = /^(?:부산|김해|인천|후쿠오카|큐슈|규슈|벳부|벳푸|유후인|쿠로가와|아소|오사카|도쿄|삿포로|나고야|나라|교토)$/;
@@ -148,15 +158,57 @@ function inferTitle(rawText: string): string {
     .find(line => line.length >= 4 && !STRUCTURAL_LINE_RE.test(line)) ?? '공급사 원문 상품';
 }
 
-export function buildKoreanDayLineTableItinerary(rawText: string): TravelItinerary | null {
+function parseHeaderFlightSegments(rawText: string, dayCount: number): HeaderFlightSegment[] {
+  const rows = rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .map((line) => {
+      const match = line.match(/^([가-힣A-Za-z/()\s]+?)\s*[-–—→]\s*([가-힣A-Za-z/()\s]+?)\s+([A-Z]{2}\d{2,4})\s+(\d{1,2}:\d{2})\s*\/\s*(\d{1,2}:\d{2})(?:\+(\d+))?$/);
+      if (!match) return null;
+      return {
+        flight_no: match[3],
+        dep_airport: match[1].trim(),
+        dep_time: match[4],
+        arr_airport: match[2].trim(),
+        arr_time: match[5],
+        arr_day_offset: Number(match[6] ?? 0) || 0,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row != null);
+
+  if (rows.length === 0) return [];
+
+  const outbound = rows[0];
+  const inbound = rows.length > 1 ? rows[rows.length - 1] : null;
+  const segments: HeaderFlightSegment[] = [{
+    leg: 'outbound',
+    ...outbound,
+    day_pair: [0, Math.min(dayCount - 1, outbound.arr_day_offset)] as [number, number],
+  }];
+  if (inbound) {
+    const lastDayIndex = Math.max(0, dayCount - 1);
+    segments.push({
+      leg: 'inbound',
+      ...inbound,
+      day_pair: [lastDayIndex, lastDayIndex],
+    });
+  }
+  return segments;
+}
+
+export function buildKoreanDayLineTableItinerary(rawText: string): (TravelItinerary & { flight_segments?: HeaderFlightSegment[] }) | null {
   const blocks = splitByKoreanDayLines(rawText);
   if (blocks.length < 2) return null;
 
   const flightCodes = [...rawText.matchAll(FLIGHT_CODE_GLOBAL_RE)].map(match => match[1]);
   const flightOut = flightCodes[0] ?? null;
   const flightIn = flightCodes.length > 1 ? flightCodes[flightCodes.length - 1] : flightOut;
-  const days = blocks.map(block => parseDayBlock(block, flightOut));
+  const days = blocks.map((block, index) => parseDayBlock(
+    block,
+    index === 0 ? flightOut : index === blocks.length - 1 ? flightIn : null,
+  ));
   if (days.every(day => day.schedule.length === 0)) return null;
+  const flightSegments = parseHeaderFlightSegments(rawText, days.length);
 
   const destination = /후쿠오카|큐슈|규슈|벳부|벳푸|유후인|쿠로가와/.test(rawText)
     ? '후쿠오카/큐슈'
@@ -188,5 +240,6 @@ export function buildKoreanDayLineTableItinerary(rawText: string): TravelItinera
     },
     days,
     optional_tours: [],
+    ...(flightSegments.length > 0 ? { flight_segments: flightSegments } : {}),
   };
 }
