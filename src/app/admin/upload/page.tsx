@@ -227,8 +227,9 @@ function packageRowStatus(
   itemVerifyStatus: QueueItem['verifyStatus'],
   packageVerify: PackageVerifyResult | undefined,
 ): VerifyDisplayStatus | undefined {
+  if (itemVerifyStatus === 'verifying') return 'verifying';
   if (packageVerify) return packageVerify.status;
-  if (itemVerifyStatus === 'verifying' || itemVerifyStatus === 'error') return itemVerifyStatus;
+  if (itemVerifyStatus === 'error') return itemVerifyStatus;
   return undefined;
 }
 
@@ -406,7 +407,13 @@ export default function UploadPage() {
 
   const runVerify = useCallback(async (id: string, packageIdsOrId: string[] | string) => {
     const packageIds = Array.isArray(packageIdsOrId) ? packageIdsOrId : [packageIdsOrId];
-    setQueue(prev => prev.map(it => it.id === id ? { ...it, verifyStatus: 'verifying', verifyError: undefined } : it));
+    setQueue(prev => prev.map(it => it.id === id ? {
+      ...it,
+      verifyStatus: 'verifying',
+      verifyReport: undefined,
+      verifyExpanded: false,
+      verifyError: undefined,
+    } : it));
     try {
       const res = await fetchWithSessionRefresh('/api/admin/upload/verify', {
         method: 'POST',
