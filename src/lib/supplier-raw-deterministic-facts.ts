@@ -299,11 +299,61 @@ function extractRouteFlightSegments(rawText: string): {
     })
     .filter((row): row is NonNullable<typeof row> => row != null);
 
-  if (rows.length === 0) return { outbound: null, inbound: null };
+  const stackedRows = rows.length > 0 ? [] : extractStackedFlightRows(rawText);
+  const candidates = rows.length > 0 ? rows : stackedRows;
+  if (candidates.length === 0) return { outbound: null, inbound: null };
   return {
-    outbound: rows[0] ?? null,
-    inbound: rows.length > 1 ? rows[rows.length - 1] : null,
+    outbound: candidates[0] ?? null,
+    inbound: candidates.length > 1 ? candidates[candidates.length - 1] : null,
   };
+}
+
+function extractStackedFlightRows(rawText: string): Array<NonNullable<ReturnType<typeof extractFlightSegment>>> {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const rows: Array<NonNullable<ReturnType<typeof extractFlightSegment>>> = [];
+
+  const cityFromLine = (line: string): string | null => {
+    if (/장가계/.test(line)) return '장가계';
+    if (/부산|김해/.test(line)) return '부산';
+    if (/서안/.test(line)) return '서안';
+    const tokens = line.match(/[가-힣]{2,}/g) ?? [];
+    const cleaned = tokens
+      .map(token => token.replace(/국제공항|공항|출발|도착|향발|출국|귀국/g, '').trim())
+      .filter(token => token.length >= 2);
+    return cleaned[0] ?? null;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const code = lines[i].match(/\b([A-Z]{2}\d{2,4})\b/)?.[1];
+    if (!code) continue;
+
+    const next = lines.slice(i + 1, i + 10);
+    const times = next
+      .map(line => line.match(/^(\d{1,2}:\d{2})$/)?.[1] ?? null)
+      .filter((time): time is string => Boolean(time));
+    if (times.length < 2) continue;
+
+    const routePrefix = lines[i].replace(code, ' ');
+    const routeCities = routePrefix.match(/[가-힣]{2,}/g) ?? [];
+    const nearbyAfterTimes = next.filter(line => !/^\d{1,2}:\d{2}$/.test(line));
+    const depLine = nearbyAfterTimes.find(line => /출발/.test(line)) ?? '';
+    const arrLine = nearbyAfterTimes.find(line => /도착/.test(line)) ?? '';
+
+    const depAirport = cityFromLine(depLine) ?? routeCities[0] ?? null;
+    const arrAirport = cityFromLine(arrLine) ?? routeCities[1] ?? null;
+    if (!depAirport || !arrAirport) continue;
+
+    rows.push({
+      code,
+      departure: { time: times[0], airport: depAirport },
+      arrival: { time: times[1], airport: arrAirport },
+    });
+  }
+
+  return rows;
 }
 
 function splitTopLevelCommaList(text: string): string[] {

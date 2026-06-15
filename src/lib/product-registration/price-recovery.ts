@@ -175,6 +175,54 @@ function supplierRawFactsToTiers(rawText: string): PriceTier[] {
   }];
 }
 
+function groupedDeparturePriceTiers(rawText: string, year?: number): PriceTier[] {
+  const dateBlock = rawText.match(/출\s*발\s*(?:날짜|일자|일)([\s\S]{0,300}?)(?:출발인원|상\s*품\s*가|상품가|판매가)/)?.[1] ?? '';
+  const priceBlock = rawText.match(/(?:상\s*품\s*가|상품가|판매가)([\s\S]{0,160}?)(?:룸\s*타\s*입|룸타입|포\s*함|포함|불\s*포\s*함|불포함)/)?.[1] ?? '';
+  if (!dateBlock || !priceBlock) return [];
+
+  const fallbackYear = year ?? new Date().getFullYear();
+  const dateMatches = [...dateBlock.matchAll(/(?:(20\d{2})\s*년\s*)?(\d{1,2})\s*월\s*(\d{1,2})\s*일/g)];
+  const dates = dateMatches
+    .map((match) => {
+      const y = Number(match[1] ?? fallbackYear);
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      if (!Number.isInteger(y) || !Number.isInteger(month) || !Number.isInteger(day)) return null;
+      if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+      return `${y}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    })
+    .filter((date): date is string => Boolean(date));
+  const prices = [...priceBlock.matchAll(/([1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{4,})\s*(?:원|\/\s*인|\/인)?/g)]
+    .map(match => Number(match[1].replace(/[^\d]/g, '')))
+    .filter(price => Number.isFinite(price) && price >= 10_000);
+
+  if (dates.length === 0 || prices.length === 0) return [];
+  if (prices.length === 1) {
+    return [{
+      period_label: 'grouped_departure_price_table',
+      departure_dates: [...new Set(dates)],
+      adult_price: prices[0],
+      status: 'available',
+      note: 'source_grouped_departure_price',
+    }];
+  }
+
+  const groupSize = Math.ceil(dates.length / prices.length);
+  return prices
+    .map((price, index): PriceTier | null => {
+      const departure_dates = dates.slice(index * groupSize, (index + 1) * groupSize);
+      if (departure_dates.length === 0) return null;
+      return {
+        period_label: `grouped_departure_price_table_${index + 1}`,
+        departure_dates,
+        adult_price: price,
+        status: 'available',
+        note: 'source_grouped_departure_price',
+      };
+    })
+    .filter((tier): tier is PriceTier => tier != null);
+}
+
 function evaluateCandidate(
   ed: ExtractedData,
   tiers: PriceTier[],
@@ -339,6 +387,17 @@ export async function recoverUploadPriceData(
       };
     }
     failures.push(...explainCandidate(`deterministic:${detCandidate.source}`, detCandidate));
+
+    const groupedCandidate = evaluateCandidate(ed, groupedDeparturePriceTiers(rawText, options.year), ctx);
+    if (groupedCandidate.priceRows.length > 0 && groupedCandidate.priceDates.length > 0) {
+      return {
+        ok: true,
+        source: 'supplier_grouped_departure_price_table',
+        failures,
+        ...groupedCandidate,
+      };
+    }
+    failures.push(...explainCandidate('supplier_grouped_departure_price_table', groupedCandidate));
 
     const supplierRawCandidate = evaluateCandidate(ed, supplierRawFactsToTiers(rawText), ctx);
     if (supplierRawCandidate.priceRows.length > 0 && supplierRawCandidate.priceDates.length > 0) {

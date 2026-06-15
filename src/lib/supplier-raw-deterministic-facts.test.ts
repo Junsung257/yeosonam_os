@@ -140,8 +140,8 @@ BX111
 `);
 
     expect(facts.airline).toBe('BX');
-    expect(facts.outbound?.code).toBeUndefined();
-    expect(facts.inbound?.code).toBeUndefined();
+    expect(facts.outbound?.code).toBe('BX112');
+    expect(facts.inbound?.code).toBe('BX111');
   });
 
   it('uses header flight schedule codes without treating years as flight numbers', () => {

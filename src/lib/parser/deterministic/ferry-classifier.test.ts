@@ -113,3 +113,24 @@ describe('detectFerry — 결정적 ferry/cruise 분류 (FIX-1 박제)', () => {
     });
   });
 });
+
+describe('detectFerry — Tsushima ferry upload regression', () => {
+  it('classifies a Tsushima package as ferry from supplier ferry fare wording', () => {
+    const rawText = [
+      '4. [대마도 자연과 역사탐방 2일] - 노바 (이즈-히타)',
+      '2026년 6월17일 & 6월 24일(수) 출발 단2회! [1박2일]',
+      '< 1인 판매가 >',
+      '￦ 129,000 **40명 선착순**',
+      '포함사항',
+      '왕복 선박요금, 부두세&유류세, 여행자보험, 식사, 숙박, 전용차량',
+      '부산 출발 / 이즈하라 향발 [약 2시간 20분 소요]',
+      '히타카츠 출발 / 부산 향발 [약 1시간 30분 소요]',
+    ].join('\n');
+
+    const result = detectFerry(rawText, '대마도 자연과 역사탐방 2일 · 1박2일');
+
+    expect(result.isFerry).toBe(true);
+    expect(result.matchedKeyword).toBe('선박');
+    expect(result.ferryName).toBeNull();
+  });
+});

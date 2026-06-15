@@ -254,6 +254,8 @@ export function collectPkgBlockStarts(raw: string): number[] {
   }
 
   const patterns = [
+    /(?:^|\n)([^\n]{2,120}?\d+\s*박\s*\d+\s*일[^\n]{0,80}?\bPKG\b[^\n]{0,60})/g,
+    /(?:^|\n)([^\n]{2,120}?\bPKG\b[^\n]{0,80}?\d+\s*박\s*\d+\s*일[^\n]{0,60})/g,
     /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g,
     /(?:^|\n)([^\n]{2,80}出\s*[^\n]{2,80}PKG\s*\d+\s*박\s*\d+\s*일[^\n]{0,60})/g,
     /([가-힣A-Za-z\[][^\n.。]{0,60}?(?:[-/]|出)[^\n.。]{2,80}?\d+\s*박\s*\d+\s*일\s*PKG[^\n]{0,40})/g,
@@ -264,11 +266,22 @@ export function collectPkgBlockStarts(raw: string): number[] {
     while ((m = re.exec(text)) !== null) {
       const g1 = m[1];
       if (!g1) continue;
-      const offsetInFull = m[0].indexOf(g1[0]);
+      const titleOffset = g1.search(/(?:부산|김해|서울|인천|대구|청주|무안|광주)[^\n]{0,120}?\d+\s*박\s*\d+\s*일[^\n]{0,80}?\bPKG\b/);
+      const offsetInFull = m[0].indexOf(g1[0]) + Math.max(0, titleOffset);
       starts.push(m.index + offsetInFull);
     }
   }
-  return [...new Set(starts)].sort((a, b) => a - b);
+  const sorted = [...new Set(starts)].sort((a, b) => a - b);
+  const deduped: number[] = [];
+  for (const start of sorted) {
+    const last = deduped[deduped.length - 1];
+    if (last != null && start - last <= 24) {
+      deduped[deduped.length - 1] = start;
+    } else {
+      deduped.push(start);
+    }
+  }
+  return deduped;
 }
 
 /**
