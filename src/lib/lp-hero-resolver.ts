@@ -1,15 +1,7 @@
-/**
- * LP·광고 랜딩용 히어로 이미지 URL — upload route의 관광지 매칭 결과 재활용.
- *
- * upload 시점에 enrichItineraryWithAttractionReferences()가 itinerary_data의
- * 각 schedule[]에 attraction_ids를 박는다. 이 함수는 DB에서 id로만 photos를 조회해
- * 중복 매칭 없이 히어로 이미지를 결정한다.
- */
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { destinationToIsoSet } from '@/lib/destination-iso';
 
-/** schedule item의 attraction_ids 필드 타입 — itinerary_data JSONB 내부 */
 interface ItineraryDayData {
   day?: number;
   schedule?: Array<{
@@ -27,26 +19,63 @@ export async function resolveLpHeroPhotoUrl(
 ): Promise<string | null> {
   if (!pkg?.destination) return null;
 
-  // upload 시 박힌 attraction_ids 수집
   const collectedIds = collectAttractionIds(pkg.itinerary_data);
-  if (collectedIds.length === 0) return null;
+  if (collectedIds.length > 0) {
+    const { data: detail } = await sb
+      .from('attractions')
+      .select('id, name, photos, country, region')
+      .in('id', collectedIds);
 
-  // DB에서 photos만 조회 (중복 매칭 없음)
-  const { data: detail } = await sb
+    const hero = chooseHeroCandidate((detail ?? []) as unknown as AttractionData[], pkg.destination, true);
+    const p = hero?.photos?.[0];
+    const url = p?.src_large || p?.src_medium || null;
+    if (url) return url;
+  }
+
+  const fallback = await resolveDestinationFallbackHero(sb, pkg.destination);
+  const p = fallback?.photos?.[0];
+  return p?.src_large || p?.src_medium || null;
+}
+
+async function resolveDestinationFallbackHero(
+  sb: SupabaseClient,
+  destination: string,
+): Promise<AttractionData | null> {
+  const tokens = destinationTokens(destination).slice(0, 4);
+  if (tokens.length === 0) return null;
+
+  const filter = tokens
+    .flatMap(token => [`region.ilike.%${escapeSupabaseOrToken(token)}%`, `name.ilike.%${escapeSupabaseOrToken(token)}%`])
+    .join(',');
+
+  const { data } = await sb
     .from('attractions')
     .select('id, name, photos, country, region')
-    .in('id', collectedIds);
+    .not('photos', 'is', null)
+    .or(filter)
+    .limit(50);
 
-  const matched = (detail ?? []) as unknown as AttractionData[];
+  return chooseHeroCandidate((data ?? []) as unknown as AttractionData[], destination, false);
+}
+
+function chooseHeroCandidate(
+  matched: AttractionData[],
+  destination: string,
+  requireCountryMatch: boolean,
+): AttractionData | null {
   if (matched.length === 0) return null;
 
-  const destIsoSet = destinationToIsoSet(pkg.destination);
-  // 첫 번째로 photos가 있는 attraction 선택
-  const hero = matched
+  const destIsoSet = destinationToIsoSet(destination);
+  const countryMatched = matched
     .filter(a => a.photos && a.photos.length > 0 && a.country && destIsoSet.has(a.country))
-    .sort((a, b) => scoreHeroCandidate(b, pkg.destination) - scoreHeroCandidate(a, pkg.destination))[0];
-  const p = hero?.photos?.[0];
-  return p?.src_large || p?.src_medium || null;
+    .sort((a, b) => scoreHeroCandidate(b, destination) - scoreHeroCandidate(a, destination))[0];
+  if (countryMatched) return countryMatched;
+  if (requireCountryMatch) return null;
+
+  return matched
+    .filter(a => a.photos && a.photos.length > 0)
+    .sort((a, b) => scoreHeroCandidate(b, destination) - scoreHeroCandidate(a, destination))[0]
+    ?? null;
 }
 
 function scoreHeroCandidate(attraction: AttractionData, destination?: string | null): number {
@@ -55,28 +84,38 @@ function scoreHeroCandidate(attraction: AttractionData, destination?: string | n
   const photo = attraction.photos?.[0] as { alt?: string } | undefined;
   const photoAlt = photo?.alt ?? '';
   const haystack = `${name} ${region} ${photoAlt}`.toLowerCase();
-  const destinationTokens = String(destination ?? '')
-    .split(/[\/,\s]+/)
-    .map(v => v.trim())
-    .filter(v => v.length >= 2);
+  const tokens = destinationTokens(String(destination ?? ''));
 
   let score = 0;
-  for (const token of destinationTokens) {
+  for (const token of tokens) {
     if (name.includes(token)) score += 60;
     if (region.includes(token)) score += 25;
   }
 
-  if (/천지|백두산|장백|heaven lake|changbai|mountain|lake/i.test(haystack)) score += 40;
+  if (/천지|백두산|heaven lake|changbai|mountain|lake/i.test(haystack)) score += 40;
+  if (/beach|coast|sea|ocean|island|bay|resort/i.test(haystack)) score += 20;
   if (/luggage|smartphone|esim|phone|traveler activating/i.test(photoAlt)) score -= 80;
 
   return score;
+}
+
+function destinationTokens(destination: string): string[] {
+  return Array.from(new Set(
+    destination
+      .split(/[\/,\s·|()]+/)
+      .map(v => v.trim())
+      .filter(v => v.length >= 2 && !/^\d+$/.test(v)),
+  ));
+}
+
+function escapeSupabaseOrToken(token: string): string {
+  return token.replace(/[%*,()]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
 function collectAttractionIds(itineraryData: unknown): string[] {
   if (!itineraryData || typeof itineraryData !== 'object') return [];
 
   const raw = itineraryData as Record<string, unknown>;
-  // itinSchema 구조: { days: [...] } 또는 [day1, day2, ...]
   const days: unknown[] = Array.isArray(raw)
     ? raw
     : Array.isArray(raw.days)
