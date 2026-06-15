@@ -534,6 +534,9 @@ describe('upload route registration pipeline boundary', () => {
     expect(page).toContain('item.verifyReport?.packageResults?.find');
     expect(page).toContain('function packageRowStatus');
     expect(page).toContain('function packageResultsFromResponse');
+    expect(page).toContain('function isVerifyDisplayStatus');
+    expect(page).toContain('function verifyStatusFromResponse');
+    expect(page).toContain('verifyStatus: verifyStatusFromResponse(data)');
     expect(page).toContain('verifyStatus: \'error\' as QueueItem[\'verifyStatus\']');
     expect(page).toContain('packageRowClass(displayStatus)');
     expect(verifyRoute).toContain('packageIds?: unknown');

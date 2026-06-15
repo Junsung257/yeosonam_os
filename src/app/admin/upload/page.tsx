@@ -105,6 +105,15 @@ interface PendingTextItem {
 
 type VerifyDisplayStatus = NonNullable<QueueItem['verifyStatus']>;
 
+const VERIFY_DISPLAY_STATUSES: readonly VerifyDisplayStatus[] = [
+  'verifying',
+  'clean',
+  'warnings',
+  'blocked',
+  'skipped',
+  'error',
+];
+
 // 서버가 비-JSON 응답(오류 페이지, 게이트웨이 타임아웃 등)을 반환할 때도 안전하게 파싱
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function safeResJson(res: Response): Promise<any> {
@@ -193,6 +202,15 @@ function verifyStatusLabel(status: VerifyDisplayStatus | undefined): string {
   if (status === 'error') return '검증 오류';
   if (status === 'skipped') return '검증 스킵';
   return '검증 대기';
+}
+
+function isVerifyDisplayStatus(value: unknown): value is VerifyDisplayStatus {
+  return typeof value === 'string' && VERIFY_DISPLAY_STATUSES.includes(value as VerifyDisplayStatus);
+}
+
+function verifyStatusFromResponse(data: unknown): QueueItem['verifyStatus'] {
+  const status = (data as { status?: unknown } | null)?.status;
+  return isVerifyDisplayStatus(status) ? status : 'error';
 }
 
 function verifyStatusClass(status: VerifyDisplayStatus | undefined): string {
@@ -416,14 +434,14 @@ export default function UploadPage() {
       }
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
-        verifyStatus: data.status as QueueItem['verifyStatus'],
+        verifyStatus: verifyStatusFromResponse(data),
         verifyReport: {
           checks: data.checks ?? [],
           warnCount: data.warnCount ?? 0,
           failCount: data.failCount ?? 0,
           packageResults,
         },
-        verifyError: undefined,
+        verifyError: isVerifyDisplayStatus(data.status) ? undefined : '검증 응답 상태가 올바르지 않습니다.',
       } : it));
     } catch (err) {
       // 401/네트워크/타임아웃 등 — UI 에 재시도 버튼 띄우기 위해 sentinel 상태로 표시
