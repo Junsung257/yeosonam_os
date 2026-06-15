@@ -113,6 +113,7 @@
     "verify:product-registration-learning:full": "node scripts/verify-product-registration-learning-engine.mjs --live --build",
     "verify:product-registration-live-samples": "npx tsx scripts/verify-product-registration-live-samples.ts",
     "verify:product-registration-live-samples:ci": "npx tsx scripts/verify-product-registration-live-samples.ts --strict --limit=20 --days=365",
+    "export:upload-review-fixtures": "npx tsx scripts/export-upload-review-fixture-candidates.ts",
     "audit:ticketing-mobile-open-archive": "npx tsx scripts/audit-open-archive-ticketing-products.ts",
     "audit:ticketing-mobile-open-archive:apply": "npx tsx scripts/audit-open-archive-ticketing-products.ts --apply",
     "repair:optional-tours-region-drift": "node scripts/fix-optional-tours-region-drift.mjs",

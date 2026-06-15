@@ -20,6 +20,10 @@ const required = [
         label: 'structured failure code rule',
         pattern: /structured failure diagnostics/i,
       },
+      {
+        label: 'failure-to-fixture candidate rule',
+        pattern: /upload_review_queue.*fixture candidate/i,
+      },
     ],
   },
   {
@@ -80,6 +84,24 @@ const required = [
       {
         label: 'upload response exposes diagnostics',
         pattern: /failureDiagnostics/,
+      },
+    ],
+  },
+  {
+    file: 'src/lib/product-registration/review-queue-fixture-candidates.ts',
+    checks: [
+      {
+        label: 'review queue fixture candidate builder',
+        pattern: /buildUploadReviewFixtureCandidateReport/,
+      },
+    ],
+  },
+  {
+    file: 'scripts/export-upload-review-fixture-candidates.ts',
+    checks: [
+      {
+        label: 'fixture candidate export script',
+        pattern: /upload_review_queue/,
       },
     ],
   },

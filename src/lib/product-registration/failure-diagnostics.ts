@@ -19,6 +19,9 @@ export type ProductRegistrationFailureCode =
   | 'ATTRACTION_UNRESOLVED'
   | 'CUSTOMER_RENDER_BLOCKED'
   | 'UPLOAD_DISCONNECTED'
+  | 'SUPABASE_NOT_CONFIGURED'
+  | 'REQUEST_SCOPE_ERROR'
+  | 'PERSISTENCE_CONSTRAINT_FAILED'
   | 'UNKNOWN_BLOCKER';
 
 export type ProductRegistrationFailureDiagnostic = {
@@ -39,13 +42,13 @@ const RULES: Rule[] = [
   {
     code: 'PRICE_ROWS_MISSING',
     severity: 'critical',
-    patterns: [/product_prices missing/i, /price_tiers\s*없음/i, /product_prices\s*없음/i],
+    patterns: [/product_prices missing/i, /가격 행 없음/i, /상품가 행\(product_prices\) 없음/i, /price_tiers\s*없음/i, /product_prices\s*없음/i],
     nextAction: 'Recover source-backed product price rows before saving or opening the product.',
   },
   {
     code: 'PRICE_DATES_MISSING',
     severity: 'critical',
-    patterns: [/price_dates missing/i, /price_dates\s*없음/i],
+    patterns: [/price_dates missing/i, /출발일별 가격\(price_dates\) 없음/i, /price_dates\s*없음/i],
     nextAction: 'Recover source-backed departure dates and date-level minimum prices.',
   },
   {
@@ -135,7 +138,7 @@ const RULES: Rule[] = [
   {
     code: 'CUSTOMER_RENDER_BLOCKED',
     severity: 'critical',
-    patterns: [/Customer landing\/A4 blocked/i, /\bBLOCKED:/i, /final upload gate blocked/i],
+    patterns: [/Customer landing\/A4 blocked/i, /고객용 랜딩\/A4 생성 불가/i, /\bBLOCKED:/i, /final upload gate blocked/i],
     nextAction: 'Keep the product out of customer visibility until all specific blocker codes are cleared.',
   },
   {
@@ -143,6 +146,24 @@ const RULES: Rule[] = [
     severity: 'high',
     patterns: [/서버 응답 전에 끊겼습니다/i, /Failed to fetch/i, /request.*disconnected/i],
     nextAction: 'Check the upload review queue by uploadRequestId/file hash and replay the failed source through the deterministic runner.',
+  },
+  {
+    code: 'SUPABASE_NOT_CONFIGURED',
+    severity: 'high',
+    patterns: [/Supabase가 구성되지 않았습니다/i, /Supabase.*not configured/i, /Missing Supabase URL or service role key/i],
+    nextAction: 'Fix environment configuration before treating the row as a parser failure.',
+  },
+  {
+    code: 'REQUEST_SCOPE_ERROR',
+    severity: 'high',
+    patterns: [/after.*called outside a request scope/i, /next-dynamic-api-wrong-context/i],
+    nextAction: 'Move request-scoped Next.js APIs out of background/off-request execution paths.',
+  },
+  {
+    code: 'PERSISTENCE_CONSTRAINT_FAILED',
+    severity: 'critical',
+    patterns: [/violates check constraint/i, /travel_packages 저장 실패/i, /new row for relation .* violates/i],
+    nextAction: 'Repair persistence payload shape and add a storage contract regression before retrying upload.',
   },
 ];
 

@@ -147,6 +147,7 @@ Important implementation truth:
 - The current deterministic auto-repair classes are intentionally narrow: customer selling price completion, date-level `price_dates` rebuild from existing `product_prices`, and schedule-pollution verification metadata.
 - Catalog split, stacked flight recovery, ferry detection, destination aliases, attraction cards, hotel/meal promotion, and special price-table shapes are handled by parser/normalizer modules and regression fixtures, not by an unrestricted self-modifying micro loop.
 - Upload failures must carry structured failure diagnostics in the upload response and `upload_review_queue.parsed_draft_json._product_registration_failure_diagnostics`.
+- Pending `upload_review_queue` rows must be exportable as fixture candidate reports through `scripts/export-upload-review-fixture-candidates.ts`; the report is read-only and contains stable blocker codes, source hashes, safe excerpts, target modules, expected assertions, and verification commands.
 - Any repeated failure must become a fixture candidate, regression test, or explicit error-registry entry before it can be called resolved.
 - The final customer-ready claim still requires actual mobile landing and A4 proof according to `docs/product-mobile-landing-quality-runbook.md`.
 

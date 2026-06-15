@@ -49,6 +49,11 @@ const commands = [
     command: 'npm',
     args: ['run', 'check:product-registration-contract'],
   },
+  {
+    label: 'upload review fixture candidate export self-test',
+    command: 'npx',
+    args: ['tsx', 'scripts/export-upload-review-fixture-candidates.ts', '--self-test'],
+  },
   { label: 'migration prefix audit', command: 'npm', args: ['run', 'audit:migration-prefix:ci'] },
 ];
 

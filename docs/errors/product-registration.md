@@ -14,11 +14,13 @@
   - Added structured product-registration failure diagnostics with stable blocker codes.
   - Upload review queue rows now embed diagnostics under `_product_registration_failure_diagnostics`.
   - Upload responses now expose `failureDiagnostics` with codes, severity, next action, and per-product blockers.
+  - Added read-only upload review fixture candidate export so pending failed rows can become regression work items without manual memory.
   - Added `check:product-registration-contract` and wired it into the learning-engine verification script.
   - Updated `docs/product-registration-current-ssot.md` with an explicit implementation truth status so future agents cannot treat documented intent as already fully enforced behavior.
 - **Verification**:
   - `npm run check:product-registration-contract`
   - `npx vitest run src/lib/product-registration/failure-diagnostics.test.ts src/lib/product-registration/upload-review-queue.test.ts src/lib/product-registration/upload-response.test.ts src/lib/product-registration/auto-qa.test.ts`
+  - `npx tsx scripts/export-upload-review-fixture-candidates.ts --limit=50`: classified 39 deduped pending candidates and reduced `UNKNOWN_BLOCKER` from 19 to 0 in the sampled queue.
 - **Status**: FIXED
 - **Prevention**: Any future claim that the learning engine is complete must pass the product-registration contract check and show actual mobile/A4 proof for customer-visible changes. New repeated blockers require structured codes, fixture candidates, and regression tests.
 

@@ -39,4 +39,30 @@ describe('product registration failure diagnostics', () => {
     ]));
     expect(summary.nextAction).toMatch(/price/i);
   });
+
+  it('classifies Korean customer render and price blockers', () => {
+    const summary = summarizeProductRegistrationFailures([
+      '고객용 랜딩/A4 생성 불가: 가격 행 없음 | 출발일별 가격(price_dates) 없음',
+    ]);
+
+    expect(summary.codes).toEqual(expect.arrayContaining([
+      'CUSTOMER_RENDER_BLOCKED',
+      'PRICE_ROWS_MISSING',
+      'PRICE_DATES_MISSING',
+    ]));
+  });
+
+  it('classifies infrastructure and persistence failures separately from parser blockers', () => {
+    const summary = summarizeProductRegistrationFailures([
+      'Supabase가 구성되지 않았습니다.',
+      '`after` was called outside a request scope. Read more: https://nextjs.org/docs/messages/next-dynamic-api-wrong-context',
+      'travel_packages 저장 실패: new row for relation "travel_packages" violates check constraint "travel_packages_itinerary_data_structure_check"',
+    ]);
+
+    expect(summary.codes).toEqual(expect.arrayContaining([
+      'SUPABASE_NOT_CONFIGURED',
+      'REQUEST_SCOPE_ERROR',
+      'PERSISTENCE_CONSTRAINT_FAILED',
+    ]));
+  });
 });
