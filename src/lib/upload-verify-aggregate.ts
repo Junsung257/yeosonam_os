@@ -45,7 +45,14 @@ export function uploadVerifyErrorResult(
   return {
     packageId,
     status: 'error',
-    checks: [],
+    checks: [
+      {
+        id: 'upload_verify_error',
+        label: '검증 오류',
+        status: 'fail',
+        detail: error,
+      },
+    ],
     fixable: [],
     passCount: 0,
     warnCount: 0,

@@ -75,5 +75,10 @@ describe('aggregateUploadVerifyResults', () => {
       status: 'error',
       error: '검증 실패 - 상품 없음',
     });
+    expect(aggregate.checks[1]).toMatchObject({
+      id: 'pkg-2:upload_verify_error',
+      status: 'fail',
+      detail: '검증 실패 - 상품 없음',
+    });
   });
 });
