@@ -210,6 +210,31 @@ Cancel 1 day before departure: 200,000원 penalty
     expect(result.blockers.join('\n')).toContain('HOTEL: 호텔 죠시');
   });
 
+  it('blocks movement text stored as day.hotel.name before mobile landing render', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-06-30', day_of_week: null, net_price: 1099000, adult_selling_price: 1099000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-06-30', price: 1099000, confirmed: false }],
+      destination: 'Nha Trang',
+      destinationCode: 'CXR',
+      internalCode: 'PUS-ETC-CXR-05-0004',
+      durationDays: 5,
+      itineraryDays: [
+        { day: 1, schedule: [{ activity: '김해 출발', type: 'flight' }] },
+        { day: 2, schedule: [{ activity: '다이아몬드CC 라운딩', type: 'normal' }] },
+        { day: 3, schedule: [{ activity: '다이아몬드CC 라운딩', type: 'normal' }] },
+        {
+          day: 4,
+          hotel: { name: '호텔 미팅후 / 나트랑 공항으로 이동' },
+          schedule: [{ activity: '나트랑 깜란 국제공항 출발', type: 'flight' }],
+        },
+        { day: 5, schedule: [{ activity: '김해 도착', type: 'flight' }] },
+      ],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.blockers.join('\n')).toContain('ITINERARY_HOTEL_FIELD_SCHEDULE_TEXT');
+  });
+
   it('does not block valid package prices just because optional charges exist elsewhere', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [{ target_date: '2026-07-04', day_of_week: null, net_price: 999000, adult_selling_price: 999000, child_price: null, note: null }],

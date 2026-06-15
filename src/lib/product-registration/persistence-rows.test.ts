@@ -63,4 +63,48 @@ describe('buildUploadPersistenceRows', () => {
       },
     ]);
   });
+
+  it('persists nights from trip_style before falling back to duration minus one', () => {
+    const rows = buildUploadPersistenceRows({
+      registration: {
+        extractedData: {
+          title: 'Nha Trang golf 3n5d',
+          destination: 'Nha Trang',
+          duration: 5,
+          trip_style: '3박5일',
+          price: 1099000,
+          rawText: 'raw',
+        },
+      } as never,
+      finalized: {
+        draftRow: {
+          inclusions: [],
+          excludes: [],
+          notices_parsed: [],
+          itinerary_data: { meta: { nights: 3, days: 5 }, days: [{ day: 1, schedule: [] }] },
+        },
+        confidenceV3: 0.9,
+        productStatus: 'REVIEW_NEEDED',
+        pkgStatus: 'pending',
+      } as never,
+      title: 'Nha Trang golf 3n5d',
+      internalCode: 'PUS-ETC-CXR-05-0001',
+      departureRegion: 'Busan',
+      supplierCode: 'ETC',
+      netPrice: 1099000,
+      marginRate: 0.09,
+      sourceFilename: 'nha-trang.txt',
+      landOperatorId: null,
+      departingLocationId: null,
+      fileType: 'txt',
+      productRawText: 'raw',
+      documentRawText: 'raw',
+      priceRows: [],
+      priceDates: [{ date: '2026-06-30', price: 1099000, confirmed: false }],
+      marketingCopies: [],
+      catalogGroupId: null,
+    });
+
+    expect(rows.travelPackageRow.nights).toBe(3);
+  });
 });

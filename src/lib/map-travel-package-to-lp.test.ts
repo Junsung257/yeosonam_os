@@ -163,4 +163,27 @@ describe('mapTravelPackageToLandingData', () => {
     expect(labels).not.toContain('\uC911\uC2DD \uD6C4');
     expect(labels).toContain('\uB2C8\uD63C\uB2E4\uC774\uB77C \uB85C\uD504\uC6E8\uC774 \uC655\uBCF5\uD0D1\uC2B9');
   });
+
+  it('uses trip_style for 3-night 5-day landing duration instead of duration minus one', () => {
+    const mapped = mapTravelPackageToLandingData({
+      id: 'pkg-nha-trang',
+      title: '특별약관적용 · 나트랑 · 3박5일 · BX781',
+      destination: '나트랑',
+      duration: 5,
+      nights: 4,
+      trip_style: '3박5일',
+      price: 1099000,
+      price_dates: [{ date: '2026-06-30', price: 1099000, confirmed: false }],
+      inclusions: [],
+      excludes: [],
+      itinerary_data: {
+        meta: { nights: 3, days: 5 },
+        days: [
+          { day: 1, regions: ['나트랑'], meals: {}, schedule: [{ activity: '김해 출발', type: 'flight' }] },
+        ],
+      },
+    } as unknown as Record<string, unknown>, null);
+
+    expect(mapped.duration).toBe('3박 5일');
+  });
 });

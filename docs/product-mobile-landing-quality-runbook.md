@@ -1,6 +1,6 @@
 # Product Mobile Landing Quality Runbook
 
-Last updated: 2026-06-12
+Last updated: 2026-06-15
 
 This runbook is mandatory for any product-registration, attraction-matching, itinerary-normalization, price-recovery, or publish-gate change that can affect customer pages.
 
@@ -29,6 +29,10 @@ Earlier checks proved that products existed, prices existed, itinerary days exis
 - source itinerary lines such as key transfers, visits, and final-day stops were not silently dropped.
 - the live mobile page did not show wrong rich-card copy such as cross-region Huashan/Xi'an or Bohol massage content.
 
+On 2026-06-15, a Nha Trang golf package showed a second class of failure: the saved product was structurally renderable, but the mobile landing still exposed wrong customer semantics. `3박5일` rendered as `4박5일`, `호텔 미팅후 / 나트랑 공항으로 이동` was saved as `day.hotel.name`, `석식 *토` and `일 주말...` were split into broken exclude fragments, and cart-fee surcharge rows appeared as optional tours.
+
+This happened because readiness checks looked mostly at the existence of prices, itinerary days, and schedules. They did not compare `trip_style` against persisted `nights`, did not inspect `day.hotel.name`, did not scan exclude fragment corruption, and did not block optional-tour arrays polluted by surcharge/cart-fee text.
+
 ## Non-Negotiable Rule
 
 A product is not customer-ready until the actual mobile page is checked.
@@ -54,18 +58,22 @@ For every newly opened product or any repair of already-open products:
 1. Compare the supplier raw source against the saved product.
 2. Confirm `product_prices` and `price_dates` agree with source-backed dates and amounts.
 3. Confirm itinerary day count and day sequence match the source.
-4. Confirm source-backed outbound/inbound flight departure and arrival times are saved in `itinerary_data.flight_segments`.
-5. Confirm source itinerary lines that affect customer understanding are present in the saved itinerary payload.
-6. Confirm customer-visible attraction cards are supported by source phrases.
-7. Confirm every rendered attraction ID is `customer_publishable=true`.
-8. Confirm every rendered attraction card has usable media or intentionally renders text-only without wrong media.
-9. Confirm option, price, shopping, notice, catalog-header, and pure-transfer lines do not become attraction cards.
-10. Open `/packages/{id}` in a mobile viewport.
-11. Click or scroll into the itinerary tab/section.
-12. Search the rendered body text for required itinerary terms, required flight times, and known forbidden terms.
-13. Run the A4/mobile readiness audit.
-14. Add or update a regression fixture when the failure came from parser/matcher behavior.
-15. Add an error-registry entry when the failure was user-visible or repeated.
+4. Confirm `trip_style`, `duration`, `nights`, and `itinerary_data.meta.nights/days` agree. `3박5일` must not render as `4박5일`.
+5. Confirm source-backed outbound/inbound flight departure and arrival times are saved in `itinerary_data.flight_segments`.
+6. Confirm source itinerary lines that affect customer understanding are present in the saved itinerary payload.
+7. Confirm `day.hotel.name` contains only a real accommodation name. Movement text such as hotel meeting, airport transfer, checkout, or routing must stay in schedule/transfer items.
+8. Confirm excludes and notices preserve source meaning. Broken fragments such as `석식 *토` followed by `일 주말...` are blockers.
+9. Confirm optional-tour arrays contain real optional tours only. Cart fees, caddie tips, weekend surcharges, 2B/3B fees, and single-room charges are surcharge/exclude facts, not optional tours.
+10. Confirm customer-visible attraction cards are supported by source phrases.
+11. Confirm every rendered attraction ID is `customer_publishable=true`.
+12. Confirm every rendered attraction card has usable media or intentionally renders text-only without wrong media.
+13. Confirm option, price, shopping, notice, catalog-header, and pure-transfer lines do not become attraction cards.
+14. Open `/packages/{id}` in a mobile viewport.
+15. Click or scroll into the itinerary tab/section.
+16. Search the rendered body text for required itinerary terms, required flight times, and known forbidden terms.
+17. Run the A4/mobile readiness audit.
+18. Add or update a regression fixture when the failure came from parser/matcher behavior.
+19. Add an error-registry entry when the failure was user-visible or repeated.
 
 ## Commands
 

@@ -166,6 +166,10 @@ function trustScore(row) {
   add(row.attraction_unlinked_registered, 'attraction.unlinked_registered', 'critical', 80);
   add(row.attraction_description_missing, 'attraction.description_missing', 'critical', 60);
   add(row.itinerary_semantic_mismatch, 'itinerary.semantic_mismatch', 'critical', 70);
+  add(row.duration_trip_style_mismatch, 'landing.duration_trip_style_mismatch', 'critical', 70);
+  add(row.hotel_field_semantic_mismatch, 'itinerary.hotel_field_semantic_mismatch', 'critical', 80);
+  add(row.exclude_fragment_corruption, 'catalog.exclude_fragment_corruption', 'critical', 70);
+  add(row.optional_tour_surcharge_pollution, 'catalog.optional_tour_surcharge_pollution', 'critical', 70);
   add(row.render_failure, 'render.blocked', 'critical', 80);
   add(row.itinerary_policy_leak, 'itinerary.policy_leak', 'critical', 80);
   add(row.itinerary_days === 0, 'itinerary.missing', 'critical', 35);
@@ -195,6 +199,73 @@ function countItineraryDays(pkg) {
   if (Array.isArray(days)) return days.length;
   if (Array.isArray(pkg.itinerary)) return pkg.itinerary.length;
   return 0;
+}
+
+function parseTripStyle(value) {
+  const match = String(value ?? '').match(/(\d+)\s*\uBC15\s*(\d+)\s*\uC77C/);
+  if (!match) return null;
+  return { nights: Number(match[1]), days: Number(match[2]) };
+}
+
+function durationTripStyleMismatch(pkg) {
+  const trip = parseTripStyle(pkg.trip_style ?? pkg.title);
+  if (!trip) return null;
+  const duration = Number(pkg.duration);
+  const nights = Number(pkg.nights);
+  const metaNights = Number(pkg.itinerary_data?.meta?.nights);
+  const metaDays = Number(pkg.itinerary_data?.meta?.days);
+  if (Number.isFinite(duration) && duration > 0 && duration !== trip.days) {
+    return `duration ${duration} != trip_style days ${trip.days}`;
+  }
+  if (Number.isFinite(nights) && nights >= 0 && nights !== trip.nights) {
+    return `nights ${nights} != trip_style nights ${trip.nights}`;
+  }
+  if (Number.isFinite(metaDays) && metaDays > 0 && metaDays !== trip.days) {
+    return `itinerary_data.meta.days ${metaDays} != trip_style days ${trip.days}`;
+  }
+  if (Number.isFinite(metaNights) && metaNights >= 0 && metaNights !== trip.nights) {
+    return `itinerary_data.meta.nights ${metaNights} != trip_style nights ${trip.nights}`;
+  }
+  return null;
+}
+
+function hotelFieldSemanticMismatch(pkg) {
+  const days = Array.isArray(pkg.itinerary_data?.days) ? pkg.itinerary_data.days : [];
+  for (const day of days) {
+    const name = String(day?.hotel?.name ?? '').replace(/\s+/g, ' ').trim();
+    if (!name) continue;
+    const compact = name.replace(/\s+/g, '');
+    const hasMovement = /(\uBBF8\uD305|\uACF5\uD56D|\uC774\uB3D9|\uCD9C\uBC1C|\uB3C4\uCC29|\uCCB4\uD06C\uC544\uC6C3|\uB77C\uC6B4\uB529)/.test(compact);
+    const looksLikeHotelName = /([\uAC00-\uD7A3A-Za-z0-9]{2,}\uD638\uD154|\uB9AC\uC870\uD2B8|\uACE8\uD504\uD154|hotel|resort|\uB3D9\uAE09|\d\s*\uC131)/i.test(name);
+    if (hasMovement && !looksLikeHotelName) {
+      return `day ${day?.day ?? '?'} hotel.name is movement/schedule text: ${name}`;
+    }
+  }
+  return null;
+}
+
+function excludeFragmentCorruption(pkg) {
+  const excludes = Array.isArray(pkg.excludes) ? pkg.excludes.map(item => String(item ?? '').trim()).filter(Boolean) : [];
+  for (let i = 0; i < excludes.length; i++) {
+    const item = excludes[i];
+    if (/^\uC77C\s*\uC8FC\uB9D0/.test(item)) return `exclude fragment starts with Sunday/weekend tail: ${item}`;
+    if (/\uC11D\uC2DD\s*\*?\s*\uD1A0$/.test(item)) return `exclude fragment split at Sat/Sun comma: ${item}`;
+    if (/\b\d{1,3}$/.test(item) && /^\d{3}\s*\uC6D0/.test(excludes[i + 1] ?? '')) {
+      return `exclude money amount split across comma: ${item} / ${excludes[i + 1]}`;
+    }
+  }
+  return null;
+}
+
+function optionalTourSurchargePollution(pkg) {
+  const tours = Array.isArray(pkg.optional_tours) ? pkg.optional_tours : [];
+  for (const tour of tours) {
+    const text = [tour?.name, tour?.note].filter(Boolean).join(' ');
+    if (/(\uCE74\uD2B8\uBE44|\uC2F1\uAE00\s*\uCE74\uD2B8|\uCD94\uAC00\s*(?:\uB429\uB2C8\uB2E4|\uC694\uAE08|\uBE44\uC6A9|\uAE08)|\uB77C\uC6B4\uB529\uC2DC|2B|3B|single\s*cart|cart\s*fee)/i.test(text)) {
+      return `optional_tours contains surcharge/fee text: ${text}`;
+    }
+  }
+  return null;
 }
 
 function hasUnresolvedCodeOrDestination(pkg) {
@@ -646,6 +717,10 @@ function readinessFor(row) {
   if (row.attraction_unlinked_registered) failures.push('attraction_unlinked_registered');
   if (row.attraction_description_missing) failures.push('attraction_description_missing');
   if (row.itinerary_semantic_mismatch) failures.push('itinerary_semantic_mismatch');
+  if (row.duration_trip_style_mismatch) failures.push('duration_trip_style_mismatch');
+  if (row.hotel_field_semantic_mismatch) failures.push('hotel_field_semantic_mismatch');
+  if (row.exclude_fragment_corruption) failures.push('exclude_fragment_corruption');
+  if (row.optional_tour_surcharge_pollution) failures.push('optional_tour_surcharge_pollution');
   if (row.render_failure) failures.push('render_blocked');
   if (row.itinerary_policy_leak) failures.push('itinerary_policy_leak');
   if (row.itinerary_days === 0) failures.push('no_itinerary_days');
@@ -671,7 +746,7 @@ function readinessFor(row) {
 
 let packageQuery = supabase
   .from('travel_packages')
-  .select('id, title, short_code, internal_code, status, audit_status, created_at, price, destination, duration, price_dates, price_tiers, itinerary, itinerary_data, raw_text, notices_parsed, customer_notes, inclusions, excludes')
+  .select('id, title, short_code, internal_code, status, audit_status, created_at, price, destination, duration, nights, trip_style, price_dates, price_tiers, itinerary, itinerary_data, raw_text, notices_parsed, customer_notes, inclusions, excludes, optional_tours')
   .gte('created_at', since)
   .order('created_at', { ascending: false })
   .limit(limit);
@@ -925,6 +1000,10 @@ const rows = allPackageRows
       attraction_unlinked_registered: unlinkedRegisteredAttractionTerm(pkg, activeAttractionTerms),
       attraction_description_missing: attractionDescriptionMissing(pkg, attractionById),
       itinerary_semantic_mismatch: itinerarySemanticMismatch(pkg),
+      duration_trip_style_mismatch: durationTripStyleMismatch(pkg),
+      hotel_field_semantic_mismatch: hotelFieldSemanticMismatch(pkg),
+      exclude_fragment_corruption: excludeFragmentCorruption(pkg),
+      optional_tour_surcharge_pollution: optionalTourSurchargePollution(pkg),
       itinerary_policy_leak: hasItineraryPolicyLeak(pkg),
       render_failure: renderFailure(pkg),
     };

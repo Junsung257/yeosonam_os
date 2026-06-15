@@ -2,6 +2,9 @@ export type ItineraryScheduleQualityDay = {
   day?: number;
   dayNumber?: number;
   day_number?: number;
+  hotel?: {
+    name?: string | null;
+  } | null;
   schedule?: Array<{
     activity?: string | null;
     type?: string | null;
@@ -34,6 +37,8 @@ const PRICE_DATE_TOKEN_RE = /^\d{1,2}\/\d{1,2}(?:\s*[,，]\s*\d{1,2})*(?:\s*~\s*
 const PRICE_AMOUNT_TOKEN_RE = /^\d{1,3}(?:,\d{3})?,-$/;
 const WEEKDAY_ONLY_RE = /^(?:[일월화수목금토](?:\s*[,/·~\-]\s*[일월화수목금토])*)$/;
 const PRICE_TABLE_NOTICE_RE = /^(?:(?:호텔\s*)?예약시\s*날짜별\s*(?:써차지|서차지|surcharge|상품가)|호텔\s*예약시\s*날짜별|항공제외일|항공\s*제외일|현지지상비|현지\s*지상비|일본공휴일|일본\s*공휴일|항공그룹요금|항공\s*그룹\s*요금)/i;
+const HOTEL_NAME_SCHEDULE_TEXT_RE = /(?:\uBBF8\uD305|\uACF5\uD56D|\uC774\uB3D9|\uCD9C\uBC1C|\uB3C4\uCC29|\uCCB4\uD06C\uC544\uC6C3|\uB77C\uC6B4\uB529)/;
+const HOTEL_NAME_HINT_RE = /(?:[\uAC00-\uD7A3A-Za-z0-9]{2,}\uD638\uD154|\uB9AC\uC870\uD2B8|\uACE8\uD504\uD154|hotel|resort|\uB3D9\uAE09|\d\s*\uC131)/i;
 
 function normalizeActivity(value: string | null | undefined): string {
   return (value ?? '').replace(/\s+/g, ' ').trim();
@@ -108,6 +113,15 @@ export function findItineraryScheduleQualityIssues(
   for (const day of days) {
     const number = dayNumber(day);
     const dayIssues: ItineraryScheduleQualityIssue[] = [];
+    const hotelName = normalizeActivity(day.hotel?.name);
+    if (hotelName && HOTEL_NAME_SCHEDULE_TEXT_RE.test(hotelName.replace(/\s+/g, '')) && !HOTEL_NAME_HINT_RE.test(hotelName)) {
+      dayIssues.push({
+        code: 'ITINERARY_HOTEL_FIELD_SCHEDULE_TEXT',
+        day: number,
+        activity: hotelName,
+        reason: 'movement/schedule text must not be stored as day.hotel.name',
+      });
+    }
     for (const item of day.schedule ?? []) {
       const activity = normalizeActivity(item.activity);
       const pollution = classifyPollutedActivity(activity);

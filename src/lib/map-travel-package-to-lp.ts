@@ -97,6 +97,34 @@ function compactKorean(value: string): string {
   return value.replace(/\s+/g, '').trim();
 }
 
+function numericField(value: unknown): number | null {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function normalizeTripStyle(value: unknown): string | null {
+  const match = String(value ?? '').trim().match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (!match) return null;
+  return `${Number(match[1])}박 ${Number(match[2])}일`;
+}
+
+function formatLandingDuration(pkg: Record<string, unknown>): string {
+  const tripStyle = normalizeTripStyle(pkg.trip_style);
+  if (tripStyle) return tripStyle;
+
+  const itineraryData = pkg.itinerary_data as { meta?: { nights?: unknown; days?: unknown } } | null | undefined;
+  const metaNights = numericField(itineraryData?.meta?.nights);
+  const metaDays = numericField(itineraryData?.meta?.days);
+  if (metaNights != null && metaDays != null && metaDays > 0) return `${metaNights}박 ${metaDays}일`;
+
+  const nights = numericField(pkg.nights);
+  const days = numericField(pkg.duration);
+  if (nights != null && days != null && days > 0) return `${nights}박 ${days}일`;
+  if (days != null && days > 0) return `${Math.max(0, days - 1)}박 ${days}일`;
+
+  return '기간 미정';
+}
+
 function isSupplierTableFragment(
   label: string,
   type: DayActivity['type'],
@@ -207,8 +235,7 @@ export function mapTravelPackageToLandingData(
       ? `${parseInt(upcoming.date.slice(5, 7), 10)}/${parseInt(upcoming.date.slice(8, 10), 10)}`
       : '미정';
 
-  const durationNum = pkg.duration as number | undefined;
-  const duration = durationNum ? `${durationNum - 1}박 ${durationNum}일` : '기간 미정';
+  const duration = formatLandingDuration(pkg);
   const scoreRows = Array.isArray(pkg._packageScores)
     ? (pkg._packageScores as PackageScoreDisplayRow[])
     : [];

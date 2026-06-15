@@ -259,7 +259,8 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
     blockers.push('destination code unresolved: internal destination code must be resolved before customer render.');
   }
 
-  const days = input.itineraryDays ?? [];
+  const itineraryDataForDays = input.itineraryData as { days?: ItineraryScheduleQualityDay[] } | null | undefined;
+  const days = input.itineraryDays ?? (Array.isArray(itineraryDataForDays?.days) ? itineraryDataForDays.days : []);
   const dayNumbers = days
     .map(day => day.day ?? day.dayNumber ?? day.day_number)
     .filter((n): n is number => typeof n === 'number' && Number.isFinite(n));
@@ -288,7 +289,7 @@ export function evaluateUploadDeliverability(input: UploadDeliverabilityInput): 
   const scheduleQualityIssues = findItineraryScheduleQualityIssues(days);
   for (const issue of scheduleQualityIssues.slice(0, 5)) {
     blockers.push(
-      `itinerary schedule quality error: DAY${issue.day ?? '?'} "${issue.activity}" — ${issue.reason}`,
+      `itinerary schedule quality error: ${issue.code}: DAY${issue.day ?? '?'} "${issue.activity}" — ${issue.reason}`,
     );
   }
   if (scheduleQualityIssues.length > 5) {

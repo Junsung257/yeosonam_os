@@ -46,6 +46,23 @@ function maskSensitiveRawText(rawText: string, landOperatorName?: string | null)
   return masked;
 }
 
+function parseTripStyleNights(value: unknown): number | null {
+  const match = String(value ?? '').match(/(\d+)\s*박\s*\d+\s*일/);
+  if (!match) return null;
+  const nights = Number(match[1]);
+  return Number.isFinite(nights) && nights >= 0 ? nights : null;
+}
+
+function resolveNightsForPersistence(ed: ProductRegistrationResult['extractedData']): number | null {
+  const explicit = (ed as { nights?: number | null }).nights;
+  if (typeof explicit === 'number' && Number.isFinite(explicit) && explicit >= 0) return explicit;
+
+  const tripStyleNights = parseTripStyleNights((ed as { trip_style?: unknown }).trip_style);
+  if (tripStyleNights != null) return tripStyleNights;
+
+  return ed.duration ? Math.max(0, ed.duration - 1) : null;
+}
+
 export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): UploadPersistenceRows {
   const ed = input.registration.extractedData;
   const draftRow = input.finalized.draftRow;
@@ -93,7 +110,7 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
       title: input.title,
       destination: ed.destination,
       duration: ed.duration,
-      nights: (ed as { nights?: number | null }).nights ?? (ed.duration ? Math.max(0, ed.duration - 1) : null),
+      nights: resolveNightsForPersistence(ed),
       price: ed.price,
       filename: input.sourceFilename,
       file_type: input.fileType,

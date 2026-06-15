@@ -113,6 +113,34 @@ function dedupeHotelNames(days: DayBlock[]): DayBlock[] {
 }
 
 /** regions 정규화: trim + 중복 제거 + 빈값 제거 */
+const HOTEL_NAME_SCHEDULE_TEXT_RE = /(?:\uBBF8\uD305|\uACF5\uD56D|\uC774\uB3D9|\uCD9C\uBC1C|\uB3C4\uCC29|\uCCB4\uD06C\uC544\uC6C3|\uB77C\uC6B4\uB529)/;
+const HOTEL_NAME_HINT_RE = /(?:[\uAC00-\uD7A3A-Za-z0-9]{2,}\uD638\uD154|\uB9AC\uC870\uD2B8|\uACE8\uD504\uD154|hotel|resort|\uB3D9\uAE09|\d\s*\uC131)/i;
+
+function hotelNameIsScheduleText(name: string | null | undefined): boolean {
+  const text = String(name ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return false;
+  return HOTEL_NAME_SCHEDULE_TEXT_RE.test(text.replace(/\s+/g, '')) && !HOTEL_NAME_HINT_RE.test(text);
+}
+
+function repairHotelFieldScheduleText(day: DayBlock): DayBlock {
+  const name = day.hotel?.name?.trim();
+  if (!hotelNameIsScheduleText(name)) return day;
+  const schedule = Array.isArray(day.schedule) ? [...day.schedule] : [];
+  if (name && !schedule.some(item => item.activity?.trim() === name)) {
+    schedule.push({
+      activity: name,
+      time: null,
+      transport: null,
+      type: /\uC774\uB3D9|\uACF5\uD56D|\uBBF8\uD305/.test(name) ? 'normal' : 'hotel',
+    });
+  }
+  return {
+    ...day,
+    schedule,
+    hotel: undefined,
+  };
+}
+
 function normalizeRegions(regions: string[] | undefined): string[] {
   if (!Array.isArray(regions)) return [];
   const cleaned = regions
@@ -337,16 +365,19 @@ export function normalizeItinerary(itin: ItineraryDataBlock | null | undefined):
   if (!itin || !Array.isArray(itin.days)) return itin;
 
   // 1) 각 day 정규화
-  let normalizedDays: DayBlock[] = itin.days.map(day => ({
-    ...day,
-    regions: normalizeRegions(day.regions),
-    schedule: sanitizeFlightScheduleTimes(cleanSchedule(coerceAirportScheduleTypes(day.schedule))),
-    meals: normalizeMeals(day.meals),
-    hotel: day.hotel ? {
-      ...day.hotel,
-      grade: normalizeHotelGrade(day.hotel.grade),
-    } : day.hotel,
-  }));
+  let normalizedDays: DayBlock[] = itin.days.map(day => {
+    const repairedDay = repairHotelFieldScheduleText(day);
+    return {
+      ...repairedDay,
+      regions: normalizeRegions(repairedDay.regions),
+      schedule: sanitizeFlightScheduleTimes(cleanSchedule(coerceAirportScheduleTypes(repairedDay.schedule))),
+      meals: normalizeMeals(repairedDay.meals),
+      hotel: repairedDay.hotel ? {
+        ...repairedDay.hotel,
+        grade: normalizeHotelGrade(repairedDay.hotel.grade),
+      } : repairedDay.hotel,
+    };
+  });
 
   normalizedDays = applyMetaFlightHints(normalizedDays, itin.meta);
 
