@@ -97,6 +97,16 @@ function trimDayBodyTail(body: string): string {
     '[현금영수증',
     '현금영수증 발급 안내',
   ];
+  markers.push(
+    '베트남 골프상품 취소규정 안내',
+    '골프상품 취소규정 안내',
+    '여행상품 취소규정 안내',
+    '패키지 상품 취소규정 안내',
+    '기간에 따른 취소 수수료',
+    '[현금영수증',
+    '현금영수증 발급 안내',
+    '본 행사는 특별 약관 상품',
+  );
   let end = body.length;
   for (const marker of markers) {
     const idx = body.indexOf(marker);

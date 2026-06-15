@@ -563,4 +563,74 @@ BX782
       }),
     ]);
   });
+
+  it('keeps Vietnamese golf cancellation appendix out of catalog itinerary days', () => {
+    const raw = `BX 나트랑 다이아몬드베이 골프텔 3박5일
+일 자
+지 역
+교통편
+시 간
+주    요    행   사   일   정
+식 사
+제1일
+부 산
+나트랑
+BX781
+19:20
+22:20
+김해 국제공항 출발
+나트랑 깜란 국제공항 도착
+HOTEL: 다이아몬드CC 골프텔 빌라동
+제2일
+나트랑
+전용차량
+전 일
+호텔 조식 후
+다이아몬드CC 18홀 라운딩
+조:호텔식
+중:불포함
+석:불포함
+HOTEL: 다이아몬드CC 골프텔 빌라동
+제3일
+나트랑
+전용차량
+전 일
+호텔 조식 후
+다이아몬드CC 18홀 라운딩
+조:호텔식
+중:불포함
+석:불포함
+HOTEL: 다이아몬드CC 골프텔 빌라동
+제4일
+나트랑
+전용차량
+BX782
+전 일
+23:20
+호텔 조식 후
+다이아몬드CC 18홀 라운딩
+나트랑 깜란 국제공항 출발
+조:호텔식
+중:불포함
+석:불포함
+제5일
+부 산
+06:20
+김해 국제공항 도착
+
+상기 일정은 현지 사정, 천재지변으로 인해 변경될 수 있습니다.  베트남 골프상품 취소규정 안내
+
+◎ 기간에 따른 취소 수수료 규정 안내 [특별약관적용]
+[현금영수증 발급 안내 드립니다]
+본 행사는 특별 약관 상품으로 상기 내용을 꼭 확인 부탁드립니다.`;
+
+    const itinerary = buildSupplierRawDeterministicItinerary(raw);
+    const scheduleText = itinerary?.days.flatMap(day => day.schedule.map(item => item.activity)).join('\n') ?? '';
+
+    expect(itinerary?.days).toHaveLength(5);
+    expect(scheduleText).toContain('김해 국제공항 도착');
+    expect(scheduleText).not.toContain('베트남 골프상품 취소규정');
+    expect(scheduleText).not.toContain('현금영수증');
+    expect(scheduleText).not.toContain('특별 약관 상품');
+  });
 });

@@ -131,10 +131,22 @@ function hasStandardNoticeMeta(pkg) {
     && pkg.notices_parsed.some(notice => isRecord(notice) && notice.template_key && notice.review_status && notice.category);
 }
 
+function hasStructuredNoticeItems(pkg) {
+  return Array.isArray(pkg.notices_parsed)
+    && pkg.notices_parsed.length > 0
+    && pkg.notices_parsed.every(notice => {
+      if (!isRecord(notice)) return false;
+      const title = String(notice.title ?? '').trim();
+      const text = String(notice.text ?? '').trim();
+      const type = String(notice.type ?? notice.category ?? '').trim();
+      return title && text && type;
+    });
+}
+
 function hasRawLeakRisk(pkg) {
   const text = flattenNoticeText(pkg);
   if (!text.trim()) return false;
-  if (hasStandardNoticeMeta(pkg)) return false;
+  if (hasStandardNoticeMeta(pkg) || hasStructuredNoticeItems(pkg)) return false;
   return /REMARK|\uB9AC\uB9C8\uD06C|\uB79C\uB4DC\uC0AC\s*(?:\uBE44\uACE0|\uC548\uB0B4)|\uC5EC\uAD8C\s*6\uAC1C\uC6D4|\uC804\uC790\s*\uB2F4\uBC30\s*\uBC18\uC785|\uB8F8\s*\uBC30\uC815|\uC77C\uC815\s*\uBBF8\uCC38\uC5EC|\uB9C8\uC0AC\uC9C0\s*\uD301|\uC2F1\uAE00\s*\uCC28\uC9C0|single\s*charge/i.test(text);
 }
 
@@ -201,7 +213,7 @@ function hasItineraryPolicyLeak(pkg) {
     const schedule = Array.isArray(day?.schedule) ? day.schedule : [];
     return schedule.some(item => {
       const activity = String(item?.activity ?? '');
-      return /취소규정|현금영수증|예약금|수수료|환불|300,000/.test(activity);
+      return /취소\s*규정|취소\s*수수료|현금영수증|특별\s*약관|예약금|수수료|환불|300,000/i.test(activity);
     });
   });
 }
@@ -310,18 +322,95 @@ function priceDateSourceEvidenceMismatch(pkg) {
     const n = Number(price);
     return Number.isFinite(n) ? n.toLocaleString('ko-KR') : '';
   };
+  const amountVariantsFor = price => {
+    const n = Number(price);
+    if (!Number.isFinite(n) || n <= 0) return [];
+    const full = n.toLocaleString('ko-KR');
+    const short = Math.round(n / 1000).toLocaleString('ko-KR');
+    return [...new Set([full, full.replace(/,/g, ''), short, short.replace(/,/g, ''), `${short},-`].filter(Boolean))];
+  };
+  const lineHasAmount = (line, price) => {
+    const compactLine = String(line ?? '').replace(/\s+/g, '');
+    return amountVariantsFor(price).some(amount => compactLine.includes(amount.replace(/\s+/g, '')));
+  };
   const dateLabel = iso => {
     const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
     if (!month || !day) return null;
     return `${Number(month)}\uC6D4${Number(day)}\uC77C`;
   };
+  const slashDateLabel = iso => {
+    const [, , month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
+    if (!month || !day) return null;
+    return `${Number(month)}/${Number(day)}`;
+  };
+  const isoParts = iso => {
+    const [, year, month, day] = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})$/) ?? [];
+    if (!year || !month || !day) return null;
+    return { year: Number(year), month: Number(month), day: Number(day) };
+  };
+  const dateToDayNumber = ({ year, month, day }) => {
+    const date = new Date(Date.UTC(year, month - 1, day));
+    return Number.isFinite(date.getTime()) ? Math.floor(date.getTime() / 86400000) : null;
+  };
+  const parseSlashRange = (line, year) => {
+    const compact = String(line ?? '').replace(/\s+/g, '');
+    const match = compact.match(/(\d{1,2})\/(\d{1,2})~(\d{1,2})\/(\d{1,2})/);
+    if (!match) return null;
+    const start = dateToDayNumber({ year, month: Number(match[1]), day: Number(match[2]) });
+    const end = dateToDayNumber({ year, month: Number(match[3]), day: Number(match[4]) });
+    if (start == null || end == null) return null;
+    return { start: Math.min(start, end), end: Math.max(start, end) };
+  };
+  const parseSlashDateList = (line, year) => {
+    const compact = String(line ?? '').replace(/\s+/g, '');
+    const match = compact.match(/^(\d{1,2})\/(\d{1,2}(?:,\d{1,2})+)$/);
+    if (!match) return [];
+    const month = Number(match[1]);
+    return match[2]
+      .split(',')
+      .map(day => dateToDayNumber({ year, month, day: Number(day) }))
+      .filter(day => day != null);
+  };
+  const rangeEvidenceCovers = row => {
+    const parts = isoParts(row.date);
+    if (!parts) return false;
+    const target = dateToDayNumber(parts);
+    if (target == null) return false;
+    for (let i = 0; i < lines.length; i++) {
+      const range = parseSlashRange(lines[i], parts.year);
+      if (!range || target < range.start || target > range.end) continue;
+      const window = lines.slice(i, Math.min(lines.length, i + 12));
+      if (window.some(line => lineHasAmount(line, row.price))) return true;
+    }
+    return false;
+  };
+  const dateListEvidenceCovers = row => {
+    const parts = isoParts(row.date);
+    if (!parts) return false;
+    const target = dateToDayNumber(parts);
+    if (target == null) return false;
+    for (let i = 0; i < lines.length; i++) {
+      const dates = parseSlashDateList(lines[i], parts.year);
+      if (!dates.includes(target)) continue;
+      const window = lines.slice(i, Math.min(lines.length, i + 5));
+      if (window.some(line => lineHasAmount(line, row.price))) return true;
+    }
+    return false;
+  };
 
   for (const row of priceDates) {
     const label = dateLabel(row.date);
+    const slashLabel = slashDateLabel(row.date);
     const amount = amountFor(row.price);
     if (!label || !amount) continue;
-    const start = lines.findIndex(line => line.replace(/\s+/g, '').includes(label));
-    if (start < 0) return `source missing date ${row.date}`;
+    const start = lines.findIndex(line => {
+      const compact = line.replace(/\s+/g, '');
+      return compact.includes(label) || (slashLabel && compact.includes(slashLabel));
+    });
+    if (start < 0) {
+      if (rangeEvidenceCovers(row) || dateListEvidenceCovers(row)) continue;
+      return `source missing date ${row.date}`;
+    }
 
     let cursor = start + 1;
     let sawAnotherDateBeforePrice = false;
@@ -334,12 +423,14 @@ function priceDateSourceEvidenceMismatch(pkg) {
         break;
       }
       if (headerRe.test(line)) break;
-      if (line.includes(amount)) {
+      if (lineHasAmount(line, row.price)) {
         found = true;
         break;
       }
     }
-    if (!found || sawAnotherDateBeforePrice) return `source price evidence missing for ${row.date} ${amount}`;
+    if ((!found || sawAnotherDateBeforePrice) && !rangeEvidenceCovers(row) && !dateListEvidenceCovers(row)) {
+      return `source price evidence missing for ${row.date} ${amount}`;
+    }
   }
   return null;
 }

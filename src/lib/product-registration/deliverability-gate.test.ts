@@ -80,6 +80,40 @@ describe('evaluateUploadDeliverability', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('accepts catalog time-column flight departure when nearby source line has airport departure evidence', () => {
+    const result = evaluateUploadDeliverability({
+      priceRows: [{ target_date: '2026-07-13', day_of_week: null, net_price: 1239000, adult_selling_price: 1239000, child_price: null, note: null }],
+      priceDates: [{ date: '2026-07-13', price: 1239000, confirmed: false }],
+      destination: '나트랑',
+      destinationCode: 'CXR',
+      internalCode: 'PUS-ETC-CXR-05-0001',
+      durationDays: 5,
+      itineraryDays: [{ day: 1 }, { day: 2 }, { day: 3 }, { day: 4 }, { day: 5 }],
+      itineraryData: {
+        flight_segments: [
+          { leg: 'outbound', flight_no: 'BX781', dep_time: '19:20', arr_time: '22:20' },
+          { leg: 'inbound', flight_no: 'BX782', dep_time: '23:20', arr_time: '06:20' },
+        ],
+      },
+      rawText: [
+        'BX781',
+        '19:20',
+        '22:20',
+        '출발2시간전 김해공항 국제선 2층에서 미팅 후 수속',
+        '김해 국제공항 출발',
+        '나트랑 깜란 국제공항 도착',
+        'BX782',
+        '22:00',
+        '23:20',
+        '나트랑 깜란 국제공항 출발',
+        '06:20',
+        '김해 국제공항 도착',
+      ].join('\n'),
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   it('blocks optional-tour price pollution when tiny ticket prices become product candidates', () => {
     const result = evaluateUploadDeliverability({
       priceRows: [{ target_date: '2026-07-01', day_of_week: null, net_price: 50000, adult_selling_price: 50000, child_price: null, note: null }],

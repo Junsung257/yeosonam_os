@@ -832,6 +832,16 @@ function findCatalogAppendixStart(rawText: string, start: number, end: number): 
     /\n\s*◎\s*기간에\s*따른\s*취소\s*수수료/i,
     /\n\s*\[현금영수증\s*발급\s*안내/i,
   ];
+  appendixPatterns.push(
+    /\n\s*(?:베트남|일본|중국|필리핀)?\s*(?:골프상품|여행상품|패키지\s*상품)\s*취소규정\s*안내/i,
+    /(?:베트남|일본|중국|필리핀)?\s*(?:골프상품|여행상품|패키지\s*상품)\s*취소규정\s*안내/i,
+    /\n\s*◎?\s*기간에\s*따른\s*취소\s*수수료\s*규정\s*안내/i,
+    /◎?\s*기간에\s*따른\s*취소\s*수수료\s*규정\s*안내/i,
+    /\n\s*\[?현금영수증\s*발급\s*안내/i,
+    /\[?현금영수증\s*발급\s*안내/i,
+    /\n\s*본\s*행사는\s*특별\s*약관\s*상품/i,
+    /본\s*행사는\s*특별\s*약관\s*상품/i,
+  );
   const offsets = appendixPatterns
     .map(pattern => haystack.search(pattern))
     .filter(offset => offset >= 0);

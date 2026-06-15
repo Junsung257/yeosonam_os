@@ -205,7 +205,17 @@ function findFlightTimeCompletenessError(input: UploadDeliverabilityInput): stri
     const firstTimeLine = rawText
       .split(/\r?\n/)
       .find(line => line.includes(firstTime)) ?? '';
-    if (outbound.flight_no && firstTimeLine.includes(outbound.flight_no) && /출발/.test(firstTimeLine)) return null;
+    const firstTimeIndex = rawText.indexOf(firstTime);
+    const sourceWindow = rawText.slice(
+      Math.max(0, firstTimeIndex),
+      Math.max(0, firstTimeIndex) + 600,
+    );
+    const lineHasDeparture = /출발/.test(firstTimeLine)
+      && !/(?:미팅|집결|수속|meeting|출발\s*\d+\s*시간\s*전|출발\d+\s*시간\s*전)/i.test(firstTimeLine);
+    const nearbyHasFlightDeparture = /(?:국제)?공항\s*출발/.test(sourceWindow)
+      || /(?:airport).{0,30}(?:depart|departure)/i.test(sourceWindow);
+    if (lineHasDeparture || nearbyHasFlightDeparture) return null;
+    if (!/(?:미팅|집결|수속|meeting|출발\s*\d+\s*시간\s*전|출발\d+\s*시간\s*전)/i.test(firstTimeLine)) return null;
     return `first source time ${firstTime} looks like a meeting time and must not be reused as outbound flight departure`;
   }
   return null;
