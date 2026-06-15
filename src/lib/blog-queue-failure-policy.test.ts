@@ -18,17 +18,17 @@ describe('blog queue failure policy', () => {
     })).toBe(false);
   });
 
-  it('keeps deterministic quality failures eligible for repair', () => {
+  it('allows one publisher retry for quality failures but blocks orchestrator self-heal loops', () => {
     const decision = classifyBlogQueueFailure('1/13 failed: [structure_integrity] checklist_shape_invalid');
 
     expect(decision).toMatchObject({
       code: 'structure_integrity',
       retryable: true,
-      selfHealAllowed: true,
+      selfHealAllowed: false,
     });
     expect(shouldSelfHealBlogQueueItem({
       lastError: '1/13 failed: [structure_integrity] checklist_shape_invalid',
-    })).toBe(true);
+    })).toBe(false);
   });
 
   it('honors stored quarantine metadata even if the text is ambiguous', () => {

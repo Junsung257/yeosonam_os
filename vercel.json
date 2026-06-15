@@ -2,10 +2,6 @@
   "ignoreCommand": "node scripts/vercel-ignore-build.mjs",
   "crons": [
     {
-      "path": "/api/cron/card-news-auto-live",
-      "schedule": "30 0 * * *"
-    },
-    {
       "path": "/api/cron/refresh-registration-mv",
       "schedule": "0 18 * * *"
     },
@@ -75,7 +71,7 @@
     },
     {
       "path": "/api/cron/affiliate-settlement-draft",
-      "schedule": "0 2 1 * *"
+      "schedule": "30 8 1 * *"
     },
     {
       "path": "/api/cron/affiliate-dormant",
@@ -87,7 +83,7 @@
     },
     {
       "path": "/api/cron/affiliate-content-24h-report",
-      "schedule": "12 9 * * *"
+      "schedule": "20 9 * * 1"
     },
     {
       "path": "/api/cron/visual-baseline-monitor",
@@ -107,11 +103,11 @@
     },
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "*/15 * * * *"
+      "schedule": "0 * * * *"
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "4,34 * * * *"
+      "schedule": "5 0,3,6,9 * * *"
     },
     {
       "path": "/api/cron/trend-topic-miner",
@@ -126,14 +122,6 @@
       "schedule": "0 3 * * *"
     },
     {
-      "path": "/api/cron/blog-longtail-expander",
-      "schedule": "30 3 * * *"
-    },
-    {
-      "path": "/api/cron/blog-freshness-monitor",
-      "schedule": "45 3 * * *"
-    },
-    {
       "path": "/api/cron/topical-rebuild",
       "schedule": "0 18 * * 0"
     },
@@ -144,10 +132,6 @@
     {
       "path": "/api/cron/sync-engagement",
       "schedule": "0 4 * * *"
-    },
-    {
-      "path": "/api/cron/card-news-refine",
-      "schedule": "0 8 * * 1"
     },
     {
       "path": "/api/cron/meta-token-refresh",
@@ -164,10 +148,6 @@
     {
       "path": "/api/cron/variant-winner-decide",
       "schedule": "0 5 * * *"
-    },
-    {
-      "path": "/api/cron/card-news-seasonal",
-      "schedule": "0 0 * * 1"
     },
     {
       "path": "/api/cron/scoring-recompute",
@@ -246,20 +226,8 @@
       "schedule": "30 1 * * *"
     },
     {
-      "path": "/api/cron/affiliate-tier-rewards",
-      "schedule": "0 10 * * *"
-    },
-    {
-      "path": "/api/cron/affiliate-reactivation-campaign",
-      "schedule": "0 11 * * *"
-    },
-    {
       "path": "/api/cron/affiliate-attribution-recalc",
       "schedule": "30 6 * * *"
-    },
-    {
-      "path": "/api/cron/affiliate-live-celebration",
-      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/affiliate-lifetime-commission",
@@ -268,10 +236,6 @@
     {
       "path": "/api/cron/affiliate-sub-daily-rollup",
       "schedule": "20 6 * * *"
-    },
-    {
-      "path": "/api/cron/affiliate-model-compare-rollup",
-      "schedule": "40 6 * * *"
     },
     {
       "path": "/api/cron/hard-block-alert",
@@ -330,10 +294,6 @@
       "schedule": "0 4 * * 0"
     },
     {
-      "path": "/api/cron/auto-publish-loop",
-      "schedule": "30 */2 * * *"
-    },
-    {
       "path": "/api/cron/review-digest",
       "schedule": "20 16 * * *"
     },
@@ -352,10 +312,6 @@
     {
       "path": "/api/cron/programmatic-seo-generator",
       "schedule": "0 4 * * 0"
-    },
-    {
-      "path": "/api/cron/blog-regenerate-zero-click",
-      "schedule": "0 5 * * 1"
     },
     {
       "path": "/api/cron/snapshot-inventory",
@@ -399,7 +355,7 @@
     },
     {
       "path": "/api/cron/blog-orchestrator",
-      "schedule": "45 * * * *"
+      "schedule": "45 */6 * * *"
     }
   ],
   "functions": {

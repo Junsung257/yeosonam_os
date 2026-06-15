@@ -20,6 +20,10 @@ export interface BlogQueueFailureDecision {
 const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'duplicate_content',
   'context_missing',
+  'keyword_density',
+  'structure_integrity',
+  'intent_quality',
+  'seo_score',
   'linked_draft_invalid',
 ]);
 
@@ -55,19 +59,19 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
   }
 
   if (hasFailedGate(qa, 'keyword_density') || /\[keyword_density\]|keyword_density|키워드.*밀도/i.test(text)) {
-    return { code: 'keyword_density', retryable: true, selfHealAllowed: true, skipped: false };
+    return { code: 'keyword_density', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (hasFailedGate(qa, 'structure_integrity') || /\[structure_integrity\]|structure_integrity|raw_directive|checklist_shape/i.test(text)) {
-    return { code: 'structure_integrity', retryable: true, selfHealAllowed: true, skipped: false };
+    return { code: 'structure_integrity', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (hasFailedGate(qa, 'intent_quality') || /\[intent_quality\]|intent_quality|weak_reading_design|weak_list_or_table/i.test(text)) {
-    return { code: 'intent_quality', retryable: true, selfHealAllowed: true, skipped: false };
+    return { code: 'intent_quality', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (/seo score|seo_score/i.test(text)) {
-    return { code: 'seo_score', retryable: true, selfHealAllowed: true, skipped: false };
+    return { code: 'seo_score', retryable: true, selfHealAllowed: false, skipped: false };
   }
 
   if (/db insert|db update|database|supabase/i.test(lower)) {
