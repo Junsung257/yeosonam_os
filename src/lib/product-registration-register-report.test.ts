@@ -20,6 +20,7 @@ describe('buildUploadRegisterReport', () => {
   it('points A4 links to the real itinerary print route, not the legacy admin poster path', () => {
     const [row] = buildUploadRegisterReport([pkg]);
 
+    expect(row.package_id).toBe('pkg-123');
     expect(row.mobile_url).toBe('/packages/pkg-123');
     expect(row.lp_url).toBe('/lp/pkg-123');
     expect(row.a4_url).toBe('/itinerary/pkg-123/print?mode=detail');

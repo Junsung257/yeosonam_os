@@ -13,6 +13,7 @@ export interface UploadRegisterReportPackage {
 }
 
 export interface UploadRegisterReportRow {
+  package_id: string;
   short_code: string | null;
   title: string | null;
   price: number | null;
@@ -47,6 +48,7 @@ export function buildUploadRegisterReport(
     const priceDates = Array.isArray(pkg.price_dates) ? pkg.price_dates : [];
     const itineraryData = pkg.itinerary_data as { days?: unknown[] } | null | undefined;
     return {
+      package_id: pkg.id,
       short_code: pkg.internal_code,
       title: pkg.title,
       price: pkg.price,

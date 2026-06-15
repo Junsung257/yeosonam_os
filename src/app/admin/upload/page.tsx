@@ -19,6 +19,7 @@ interface QueueItem {
   sourceLabel?: string;
   status: 'waiting' | 'processing' | 'done' | 'error';
   dbId?: string;
+  dbIds?: string[];
   title?: string;
   confidence?: number;
   landOperator?: string;
@@ -51,11 +52,12 @@ interface QueueItem {
   };
   /** Y5 박제 (2026-05-15 SKILL.md Step 7-C): 등록 직후 한 화면 표준 리포트 */
   registerReport?: Array<{
-    short_code: string;
-    title: string;
+    package_id: string;
+    short_code: string | null;
+    title: string | null;
     price: number | null;
     airline: string | null;
-    status: string;
+    status: string | null;
     departure_days: string | null;
     mobile_url: string;
     lp_url: string;
@@ -66,8 +68,13 @@ interface QueueItem {
     commission_rate?: number | null;
     land_operator?: string | null;
   }>;
-  verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'error';
-  verifyReport?: { checks: VerifyCheck[]; warnCount: number; failCount: number };
+  verifyStatus?: 'verifying' | 'clean' | 'warnings' | 'blocked' | 'skipped' | 'error';
+  verifyReport?: {
+    checks: VerifyCheck[];
+    warnCount: number;
+    failCount: number;
+    packageResults?: PackageVerifyResult[];
+  };
   verifyExpanded?: boolean;
   verifyError?: string;
   /** Hybrid v2: 어떤 필드를 결정적으로 회복했는지 (UX 디버그) */
@@ -77,6 +84,15 @@ interface QueueItem {
    *  사장님 인지 보장 — UI 에 빨간 경고 + /admin/alerts 링크.
    */
   catalogSplitWarning?: { headerCount: number; processedCount: number };
+}
+
+interface PackageVerifyResult {
+  packageId: string;
+  status: Exclude<QueueItem['verifyStatus'], 'verifying'>;
+  checks: VerifyCheck[];
+  warnCount: number;
+  failCount: number;
+  error?: string;
 }
 
 interface PendingTextItem {
@@ -153,9 +169,43 @@ function itemLabel(item: QueueItem): string {
   );
 }
 
+function packageIdsForItem(item: Partial<Pick<QueueItem, 'dbId' | 'dbIds' | 'registerReport'>>): string[] {
+  const ids = [
+    ...(Array.isArray(item.dbIds) ? item.dbIds : []),
+    ...(item.registerReport ?? []).map(row => row.package_id),
+    item.dbId,
+  ];
+  return [...new Set(ids.filter((value): value is string => typeof value === 'string' && value.trim().length > 0))];
+}
+
 function isPublicPackageStatus(status: string | null | undefined): boolean {
   const normalized = (status ?? '').toLowerCase();
   return ['active', 'approved', 'selling', 'available', 'published'].includes(normalized);
+}
+
+function verifyStatusLabel(status: PackageVerifyResult['status'] | undefined): string {
+  if (status === 'clean') return '검증 통과';
+  if (status === 'warnings') return '경고';
+  if (status === 'blocked') return '차단';
+  if (status === 'error') return '검증 오류';
+  if (status === 'skipped') return '검증 스킵';
+  return '검증 대기';
+}
+
+function verifyStatusClass(status: PackageVerifyResult['status'] | undefined): string {
+  if (status === 'clean') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  if (status === 'warnings') return 'bg-amber-100 text-amber-700 border-amber-200';
+  if (status === 'blocked') return 'bg-red-100 text-red-700 border-red-200';
+  if (status === 'error') return 'bg-rose-100 text-rose-700 border-rose-200';
+  if (status === 'skipped') return 'bg-slate-100 text-slate-600 border-slate-200';
+  return 'bg-admin-surface-2 text-admin-muted border-admin-border';
+}
+
+function firstVerifyIssue(result: PackageVerifyResult | undefined): string | null {
+  if (!result) return null;
+  if (result.error) return result.error;
+  const issue = result.checks.find(check => check.status === 'fail' || check.status === 'warn');
+  return issue ? `[${issue.id}] ${issue.label}${issue.detail ? ` - ${issue.detail}` : ''}` : null;
 }
 
 function uploadFailureMessage(data: any): string {
@@ -255,6 +305,7 @@ export default function UploadPage() {
     const match = file.name.match(/^\[([^_\]]+)_(\d+(?:\.\d+)?)%?\]/);
     return {
       dbId: data.dbId,
+      dbIds: Array.isArray(data.dbIds) ? data.dbIds : (data.dbId ? [data.dbId] : []),
       title: data.productCount > 1 ? `${data.productCount}개 상품` : (ed?.title || file.name),
       confidence: data.finalConfidence ?? data.data?.confidence,
       landOperator: data.uploadMetadata?.landOperator ?? (match ? match[1] : ed?.land_operator),
@@ -283,7 +334,8 @@ export default function UploadPage() {
       try {
         const result = await uploadSingle(items[i].file);
         setQueue(prev => prev.map(it => it.id === items[i].id ? { ...it, status: 'done', ...result } : it));
-        if (result.dbId) runVerify(items[i].id, result.dbId);
+        const packageIds = packageIdsForItem(result);
+        if (packageIds.length > 0) runVerify(items[i].id, packageIds);
       } catch (err) {
         setQueue(prev => prev.map(it =>
           it.id === items[i].id ? { ...it, status: 'error', errorMsg: uploadExceptionMessage(err) } : it
@@ -294,20 +346,26 @@ export default function UploadPage() {
     setIsRunning(false);
   };
 
-  const runVerify = useCallback(async (id: string, dbId: string) => {
+  const runVerify = useCallback(async (id: string, packageIdsOrId: string[] | string) => {
+    const packageIds = Array.isArray(packageIdsOrId) ? packageIdsOrId : [packageIdsOrId];
     setQueue(prev => prev.map(it => it.id === id ? { ...it, verifyStatus: 'verifying', verifyError: undefined } : it));
     try {
       const res = await fetchWithSessionRefresh('/api/admin/upload/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ packageId: dbId }),
+        body: JSON.stringify(packageIds.length === 1 ? { packageId: packageIds[0] } : { packageIds }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
         verifyStatus: data.status as QueueItem['verifyStatus'],
-        verifyReport: { checks: data.checks, warnCount: data.warnCount, failCount: data.failCount },
+        verifyReport: {
+          checks: data.checks ?? [],
+          warnCount: data.warnCount ?? 0,
+          failCount: data.failCount ?? 0,
+          packageResults: Array.isArray(data.packageResults) ? data.packageResults : undefined,
+        },
         verifyError: undefined,
       } : it));
     } catch (err) {
@@ -345,6 +403,7 @@ export default function UploadPage() {
       const count = data.productCount || 1;
       const titles = data.titles || [ed?.title || '상품'];
       const dbId: string | undefined = data.dbId;
+      const dbIds = Array.isArray(data.dbIds) ? data.dbIds : (dbId ? [dbId] : []);
       const registerReport = data.registerReport ?? null;
       const labelFromReport = reportLabel(registerReport);
 
@@ -355,6 +414,7 @@ export default function UploadPage() {
         productCount: count,
         titles,
         dbId,
+        dbIds,
         confidence: data.finalConfidence ?? data.data?.confidence,
         landOperator: data.uploadMetadata?.landOperator ?? item.landOperator ?? ed?.land_operator,
         commissionRate: data.uploadMetadata?.commissionRate ?? item.commissionRate,
@@ -366,7 +426,8 @@ export default function UploadPage() {
         catalogSplitWarning: data.catalogSplitWarning ?? null,
       } : it));
 
-      if (dbId) runVerify(id, dbId);
+      const packageIds = packageIdsForItem({ dbId, dbIds, registerReport });
+      if (packageIds.length > 0) runVerify(id, packageIds);
     } catch (err) {
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
@@ -868,26 +929,53 @@ export default function UploadPage() {
                         {/* Y5 박제 (2026-05-15 SKILL.md Step 7-C): 등록 직후 한 화면 표준 리포트 */}
                         {item.registerReport && item.registerReport.length > 0 && (
                           <div className="mt-2 space-y-1.5">
-                            {item.registerReport.map((r) => (
-                              <div key={r.short_code} className="flex flex-wrap items-center gap-2 px-2 py-1.5 bg-green-50 border border-green-200 rounded-lg text-[11px]">
-                                <span className="font-mono text-green-700 font-bold">{r.short_code}</span>
-                                <span className={`px-1.5 py-0.5 rounded font-medium ${r.status === 'approved' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
-                                  {r.status === 'approved' ? '✅ 판매중' : '⏳ 검토'}
-                                </span>
-                                {r.price != null && <span className="text-admin-muted">₩{r.price.toLocaleString()}</span>}
-                                {r.airline && <span className="text-blue-600">{r.airline}</span>}
-                                {r.departure_days && <span className="text-admin-muted-2">{r.departure_days}</span>}
-                                {isPublicPackageStatus(r.status) ? (
-                                  <>
-                                    <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium ml-auto">📱 상세</a>
-                                    <a href={r.lp_url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline font-medium">🔗 LP</a>
-                                  </>
-                                ) : (
-                                  <span className="text-orange-600 font-medium ml-auto" title="검토 상태라 고객 공개 URL은 NOT_FOUND가 정상입니다.">📱 고객 비공개</span>
-                                )}
-                                <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
-                              </div>
-                            ))}
+                            {item.registerReport.map((r) => {
+                              const packageVerify = item.verifyReport?.packageResults?.find(result => result.packageId === r.package_id);
+                              const verifyIssue = firstVerifyIssue(packageVerify);
+                              return (
+                                <div
+                                  key={r.package_id}
+                                  className={`px-2 py-1.5 rounded-lg text-[11px] border ${
+                                    packageVerify?.status === 'blocked' || packageVerify?.status === 'error'
+                                      ? 'bg-red-50 border-red-200'
+                                      : packageVerify?.status === 'warnings'
+                                        ? 'bg-amber-50 border-amber-200'
+                                        : 'bg-green-50 border-green-200'
+                                  }`}
+                                >
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono text-green-700 font-bold">{r.short_code ?? r.package_id.slice(0, 8)}</span>
+                                    <span className={`px-1.5 py-0.5 rounded font-medium ${r.status === 'approved' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
+                                      {r.status === 'approved' ? '✅ 판매중' : '⏳ 검토'}
+                                    </span>
+                                    <span className={`px-1.5 py-0.5 rounded border font-semibold ${verifyStatusClass(packageVerify?.status)}`}>
+                                      {verifyStatusLabel(packageVerify?.status)}
+                                      {packageVerify && packageVerify.warnCount + packageVerify.failCount > 0
+                                        ? ` ${packageVerify.warnCount + packageVerify.failCount}건`
+                                        : ''}
+                                    </span>
+                                    {r.price != null && <span className="text-admin-muted">₩{r.price.toLocaleString()}</span>}
+                                    {r.airline && <span className="text-blue-600">{r.airline}</span>}
+                                    {r.departure_days && <span className="text-admin-muted-2">{r.departure_days}</span>}
+                                    <a href={`/admin/packages/${r.package_id}/review`} target="_blank" rel="noopener noreferrer" className="text-slate-700 hover:underline font-medium ml-auto">상품검수</a>
+                                    {isPublicPackageStatus(r.status) ? (
+                                      <>
+                                        <a href={r.mobile_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline font-medium">📱 상세</a>
+                                        <a href={r.lp_url} target="_blank" rel="noopener noreferrer" className="text-teal-600 hover:underline font-medium">🔗 LP</a>
+                                      </>
+                                    ) : (
+                                      <span className="text-orange-600 font-medium" title="검토 상태라 고객 공개 URL은 NOT_FOUND가 정상입니다.">📱 고객 비공개</span>
+                                    )}
+                                    <a href={r.a4_url} target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline font-medium">📄 A4</a>
+                                  </div>
+                                  {verifyIssue && (
+                                    <p className={`mt-1 text-[10px] ${packageVerify?.status === 'blocked' || packageVerify?.status === 'error' ? 'text-red-700' : 'text-amber-700'}`}>
+                                      {verifyIssue}
+                                    </p>
+                                  )}
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                         {/* 2026-05-19 박제: catalog split silent fallback 경고 (PR #128 UI 보강) */}
@@ -916,12 +1004,12 @@ export default function UploadPage() {
                         {item.verifyStatus === 'clean' && (
                           <span className="inline-block mt-1 text-[10px] text-green-600 font-medium">✓ 원문 대조 통과</span>
                         )}
-                        {item.verifyStatus === 'error' && item.dbId && (
+                        {item.verifyStatus === 'error' && packageIdsForItem(item).length > 0 && (
                           <div className="mt-1 flex items-center gap-2">
                             <span className="text-[10px] text-red-500">⚠ 원문 대조 결과 못 받음 {item.verifyError ? `(${item.verifyError})` : ''}</span>
                             <button
                               type="button"
-                              onClick={() => runVerify(item.id, item.dbId!)}
+                              onClick={() => runVerify(item.id, packageIdsForItem(item))}
                               className="text-[10px] font-medium text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-1.5 py-0.5 hover:bg-blue-50 transition"
                             >
                               재시도
