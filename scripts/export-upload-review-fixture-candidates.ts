@@ -10,6 +10,7 @@ import {
   buildUploadReviewFixtureCandidateReport,
   type UploadReviewQueueFixtureRow,
 } from '@/lib/product-registration/review-queue-fixture-candidates';
+import { buildUploadReviewFixtureScaffolds } from '@/lib/product-registration/review-queue-fixture-scaffold';
 
 type Options = {
   limit: number;
@@ -17,6 +18,9 @@ type Options = {
   json: boolean;
   write: boolean;
   output: string;
+  scaffold: boolean;
+  scaffoldDir: string;
+  scaffoldLimit: number;
   selfTest: boolean;
 };
 
@@ -37,6 +41,9 @@ function parseOptions(args: string[]): Options {
     json: args.includes('--json'),
     write: args.includes('--write'),
     output: stringArg(args, '--output', 'docs/audits/upload-review-fixture-candidates.json'),
+    scaffold: args.includes('--scaffold'),
+    scaffoldDir: stringArg(args, '--scaffold-dir', '.tmp/product-registration-fixture-scaffolds'),
+    scaffoldLimit: Math.min(numberArg(args, '--scaffold-limit', 10), 100),
     selfTest: args.includes('--self-test'),
   };
 }
@@ -92,6 +99,22 @@ async function main(): Promise<void> {
     fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
     console.log(`[upload-review-fixtures] wrote ${report.candidateCount} candidates to ${options.output}`);
+  }
+
+  if (options.scaffold) {
+    const scaffolds = buildUploadReviewFixtureScaffolds({
+      candidates: report.candidates,
+      baseDir: options.scaffoldDir,
+      limit: options.scaffoldLimit,
+    });
+    for (const scaffold of scaffolds) {
+      for (const file of scaffold.files) {
+        const outputPath = path.resolve(process.cwd(), file.path);
+        fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+        fs.writeFileSync(outputPath, file.content, 'utf8');
+      }
+    }
+    console.log(`[upload-review-fixtures] wrote ${scaffolds.length} fixture scaffolds to ${options.scaffoldDir}`);
   }
 
   if (options.json) {

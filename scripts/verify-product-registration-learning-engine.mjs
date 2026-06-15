@@ -54,6 +54,18 @@ const commands = [
     command: 'npx',
     args: ['tsx', 'scripts/export-upload-review-fixture-candidates.ts', '--self-test'],
   },
+  {
+    label: 'upload review fixture scaffold self-test',
+    command: 'npx',
+    args: [
+      'tsx',
+      'scripts/export-upload-review-fixture-candidates.ts',
+      '--self-test',
+      '--scaffold',
+      '--scaffold-dir=.tmp/product-registration-fixture-scaffold-self-test',
+      '--scaffold-limit=1',
+    ],
+  },
   { label: 'migration prefix audit', command: 'npm', args: ['run', 'audit:migration-prefix:ci'] },
 ];
 

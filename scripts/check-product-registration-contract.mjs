@@ -97,11 +97,28 @@ const required = [
     ],
   },
   {
+    file: 'src/lib/product-registration/review-queue-fixture-scaffold.ts',
+    checks: [
+      {
+        label: 'review queue fixture scaffold builder',
+        pattern: /buildUploadReviewFixtureScaffold/,
+      },
+      {
+        label: 'scaffold requires reviewed raw replacement',
+        pattern: /Replace this safe excerpt with the full reviewed supplier raw text/,
+      },
+    ],
+  },
+  {
     file: 'scripts/export-upload-review-fixture-candidates.ts',
     checks: [
       {
         label: 'fixture candidate export script',
         pattern: /upload_review_queue/,
+      },
+      {
+        label: 'fixture scaffold export option',
+        pattern: /--scaffold/,
       },
     ],
   },

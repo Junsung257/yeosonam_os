@@ -15,6 +15,7 @@
   - Upload review queue rows now embed diagnostics under `_product_registration_failure_diagnostics`.
   - Upload responses now expose `failureDiagnostics` with codes, severity, next action, and per-product blockers.
   - Added read-only upload review fixture candidate export so pending failed rows can become regression work items without manual memory.
+  - Added fixture scaffold generation for review artifacts (`raw-fixture.txt`, `expected.json`, `work-item.md`) without directly mutating golden corpus cases.
   - Added `check:product-registration-contract` and wired it into the learning-engine verification script.
   - Updated `docs/product-registration-current-ssot.md` with an explicit implementation truth status so future agents cannot treat documented intent as already fully enforced behavior.
 - **Verification**:
