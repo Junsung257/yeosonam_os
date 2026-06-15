@@ -537,7 +537,10 @@ describe('upload route registration pipeline boundary', () => {
     expect(page).toContain('verifyStatus: \'error\' as QueueItem[\'verifyStatus\']');
     expect(page).toContain('packageRowClass(displayStatus)');
     expect(verifyRoute).toContain('packageIds?: unknown');
+    expect(verifyRoute).toContain('const MAX_VERIFY_PACKAGE_IDS = 50');
     expect(verifyRoute).toContain('function normalizePackageIds');
+    expect(verifyRoute).toContain('packageIds.length > MAX_VERIFY_PACKAGE_IDS');
+    expect(verifyRoute).toContain('{ status: 413 }');
     expect(verifyRoute).toContain('Promise.all(packageIds.map(verifyOnePackage))');
     expect(verifyRoute).toContain('} catch (error) {');
     expect(verifyRoute).toContain('return uploadVerifyErrorResult(');

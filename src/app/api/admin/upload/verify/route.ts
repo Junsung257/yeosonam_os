@@ -21,6 +21,8 @@ type QualityFailedCheck = {
   passed?: boolean;
 };
 
+const MAX_VERIFY_PACKAGE_IDS = 50;
+
 function normalizePackageIds(body: UploadVerifyRequestBody): string[] {
   const rawIds = Array.isArray(body.packageIds) ? body.packageIds : [body.packageId];
   return [...new Set(
@@ -93,6 +95,12 @@ const postHandler = async (request: NextRequest) => {
     const body = await request.json() as UploadVerifyRequestBody;
     const packageIds = normalizePackageIds(body);
     if (packageIds.length === 0) return NextResponse.json({ error: 'packageId 또는 packageIds 필요' }, { status: 400 });
+    if (packageIds.length > MAX_VERIFY_PACKAGE_IDS) {
+      return NextResponse.json(
+        { error: `한 번에 검증 가능한 상품은 최대 ${MAX_VERIFY_PACKAGE_IDS}개입니다.` },
+        { status: 413 },
+      );
+    }
 
     const packageResults = await Promise.all(packageIds.map(verifyOnePackage));
     const aggregate = aggregateUploadVerifyResults(packageResults);
