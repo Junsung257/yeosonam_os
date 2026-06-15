@@ -18,6 +18,7 @@ const commands = [
       'src/lib/product-registration/deliverability-gate.test.ts',
       'src/lib/product-registration/improvement-ledger-persistence.test.ts',
       'src/lib/product-registration/learning-engine-report.test.ts',
+      'src/lib/product-registration/upload-review-regression-verifier.test.ts',
       'src/lib/product-registration/upload-route-boundary.test.ts',
       'src/app/admin/registration-monitor/page.test.ts',
       'src/components/AdminLayout.test.ts',
@@ -65,6 +66,11 @@ const commands = [
       '--scaffold-dir=.tmp/product-registration-fixture-scaffold-self-test',
       '--scaffold-limit=1',
     ],
+  },
+  {
+    label: 'upload review live regression replay',
+    command: 'npm',
+    args: ['run', 'verify:upload-review-regressions', '--', '--days=30', '--limit=200', '--strict'],
   },
   { label: 'migration prefix audit', command: 'npm', args: ['run', 'audit:migration-prefix:ci'] },
 ];
