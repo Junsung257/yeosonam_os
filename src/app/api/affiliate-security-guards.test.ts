@@ -137,6 +137,29 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(postBody).not.toContain('PERSONAL_TAX_RATE');
   });
 
+  it('keeps affiliate settlement draft cron idempotent by affiliate and period', () => {
+    const route = source('src/app/api/cron/affiliate-settlement-draft/route.ts');
+
+    expect(route).toContain('function settlementActionKey(period: string, affiliateId: string): string');
+    expect(route).toContain('affiliate-settlement:${period}:${affiliateId}');
+    expect(route).toContain(".eq('idempotency_key', idempotencyKey)");
+    expect(route).toContain('idempotency_key: idempotencyKey');
+    expect(route).toContain("insertError.code === '23505'");
+    expect(route).toContain('failed: failed.length');
+  });
+
+  it('keeps legacy direct settlement cron on the shared settlement engine', () => {
+    const route = source('src/app/api/cron/settlement-auto/route.ts');
+
+    expect(route).toContain('calculateDraftForAffiliate');
+    expect(route).toContain('applySettlementApproval');
+    expect(route).toContain('resolvePreviousPeriod');
+    expect(route).toContain('locked_or_finalized');
+    expect(route).not.toContain("gte('departure_date'");
+    expect(route).not.toContain('PERSONAL_TAX_RATE');
+    expect(route).not.toContain(".from('settlements')\n          .upsert");
+  });
+
   it('requires payout evidence before marking affiliate settlement completed', () => {
     const route = source('src/app/api/settlements/route.ts');
     const patchStart = route.indexOf('export async function PATCH');
@@ -147,6 +170,8 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(route).toContain("HOLD: ['READY']");
     expect(route).toContain("COMPLETED: ['VOID']");
     expect(patchBody).toContain('INVALID_SETTLEMENT_TRANSITION');
+    expect(patchBody).toContain('SETTLEMENT_RECALC_REQUIRED');
+    expect(patchBody).toContain("current.status === 'PENDING' && status === 'READY'");
     expect(patchBody).toContain("status === 'COMPLETED'");
     expect(patchBody).toContain('payout_reference');
     expect(patchBody).toContain('paid_by');
@@ -167,6 +192,16 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(patchBody).toContain('receipt_url: (current as Record<string, unknown>).receipt_url');
     expect(patchBody).toContain('paid_by: payload.paid_by');
     expect(patchBody).toContain('hold_reason: payload.hold_reason');
+  });
+
+  it('shows settlement amount diff and review blockers in the admin settlements page', () => {
+    const page = source('src/app/admin/settlements/page.tsx');
+
+    expect(page).toContain('function settlementAmountDelta');
+    expect(page).toContain('function settlementReviewReasons');
+    expect(page).toContain('지급+원천징수 합계 차이');
+    expect(page).toContain('최소 지급 조건 미달 또는 이월 대기');
+    expect(page).toContain('disabled={statusUpdating === s.id || Number(s.final_payout || 0) <= 0}');
   });
 
   it('keeps settlement PDF bookings aligned to return_date period', () => {

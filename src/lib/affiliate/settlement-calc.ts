@@ -8,6 +8,7 @@ export interface BookingForSettlement {
   id: string;
   influencer_commission: number | null;
   return_date: string | null;
+  status?: string | null;
   self_referral_flag: boolean | null;
 }
 
@@ -34,6 +35,9 @@ export interface SettlementDraft {
   /** 적용된 commission_adjustments.id 배열 (정산 승인 시 status='applied'로 일괄 업데이트) */
   adjustment_ids: string[];
 }
+
+const SETTLEMENT_ELIGIBLE_BOOKING_STATUSES = new Set(['confirmed', 'completed', 'fully_paid']);
+const SETTLEMENT_LOCKED_STATUSES = new Set(['READY', 'COMPLETED', 'HOLD', 'VOID']);
 
 export function resolvePreviousPeriod(today = new Date()): {
   period: string;
@@ -73,9 +77,14 @@ export function computeSettlementDraft(
   period: string,
   todayIso: string,
 ): SettlementDraft {
-  const qualifiedBookings = bookings.filter(
-    (b) => b.return_date && b.return_date <= todayIso && !b.self_referral_flag,
-  );
+  const seenBookingIds = new Set<string>();
+  const qualifiedBookings = bookings.filter((b) => {
+    if (!b.id || seenBookingIds.has(b.id)) return false;
+    if (b.status && !SETTLEMENT_ELIGIBLE_BOOKING_STATUSES.has(b.status)) return false;
+    if (!b.return_date || b.return_date > todayIso || b.self_referral_flag) return false;
+    seenBookingIds.add(b.id);
+    return true;
+  });
   const count = qualifiedBookings.length;
   const totalAmount = qualifiedBookings.reduce(
     (s, b) => s + (b.influencer_commission ?? 0),
@@ -128,7 +137,7 @@ export async function calculateDraftForAffiliate(
     .eq('affiliate_id', affiliate.id)
     .eq('settlement_period', period)
     .maybeSingle();
-  if (existing && ['READY', 'COMPLETED'].includes(existing.status)) return null;
+  if (existing && SETTLEMENT_LOCKED_STATUSES.has(existing.status)) return null;
 
   const prevMonthDate = new Date(`${period}-01`);
   prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
@@ -175,8 +184,34 @@ export async function calculateDraftForAffiliate(
 }
 
 export async function applySettlementApproval(draft: SettlementDraft): Promise<void> {
+  const { data: existing, error: existingError } = await supabaseAdmin
+    .from('settlements')
+    .select('id, status')
+    .eq('affiliate_id', draft.affiliate_id)
+    .eq('settlement_period', draft.period)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+  if (existing && SETTLEMENT_LOCKED_STATUSES.has(existing.status)) {
+    await supabaseAdmin.from('audit_logs').insert({
+      action: 'SETTLEMENT_APPROVAL_REPLAY_SKIPPED',
+      target_type: 'settlement',
+      target_id: draft.affiliate_id,
+      description: `${draft.period} ${draft.affiliate_name} 정산 재승인 스킵 (${existing.status})`,
+      after_value: {
+        affiliate_id: draft.affiliate_id,
+        period: draft.period,
+        existing_status: existing.status,
+      },
+    }).then(
+      () => {},
+      (e: unknown) => console.error(`[settlement-calc] approval replay audit failed for ${draft.affiliate_id}:`, (e as Error)?.message ?? e),
+    );
+    return;
+  }
+
   if (draft.qualified) {
-    await supabaseAdmin.from('settlements').upsert(
+    const { error: upsertError } = await supabaseAdmin.from('settlements').upsert(
       {
         affiliate_id: draft.affiliate_id,
         settlement_period: draft.period,
@@ -190,19 +225,22 @@ export async function applySettlementApproval(draft: SettlementDraft): Promise<v
       },
       { onConflict: 'affiliate_id,settlement_period' },
     );
+    if (upsertError) throw upsertError;
 
-    const { data: aff } = await supabaseAdmin
+    const { data: aff, error: affiliateError } = await supabaseAdmin
       .from('affiliates')
       .select('booking_count')
       .eq('id', draft.affiliate_id)
       .maybeSingle();
+    if (affiliateError) throw affiliateError;
 
-    await supabaseAdmin
+    const { error: updateAffiliateError } = await supabaseAdmin
       .from('affiliates')
       .update({ booking_count: (aff?.booking_count || 0) + draft.qualified_booking_count })
       .eq('id', draft.affiliate_id);
+    if (updateAffiliateError) throw updateAffiliateError;
   } else {
-    await supabaseAdmin.from('settlements').upsert(
+    const { error: upsertError } = await supabaseAdmin.from('settlements').upsert(
       {
         affiliate_id: draft.affiliate_id,
         settlement_period: draft.period,
@@ -216,18 +254,21 @@ export async function applySettlementApproval(draft: SettlementDraft): Promise<v
       },
       { onConflict: 'affiliate_id,settlement_period' },
     );
+    if (upsertError) throw upsertError;
   }
 
   // pending adjustments 를 'applied'로 일괄 전환 (이중 적용 방지)
   if (draft.adjustment_ids.length > 0) {
-    await supabaseAdmin
+    const { error: adjustmentError } = await supabaseAdmin
       .from('commission_adjustments')
       .update({
         status: 'applied',
         applied_to_period: draft.period,
         applied_at: new Date().toISOString(),
       })
-      .in('id', draft.adjustment_ids);
+      .in('id', draft.adjustment_ids)
+      .eq('status', 'pending');
+    if (adjustmentError) throw adjustmentError;
   }
 
   await supabaseAdmin.from('audit_logs').insert({

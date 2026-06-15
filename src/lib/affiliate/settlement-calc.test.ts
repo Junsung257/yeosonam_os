@@ -88,6 +88,14 @@ describe('resolvePreviousPeriod', () => {
 });
 
 describe('calculateDraftForAffiliate DB query contract', () => {
+  it('treats READY/COMPLETED/HOLD/VOID settlements as locked against recalculation', () => {
+    const file = readFileSync(join(process.cwd(), 'src/lib/affiliate/settlement-calc.ts'), 'utf8');
+
+    expect(file).toContain('SETTLEMENT_LOCKED_STATUSES');
+    expect(file).toContain("['READY', 'COMPLETED', 'HOLD', 'VOID']");
+    expect(file).toContain('SETTLEMENT_LOCKED_STATUSES.has(existing.status)');
+  });
+
   it('selects settlement candidates by return_date period, not departure_date', () => {
     const file = readFileSync(join(process.cwd(), 'src/lib/affiliate/settlement-calc.ts'), 'utf8');
     const bookingsQueryStart = file.indexOf(".from('bookings')");
@@ -200,6 +208,45 @@ describe('computeSettlementDraft — 정산 기안 순수 계산', () => {
     ];
     const draft = computeSettlementDraft(bookings, 0, [], baseAffiliate, '2026-05', '2026-05-20');
     expect(draft.qualified_booking_count).toBe(3);
+  });
+
+  it('취소/환불 상태 예약은 입력에 섞여도 정산에서 제외', () => {
+    const bookings = [
+      booking({ id: 'bk-cancelled', status: 'cancelled', influencer_commission: 500_000 }),
+      booking({ id: 'bk-refunded', status: 'refunded', influencer_commission: 500_000 }),
+      booking({ id: 'bk-a', status: 'confirmed', influencer_commission: 100_000 }),
+      booking({ id: 'bk-b', status: 'completed', influencer_commission: 100_000 }),
+      booking({ id: 'bk-c', status: 'fully_paid', influencer_commission: 100_000 }),
+    ];
+    const draft = computeSettlementDraft(bookings, 0, [], baseAffiliate, '2026-05', '2026-05-20');
+    expect(draft.qualified_booking_count).toBe(3);
+    expect(draft.total_amount).toBe(300_000);
+    expect(draft.booking_ids).toEqual(['bk-a', 'bk-b', 'bk-c']);
+  });
+
+  it('동일 booking id가 중복 입력되면 한 번만 정산', () => {
+    const bookings = [
+      booking({ id: 'bk-dup', influencer_commission: 100_000 }),
+      booking({ id: 'bk-dup', influencer_commission: 100_000 }),
+      booking({ id: 'bk-b', influencer_commission: 100_000 }),
+      booking({ id: 'bk-c', influencer_commission: 100_000 }),
+    ];
+    const draft = computeSettlementDraft(bookings, 0, [], baseAffiliate, '2026-05', '2026-05-20');
+    expect(draft.qualified_booking_count).toBe(3);
+    expect(draft.total_amount).toBe(300_000);
+    expect(draft.booking_ids).toEqual(['bk-dup', 'bk-b', 'bk-c']);
+  });
+
+  it('예약별 커미션 금액이 다르면 각 booking의 influencer_commission 합계로 계산', () => {
+    const bookings = [
+      booking({ id: 'bk-a', influencer_commission: 80_000 }),
+      booking({ id: 'bk-b', influencer_commission: 120_000 }),
+      booking({ id: 'bk-c', influencer_commission: 250_000 }),
+    ];
+    const draft = computeSettlementDraft(bookings, 0, [], baseAffiliate, '2026-05', '2026-05-20');
+    expect(draft.qualified).toBe(true);
+    expect(draft.total_amount).toBe(450_000);
+    expect(draft.final_payout).toBe(450_000);
   });
 
   it('prevCarryover 반영 — final_total 증가', () => {

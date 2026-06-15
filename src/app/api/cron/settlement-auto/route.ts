@@ -7,12 +7,14 @@
  * Vercel Cron 또는 수동 호출 가능.
  */
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { AFFILIATE_CONFIG } from '@/lib/affiliateConfig';
 import { withCronGuard } from '@/lib/cron-auth';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
-
-const { SETTLEMENT_MIN_AMOUNT: MIN_AMOUNT, SETTLEMENT_MIN_BOOKINGS: MIN_COUNT, PERSONAL_TAX_RATE } = AFFILIATE_CONFIG;
+import {
+  applySettlementApproval,
+  calculateDraftForAffiliate,
+  resolvePreviousPeriod,
+} from '@/lib/affiliate/settlement-calc';
 
 /**
  * 2026-04-15 변경: 자비스 기안 전용 모드 기본값.
@@ -31,14 +33,7 @@ const getHandler = async () => {
   }
 
   try {
-    // 전월 period 계산
-    const now = new Date();
-    const prevMonth = now.getMonth() === 0 ? 12 : now.getMonth();
-    const prevYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
-    const period = `${prevYear}-${String(prevMonth).padStart(2, '0')}`;
-    const periodStart = `${period}-01`;
-    const periodEnd = new Date(prevYear, prevMonth, 0).toISOString().split('T')[0];
-    const today = now.toISOString().split('T')[0];
+    const { period, periodStart, periodEnd, todayIso } = resolvePreviousPeriod();
 
     console.log(`[정산 크론] ${period} 자동 정산 시작`);
 
@@ -55,98 +50,30 @@ const getHandler = async () => {
     let processed = 0;
     let qualified = 0;
     let carried = 0;
-    const results: { affiliate_ref: string; status: string; amount: number }[] = [];
+    let skipped = 0;
+    const results: { affiliate_ref: string; status: string; amount: number; reason?: string }[] = [];
 
     for (const aff of affiliates) {
-      // 이미 정산 완료된 건 스킵
-      const { data: existing } = await supabaseAdmin
-        .from('settlements')
-        .select('id, status')
-        .eq('affiliate_id', aff.id)
-        .eq('settlement_period', period)
-        .maybeSingle();
-
-      if (existing && ['READY', 'COMPLETED'].includes(existing.status)) {
-        continue; // 이미 처리됨
+      const draft = await calculateDraftForAffiliate(aff, period, periodStart, periodEnd, todayIso);
+      if (!draft) {
+        skipped++;
+        results.push({
+          affiliate_ref: String(aff.id).slice(0, 8),
+          status: 'SKIPPED',
+          amount: 0,
+          reason: 'locked_or_finalized',
+        });
+        continue;
       }
 
-      // 해당 period 확정 예약 조회
-      const { data: bookings } = await supabaseAdmin
-        .from('bookings')
-        .select('id, influencer_commission, return_date, status')
-        .eq('affiliate_id', aff.id)
-        .in('status', ['confirmed', 'completed', 'fully_paid'])
-        .gte('departure_date', periodStart)
-        .lte('departure_date', periodEnd)
-        .lte('return_date', today)
-        .or('is_deleted.is.null,is_deleted.eq.false');
+      await applySettlementApproval(draft);
 
-      const qualifiedBookings = (bookings || []).filter((b: { return_date?: string }) => b.return_date && b.return_date <= today);
-      const count = qualifiedBookings.length;
-      const totalAmount = qualifiedBookings.reduce((s: number, b: unknown) => s + ((b as { influencer_commission?: number }).influencer_commission || 0), 0);
-
-      // 이전 달 이월 조회
-      const prevPrevMonth = prevMonth === 1 ? 12 : prevMonth - 1;
-      const prevPrevYear = prevMonth === 1 ? prevYear - 1 : prevYear;
-      const prevPeriod = `${prevPrevYear}-${String(prevPrevMonth).padStart(2, '0')}`;
-
-      const { data: prevSettlement } = await supabaseAdmin
-        .from('settlements')
-        .select('carryover_balance')
-        .eq('affiliate_id', aff.id)
-        .eq('settlement_period', prevPeriod)
-        .maybeSingle();
-
-      const prevCarryover = (prevSettlement as { carryover_balance?: number } | null)?.carryover_balance ?? 0;
-
-      const isQualified = count >= MIN_COUNT && totalAmount >= MIN_AMOUNT;
-
-      if (!isQualified) {
-        // 이월 처리
-        await supabaseAdmin
-          .from('settlements')
-          .upsert({
-            affiliate_id: aff.id,
-            settlement_period: period,
-            qualified_booking_count: count,
-            total_amount: totalAmount,
-            carryover_balance: prevCarryover + totalAmount,
-            final_total: 0,
-            tax_deduction: 0,
-            final_payout: 0,
-            status: 'PENDING',
-          }, { onConflict: 'affiliate_id,settlement_period' });
-
-        carried++;
-        results.push({ affiliate_ref: String(aff.id).slice(0, 8), status: 'PENDING (이월)', amount: totalAmount });
-      } else {
-        // 정산 확정
-        const finalTotal = totalAmount + prevCarryover;
-        const taxDeduction = aff.payout_type === 'PERSONAL' ? Math.round(finalTotal * PERSONAL_TAX_RATE) : 0;
-        const finalPayout = finalTotal - taxDeduction;
-
-        await supabaseAdmin
-          .from('settlements')
-          .upsert({
-            affiliate_id: aff.id,
-            settlement_period: period,
-            qualified_booking_count: count,
-            total_amount: totalAmount,
-            carryover_balance: prevCarryover,
-            final_total: finalTotal,
-            tax_deduction: taxDeduction,
-            final_payout: finalPayout,
-            status: 'READY',
-          }, { onConflict: 'affiliate_id,settlement_period' });
-
-        // booking_count 업데이트 (등급 트리거)
-        await supabaseAdmin
-          .from('affiliates')
-          .update({ booking_count: (aff.booking_count || 0) + count })
-          .eq('id', aff.id);
-
+      if (draft.qualified) {
         qualified++;
-        results.push({ affiliate_ref: String(aff.id).slice(0, 8), status: 'READY', amount: finalPayout });
+        results.push({ affiliate_ref: String(aff.id).slice(0, 8), status: 'READY', amount: draft.final_payout });
+      } else {
+        carried++;
+        results.push({ affiliate_ref: String(aff.id).slice(0, 8), status: 'PENDING (이월)', amount: draft.total_amount });
       }
       processed++;
     }
@@ -155,13 +82,13 @@ const getHandler = async () => {
     await void(supabaseAdmin.from('audit_logs').insert([{
       action: 'SETTLEMENT_AUTO_CRON',
       target_type: 'settlement',
-      description: `${period} 자동 정산: ${processed}명 처리 (확정 ${qualified}, 이월 ${carried})`,
-      after_value: { period, processed, qualified, carried, results },
+      description: `${period} 자동 정산: ${processed}명 처리 (확정 ${qualified}, 이월 ${carried}, 스킵 ${skipped})`,
+      after_value: { period, processed, qualified, carried, skipped, results },
     }]));
 
-    console.log(`[정산 크론] 완료: ${processed}명 (확정 ${qualified}, 이월 ${carried})`);
+    console.log(`[정산 크론] 완료: ${processed}명 (확정 ${qualified}, 이월 ${carried}, 스킵 ${skipped})`);
 
-    return apiResponse({ period, processed, qualified, carried, results });
+    return apiResponse({ period, processed, qualified, carried, skipped, results });
   } catch (err) {
     const message = sanitizeDbError(err, 'Settlement cron failed');
     console.error('[정산 크론 실패]', message);

@@ -69,11 +69,15 @@ const STATUS_LABELS: Record<string, string> = {
 function getMonthOptions(): string[] {
   const options: string[] = [];
   const now = new Date();
-  for (let i = 0; i < 12; i += 1) {
+  for (let i = 1; i <= 12; i += 1) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     options.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
   }
   return options;
+}
+
+function defaultSettlementPeriod(): string {
+  return getMonthOptions()[0] || new Date().toISOString().substring(0, 7);
 }
 
 function todayLocalInputValue(): string {
@@ -103,12 +107,55 @@ function krw(value: number | null | undefined) {
   return `₩${Number(value || 0).toLocaleString()}`;
 }
 
+function settlementAmountDelta(settlement: Settlement): number {
+  const finalTotal = Number(settlement.final_total || 0);
+  const finalPayout = Number(settlement.final_payout || 0);
+  const withholding = Number(
+    settlement.status === 'COMPLETED'
+      ? settlement.withholding_amount ?? settlement.tax_deduction ?? 0
+      : settlement.tax_deduction ?? 0,
+  );
+  return finalTotal - finalPayout - withholding;
+}
+
+function settlementReviewReasons(settlement: Settlement): string[] {
+  const reasons: string[] = [];
+  const delta = settlementAmountDelta(settlement);
+
+  if (settlement.status === 'PENDING') {
+    reasons.push('최소 지급 조건 미달 또는 이월 대기');
+  }
+  if (settlement.status === 'HOLD' && settlement.hold_reason) {
+    reasons.push(`보류: ${settlement.hold_reason}`);
+  }
+  if (settlement.status === 'READY' && Number(settlement.final_payout || 0) <= 0) {
+    reasons.push('지급 대기 상태지만 실지급액이 0원입니다.');
+  }
+  if (settlement.status === 'COMPLETED') {
+    if (!settlement.payout_reference || !settlement.paid_by || !settlement.paid_at || !settlement.receipt_url) {
+      reasons.push('지급 완료 증빙 누락');
+    }
+    if (Math.abs(delta) > 1) {
+      reasons.push(`지급+원천징수 합계 차이 ${krw(delta)}`);
+    }
+  }
+  if (settlement.status === 'VOID') {
+    reasons.push('취소/롤백 상태입니다. 재정산은 새 정산 생성으로 처리하세요.');
+  }
+  if (Number(settlement.final_total || 0) < 0 || Number(settlement.final_payout || 0) < 0) {
+    reasons.push('정산 금액이 음수입니다. 조정액을 확인하세요.');
+  }
+
+  return reasons;
+}
+
 export default function SettlementsPage() {
-  const [period, setPeriod] = useState(new Date().toISOString().substring(0, 7));
+  const [period, setPeriod] = useState(defaultSettlementPeriod);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [affiliates, setAffiliates] = useState<Affiliate[]>([]);
   const [loading, setLoading] = useState(true);
   const [closing, setClosing] = useState<string | null>(null);
+  const [bulkClosing, setBulkClosing] = useState(false);
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   const [completionTarget, setCompletionTarget] = useState<Settlement | null>(null);
   const [holdTarget, setHoldTarget] = useState<Settlement | null>(null);
@@ -223,6 +270,32 @@ export default function SettlementsPage() {
 
   const settledIds = useMemo(() => new Set(settlements.map((s) => s.affiliates?.id).filter(Boolean)), [settlements]);
   const unsettledAffiliates = affiliates.filter((a) => !settledIds.has(a.id));
+  const closeAllSettlements = async () => {
+    if (unsettledAffiliates.length === 0) return;
+    setBulkClosing(true);
+    const failed: string[] = [];
+    try {
+      for (const affiliate of unsettledAffiliates) {
+        setClosing(affiliate.id);
+        const res = await fetch('/api/settlements', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ affiliateId: affiliate.id, period }),
+        });
+        const json = await res.json();
+        if (!res.ok) {
+          failed.push(`${affiliate.name}: ${apiError(json, '정산 생성 실패')}`);
+        }
+      }
+      if (failed.length > 0) {
+        alert(`일부 정산 생성에 실패했습니다.\n\n${failed.join('\n')}`);
+      }
+      load();
+    } finally {
+      setClosing(null);
+      setBulkClosing(false);
+    }
+  };
   const visibleSettlements = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return settlements;
@@ -321,7 +394,10 @@ export default function SettlementsPage() {
                   </div>
                 </td>
               </tr>
-            ) : visibleSettlements.map((s) => (
+            ) : visibleSettlements.map((s) => {
+              const amountDelta = settlementAmountDelta(s);
+              const reviewReasons = settlementReviewReasons(s);
+              return (
               <tr key={s.id}>
                 <td>
                   <div className="font-medium text-admin-text">{s.affiliates?.name}</div>
@@ -331,14 +407,30 @@ export default function SettlementsPage() {
                 <td className="admin-num">{krw(s.total_amount)}</td>
                 <td className="font-medium admin-num">{krw(s.final_total)}</td>
                 <td className="text-danger admin-num">{s.tax_deduction > 0 ? `-${krw(s.tax_deduction)}` : '₩0'}</td>
-                <td className="font-bold text-success admin-num">{krw(s.final_payout)}</td>
+                <td>
+                  <div className="font-bold text-success admin-num">{krw(s.final_payout)}</div>
+                  {Math.abs(amountDelta) > 1 ? (
+                    <div className="mt-0.5 text-admin-xs font-medium text-danger admin-num">
+                      차이 {krw(amountDelta)}
+                    </div>
+                  ) : null}
+                </td>
                 <td>
                   <span className={`rounded-admin-xs px-2 py-0.5 text-admin-xs font-semibold ${STATUS_BADGES[s.status] || STATUS_BADGES.PENDING}`}>
                     {STATUS_LABELS[s.status] || s.status}
                   </span>
-                  {s.status === 'HOLD' && s.hold_reason ? (
-                    <div className="mt-1 max-w-[180px] truncate text-admin-xs text-admin-muted" title={s.hold_reason}>
-                      {s.hold_reason}
+                  {reviewReasons.length > 0 ? (
+                    <div className="mt-1 space-y-0.5">
+                      {reviewReasons.slice(0, 2).map((reason) => (
+                        <div
+                          key={reason}
+                          className="flex max-w-[220px] items-center gap-1 truncate text-admin-xs text-admin-muted"
+                          title={reason}
+                        >
+                          <AlertCircle size={11} className="shrink-0 text-status-warningFg" />
+                          <span className="truncate">{reason}</span>
+                        </div>
+                      ))}
                     </div>
                   ) : null}
                 </td>
@@ -352,7 +444,7 @@ export default function SettlementsPage() {
                         variant="secondary"
                         size="sm"
                         onClick={() => updateStatus(s.id, 'READY')}
-                        disabled={statusUpdating === s.id}
+                        disabled={statusUpdating === s.id || Number(s.final_payout || 0) <= 0}
                       >
                         지급 대기
                       </Button>
@@ -406,20 +498,32 @@ export default function SettlementsPage() {
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {unsettledAffiliates.length > 0 && (
         <div className="admin-card overflow-hidden">
-          <div className="border-b border-admin-border px-4 py-3">
-            <h2 className="text-admin-h3 text-admin-text">
-              정산 마감 대기 <span className="admin-num text-admin-muted">({unsettledAffiliates.length}명)</span>
-            </h2>
-            <p className="mt-0.5 text-admin-xs text-admin-muted admin-num">
-              아래 파트너는 {period} 정산 마감이 아직 실행되지 않았습니다.
-            </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-admin-border px-4 py-3">
+            <div>
+              <h2 className="text-admin-h3 text-admin-text">
+                정산 마감 대기 <span className="admin-num text-admin-muted">({unsettledAffiliates.length}명)</span>
+              </h2>
+              <p className="mt-0.5 text-admin-xs text-admin-muted admin-num">
+                아래 파트너는 {period} 정산 마감이 아직 실행되지 않았습니다.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={closeAllSettlements}
+              disabled={bulkClosing || loading}
+              loading={bulkClosing}
+            >
+              전체 정산 생성
+            </Button>
           </div>
           <div>
             {unsettledAffiliates.map((a) => (
@@ -432,7 +536,7 @@ export default function SettlementsPage() {
                   variant="primary"
                   size="sm"
                   onClick={() => closeSettlement(a.id)}
-                  disabled={closing === a.id}
+                  disabled={bulkClosing || closing === a.id}
                 >
                   {closing === a.id ? '마감 중' : '정산 마감 실행'}
                 </Button>

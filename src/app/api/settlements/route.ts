@@ -218,6 +218,13 @@ export async function PATCH(request: NextRequest) {
         409,
       );
     }
+    if (current.status === 'PENDING' && status === 'READY' && Number(current.final_payout || 0) <= 0) {
+      return errorResponse(
+        'SETTLEMENT_RECALC_REQUIRED',
+        '실지급액이 0원인 이월 정산은 바로 지급 대기로 전환할 수 없습니다. 재정산 또는 조정 후 처리하세요.',
+        409,
+      );
+    }
 
     const payload: Record<string, unknown> = { status };
 
