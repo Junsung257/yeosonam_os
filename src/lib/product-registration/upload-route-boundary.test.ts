@@ -14,6 +14,10 @@ function readAdminUploadPage(): string {
   return readFileSync(join(process.cwd(), 'src/app/admin/upload/page.tsx'), 'utf8');
 }
 
+function readAdminUploadVerifyRoute(): string {
+  return readFileSync(join(process.cwd(), 'src/app/api/admin/upload/verify/route.ts'), 'utf8');
+}
+
 function readUploadRegistrationPipeline(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-registration-pipeline.ts'), 'utf8');
 }
@@ -514,6 +518,24 @@ describe('upload route registration pipeline boundary', () => {
     expect(uploadResponse).toContain('buildUploadRegisterReport');
     expect(uploadResponse).toContain('calculateProductRegistrationTrustScore');
     expect(uploadResponse).toContain('export async function buildUploadResponsePayload');
+  });
+
+  it('keeps post-upload verification aligned to all registered package ids', () => {
+    const page = readAdminUploadPage();
+    const verifyRoute = readAdminUploadVerifyRoute();
+    const registerReport = readFileSync(join(process.cwd(), 'src/lib/product-registration-register-report.ts'), 'utf8');
+
+    expect(registerReport).toContain('package_id: string');
+    expect(registerReport).toContain('package_id: pkg.id');
+    expect(page).toContain('dbIds?: string[]');
+    expect(page).toContain('function packageIdsForItem');
+    expect(page).toContain('body: JSON.stringify(packageIds.length === 1 ? { packageId: packageIds[0] } : { packageIds })');
+    expect(page).toContain('packageResults?: PackageVerifyResult[]');
+    expect(page).toContain('item.verifyReport?.packageResults?.find');
+    expect(verifyRoute).toContain('packageIds?: unknown');
+    expect(verifyRoute).toContain('function normalizePackageIds');
+    expect(verifyRoute).toContain('Promise.all(packageIds.map(verifyOnePackage))');
+    expect(verifyRoute).toContain('aggregateUploadVerifyResults(packageResults)');
   });
 
   it('does not run optional marketing generation in the upload save path', () => {
