@@ -103,7 +103,7 @@ describe('Jangjiajie BX371 upload regression', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.source).toBe('supplier_grouped_departure_price_table');
+    expect(result.source).toBe('deterministic:product_price_vertical_date_table');
     expect(result.minPrice).toBe(499000);
     expect(result.priceDates).toEqual([
       { date: '2026-06-08', price: 499000, confirmed: false },

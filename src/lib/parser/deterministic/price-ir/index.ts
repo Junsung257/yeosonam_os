@@ -22,15 +22,6 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
     };
   }
 
-  const productPriceVerticalRows = extractProductPriceVerticalDateRows(rawText, options);
-  if (productPriceVerticalRows.length > 0) {
-    return {
-      source: 'product_price_vertical_date_table',
-      rows: productPriceVerticalRows,
-      tiers: rowsToTiers(productPriceVerticalRows),
-    };
-  }
-
   const labeledDateListRows = extractLabeledDateListPriceRows(rawText, options);
   if (labeledDateListRows.length > 0) {
     return {
@@ -94,6 +85,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
       source: 'month_duration_price_table',
       rows: monthDurationRows,
       tiers: rowsToTiers(monthDurationRows),
+    };
+  }
+
+  const productPriceVerticalRows = extractProductPriceVerticalDateRows(rawText, options);
+  if (productPriceVerticalRows.length > 0) {
+    return {
+      source: 'product_price_vertical_date_table',
+      rows: productPriceVerticalRows,
+      tiers: rowsToTiers(productPriceVerticalRows),
     };
   }
 

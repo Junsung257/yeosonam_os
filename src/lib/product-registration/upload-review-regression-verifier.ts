@@ -1,12 +1,17 @@
 import { createHash } from 'node:crypto';
 
-import { buildSupplierRawDeterministicItinerary } from '@/lib/supplier-raw-deterministic-facts';
+import {
+  buildSupplierRawDeterministicItinerary,
+  extractSupplierRawDeterministicFacts,
+} from '@/lib/supplier-raw-deterministic-facts';
 import { recoverCatalogSplitFromRawText } from './catalog-split-recovery';
 import {
   buildUploadReviewFixtureCandidate,
   type UploadReviewQueueFixtureRow,
 } from './review-queue-fixture-candidates';
 import type { ProductRegistrationFailureCode } from './failure-diagnostics';
+import { readSupplierDocumentLikeHuman } from './ai-human-reader';
+import { resolveUploadDestinationAndCodes } from './destination-resolution';
 
 export type UploadReviewRegressionStatus = 'passed' | 'partial' | 'failed' | 'skipped';
 
@@ -52,13 +57,34 @@ const SUPPORTED_ITINERARY_CODES = new Set<ProductRegistrationFailureCode>([
   'PRODUCT_COUNT_MISMATCH',
 ]);
 
+const SUPPORTED_PRICE_EVIDENCE_CODES = new Set<ProductRegistrationFailureCode>([
+  'PRICE_ROWS_MISSING',
+  'PRICE_DATES_MISSING',
+  'MODEL_PRICE_UNSUPPORTED',
+]);
+
+const SUPPORTED_FLIGHT_CODES = new Set<ProductRegistrationFailureCode>([
+  'FLIGHT_TIME_MISMATCH',
+]);
+
+const SUPPORTED_DESTINATION_CODES = new Set<ProductRegistrationFailureCode>([
+  'DESTINATION_UNRESOLVED',
+]);
+
+const SUPPORTED_CODES = new Set<ProductRegistrationFailureCode>([
+  ...SUPPORTED_ITINERARY_CODES,
+  ...SUPPORTED_PRICE_EVIDENCE_CODES,
+  ...SUPPORTED_FLIGHT_CODES,
+  ...SUPPORTED_DESTINATION_CODES,
+]);
+
 function splitCoverage(codes: ProductRegistrationFailureCode[]): {
   coveredCodes: ProductRegistrationFailureCode[];
   uncoveredCodes: ProductRegistrationFailureCode[];
 } {
   return {
-    coveredCodes: codes.filter(code => SUPPORTED_ITINERARY_CODES.has(code)),
-    uncoveredCodes: codes.filter(code => !SUPPORTED_ITINERARY_CODES.has(code)),
+    coveredCodes: codes.filter(code => SUPPORTED_CODES.has(code)),
+    uncoveredCodes: codes.filter(code => !SUPPORTED_CODES.has(code)),
   };
 }
 
@@ -86,26 +112,67 @@ function hasDuplicate(values: number[]): boolean {
 function countCodes(checks: UploadReviewRegressionCheck[], field: 'codes' | 'uncoveredCodes'): Partial<Record<ProductRegistrationFailureCode, number>> {
   const counts: Partial<Record<ProductRegistrationFailureCode, number>> = {};
   for (const check of checks) {
+    if (check.reason.includes('synthetic regression/test upload row')) continue;
     for (const code of check[field]) counts[code] = (counts[code] ?? 0) + 1;
   }
   return counts;
 }
 
-function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReviewRegressionCheck {
+function isSyntheticRegressionRow(row: UploadReviewQueueFixtureRow): boolean {
+  const text = [row.product_title, row.source_filename].filter(Boolean).join(' ');
+  return /\bCODEX-|RAW-E2E|\[TEST\]/i.test(text);
+}
+
+type ReplayTarget = {
+  title: string | null;
+  rawText: string;
+  duration: number | null;
+};
+
+type CheckerResult = {
+  ok: boolean;
+  coveredCodes: ProductRegistrationFailureCode[];
+  reason: string;
+  productSummaries?: UploadReviewRegressionCheck['productSummaries'];
+  productsRecovered?: number;
+};
+
+function yearFromRow(row: UploadReviewQueueFixtureRow, rawText: string): number | undefined {
+  const explicit = Number(rawText.match(/\b(20\d{2})[./-]\d{1,2}[./-]\d{1,2}\b/)?.[1]);
+  if (Number.isInteger(explicit) && explicit >= 2000) return explicit;
+  const createdYear = Number(row.created_at?.slice(0, 4));
+  return Number.isInteger(createdYear) && createdYear >= 2000 ? createdYear : undefined;
+}
+
+function replayTargets(row: UploadReviewQueueFixtureRow): {
+  rawText: string;
+  products: ReturnType<typeof recoverCatalogSplitFromRawText>;
+  targets: ReplayTarget[];
+} {
+  const rawText = row.raw_text_chunk ?? '';
+  const products = recoverCatalogSplitFromRawText(rawText);
+  const targets = products.length >= 2
+    ? products.map(product => ({
+        title: product.extractedData.title ?? null,
+        rawText: product.sectionRawText ?? '',
+        duration: typeof product.extractedData.duration === 'number' ? product.extractedData.duration : null,
+      }))
+    : [{
+        title: row.product_title,
+        rawText,
+        duration: null,
+      }];
+  return { rawText, products, targets };
+}
+
+function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): CheckerResult {
   const candidate = buildUploadReviewFixtureCandidate(row);
-  const { coveredCodes, uncoveredCodes } = splitCoverage(candidate.codes);
+  const coveredCodes = candidate.codes.filter(code => SUPPORTED_ITINERARY_CODES.has(code));
   const rawText = row.raw_text_chunk ?? '';
   if (!rawText.trim()) {
     return {
-      queueId: row.id,
-      productTitle: row.product_title,
-      sourceFilename: row.source_filename,
-      normalizedContentHash: row.normalized_content_hash,
-      codes: candidate.codes,
       coveredCodes,
-      uncoveredCodes,
-      supported: true,
-      status: 'failed',
+      ok: false,
       reason: 'raw_text_chunk is missing; cannot replay the source failure.',
       productsRecovered: 0,
       productSummaries: [],
@@ -130,15 +197,8 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
 
   if (products.length < 2) {
     return {
-      queueId: row.id,
-      productTitle: row.product_title,
-      sourceFilename: row.source_filename,
-      normalizedContentHash: row.normalized_content_hash,
-      codes: candidate.codes,
       coveredCodes,
-      uncoveredCodes,
-      supported: true,
-      status: 'failed',
+      ok: false,
       reason: `expected a recovered multi-product catalog, recovered ${products.length}.`,
       productsRecovered: products.length,
       productSummaries,
@@ -150,20 +210,159 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
   ));
   if (badProduct) {
     return {
-      queueId: row.id,
-      productTitle: row.product_title,
-      sourceFilename: row.source_filename,
-      normalizedContentHash: row.normalized_content_hash,
-      codes: candidate.codes,
       coveredCodes,
-      uncoveredCodes,
-      supported: true,
-      status: 'failed',
+      ok: false,
       reason: `recovered product still has invalid itinerary days: ${badProduct.title ?? '(untitled)'}.`,
       productsRecovered: products.length,
       productSummaries,
     };
   }
+
+  return {
+    coveredCodes,
+    ok: true,
+    reason: 'catalog boundaries recover clean per-product itinerary day sequences.',
+    productsRecovered: products.length,
+    productSummaries,
+  };
+}
+
+function verifyPriceEvidence(row: UploadReviewQueueFixtureRow): CheckerResult {
+  const candidate = buildUploadReviewFixtureCandidate(row);
+  const coveredCodes = candidate.codes.filter(code => SUPPORTED_PRICE_EVIDENCE_CODES.has(code));
+  const { rawText, targets } = replayTargets(row);
+  if (!rawText.trim()) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: 'raw_text_chunk is missing; cannot replay source-backed price evidence.',
+    };
+  }
+
+  const year = yearFromRow(row, rawText);
+  const summaries = targets.map(target => {
+    const reader = readSupplierDocumentLikeHuman({
+      rawText: target.rawText,
+      title: target.title,
+      durationDays: target.duration,
+      year,
+    });
+    return {
+      title: target.title,
+      priceSource: reader.priceSource,
+      pricePairs: reader.pricePairs.length,
+      dates: new Set(reader.pricePairs.map(pair => pair.date)).size,
+      prices: new Set(reader.pricePairs.map(pair => pair.adult_price)).size,
+    };
+  });
+  const bad = summaries.find(summary => summary.pricePairs === 0 || summary.dates === 0 || summary.prices === 0);
+  if (bad) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: `source-backed price/date evidence is still missing for ${bad.title ?? row.product_title ?? row.id}.`,
+    };
+  }
+  return {
+    coveredCodes,
+    ok: true,
+    reason: `source-backed price/date evidence recovered for ${summaries.length} product section(s).`,
+  };
+}
+
+function verifyFlightEvidence(row: UploadReviewQueueFixtureRow): CheckerResult {
+  const candidate = buildUploadReviewFixtureCandidate(row);
+  const coveredCodes = candidate.codes.filter(code => SUPPORTED_FLIGHT_CODES.has(code));
+  const { rawText, targets } = replayTargets(row);
+  if (!rawText.trim()) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: 'raw_text_chunk is missing; cannot replay source-backed flight evidence.',
+    };
+  }
+
+  const bad = targets.find(target => {
+    const facts = extractSupplierRawDeterministicFacts(target.rawText);
+    return !facts.outbound?.code
+      || !facts.outbound.departure.time
+      || !facts.outbound.arrival.time
+      || !facts.inbound?.code
+      || !facts.inbound.departure.time
+      || !facts.inbound.arrival.time;
+  });
+  if (bad) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: `source-backed round-trip flight times are still incomplete for ${bad.title ?? row.product_title ?? row.id}.`,
+    };
+  }
+  return {
+    coveredCodes,
+    ok: true,
+    reason: `source-backed outbound/inbound flight times recovered for ${targets.length} product section(s).`,
+  };
+}
+
+function verifyDestinationEvidence(row: UploadReviewQueueFixtureRow): CheckerResult {
+  const candidate = buildUploadReviewFixtureCandidate(row);
+  const coveredCodes = candidate.codes.filter(code => SUPPORTED_DESTINATION_CODES.has(code));
+  const { rawText, targets } = replayTargets(row);
+  if (!rawText.trim()) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: 'raw_text_chunk is missing; cannot replay destination resolution.',
+    };
+  }
+
+  const bad = targets.find(target => {
+    const resolved = resolveUploadDestinationAndCodes({
+      destination: target.title,
+      durationDays: target.duration,
+      productRawText: target.rawText,
+      documentRawText: rawText,
+      tempDestination: row.product_title,
+    });
+    return !resolved.destination || resolved.destinationCode === 'UNK';
+  });
+  if (bad) {
+    return {
+      coveredCodes,
+      ok: false,
+      reason: `destination code is still unresolved for ${bad.title ?? row.product_title ?? row.id}.`,
+    };
+  }
+  return {
+    coveredCodes,
+    ok: true,
+    reason: `destination code resolves for ${targets.length} product section(s).`,
+  };
+}
+
+function verifySupportedCodes(row: UploadReviewQueueFixtureRow): UploadReviewRegressionCheck {
+  const candidate = buildUploadReviewFixtureCandidate(row);
+  const { coveredCodes: supportedCovered, uncoveredCodes: initiallyUncovered } = splitCoverage(candidate.codes);
+  const results: CheckerResult[] = [];
+  if (candidate.codes.some(code => SUPPORTED_ITINERARY_CODES.has(code))) results.push(verifyItineraryBoundary(row));
+  if (candidate.codes.some(code => SUPPORTED_PRICE_EVIDENCE_CODES.has(code))) results.push(verifyPriceEvidence(row));
+  if (candidate.codes.some(code => SUPPORTED_FLIGHT_CODES.has(code))) results.push(verifyFlightEvidence(row));
+  if (candidate.codes.some(code => SUPPORTED_DESTINATION_CODES.has(code))) results.push(verifyDestinationEvidence(row));
+
+  const failed = results.filter(result => !result.ok);
+  const coveredCodes = [...new Set(results.flatMap(result => result.coveredCodes))];
+  const uncoveredCodes = [
+    ...initiallyUncovered,
+    ...supportedCovered.filter(code => !coveredCodes.includes(code)),
+  ];
+  const status: UploadReviewRegressionStatus = failed.length > 0
+    ? 'failed'
+    : uncoveredCodes.length > 0
+      ? 'partial'
+      : 'passed';
+  const bestProductSummary = results.find(result => result.productSummaries)?.productSummaries ?? [];
+  const productsRecovered = Math.max(0, ...results.map(result => result.productsRecovered ?? 0));
 
   return {
     queueId: row.id,
@@ -174,12 +373,10 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
     coveredCodes,
     uncoveredCodes,
     supported: true,
-    status: uncoveredCodes.length > 0 ? 'partial' : 'passed',
-    reason: uncoveredCodes.length > 0
-      ? `supported itinerary checks passed; uncovered codes remain: ${uncoveredCodes.join(', ')}.`
-      : 'catalog boundaries recover clean per-product itinerary day sequences.',
-    productsRecovered: products.length,
-    productSummaries,
+    status,
+    reason: results.map(result => result.reason).join(' | '),
+    productsRecovered,
+    productSummaries: bestProductSummary,
   };
 }
 
@@ -190,8 +387,24 @@ export function buildUploadReviewRegressionReport(input: {
   const dedupedRows = dedupeRows(input.rows);
   const checks = dedupedRows.map(row => {
     const candidate = buildUploadReviewFixtureCandidate(row);
-    const supported = candidate.codes.some(code => SUPPORTED_ITINERARY_CODES.has(code));
-    if (supported) return verifyItineraryBoundary(row);
+    if (isSyntheticRegressionRow(row)) {
+      return {
+        queueId: row.id,
+        productTitle: row.product_title,
+        sourceFilename: row.source_filename,
+        normalizedContentHash: row.normalized_content_hash,
+        codes: candidate.codes,
+        coveredCodes: [],
+        uncoveredCodes: candidate.codes,
+        supported: false,
+        status: 'skipped' as const,
+        reason: 'synthetic regression/test upload row is excluded from live customer-source replay strictness.',
+        productsRecovered: 0,
+        productSummaries: [],
+      };
+    }
+    const supported = candidate.codes.some(code => SUPPORTED_CODES.has(code));
+    if (supported) return verifySupportedCodes(row);
     return {
       queueId: row.id,
       productTitle: row.product_title,

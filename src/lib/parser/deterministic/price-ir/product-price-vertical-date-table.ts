@@ -14,7 +14,7 @@ function isoDate(year: number, month: number, day: number): string | null {
 
 function parseKrwPrice(line: string): number {
   const text = line.replace(/\s+/g, '');
-  const match = text.match(/^(\d{1,3}(?:,\d{3})+|\d{5,8}|\d{3,4})(?:원|,-)?$/);
+  const match = text.match(/^(\d{1,3}(?:,\d{3})+|\d{5,8}|\d{3,4})(?:원|\/인|,-)?/);
   if (!match) return 0;
   const value = Number(match[1].replace(/,/g, ''));
   if (!Number.isFinite(value) || value <= 0) return 0;
@@ -63,10 +63,167 @@ function sliceProductPriceSection(rawText: string): string {
   return stop > 0 ? tail.slice(0, stop) : tail;
 }
 
+function hasNormalKoreanVerticalPriceSignal(rawText: string): boolean {
+  return /[가-힣]/.test(rawText)
+    && /(출\s*발\s*(?:날짜|일|일자)|상\s*품\s*가|상품가|판매가)/.test(rawText);
+}
+
+function parseKoreanMonthHeading(line: string): number | null {
+  const match = line.replace(/\s+/g, '').match(/^(\d{1,2})월$/);
+  const month = Number(match?.[1]);
+  return Number.isInteger(month) && month >= 1 && month <= 12 ? month : null;
+}
+
+function parseKoreanDateLine(line: string, context: { month: number | null; year?: number }): string[] {
+  const cleaned = line
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/[월화수목금토일]요일/g, ' ')
+    .replace(/[，、]/g, ',')
+    .trim();
+  const dates: string[] = [];
+
+  for (const match of cleaned.matchAll(/(?:(\d{1,2})\s*월\s*)?(\d{1,2})\s*일?/g)) {
+    const month = Number(match[1] ?? context.month);
+    const day = Number(match[2]);
+    if (!Number.isInteger(month) || !Number.isInteger(day)) continue;
+    if (month < 1 || month > 12 || day < 1 || day > 31) continue;
+    const iso = isoDate(inferYearForMonth(month, context.year), month, day);
+    if (iso) dates.push(iso);
+  }
+
+  return [...new Set(dates)];
+}
+
+function distributePrices(dates: string[], prices: number[]): MatrixPriceRow[] {
+  if (dates.length === 0 || prices.length === 0) return [];
+  if (prices.length === 1) {
+    return dates.map(date => ({
+      date,
+      adult_price: prices[0],
+      child_price: null,
+      note: 'source_korean_vertical_price',
+      status: 'available',
+    }));
+  }
+
+  const rows: MatrixPriceRow[] = [];
+  const groupSize = Math.ceil(dates.length / prices.length);
+  for (let i = 0; i < dates.length; i++) {
+    rows.push({
+      date: dates[i],
+      adult_price: prices[Math.min(prices.length - 1, Math.floor(i / groupSize))],
+      child_price: null,
+      note: 'source_korean_vertical_price',
+      status: 'available',
+    });
+  }
+  return rows;
+}
+
+function extractKoreanDepartureDateBlockRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const byDate = new Map<string, MatrixPriceRow>();
+  const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
+    ? options.durationDays
+    : null;
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/^출\s*발\s*(?:날짜|일|일자)$/.test(lines[i])) continue;
+    const nearbyTitle = lines.slice(Math.max(0, i - 4), i).reverse().find(line => /PKG|패키지|박\s*\d+\s*일/.test(line));
+    const durationMatch = nearbyTitle?.match(/(\d+)\s*박\s*(\d+)\s*일/);
+    if (wantedDuration != null && durationMatch && Number(durationMatch[2]) !== wantedDuration) continue;
+
+    const dates: string[] = [];
+    let month: number | null = null;
+    let j = i + 1;
+
+    for (; j < lines.length && j < i + 24; j++) {
+      if (/^(출발인원|상\s*품\s*가|상품가|판매가|룸\s*타\s*입|포\s*함)$/.test(lines[j])) break;
+      const headingMonth = parseKoreanMonthHeading(lines[j]);
+      if (headingMonth) {
+        month = headingMonth;
+        continue;
+      }
+      dates.push(...parseKoreanDateLine(lines[j], { month, year: options.year }));
+    }
+
+    while (j < lines.length && !/^상\s*품\s*가$|^상품가$|^판매가$/.test(lines[j])) j++;
+    const prices: number[] = [];
+    for (let k = j + 1; k < lines.length && k < j + 8; k++) {
+      const price = parseKrwPrice(lines[k]);
+      if (price > 0) prices.push(price);
+      else if (prices.length > 0) break;
+    }
+
+    for (const row of distributePrices([...new Set(dates)], prices)) byDate.set(row.date, row);
+  }
+
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function extractKoreanMonthDurationRows(rawText: string, options: PriceIROptions): MatrixPriceRow[] {
+  const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const byDate = new Map<string, MatrixPriceRow>();
+  let currentMonth: number | null = null;
+  const wantedDuration = typeof options.durationDays === 'number' && options.durationDays > 0
+    ? options.durationDays
+    : null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const headingMonth = parseKoreanMonthHeading(lines[i]);
+    if (headingMonth) {
+      currentMonth = headingMonth;
+      continue;
+    }
+
+    if (!/^\([월화수목금토일]\)/.test(lines[i])) continue;
+    const dates = parseKoreanDateLine(lines[i], { month: currentMonth, year: options.year });
+    if (dates.length === 0 || dates.length > 20) continue;
+
+    let durationMatches = wantedDuration == null;
+    let price = 0;
+    for (let j = i + 1; j < lines.length && j < i + 5; j++) {
+      const durationMatch = lines[j].match(/(\d+)\s*박\s*(\d+)\s*일/);
+      if (durationMatch) {
+        durationMatches = wantedDuration == null || Number(durationMatch[2]) === wantedDuration;
+        continue;
+      }
+      price = parseKrwPrice(lines[j]);
+      if (price > 0) break;
+      if (parseKoreanMonthHeading(lines[j])) break;
+    }
+    if (!durationMatches || price <= 0) continue;
+
+    for (const date of dates) {
+      byDate.set(date, {
+        date,
+        adult_price: price,
+        child_price: null,
+        note: 'source_korean_month_duration_price',
+        status: 'available',
+      });
+    }
+  }
+
+  return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+}
+
 export function extractProductPriceVerticalDateRows(
   rawText: string,
   options: PriceIROptions = {},
 ): MatrixPriceRow[] {
+  if (hasNormalKoreanVerticalPriceSignal(rawText)) {
+    const koreanRows = [
+      ...extractKoreanDepartureDateBlockRows(rawText, options),
+      ...extractKoreanMonthDurationRows(rawText, options),
+    ];
+    if (koreanRows.length > 0) {
+      const byKey = new Map<string, MatrixPriceRow>();
+      for (const row of koreanRows) byKey.set(`${row.date}|${row.adult_price}`, row);
+      return [...byKey.values()].sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+    }
+  }
+
   const section = sliceProductPriceSection(rawText);
   if (!section) return [];
 

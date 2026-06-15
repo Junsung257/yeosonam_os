@@ -95,4 +95,24 @@ describe('buildUploadReviewRegressionReport', () => {
     expect(report.codeCounts.PRICE_DATE_DISAGREEMENT).toBe(1);
     expect(report.uncoveredCodeCounts.PRICE_DATE_DISAGREEMENT).toBe(1);
   });
+
+  it('skips synthetic regression upload rows in live replay strictness', () => {
+    const report = buildUploadReviewRegressionReport({
+      rows: [
+        row({
+          product_title: 'CODEX-V3-E2E-검증-RETRY',
+          error_reason: 'Customer landing/A4 blocked: product_prices missing | price_dates missing',
+          raw_text_chunk: `상품명: CODEX-V3-E2E-검증-RETRY
+가격 499000원 / 최소출발 4명
+DAY 1
+부산 출발`,
+        }),
+      ],
+    });
+
+    expect(report.checked).toBe(0);
+    expect(report.skipped).toBe(1);
+    expect(report.failed).toBe(0);
+    expect(report.checks[0]?.reason).toContain('synthetic regression/test upload row');
+  });
 });

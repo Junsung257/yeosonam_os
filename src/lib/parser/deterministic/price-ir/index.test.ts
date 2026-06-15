@@ -5,6 +5,66 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+describe('extractPriceIR Korean vertical supplier price tables', () => {
+  it('recovers departure-date blocks followed by multiple package prices', () => {
+    const rawText = `
+부산출발 장가계 3박4일 실속특가 PKG
+출발날짜
+6월8일 월요일,
+6월27일 토요일
+7월11일 토요일,
+8월8일 토요일
+출발인원
+성인 6명 이상
+상 품 가
+499,000/인
+599,000/인
+포   함
+왕복항공료`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 4 });
+
+    expect(result.source).toBe('product_price_vertical_date_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-06-08', adult_price: 499000 }),
+      expect.objectContaining({ date: '2026-06-27', adult_price: 499000 }),
+      expect.objectContaining({ date: '2026-07-11', adult_price: 599000 }),
+      expect.objectContaining({ date: '2026-08-08', adult_price: 599000 }),
+    ]);
+  });
+
+  it('recovers month/day duration rows and filters by product duration', () => {
+    const rawText = `
+출 발 일
+칠채산+황하석림+바단지린사막
+7월
+(수) 1, 8
+3박5일
+1,099,000
+(토) 4, 18
+4박6일
+1,129,000
+8월
+(수) 5
+3박5일
+1,119,000
+(토) 1
+4박6일
+1,139,000부산-서안 칠채산 3박5일 PKG`;
+
+    const result = extractPriceIR(rawText, { year: 2026, durationDays: 5 });
+
+    expect(result.source).toBe('month_duration_price_table');
+    expect(result.rows).toEqual([
+      expect.objectContaining({ date: '2026-07-01', adult_price: 1099000 }),
+      expect.objectContaining({ date: '2026-07-08', adult_price: 1099000 }),
+      expect.objectContaining({ date: '2026-08-05', adult_price: 1119000 }),
+    ]);
+    expect(result.rows.some(row => row.date === '2026-07-04')).toBe(false);
+    expect(result.rows.some(row => row.adult_price === 1139000)).toBe(false);
+  });
+});
+
 const HOTEL_COLUMN_MATRIX = `
 부산出 세부 세미 PKG 3박 5일 진에어(LJ)
 출발일

@@ -32,18 +32,21 @@ The following historical blocker class is now replay-checked from real `upload_r
 - `PKG` followed by markdown separators before the product title
 - Duplicate day numbers caused by multiple products being parsed as one
 - Duration overflow caused by multiple products being parsed as one
+- Source-backed price/date evidence for supported Korean supplier tables
+- Source-backed outbound/inbound flight time evidence
+- Destination code resolution from title, route, and itinerary context
 
-Current live replay result on 2026-06-15:
+Current live replay result after the second audit pass on 2026-06-15:
 
 - Source rows: 61
 - Deduped rows: 42
-- Checked rows: 5
+- Checked rows: 16
 - Passed rows: 0
-- Partial rows: 5
+- Partial rows: 16
 - Failed checked rows: 0
-- Skipped rows: 37
+- Skipped rows: 26
 
-The 5 checked rows are partial because their itinerary split blockers no longer reproduce, but other blocker codes remain unverified by deterministic replay checkers.
+The checked rows are partial because their supported itinerary, price, flight, or destination blockers no longer reproduce, but broader customer-render or infrastructure blocker codes remain unverified by deterministic replay checkers.
 
 ## Critical Gap Fixed In This Audit
 
@@ -65,18 +68,14 @@ The CLI now prints both total code counts and uncovered code counts.
 As of this audit, the largest uncovered deterministic replay categories are:
 
 - `CUSTOMER_RENDER_BLOCKED`
-- `PRICE_ROWS_MISSING`
-- `PRICE_DATES_MISSING`
-- `MODEL_PRICE_UNSUPPORTED`
 - `SUPABASE_NOT_CONFIGURED`
 - `PERSISTENCE_CONSTRAINT_FAILED`
-- `DESTINATION_UNRESOLVED`
-- `FLIGHT_TIME_MISMATCH`
 - `PRICE_DATE_DISAGREEMENT`
 - `REQUEST_SCOPE_ERROR`
-- `UNKNOWN_BLOCKER`
 
 These must not be treated as resolved just because catalog split replay passes.
+
+`PRICE_ROWS_MISSING`, `PRICE_DATES_MISSING`, `MODEL_PRICE_UNSUPPORTED`, `DESTINATION_UNRESOLVED`, and `FLIGHT_TIME_MISMATCH` now have deterministic live replay coverage for the supported source patterns found in the 30-day queue sample.
 
 ## Unnecessary Or Lower-Value Process
 
@@ -116,4 +115,3 @@ A product should be considered customer-openable only when the latest source upl
 - Attraction matching and media fallback
 - Mobile landing payload render
 - A4 payload render
-
