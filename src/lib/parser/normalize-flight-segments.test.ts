@@ -40,6 +40,59 @@ describe('normalizeFlightSegments explicit segment preservation', () => {
     expect(r?.flight_segments?.[0]?.dep_time).toBe('09:40');
     expect(r?.flight_segments?.[1]?.dep_time).toBe('12:30');
   });
+
+  it('rebuilds incomplete explicit segments from Korean flight schedule evidence', () => {
+    const itin = {
+      meta: { flight_out: 'BX781', flight_in: 'BX782' },
+      flight_segments: [
+        {
+          leg: 'outbound' as const,
+          flight_no: 'BX781',
+          dep_airport: '김해',
+          dep_time: '19:20',
+          arr_airport: null,
+          arr_time: null,
+          arr_day_offset: 0 as const,
+          day_pair: [0, 0] as [number, number],
+        },
+      ],
+      days: [
+        {
+          day: 1,
+          schedule: [
+            { type: 'flight', activity: '김해 국제공항 출발', time: '19:20', transport: 'BX781' },
+            { type: 'flight', activity: '나트랑 깜란 국제공항 도착', time: '22:20', transport: 'BX781' },
+          ],
+        },
+        { day: 2, schedule: [] },
+        { day: 3, schedule: [] },
+        {
+          day: 4,
+          schedule: [
+            { type: 'flight', activity: '나트랑 깜란 국제공항 출발', time: '23:20', transport: 'BX782' },
+          ],
+        },
+        {
+          day: 5,
+          schedule: [
+            { type: 'flight', activity: '김해 국제공항 도착', time: '06:20', transport: 'BX782' },
+          ],
+        },
+      ],
+    };
+
+    const r = normalizeFlightSegments(itin);
+
+    expect(r?.flight_segments).toHaveLength(2);
+    expect(r?.flight_segments?.[0]).toMatchObject({ leg: 'outbound', dep_time: '19:20', arr_time: '22:20' });
+    expect(r?.flight_segments?.[1]).toMatchObject({
+      leg: 'inbound',
+      dep_time: '23:20',
+      arr_time: '06:20',
+      arr_day_offset: 1,
+      day_pair: [3, 4],
+    });
+  });
 });
 
 /**

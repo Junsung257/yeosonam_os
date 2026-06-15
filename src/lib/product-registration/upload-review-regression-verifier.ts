@@ -270,6 +270,31 @@ function verifyPriceEvidence(row: UploadReviewQueueFixtureRow): CheckerResult {
   };
 }
 
+function hasCompleteRoundTripFlightEvidence(rawText: string): boolean {
+  const facts = extractSupplierRawDeterministicFacts(rawText);
+  const factsComplete = Boolean(
+    facts.outbound?.code
+      && facts.outbound.departure.time
+      && facts.outbound.arrival.time
+      && facts.inbound?.code
+      && facts.inbound.departure.time
+      && facts.inbound.arrival.time,
+  );
+  if (factsComplete) return true;
+
+  const segments = buildSupplierRawDeterministicItinerary(rawText)?.flight_segments ?? [];
+  const outbound = segments.find(segment => segment.leg === 'outbound');
+  const inbound = segments.find(segment => segment.leg === 'inbound');
+  return Boolean(
+    outbound?.flight_no
+      && outbound.dep_time
+      && outbound.arr_time
+      && inbound?.flight_no
+      && inbound.dep_time
+      && inbound.arr_time,
+  );
+}
+
 function verifyFlightEvidence(row: UploadReviewQueueFixtureRow): CheckerResult {
   const candidate = buildUploadReviewFixtureCandidate(row);
   const coveredCodes = candidate.codes.filter(code => SUPPORTED_FLIGHT_CODES.has(code));
@@ -283,13 +308,7 @@ function verifyFlightEvidence(row: UploadReviewQueueFixtureRow): CheckerResult {
   }
 
   const bad = targets.find(target => {
-    const facts = extractSupplierRawDeterministicFacts(target.rawText);
-    return !facts.outbound?.code
-      || !facts.outbound.departure.time
-      || !facts.outbound.arrival.time
-      || !facts.inbound?.code
-      || !facts.inbound.departure.time
-      || !facts.inbound.arrival.time;
+    return !hasCompleteRoundTripFlightEvidence(target.rawText);
   });
   if (bad) {
     return {

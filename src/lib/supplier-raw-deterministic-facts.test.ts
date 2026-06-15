@@ -490,4 +490,77 @@ DAY 5 부산
     expect(itinerary?.days[0].regions).toEqual(['부산', '푸꾸옥']);
     expect(itinerary?.days[4].schedule[0]).toMatchObject({ type: 'flight', transport: 'LJ112' });
   });
+
+  it('pairs Korean catalog return flights across day 4 departure and day 5 arrival', () => {
+    const raw = `BX 나트랑 다이아몬드베이 골프텔 3박5일
+2026.5.1
+일 자
+지 역
+교통편
+시 간
+주요 행사 일정
+식 사
+제1일
+
+부 산
+나트랑
+
+BX781
+
+19:20
+22:20
+
+김해 국제공항 출발
+나트랑 깜란 국제공항 도착
+제2일
+나트랑
+전 일
+호텔 조식 후 자유시간
+제3일
+나트랑
+전 일
+호텔 조식 후 자유시간
+제4일
+나트랑
+전용차량
+
+
+
+
+BX782
+전 일
+
+
+22:00
+
+23:20
+호텔 미팅후 / 나트랑 공항으로 이동
+나트랑 깜란 국제공항 출발
+제5일
+부 산
+
+06:20
+김해 국제공항 도착`;
+
+    const itinerary = buildSupplierRawDeterministicItinerary(raw);
+
+    expect(itinerary?.flight_segments).toEqual([
+      expect.objectContaining({
+        leg: 'outbound',
+        flight_no: 'BX781',
+        dep_time: '19:20',
+        arr_time: '22:20',
+        arr_day_offset: 0,
+        day_pair: [0, 0],
+      }),
+      expect.objectContaining({
+        leg: 'inbound',
+        flight_no: 'BX782',
+        dep_time: '23:20',
+        arr_time: '06:20',
+        arr_day_offset: 1,
+        day_pair: [3, 4],
+      }),
+    ]);
+  });
 });

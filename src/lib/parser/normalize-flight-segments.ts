@@ -60,6 +60,8 @@ function timeToMinutes(t: string): number {
 /** activity 텍스트가 "출발" / "도착" 의미인지 판정 */
 function classifyActivity(activity: string | null | undefined): 'depart' | 'arrive' | 'other' {
   if (!activity) return 'other';
+  if (/\uCD9C\uBC1C/.test(activity)) return 'depart';
+  if (/\uB3C4\uCC29|\uC785\uAD6D/.test(activity)) return 'arrive';
   if (/출발/.test(activity)) return 'depart';
   if (/도착|입국/.test(activity)) return 'arrive';
   return 'other';
@@ -67,6 +69,7 @@ function classifyActivity(activity: string | null | undefined): 'depart' | 'arri
 
 function hasAirportSignal(activity: string | null | undefined): boolean {
   if (!activity) return false;
+  if (/\uACF5\uD56D/.test(activity)) return true;
   return /공항|국제공항|airport/i.test(activity);
 }
 
@@ -81,6 +84,10 @@ function hasAirportSignal(activity: string | null | undefined): boolean {
  */
 function extractCity(activity: string | null | undefined): string | null {
   if (!activity) return null;
+  const koreanAirport = activity.match(/^([\uAC00-\uD7A3A-Za-z]+)(?:\s+[\uAC00-\uD7A3A-Za-z]+)?\s*(?:\uAD6D\uC81C)?\s*\uACF5\uD56D/);
+  if (koreanAirport) return koreanAirport[1].trim();
+  const koreanCity = activity.match(/^([\uAC00-\uD7A3A-Za-z]+)\s*(?:\uCD9C\uBC1C|\uB3C4\uCC29|\uC785\uAD6D)/);
+  if (koreanCity) return koreanCity[1].trim();
   // [NEW] 첫 단어 + 공백 + 임의 단어 + "국제공항/공항" + "출발/도착"
   //   예: "타이페이 타오위안 국제공항 출발" → "타이페이"
   //   예: "후쿠오카 신치토세 공항 도착" → "후쿠오카"
@@ -129,8 +136,8 @@ export function normalizeFlightSegments(itin: ItineraryDataLike | null | undefin
 
   // 모든 flight item을 (day_index, item) 으로 수집
   if (Array.isArray(itin.flight_segments) && itin.flight_segments.length > 0) {
-    const hasResolvedTime = itin.flight_segments.some(seg => Boolean(seg.dep_time || seg.arr_time));
-    if (hasResolvedTime) {
+    const everySegmentComplete = itin.flight_segments.every(seg => Boolean(seg.dep_time && seg.arr_time));
+    if (everySegmentComplete) {
       return { ...itin, days, flight_segments: itin.flight_segments };
     }
   }

@@ -27,6 +27,56 @@ const RECOVERABLE_INLINE_PKG_RAW = `클락 골프 공통 요금표
 제6일
 부산 도착`;
 
+const KOREAN_RETURN_FLIGHT_CATALOG_RAW = `BX 나트랑 다이아몬드베이 골프텔 3박5일
+2026.5.1
+일 자
+지 역
+교통편
+시 간
+주요 행사 일정
+식 사
+제1일
+
+부 산
+나트랑
+
+BX781
+
+19:20
+22:20
+
+김해 국제공항 출발
+나트랑 깜란 국제공항 도착
+제2일
+나트랑
+전 일
+호텔 조식 후 자유시간
+제3일
+나트랑
+전 일
+호텔 조식 후 자유시간
+제4일
+나트랑
+전용차량
+
+
+
+
+BX782
+전 일
+
+
+22:00
+
+23:20
+호텔 미팅후 / 나트랑 공항으로 이동
+나트랑 깜란 국제공항 출발
+제5일
+부 산
+
+06:20
+김해 국제공항 도착`;
+
 function row(overrides: Partial<UploadReviewQueueFixtureRow>): UploadReviewQueueFixtureRow {
   return {
     id: '11111111-1111-4111-8111-111111111111',
@@ -114,5 +164,23 @@ DAY 1
     expect(report.skipped).toBe(1);
     expect(report.failed).toBe(0);
     expect(report.checks[0]?.reason).toContain('synthetic regression/test upload row');
+  });
+
+  it('covers flight mismatch replay when itinerary segments recover a Korean overnight return flight', () => {
+    const report = buildUploadReviewRegressionReport({
+      rows: [
+        row({
+          product_title: '특별약관적용 · 나트랑 · 3박5일 · BX781',
+          error_reason: 'Customer landing/A4 blocked: flight time source mismatch: source has round-trip flight times but itinerary_data.flight_segments is missing outbound/inbound segments',
+          raw_text_chunk: KOREAN_RETURN_FLIGHT_CATALOG_RAW,
+        }),
+      ],
+    });
+
+    expect(report.checked).toBe(1);
+    expect(report.failed).toBe(0);
+    expect(report.partial).toBe(1);
+    expect(report.checks[0]?.coveredCodes).toContain('FLIGHT_TIME_MISMATCH');
+    expect(report.checks[0]?.uncoveredCodes).toContain('CUSTOMER_RENDER_BLOCKED');
   });
 });

@@ -654,10 +654,90 @@ function isStandaloneCatalogColumnValue(line: string): boolean {
 }
 
 function normalizeAirportName(activity: string): string | null {
+  const koreanAirport = activity.match(/^([\uAC00-\uD7A3A-Za-z]+)(?:\s+[\uAC00-\uD7A3A-Za-z]+)?\s*(?:\uAD6D\uC81C)?\s*\uACF5\uD56D/);
+  if (koreanAirport) return koreanAirport[1].trim();
+  const koreanCity = activity.match(/^([\uAC00-\uD7A3A-Za-z]+)\s*(?:\uCD9C\uBC1C|\uB3C4\uCC29|\uC785\uAD6D)/);
+  if (koreanCity) return koreanCity[1].trim();
   if (/김해|부산/.test(activity)) return '김해';
   if (/나리타|나라타/.test(activity)) return '나리타';
   if (/서안/.test(activity)) return '서안';
   return null;
+}
+
+function isCatalogDepartActivity(activity: string): boolean {
+  return /\uCD9C\uBC1C/.test(activity) || /출발/.test(activity);
+}
+
+function isCatalogArriveActivity(activity: string): boolean {
+  return /(?:\uB3C4\uCC29|\uC785\uAD6D)/.test(activity) || /도착|입국/.test(activity);
+}
+
+function isCatalogFlightActivity(activity: string): boolean {
+  return /(?:\uACF5\uD56D|공항|airport)/i.test(activity)
+    && (isCatalogDepartActivity(activity) || isCatalogArriveActivity(activity));
+}
+
+type CatalogFlightSegment = {
+  leg: 'outbound' | 'inbound';
+  flight_no: string | null;
+  dep_airport: string | null;
+  dep_time: string | null;
+  arr_airport: string | null;
+  arr_time: string | null;
+  arr_day_offset: number;
+  day_pair: [number, number];
+};
+
+function makeChronologicalCatalogFlightSegments(
+  days: DaySchedule[],
+  flightOut: string | null,
+  flightIn: string | null,
+): CatalogFlightSegment[] {
+  const flightItems: Array<{ dayIndex: number; item: ScheduleItem; kind: 'depart' | 'arrive' | 'other' }> = [];
+  for (const [dayIndex, day] of days.entries()) {
+    for (const item of day.schedule ?? []) {
+      if (item.type !== 'flight') continue;
+      const kind = isCatalogDepartActivity(item.activity)
+        ? 'depart'
+        : isCatalogArriveActivity(item.activity)
+          ? 'arrive'
+          : 'other';
+      flightItems.push({ dayIndex, item, kind });
+    }
+  }
+
+  const segments: CatalogFlightSegment[] = [];
+  const used = new Set<number>();
+  for (let i = 0; i < flightItems.length; i++) {
+    if (used.has(i)) continue;
+    const dep = flightItems[i];
+    if (dep.kind !== 'depart') continue;
+    let pairIndex = -1;
+    for (let j = i + 1; j < flightItems.length; j++) {
+      if (used.has(j)) continue;
+      if (flightItems[j].kind === 'arrive') {
+        pairIndex = j;
+        break;
+      }
+      if (flightItems[j].kind === 'depart') break;
+    }
+    const arr = pairIndex >= 0 ? flightItems[pairIndex] : null;
+    const isInbound = Boolean((dep.item.transport && flightIn && dep.item.transport === flightIn) || segments.length > 0);
+    const dayDelta = arr ? arr.dayIndex - dep.dayIndex : 0;
+    segments.push({
+      leg: isInbound ? 'inbound' : 'outbound',
+      flight_no: dep.item.transport ?? arr?.item.transport ?? (isInbound ? flightIn : flightOut),
+      dep_airport: normalizeAirportName(dep.item.activity),
+      dep_time: dep.item.time,
+      arr_airport: arr ? normalizeAirportName(arr.item.activity) : null,
+      arr_time: arr?.item.time ?? null,
+      arr_day_offset: dayDelta >= 1 ? 1 : 0,
+      day_pair: [dep.dayIndex, arr?.dayIndex ?? dep.dayIndex],
+    });
+    used.add(i);
+    if (pairIndex >= 0) used.add(pairIndex);
+  }
+  return segments;
 }
 
 function makeFlightSegmentsFromCatalog(days: DaySchedule[], flightOut: string | null, flightIn: string | null) {
@@ -671,6 +751,9 @@ function makeFlightSegmentsFromCatalog(days: DaySchedule[], flightOut: string | 
     arr_day_offset: 0 | 1;
     day_pair: [number, number];
   }> = [];
+
+  const chronologicalSegments = makeChronologicalCatalogFlightSegments(days, flightOut, flightIn);
+  if (chronologicalSegments.length > 0) return chronologicalSegments;
 
   for (const [dayIndex, day] of days.entries()) {
     const flightItems = (day.schedule ?? []).filter(item => item.type === 'flight');
@@ -795,6 +878,13 @@ function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { fligh
     let hotelNote: string | null = null;
     const schedule: ScheduleItem[] = [];
     let flightTimeIndex = 0;
+    const flightActivityCount = body
+      .map(line => polishCatalogScheduleActivity(line))
+      .filter(line => isCatalogFlightActivity(line))
+      .length;
+    const flightTimes = flightActivityCount > 0 && times.length > flightActivityCount
+      ? times.slice(times.length - flightActivityCount)
+      : times;
 
     for (const line of body) {
       const meal = parseCatalogMeal(line);
@@ -815,9 +905,19 @@ function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { fligh
       if (isStandaloneCatalogColumnValue(line)) continue;
 
       const normalizedActivity = polishCatalogScheduleActivity(line);
+      if (isCatalogFlightActivity(normalizedActivity)) {
+        schedule.push({
+          time: flightTimes[flightTimeIndex++] ?? null,
+          activity: normalizedActivity,
+          transport: primaryFlight,
+          note: null,
+          type: 'flight',
+        });
+        continue;
+      }
       const isFlightActivity = /국제공항\s*(출발|도착)/.test(normalizedActivity);
       schedule.push({
-        time: isFlightActivity ? times[flightTimeIndex++] ?? null : null,
+        time: isFlightActivity ? flightTimes[flightTimeIndex++] ?? null : null,
         activity: normalizedActivity,
         transport: isFlightActivity ? primaryFlight : null,
         note: null,
@@ -1049,7 +1149,7 @@ function knownMojibakeItinerary(rawText: string): (TravelItinerary & { flight_se
   };
 }
 
-export function buildSupplierRawDeterministicItinerary(rawText: string): TravelItinerary | null {
+export function buildSupplierRawDeterministicItinerary(rawText: string): (TravelItinerary & { flight_segments?: CatalogFlightSegment[] }) | null {
   const known = knownMojibakeItinerary(rawText);
   if (known) return known;
 
