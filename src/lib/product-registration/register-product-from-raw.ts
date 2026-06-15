@@ -420,6 +420,7 @@ function applyCrossFieldAndSummaryRecovery(ed: ExtractedData, rawText: string): 
       title: ed.title,
       destination: ed.destination,
       duration: ed.duration,
+      trip_style: (ed as { trip_style?: string | null }).trip_style ?? null,
       departure: (ed as { departure?: string }).departure ?? null,
       product_type: ed.product_type,
       inclusions: ed.inclusions,

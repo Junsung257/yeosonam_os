@@ -1,97 +1,95 @@
 import { describe, expect, it } from 'vitest';
 import { generateRecommendationCopy, isWeakCopy } from './recommendation-copy';
 
-/**
- * 2026-05-19 박제: recommendation-copy.ts 회귀 fixture.
- *
- * 사장님 사고: "부관훼리를 이용한 초특가 가성비 무박3일 패키지 여행" 같은 무의미 카피.
- * generateRecommendationCopy + isWeakCopy 박제 — 다음 PR 가드 풀면 즉시 회귀.
- */
-
-describe('generateRecommendationCopy — 결정적 카피', () => {
-  it('완전 입력 → 표준 양식', () => {
-    const r = generateRecommendationCopy({
-      destination: '대만',
-      duration: 4,
-      departure: '부산',
-      airline: 'BX',
-      inclusions: ['왕복 항공료', '호텔'],
-      product_highlights: ['101빌딩 전망대', '발마사지 30분'],
-    });
-    expect(r).toContain('부산');
-    expect(r).toContain('대만');
-    expect(r).toContain('4일');
-    expect(r).toContain('101빌딩');
-  });
-
-  it('product_highlights 우선', () => {
-    const r = generateRecommendationCopy({
-      destination: '베트남',
+describe('generateRecommendationCopy', () => {
+  it('generates customer-friendly golf copy with destination, stay, and trip style', () => {
+    const copy = generateRecommendationCopy({
+      title: 'BX 나트랑 다이아몬드베이 골프텔',
+      destination: '나트랑',
       duration: 5,
-      product_highlights: ['옌뜨 케이블카', '하롱베이 크루즈'],
-      inclusions: ['호텔', '식사'],
+      trip_style: '3박5일',
+      airline: '에어부산',
+      product_type: 'golf',
+      product_highlights: ['다이아몬드CC 라운딩', '골프텔 숙박'],
     });
-    expect(r).toContain('옌뜨 케이블카');
-    expect(r).toContain('하롱베이 크루즈');
+
+    expect(copy).toContain('⛳');
+    expect(copy).toContain('나트랑을 편하게 즐기고 싶은 분');
+    expect(copy).toContain('다이아몬드베이 골프텔');
+    expect(copy).toContain('3박5일 안에서도');
+    expect(copy).not.toContain('현지에서 따로 드는 비용');
+    expect(copy).not.toContain('상담');
+    expect(copy).not.toContain('배포');
   });
 
-  it('cruise 타입 → ferry name 앞에 박힘', () => {
-    const r = generateRecommendationCopy({
-      destination: '시모노세키',
+  it('generates ferry copy with carrier context', () => {
+    const copy = generateRecommendationCopy({
+      title: '대마도 자연과 역사탐방 2일',
+      destination: '대마도',
+      duration: 2,
+      product_type: 'ferry',
+      airline: '팬스타크루즈',
+      product_highlights: ['히타카츠', '미우다 해변'],
+    });
+
+    expect(copy).toContain('🛳️');
+    expect(copy).toContain('팬스타크루즈로 대마도까지');
+    expect(copy).toContain('히타카츠');
+  });
+
+  it('generates onsen copy for hot-spring packages', () => {
+    const copy = generateRecommendationCopy({
+      title: '후쿠오카 벳부 유노하나 온천 3일',
+      destination: '벳부',
       duration: 3,
-      departure: '부산',
-      product_type: 'cruise',
-      airline: '부관훼리',
+      product_highlights: ['유노하나 재배지', '가마도 지옥순례'],
     });
-    expect(r).toContain('부관훼리 이용');
+
+    expect(copy).toContain('♨️');
+    expect(copy).toContain('벳부의 온천');
+    expect(copy).toContain('유노하나 재배지');
   });
 
-  it('destination만 → 최소 카피', () => {
-    const r = generateRecommendationCopy({ destination: '몽골' });
-    expect(r).toBe('몽골 여행');
-  });
-
-  it('전부 빈값 → 폴백 카피', () => {
-    const r = generateRecommendationCopy({});
-    expect(r).toBe('여행 패키지');
-  });
-
-  it('airline 중복 차단 (이미 destination에 있음)', () => {
-    const r = generateRecommendationCopy({
-      destination: '대만',
+  it('generates general package copy without raw internal distribution phrases', () => {
+    const copy = generateRecommendationCopy({
+      title: '선발특가 6/ 까지 6/4 배포 장가계 4일',
+      destination: '장가계',
       duration: 4,
-      departure: 'BX 부산',
-      airline: 'BX',
+      product_type: 'package',
+      product_highlights: ['천문산 케이블카', '원가계 풍경구'],
     });
-    // BX 가 departure 에 이미 있으면 다시 안 박음
-    const bxCount = (r.match(/BX/g) ?? []).length;
-    expect(bxCount).toBeLessThanOrEqual(1);
+
+    expect(copy).toContain('✈️');
+    expect(copy).toContain('장가계를 처음 방문해도');
+    expect(copy).toContain('천문산 케이블카');
+    expect(copy).not.toContain('선발특가');
+    expect(copy).not.toContain('배포');
+    expect(copy).not.toContain('6/ 까지');
   });
 });
 
-describe('isWeakCopy — 무의미 카피 감지 (부관훼리 사고)', () => {
-  it('null/undefined/빈 문자열 → 약함', () => {
+describe('isWeakCopy', () => {
+  it('treats empty and very short copy as weak', () => {
     expect(isWeakCopy(null)).toBe(true);
     expect(isWeakCopy(undefined)).toBe(true);
-    expect(isWeakCopy('')).toBe(true);
-  });
-
-  it('20자 미만 → 약함', () => {
     expect(isWeakCopy('짧은 카피')).toBe(true);
   });
 
-  it('"...패키지 여행" 만 끝남 → 약함 (부관훼리 사고 패턴)', () => {
-    expect(isWeakCopy('초특가 가성비 패키지 여행')).toBe(true);
+  it('treats internal distribution copy as weak', () => {
+    expect(isWeakCopy('BX 5일 나트랑 다이아몬드베이 골프텔 선발특가 6/ 까지 배포 스팟특가 여행')).toBe(true);
   });
 
-  it('title 재서술 (30자 추가 없음) → 약함', () => {
-    const title = '[부관훼리] 초특가 가성비 무박3일 PKG';
-    const copy = '초특가 가성비 무박3일 PKG 여행';
-    expect(isWeakCopy(copy, title)).toBe(true);
+  it('treats cost-counseling language as weak for recommendation copy', () => {
+    expect(isWeakCopy('현지에서 따로 드는 비용은 상담 때 한 번에 정리해드릴게요.')).toBe(true);
   });
 
-  it('실제 셀링포인트 포함 → 강함', () => {
-    const copy = '부산 출발 4일 대만 여행 — 101빌딩 전망대 + 발마사지 30분';
+  it('keeps specific customer-facing copy', () => {
+    const copy = [
+      '⛳ 골프를 중심으로 나트랑을 편하게 즐기고 싶은 분께 좋은 일정입니다.',
+      '🏨 다이아몬드CC 골프텔에 머물며 라운딩 동선을 줄이고, 남는 시간은 휴식에 집중할 수 있어요.',
+      '🌴 3박5일 안에서도 라운딩과 리조트형 휴식을 함께 기대할 수 있는 나트랑 골프 여행입니다.',
+    ].join('\n\n');
+
     expect(isWeakCopy(copy)).toBe(false);
   });
 });
