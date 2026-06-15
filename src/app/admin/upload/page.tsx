@@ -103,6 +103,8 @@ interface PendingTextItem {
   commissionRate?: number;
 }
 
+type VerifyDisplayStatus = NonNullable<QueueItem['verifyStatus']>;
+
 // 서버가 비-JSON 응답(오류 페이지, 게이트웨이 타임아웃 등)을 반환할 때도 안전하게 파싱
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function safeResJson(res: Response): Promise<any> {
@@ -183,7 +185,8 @@ function isPublicPackageStatus(status: string | null | undefined): boolean {
   return ['active', 'approved', 'selling', 'available', 'published'].includes(normalized);
 }
 
-function verifyStatusLabel(status: PackageVerifyResult['status'] | undefined): string {
+function verifyStatusLabel(status: VerifyDisplayStatus | undefined): string {
+  if (status === 'verifying') return '검증 중';
   if (status === 'clean') return '검증 통과';
   if (status === 'warnings') return '경고';
   if (status === 'blocked') return '차단';
@@ -192,13 +195,50 @@ function verifyStatusLabel(status: PackageVerifyResult['status'] | undefined): s
   return '검증 대기';
 }
 
-function verifyStatusClass(status: PackageVerifyResult['status'] | undefined): string {
+function verifyStatusClass(status: VerifyDisplayStatus | undefined): string {
+  if (status === 'verifying') return 'bg-sky-100 text-sky-700 border-sky-200';
   if (status === 'clean') return 'bg-emerald-100 text-emerald-700 border-emerald-200';
   if (status === 'warnings') return 'bg-amber-100 text-amber-700 border-amber-200';
   if (status === 'blocked') return 'bg-red-100 text-red-700 border-red-200';
   if (status === 'error') return 'bg-rose-100 text-rose-700 border-rose-200';
   if (status === 'skipped') return 'bg-slate-100 text-slate-600 border-slate-200';
   return 'bg-admin-surface-2 text-admin-muted border-admin-border';
+}
+
+function packageRowStatus(
+  itemVerifyStatus: QueueItem['verifyStatus'],
+  packageVerify: PackageVerifyResult | undefined,
+): VerifyDisplayStatus | undefined {
+  if (packageVerify) return packageVerify.status;
+  if (itemVerifyStatus === 'verifying' || itemVerifyStatus === 'error') return itemVerifyStatus;
+  return undefined;
+}
+
+function packageRowClass(status: VerifyDisplayStatus | undefined): string {
+  if (status === 'blocked' || status === 'error') return 'bg-red-50 border-red-200';
+  if (status === 'warnings') return 'bg-amber-50 border-amber-200';
+  if (status === 'clean') return 'bg-green-50 border-green-200';
+  if (status === 'verifying') return 'bg-sky-50 border-sky-200';
+  return 'bg-admin-surface-2 border-admin-border';
+}
+
+function isPackageVerifyResult(value: unknown): value is PackageVerifyResult {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<PackageVerifyResult>;
+  return (
+    typeof candidate.packageId === 'string' &&
+    ['clean', 'warnings', 'blocked', 'skipped', 'error'].includes(String(candidate.status)) &&
+    Array.isArray(candidate.checks) &&
+    typeof candidate.warnCount === 'number' &&
+    typeof candidate.failCount === 'number'
+  );
+}
+
+function packageResultsFromResponse(data: unknown): PackageVerifyResult[] | undefined {
+  const results = (data as { packageResults?: unknown } | null)?.packageResults;
+  if (!Array.isArray(results)) return undefined;
+  const normalized = results.filter(isPackageVerifyResult);
+  return normalized.length > 0 ? normalized : undefined;
 }
 
 function firstVerifyIssue(result: PackageVerifyResult | undefined): string | null {
@@ -356,7 +396,24 @@ export default function UploadPage() {
         body: JSON.stringify(packageIds.length === 1 ? { packageId: packageIds[0] } : { packageIds }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const packageResults = packageResultsFromResponse(data);
+      if (!res.ok) {
+        if (packageResults) {
+          setQueue(prev => prev.map(it => it.id === id ? {
+            ...it,
+            verifyStatus: 'error' as QueueItem['verifyStatus'],
+            verifyReport: {
+              checks: packageResults.flatMap(result => result.checks),
+              warnCount: packageResults.reduce((sum, result) => sum + result.warnCount, 0),
+              failCount: packageResults.reduce((sum, result) => sum + result.failCount, 0),
+              packageResults,
+            },
+            verifyError: data.error || `HTTP ${res.status}`,
+          } : it));
+          return;
+        }
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
       setQueue(prev => prev.map(it => it.id === id ? {
         ...it,
         verifyStatus: data.status as QueueItem['verifyStatus'],
@@ -364,7 +421,7 @@ export default function UploadPage() {
           checks: data.checks ?? [],
           warnCount: data.warnCount ?? 0,
           failCount: data.failCount ?? 0,
-          packageResults: Array.isArray(data.packageResults) ? data.packageResults : undefined,
+          packageResults,
         },
         verifyError: undefined,
       } : it));
@@ -931,25 +988,20 @@ export default function UploadPage() {
                           <div className="mt-2 space-y-1.5">
                             {item.registerReport.map((r) => {
                               const packageVerify = item.verifyReport?.packageResults?.find(result => result.packageId === r.package_id);
+                              const displayStatus = packageRowStatus(item.verifyStatus, packageVerify);
                               const verifyIssue = firstVerifyIssue(packageVerify);
                               return (
                                 <div
                                   key={r.package_id}
-                                  className={`px-2 py-1.5 rounded-lg text-[11px] border ${
-                                    packageVerify?.status === 'blocked' || packageVerify?.status === 'error'
-                                      ? 'bg-red-50 border-red-200'
-                                      : packageVerify?.status === 'warnings'
-                                        ? 'bg-amber-50 border-amber-200'
-                                        : 'bg-green-50 border-green-200'
-                                  }`}
+                                  className={`px-2 py-1.5 rounded-lg text-[11px] border ${packageRowClass(displayStatus)}`}
                                 >
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="font-mono text-green-700 font-bold">{r.short_code ?? r.package_id.slice(0, 8)}</span>
                                     <span className={`px-1.5 py-0.5 rounded font-medium ${r.status === 'approved' ? 'bg-green-200 text-green-800' : 'bg-yellow-200 text-yellow-800'}`}>
                                       {r.status === 'approved' ? '✅ 판매중' : '⏳ 검토'}
                                     </span>
-                                    <span className={`px-1.5 py-0.5 rounded border font-semibold ${verifyStatusClass(packageVerify?.status)}`}>
-                                      {verifyStatusLabel(packageVerify?.status)}
+                                    <span className={`px-1.5 py-0.5 rounded border font-semibold ${verifyStatusClass(displayStatus)}`}>
+                                      {verifyStatusLabel(displayStatus)}
                                       {packageVerify && packageVerify.warnCount + packageVerify.failCount > 0
                                         ? ` ${packageVerify.warnCount + packageVerify.failCount}건`
                                         : ''}
