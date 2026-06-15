@@ -14,6 +14,7 @@ type Options = {
   limit: number;
   status: string;
   strict: boolean;
+  failOnPartial: boolean;
   requireDb: boolean;
   json: boolean;
 };
@@ -34,6 +35,7 @@ function parseOptions(args: string[]): Options {
     limit: Math.min(numberArg(args, '--limit', 200), 2000),
     status: stringArg(args, '--status', 'pending'),
     strict: args.includes('--strict'),
+    failOnPartial: args.includes('--fail-on-partial'),
     requireDb: args.includes('--require-db'),
     json: args.includes('--json'),
   };
@@ -67,15 +69,26 @@ async function loadRows(options: Options): Promise<UploadReviewQueueFixtureRow[]
 }
 
 function printReport(report: ReturnType<typeof buildUploadReviewRegressionReport>): void {
+  const formatCounts = (counts: Record<string, number>): string => (
+    Object.entries(counts)
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([code, count]) => `${code}:${count}`)
+      .join(', ') || 'none'
+  );
+
   console.log('[upload-review-regressions]');
   console.log(`sourceRows=${report.sourceRows}`);
   console.log(`dedupedRows=${report.dedupedRows}`);
   console.log(`checked=${report.checked}`);
   console.log(`passed=${report.passed}`);
+  console.log(`partial=${report.partial}`);
   console.log(`failed=${report.failed}`);
   console.log(`skipped=${report.skipped}`);
+  console.log(`codeCounts=${formatCounts(report.codeCounts as Record<string, number>)}`);
+  console.log(`uncoveredCodeCounts=${formatCounts(report.uncoveredCodeCounts as Record<string, number>)}`);
   for (const check of report.checks.filter(item => item.status !== 'skipped').slice(0, 20)) {
     console.log(`- ${check.status.toUpperCase()} ${check.productTitle ?? check.sourceFilename ?? check.queueId} [${check.codes.join(', ')}] products=${check.productsRecovered}`);
+    if (check.uncoveredCodes.length > 0) console.log(`  uncovered=${check.uncoveredCodes.join(', ')}`);
     console.log(`  ${check.reason}`);
   }
 }
@@ -97,6 +110,10 @@ async function main(): Promise<void> {
 
   if (options.strict && report.failed > 0) {
     console.error(`[upload-review-regressions] failed: ${report.failed} supported historical blocker(s) still reproduce.`);
+    process.exit(1);
+  }
+  if (options.failOnPartial && report.partial > 0) {
+    console.error(`[upload-review-regressions] failed: ${report.partial} partially covered historical blocker(s) still have unverified codes.`);
     process.exit(1);
   }
 }

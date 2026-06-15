@@ -8,7 +8,7 @@ import {
 } from './review-queue-fixture-candidates';
 import type { ProductRegistrationFailureCode } from './failure-diagnostics';
 
-export type UploadReviewRegressionStatus = 'passed' | 'failed' | 'skipped';
+export type UploadReviewRegressionStatus = 'passed' | 'partial' | 'failed' | 'skipped';
 
 export type UploadReviewRegressionCheck = {
   queueId: string;
@@ -16,6 +16,8 @@ export type UploadReviewRegressionCheck = {
   sourceFilename: string | null;
   normalizedContentHash: string | null;
   codes: ProductRegistrationFailureCode[];
+  coveredCodes: ProductRegistrationFailureCode[];
+  uncoveredCodes: ProductRegistrationFailureCode[];
   supported: boolean;
   status: UploadReviewRegressionStatus;
   reason: string;
@@ -35,8 +37,11 @@ export type UploadReviewRegressionReport = {
   dedupedRows: number;
   checked: number;
   passed: number;
+  partial: number;
   failed: number;
   skipped: number;
+  codeCounts: Partial<Record<ProductRegistrationFailureCode, number>>;
+  uncoveredCodeCounts: Partial<Record<ProductRegistrationFailureCode, number>>;
   checks: UploadReviewRegressionCheck[];
 };
 
@@ -46,6 +51,16 @@ const SUPPORTED_ITINERARY_CODES = new Set<ProductRegistrationFailureCode>([
   'CATALOG_SPLIT_REQUIRED',
   'PRODUCT_COUNT_MISMATCH',
 ]);
+
+function splitCoverage(codes: ProductRegistrationFailureCode[]): {
+  coveredCodes: ProductRegistrationFailureCode[];
+  uncoveredCodes: ProductRegistrationFailureCode[];
+} {
+  return {
+    coveredCodes: codes.filter(code => SUPPORTED_ITINERARY_CODES.has(code)),
+    uncoveredCodes: codes.filter(code => !SUPPORTED_ITINERARY_CODES.has(code)),
+  };
+}
 
 function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex');
@@ -68,8 +83,17 @@ function hasDuplicate(values: number[]): boolean {
   return new Set(values).size !== values.length;
 }
 
+function countCodes(checks: UploadReviewRegressionCheck[], field: 'codes' | 'uncoveredCodes'): Partial<Record<ProductRegistrationFailureCode, number>> {
+  const counts: Partial<Record<ProductRegistrationFailureCode, number>> = {};
+  for (const check of checks) {
+    for (const code of check[field]) counts[code] = (counts[code] ?? 0) + 1;
+  }
+  return counts;
+}
+
 function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReviewRegressionCheck {
   const candidate = buildUploadReviewFixtureCandidate(row);
+  const { coveredCodes, uncoveredCodes } = splitCoverage(candidate.codes);
   const rawText = row.raw_text_chunk ?? '';
   if (!rawText.trim()) {
     return {
@@ -78,6 +102,8 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
       sourceFilename: row.source_filename,
       normalizedContentHash: row.normalized_content_hash,
       codes: candidate.codes,
+      coveredCodes,
+      uncoveredCodes,
       supported: true,
       status: 'failed',
       reason: 'raw_text_chunk is missing; cannot replay the source failure.',
@@ -109,6 +135,8 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
       sourceFilename: row.source_filename,
       normalizedContentHash: row.normalized_content_hash,
       codes: candidate.codes,
+      coveredCodes,
+      uncoveredCodes,
       supported: true,
       status: 'failed',
       reason: `expected a recovered multi-product catalog, recovered ${products.length}.`,
@@ -127,6 +155,8 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
       sourceFilename: row.source_filename,
       normalizedContentHash: row.normalized_content_hash,
       codes: candidate.codes,
+      coveredCodes,
+      uncoveredCodes,
       supported: true,
       status: 'failed',
       reason: `recovered product still has invalid itinerary days: ${badProduct.title ?? '(untitled)'}.`,
@@ -141,9 +171,13 @@ function verifyItineraryBoundary(row: UploadReviewQueueFixtureRow): UploadReview
     sourceFilename: row.source_filename,
     normalizedContentHash: row.normalized_content_hash,
     codes: candidate.codes,
+    coveredCodes,
+    uncoveredCodes,
     supported: true,
-    status: 'passed',
-    reason: 'catalog boundaries recover clean per-product itinerary day sequences.',
+    status: uncoveredCodes.length > 0 ? 'partial' : 'passed',
+    reason: uncoveredCodes.length > 0
+      ? `supported itinerary checks passed; uncovered codes remain: ${uncoveredCodes.join(', ')}.`
+      : 'catalog boundaries recover clean per-product itinerary day sequences.',
     productsRecovered: products.length,
     productSummaries,
   };
@@ -164,6 +198,8 @@ export function buildUploadReviewRegressionReport(input: {
       sourceFilename: row.source_filename,
       normalizedContentHash: row.normalized_content_hash,
       codes: candidate.codes,
+      coveredCodes: [],
+      uncoveredCodes: candidate.codes,
       supported: false,
       status: 'skipped' as const,
       reason: 'no deterministic live replay checker is registered for these codes yet.',
@@ -178,8 +214,11 @@ export function buildUploadReviewRegressionReport(input: {
     dedupedRows: dedupedRows.length,
     checked: checks.filter(check => check.supported).length,
     passed: checks.filter(check => check.status === 'passed').length,
+    partial: checks.filter(check => check.status === 'partial').length,
     failed: checks.filter(check => check.status === 'failed').length,
     skipped: checks.filter(check => check.status === 'skipped').length,
+    codeCounts: countCodes(checks, 'codes'),
+    uncoveredCodeCounts: countCodes(checks, 'uncoveredCodes'),
     checks,
   };
 }
