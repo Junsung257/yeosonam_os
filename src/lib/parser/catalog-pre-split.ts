@@ -244,16 +244,18 @@ export function collectPkgBlockStarts(raw: string): number[] {
     /\d+\s*諛/.test(value);
 
   for (let i = 0; i < lines.length; i++) {
-    if (!/^PKG$/i.test(lines[i].trim())) continue;
+    const pkgMatch = /\bPKG\b/i.exec(lines[i]);
+    if (!pkgMatch) continue;
     const nextMeaningful = lines
       .slice(i + 1, Math.min(lines.length, i + 5))
       .map(line => line.trim())
       .find(Boolean);
     if (!nextMeaningful || !looksLikeDurationTitle(nextMeaningful)) continue;
-    starts.push(offsets[i] + Math.max(0, lines[i].indexOf('PKG')));
+    starts.push(offsets[i] + pkgMatch.index);
   }
 
   const patterns = [
+    /\b(PKG\s*\n[^\n]{4,160}\d+\s*박\s*\d+\s*일[^\n]{0,80})/g,
     /(?:^|\n)([^\n]{2,120}?\d+\s*박\s*\d+\s*일[^\n]{0,80}?\bPKG\b[^\n]{0,60})/g,
     /(?:^|\n)([^\n]{2,120}?\bPKG\b[^\n]{0,80}?\d+\s*박\s*\d+\s*일[^\n]{0,60})/g,
     /(?:^|\n)(PKG\s*\n[^\n]{4,100}\d+박\s*\d+일[^\n]{0,40})/g,

@@ -444,4 +444,38 @@ PKG
       '클락 품격 풀빌라 더비스타 2색골프 + 단독차량 4박6일',
     ]);
   });
+
+  it('splits PKG markers appended to the previous sentence before the next product title', () => {
+    const raw = `클락 골프 공통 요금표
+출발일
+6/20,21,28
+999,-
+1,159,-
+예약시 날짜별 상품가 다시 체크 부탁드립니다.  PKG
+클락 알뜰 3색골프 + 단독차량 3박5일
+2026.4.1
+일 자
+제1일
+부산 출발
+제5일
+부산 도착
+* 상기 일정은 현지 사정으로 변경될 수 있습니다.  PKG
+클락 알뜰 3색골프 + 단독차량 4박6일
+2026.4.1
+일 자
+제1일
+부산 출발
+제6일
+부산 도착`;
+
+    expect(collectPkgBlockStarts(raw)).toHaveLength(2);
+    expect(countCatalogItineraryHeaders(raw)).toBe(2);
+
+    const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(raw);
+    expect(sharedPrefix).toContain('클락 골프 공통 요금표');
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('클락 알뜰 3색골프 + 단독차량 3박5일');
+    expect(sections[0]).not.toContain('클락 알뜰 3색골프 + 단독차량 4박6일');
+    expect(sections[1]).toContain('클락 알뜰 3색골프 + 단독차량 4박6일');
+  });
 });
