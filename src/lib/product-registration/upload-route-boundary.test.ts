@@ -542,6 +542,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(verifyRoute).toContain('packageIds?: unknown');
     expect(verifyRoute).toContain('const MAX_VERIFY_PACKAGE_IDS = 50');
     expect(verifyRoute).toContain('function normalizePackageIds');
+    expect(verifyRoute).toContain('JSON 요청 본문을 확인하세요.');
     expect(verifyRoute).toContain('packageIds.length > MAX_VERIFY_PACKAGE_IDS');
     expect(verifyRoute).toContain('{ status: 413 }');
     expect(verifyRoute).toContain('Promise.all(packageIds.map(verifyOnePackage))');

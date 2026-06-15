@@ -92,7 +92,13 @@ const postHandler = async (request: NextRequest) => {
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
-    const body = await request.json() as UploadVerifyRequestBody;
+    let body: UploadVerifyRequestBody;
+    try {
+      body = await request.json() as UploadVerifyRequestBody;
+    } catch {
+      return NextResponse.json({ error: 'JSON 요청 본문을 확인하세요.' }, { status: 400 });
+    }
+
     const packageIds = normalizePackageIds(body);
     if (packageIds.length === 0) return NextResponse.json({ error: 'packageId 또는 packageIds 필요' }, { status: 400 });
     if (packageIds.length > MAX_VERIFY_PACKAGE_IDS) {
