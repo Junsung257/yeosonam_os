@@ -323,6 +323,7 @@ describe('upload route registration pipeline boundary', () => {
     expect(autoMobileQa).toContain('duration_day_only_chip');
     expect(autoMobileQa).toContain('final_arrival_rendered_as_departure');
     expect(autoMobileQa).toContain('hero_image_missing');
+    expect(autoMobileQa).toContain('customer_copy_internal_distribution_leak');
   });
 
   it('keeps archive-mode product persistence outside the route body', () => {

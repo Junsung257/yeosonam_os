@@ -63,6 +63,33 @@ function resolveNightsForPersistence(ed: ProductRegistrationResult['extractedDat
   return ed.duration ? Math.max(0, ed.duration - 1) : null;
 }
 
+function stripInternalDistributionCopy(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const cleaned = value
+    .replace(/\*?\s*선발\s*특가\s*\d{1,2}\s*\/\s*\d{1,2}\s*까지\s*\d{1,2}\s*\/\s*\d{1,2}\s*배포/gi, ' ')
+    .replace(/\*?\s*선발권\s*\d{1,2}\s*\/\s*\d{1,2}\s*까지\s*\d{1,2}[./]\d{1,2}\s*배포/gi, ' ')
+    .replace(/\d{2,4}[./]\d{1,2}[./]\d{1,2}\s*배포/gi, ' ')
+    .replace(/\d{1,2}\s*[./]\s*\d{1,2}\s*배포/gi, ' ')
+    .replace(/\d{1,2}\s*\/\s*까지/gi, ' ')
+    .replace(/\b(?:배포|문서배포|자료배포)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.length > 0 ? cleaned : null;
+}
+
+function resolveCustomerDisplayTitle(input: {
+  extractedDisplayTitle?: string | null;
+  title: string;
+}): string {
+  return stripInternalDistributionCopy(input.extractedDisplayTitle)
+    ?? stripInternalDistributionCopy(input.title)
+    ?? input.title.trim();
+}
+
+function resolveCustomerProductSummary(value: unknown): string | null {
+  return stripInternalDistributionCopy(value);
+}
+
 export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): UploadPersistenceRows {
   const ed = input.registration.extractedData;
   const draftRow = input.finalized.draftRow;
@@ -116,7 +143,10 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
       file_type: input.fileType,
       raw_text: input.productRawText,
       raw_text_hash: createHash('sha256').update(input.productRawText ?? '').digest('hex'),
-      display_title: (ed as { display_title?: string | null }).display_title?.trim() || input.title,
+      display_title: resolveCustomerDisplayTitle({
+        extractedDisplayTitle: (ed as { display_title?: string | null }).display_title,
+        title: input.title,
+      }),
       hero_tagline: (ed as { hero_tagline?: string | null }).hero_tagline ?? null,
       itinerary: ed.itinerary ?? [],
       inclusions: draftRow.inclusions ?? [],
@@ -150,7 +180,7 @@ export function buildUploadPersistenceRows(input: UploadPersistenceRowsInput): U
       commission_rate: input.filenameMarginRate != null ? input.filenameMarginRate * 100 : null,
       product_tags: ed.product_tags ?? [],
       product_highlights: ed.product_highlights ?? [],
-      product_summary: ed.product_summary ?? null,
+      product_summary: resolveCustomerProductSummary(ed.product_summary),
       itinerary_data: draftRow.itinerary_data,
       parser_version: (draftRow as { parser_version?: string }).parser_version ?? null,
       status: pkgStatus,

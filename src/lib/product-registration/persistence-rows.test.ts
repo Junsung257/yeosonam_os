@@ -107,4 +107,52 @@ describe('buildUploadPersistenceRows', () => {
 
     expect(rows.travelPackageRow.nights).toBe(3);
   });
+
+  it('strips supplier distribution markers from customer title and summary fields', () => {
+    const rows = buildUploadPersistenceRows({
+      registration: {
+        extractedData: {
+          title: 'BX 나트랑 다이아몬드베이 골프텔 *선발특가 6/25 까지 6/4 배포',
+          destination: '나트랑',
+          duration: 5,
+          trip_style: '3박5일',
+          price: 1099000,
+          product_summary: 'BX 5일 나트랑 다이아몬드베이 골프텔 *선발특가 6/ 까지 6/4 배포 스팟특가 여행',
+          rawText: 'raw',
+        },
+      } as never,
+      finalized: {
+        draftRow: {
+          inclusions: [],
+          excludes: [],
+          notices_parsed: [],
+          itinerary_data: { meta: { nights: 3, days: 5 }, days: [{ day: 1, schedule: [] }] },
+        },
+        confidenceV3: 0.9,
+        productStatus: 'REVIEW_NEEDED',
+        pkgStatus: 'pending',
+      } as never,
+      title: 'BX 나트랑 다이아몬드베이 골프텔 *선발특가 6/25 까지 6/4 배포',
+      internalCode: 'PUS-ETC-CXR-05-0004',
+      departureRegion: 'Busan',
+      supplierCode: 'ETC',
+      netPrice: 1099000,
+      marginRate: 0.09,
+      sourceFilename: 'nha-trang.txt',
+      landOperatorId: null,
+      departingLocationId: null,
+      fileType: 'txt',
+      productRawText: 'raw',
+      documentRawText: 'raw',
+      priceRows: [],
+      priceDates: [],
+      marketingCopies: [],
+      catalogGroupId: null,
+    });
+
+    expect(rows.travelPackageRow.display_title).toBe('BX 나트랑 다이아몬드베이 골프텔');
+    expect(String(rows.travelPackageRow.product_summary)).toContain('나트랑 다이아몬드베이 골프텔');
+    expect(String(rows.travelPackageRow.product_summary)).not.toContain('배포');
+    expect(String(rows.travelPackageRow.product_summary)).not.toContain('6/ 까지');
+  });
 });

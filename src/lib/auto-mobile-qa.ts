@@ -307,6 +307,14 @@ function analyzeMobileHtml(
     });
   }
 
+  if (/\b배포\b|문서배포|자료배포|\d{1,2}\s*\/\s*까지/.test(text)) {
+    incidents.push({
+      id: `${prefix}customer_copy_internal_distribution_leak`,
+      severity: 'high',
+      message: `[${surface}] 고객 문구에 내부 배포일/잘린 마감일 문구가 노출됨`,
+    });
+  }
+
   return incidents;
 }
 
