@@ -70,13 +70,20 @@ async function mergeQualityLogChecks(packageId: string, result: VerifyResult): P
 }
 
 async function verifyOnePackage(packageId: string): Promise<UploadVerifyPackageResult> {
-  const result = await runUploadVerify(packageId);
-  if (!result) {
-    return uploadVerifyErrorResult(packageId, '검증 실패 - 상품 없음 또는 DB 오류');
-  }
+  try {
+    const result = await runUploadVerify(packageId);
+    if (!result) {
+      return uploadVerifyErrorResult(packageId, '검증 실패 - 상품 없음 또는 DB 오류');
+    }
 
-  const mergedResult = await mergeQualityLogChecks(packageId, result);
-  return toUploadVerifyPackageResult(packageId, mergedResult);
+    const mergedResult = await mergeQualityLogChecks(packageId, result);
+    return toUploadVerifyPackageResult(packageId, mergedResult);
+  } catch (error) {
+    return uploadVerifyErrorResult(
+      packageId,
+      error instanceof Error ? `검증 실패 - ${error.message}` : '검증 실패 - 알 수 없는 오류',
+    );
+  }
 }
 
 const postHandler = async (request: NextRequest) => {

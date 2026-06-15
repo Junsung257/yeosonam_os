@@ -539,6 +539,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(verifyRoute).toContain('packageIds?: unknown');
     expect(verifyRoute).toContain('function normalizePackageIds');
     expect(verifyRoute).toContain('Promise.all(packageIds.map(verifyOnePackage))');
+    expect(verifyRoute).toContain('} catch (error) {');
+    expect(verifyRoute).toContain('return uploadVerifyErrorResult(');
     expect(verifyRoute).toContain('aggregateUploadVerifyResults(packageResults)');
   });
 
