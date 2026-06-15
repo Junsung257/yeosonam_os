@@ -147,4 +147,25 @@ describe('upload destination resolution Korean aliases', () => {
     expect(result.source).toBe('existing');
     expect(result.failures).toEqual([]);
   });
+
+  it('recovers Tsushima when the parser leaves supplier/ferry text in destination', () => {
+    const rawText = `4. [대마도 자연과 역사탐방 2일] - 노바 (이즈-히타)
+2026년 6월17일 & 6월 24일(수) 출발 단2회! [1박2일]
+부산 출발 / 이즈하라 향발
+대마도 사무라이거리 및 방화벽
+히타카츠 출발 / 부산 향발`;
+
+    const result = resolveUploadDestinationAndCodes({
+      destination: '4. - 노바 이즈-히타',
+      departureAirport: '부산',
+      durationDays: 2,
+      productRawText: rawText,
+      documentRawText: rawText,
+    });
+
+    expect(result.destination).toBe('대마도');
+    expect(result.source).toBe('product_raw');
+    expect(result.destinationCode).toBe('TSJ');
+    expect(result.failures).toEqual([]);
+  });
 });
