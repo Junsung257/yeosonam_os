@@ -249,6 +249,7 @@ export function collectPkgBlockStarts(raw: string): number[] {
     const nextMeaningful = lines
       .slice(i + 1, Math.min(lines.length, i + 5))
       .map(line => line.trim())
+      .filter(line => !/^---+$/.test(line))
       .find(Boolean);
     if (!nextMeaningful || !looksLikeDurationTitle(nextMeaningful)) continue;
     starts.push(offsets[i] + pkgMatch.index);

@@ -478,4 +478,32 @@ PKG
     expect(sections[0]).not.toContain('클락 알뜰 3색골프 + 단독차량 4박6일');
     expect(sections[1]).toContain('클락 알뜰 3색골프 + 단독차량 4박6일');
   });
+
+  it('splits PKG markers when a markdown separator appears before the product title', () => {
+    const raw = `공통 요금표
+PKG
+BX 서안/진시황릉+병마용 4박6일
+일 자
+제1일
+서안 도착
+제6일
+부산 도착
+PKG
+
+---
+
+[노팁/노옵션/노쇼핑] BX 서안/화산 품격 패키지 4박6일
+일 자
+제1일
+서안 도착
+제6일
+부산 도착`;
+
+    expect(collectPkgBlockStarts(raw)).toHaveLength(2);
+    const { sections } = splitCatalogByItineraryHeaders(raw);
+    expect(sections).toHaveLength(2);
+    expect(sections[0]).toContain('BX 서안/진시황릉+병마용 4박6일');
+    expect(sections[0]).not.toContain('[노팁/노옵션/노쇼핑]');
+    expect(sections[1]).toContain('[노팁/노옵션/노쇼핑] BX 서안/화산 품격 패키지 4박6일');
+  });
 });
