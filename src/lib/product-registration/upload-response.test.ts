@@ -74,4 +74,48 @@ describe('buildUploadResponsePayload learning summary', () => {
     }));
     expect((payload.learningEngine as { score: { productionReady: boolean } }).score.productionReady).toBe(false);
   });
+
+  it('uses structured diagnostics instead of uppercase BLOCKED text to decide the upload gate', async () => {
+    const payload = await buildUploadResponsePayload({
+      supabase: {} as never,
+      isSupabaseConfigured: false,
+      savedIds: [],
+      savedTitles: [],
+      savedInternalCodes: [],
+      savedConfidences: [],
+      saveErrors: [{
+        title: '시즈오카',
+        error: 'Customer landing/A4 blocked: Price source audit failed: price date disagreement: source-backed dates do not overlap recovered dates',
+      }],
+      totalPriceRowsSaved: 0,
+      savedPriceRowsByPackageId: new Map(),
+      productsToSaveLength: 1,
+      parsedDocument: { confidence: 0.4 },
+      fileHash: 'abcdef123456',
+      classification: null,
+      inputAnalysisForTrust: null,
+      preSaveV3Status: 'blocked',
+      matchedAttractionCount: 0,
+      unmatchedAttractionCount: 0,
+      attractionSeededCount: 0,
+      attractionReflectedCount: 0,
+      uploadSourceMetadata: null,
+      filenameSupplierRaw: null,
+      marginRate: 0.1,
+      fileName: 'shizuoka.txt',
+      baseUrl: 'http://localhost:3000',
+      improvementEvents: [],
+      improvementEventsSaved: 0,
+      improvementEventsSaveError: null,
+    });
+
+    expect(payload.gate).toBe('BLOCKED');
+    expect(payload.failureDiagnostics).toEqual(expect.objectContaining({
+      hasCritical: true,
+      codes: expect.arrayContaining([
+        'CUSTOMER_RENDER_BLOCKED',
+        'PRICE_DATE_DISAGREEMENT',
+      ]),
+    }));
+  });
 });

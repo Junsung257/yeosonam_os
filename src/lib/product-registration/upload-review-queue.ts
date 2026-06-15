@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
+import { summarizeProductRegistrationFailures } from './failure-diagnostics';
 
 export type UploadReviewQueueRowInput = {
   severity?: string;
@@ -27,6 +28,16 @@ export function scheduleUploadReviewInsert(input: ScheduleUploadReviewQueueInput
   const rawTextChunk = input.rawText != null
     ? safeRawTextExcerpt(input.rawText, input.rawTextLimit ?? 12000)
     : input.rawTextChunk ?? null;
+  const failureDiagnostics = summarizeProductRegistrationFailures([input.errorReason]);
+  const parsedDraftJson = {
+    ...(input.parsedDraftJson ?? {}),
+    _product_registration_failure_diagnostics: {
+      codes: failureDiagnostics.codes,
+      diagnostics: failureDiagnostics.diagnostics,
+      hasCritical: failureDiagnostics.hasCritical,
+      nextAction: failureDiagnostics.nextAction,
+    },
+  };
 
   void input.supabase
     .from('upload_review_queue')
@@ -38,7 +49,7 @@ export function scheduleUploadReviewInsert(input: ScheduleUploadReviewQueueInput
       file_hash: input.fileHash ?? null,
       normalized_content_hash: input.normalizedContentHash ?? null,
       raw_text_chunk: rawTextChunk,
-      parsed_draft_json: input.parsedDraftJson ?? null,
+      parsed_draft_json: parsedDraftJson,
       product_title: input.productTitle ?? null,
       land_operator_id: input.landOperatorId ?? null,
     })

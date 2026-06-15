@@ -44,6 +44,11 @@ const commands = [
     command: 'node',
     args: ['--check', 'scripts/audit-product-mobile-landing-readiness.mjs'],
   },
+  {
+    label: 'product registration SSOT/code contract',
+    command: 'npm',
+    args: ['run', 'check:product-registration-contract'],
+  },
   { label: 'migration prefix audit', command: 'npm', args: ['run', 'audit:migration-prefix:ci'] },
 ];
 

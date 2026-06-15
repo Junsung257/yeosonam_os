@@ -26,6 +26,7 @@
     "check:deadcode:deps": "knip --include dependencies,devDependencies --reporter compact",
     "check:doc-automation": "node scripts/check-doc-automation-contract.mjs",
     "check:doc-automation:ci": "node scripts/check-doc-automation-contract.mjs --strict",
+    "check:product-registration-contract": "node scripts/check-product-registration-contract.mjs --strict",
     "check:deps": "depcruise --config .dependency-cruiser.cjs src",
     "check:deps:circular": "depcruise --config .dependency-cruiser.cjs --output-type err src",
     "prestart": "node scripts/ensure-next-main-app-js-shim.cjs",

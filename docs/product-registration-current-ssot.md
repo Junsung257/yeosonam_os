@@ -137,6 +137,21 @@ Every micro run must create an improvement ledger event with:
 - final status: `PASS`, `AUTO_FIXED`, `REVIEW_NEEDED`, or `BLOCKED`.
 - fixture candidate and parser rule candidate flags.
 
+### Implementation Truth Status
+
+The current codebase has the central registration runner, bounded micro QA, improvement ledger, macro mining report, and mobile/A4 audit scripts. It is not yet a fully autonomous parser-rewrite system.
+
+Important implementation truth:
+
+- `runMicroAutoQA()` records the four phases but does not re-run the entire parser three times for every blocker. It performs bounded deterministic repair for currently supported repair classes, then records phase evidence.
+- The current deterministic auto-repair classes are intentionally narrow: customer selling price completion, date-level `price_dates` rebuild from existing `product_prices`, and schedule-pollution verification metadata.
+- Catalog split, stacked flight recovery, ferry detection, destination aliases, attraction cards, hotel/meal promotion, and special price-table shapes are handled by parser/normalizer modules and regression fixtures, not by an unrestricted self-modifying micro loop.
+- Upload failures must carry structured failure diagnostics in the upload response and `upload_review_queue.parsed_draft_json._product_registration_failure_diagnostics`.
+- Any repeated failure must become a fixture candidate, regression test, or explicit error-registry entry before it can be called resolved.
+- The final customer-ready claim still requires actual mobile landing and A4 proof according to `docs/product-mobile-landing-quality-runbook.md`.
+
+Therefore, when a new supplier shape fails, the correct action is not to write another high-level plan. The agent must compare the failure against this SSOT, add or update the smallest durable artifact, patch the deterministic engine, and run the required verification.
+
 Implementation status:
 
 - Micro QA runs in the central upload product runner, not in `/api/upload`.

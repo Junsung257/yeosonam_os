@@ -1,5 +1,29 @@
 # Product Registration Errors
 
+## ERR-PRODUCT-REGISTRATION-SSOT-ENFORCEMENT-GAP@2026-06-15
+
+- **Discovered**: 2026-06-15
+- **Domain**: product registration | learning engine | documentation automation | mobile landing
+- **Source vs result**: The active SSOT described a central self-improving registration engine with micro attempts, macro mining, fixtures, and mobile/A4 proof. In practice, several failures still reached the user as repeated upload/mobile issues because the implementation did not enforce the full contract on every failure path.
+- **Root cause**:
+  - The micro QA runner recorded four phase events, but did not re-run the entire parser three times for every blocker.
+  - Failure rows were stored mostly as prose `error_reason`, making repeated blocker classes harder to query and promote.
+  - Some recent fixes were reactive fixtures for individual supplier shapes instead of automatic failure-to-fixture ingestion.
+  - Mobile landing proof was documented as mandatory, but not always enforced before a readiness/completion claim.
+- **Fix**:
+  - Added structured product-registration failure diagnostics with stable blocker codes.
+  - Upload review queue rows now embed diagnostics under `_product_registration_failure_diagnostics`.
+  - Upload responses now expose `failureDiagnostics` with codes, severity, next action, and per-product blockers.
+  - Added `check:product-registration-contract` and wired it into the learning-engine verification script.
+  - Updated `docs/product-registration-current-ssot.md` with an explicit implementation truth status so future agents cannot treat documented intent as already fully enforced behavior.
+- **Verification**:
+  - `npm run check:product-registration-contract`
+  - `npx vitest run src/lib/product-registration/failure-diagnostics.test.ts src/lib/product-registration/upload-review-queue.test.ts src/lib/product-registration/upload-response.test.ts src/lib/product-registration/auto-qa.test.ts`
+- **Status**: FIXED
+- **Prevention**: Any future claim that the learning engine is complete must pass the product-registration contract check and show actual mobile/A4 proof for customer-visible changes. New repeated blockers require structured codes, fixture candidates, and regression tests.
+
+---
+
 ## ERR-BAEKDU-meal-hotel-schedule-leak@2026-06-12
 
 - **Discovered**: 2026-06-12

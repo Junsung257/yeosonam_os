@@ -15,6 +15,7 @@ import { mineProductRegistrationPatterns } from '@/lib/product-registration/patt
 import type { UploadGate } from '@/lib/upload-validator';
 import type { UploadInputAnalysis } from '@/lib/product-registration-input-guard';
 import type { UploadSourceMetadataResult } from '@/lib/upload-source-metadata';
+import { classifyProductRegistrationFailure, summarizeProductRegistrationFailures } from './failure-diagnostics';
 
 type TokenUsageSource = {
   provider?: string;
@@ -106,7 +107,15 @@ export async function buildUploadResponsePayload(input: {
 }): Promise<Record<string, unknown>> {
   const productCount = input.productsToSaveLength;
   const successCount = input.savedIds.length;
-  const blockedCount = input.saveErrors.filter(error => error.error.includes('BLOCKED')).length;
+  const saveErrorDiagnostics = input.saveErrors.map(error => ({
+    title: error.title,
+    error: error.error,
+    diagnostics: classifyProductRegistrationFailure(error.error),
+  }));
+  const failureSummary = summarizeProductRegistrationFailures(input.saveErrors.map(error => error.error));
+  const blockedCount = saveErrorDiagnostics.filter(error => (
+    error.diagnostics.some(diagnostic => diagnostic.severity === 'critical')
+  )).length;
   const overallGate: UploadGate = blockedCount > 0 && successCount === 0
     ? 'BLOCKED'
     : blockedCount > 0
@@ -214,6 +223,13 @@ export async function buildUploadResponsePayload(input: {
         productionReady: learningScore.productionReady,
         blockers: learningScore.blockers.slice(0, 12),
       },
+    },
+    failureDiagnostics: {
+      codes: failureSummary.codes,
+      diagnostics: failureSummary.diagnostics,
+      hasCritical: failureSummary.hasCritical,
+      nextAction: failureSummary.nextAction,
+      byProduct: saveErrorDiagnostics,
     },
     tokenUsage: buildTokenInfo(input.parsedDocument._tokenUsage as TokenUsageSource),
     attractionStats,
