@@ -137,6 +137,18 @@ describe('affiliate admin/attribution/promo security guards', () => {
     expect(postBody).not.toContain('PERSONAL_TAX_RATE');
   });
 
+  it('blocks manual settlement close when the affiliate is missing', () => {
+    const route = source('src/app/api/settlements/route.ts');
+    const postStart = route.indexOf('export async function POST');
+    const patchStart = route.indexOf('export async function PATCH');
+    const postBody = route.slice(postStart, patchStart);
+
+    expect(postBody).toContain(".from('affiliates')");
+    expect(postBody).toContain(".select('id, name, payout_type')");
+    expect(postBody).toContain("return errorResponse('NOT_FOUND', '어필리에이트를 찾을 수 없습니다.', 404)");
+    expect(postBody).not.toContain('applySettlementApproval(draft);\\n\\n    const { data: affiliate');
+  });
+
   it('keeps affiliate settlement draft cron idempotent by affiliate and period', () => {
     const route = source('src/app/api/cron/affiliate-settlement-draft/route.ts');
 
