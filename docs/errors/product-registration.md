@@ -33,6 +33,7 @@
 - **Domain**: product registration | mobile landing | itinerary semantics | publish gate
 - **Product**: `70965e28-55f6-47c8-8a23-d87611847e49` / `PUS-ETC-CXR-05-0004`.
 - **Source vs result**: Supplier raw text described a `3박5일` Nha Trang golf product. The customer mobile landing rendered the product as `4박 5일`, stored `호텔 미팅후 / 나트랑 공항으로 이동` in `day.hotel.name`, split excludes into broken fragments such as `석식 *토` and `일 주말...`, and exposed cart-fee surcharge rows as optional tours.
+- **Follow-up source vs result**: After the first repair, `/lp/{id}` was mostly correct but `/packages/{id}` still had route-specific failures: no hero image, day-only duration display such as `#5일`, and a final-day arrival-only flight row rendered as `김해 출발`. This proved that checking only `/lp/{id}` or only DB readiness is insufficient.
 - **Root cause**:
   - Persistence derived `nights` from `duration - 1` even when `trip_style='3박5일'` was available.
   - LP mapping rendered duration from `duration - 1` and ignored `trip_style`.
@@ -44,12 +45,17 @@
   - `itinerary-normalizer` repairs movement text incorrectly placed in `day.hotel.name` by moving it back to schedule and clearing hotel.
   - `itinerary-quality-gate` and `deliverability-gate` block hotel-field schedule text.
   - `audit-product-mobile-landing-readiness.mjs` blocks duration/trip-style mismatch, hotel-field semantic mismatch, exclude fragment corruption, and optional-tour surcharge pollution.
+  - `/packages/{id}` now receives the same destination fallback hero resolver used by LP.
+  - `/packages/{id}` duration display now uses `trip_style` before day-count fallback.
+  - `/packages/{id}` no longer renders arrival-only final-day flight rows as departure flight cards.
+  - Post-save Auto Mobile QA now flags duration defaulting, day-only duration chips, final-arrival inversion, and missing hero images.
   - Existing Nha Trang row was demoted/kept `pending` + `audit_status=blocked` while repaired data and deployment are verified.
 - **Verification**:
   - `npx vitest run src/lib/product-registration/persistence-rows.test.ts src/lib/map-travel-package-to-lp.test.ts src/lib/product-registration/deliverability-gate.test.ts`
+  - `npx vitest run src/lib/customer-package-payload.test.ts src/lib/product-registration/upload-route-boundary.test.ts`
   - `npm run type-check`
-- **Status**: FIXED IN CODE / CURRENT PRODUCT BLOCKED UNTIL LIVE MOBILE VISUAL RECHECK
-- **Prevention**: A product cannot be called ready from DB/API success alone. Final proof requires actual mobile landing verification after deployment plus source-backed checks for duration, price, itinerary, hotel fields, excludes, optional tours, media, and A4/mobile readiness.
+- **Status**: FIXED IN CODE / CURRENT PRODUCT REQUIRES POST-DEPLOY `/packages` + `/lp` MOBILE VISUAL RECHECK
+- **Prevention**: A product cannot be called ready from DB/API success alone. Final proof requires actual `/packages/{id}` and `/lp/{id}` mobile verification after deployment plus source-backed checks for duration, price, itinerary, hotel fields, excludes, optional tours, media, and A4/mobile readiness.
 
 ---
 

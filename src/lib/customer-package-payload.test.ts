@@ -117,6 +117,19 @@ describe('customer package client payload', () => {
     expect(pageSource).toContain('initialPackage={clientPackage}');
   });
 
+  it('passes package detail duration and hero render facts through the customer boundary', () => {
+    const pageSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/page.tsx'), 'utf8');
+    const detailSource = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
+
+    expect(pageSource).toContain('trip_style');
+    expect(pageSource).toContain('resolveLpHeroPhotoUrl');
+    expect(pageSource).toContain('lp_hero_image_url');
+    expect(detailSource).toContain('formatPackageDuration');
+    expect(detailSource).toContain('lp_hero_image_url');
+    expect(detailSource).toContain('isArrivalOnlyFlight');
+    expect(detailSource).toContain('&& !isArrivalOnlyFlight');
+  });
+
   it('uses the sanitizer for non-admin mixed packages API responses', () => {
     const routeSource = readFileSync(join(process.cwd(), 'src/app/api/packages/route.ts'), 'utf8');
 

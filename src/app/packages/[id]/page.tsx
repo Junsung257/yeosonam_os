@@ -18,6 +18,7 @@ import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { isUuid } from '@/lib/uuid';
+import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -127,7 +128,7 @@ function getPackageReadClient(): SupabaseClient | null {
 //   matchedNames=0 + idsFromItinerary=0 → relevantAttractions 빈 배열 → 모든 attraction 카드
 //   미표출. min_participants 가 정식 컬럼이고 min_people 은 미존재. thumbnail_urls 도 미존재.
 const DETAIL_FIELDS = `
-  id, title, destination, duration, nights, price, airline, departure_airport, departure_days,
+  id, title, destination, duration, nights, trip_style, price, airline, departure_airport, departure_days,
   min_participants, ticketing_deadline, product_type,
   price_tiers, price_dates, inclusions, excludes, surcharges, optional_tours,
   product_highlights, customer_notes, notices_parsed, itinerary_data,
@@ -661,7 +662,20 @@ export default async function PackageDetailPage({
         : {}),
     };
   })() : null;
-  const clientPackage = sanitizeCustomerPackageForClient(normalizedPkg) as React.ComponentProps<typeof DetailClient>['initialPackage'];
+  let lpHeroImageUrl: string | null = null;
+  if (normalizedPkg) {
+    try {
+      lpHeroImageUrl = await resolveLpHeroPhotoUrl(sb, normalizedPkg as { destination?: string | null; itinerary_data?: unknown });
+    } catch {
+      lpHeroImageUrl = null;
+    }
+  }
+  const clientPackage = normalizedPkg
+    ? ({
+        ...sanitizeCustomerPackageForClient(normalizedPkg),
+        lp_hero_image_url: lpHeroImageUrl,
+      } as React.ComponentProps<typeof DetailClient>['initialPackage'])
+    : null;
 
   return (
     <>

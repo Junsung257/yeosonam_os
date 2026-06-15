@@ -75,6 +75,8 @@ interface Package {
   title: string;
   destination?: string;
   duration?: number;
+  nights?: number | null;
+  trip_style?: string | null;
   price?: number;
   airline?: string;
   departure_airport?: string;
@@ -101,6 +103,7 @@ interface Package {
   display_title?: string;
   hero_tagline?: string;
   product_summary?: string;
+  lp_hero_image_url?: string | null;
   thumbnail_urls?: string[] | null;
   products?: { display_name?: string; internal_code?: string };
 }
@@ -131,6 +134,20 @@ function getTimelineIcon(type?: string, activity?: string) {
   if (activity && /식사|중식|석식|조식/.test(activity)) return { icon: '🍽️', bg: 'bg-orange-400' };
   if (activity && /이동|출발|공항/.test(activity)) return { icon: '🚌', bg: 'bg-gray-400' };
   return { icon: '📍', bg: 'bg-brand' };
+}
+
+function formatPackageDuration(pkg: Pick<Package, 'trip_style' | 'duration' | 'nights'> | null | undefined): string | null {
+  const style = typeof pkg?.trip_style === 'string' ? pkg.trip_style.trim() : '';
+  const styleMatch = style.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (styleMatch) return `${Number(styleMatch[1])}박 ${Number(styleMatch[2])}일`;
+
+  const duration = Number(pkg?.duration);
+  const nights = Number(pkg?.nights);
+  if (Number.isFinite(duration) && duration > 0 && Number.isFinite(nights) && nights >= 0) {
+    return `${nights}박 ${duration}일`;
+  }
+  if (Number.isFinite(duration) && duration > 0) return `${duration}일`;
+  return null;
 }
 
 interface RelatedBlogPost {
@@ -553,6 +570,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   }, [pkg]);
   const heroUrl = useMemo(() => {
     if (!pkg) return null;
+    if (isSafeImageSrc(pkg.lp_hero_image_url)) return pkg.lp_hero_image_url.trim();
     // destination "다낭/호이안", "방콕/파타야" 등 slash/공백 구분 → 토큰 분리 후 양방향 매칭
     const destTokens = (pkg.destination || '').split(/[\/·, ]+/).map(t => t.trim()).filter(Boolean);
     const photo = attractions.find(a =>
@@ -586,6 +604,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // Hero 멀티 슬라이드 갤러리
   const heroPhotos = useMemo(() => {
     if (!pkg) return [];
+    if (isSafeImageSrc(pkg.lp_hero_image_url)) {
+      const src = pkg.lp_hero_image_url.trim();
+      return [{ src_large: src, src_medium: src, photographer: '', pexels_id: 0 }];
+    }
     const destTokens = (pkg.destination || '').split(/[\/·, ]+/).map(t => t.trim()).filter(Boolean);
     const attrPhotos = attractions
       .filter(a => a.photos && a.photos.length > 0 && destTokens.some(t =>
@@ -620,6 +642,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
+  const durationLabel = formatPackageDuration(pkg);
 
   // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
   // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
@@ -817,7 +840,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <div className="flex flex-wrap gap-1.5 mt-2">
             {pkg.destination && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{pkg.destination}</span>}
             {airlineName && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{airlineName}</span>}
-            {pkg.duration && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{pkg.duration}일</span>}
+            {durationLabel && <span className="bg-white/18 backdrop-blur-sm text-white/90 text-[11px] px-2.5 py-1 rounded-full border border-white/10">#{durationLabel.replace(/\s+/g, '')}</span>}
           </div>
         </div>
 
@@ -966,10 +989,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             );
           })()}
           <div className="mt-4 grid grid-cols-3 gap-2 border-t border-slate-100 pt-4">
-            {pkg.duration && (
+            {durationLabel && (
               <div className="rounded-xl bg-slate-50 px-2.5 py-2">
                 <p className="text-[10px] font-semibold text-slate-500">기간</p>
-                <p className="mt-0.5 text-sm font-extrabold text-slate-900">{pkg.duration}일</p>
+                <p className="mt-0.5 text-sm font-extrabold text-slate-900">{durationLabel}</p>
               </div>
             )}
             {airlineName && (
@@ -1091,10 +1114,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 아이콘 정보바 (모두투어 스타일) ═══ */}
       <div className="flex justify-around py-5 px-4 mt-4 border-b border-gray-100">
-        {pkg.duration && (
+        {durationLabel && (
           <div className="flex flex-col items-center gap-1">
             <span className="text-xl">📅</span>
-            <span className="text-sm font-bold text-gray-700">{pkg.duration}일</span>
+            <span className="text-sm font-bold text-gray-700">{durationLabel}</span>
           </div>
         )}
         {airlineName && (
@@ -1411,7 +1434,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
                   // 항공편은 하나투어 스타일 카드로 렌더링 (첫날/마지막날만, 중간DAY는 일반 표시)
                   const isFirstOrLastDay = currentDay.day === 1 || currentDay.day === days[days.length - 1]?.day || currentDay.day === days[days.length - 2]?.day;
-                  if (item.type === 'flight' && isFirstOrLastDay) {
+                  const isArrivalOnlyFlight =
+                    item.type === 'flight' &&
+                    /도착/.test(item.activity || '') &&
+                    !/출발|향발/.test(item.activity || '');
+                  if (item.type === 'flight' && isFirstOrLastDay && !isArrivalOnlyFlight) {
                     // ERR-XIY-flight-double-render@2026-05-16 박제 — DAY 1 의 두 번째 flight item
                     // ("서안 도착") 이 잘못된 두 번째 flight 카드 ("서안 출발 → 부산 도착") 로 렌더되던 사고 차단.
                     // 도착-only item 은 앞 출발 item 의 카드에 통합됨.

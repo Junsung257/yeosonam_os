@@ -33,6 +33,8 @@ On 2026-06-15, a Nha Trang golf package showed a second class of failure: the sa
 
 This happened because readiness checks looked mostly at the existence of prices, itinerary days, and schedules. They did not compare `trip_style` against persisted `nights`, did not inspect `day.hotel.name`, did not scan exclude fragment corruption, and did not block optional-tour arrays polluted by surcharge/cart-fee text.
 
+The same incident also exposed a route-scope verification gap. `/lp/{id}` and `/packages/{id}` do not share every render path. A product can be repaired on `/lp/{id}` while `/packages/{id}` still has no hero image, still displays a day-only duration chip such as `#5일`, or renders a final-day arrival-only flight row as `김해 출발`. Therefore `/packages/{id}` is the primary customer-detail proof surface; `/lp/{id}` is an additional landing proof, not a substitute.
+
 ## Non-Negotiable Rule
 
 A product is not customer-ready until the actual mobile page is checked.
@@ -69,11 +71,15 @@ For every newly opened product or any repair of already-open products:
 12. Confirm every rendered attraction card has usable media or intentionally renders text-only without wrong media.
 13. Confirm option, price, shopping, notice, catalog-header, and pure-transfer lines do not become attraction cards.
 14. Open `/packages/{id}` in a mobile viewport.
-15. Click or scroll into the itinerary tab/section.
-16. Search the rendered body text for required itinerary terms, required flight times, and known forbidden terms.
-17. Run the A4/mobile readiness audit.
-18. Add or update a regression fixture when the failure came from parser/matcher behavior.
-19. Add an error-registry entry when the failure was user-visible or repeated.
+15. Open `/lp/{id}` in a mobile viewport when the product has an LP route.
+16. Confirm both customer surfaces show a representative image when a safe destination/attraction image exists.
+17. Confirm duration chips/cards use the source-backed `N박M일` value, not only `M일`.
+18. Confirm final-day arrival-only flight rows render as arrival text and never as a new departure card.
+19. Click or scroll into the itinerary tab/section.
+20. Search the rendered body text for required itinerary terms, required flight times, and known forbidden terms.
+21. Run the A4/mobile readiness audit.
+22. Add or update a regression fixture when the failure came from parser/matcher behavior.
+23. Add an error-registry entry when the failure was user-visible or repeated.
 
 ## Commands
 
@@ -116,8 +122,12 @@ For active/open products, at least one representative page per raw supplier sour
 The browser check must verify:
 
 - HTTP status is 200.
+- at least one usable hero/representative image is rendered when image data exists or can be resolved from destination.
 - the itinerary tab/section is reachable.
+- the route being checked is explicit: `/packages/{id}` and `/lp/{id}` findings must be reported separately.
+- source-backed `N박M일` duration is visible and no fallback `M일`-only chip/card replaces it on `/packages/{id}`.
 - source-backed outbound and inbound flight times are visible.
+- final-day arrival text is not inverted into `{homeCity} 출발`.
 - required source terms are visible in the rendered customer text.
 - known wrong terms are absent.
 - images are present when the itinerary contains attraction cards with media.

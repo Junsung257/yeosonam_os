@@ -32,11 +32,18 @@ type ItineraryDay = {
 
 type ExpectedRender = {
   title: string | null;
+  destination: string | null;
+  tripStyle: string | null;
+  duration: number | null;
+  nights: number | null;
   hotelNames: string[];
   hasOptionalTours: boolean;
   status: string | null;
   shortCode: string | null;
   internalCode: string | null;
+  lastDayNumber: number | null;
+  lastDayArrivalCity: string | null;
+  homeCity: string | null;
 };
 
 const AUTO_QA_CHECK_PREFIXES = [
@@ -53,14 +60,29 @@ function isAutoQACheck(check: unknown): boolean {
 }
 
 async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
+  const empty: ExpectedRender = {
+    title: null,
+    destination: null,
+    tripStyle: null,
+    duration: null,
+    nights: null,
+    hotelNames: [],
+    hasOptionalTours: false,
+    status: null,
+    shortCode: null,
+    internalCode: null,
+    lastDayNumber: null,
+    lastDayArrivalCity: null,
+    homeCity: null,
+  };
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, itinerary_data, optional_tours, status, short_code, internal_code')
+      .select('title, display_title, destination, duration, nights, trip_style, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
-      return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null, internalCode: null };
+      return empty;
     }
 
     const title = (data as { display_title?: string | null; title?: string | null }).display_title
@@ -70,6 +92,16 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     const days: ItineraryDay[] = Array.isArray((data as { itinerary_data?: { days?: ItineraryDay[] } }).itinerary_data?.days)
       ? ((data as { itinerary_data: { days: ItineraryDay[] } }).itinerary_data.days)
       : [];
+    const lastDay = days.at(-1) as (ItineraryDay & { day?: number; schedule?: Array<{ activity?: string | null; type?: string | null }> }) | undefined;
+    const lastArrival = lastDay?.schedule?.find(item =>
+      item?.type === 'flight'
+      && /도착/.test(String(item.activity ?? ''))
+      && !/출발|향발/.test(String(item.activity ?? '')),
+    );
+    const lastDayArrivalCity = extractCityFromArrival(String(lastArrival?.activity ?? ''));
+    const homeCity = String((data as { departure_airport?: string | null }).departure_airport ?? '')
+      .replace(/\s*(국제)?공항.*$/, '')
+      .trim() || lastDayArrivalCity;
     // 마지막 날은 hotel.name null 정상 (귀국일). 0..N-2 만 검사 대상.
     const hotelNames = days
       .slice(0, Math.max(0, days.length - 1))
@@ -81,15 +113,44 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
 
     return {
       title,
+      destination: (data as { destination?: string | null }).destination ?? null,
+      tripStyle: (data as { trip_style?: string | null }).trip_style ?? null,
+      duration: typeof (data as { duration?: unknown }).duration === 'number' ? (data as { duration: number }).duration : null,
+      nights: typeof (data as { nights?: unknown }).nights === 'number' ? (data as { nights: number }).nights : null,
       hotelNames,
       hasOptionalTours,
       status: (data as { status?: string | null }).status ?? null,
       shortCode: (data as { short_code?: string | null }).short_code ?? null,
       internalCode: (data as { internal_code?: string | null }).internal_code ?? null,
+      lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
+      lastDayArrivalCity,
+      homeCity,
     };
   } catch {
-    return { title: null, hotelNames: [], hasOptionalTours: false, status: null, shortCode: null, internalCode: null };
+    return empty;
   }
+}
+
+function parseTripStyle(value: string | null | undefined): { nights: number; days: number } | null {
+  const match = String(value ?? '').match(/(\d+)\s*박\s*(\d+)\s*일/);
+  return match ? { nights: Number(match[1]), days: Number(match[2]) } : null;
+}
+
+function extractCityFromArrival(activity: string): string | null {
+  const match = activity
+    .replace(/^[A-Z0-9]{2,5}\s+/, '')
+    .match(/^(.+?)(?:국제)?공항?\s*도착/);
+  return match?.[1]?.trim() || null;
+}
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function extractCoreTitleTokens(title: string): string[] {
@@ -120,6 +181,7 @@ function analyzeMobileHtml(
 ): QAIncident[] {
   const prefix = surface === 'lp' ? 'lp_' : 'mobile_';
   const incidents: QAIncident[] = [];
+  const text = htmlToText(html);
 
   for (const rule of LEAK_PATTERNS) {
     const match = html.match(rule.pattern);
@@ -200,6 +262,48 @@ function analyzeMobileHtml(
       id: `${prefix}optional_tours_missing`,
       severity: 'high',
       message: `[${surface}] optional_tours DB 에 있으나 섹션 미렌더`,
+    });
+  }
+
+  const trip = parseTripStyle(expected.tripStyle);
+  if (trip) {
+    const wrongDefaultNightLabel = `${trip.days - 1}박 ${trip.days}일`;
+    if (trip.nights !== trip.days - 1 && text.includes(wrongDefaultNightLabel)) {
+      incidents.push({
+        id: `${prefix}duration_trip_style_wrong_default`,
+        severity: 'critical',
+        message: `[${surface}] trip_style=${expected.tripStyle} 인데 ${wrongDefaultNightLabel}로 렌더됨`,
+      });
+    }
+    const dayOnlyChip = `#${trip.days}일`;
+    const expectedChip = `#${trip.nights}박${trip.days}일`;
+    if (surface === 'packages' && text.includes(dayOnlyChip) && !text.includes(expectedChip)) {
+      incidents.push({
+        id: `${prefix}duration_day_only_chip`,
+        severity: 'high',
+        message: `[${surface}] 기간 칩이 ${expectedChip} 대신 ${dayOnlyChip}로 렌더됨`,
+      });
+    }
+  }
+
+  if (expected.lastDayNumber && expected.homeCity && expected.lastDayArrivalCity) {
+    const dayMarker = `DAY ${expected.lastDayNumber}`;
+    const dayIndex = text.indexOf(dayMarker);
+    const dayText = dayIndex >= 0 ? text.slice(dayIndex, dayIndex + 700) : '';
+    if (dayText.includes(`${expected.homeCity} 출발`) || dayText.includes(`${expected.lastDayArrivalCity} 출발`)) {
+      incidents.push({
+        id: `${prefix}final_arrival_rendered_as_departure`,
+        severity: 'critical',
+        message: `[${surface}] 마지막 DAY 도착행이 출발 문구로 렌더됨 (${expected.lastDayArrivalCity} 도착 expected)`,
+      });
+    }
+  }
+
+  if (expected.destination && !/<img\b|_next\/image|images\.pexels\.com|supabase\.co\/storage/i.test(html)) {
+    incidents.push({
+      id: `${prefix}hero_image_missing`,
+      severity: surface === 'packages' ? 'high' : 'medium',
+      message: `[${surface}] 고객 첫 화면 대표 이미지가 감지되지 않음`,
     });
   }
 

@@ -316,6 +316,15 @@ describe('upload route registration pipeline boundary', () => {
     expect(autoMobileQa).toContain(".from('products')");
   });
 
+  it('post-save mobile QA checks semantic package render failures, not only page availability', () => {
+    const autoMobileQa = readFileSync(join(process.cwd(), 'src/lib/auto-mobile-qa.ts'), 'utf8');
+
+    expect(autoMobileQa).toContain('duration_trip_style_wrong_default');
+    expect(autoMobileQa).toContain('duration_day_only_chip');
+    expect(autoMobileQa).toContain('final_arrival_rendered_as_departure');
+    expect(autoMobileQa).toContain('hero_image_missing');
+  });
+
   it('keeps archive-mode product persistence outside the route body', () => {
     const route = readUploadRoute();
     const pipeline = readUploadRegistrationPipeline();
