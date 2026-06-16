@@ -6,6 +6,7 @@ import {
   JOURNEY_STEPS, ALLOWED_TRANSITIONS, getStepIndex,
   getStatusLabel, getStatusBadgeClass,
 } from '@/lib/booking-state-machine';
+import { BookingDrawerOpsSummary } from '@/components/admin/booking-ops/BookingDrawerOpsSummary';
 import { BookingDrawerNextActions } from '@/components/admin/booking-ops/BookingDrawerNextActions';
 import LedgerViewer from './LedgerViewer';
 import { fmtMonthDayTime } from '@/lib/admin-utils';
@@ -1268,6 +1269,14 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                     </div>
                   </div>
                 )}
+
+                <BookingDrawerOpsSummary
+                  booking={booking}
+                  totalSale={blueprint.totalSale}
+                  effectiveNet={blueprint.effectiveNet}
+                  actualIncome={reality.actualIncome}
+                  actualExpense={reality.actualExpense}
+                />
 
                 {booking.status === 'pending' && booking.deposit_notice_blocked && (
                   <div className="rounded-xl bg-amber-50 border border-amber-200/80 p-3 space-y-2">
