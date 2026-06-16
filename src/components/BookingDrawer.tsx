@@ -7,6 +7,7 @@ import {
   getStatusLabel, getStatusBadgeClass,
 } from '@/lib/booking-state-machine';
 import { BookingDrawerOpsSummary } from '@/components/admin/booking-ops/BookingDrawerOpsSummary';
+import { BookingDrawerOpsTimeline } from '@/components/admin/booking-ops/BookingDrawerOpsTimeline';
 import { BookingDrawerNextActions } from '@/components/admin/booking-ops/BookingDrawerNextActions';
 import LedgerViewer from './LedgerViewer';
 import { fmtMonthDayTime } from '@/lib/admin-utils';
@@ -1352,6 +1353,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                     )}
                   </div>
                 </div>
+
+                <BookingDrawerOpsTimeline bookingId={booking.id} />
 
                 {/* Activity Log + Memo */}
                 <div className="bg-white rounded-2xl ring-1 ring-gray-900/5 shadow-sm p-4">
