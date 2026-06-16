@@ -1,6 +1,6 @@
 import type { VerifyCheck, VerifyResult } from '@/lib/upload-verify';
 
-export type UploadVerifyUiStatus = VerifyResult['status'] | 'error';
+type UploadVerifyUiStatus = VerifyResult['status'] | 'error';
 
 export type UploadVerifyPackageResult = {
   packageId: string;

@@ -1,13 +1,13 @@
-import { supabaseAdmin, isSupabaseConfigured, getMessageLogs } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, getMessageLogs } from '@/lib/supabase';
 import BookingDetailClient, { type BookingDetail } from './BookingDetailClient';
 
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const dynamic = 'force-dynamic';
 
 export default async function BookingDetailPage(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
 
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return <BookingDetailClient params={params} />;
   }
 

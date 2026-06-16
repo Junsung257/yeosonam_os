@@ -1,9 +1,13 @@
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import PackagesPageClient from './PackagesPageClient';
 
-export const revalidate = 30;
+export const dynamic = 'force-dynamic';
 
 export default async function PackagesPage() {
+  if (!isSupabaseAdminConfigured) {
+    return <PackagesPageClient initialPackages={[]} />;
+  }
+
   const { data } = await supabaseAdmin
     .from('travel_packages')
     .select(`

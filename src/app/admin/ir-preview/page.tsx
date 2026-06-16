@@ -9,7 +9,7 @@
  *   - [재생성] → LLM 재호출 (engine=claude|gemini 선택)
  */
 
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import IrPreviewClient from './IrPreviewClient';
 import { PageHeader } from '@/components/admin/patterns';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
@@ -17,6 +17,8 @@ import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
 export const dynamic = 'force-dynamic';
 
 async function loadDrafts() {
+  if (!isSupabaseAdminConfigured) return [];
+
   const { data, error } = await supabaseAdmin
     .from('normalized_intakes')
     .select('id, raw_text, ir, land_operator, region, normalizer_version, status, canary_mode, judge_verdict, judge_report, created_at, updated_at')

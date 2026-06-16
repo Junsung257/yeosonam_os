@@ -1,10 +1,14 @@
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 import AdminPageClient, { type TravelPackage } from './AdminPageClient';
 
-// Next 15: 정적 평가만 가능. 항상 'auto' (운영 동작 유지).
-export const dynamic = 'auto';
+// Admin data depends on request-time Supabase credentials and must not prerender.
+export const dynamic = 'force-dynamic';
 
 export default async function AdminPage() {
+  if (!isSupabaseAdminConfigured) {
+    return <AdminPageClient initialPendingPackages={[]} initialPackages={[]} />;
+  }
+
   // 대시보드에서 가장 먼저 보이는 데이터: 승인대기 + 전체 패키지 목록
   // Promise.all로 병렬 조회 — 클라이언트 useEffect waterfall 제거
   // Server prefetch is only a speed hint. Keep the page renderable even if a

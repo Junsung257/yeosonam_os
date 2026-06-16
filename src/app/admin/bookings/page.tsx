@@ -1,10 +1,8 @@
 import { Suspense } from 'react';
-import { getBookings } from '@/lib/supabase';
+import { getBookings, isSupabaseAdminConfigured } from '@/lib/supabase';
 import BookingsPageClient from './BookingsPageClient';
 
-// Windows local: force-dynamic was used to avoid chunk races.
-// Vercel/Linux: auto passes server-prefetched data to the client.
-export const dynamic = 'auto';
+export const dynamic = 'force-dynamic';
 
 type BookingListRow = {
   id: string;
@@ -72,7 +70,9 @@ function BookingsPageFallback() {
 }
 
 export default async function BookingsPage() {
-  const initialBookings = await getBookings(undefined, undefined, { lite: true });
+  const initialBookings = isSupabaseAdminConfigured
+    ? await getBookings(undefined, undefined, { lite: true })
+    : [];
 
   return (
     <Suspense fallback={<BookingsPageFallback />}>

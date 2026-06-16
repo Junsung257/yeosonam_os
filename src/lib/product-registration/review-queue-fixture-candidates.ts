@@ -114,7 +114,7 @@ function uniqueDiagnostics(
   return result;
 }
 
-export function expectedAssertionsForCodes(codes: ProductRegistrationFailureCode[]): string[] {
+function expectedAssertionsForCodes(codes: ProductRegistrationFailureCode[]): string[] {
   const assertions = new Set<string>();
   for (const code of codes) {
     if (code.startsWith('PRICE_') || code === 'MODEL_PRICE_UNSUPPORTED') {
@@ -152,7 +152,7 @@ export function expectedAssertionsForCodes(codes: ProductRegistrationFailureCode
   return [...assertions].sort();
 }
 
-export function targetModulesForCodes(codes: ProductRegistrationFailureCode[]): string[] {
+function targetModulesForCodes(codes: ProductRegistrationFailureCode[]): string[] {
   const modules = new Set<string>([
     'src/lib/product-registration/register-product-from-raw.ts',
     'src/lib/product-registration/deliverability-gate.ts',

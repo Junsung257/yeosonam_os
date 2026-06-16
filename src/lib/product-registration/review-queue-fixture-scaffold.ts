@@ -1,6 +1,6 @@
 import type { UploadReviewFixtureCandidate } from './review-queue-fixture-candidates';
 
-export type UploadReviewFixtureScaffoldFile = {
+type UploadReviewFixtureScaffoldFile = {
   path: string;
   content: string;
 };

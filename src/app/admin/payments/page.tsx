@@ -1,9 +1,9 @@
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { Suspense } from 'react';
 import PaymentsPageClient from './PaymentsPageClient';
 import type { BankTransaction, BookingFull } from './PaymentsPageClient';
 
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const dynamic = 'force-dynamic';
 
 function PaymentsPageFallback() {
   return (
@@ -26,7 +26,7 @@ function PaymentsPageFallback() {
 }
 
 export default async function PaymentsPage() {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return (
       <Suspense fallback={<PaymentsPageFallback />}>
         <PaymentsPageClient />

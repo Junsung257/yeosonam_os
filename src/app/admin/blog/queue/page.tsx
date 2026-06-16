@@ -1,10 +1,10 @@
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import BlogQueueClient from './BlogQueueClient';
 
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const dynamic = 'force-dynamic';
 
 export default async function BlogQueuePage() {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return <BlogQueueClient />;
   }
 

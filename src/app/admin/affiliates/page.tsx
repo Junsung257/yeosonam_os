@@ -1,9 +1,8 @@
 import { Suspense } from 'react';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import AffiliatesPageClient from './AffiliatesPageClient';
 
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
-export const revalidate = 60;
+export const dynamic = 'force-dynamic';
 
 function AffiliatesSkeleton() {
   return (
@@ -37,7 +36,7 @@ function AffiliatesSkeleton() {
 }
 
 async function AffiliatesDataFetcher() {
-  const affiliates = isSupabaseConfigured
+  const affiliates = isSupabaseAdminConfigured
     ? await supabaseAdmin
         .from('affiliates')
         .select(

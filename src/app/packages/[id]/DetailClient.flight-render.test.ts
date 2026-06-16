@@ -6,7 +6,8 @@ describe('packages DetailClient flight rendering', () => {
   it('does not hide detailed itinerary flight cards just because a top flight header exists', () => {
     const source = readFileSync(join(process.cwd(), 'src/app/packages/[id]/DetailClient.tsx'), 'utf8');
 
-    expect(source).toContain("if (item.type === 'flight' && isFirstOrLastDay)");
+    expect(source).toContain("if (item.type === 'flight' && isFirstOrLastDay && !isArrivalOnlyFlight)");
+    expect(source).toContain("const isArrivalOnlyFlight =");
     expect(source).not.toContain("hasCanonicalFlightHeader && item.type === 'flight'");
   });
 });

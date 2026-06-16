@@ -1,4 +1,4 @@
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import {
   RefreshCw,
   BarChart3,
@@ -19,6 +19,8 @@ import {
   ArrowDown,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
+
+export const dynamic = 'force-dynamic';
 
 // ── 타입 ─────────────────────────────────────────────────
 
@@ -117,7 +119,7 @@ const TAB_ITEMS = [
 // ── 서버 데이터 페칭 ────────────────────────────────────
 
 async function fetchAttributionSummary(): Promise<AttributionRow[]> {
-  if (!isSupabaseConfigured) return [];
+  if (!isSupabaseAdminConfigured) return [];
   const { data } = await supabaseAdmin
     .from('attribution_summary')
     .select('*')
@@ -127,7 +129,7 @@ async function fetchAttributionSummary(): Promise<AttributionRow[]> {
 }
 
 async function fetchAbExperiments(): Promise<(AbExperiment & { variants: { name: string; views: number; conversions: number }[] })[]> {
-  if (!isSupabaseConfigured) return [];
+  if (!isSupabaseAdminConfigured) return [];
   const { data: experiments } = await supabaseAdmin
     .from('ab_experiments')
     .select('*')
@@ -152,7 +154,7 @@ async function fetchAbExperiments(): Promise<(AbExperiment & { variants: { name:
 }
 
 async function fetchContentReviewQueue(): Promise<ContentReviewItem[]> {
-  if (!isSupabaseConfigured) return [];
+  if (!isSupabaseAdminConfigured) return [];
   const { data } = await supabaseAdmin
     .from('content_review_queue')
     .select('*')
@@ -163,7 +165,7 @@ async function fetchContentReviewQueue(): Promise<ContentReviewItem[]> {
 }
 
 async function fetchRfmData(): Promise<{ segments: RfmSegment[]; total: number }> {
-  if (!isSupabaseConfigured) return { segments: [], total: 0 };
+  if (!isSupabaseAdminConfigured) return { segments: [], total: 0 };
   const [{ data: rfm }, { data: countData }] = await Promise.all([
     supabaseAdmin
       .from('customer_rfm')
@@ -178,7 +180,7 @@ async function fetchRfmData(): Promise<{ segments: RfmSegment[]; total: number }
 }
 
 async function fetchPredictiveInsights(): Promise<PredictiveInsight[]> {
-  if (!isSupabaseConfigured) return [];
+  if (!isSupabaseAdminConfigured) return [];
   const { data } = await supabaseAdmin
     .from('predictive_insights')
     .select('*')

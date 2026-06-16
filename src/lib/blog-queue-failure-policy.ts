@@ -1,4 +1,4 @@
-export type BlogQueueFailureCode =
+type BlogQueueFailureCode =
   | 'duplicate_content'
   | 'context_missing'
   | 'keyword_density'

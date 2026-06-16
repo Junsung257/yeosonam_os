@@ -1,20 +1,23 @@
 {
   "note": "Historical Knip baseline. Updated after 2026-06-12 triage: direct missing deps and three unused files were fixed/removed; remaining entries are mostly exported domain APIs and type surfaces requiring domain-aware cleanup, not bulk deletion.",
-  "reviewed_at": "2026-06-12",
+  "reviewed_at": "2026-06-16",
   "counts": {
-    "total": 1036,
+    "total": 1038,
     "by_type": {
-      "binaries": 1,
+      "binaries": 4,
       "duplicates": 2,
       "exports": 500,
       "files": 76,
-      "types": 420,
+      "types": 419,
       "unlisted": 5,
       "unresolved": 32
     }
   },
   "issues": [
     "binaries:.github/workflows/supabase-types.yml:supabase",
+    "binaries:scripts/check-deadcode-baseline.mjs:cmd.exe",
+    "binaries:scripts/supabase-auth-open-gate.mjs:supabase",
+    "binaries:scripts/verify-jarvis-readiness.ts:cmd.exe",
     "duplicates:src/lib/package-schema.ts:DepartureDaysLooseSchema,DepartureDaysSchema",
     "duplicates:src/lib/visibility-status.ts:CUSTOMER_VISIBLE_STATUSES,SCORING_ELIGIBLE_STATUSES",
     "exports:src/app/admin/search-ads/SearchAdsReadinessPanelModel.ts:SEARCH_ADS_CHANNELS",
@@ -985,7 +988,6 @@
     "types:src/lib/upload-source-metadata.ts:UploadSourceMetadataIssue",
     "types:src/lib/upload-source-metadata.ts:UploadSourceMetadataSource",
     "types:src/lib/upload-validator.ts:ExtractedProductInput",
-    "types:src/lib/upload-verify.ts:VerifyCheck",
     "types:src/lib/user-actions.ts:UserActionRow",
     "types:src/lib/validators/content-brief.ts:CardSlideV2",
     "types:src/lib/validators/content-brief.ts:SlideRole",

@@ -1,11 +1,11 @@
-import { supabaseAdmin, isSupabaseConfigured, getCardNewsList } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, getCardNewsList } from '@/lib/supabase';
 import type { CardNews } from '@/lib/supabase';
 import CardNewsListPageClient from './CardNewsListPageClient';
 
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const dynamic = 'force-dynamic';
 
 export default async function CardNewsPage() {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return <CardNewsListPageClient />;
   }
 

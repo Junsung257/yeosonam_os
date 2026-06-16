@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { PageHeader } from '@/components/admin/patterns';
 import SensitiveRawText from '@/components/admin/SensitiveRawText';
 import { safeRawTextExcerpt } from '@/lib/raw-text-privacy';
-import { supabaseAdmin } from '@/lib/supabase';
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,6 +21,8 @@ type DraftRow = {
 };
 
 async function loadDrafts(): Promise<DraftRow[]> {
+  if (!isSupabaseAdminConfigured) return [];
+
   const { data, error } = await supabaseAdmin
     .from('product_registration_drafts')
     .select('id, package_id, raw_text, supplier_hint, document_type, structure_plan, ledger, match_summary, gate_result, status, created_at')

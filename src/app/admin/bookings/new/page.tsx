@@ -1,12 +1,12 @@
 import { Suspense } from 'react';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { NewBookingFormClient } from './NewBookingFormClient';
 
 interface ServerPackage { id: string; title: string; destination?: string; price?: number; }
 interface ServerCustomer { id: string; name: string; phone?: string; passport_expiry?: string; }
 
-export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const dynamic = 'force-dynamic';
 
 const GRADE_LABELS: Record<number, string> = { 1: '브론즈', 2: '실버', 3: '골드', 4: '플래티넘', 5: '다이아' };
 
@@ -31,7 +31,7 @@ function NewBookingFallback() {
 }
 
 export default async function NewBookingPage() {
-  if (!isSupabaseConfigured) {
+  if (!isSupabaseAdminConfigured) {
     return (
       <Suspense fallback={<NewBookingFallback />}>
         <NewBookingFormClient />

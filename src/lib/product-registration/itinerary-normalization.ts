@@ -65,11 +65,18 @@ function prunePollutedScheduleItems<T extends ItineraryDataLike | null>(itinerar
   const removed: Array<{ day: number | null; activity: string; reason: string }> = [];
   const days = itineraryData.days.map(day => {
     const issues = findItineraryScheduleQualityIssues([day as ItineraryScheduleQualityDay]);
-    if (issues.length === 0 || !Array.isArray(day.schedule)) return day;
+    if (issues.length === 0) return day;
 
-    const pollutedActivities = new Set(issues.map(issue => activityKey(issue.activity)));
-    const schedule = day.schedule.filter(item => !pollutedActivities.has(activityKey(item.activity)));
-    if (schedule.length === day.schedule.length) return day;
+    const hotelIssue = issues.find(issue => issue.code === 'ITINERARY_HOTEL_FIELD_SCHEDULE_TEXT');
+    const scheduleIssues = issues.filter(issue => issue.code !== 'ITINERARY_HOTEL_FIELD_SCHEDULE_TEXT');
+    const pollutedActivities = new Set(scheduleIssues.map(issue => activityKey(issue.activity)));
+    const scheduleItems = Array.isArray(day.schedule) ? day.schedule : null;
+    const schedule = scheduleItems
+      ? scheduleItems.filter(item => !pollutedActivities.has(activityKey(item.activity)))
+      : null;
+    const scheduleChanged = Boolean(scheduleItems && schedule && schedule.length !== scheduleItems.length);
+    const hotelChanged = Boolean(hotelIssue && day.hotel);
+    if (!scheduleChanged && !hotelChanged) return day;
 
     changed = true;
     removed.push(...issues.map(issue => ({
@@ -77,7 +84,11 @@ function prunePollutedScheduleItems<T extends ItineraryDataLike | null>(itinerar
       activity: issue.activity,
       reason: issue.reason,
     })));
-    return { ...day, schedule };
+    return {
+      ...day,
+      ...(scheduleChanged ? { schedule } : {}),
+      ...(hotelChanged ? { hotel: null } : {}),
+    };
   });
 
   return {
@@ -134,13 +145,16 @@ export async function normalizeUploadItinerary(input: {
       (postProcessItineraryData(enrichment.itineraryData ?? itineraryInput ?? input.itineraryData ?? null) ?? null) as ItineraryDataLike | null,
     ),
   );
-  const itineraryDataToSave = attachShoppingHighlight(
-    mergeRawTextMealEvidence(
-      normalizeStructuredItineraryEntities(finalPrune.itineraryData),
-      input.productRawText,
+  const postMergePrune = prunePollutedScheduleItems(
+    attachShoppingHighlight(
+      mergeRawTextMealEvidence(
+        normalizeStructuredItineraryEntities(finalPrune.itineraryData),
+        input.productRawText,
+      ),
+      extractCatalogShoppingForRender(input.productRawText),
     ),
-    extractCatalogShoppingForRender(input.productRawText),
   );
+  const itineraryDataToSave = postMergePrune.itineraryData;
 
   const extractedCandidateRows: Array<{ activity: string; destination?: string }> = [];
   for (const day of itineraryDataToSave?.days ?? []) {
@@ -168,7 +182,7 @@ export async function normalizeUploadItinerary(input: {
     extractedCandidateRows,
     fallbackApplied,
     fallbackAirline,
-    removedPollutedScheduleItems: [...initialPrune.removed, ...finalPrune.removed],
+    removedPollutedScheduleItems: [...initialPrune.removed, ...finalPrune.removed, ...postMergePrune.removed],
     warnings,
   };
 }

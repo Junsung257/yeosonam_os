@@ -1,4 +1,4 @@
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import PoliciesClient, { type Policy } from './PoliciesClient';
 
 /**
@@ -21,7 +21,7 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 async function loadPolicies(): Promise<Policy[]> {
-  if (!isSupabaseConfigured) return [];
+  if (!isSupabaseAdminConfigured) return [];
   const { data, error } = await supabaseAdmin
     .from('publishing_policies')
     .select('*')
@@ -35,5 +35,5 @@ async function loadPolicies(): Promise<Policy[]> {
 
 export default async function PublishingPoliciesPage() {
   const initial = await loadPolicies();
-  return <PoliciesClient initial={initial} configured={isSupabaseConfigured} />;
+  return <PoliciesClient initial={initial} configured={isSupabaseAdminConfigured} />;
 }

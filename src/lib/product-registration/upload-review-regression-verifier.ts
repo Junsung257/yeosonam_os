@@ -13,9 +13,9 @@ import type { ProductRegistrationFailureCode } from './failure-diagnostics';
 import { readSupplierDocumentLikeHuman } from './ai-human-reader';
 import { resolveUploadDestinationAndCodes } from './destination-resolution';
 
-export type UploadReviewRegressionStatus = 'passed' | 'partial' | 'failed' | 'skipped';
+type UploadReviewRegressionStatus = 'passed' | 'partial' | 'failed' | 'skipped';
 
-export type UploadReviewRegressionCheck = {
+type UploadReviewRegressionCheck = {
   queueId: string;
   productTitle: string | null;
   sourceFilename: string | null;

@@ -1,10 +1,8 @@
 import { Suspense } from 'react';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import FreeTravelPageClient from './FreeTravelPageClient';
 
-// Next 15: 정적 평가만 가능. 항상 'auto' + 30초 캐시.
-export const dynamic = 'auto';
-export const revalidate = 30;
+export const dynamic = 'force-dynamic';
 
 function FreeTravelSkeleton() {
   return (
@@ -30,7 +28,7 @@ function FreeTravelSkeleton() {
 }
 
 async function computeItineraryMetrics(windowDays: number) {
-  if (!isSupabaseConfigured || !supabaseAdmin) return null;
+  if (!isSupabaseAdminConfigured) return null;
   const since = new Date(Date.now() - windowDays * 86400000).toISOString();
   const { data, error } = await supabaseAdmin
     .from('free_travel_sessions')
@@ -64,7 +62,7 @@ async function computeItineraryMetrics(windowDays: number) {
 
 async function FreeTravelDataFetcher() {
   const [sessions, m7, m30, m90] = await Promise.all([
-    isSupabaseConfigured
+    isSupabaseAdminConfigured
       ? supabaseAdmin
           .from('free_travel_sessions')
           .select(
