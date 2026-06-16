@@ -4,6 +4,7 @@ import {
   enrichItineraryWithAttractionReferences,
   shouldAttemptAttractionMatch,
   type ItineraryDataLike,
+  type ItineraryDayLike,
 } from '@/lib/itinerary-attraction-enricher';
 import { postProcessItineraryData } from '@/lib/package-post-process';
 import {
@@ -55,6 +56,78 @@ function activityKey(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
 
+function dayNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+}
+
+function dayCompletenessScore(day: ItineraryDayLike): number {
+  const schedule = Array.isArray(day.schedule) ? day.schedule : [];
+  const text = JSON.stringify({
+    schedule,
+    hotel: day.hotel ?? null,
+    meals: day.meals ?? null,
+  });
+  const hotelBonus = day.hotel && typeof day.hotel === 'object' ? 20 : 0;
+  const mealsBonus = day.meals && typeof day.meals === 'object' ? 20 : 0;
+  return schedule.length * 100 + text.length + hotelBonus + mealsBonus;
+}
+
+function collapseDuplicateDayEntries<T extends ItineraryDataLike | null>(itineraryData: T, durationDays?: number | null): {
+  itineraryData: T;
+  warnings: string[];
+} {
+  const days = itineraryData?.days;
+  if (!days?.length) return { itineraryData, warnings: [] };
+
+  const numbered = days.map((day, index) => ({ day, index, number: dayNumber(day.day) }));
+  const validNumbers = numbered
+    .map(row => row.number)
+    .filter((value): value is number => value !== null);
+  const uniqueNumbers = new Set(validNumbers);
+  if (uniqueNumbers.size === validNumbers.length) return { itineraryData, warnings: [] };
+
+  const maxNumber = Math.max(...uniqueNumbers);
+  const boundedByDuration = typeof durationDays === 'number' && durationDays > 0;
+  if (boundedByDuration && (uniqueNumbers.size > durationDays || maxNumber > durationDays)) {
+    return { itineraryData, warnings: [] };
+  }
+
+  const grouped = new Map<number, typeof numbered>();
+  for (const row of numbered) {
+    if (row.number === null) continue;
+    grouped.set(row.number, [...(grouped.get(row.number) ?? []), row]);
+  }
+
+  const bestByNumber = new Map<number, typeof numbered[number]>();
+  for (const [number, rows] of grouped.entries()) {
+    const best = [...rows].sort((a, b) => {
+      const scoreDelta = dayCompletenessScore(b.day) - dayCompletenessScore(a.day);
+      return scoreDelta !== 0 ? scoreDelta : a.index - b.index;
+    })[0];
+    bestByNumber.set(number, best);
+  }
+
+  const seen = new Set<number>();
+  const collapsed = numbered.flatMap(row => {
+    if (row.number === null) return [row.day];
+    if (seen.has(row.number)) return [];
+    seen.add(row.number);
+    return [bestByNumber.get(row.number)?.day ?? row.day];
+  });
+
+  const duplicateNumbers = [...grouped.entries()]
+    .filter(([, rows]) => rows.length > 1)
+    .map(([number]) => number)
+    .sort((a, b) => a - b);
+
+  return {
+    itineraryData: { ...itineraryData, days: collapsed } as T,
+    warnings: [
+      `duplicate itinerary days collapsed: day ${duplicateNumbers.join(', ')}`,
+    ],
+  };
+}
+
 function prunePollutedScheduleItems<T extends ItineraryDataLike | null>(itineraryData: T): {
   itineraryData: T;
   removed: Array<{ day: number | null; activity: string; reason: string }>;
@@ -101,6 +174,7 @@ export async function normalizeUploadItinerary(input: {
   itineraryData?: ItineraryDataLike | null;
   productRawText?: string | null;
   destination?: string | null;
+  durationDays?: number | null;
   activeAttractions: AttractionData[];
 }): Promise<UploadItineraryNormalizationResult> {
   const warnings: string[] = [];
@@ -123,7 +197,9 @@ export async function normalizeUploadItinerary(input: {
   }
   itineraryInput = normalizeStructuredItineraryEntities(itineraryInput);
   const initialPrune = prunePollutedScheduleItems(itineraryInput);
-  itineraryInput = compileItineraryForLanding(initialPrune.itineraryData);
+  const initialDuplicateRepair = collapseDuplicateDayEntries(initialPrune.itineraryData, input.durationDays);
+  warnings.push(...initialDuplicateRepair.warnings);
+  itineraryInput = compileItineraryForLanding(initialDuplicateRepair.itineraryData);
 
   const enrichment = enrichItineraryWithAttractionReferences(
     itineraryInput,
@@ -154,7 +230,9 @@ export async function normalizeUploadItinerary(input: {
       extractCatalogShoppingForRender(input.productRawText),
     ),
   );
-  const itineraryDataToSave = postMergePrune.itineraryData;
+  const duplicateDayRepair = collapseDuplicateDayEntries(postMergePrune.itineraryData, input.durationDays);
+  warnings.push(...duplicateDayRepair.warnings);
+  const itineraryDataToSave = duplicateDayRepair.itineraryData;
 
   const extractedCandidateRows: Array<{ activity: string; destination?: string }> = [];
   for (const day of itineraryDataToSave?.days ?? []) {

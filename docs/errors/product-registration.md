@@ -1,5 +1,24 @@
 # Product Registration Errors
 
+## ERR-duplicate-itinerary-day-range-phu-quoc@2026-06-16
+
+- **Discovered**: 2026-06-16
+- **Domain**: product registration | itinerary normalization | customer render gate
+- **User-visible error**: `Customer landing/A4 blocked: itinerary duplicate day number ... itinerary duration overflow: product duration 6 days but itinerary has 12 days`
+- **Source vs result**: A 4박6일 Phu Quoc upload produced twelve itinerary day rows because the same `DAY 1..6` range was present twice in the selected itinerary payload. The deliverability gate correctly blocked customer rendering, but the micro repair loop did not have a deterministic repair for duplicated day ranges.
+- **Root cause**: `normalizeUploadItinerary()` pruned polluted schedule items and enriched attractions, but did not collapse exact duplicate day-number ranges before the customer render gate.
+- **Fix**:
+  - Added bounded duplicate-day collapse inside itinerary normalization.
+  - The repair only runs when duplicate day numbers are within the product duration boundary; suspicious overlong schedules remain blocked.
+  - Passed `durationDays` from the central registration runner into itinerary normalization.
+  - Added a 4박6일 regression case where duplicated `DAY 1..6` becomes exactly six days before render.
+- **Verification**:
+  - `npx vitest run src/lib/product-registration/itinerary-normalization.test.ts src/lib/product-registration/deliverability-gate.test.ts src/lib/product-registration/register-product-from-raw.test.ts`
+- **Status**: FIXED IN CODE
+- **Prevention**: Duplicate day range repair belongs before mobile/A4 deliverability evaluation, not as a one-off review queue cleanup.
+
+---
+
 ## ERR-mobile-qa-not-feeding-macro-ledger@2026-06-16
 
 - **Discovered**: 2026-06-16

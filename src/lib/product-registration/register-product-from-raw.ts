@@ -590,6 +590,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     itineraryData: selectedItinerary,
     productRawText: rawText,
     destination: ed.destination,
+    durationDays: ed.duration,
     activeAttractions: input.activeAttractions,
   });
   if (!ed.airline && itinerary.fallbackAirline) ed.airline = itinerary.fallbackAirline;

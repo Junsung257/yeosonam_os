@@ -76,4 +76,33 @@ describe('normalizeUploadItinerary', () => {
     expect(day.hotel?.name).toBe('풀만호텔 또는 동급');
     expect(day.hotel?.grade).toBe('5성');
   });
+  it('collapses repeated day ranges before customer render when duration bounds the itinerary', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '푸꾸옥',
+      durationDays: 6,
+      activeAttractions: [],
+      productRawText: '푸꾸옥 4박6일',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '빈원더스 관광' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '혼똔섬 케이블카' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '호국사 관광' }] },
+          { day: 5, schedule: [{ type: 'free_time', activity: '리조트 자유시간' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }, { type: 'activity', activity: '가이드 미팅' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '빈원더스 관광' }, { type: 'meal', activity: '중식' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '혼똔섬 케이블카' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '호국사 관광' }] },
+          { day: 5, schedule: [{ type: 'free_time', activity: '리조트 자유시간' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    const days = result.itineraryDataToSave?.days ?? [];
+    expect(days.map(day => day.day)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(days).toHaveLength(6);
+    expect(result.warnings).toContain('duplicate itinerary days collapsed: day 1, 2, 3, 4, 5, 6');
+  });
 });
