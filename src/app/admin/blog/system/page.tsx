@@ -123,6 +123,32 @@ function cronCopy(name: string) {
   return CORE_CRON_COPY[name] || { label: name, description: '블로그 자동화 작업입니다.' };
 }
 
+function humanizeCronError(error: string) {
+  return error
+    .replace('블로그 일일 발행 SLA 미달', '블로그 일일 발행 기준 미달')
+    .replace(/published=(\d+)/g, '발행 $1편')
+    .replace(/min=(\d+)/g, '최소 $1편')
+    .replace('블로그 검색 제출 상태 점검 필요', '블로그 검색 반영 상태 점검 필요')
+    .replace(/google_actual_index_low:(\d+)%/g, '구글 실제 색인 낮음 $1%')
+    .replace(/google_actual_index_low/g, '구글 실제 색인 낮음')
+    .replace(/IndexNow/g, '네이버 수집 알림')
+    .replace(/GSC/g, '구글 서치콘솔')
+    .replace(/sitemap/g, '사이트맵')
+    .replace(/pending/g, '대기')
+    .replace(/published/g, '발행 완료');
+}
+
+function extractCronErrors(row: any) {
+  const summary = row?.last_summary;
+  if (!summary || typeof summary !== 'object') return [];
+  const errors = Array.isArray(summary.errors) ? summary.errors : [];
+  return errors
+    .map((error: unknown) => String(error || '').trim())
+    .filter(Boolean)
+    .map(humanizeCronError)
+    .slice(0, 3);
+}
+
 export default function BlogSystemPage() {
   const [data, setData] = useState<BlogSystemPayload | null>(null);
   const [ops, setOps] = useState<BlogOpsSummary | null>(null);
@@ -389,13 +415,35 @@ export default function BlogSystemPage() {
                       <td className="px-3 py-4 text-admin-muted">뷰가 비었거나 아직 기록 없음</td>
                     </tr>
                   ) : (
-                    data.blog_cron_health.map((row, i) => (
-                      <tr key={i} className="border-b border-admin-border align-top last:border-0">
-                      <td className="px-3 py-2 font-mono text-admin-2xs text-admin-muted whitespace-pre-wrap">
-                        {JSON.stringify(row, null, 0)}
-                      </td>
-                      </tr>
-                    ))
+                    data.blog_cron_health.map((row, i) => {
+                      const cronRow = row as any;
+                      const copy = cronCopy(String(cronRow.cron_name || ''));
+                      const errors = extractCronErrors(cronRow);
+                      return (
+                        <tr key={i} className="border-b border-admin-border align-top last:border-0">
+                          <td className="px-3 py-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-semibold text-admin-text">{copy.label}</span>
+                              <span className={`rounded-admin-xs px-2 py-0.5 text-admin-2xs font-semibold ${cronRow.last_status === 'success' ? 'bg-status-successBg text-status-successFg' : 'bg-danger-light text-danger'}`}>
+                                {labelStatus(cronRow.last_status)}
+                              </span>
+                              <span className="text-admin-2xs text-admin-muted admin-num">{fmtDateTime(cronRow.last_run_at)}</span>
+                              <span className="text-admin-2xs text-admin-muted admin-num">오류 {cronRow.last_error_count || 0}건</span>
+                              {cronRow.last_elapsed_ms ? <span className="text-admin-2xs text-admin-muted admin-num">{Math.round(cronRow.last_elapsed_ms / 1000)}초</span> : null}
+                            </div>
+                            <p className="mt-1 text-admin-2xs text-admin-muted">{copy.description}</p>
+                            {errors.length ? (
+                              <ul className="mt-1 space-y-0.5">
+                                {errors.map((error: string, errorIndex: number) => (
+                                  <li key={errorIndex} className="text-admin-2xs text-danger">{error}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                            <p className="mt-1 font-mono text-admin-2xs text-admin-muted-2">{cronRow.cron_name || '-'}</p>
+                          </td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
