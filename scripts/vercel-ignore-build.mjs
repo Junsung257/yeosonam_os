@@ -60,7 +60,7 @@ function main() {
       .filter(Boolean);
   } catch {
     try {
-      changedFiles = execSync('git show --pretty="" --name-only HEAD', {
+      changedFiles = execSync('git diff-tree --root --no-commit-id --name-only -r HEAD', {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
       })
