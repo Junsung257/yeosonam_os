@@ -95,6 +95,10 @@ The blog system is complete only when the admin UI can answer these questions wi
   - queue producers must call `normalizeBlogTopicQueueRow()` before insert;
   - publisher calls `normalizeBlogAngleType()` before quality gates and DB write;
   - `blog-lifecycle` reconciles published queue rows whose linked article is no longer public.
+- Publishing policy alignment:
+  - `/admin/blog/policy` can set up to 8 posts per day;
+  - `normalizeDailyPostTarget()` must not clamp that policy back to 4;
+  - `blog-publisher` must read `getBlogPublishingPolicy('global')` before falling back to `BLOG_DAILY_PUBLISH_TARGET`.
 - Verification:
   - `npm run type-check` passed;
   - `npx vitest run src/lib/blog-queue-normalize.test.ts` passed;

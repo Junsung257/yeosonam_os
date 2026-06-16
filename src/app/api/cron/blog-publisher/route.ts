@@ -44,7 +44,7 @@ import {
   repairBlogStructureQuality,
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
-import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
+import { getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 
@@ -485,7 +485,8 @@ async function runBlogPublisher(request: NextRequest) {
 
   try {
     blogStyleGuideCache = null;
-    const targetPostsToday = normalizeDailyPostTarget(process.env.BLOG_DAILY_PUBLISH_TARGET);
+    const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
+    const targetPostsToday = normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
     const todayQuota = await getTodayBlogPublishCount();
     const remainingToday = Math.max(0, targetPostsToday - todayQuota.count);
     if (remainingToday <= 0) {
