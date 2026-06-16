@@ -198,7 +198,7 @@ export default function BlogAdsPage() {
     <div className="space-y-5">
       <PageHeader
         title="블로그 광고 매핑"
-        subtitle="AI 후보 생성, 승인, UTM/DKI, 블로그 랜딩 성과를 한 화면에서 관리합니다."
+        subtitle="광고 후보 생성, 승인, 추적 링크, 블로그 랜딩 성과를 한 화면에서 관리합니다."
         actions={
           <>
             <Link href="/admin/blog">
@@ -225,13 +225,13 @@ export default function BlogAdsPage() {
             <h2 className="text-admin-base font-semibold text-admin-text-2">운영 방식</h2>
             <p className="mt-1 max-w-3xl text-admin-xs leading-5 text-admin-muted">
               이 화면의 매핑은 광고를 즉시 켜는 버튼이 아닙니다. AI가 키워드와 블로그 랜딩 후보를 만들고,
-              운영자가 승인하면 UTM/DKI 추적 링크가 준비됩니다. 실제 네이버/구글 집행은 Ad OS의 예산,
+              운영자가 승인하면 추적 링크와 광고 문구 치환값이 준비됩니다. 실제 네이버/구글 집행은 광고 운영 시스템의 예산,
               권한, 캠페인 상태가 모두 통과해야 가능합니다.
             </p>
           </div>
           <Link href="/admin/ad-os" className="inline-flex h-9 items-center gap-1.5 rounded-admin-sm border border-admin-border-strong px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-bg">
             <ShieldCheck size={14} />
-            Ad OS 집행 상태
+            광고 집행 상태
           </Link>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-5">
@@ -251,7 +251,7 @@ export default function BlogAdsPage() {
         <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
           {[
             ['클릭', stats.clicks],
-            ['CTA', stats.cta],
+            ['상담 버튼', stats.cta],
             ['예약/전환', stats.conversions],
             ['전환가치', `${stats.value.toLocaleString('ko-KR')}원`],
           ].map(([label, value]) => (
@@ -282,10 +282,10 @@ export default function BlogAdsPage() {
             <input value={fKeyword} onChange={(e) => setFKeyword(e.target.value)} placeholder="광고 키워드 예: 부산 부모님 다낭 여행" className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
             <input value={fCampaignSlug} onChange={(e) => setFCampaignSlug(e.target.value)} placeholder="캠페인 슬러그 선택, 미입력시 자동" className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
           </div>
-          <input value={fDkiHeadline} onChange={(e) => setFDkiHeadline(e.target.value)} placeholder="DKI 헤드라인 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
-          <input value={fDkiSubtitle} onChange={(e) => setFDkiSubtitle(e.target.value)} placeholder="DKI 부제 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
+          <input value={fDkiHeadline} onChange={(e) => setFDkiHeadline(e.target.value)} placeholder="광고 제목 치환 문구 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
+          <input value={fDkiSubtitle} onChange={(e) => setFDkiSubtitle(e.target.value)} placeholder="광고 부제 치환 문구 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
           <Button variant="primary" onClick={createMapping} className="w-full">
-            생성 + UTM URL 자동 발급
+            생성 + 추적 URL 자동 발급
           </Button>
         </section>
       )}
@@ -315,9 +315,9 @@ export default function BlogAdsPage() {
               <tr>
                 <th style={{ width: 76 }}>채널</th>
                 <th>키워드 / 블로그 랜딩</th>
-                <th style={{ width: 220 }}>UTM / DKI</th>
+                <th style={{ width: 220 }}>추적 링크 / 광고 치환</th>
                 <th className="text-right" style={{ width: 70 }}>클릭</th>
-                <th className="text-right" style={{ width: 70 }}>CTA</th>
+                <th className="text-right" style={{ width: 70 }}>상담</th>
                 <th className="text-right" style={{ width: 70 }}>전환</th>
                 <th className="text-center" style={{ width: 100 }}>상태</th>
                 <th style={{ width: 170 }}></th>

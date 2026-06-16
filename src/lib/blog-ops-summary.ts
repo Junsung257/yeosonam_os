@@ -198,7 +198,7 @@ export async function buildBlogOpsSummary(supabase: any) {
         .from('content_creatives')
         .select('id, slug, seo_title, status, published_at, readability_score, seo_score, quality_gate, generation_meta, destination')
         .order('published_at', { ascending: false, nullsFirst: false })
-        .limit(120),
+        .limit(500),
       warnings,
     ),
     settle<{ status: string | null }>('blog_indexing_jobs', supabase.from('blog_indexing_jobs').select('status').limit(500), warnings),
@@ -226,6 +226,12 @@ export async function buildBlogOpsSummary(supabase: any) {
   ]);
 
   const queueCounts = countBy(queueRows, (row) => row.status);
+  const postById = new Map(postRows.map((row) => [row.id, row]));
+  const publishedQueueRows = queueRows.filter((row) => row.status === 'published');
+  const publishedStateMismatches = publishedQueueRows.filter((row) => {
+    const post = row.content_creative_id ? postById.get(row.content_creative_id) : null;
+    return !post || post.status !== 'published';
+  });
   const activeQueue = queueRows.filter((row) => isRecentOrDueQueue(row, now));
   const hiddenHistory = queueRows.filter((row) => !isRecentOrDueQueue(row, now)).length;
   const overdueQueued = queueRows.filter((row) => row.status === 'queued' && row.target_publish_at && new Date(row.target_publish_at) < now).length;
@@ -290,7 +296,7 @@ export async function buildBlogOpsSummary(supabase: any) {
   };
 
   const dailyLevel: BlogOpsLevel = publishedToday >= dailyTarget ? 'healthy' : publishedYesterday < dailyTarget ? 'risk' : 'watch';
-  const queueLevel: BlogOpsLevel = (queueCounts.failed || 0) > 0 || staleGenerating > 0 ? 'risk' : overdueQueued > 0 ? 'watch' : 'healthy';
+  const queueLevel: BlogOpsLevel = (queueCounts.failed || 0) > 0 || staleGenerating > 0 || publishedStateMismatches.length > 0 ? 'risk' : overdueQueued > 0 ? 'watch' : 'healthy';
   const indexingLevel: BlogOpsLevel = googleUnknownUrls > 0 || recentIndexingFailures > 0 ? 'risk' : indexingActive > 0 ? 'watch' : 'healthy';
   const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => row.cron_name === 'blog-publisher') ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
   const qualityLevel: BlogOpsLevel = lowQualityRecent > 0 ? 'risk' : 'healthy';
@@ -301,7 +307,7 @@ export async function buildBlogOpsSummary(supabase: any) {
     nextActions.push({
       severity: dailyLevel,
       title: '오늘 발행 목표 미달',
-      detail: `오늘 ${publishedToday}/${dailyTarget}편 발행됨. 큐와 publisher 상태를 같이 확인하세요.`,
+      detail: `오늘 ${publishedToday}/${dailyTarget}편 발행됨. 발행 큐와 글 발행자 상태를 같이 확인하세요.`,
       href: '/admin/blog/queue',
       action: 'run_publisher',
     });
@@ -312,6 +318,14 @@ export async function buildBlogOpsSummary(supabase: any) {
       title: '실패 큐 정리 필요',
       detail: `실패 ${queueCounts.failed}건. 원인별로 재시도 또는 숨김 처리하세요.`,
       href: '/admin/blog/queue?scope=attention',
+    });
+  }
+  if (publishedStateMismatches.length > 0) {
+    nextActions.push({
+      severity: 'risk',
+      title: '발행 상태 불일치 정리',
+      detail: `큐는 발행 완료인데 실제 글 상태가 맞지 않는 항목 ${publishedStateMismatches.length}건. 공개 글 또는 큐 상태를 맞춰야 합니다.`,
+      href: '/admin/blog/system',
     });
   }
   if (unhealthyCrons.length > 0) {
@@ -325,8 +339,8 @@ export async function buildBlogOpsSummary(supabase: any) {
   if (googleUnknownUrls > 0) {
     nextActions.push({
       severity: indexingLevel,
-      title: 'Google 실제 색인 확인 필요',
-      detail: `최근 Inspection 표본 ${googleUnknownUrls}건이 Google에 아직 알려지지 않은 URL입니다. sitemap, GSC, 내부링크 상태를 분리 확인하세요.`,
+      title: '구글 실제 색인 확인 필요',
+      detail: `최근 색인 확인 표본 ${googleUnknownUrls}건이 구글에 아직 알려지지 않은 URL입니다. 사이트맵, 서치콘솔, 내부 링크 상태를 분리 확인하세요.`,
       href: '/admin/blog/rankings',
     });
   }
@@ -341,8 +355,8 @@ export async function buildBlogOpsSummary(supabase: any) {
   if ((programmaticCounts.pending || 0) > 100) {
     nextActions.push({
       severity: 'watch',
-      title: 'pSEO 후보 적체',
-      detail: `pending ${programmaticCounts.pending}건. 토픽 권위 기준으로 승격 대상을 줄이세요.`,
+      title: '자동 SEO 후보 적체',
+      detail: `대기 후보 ${programmaticCounts.pending}건. 토픽 권위 기준으로 승격 대상을 줄이세요.`,
       href: '/admin/blog/topical',
     });
   }
@@ -367,6 +381,7 @@ export async function buildBlogOpsSummary(supabase: any) {
       failed_checks: [
         ...(dailyLevel === 'risk' ? ['daily_publish_sla'] : []),
         ...(queueLevel === 'risk' ? ['queue_failures_or_stale_generation'] : []),
+        ...(publishedStateMismatches.length > 0 ? ['published_state_mismatch'] : []),
         ...(cronLevel === 'risk' || cronLevel === 'blocked' ? ['cron_health'] : []),
         ...(qualityLevel === 'risk' ? ['recent_quality_gate'] : []),
         ...(googleUnknownUrls > 0 ? ['google_url_unknown'] : []),
@@ -387,6 +402,20 @@ export async function buildBlogOpsSummary(supabase: any) {
       counts: queueCounts,
       active_count: activeQueue.length,
       hidden_history: hiddenHistory,
+      published_state_mismatch: publishedStateMismatches.length,
+      published_state_mismatch_sample: publishedStateMismatches.slice(0, 8).map((row) => {
+        const post = row.content_creative_id ? postById.get(row.content_creative_id) : null;
+        return {
+          queue_id: row.id,
+          topic: row.topic,
+          primary_keyword: row.primary_keyword,
+          content_creative_id: row.content_creative_id || null,
+          article_status: post?.status || null,
+          slug: post?.slug || null,
+          title: post?.seo_title || null,
+          published_at: post?.published_at || null,
+        };
+      }),
       overdue_queued: overdueQueued,
       stale_generating: staleGenerating,
       failure_buckets: failureBuckets,

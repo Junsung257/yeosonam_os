@@ -74,6 +74,14 @@ const STATUS_COLORS: Record<string, string> = {
   skipped: 'bg-amber-50 text-amber-700',
 };
 
+const STATUS_LABELS: Record<string, string> = {
+  queued: '대기',
+  generating: '생성 중',
+  published: '발행 완료',
+  failed: '실패',
+  skipped: '숨김/제외',
+};
+
 const SOURCE_LABELS: Record<string, string> = {
   seasonal: '시즌',
   coverage_gap: '갭 분석',
@@ -82,9 +90,9 @@ const SOURCE_LABELS: Record<string, string> = {
   trend: '트렌드',
   pillar: '필러',
   card_news: '카드뉴스',
-  programmatic_seo: 'pSEO',
+  programmatic_seo: '자동 SEO 후보',
   auto_heal: '자동복구',
-  gsc_longtail: 'GSC 롱테일',
+  gsc_longtail: '구글 롱테일',
 };
 
 const ISSUE_LABELS: Record<string, string> = {
@@ -160,6 +168,11 @@ function safeNumber(value: number | null | undefined) {
   return Number(value || 0).toLocaleString('ko-KR');
 }
 
+function statusLabel(status: string | null | undefined) {
+  if (!status) return '-';
+  return STATUS_LABELS[status] || status;
+}
+
 export default function BlogQueueClient() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
@@ -230,7 +243,7 @@ export default function BlogQueueClient() {
     { label: '운영 필요', value: summary?.active_count ?? 0, hint: '오늘 볼 큐', icon: ListChecks },
     { label: '문제', value: summary?.attention_count ?? 0, hint: '자동화 조치 대상', icon: AlertTriangle },
     { label: '수동 재작성', value: summary?.manual_review_count ?? 0, hint: '자동복구 제외', icon: PenLine },
-    { label: '대기', value: counts.queued ?? 0, hint: '전체 queued', icon: Clock },
+    { label: '대기', value: counts.queued ?? 0, hint: '전체 대기 상태', icon: Clock },
     { label: '재시도 실패', value: summary?.retryable_failed_count ?? 0, hint: '수동 재작성 제외', icon: AlertTriangle },
     { label: '숨김 이력', value: summary?.history_hidden ?? 0, hint: '기본 화면 제외', icon: Archive },
   ];
@@ -490,7 +503,7 @@ export default function BlogQueueClient() {
                       {urgencyLabel(item)}
                     </span>
                     <span className={`mt-1 block w-fit rounded-admin-xs px-2 py-0.5 text-admin-2xs font-semibold ${STATUS_COLORS[item.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
-                      {item.status}
+                      {statusLabel(item.status)}
                     </span>
                   </td>
                   <td className="text-admin-xs text-admin-muted admin-num">
@@ -504,14 +517,14 @@ export default function BlogQueueClient() {
                       {item.destination && <span className="rounded-admin-xs bg-admin-surface-2 px-1.5 py-0.5 text-admin-2xs text-admin-muted">{item.destination}</span>}
                       {item.primary_keyword && <span className="rounded-admin-xs bg-brand-light px-1.5 py-0.5 text-admin-2xs font-semibold text-brand">{item.primary_keyword}</span>}
                       {item.keyword_tier && <span className="rounded-admin-xs bg-admin-surface-2 px-1.5 py-0.5 text-admin-2xs font-mono text-admin-muted">{item.keyword_tier}</span>}
-                      {item.monthly_search_volume ? <span className="text-admin-2xs text-admin-muted admin-num">{safeNumber(item.monthly_search_volume)}/mo</span> : null}
+                      {item.monthly_search_volume ? <span className="text-admin-2xs text-admin-muted admin-num">월 {safeNumber(item.monthly_search_volume)}회</span> : null}
                     </div>
                     {item.last_error && <p className="mt-1 truncate text-admin-2xs text-danger">{compactError(item.last_error)}</p>}
                   </td>
                   <td className="text-admin-xs text-admin-muted">{SOURCE_LABELS[item.source || ''] || item.source || '-'}</td>
                   <td className="text-admin-xs text-admin-muted admin-num">
                     {item.attempts || 0}회
-                    <span className="block text-admin-2xs">P{item.priority || 0}</span>
+                    <span className="block text-admin-2xs">우선 {item.priority || 0}</span>
                   </td>
                   <td>
                     <div className="flex flex-wrap gap-1.5">
@@ -546,7 +559,7 @@ export default function BlogQueueClient() {
         open={!!selected}
         onClose={() => setSelected(null)}
         title={selected?.topic || '큐 상세'}
-        subtitle={selected ? `${SOURCE_LABELS[selected.source || ''] || selected.source || '-'} · ${selected.status}` : undefined}
+        subtitle={selected ? `${SOURCE_LABELS[selected.source || ''] || selected.source || '-'} · ${statusLabel(selected.status)}` : undefined}
         width="w-full sm:w-[560px] lg:w-[680px]"
         actions={
           selected && (
@@ -579,7 +592,7 @@ export default function BlogQueueClient() {
           <div className="space-y-4">
             <div className="grid grid-cols-2 gap-2 text-admin-xs">
               {[
-                ['상태', selected.status],
+                ['상태', statusLabel(selected.status)],
                 ['긴급도', urgencyLabel(selected)],
                 ['목적지', selected.destination || '-'],
                 ['우선순위', selected.priority || 0],

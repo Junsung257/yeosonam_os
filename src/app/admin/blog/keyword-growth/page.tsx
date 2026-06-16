@@ -124,7 +124,7 @@ export default function BlogKeywordGrowthPage() {
     <div className="space-y-5">
       <PageHeader
         title="키워드 성장 엔진"
-        subtitle="GSC 롱테일, 키워드 패밀리, 잠식 위험, 수익 신호를 묶어서 다음 발행 우선순위를 봅니다."
+        subtitle="구글 서치콘솔 롱테일, 키워드 묶음, 중복 잠식 위험, 수익 신호를 묶어서 다음 발행 우선순위를 봅니다."
         actions={
           <>
             <Link href="/admin/blog/queue">
@@ -171,7 +171,7 @@ export default function BlogKeywordGrowthPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard label="추적 쿼리" value={(summary?.tracked_queries || 0).toLocaleString('ko-KR')} icon={Search} />
-        <KpiCard label="GSC 롱테일 큐" value={(summary?.gsc_longtail_queue || 0).toLocaleString('ko-KR')} icon={TrendingUp} tone="positive" />
+        <KpiCard label="구글 롱테일 큐" value={(summary?.gsc_longtail_queue || 0).toLocaleString('ko-KR')} icon={TrendingUp} tone="positive" />
         <KpiCard label="키워드 패밀리" value={(summary?.active_families || 0).toLocaleString('ko-KR')} icon={Layers} />
         <KpiCard label="잠식 감시" value={(summary?.cannibalization_watch || 0).toLocaleString('ko-KR')} icon={AlertTriangle} tone={summary?.cannibalization_watch ? 'negative' : 'neutral'} />
         <KpiCard label="총 클릭" value={(summary?.total_clicks || 0).toLocaleString('ko-KR')} icon={MousePointerClick} />
@@ -252,7 +252,7 @@ export default function BlogKeywordGrowthPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-admin-sm font-semibold text-admin-text-2">{family.canonical_keyword || family.family_key}</p>
-                    <p className="mt-0.5 text-admin-2xs text-admin-muted">{family.destination || '전체'} · {family.intent || 'intent 없음'} · 점수 {family.max_score}</p>
+                    <p className="mt-0.5 text-admin-2xs text-admin-muted">{family.destination || '전체'} · {family.intent || '의도 미분류'} · 점수 {family.max_score}</p>
                   </div>
                   <span className={`rounded-full border px-2 py-0.5 text-admin-2xs font-semibold ${riskClass(family.cannibalization_risk)}`}>
                     {family.cannibalization_risk}

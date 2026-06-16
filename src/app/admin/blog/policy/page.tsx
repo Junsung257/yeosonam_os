@@ -129,8 +129,8 @@ export default function PolicyPage() {
   return (
     <div className="space-y-5 max-w-3xl">
       <PageHeader
-        title="발행 정책 (Global)"
-        subtitle="정보성/상품 발행 빈도, destination 제한, multi-angle 분산 설정"
+        title="발행 정책"
+        subtitle="정보성/상품 발행 빈도, 목적지별 제한, 여러 각도 분산 발행 설정"
         actions={
           <Link href="/admin/blog/queue">
             <Button variant="secondary" size="sm">
@@ -188,7 +188,7 @@ export default function PolicyPage() {
         {/* posts_per_day */}
         <div>
           <label className="text-admin-xs font-semibold text-admin-text-2">하루 발행 편수</label>
-          <p className="text-[10px] text-admin-muted-2 mb-1">SEO 안전선 8-12편/일. 12편 이상은 thin content 위험</p>
+          <p className="text-[10px] text-admin-muted-2 mb-1">검색 안전선 8-12편/일. 12편 이상은 얇은 글이 늘어날 위험이 있습니다.</p>
           <input
             type="number" min="1" max="20"
             value={policy!.posts_per_day}
@@ -213,7 +213,7 @@ export default function PolicyPage() {
         {/* per_destination_daily_cap */}
         <div>
           <label className="text-admin-xs font-semibold text-admin-text-2">목적지별 1일 최대 편수</label>
-          <p className="text-[10px] text-admin-muted-2 mb-1">같은 destination 노출 분산 (카니발리제이션 방지). 권장 2-3</p>
+          <p className="text-[10px] text-admin-muted-2 mb-1">같은 목적지 반복 노출 분산. 권장 2-3편</p>
           <input
             type="number" min="1" max="5"
             value={policy!.per_destination_daily_cap}
@@ -224,11 +224,11 @@ export default function PolicyPage() {
 
         {/* multi_angle */}
         <div className="border-t border-admin-border pt-4">
-          <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">신규 상품 Multi-Angle Drip</p>
+          <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">신규 상품 여러 각도 분산 발행</p>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-[11px] text-admin-muted">상품당 angle 개수</label>
+              <label className="text-[11px] text-admin-muted">상품당 발행 각도 수</label>
               <p className="text-[10px] text-admin-muted-2 mb-1">1상품 {'>'} N개 각도(가성비/스토리/현지...) 자동 큐잉</p>
               <input
                 type="number" min="1" max="7"
@@ -238,8 +238,8 @@ export default function PolicyPage() {
               />
             </div>
             <div>
-              <label className="text-[11px] text-admin-muted">angle 간 간격 (일)</label>
-              <p className="text-[10px] text-admin-muted-2 mb-1">같은 상품 다른 각도 발행 간격 (SEO dedup 안전)</p>
+              <label className="text-[11px] text-admin-muted">각도별 발행 간격 (일)</label>
+              <p className="text-[10px] text-admin-muted-2 mb-1">같은 상품을 다른 주제로 발행할 때의 최소 간격</p>
               <input
                 type="number" min="1" max="14"
                 value={policy!.multi_angle_gap_days}
@@ -264,7 +264,7 @@ export default function PolicyPage() {
 
         {/* 자동 트리거 (cost 발생) */}
         <div className="border-t border-admin-border pt-4 space-y-2">
-          <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">상품 승인 시 자동 트리거 (cost 발생)</p>
+          <p className="text-admin-xs font-semibold text-admin-text-2 mb-2">상품 승인 시 자동 실행 (비용 발생 가능)</p>
 
           <label className="flex items-start gap-2 cursor-pointer hover:bg-admin-bg p-1.5 rounded">
             <input type="checkbox"
@@ -297,7 +297,7 @@ export default function PolicyPage() {
               className="mt-0.5"
             />
             <div className="flex-1">
-              <span className="text-admin-xs text-admin-text-2">저성과 글 자동 재생성 (7일 GSC 클릭 0건)</span>
+              <span className="text-admin-xs text-admin-text-2">저성과 글 자동 재생성 (7일 구글 클릭 0건)</span>
               <p className="text-[10px] text-admin-muted-2">매일 09 KST 최대 5건 — 무료 (Gemini)</p>
             </div>
           </label>
@@ -305,8 +305,8 @@ export default function PolicyPage() {
 
         {/* Webhook */}
         <div className="border-t border-admin-border pt-4">
-          <label className="text-admin-xs font-semibold text-admin-text-2">일일 발행 요약 Webhook</label>
-          <p className="text-[10px] text-admin-muted-2 mb-1">Slack/Discord webhook URL — 매일 09 KST 발송. 비워두면 발송 X</p>
+          <label className="text-admin-xs font-semibold text-admin-text-2">일일 발행 요약 알림 주소</label>
+          <p className="text-[10px] text-admin-muted-2 mb-1">Slack/Discord 알림 주소. 매일 09시(KST) 발송하며 비워두면 발송하지 않습니다.</p>
           <input
             type="text"
             value={policy!.daily_summary_webhook || ''}
@@ -338,12 +338,12 @@ export default function PolicyPage() {
       <div className="bg-status-warningBg border border-warning/20 rounded-admin-md p-3 text-admin-xs text-status-warningFg">
         <p className="font-semibold mb-1.5 inline-flex items-center gap-1.5">
           <BookOpen size={12} />
-          SEO 안전선 가이드
+          검색 안전선 가이드
         </p>
         <ul className="list-disc list-inside space-y-0.5 leading-relaxed opacity-90">
-          <li>하루 <span className="admin-num">8-12</span>편 — Google.Naver 모두 안전. 양보다 품질 우선</li>
-          <li>같은 destination 1일 <span className="admin-num">2-3</span>편 이상 발행 시 카니발리제이션 위험</li>
-          <li>multi-angle <span className="admin-num">5</span>각도 x <span className="admin-num">3</span>일 간격 = <span className="admin-num">12-15</span>일 분산 (14일 dedup 윈도와 정합)</li>
+          <li>하루 <span className="admin-num">8-12</span>편 — 구글/네이버 모두 양보다 품질이 우선입니다.</li>
+          <li>같은 목적지를 하루 <span className="admin-num">2-3</span>편 이상 발행하면 키워드 잠식 위험이 커집니다.</li>
+          <li>여러 각도 <span className="admin-num">5</span>개 x <span className="admin-num">3</span>일 간격 = <span className="admin-num">12-15</span>일 분산 발행</li>
           <li>최대 발행 노렸다가 quality_gate 실패 누적되면 오히려 도메인 점수 하락</li>
         </ul>
       </div>

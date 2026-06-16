@@ -36,7 +36,23 @@ interface BlogSystemPayload {
 interface BlogOpsSummary {
   level: 'healthy' | 'watch' | 'risk' | 'blocked';
   publish: { published_today: number; daily_target: number; remaining_today: number; level: string };
-  queue: { counts: Record<string, number>; active_count: number; overdue_queued: number; stale_generating: number; level: string };
+  queue: {
+    counts: Record<string, number>;
+    active_count: number;
+    overdue_queued: number;
+    stale_generating: number;
+    published_state_mismatch?: number;
+    published_state_mismatch_sample?: Array<{
+      queue_id: string;
+      topic: string | null;
+      primary_keyword: string | null;
+      article_status: string | null;
+      slug: string | null;
+      title: string | null;
+      published_at: string | null;
+    }>;
+    level: string;
+  };
   indexing: {
     active_jobs: number;
     recent_failures: number;
@@ -58,6 +74,53 @@ interface BlogOpsSummary {
     }>;
   };
   contract: { passed: boolean; failed_checks: string[] };
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  queued: '대기',
+  generating: '생성 중',
+  published: '큐 발행 완료',
+  failed: '실패',
+  skipped: '숨김/제외',
+  ok: '성공',
+  success: '정상',
+  partial_failure: '부분 실패',
+  error: '실패',
+};
+
+const CHECK_LABELS: Record<string, string> = {
+  daily_publish_sla: '오늘 발행 목표 미달',
+  queue_failures_or_stale_generation: '큐 실패 또는 생성 정체',
+  published_state_mismatch: '발행 완료/실제 글 상태 불일치',
+  cron_health: '자동 실행 작업 이상',
+  recent_quality_gate: '최근 글 품질 점검 필요',
+  google_url_unknown: '구글 미인지 URL 존재',
+};
+
+const CORE_CRON_COPY: Record<string, { label: string; description: string }> = {
+  'blog-daily-summary': { label: '일일 발행 요약', description: '하루 발행 목표와 실패 원인을 정리합니다.' },
+  'blog-indexing-worker': { label: '색인 작업 처리', description: '구글/네이버 색인 요청 큐를 처리합니다.' },
+  'blog-orchestrator': { label: '자동 발행 총괄', description: '후보 발굴, 큐 보충, 발행 흐름을 조율합니다.' },
+  'blog-publisher': { label: '글 발행자', description: '품질 점검을 통과한 큐를 실제 글로 발행합니다.' },
+  'blog-scheduler': { label: '발행 일정 정리', description: '오늘 처리할 큐와 발행 슬롯을 맞춥니다.' },
+  'gsc-index-rank': { label: '구글 색인/순위 확인', description: '구글 기준 색인과 노출 상태를 확인합니다.' },
+  'rank-tracking': { label: '순위 추적', description: '발행 글의 검색 노출 변화를 추적합니다.' },
+  'serp-rank-snapshot': { label: '검색 결과 스냅샷', description: '검색 결과 위치를 표본으로 확인합니다.' },
+  'topical-rebuild': { label: '토픽 권위 재계산', description: '허브 글과 세부 글 연결을 다시 계산합니다.' },
+  'trend-topic-miner': { label: '트렌드 토픽 발굴', description: '검색/소셜 후보를 발행 큐 후보로 만듭니다.' },
+};
+
+function labelStatus(status: string | null | undefined) {
+  if (!status) return '-';
+  return STATUS_LABELS[status] || status;
+}
+
+function labelCheck(check: string) {
+  return CHECK_LABELS[check] || check;
+}
+
+function cronCopy(name: string) {
+  return CORE_CRON_COPY[name] || { label: name, description: '블로그 자동화 작업입니다.' };
 }
 
 export default function BlogSystemPage() {
@@ -120,9 +183,9 @@ export default function BlogSystemPage() {
   return (
     <div className="space-y-5 max-w-5xl">
       <PageHeader
-        title="블로그 시스템 · 크론"
+        title="블로그 자동화 상태"
         subtitle={
-          <>Vercel 대신 여기서 발행 파이프라인 상태를 봅니다. 스케줄 시각은 배포의 <code className="text-admin-2xs bg-admin-surface-2 px-1.5 py-0.5 rounded-admin-xs font-mono">vercel.json</code> 과 동일합니다.</>
+          <>자동 글 생성, 발행, 색인 요청, 검색 확인이 어디에서 막혔는지 한 화면에서 봅니다. 세부 일정은 배포 설정의 <code className="text-admin-2xs bg-admin-surface-2 px-1.5 py-0.5 rounded-admin-xs font-mono">vercel.json</code> 과 연결됩니다.</>
         }
         actions={
           <>
@@ -141,7 +204,7 @@ export default function BlogSystemPage() {
             <Link href="/admin/blog">
               <Button variant="secondary" size="sm">
                 <ArrowLeft size={14} />
-                블로그 목록
+                블로그 홈
               </Button>
             </Link>
             <Button variant="primary" size="sm" onClick={() => load()} disabled={loading}>
@@ -153,12 +216,13 @@ export default function BlogSystemPage() {
       />
 
       {ops && (
-        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           {[
             ['오늘 발행', `${ops.publish.published_today}/${ops.publish.daily_target}`, ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성', Activity, ops.publish.remaining_today ? 'text-danger' : 'text-success'],
             ['큐 문제', `${ops.queue.counts.failed || 0}`, `지연 ${ops.queue.overdue_queued} · 정체 ${ops.queue.stale_generating}`, AlertTriangle, (ops.queue.counts.failed || 0) ? 'text-danger' : 'text-success'],
-            ['색인 작업', `${ops.indexing.active_jobs}`, ops.indexing.indexnow_success_rate == null ? '집계 대기' : `IndexNow ${ops.indexing.indexnow_success_rate}%`, Search, ops.indexing.active_jobs ? 'text-warning' : 'text-success'],
-            ['계약 상태', ops.contract.passed ? '통과' : '점검', ops.contract.failed_checks.join(', ') || '핵심 계약 정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
+            ['발행 불일치', `${ops.queue.published_state_mismatch || 0}`, '큐 완료와 실제 글 상태 비교', AlertTriangle, (ops.queue.published_state_mismatch || 0) ? 'text-danger' : 'text-success'],
+            ['색인 작업', `${ops.indexing.active_jobs}`, ops.indexing.google_unknown_urls ? `구글 미인지 ${ops.indexing.google_unknown_urls}건` : '대기 작업 기준', Search, ops.indexing.active_jobs || ops.indexing.google_unknown_urls ? 'text-warning' : 'text-success'],
+            ['계약 상태', ops.contract.passed ? '통과' : '점검', ops.contract.failed_checks.map(labelCheck).join(', ') || '핵심 계약 정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
           ].map(([label, value, hint, Icon, tone]) => (
             <div key={String(label)} className="admin-card p-4">
               <div className="flex items-start justify-between gap-3">
@@ -180,7 +244,7 @@ export default function BlogSystemPage() {
           <table className="admin-data-table">
             <thead>
               <tr>
-                <th>크론</th>
+                <th>작업</th>
                 <th>상태</th>
                 <th>최근 실행</th>
                 <th className="text-right">시간</th>
@@ -188,21 +252,53 @@ export default function BlogSystemPage() {
               </tr>
             </thead>
             <tbody>
-              {ops.cron.core.map((row) => (
+              {ops.cron.core.map((row) => {
+                const copy = cronCopy(row.cron_name);
+                return (
                 <tr key={row.cron_name}>
-                  <td className="font-mono text-admin-xs text-admin-text-2">{row.cron_name}</td>
+                  <td>
+                    <p className="text-admin-xs font-semibold text-admin-text">{copy.label}</p>
+                    <p className="mt-0.5 text-admin-2xs leading-4 text-admin-muted">{copy.description}</p>
+                    <p className="mt-0.5 font-mono text-admin-2xs text-admin-muted-2">{row.cron_name}</p>
+                  </td>
                   <td>
                     <span className={`rounded-admin-xs px-2 py-0.5 text-admin-2xs font-semibold ${row.last_status === 'success' ? 'bg-status-successBg text-status-successFg' : 'bg-danger-light text-danger'}`}>
-                      {row.last_status || '-'}
+                      {labelStatus(row.last_status)}
                     </span>
                   </td>
                   <td className="text-admin-xs text-admin-muted admin-num">{row.last_run_at ? fmtDateTime(row.last_run_at) : '-'}</td>
                   <td className="text-right text-admin-xs text-admin-muted admin-num">{row.last_elapsed_ms ? `${Math.round(row.last_elapsed_ms / 1000)}s` : '-'}</td>
                   <td className="text-right text-admin-xs text-admin-muted admin-num">{row.last_error_count || 0}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
+        </div>
+      ) : null}
+
+      {ops?.queue.published_state_mismatch ? (
+        <div className="rounded-admin-md border border-danger/25 bg-danger-light p-4">
+          <div className="flex items-start gap-3">
+            <AlertTriangle size={18} className="mt-0.5 shrink-0 text-danger" />
+            <div className="min-w-0 flex-1">
+              <h2 className="text-admin-sm font-semibold text-danger">발행 상태 불일치 {ops.queue.published_state_mismatch}건</h2>
+              <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+                큐는 발행 완료로 남아 있지만 실제 글은 공개 상태가 아닙니다. 운영자는 이 목록을 보고 실제 공개 글로 복구하거나 큐 상태를 숨김/보관으로 맞춰야 합니다.
+              </p>
+              <div className="mt-3 overflow-hidden rounded-admin-sm border border-danger/15 bg-admin-surface">
+                {(ops.queue.published_state_mismatch_sample || []).map((item) => (
+                  <div key={item.queue_id} className="border-b border-admin-border px-3 py-2 last:border-b-0">
+                    <p className="truncate text-admin-xs font-semibold text-admin-text">{item.title || item.topic || '(제목 없음)'}</p>
+                    <p className="mt-0.5 text-admin-2xs text-admin-muted">
+                      실제 글 상태: <b className="text-danger">{labelStatus(item.article_status)}</b>
+                      {item.slug ? <span className="admin-num"> · /blog/{item.slug}</span> : null}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -224,7 +320,10 @@ export default function BlogSystemPage() {
 
       {/* 수동 실행 */}
       <div className="admin-card p-4">
-        <h2 className="text-admin-h3 text-admin-text mb-3">수동 실행 (큐 페이지와 동일 API)</h2>
+        <h2 className="text-admin-h3 text-admin-text mb-1">긴급 수동 실행</h2>
+        <p className="mb-3 text-admin-xs leading-5 text-admin-muted">
+          자동화가 멈췄을 때만 사용합니다. 평소에는 배포 스케줄이 자동으로 처리합니다.
+        </p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {(
             [
@@ -269,7 +368,7 @@ export default function BlogSystemPage() {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {Object.entries(data.blog_queue_counts).map(([k, v]) => (
               <div key={k} className="admin-card px-4 py-3">
-                <p className="text-admin-2xs text-admin-muted uppercase tracking-wider font-semibold">{k}</p>
+                <p className="text-admin-2xs text-admin-muted uppercase tracking-wider font-semibold">{labelStatus(k)}</p>
                 <p className="text-admin-h2 font-bold text-admin-text admin-num mt-1">{v}</p>
               </div>
             ))}
@@ -280,7 +379,7 @@ export default function BlogSystemPage() {
 
           <div className="admin-card overflow-hidden">
             <div className="px-3 py-2.5 bg-admin-surface-2 border-b border-admin-border text-admin-xs font-semibold text-admin-text-2">
-              블로그 관련 크론 요약 (cron_health)
+              자동 실행 원본 기록
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-admin-xs">
@@ -292,9 +391,9 @@ export default function BlogSystemPage() {
                   ) : (
                     data.blog_cron_health.map((row, i) => (
                       <tr key={i} className="border-b border-admin-border align-top last:border-0">
-                        <td className="px-3 py-2 font-mono text-admin-2xs text-admin-muted whitespace-pre-wrap">
-                          {JSON.stringify(row, null, 0)}
-                        </td>
+                      <td className="px-3 py-2 font-mono text-admin-2xs text-admin-muted whitespace-pre-wrap">
+                        {JSON.stringify(row, null, 0)}
+                      </td>
                       </tr>
                     ))
                   )}
@@ -344,7 +443,7 @@ export default function BlogSystemPage() {
 
           <div className="admin-card overflow-hidden">
             <div className="px-3 py-2.5 bg-admin-surface-2 border-b border-admin-border text-admin-xs font-semibold text-admin-text-2">
-              최근 색인 알림 (notifyIndexing)
+              최근 색인 요청 기록
             </div>
             {data.indexing_recent.length === 0 ? (
               <p className="px-3 py-4 text-admin-xs text-admin-muted">기록 없음</p>
@@ -356,8 +455,8 @@ export default function BlogSystemPage() {
                       {r.url}
                     </div>
                     <div className="text-admin-muted mt-0.5 admin-num">
-                      Google: <b className={r.google_status === 'ok' ? 'text-success' : 'text-danger'}>{r.google_status}</b>
-                      {r.google_error ? ` (${r.google_error})` : ''} · IndexNow: <b className={r.indexnow_status === 'ok' ? 'text-success' : 'text-danger'}>{r.indexnow_status}</b>
+                      구글: <b className={r.google_status === 'ok' ? 'text-success' : 'text-danger'}>{labelStatus(r.google_status)}</b>
+                      {r.google_error ? ` (${r.google_error})` : ''} · 네이버 수집 알림: <b className={r.indexnow_status === 'ok' ? 'text-success' : 'text-danger'}>{labelStatus(r.indexnow_status)}</b>
                       {r.indexnow_error ? ` (${r.indexnow_error})` : ''} ·{' '}
                       {fmtDateTime(r.reported_at)}
                     </div>

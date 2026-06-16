@@ -82,22 +82,22 @@ export default function TopicalPage() {
             </p>
           </div>
           <div>
-            <p className="text-admin-xs font-semibold text-admin-text-2">Pillar / Cluster</p>
+            <p className="text-admin-xs font-semibold text-admin-text-2">허브 글 / 세부 글</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              Pillar는 “다낭 여행” 같은 허브 글이고, Cluster는 부모님 여행, 부산 출발, 비교, 환전, 날씨 같은 세부 의도 글입니다.
+              허브 글은 “다낭 여행” 같은 중심 글이고, 세부 글은 부모님 여행, 부산 출발, 비교, 환전, 날씨 같은 구체적인 의도 글입니다.
             </p>
           </div>
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">광고 활용</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              초세부 키워드 광고는 가장 가까운 허브/클러스터/상품 CTA로 연결되고, 성과가 쌓이면 다음 글 각도와 광고 확장 후보가 됩니다.
+              초세부 키워드 광고는 가장 가까운 허브 글, 세부 글, 상품 상담 버튼으로 연결되고, 성과가 쌓이면 다음 글 각도와 광고 확장 후보가 됩니다.
             </p>
           </div>
         </div>
       </section>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard label="Authority Score" value={`${state.authority_score ?? 0}`} unit="/100" icon={GitBranch} tone={(state.authority_score ?? 0) >= 70 ? 'positive' : 'neutral'} />
+        <KpiCard label="토픽 권위 점수" value={`${state.authority_score ?? 0}`} unit="/100" icon={GitBranch} tone={(state.authority_score ?? 0) >= 70 ? 'positive' : 'neutral'} />
         <KpiCard label="허브 글" value={state.pillar_count.toLocaleString('ko-KR')} icon={Layers} />
         <KpiCard label="클러스터 연결" value={state.cluster_total.toLocaleString('ko-KR')} icon={Network} />
         <KpiCard label="대기 토픽" value={(state.matrix.pending || 0).toLocaleString('ko-KR')} icon={Clock} tone={state.matrix.pending > 0 ? 'negative' : 'neutral'} />
@@ -125,10 +125,10 @@ export default function TopicalPage() {
             <Sprout size={14} className="text-success" />
             {running === 'seed' ? '시드 중' : '매트릭스 시드'}
           </span>
-          <p className="mt-1 text-admin-2xs text-admin-muted">활성 destination x 고객 의도 생성</p>
+          <p className="mt-1 text-admin-2xs text-admin-muted">활성 목적지 x 고객 의도 생성</p>
         </button>
         <button
-          onClick={() => trigger('promote', 'Pending to Queue')}
+          onClick={() => trigger('promote', '대기 후보 큐 등록')}
           disabled={running !== null}
           className="admin-card px-3 py-3 text-left text-admin-xs transition-colors hover:border-admin-border-strong disabled:opacity-50"
         >
@@ -136,16 +136,16 @@ export default function TopicalPage() {
             <ArrowUpCircle size={14} className="text-brand" />
             {running === 'promote' ? '승격 중' : '상위 7개 큐 등록'}
           </span>
-          <p className="mt-1 text-admin-2xs text-admin-muted">광고/SEO 공백 우선순위 반영</p>
+          <p className="mt-1 text-admin-2xs text-admin-muted">검색/광고 공백 우선순위 반영</p>
         </button>
         <button
-          onClick={() => trigger('rebuild_clusters', 'Cluster 재구성')}
+          onClick={() => trigger('rebuild_clusters', '세부 글 연결 재구성')}
           disabled={running !== null}
           className="admin-card px-3 py-3 text-left text-admin-xs transition-colors hover:border-admin-border-strong disabled:opacity-50"
         >
           <span className="inline-flex items-center gap-1.5 font-semibold text-admin-text">
             <GitBranch size={14} className="text-brand" />
-            {running === 'rebuild_clusters' ? '재구성 중' : 'Cluster 재구성'}
+            {running === 'rebuild_clusters' ? '재구성 중' : '세부 글 연결 재구성'}
           </span>
           <p className="mt-1 text-admin-2xs text-admin-muted">허브와 세부 글 연결 재계산</p>
         </button>
@@ -177,7 +177,7 @@ export default function TopicalPage() {
               return (
                 <Link key={pillar.slug} href={`/blog/${pillar.slug}`} className="rounded-admin-sm bg-admin-surface-2 px-3 py-2 text-admin-xs transition-colors hover:bg-brand-light">
                   <p className="font-semibold text-admin-text">{pillar.pillar_for}</p>
-                  <p className="text-admin-muted admin-num">cluster {clusters}개 연결</p>
+                  <p className="text-admin-muted admin-num">세부 글 {clusters}개 연결</p>
                 </Link>
               );
             })}
@@ -193,11 +193,11 @@ export default function TopicalPage() {
           <table className="admin-data-table">
             <thead>
               <tr>
-                <th>Destination</th>
-                <th>Angle</th>
+                <th>목적지</th>
+                <th>각도</th>
                 <th className="text-center">월</th>
                 <th>토픽</th>
-                <th className="text-center">Priority</th>
+                <th className="text-center">우선순위</th>
               </tr>
             </thead>
             <tbody>

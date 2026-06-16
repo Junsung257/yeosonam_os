@@ -52,6 +52,19 @@ const LEVEL_COPY: Record<BlogOpsLevel, { label: string; cls: string; description
   },
 };
 
+const CHECK_LABELS: Record<string, string> = {
+  daily_publish_sla: '오늘 발행 목표 미달',
+  queue_failures_or_stale_generation: '큐 실패 또는 생성 정체',
+  published_state_mismatch: '발행 완료/실제 글 상태 불일치',
+  cron_health: '자동 실행 작업 이상',
+  recent_quality_gate: '최근 글 품질 점검 필요',
+  google_url_unknown: '구글 미인지 URL 존재',
+};
+
+function checkLabel(check: string) {
+  return CHECK_LABELS[check] || check;
+}
+
 function levelBadge(level: BlogOpsLevel) {
   const copy = LEVEL_COPY[level];
   return (
@@ -143,8 +156,8 @@ export default async function BlogAdminPage(
               '색인 작업',
               (ops.indexing.google_unknown_urls || ops.indexing.active_jobs).toLocaleString('ko-KR'),
               ops.indexing.google_unknown_urls
-                ? `Google 미인지 ${ops.indexing.google_unknown_urls}건`
-                : ops.indexing.indexnow_success_rate == null ? 'IndexNow 집계 대기' : `IndexNow ${ops.indexing.indexnow_success_rate}%`,
+                ? `구글 미인지 ${ops.indexing.google_unknown_urls}건`
+                : ops.indexing.indexnow_success_rate == null ? '네이버 수집 알림 집계 대기' : `네이버 수집 성공 ${ops.indexing.indexnow_success_rate}%`,
               Search,
               ops.indexing.google_unknown_urls || ops.indexing.active_jobs > 0 ? 'bad' : 'good',
             )}
@@ -202,7 +215,7 @@ export default async function BlogAdminPage(
                   <span className="rounded-admin-xs bg-status-successBg px-2 py-1 text-admin-2xs font-semibold text-status-successFg">핵심 계약 통과</span>
                 ) : (
                   ops.contract.failed_checks.map((check) => (
-                    <span key={check} className="rounded-admin-xs bg-danger-light px-2 py-1 text-admin-2xs font-semibold text-danger">{check}</span>
+                    <span key={check} className="rounded-admin-xs bg-danger-light px-2 py-1 text-admin-2xs font-semibold text-danger">{checkLabel(check)}</span>
                   ))
                 )}
               </div>
@@ -255,7 +268,7 @@ export default async function BlogAdminPage(
               운영 문서: <code className="rounded-admin-xs bg-admin-surface-2 px-1.5 py-0.5 font-mono text-admin-2xs">docs/blog-ops-runbook.md</code>
             </p>
             <div className="mt-3 flex flex-wrap gap-1.5">
-              {['오늘 발행 목표', '실패 큐 원인', '색인 작업', '크론 SLA'].map((label) => (
+              {['오늘 발행 목표', '실패 큐 원인', '색인 작업', '자동 실행 기준'].map((label) => (
                 <span key={label} className="rounded-admin-xs bg-admin-surface-2 px-2 py-1 text-admin-2xs font-semibold text-admin-muted">{label}</span>
               ))}
             </div>
@@ -268,19 +281,19 @@ export default async function BlogAdminPage(
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">구글 색인/노출</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              요청됨은 색인 요청, 색인처리됨은 URL Inspection 통과, 노출확인은 GSC 노출 데이터가 잡힌 상태입니다.
+              요청됨은 색인 요청, 색인처리됨은 구글 색인 확인 통과, 노출확인은 구글 서치콘솔 노출 데이터가 잡힌 상태입니다.
             </p>
           </div>
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">네이버 색인</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              현재는 IndexNow 요청 상태를 표시합니다. 실제 네이버 노출은 별도 수집 파이프라인으로 분리해야 합니다.
+              현재는 네이버 수집 알림 요청 상태를 표시합니다. 실제 네이버 노출은 별도 수집 파이프라인으로 분리해야 합니다.
             </p>
           </div>
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">광고 OS 학습</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              구글 노출, CTA, 예약, 키워드 성과는 Ad OS에서 블로그/상품/테넌트 단위로 묶어 학습합니다.
+              구글 노출, 상담 버튼, 예약, 키워드 성과는 광고 운영 시스템에서 블로그/상품 단위로 묶어 학습합니다.
             </p>
           </div>
         </div>

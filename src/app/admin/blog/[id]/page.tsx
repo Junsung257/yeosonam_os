@@ -181,7 +181,7 @@ export default function BlogEditPage() {
   const handleReindex = async () => {
     if (!id) { showToast('블로그 ID가 올바르지 않습니다.'); return; }
 
-    if (!confirm('이 글의 색인 요청을 검색엔진에 다시 보내시겠습니까?\n\n- Google Search Console sitemap 제출\n- IndexNow (Bing/Yandex/Seznam 등)\n- 보조 sitemap/feed ping')) return;
+    if (!confirm('이 글의 색인 요청을 검색엔진에 다시 보내시겠습니까?\n\n- 구글 서치콘솔 사이트맵 제출\n- 네이버 수집 알림 요청\n- 보조 사이트맵/피드 알림')) return;
     setReindexing(true);
     try {
       const res = await fetch('/api/blog/reindex', {
@@ -193,8 +193,8 @@ export default function BlogEditPage() {
       if (!res.ok) throw new Error(data.error || '실패');
       const r = data.report;
       const lines = [
-        `Google: ${r.google === 'success' ? '✓ 성공' : `✗ ${r.google_error || r.google}`}`,
-        `IndexNow: ${r.indexnow === 'success' ? '✓ 성공' : `✗ ${r.indexnow_error || r.indexnow}`}`,
+        `구글: ${r.google === 'success' ? '✓ 성공' : `✗ ${r.google_error || r.google}`}`,
+        `네이버 수집 알림: ${r.indexnow === 'success' ? '✓ 성공' : `✗ ${r.indexnow_error || r.indexnow}`}`,
       ];
       showToast(`재색인 결과:\n${lines.join('\n')}`);
     } catch (err: any) {
@@ -238,7 +238,7 @@ export default function BlogEditPage() {
           {status === 'published' && slug && (
             <>
               <button onClick={handleReindex} disabled={reindexing}
-                title="Google Search Console sitemap + IndexNow 색인 요청"
+                title="구글 서치콘솔 사이트맵 + 네이버 수집 알림 요청"
                 className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-admin-xs rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
                 {reindexing ? '요청 중...' : '🔄 재색인 요청'}
               </button>

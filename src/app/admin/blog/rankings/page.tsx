@@ -43,9 +43,9 @@ interface VisibilitySummary {
 }
 
 const RANK_SOURCES = [
-  { id: 'gsc-page', label: 'Google', description: 'Search Console' },
-  { id: 'naver_blog', label: 'Naver Blog', description: 'SERP/Advisor' },
-  { id: 'naver_web', label: 'Naver Web', description: 'SERP/Advisor' },
+  { id: 'gsc-page', label: '구글', description: '서치콘솔' },
+  { id: 'naver_blog', label: '네이버 블로그', description: '검색 결과/어드바이저' },
+  { id: 'naver_web', label: '네이버 웹문서', description: '검색 결과/어드바이저' },
   { id: 'all', label: '전체', description: '통합' },
 ] as const;
 
@@ -121,29 +121,29 @@ export default function BlogRankingsPage() {
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">색인과 노출은 다릅니다</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              Google Search Console의 색인 상태는 검색 결과 노출을 보장하지 않습니다. 실제 노출은 URL 검색, GSC 성과, SERP 순위 추적으로 따로 확인합니다.
+              구글 서치콘솔의 색인 상태는 검색 결과 노출을 보장하지 않습니다. 실제 노출은 URL 검색, 서치콘솔 성과, 검색 결과 순위 추적으로 따로 확인합니다.
             </p>
           </div>
           <div>
             <p className="text-admin-xs font-semibold text-admin-text-2">네이버는 별도 판단</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              Naver IndexNow 요청은 수집을 빠르게 알리는 기능입니다. 색인 보장이 아니므로 요청됨, 검증 불가, 검색 노출 확인을 분리합니다.
+              네이버 수집 알림은 새 URL을 빠르게 알려주는 기능입니다. 색인 보장이 아니므로 요청됨, 검증 불가, 검색 노출 확인을 분리합니다.
             </p>
           </div>
           <div>
-            <p className="text-admin-xs font-semibold text-admin-text-2">Ad OS 연결</p>
+            <p className="text-admin-xs font-semibold text-admin-text-2">광고 운영 연결</p>
             <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
-              순위, 클릭, CTA, 예약, CPA, ROAS는 블로그/키워드/상품 단위로 묶여 광고 중지와 확장 후보로 넘어갑니다.
+              순위, 클릭, 상담 버튼, 예약, 전환 비용, 광고 수익률은 블로그/키워드/상품 단위로 묶여 광고 중지와 확장 후보로 넘어갑니다.
             </p>
           </div>
         </div>
       </section>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <KpiCard label="Google 색인" value={(visibilitySummary?.google_indexed || 0).toLocaleString('ko-KR')} icon={FileText} tone="positive" />
-        <KpiCard label="Google 노출" value={(visibilitySummary?.google_visible || 0).toLocaleString('ko-KR')} icon={Eye} />
-        <KpiCard label="Naver 요청" value={(visibilitySummary?.naver_index_requested || 0).toLocaleString('ko-KR')} icon={Search} />
-        <KpiCard label="Naver 노출" value={(visibilitySummary?.naver_visible || 0).toLocaleString('ko-KR')} icon={Eye} />
+        <KpiCard label="구글 색인" value={(visibilitySummary?.google_indexed || 0).toLocaleString('ko-KR')} icon={FileText} tone="positive" />
+        <KpiCard label="구글 노출" value={(visibilitySummary?.google_visible || 0).toLocaleString('ko-KR')} icon={Eye} />
+        <KpiCard label="네이버 요청" value={(visibilitySummary?.naver_index_requested || 0).toLocaleString('ko-KR')} icon={Search} />
+        <KpiCard label="네이버 노출" value={(visibilitySummary?.naver_visible || 0).toLocaleString('ko-KR')} icon={Eye} />
         <KpiCard label="추적 글" value={(visibilitySummary?.total || summary?.totals?.tracked_slugs || 0).toLocaleString('ko-KR')} icon={FileText} />
       </div>
 
