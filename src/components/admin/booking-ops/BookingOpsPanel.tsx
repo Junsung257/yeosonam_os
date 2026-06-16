@@ -195,10 +195,10 @@ export function BookingOpsPanel({
                 <div className="text-admin-xs text-amber-700">오래 쌓이거나 자동해결률이 낮은 예약 자동화 룰입니다.</div>
               </div>
               <Link
-                href="/admin/inbox"
+                href="/admin/booking-ops/rules"
                 className="rounded-admin-sm border border-amber-200 bg-white px-2 py-1 text-admin-xs font-semibold text-amber-800 hover:bg-amber-50"
               >
-                액션큐
+                룰 튜닝
               </Link>
             </div>
             <div className="grid gap-2 md:grid-cols-2">
