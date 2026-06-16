@@ -48,7 +48,7 @@ function getGscInspectionBaseUrl(siteUrl: string): string {
     const parsed = new URL(siteUrl);
     return `${parsed.protocol}//${parsed.hostname}`.replace(/\/+$/, '');
   } catch {
-    return 'https://yeosonam.com';
+    return 'https://www.yeosonam.com';
   }
 }
 
@@ -71,7 +71,7 @@ async function runGscIndexRank(request: NextRequest) {
   const siteUrl =
     process.env.GSC_SITE_URL
     || process.env.NEXT_PUBLIC_BASE_URL
-    || 'https://yeosonam.com/';
+    || 'https://www.yeosonam.com/';
   const errors: string[] = [];
 
   // GSC 는 보통 1~2일 지연 → endDate = today-2

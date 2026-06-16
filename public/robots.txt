@@ -1,6 +1,8 @@
 User-agent: *
-# 공개 페이지 — 크롤링 허용
+# Public pages and render assets
 Allow: /$
+Allow: /_next/static/
+Allow: /_next/image
 Allow: /packages/
 Allow: /blog/
 Allow: /destinations/
@@ -10,8 +12,11 @@ Allow: /with/
 Allow: /influencer/
 Allow: /concierge
 Allow: /group-inquiry
+Allow: /private-tour
+Allow: /privacy
+Allow: /terms
 
-# SEO 관련 차단
+# Private, duplicate, or low-value crawl surfaces
 Disallow: /api/
 Disallow: /admin/
 Disallow: /m/admin/

@@ -563,7 +563,7 @@ export async function fetchGscSearchAnalytics(
     getSecret('GSC_SERVICE_ACCOUNT_JSON') ||
     getSecret('GOOGLE_SERVICE_ACCOUNT_JSON') ||
     getSecret('GSC_SERVICE_ACCOUNT');
-  const siteUrl = getSecret('GSC_SITE_URL') || 'https://yeosonam.com/';
+  const siteUrl = getSecret('GSC_SITE_URL') || 'https://www.yeosonam.com/';
 
   if (!serviceAccountJson) {
     console.log('[keyword-research] GSC 서비스 계정 없음 — Google Search Analytics 스킵');

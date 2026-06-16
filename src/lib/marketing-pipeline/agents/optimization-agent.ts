@@ -28,7 +28,7 @@ export class OptimizationAgent extends BaseMarketingAgent {
     if (!isGSCConfigured()) return this.skip('GOOGLE_SERVICE_ACCOUNT_JSON 미설정');
     if (!isSupabaseConfigured) return this.skip('Supabase 미설정');
 
-    const siteUrl = process.env.GSC_SITE_URL ?? 'https://yeosonam.com/';
+    const siteUrl = process.env.GSC_SITE_URL || 'https://www.yeosonam.com/';
 
     // 어제 날짜 (GSC는 최소 1일 지연)
     const yesterday = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000);

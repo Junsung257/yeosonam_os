@@ -41,7 +41,7 @@ async function runRankTracking(request: NextRequest) {
     return { skipped: true, reason: 'GSC 미설정 (GOOGLE_SERVICE_ACCOUNT_JSON 필요)', errors: [] as string[] };
   }
 
-  const siteUrl = process.env.GSC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com/';
+  const siteUrl = process.env.GSC_SITE_URL || process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com/';
   const errors: string[] = [];
 
   // 1) 어제 데이터 (GSC는 보통 1-2일 지연)

@@ -160,9 +160,9 @@ export interface UrlInspectionResult {
 const GSC_SITE_HOST = (() => {
   try {
     const raw = process.env.GSC_SITE_URL || '';
-    return new URL(raw).hostname;
+    return raw ? new URL(raw).hostname : 'www.yeosonam.com';
   } catch {
-    return 'yeosonam.com';
+    return 'www.yeosonam.com';
   }
 })();
 

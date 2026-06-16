@@ -74,7 +74,10 @@ function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: s
 const PUBLIC_EXACT = new Set([
   '/',
   '/login',
+  '/privacy',
+  '/private-tour',
   '/packages',
+  '/terms',
   '/auth/callback',
   '/auth/reset-password',
   '/api/auth/session',
