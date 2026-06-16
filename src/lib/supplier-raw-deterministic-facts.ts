@@ -706,6 +706,8 @@ function parseRegions(line: string): string[] {
 
 function compactKoreanToken(line: string): string {
   const trimmed = line.trim();
+  const repairedTime = trimmed.match(/^(\d{1,2}):\.(\d{2})$/);
+  if (repairedTime) return `${repairedTime[1]}:${repairedTime[2]}`;
   if (/^[가-힣](?:\s+[가-힣])+$/.test(trimmed)) return trimmed.replace(/\s+/g, '');
   return trimmed.replace(/\s+/g, ' ');
 }

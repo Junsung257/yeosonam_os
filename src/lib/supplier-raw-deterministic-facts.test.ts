@@ -719,7 +719,7 @@ describe('Korean catalog table flight recovery', () => {
       '제6일',
       '부 산',
       '',
-      '06:55',
+      '06:.55',
       '부산 김해공항 도착',
     ].join('\n');
 
