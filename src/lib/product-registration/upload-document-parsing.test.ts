@@ -91,6 +91,40 @@ describe('parseUploadDocumentForRegistration', () => {
     }));
   });
 
+  it('routes YSN standard markdown directly to the deterministic markdown parser', async () => {
+    const standardRaw = 'YSN-PRODUCT-MD v1\n\n## 기본정보\n- 상품명: 테스트 상품';
+    const standardParsed = {
+      filename: 'standard.md',
+      fileType: 'hwp',
+      rawText: standardRaw,
+      extractedData: {
+        title: '테스트 상품',
+        rawText: standardRaw,
+        _llm_meta: { provider: 'standard-markdown', tokens_input: 0 },
+      },
+      parsedAt: new Date(),
+      confidence: 0.98,
+    };
+    mocks.isStandardProductMarkdown.mockReturnValue(true);
+    mocks.parseStandardProductMarkdown.mockReturnValue(standardParsed);
+
+    const result = await parseUploadDocumentForRegistration({
+      buffer: Buffer.from(standardRaw),
+      fileName: 'standard.md',
+      directRawText: standardRaw,
+      tempDestination: null,
+      prelimLandOperatorId: null,
+      supabase: {} as never,
+      isSupabaseConfigured: false,
+      fileHash: 'hash',
+    });
+
+    expect(mocks.parseDocument).not.toHaveBeenCalled();
+    expect(mocks.parseStandardProductMarkdown).toHaveBeenCalledWith(standardRaw, 'standard.md');
+    expect(result.parsedDocument).toBe(standardParsed);
+    expect(result.parsedDocument.extractedData._llm_meta?.provider).toBe('standard-markdown');
+  });
+
   it('runs legacy parseDocument for catalog-looking direct text', async () => {
     mocks.countCatalogItineraryHeaders.mockReturnValue(2);
 

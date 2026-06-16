@@ -1,5 +1,26 @@
 # Product Registration Errors
 
+## ERR-YSN-standard-md-mojibake-and-option-price@2026-06-16
+
+- **Discovered**: 2026-06-16
+- **Domain**: product registration | standard markdown | option pricing | mobile landing
+- **Source vs result**: The operating promise said `YSN-PRODUCT-MD v1` bypasses AI parsing and is treated as customer-landing-ready structured input. The implementation existed, but the parser/template/test fixtures used mojibake section names and keys, so a readable Korean YSN markdown source was not reliably parsed as the promised structured path. A separate upload showed option prices such as `USD30` flagged as invalid even though they are valid supplier shorthand for `$30/인`.
+- **Root cause**:
+  - The standard markdown parser had drifted around corrupted Korean text instead of the actual Korean operator schema.
+  - Tests asserted mojibake samples, so they could pass while the human-usable template was broken.
+  - Optional-tour normalization preserved some raw price strings without deriving both the customer display label and structured `price_usd`/`price_krw` fields.
+- **Fix**:
+  - Rebuilt `src/lib/standard-product-markdown.ts` around readable Korean sections and keys while keeping the same public parser API and `YSN-PRODUCT-MD` marker.
+  - Replaced the standard markdown unit test with Korean source fixtures that prove LLM-free parsing, flight extraction, price extraction, itinerary extraction, attraction ID preservation, and source-backed render claim coverage.
+  - Added option-price normalization coverage for `USD30`, `USD 30`, `$30`, `US$30/인`, `30000원`, `KRW30000`, and `30,000 KRW`.
+- **Verification**:
+  - `npx vitest run src/lib/standard-product-markdown.test.ts`
+  - `npx vitest run src/lib/package-acl-optional-price.test.ts src/lib/standard-product-markdown.test.ts`
+- **Status**: FIXED IN CODE
+- **Prevention**: Any future YSN standard markdown change must use readable Korean fixtures, not mojibake fixtures. Any option price shorthand accepted from suppliers must normalize to both customer display text and structured currency amount before mobile/A4 verification.
+
+---
+
 ## ERR-PRODUCT-REGISTRATION-SSOT-ENFORCEMENT-GAP@2026-06-15
 
 - **Discovered**: 2026-06-15

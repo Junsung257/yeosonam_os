@@ -74,6 +74,21 @@ upload route
 
 `src/app/api/upload/route.ts` is an HTTP adapter only. It must not contain supplier-specific regexes, price table rescue logic, destination rescue logic, itinerary normalization, or persistence decisions.
 
+### YSN Standard Markdown Contract
+
+`YSN-PRODUCT-MD v1` is a deterministic structured-input format. When this marker is present, the upload document parsing boundary must bypass LLM/legacy document parsing and call `parseStandardProductMarkdown()`.
+
+The supported operator-facing schema is readable Korean, not mojibake/debug text:
+
+- `## 기본정보`: `상품명`, `목적지`, `국가`, `상품타입`, `여행스타일`, `출발공항`, `항공`, `출발편`, `귀국편`, `출발요일`, `최소출발`, `발권마감`, `랜드사`, `커미션`.
+- `## 가격`: table columns `라벨 | 날짜 | 성인 | 아동 | 상태 | 비고`.
+- `## 포함`, `## 불포함`, `## 추가요금`, `## 선택관광`, `## 일정`, `## 공지`, `## 취소규정`.
+- `## 일정` day rows use `### DAY N | 지역 | 호텔명(등급) | 조식 ... / 중식 ... / 석식 ...` and schedule rows use `시간 | 활동 | 타입 | 메모`.
+
+This format may still be generated internally by a normalizer, but if an operator pastes it, the parser must treat it as structured source. Tests must use readable Korean fixtures and must prove `_llm_meta.provider = "standard-markdown"` with zero token usage.
+
+Option/optional-tour prices in supplier shorthand such as `USD30`, `USD 30`, `$30`, `US$30/인`, `30000원`, and `KRW30000` must normalize into both customer display labels and structured currency fields before mobile/A4 validation. Example: `USD30` -> `price="$30/인"` and `price_usd=30`.
+
 ## Flight Evidence Contract
 
 Customer-ready upload requires source-backed round-trip flight evidence to survive all the way to `itinerary_data.flight_segments`.

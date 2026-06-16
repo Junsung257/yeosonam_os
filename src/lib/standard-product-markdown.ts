@@ -1,37 +1,7 @@
-import type { ExtractedData, NoticeItem, ParsedDocument, PriceTier, OptionalTour, Surcharge } from '@/lib/parser';
-import type { TravelItinerary, DaySchedule, ScheduleItem, MealInfo } from '@/types/itinerary';
+import type { ExtractedData, NoticeItem, OptionalTour, ParsedDocument, PriceTier, Surcharge } from '@/lib/parser';
+import type { DaySchedule, MealInfo, ScheduleItem, TravelItinerary } from '@/types/itinerary';
 
 type SectionMap = Record<string, string[]>;
-
-const STANDARD_MARKERS = [
-  'YSN-PRODUCT-MD',
-  '## 기본정보',
-  '## 가격',
-  '## 일정',
-];
-
-const KEY_ALIASES: Record<string, keyof BasicInfo> = {
-  상품명: 'title',
-  제목: 'title',
-  목적지: 'destination',
-  국가: 'country',
-  상품타입: 'productType',
-  타입: 'productType',
-  여행스타일: 'tripStyle',
-  일정: 'tripStyle',
-  출발공항: 'departureAirport',
-  항공: 'airline',
-  항공사: 'airline',
-  출발편: 'flightOut',
-  귀국편: 'flightIn',
-  리턴편: 'flightIn',
-  출발요일: 'departureDays',
-  최소출발: 'minParticipants',
-  최소인원: 'minParticipants',
-  발권마감: 'ticketingDeadline',
-  랜드사: 'landOperator',
-  커미션: 'commissionRate',
-};
 
 interface BasicInfo {
   title?: string;
@@ -57,6 +27,56 @@ interface ParsedFlight {
   arrTime: string | null;
   arrAirport: string | null;
 }
+
+const STANDARD_MARKERS = [
+  'YSN-PRODUCT-MD',
+  '## 기본정보',
+  '## 가격',
+  '## 일정',
+];
+
+const KEY_ALIASES: Record<string, keyof BasicInfo> = {
+  상품명: 'title',
+  제목: 'title',
+  목적지: 'destination',
+  지역: 'destination',
+  국가: 'country',
+  상품타입: 'productType',
+  상품유형: 'productType',
+  상품구분: 'productType',
+  타입: 'productType',
+  여행스타일: 'tripStyle',
+  일정: 'tripStyle',
+  기간: 'tripStyle',
+  출발공항: 'departureAirport',
+  항공: 'airline',
+  항공사: 'airline',
+  출발편: 'flightOut',
+  가는편: 'flightOut',
+  귀국편: 'flightIn',
+  오는편: 'flightIn',
+  리턴편: 'flightIn',
+  출발요일: 'departureDays',
+  출발일: 'departureDays',
+  최소출발: 'minParticipants',
+  최소인원: 'minParticipants',
+  발권마감: 'ticketingDeadline',
+  발권기한: 'ticketingDeadline',
+  랜드사: 'landOperator',
+  커미션: 'commissionRate',
+};
+
+const SECTION_ALIASES: Record<string, string[]> = {
+  basic: ['기본정보', '기본 정보', '상품정보', '상품 정보'],
+  price: ['가격', '요금', '요금표', '판매가'],
+  inclusions: ['포함', '포함사항', '포함 사항'],
+  excludes: ['불포함', '불포함사항', '불포함 사항'],
+  surcharges: ['추가요금', '추가 요금', '현지지불', '현지지불비용'],
+  optionalTours: ['선택관광', '옵션', '현지지불옵션', '강력추천옵션'],
+  itinerary: ['일정', '일정표', '여행일정', '여행 일정'],
+  notices: ['공지', '안내', '비고', '유의사항', '주의사항'],
+  cancellation: ['취소규정', '취소 규정', '약관'],
+};
 
 export function isStandardProductMarkdown(rawText: string): boolean {
   const text = rawText.trim();
@@ -85,13 +105,22 @@ function splitSections(rawText: string): SectionMap {
   return sections;
 }
 
+function sectionLines(sections: SectionMap, key: keyof typeof SECTION_ALIASES): string[] {
+  const aliases = SECTION_ALIASES[key];
+  const found = Object.entries(sections).find(([section]) => {
+    const normalized = section.replace(/\s+/g, '');
+    return aliases.some(alias => normalized.startsWith(alias.replace(/\s+/g, '')));
+  });
+  return found?.[1] ?? [];
+}
+
 function parseKeyValueLines(lines: string[]): BasicInfo {
   const out: BasicInfo = {};
   for (const raw of lines) {
     const line = normalizeLine(raw);
-    const match = line.match(/^([^:：]+)\s*[:：]\s*(.+)$/);
+    const match = line.match(/^([^:：|]+)\s*[:：]\s*(.+)$/);
     if (!match) continue;
-    const key = match[1].trim();
+    const key = match[1].trim().replace(/\s+/g, '');
     const alias = KEY_ALIASES[key];
     if (!alias) continue;
     out[alias] = match[2].trim();
@@ -120,19 +149,21 @@ function parseIsoDate(value: string | undefined): string | undefined {
 }
 
 function parseTripDays(style: string | undefined): { nights: number; days: number } {
-  const match = style?.match(/(\d+)\s*박\s*(\d+)\s*일/);
-  if (match) return { nights: Number(match[1]), days: Number(match[2]) };
+  const text = style ?? '';
+  const nightMatch = text.match(/(\d+)\s*박\s*(\d+)\s*일/);
+  if (nightMatch) return { nights: Number(nightMatch[1]), days: Number(nightMatch[2]) };
+  const dayMatch = text.match(/(\d+)\s*일/);
+  if (dayMatch) return { nights: Math.max(0, Number(dayMatch[1]) - 1), days: Number(dayMatch[1]) };
   return { nights: 0, days: 1 };
 }
 
 function parseFlight(raw: string | undefined): ParsedFlight {
   const text = raw?.trim() ?? '';
-  const code = text.match(/([A-Z0-9]{2}\d{2,4})/)?.[1] ?? null;
+  const code = text.match(/\b([A-Z0-9]{2}\d{2,4})\b/)?.[1] ?? null;
   const times = [...text.matchAll(/(\d{1,2}:\d{2})/g)].map(m => m[1]);
-  const airports = text
-    .replace(code ?? '', '')
-    .replace(/\d{1,2}:\d{2}/g, '')
-    .split(/->|→|-/)
+  const airportText = text.replace(code ?? '', '').replace(/\d{1,2}:\d{2}/g, '');
+  const airports = airportText
+    .split(/\s*(?:->|→|⇒|~| - )\s*/)
     .map(s => s.trim())
     .filter(Boolean);
   return {
@@ -145,9 +176,7 @@ function parseFlight(raw: string | undefined): ParsedFlight {
 }
 
 function parseBullets(lines: string[]): string[] {
-  return lines
-    .map(normalizeLine)
-    .filter(line => line && !line.startsWith('#'));
+  return lines.map(normalizeLine).filter(line => line && !line.startsWith('#'));
 }
 
 function parsePriceRows(lines: string[]): PriceTier[] {
@@ -161,12 +190,12 @@ function parsePriceRows(lines: string[]): PriceTier[] {
     const [label, datesRaw, adultRaw, childRaw, statusRaw, noteRaw] = cells;
     const adult = parseMoney(adultRaw);
     if (!adult) return null;
-    const dates = datesRaw && !/전체|전\s*출발|매주/.test(datesRaw)
+    const dates = datesRaw && !/전체|전\s*출발|매주|요일/.test(datesRaw)
       ? datesRaw.split(/[,/]/).map(d => d.trim()).filter(Boolean)
       : undefined;
     const status: PriceTier['status'] = /확정/.test(statusRaw ?? '')
       ? 'confirmed'
-      : /마감|품절/.test(statusRaw ?? '')
+      : /마감|대기|불가|예약불가/.test(statusRaw ?? '')
         ? 'soldout'
         : 'available';
     return {
@@ -187,8 +216,8 @@ function parseOptionalTours(lines: string[]): OptionalTour[] {
     return {
       name,
       price: price || undefined,
-      price_usd: price?.includes('$') ? parseMoney(price) : undefined,
-      price_krw: price?.includes('원') ? parseMoney(price) : undefined,
+      price_usd: price?.includes('$') || /USD/i.test(price ?? '') ? parseMoney(price) : undefined,
+      price_krw: /원|KRW/i.test(price ?? '') ? parseMoney(price) : undefined,
       note: note || null,
     };
   }).filter(t => t.name);
@@ -197,8 +226,8 @@ function parseOptionalTours(lines: string[]): OptionalTour[] {
 function parseSurcharges(lines: string[]): Surcharge[] {
   return parseBullets(lines).map(line => ({
     period: line,
-    amount_usd: line.includes('$') ? parseMoney(line) : undefined,
-    amount_krw: line.includes('원') ? parseMoney(line) : undefined,
+    amount_usd: line.includes('$') || /USD/i.test(line) ? parseMoney(line) : undefined,
+    amount_krw: /원|KRW/i.test(line) ? parseMoney(line) : undefined,
     note: line,
   }));
 }
@@ -239,15 +268,15 @@ function parseNotices(lines: string[], basic: BasicInfo): NoticeItem[] {
 
 function parseMeals(raw: string | undefined): MealInfo {
   const text = raw ?? '';
-  const read = (label: string): [boolean, string | null] => {
-    const match = text.match(new RegExp(`${label}\\s*[:：]\\s*([^/|]+)`));
-    const value = match?.[1]?.trim() ?? '';
+  const read = (labels: string[]): [boolean, string | null] => {
+    const pattern = new RegExp(`(?:${labels.join('|')})\\s*[:：]?\\s*([^/|]+)`);
+    const value = pattern.exec(text)?.[1]?.trim() ?? '';
     if (!value || /x|불포함|없음/i.test(value)) return [false, value || null];
     return [true, value];
   };
-  const [breakfast, breakfast_note] = read('조');
-  const [lunch, lunch_note] = read('중');
-  const [dinner, dinner_note] = read('석');
+  const [breakfast, breakfast_note] = read(['조식', '조']);
+  const [lunch, lunch_note] = read(['중식', '중']);
+  const [dinner, dinner_note] = read(['석식', '석']);
   return { breakfast, lunch, dinner, breakfast_note, lunch_note, dinner_note };
 }
 
@@ -272,18 +301,19 @@ function parseScheduleItem(line: string, defaultFlightCode: string | null): Sche
   const activity = hasTime ? maybeActivity : timeOrActivity;
   if (!activity) return null;
   const typeText = (hasTime ? maybeType : maybeActivity) ?? '';
-  const type: ScheduleItem['type'] = /flight|항공|출발|도착/.test(typeText + activity)
+  const combined = `${typeText} ${activity}`;
+  const type: ScheduleItem['type'] = /flight|항공|출발|도착|공항|비행/.test(combined)
     ? 'flight'
-    : /optional|선택/.test(typeText)
+    : /optional|선택|옵션/.test(combined)
       ? 'optional'
-      : /shopping|쇼핑/.test(typeText)
+      : /shopping|쇼핑/.test(combined)
         ? 'shopping'
-        : /meal|식사/.test(typeText)
+        : /meal|식사|조식|중식|석식/.test(combined)
           ? 'meal'
-          : /hotel|호텔/.test(typeText)
+          : /hotel|호텔|숙박|체크인|체크아웃/.test(combined)
             ? 'hotel'
             : 'normal';
-  const flightCode = activity.match(/([A-Z0-9]{2}\d{2,4})/)?.[1] ?? defaultFlightCode;
+  const flightCode = activity.match(/\b([A-Z0-9]{2}\d{2,4})\b/)?.[1] ?? defaultFlightCode;
   const attraction = extractAttractionIds(maybeNote);
   return {
     time,
@@ -333,7 +363,7 @@ function parseDays(lines: string[], basic: BasicInfo): DaySchedule[] {
 
 function buildItinerary(basic: BasicInfo, sections: SectionMap): TravelItinerary {
   const trip = parseTripDays(basic.tripStyle);
-  const days = parseDays(sections['일정'] ?? [], basic);
+  const days = parseDays(sectionLines(sections, 'itinerary'), basic);
   return {
     meta: {
       title: basic.title ?? '상품명 미입력',
@@ -350,16 +380,16 @@ function buildItinerary(basic: BasicInfo, sections: SectionMap): TravelItinerary
       room_type: null,
       ticketing_deadline: parseIsoDate(basic.ticketingDeadline) ?? null,
       hashtags: [],
-      brand: '여소남',
+      brand: '여소남' as never,
     },
     highlights: {
-      inclusions: parseBullets(sections['포함'] ?? []),
-      excludes: parseBullets(sections['불포함'] ?? []),
+      inclusions: parseBullets(sectionLines(sections, 'inclusions')),
+      excludes: parseBullets(sectionLines(sections, 'excludes')),
       shopping: null,
-      remarks: parseBullets(sections['공지'] ?? sections['비고'] ?? []),
+      remarks: parseBullets(sectionLines(sections, 'notices')),
     },
     days,
-    optional_tours: parseOptionalTours(sections['선택관광'] ?? []).map(t => ({
+    optional_tours: parseOptionalTours(sectionLines(sections, 'optionalTours')).map(t => ({
       name: t.name,
       price_usd: t.price_usd ?? null,
       price_krw: t.price_krw ?? null,
@@ -370,18 +400,19 @@ function buildItinerary(basic: BasicInfo, sections: SectionMap): TravelItinerary
 
 export function parseStandardProductMarkdown(rawText: string, filename = 'standard-product.md'): ParsedDocument {
   const sections = splitSections(rawText);
-  const basic = parseKeyValueLines(sections['기본정보'] ?? []);
+  const basic = parseKeyValueLines(sectionLines(sections, 'basic'));
   const trip = parseTripDays(basic.tripStyle);
   const itineraryData = buildItinerary(basic, sections);
-  const priceTiers = parsePriceRows(sections['가격'] ?? []);
-  const inclusions = parseBullets(sections['포함'] ?? []);
-  const excludes = parseBullets(sections['불포함'] ?? []);
-  const optionalTours = parseOptionalTours(sections['선택관광'] ?? []);
-  const notices = parseNotices(sections['공지'] ?? sections['비고'] ?? [], basic);
+  const priceTiers = parsePriceRows(sectionLines(sections, 'price'));
+  const inclusions = parseBullets(sectionLines(sections, 'inclusions'));
+  const excludes = parseBullets(sectionLines(sections, 'excludes'));
+  const optionalTours = parseOptionalTours(sectionLines(sections, 'optionalTours'));
+  const notices = parseNotices(sectionLines(sections, 'notices'), basic);
   const accommodations = itineraryData.days
     .map(day => day.hotel)
     .filter((hotel): hotel is NonNullable<typeof hotel> => Boolean(hotel?.name))
     .map(hotel => hotel.grade ? `${hotel.name} (${hotel.grade})` : hotel.name);
+  const price = priceTiers.map(t => t.adult_price ?? Infinity).reduce((min, current) => Math.min(min, current), Infinity);
   const extractedData: ExtractedData = {
     title: basic.title,
     category: 'package',
@@ -389,21 +420,22 @@ export function parseStandardProductMarkdown(rawText: string, filename = 'standa
     trip_style: basic.tripStyle,
     destination: basic.destination,
     duration: trip.days || itineraryData.days.length || undefined,
+    nights: trip.nights,
     departure_days: basic.departureDays,
     departure_airport: basic.departureAirport,
     airline: basic.airline,
     min_participants: parseNumber(basic.minParticipants, 1),
     ticketing_deadline: parseIsoDate(basic.ticketingDeadline),
-    price: priceTiers.map(t => t.adult_price ?? Infinity).reduce((min, price) => Math.min(min, price), Infinity),
+    price: Number.isFinite(price) ? price : undefined,
     price_tiers: priceTiers,
     inclusions,
     excludes,
     optional_tours: optionalTours,
-    surcharges: parseSurcharges(sections['추가요금'] ?? sections['써차지'] ?? []),
+    surcharges: parseSurcharges(sectionLines(sections, 'surcharges')),
     itinerary: itineraryData.days.flatMap(day => day.schedule.map(item => item.activity)),
     accommodations: [...new Set(accommodations)],
     notices_parsed: notices,
-    cancellation_policy: parseBullets(sections['취소규정'] ?? []).map(line => ({ period: line, rate: 0, note: line })),
+    cancellation_policy: parseBullets(sectionLines(sections, 'cancellation')).map(line => ({ period: line, rate: 0, note: line })),
     land_operator: basic.landOperator,
     product_tags: [],
     product_highlights: [],
@@ -425,7 +457,6 @@ export function parseStandardProductMarkdown(rawText: string, filename = 'standa
       cost_usd: 0,
     },
   };
-  if (!Number.isFinite(extractedData.price ?? Infinity)) delete extractedData.price;
 
   return {
     filename,
@@ -441,7 +472,6 @@ export function parseStandardProductMarkdown(rawText: string, filename = 'standa
 export const STANDARD_PRODUCT_MARKDOWN_TEMPLATE = `YSN-PRODUCT-MD v1
 
 # 상품명
-
 ## 기본정보
 - 상품명:
 - 목적지:
@@ -450,8 +480,8 @@ export const STANDARD_PRODUCT_MARKDOWN_TEMPLATE = `YSN-PRODUCT-MD v1
 - 여행스타일: 3박5일
 - 출발공항:
 - 항공:
-- 출발편: LJ115 21:35 부산 -> 00:25 나트랑
-- 귀국편: LJ116 01:00 나트랑 -> 06:40 부산
+- 출발편: BX781 19:20 부산/김해 -> 22:20 나트랑
+- 귀국편: BX782 23:20 나트랑 -> 06:20 부산/김해
 - 출발요일:
 - 최소출발:
 - 발권마감:
@@ -461,34 +491,33 @@ export const STANDARD_PRODUCT_MARKDOWN_TEMPLATE = `YSN-PRODUCT-MD v1
 ## 가격
 | 라벨 | 날짜 | 성인 | 아동 | 상태 | 비고 |
 | --- | --- | --- | --- | --- | --- |
-| 기본 | 2026-06-04, 2026-06-11 | 619,000원 | 619,000원 | 가능 | 실제 출발일을 YYYY-MM-DD로 입력 |
+| 기본 | 2026-07-16, 2026-07-23 | 1,099,000원 | 1,099,000원 | 가능 | 실제 출발일을 YYYY-MM-DD로 입력 |
 
 ## 포함
 - 왕복항공권
-- 전 일정 호텔
-- 일정표상 식사/차량/관광
+- 일정표상 숙박/식사/차량/관광
 
 ## 불포함
-- 가이드/기사 경비
+- 개인경비
 
 ## 추가요금
-- 
+-
 
 ## 선택관광
 - 관광명 | $30/인 | 비고
 
 ## 일정
-### DAY 1 | 부산, 나트랑 | 호텔명(5성) | 조:X / 중:X / 석:X
-- 21:35 | LJ115 부산 출발 | flight
-- 00:25 | 나트랑 도착 | flight
+### DAY 1 | 부산, 나트랑 | 기내박 | 조식 X / 중식 X / 석식 X
+- 19:20 | BX781 부산/김해 출발 | flight
+- 22:20 | 나트랑 도착 | flight
 
-### DAY 2 | 나트랑 | 호텔명(5성) | 조:호텔식 / 중:현지식 / 석:현지식
-- 09:00 | 관광지명 원문 그대로 | normal | 관광지ID: 기존 attractions.id 입력 시 고객 랜딩 카드 연결
+### DAY 2 | 나트랑 | 호텔명(5성) | 조식 호텔식 / 중식 현지식 / 석식 현지식
+- 09:00 | 관광지명 관광 | normal | 관광지ID: 기존 attractions.id 입력 시 고객 랜딩 카드 연결
 
 ## 공지
 - CRITICAL | 여권/비자 | 여권 만료일은 출발일 기준 6개월 이상 남아 있어야 하며, 비자 필요 여부는 예약 전 확인해 주세요.
 - PAYMENT | 발권/결제 | 발권마감 이후에는 항공 좌석과 요금이 변동될 수 있어 예약 확정 전 최종 안내가 필요합니다.
-- POLICY | 취소/변경 | 취소료는 여행약관과 항공사 규정에 따라 적용되며, 특가 항공권은 별도 조건이 우선될 수 있습니다.
+- POLICY | 취소/변경 | 취소료는 여행 약관과 항공사 규정에 따라 적용되며, 발권 항공권은 별도 조건이 우선될 수 있습니다.
 - INFO | 현지 안내 | 현지 사정과 항공 스케줄에 따라 일정 순서가 변경될 수 있으며 동급 호텔로 대체될 수 있습니다.
 
 ## 취소규정

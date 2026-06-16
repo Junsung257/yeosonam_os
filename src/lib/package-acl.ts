@@ -84,6 +84,29 @@ interface LegacyTour {
   note?: string | null; day?: number;
 }
 
+function parseCustomerOptionalTourPrice(t: LegacyTour): { label: string | null; usd: number | null; krw: number | null } {
+  const usd = t.price_usd != null && !isNaN(Number(t.price_usd)) ? Number(t.price_usd) : null;
+  const krw = t.price_krw != null && !isNaN(Number(t.price_krw)) ? Number(t.price_krw) : null;
+  if (usd && usd > 0) return { label: `$${usd}/인`, usd, krw: null };
+  if (krw && krw > 0) return { label: `${krw.toLocaleString('ko-KR')}원`, usd: null, krw };
+  if (typeof t.price === 'number') return { label: String(t.price), usd: null, krw: null };
+  if (typeof t.price !== 'string') return { label: null, usd: null, krw: null };
+
+  const raw = t.price.trim();
+  const usdMatch = raw.match(/^(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)(?:\s*\/?\s*(?:인|person|pax))?$/i);
+  if (usdMatch) {
+    const amount = Number(usdMatch[1]);
+    return { label: `$${amount}/인`, usd: amount, krw: null };
+  }
+  const krwMatch = raw.match(/^(\d[\d,]*)(?:\s*원|\s*KRW)(?:\s*\/?\s*(?:인|person|pax))?$/i)
+    ?? raw.match(/^KRW\s*(\d[\d,]*)(?:\s*\/?\s*(?:인|person|pax))?$/i);
+  if (krwMatch) {
+    const amount = Number(krwMatch[1].replace(/,/g, ''));
+    return { label: `${amount.toLocaleString('ko-KR')}원`, usd: null, krw: amount };
+  }
+  return { label: raw || null, usd: null, krw: null };
+}
+
 function normalizeOptionalTourPrice(t: LegacyTour): string | null {
   const usd = t.price_usd != null && !isNaN(Number(t.price_usd)) ? Number(t.price_usd) : null;
   const krw = t.price_krw != null && !isNaN(Number(t.price_krw)) ? Number(t.price_krw) : null;
@@ -103,12 +126,13 @@ export function normalizeOptionalTour(raw: unknown): PackageCore['optional_tours
   const t = raw as LegacyTour;
   if (!t.name) return null;
   const inferred = inferRegion(t.name, t.region);
+  const parsedPrice = parseCustomerOptionalTourPrice(t);
   return {
     name: t.name,
     region: (inferred as PackageCore['optional_tours'][number]['region']) || null,
-    price: normalizeOptionalTourPrice(t),
-    price_usd: t.price_usd != null && !isNaN(Number(t.price_usd)) ? Number(t.price_usd) : null,
-    price_krw: t.price_krw != null && !isNaN(Number(t.price_krw)) ? Number(t.price_krw) : null,
+    price: parsedPrice.label,
+    price_usd: parsedPrice.usd,
+    price_krw: parsedPrice.krw,
     note: t.note || null,
     day: t.day != null && !isNaN(Number(t.day)) ? Number(t.day) : null,
   };
