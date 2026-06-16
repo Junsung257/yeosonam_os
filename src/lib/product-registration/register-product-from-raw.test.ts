@@ -132,6 +132,46 @@ describe('registerProductFromRaw', () => {
     expect(result.failures.join('\n')).toContain('fixture-block');
   });
 
+  it('prunes customer copy highlights that are not backed by the uploaded source', async () => {
+    const rawText = [
+      '베트남 나트랑/달랏 3박5일',
+      '부산-나트랑 BX781 19:20 - 22:20 / 나트랑-부산 BX782 23:20 - 06:20+1',
+      '출발일 2026-08-30',
+      '상품가 719,000',
+      'DAY 1 부산/나트랑',
+      '부산 출발',
+      '나트랑 도착',
+      'DAY 5 나트랑/부산',
+      '나트랑 출발',
+      '부산 도착',
+      '포함 항공 호텔 식사 차량',
+      '불포함 개인경비',
+    ].join('\n');
+
+    const result = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: '베트남 나트랑/달랏 3박5일',
+        destination: '나트랑',
+        duration: 5,
+        rawText,
+        price_tiers: [],
+        product_highlights: ['백두산 북파 일정', '프리미엄'],
+        product_summary: '백두산 북파 일정 중심 상품입니다.',
+      },
+      title: '베트남 나트랑/달랏 3박5일',
+      activeAttractions: [],
+      destinationCode: 'CXR',
+      internalCode: 'PUS-ETC-CXR-05-TEST',
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    expect(result.extractedData.product_highlights ?? []).not.toContain('백두산 북파 일정');
+    expect(result.extractedData.product_summary ?? '').not.toContain('백두산');
+  });
+
   it('blocks registration when source-backed round-trip flight times are missing from the customer itinerary payload', async () => {
     const rawText = [
       'Product: Baekdu flight regression 3N4D',

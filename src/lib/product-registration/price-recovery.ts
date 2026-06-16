@@ -129,6 +129,15 @@ function normalizeTiers(raw: unknown): PriceTier[] {
     .filter((tier): tier is PriceTier => tier != null);
 }
 
+const OPTIONAL_AMOUNT_CONTEXT_RE = /(?:\$|USD|마사지|맛사지|선택관광|옵션|쇼핑|팁|써차지|싱글\s*차지|불포함|현지지불)/i;
+
+function removeOptionalAmountPollution(tiers: PriceTier[], rawText: string): PriceTier[] {
+  if (!OPTIONAL_AMOUNT_CONTEXT_RE.test(rawText)) return tiers;
+  const hasPackageScalePrice = tiers.some(tier => Number(tier.adult_price) >= 100_000);
+  if (!hasPackageScalePrice) return tiers;
+  return tiers.filter(tier => Number(tier.adult_price) >= 100_000);
+}
+
 function isDateString(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
 }
@@ -341,7 +350,7 @@ export async function recoverUploadPriceData(
       durationDays: options.durationDays ?? ed.duration,
       departureDays: recoveredDepartureDays,
     });
-    const candidate = evaluateCandidate(ed, normalizeTiers(det.tiers), ctx);
+    const candidate = evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText), ctx);
     deterministicCandidate = { source: det.source, ...candidate };
 
     if (det.source !== 'none' && candidate.priceRows.length > 0 && candidate.priceDates.length > 0) {
@@ -354,7 +363,7 @@ export async function recoverUploadPriceData(
     }
   }
 
-  const llmCandidate = evaluateCandidate(ed, normalizeTiers(ed.price_tiers ?? []), ctx);
+  const llmCandidate = evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(ed.price_tiers ?? []), rawText), ctx);
   if (llmCandidate.priceRows.length > 0 && llmCandidate.priceDates.length > 0) {
     return {
       ok: true,
@@ -375,7 +384,7 @@ export async function recoverUploadPriceData(
         durationDays: options.durationDays ?? ed.duration,
         departureDays: recoveredDepartureDays,
       });
-      return { source: det.source, ...evaluateCandidate(ed, normalizeTiers(det.tiers), ctx) };
+      return { source: det.source, ...evaluateCandidate(ed, removeOptionalAmountPollution(normalizeTiers(det.tiers), rawText), ctx) };
     })();
     if (detCandidate.priceRows.length > 0 && detCandidate.priceDates.length > 0) {
       const { source: detSource, ...candidate } = detCandidate;

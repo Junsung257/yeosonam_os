@@ -94,6 +94,58 @@ describe('recoverUploadPriceData', () => {
     expect(result.failures.some(failure => failure.startsWith('llm:price_dates'))).toBe(true);
   });
 
+  it('drops option-sized amounts from weekday catalog price tables when package prices are present', async () => {
+    const rawText = [
+      '베트남 다낭/호이안 3박5일',
+      '6월~10월 NO팁!! NO옵션!!',
+      '스마트 VS 프리미엄',
+      '항공스케줄',
+      '부산-다낭 BX773 20:50 – 23:50 / 다낭-부산 BX774 00:45 – 07:20',
+      '출발기간',
+      '출발요일',
+      'NO팁!! NO옵션!!',
+      '스마트',
+      '프리미엄',
+      '8/30~9/12',
+      '토/일',
+      '729,000',
+      '789,000',
+      '월/화/수/목/금',
+      '779,000',
+      '839,000',
+      '9/13~9/30',
+      '토/일',
+      '679,000',
+      '739,000',
+      '월/화/수/목/금',
+      '729,000',
+      '789,000',
+      '불포함내역',
+      '선택관광 발마사지30분 $30, 전신마사지60분 $50',
+    ].join('\n');
+    const ed: ExtractedData = {
+      title: '베트남 다낭/호이안 3박5일',
+      destination: '다낭',
+      duration: 5,
+      rawText,
+      price_tiers: [],
+    };
+
+    const result = await recoverUploadPriceData(ed, {
+      rawText,
+      title: ed.title,
+      durationDays: 5,
+      year: 2026,
+      enableGeminiFallback: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.source).toBe('deterministic:weekday_period_table');
+    expect(result.minPrice).toBe(679000);
+    expect(result.priceRows.some(row => row.net_price === 30000 || row.net_price === 50000)).toBe(false);
+    expect(result.priceDates.some(row => row.price === 30000 || row.price === 50000)).toBe(false);
+  });
+
   it('recovers malformed or label-only tiers through deterministic IR', async () => {
     const { testCase, rawText, expected } = phuQuocCase();
     const ed: ExtractedData = {

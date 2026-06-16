@@ -359,6 +359,14 @@ function extractRouteFlightSegments(rawText: string): {
   outbound: ReturnType<typeof extractFlightSegment>;
   inbound: ReturnType<typeof extractFlightSegment>;
 } {
+  const inlineRows = extractInlineRouteFlightRows(rawText);
+  if (inlineRows.length > 0) {
+    return {
+      outbound: inlineRows[0] ?? null,
+      inbound: inlineRows.length > 1 ? inlineRows[inlineRows.length - 1] : null,
+    };
+  }
+
   const rows = rawText
     .split(/\r?\n/)
     .map(line => line.trim())
@@ -380,6 +388,32 @@ function extractRouteFlightSegments(rawText: string): {
     outbound: candidates[0] ?? null,
     inbound: candidates.length > 1 ? candidates[candidates.length - 1] : null,
   };
+}
+
+function extractInlineRouteFlightRows(rawText: string): Array<NonNullable<ReturnType<typeof extractFlightSegment>>> {
+  const rows: Array<NonNullable<ReturnType<typeof extractFlightSegment>>> = [];
+  const routeSegmentRe = /([\p{Script=Hangul}A-Za-z/()\s]{1,30}?)\s*[-–—−]\s*([\p{Script=Hangul}A-Za-z/()\s]{1,30}?)\s+([A-Z]{2}\d{2,4})\s+(\d{1,2}:\d{2})\s*(?:[-–—−~→]|\/)\s*(\d{1,2}:\d{2})(?:\s*\+?\s*\d+)?/gu;
+  const cleanAirport = (value: string) => value.replace(/^[\s/|,]+/, '').replace(/[\s/|,]+$/, '').trim();
+
+  for (const line of rawText.split(/\r?\n/)) {
+    const normalizedLine = line
+      .replace(/\u00a0/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!/\b[A-Z]{2}\d{2,4}\b/.test(normalizedLine)) continue;
+
+    for (const match of normalizedLine.matchAll(routeSegmentRe)) {
+      rows.push({
+        code: match[3],
+        departure: { time: match[4], airport: cleanAirport(match[1]) },
+        arrival: { time: match[5], airport: cleanAirport(match[2]) },
+      });
+    }
+  }
+
+  return rows.filter((row, index, arr) => (
+    arr.findIndex(other => other.code === row.code && other.departure.time === row.departure.time) === index
+  ));
 }
 
 function extractStackedFlightRows(rawText: string): Array<NonNullable<ReturnType<typeof extractFlightSegment>>> {

@@ -742,4 +742,42 @@ describe('Korean catalog table flight recovery', () => {
       },
     ]);
   });
+
+  it('recovers slash-separated Korean route flight schedules from catalog headers', () => {
+    const raw = [
+      '베트남 나트랑/달랏 3박5일',
+      '항공스케줄',
+      '부산-나트랑 BX781 19:20 – 22:20 / 나트랑-부산 BX782 23:20 – 06:20+1',
+      '출발기간',
+      '출발요일',
+      '스마트',
+      '8/30~9/12',
+      '일월화수목금토',
+      '719,000',
+      'DAY 1 부산/나트랑',
+      '부산 출발',
+      '나트랑 도착',
+      'DAY 5 나트랑/부산',
+      '나트랑 출발',
+      '부산 도착',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+    const itinerary = buildSupplierRawDeterministicItinerary(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX781',
+      departure: { airport: '부산', time: '19:20' },
+      arrival: { airport: '나트랑', time: '22:20' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX782',
+      departure: { airport: '나트랑', time: '23:20' },
+      arrival: { airport: '부산', time: '06:20' },
+    });
+    expect(itinerary?.flight_segments).toMatchObject([
+      { leg: 'outbound', flight_no: 'BX781', dep_time: '19:20', arr_time: '22:20' },
+      { leg: 'inbound', flight_no: 'BX782', dep_time: '23:20', arr_time: '06:20' },
+    ]);
+  });
 });

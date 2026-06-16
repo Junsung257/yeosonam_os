@@ -396,8 +396,63 @@ function applyDeterministicProductFieldRecovery(ed: ExtractedData, rawText: stri
   }
 }
 
+const CROSS_DESTINATION_GUARD_TERMS = [
+  '백두산',
+  '연길',
+  '서안',
+  '화산',
+  '장가계',
+  '후쿠오카',
+  '벳부',
+  '유후인',
+  '대마도',
+  '시즈오카',
+  '나트랑',
+  '달랏',
+  '다낭',
+  '호이안',
+  '푸꾸옥',
+  '타이베이',
+  '대만',
+];
+
+function normalizeForContainment(value: string): string {
+  return value.replace(/\s+/g, '').toLowerCase();
+}
+
+function isSourceBackedCustomerCopy(value: string, rawText: string): boolean {
+  const compactRaw = normalizeForContainment(rawText);
+  const compactValue = normalizeForContainment(value);
+  if (!compactValue) return false;
+
+  for (const term of CROSS_DESTINATION_GUARD_TERMS) {
+    const compactTerm = normalizeForContainment(term);
+    if (compactValue.includes(compactTerm) && !compactRaw.includes(compactTerm)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function pruneUnbackedCustomerCopyFields(ed: ExtractedData, rawText: string): string[] {
+  const warnings: string[] = [];
+  if (Array.isArray(ed.product_highlights)) {
+    const next = ed.product_highlights.filter(item => isSourceBackedCustomerCopy(String(item ?? ''), rawText));
+    if (next.length !== ed.product_highlights.length) {
+      ed.product_highlights = next;
+      warnings.push('customer_copy:unbacked_highlights_pruned');
+    }
+  }
+  if (typeof ed.product_summary === 'string' && !isSourceBackedCustomerCopy(ed.product_summary, rawText)) {
+    ed.product_summary = undefined;
+    warnings.push('customer_copy:cross_destination_summary_pruned');
+  }
+  return warnings;
+}
+
 function applyCrossFieldAndSummaryRecovery(ed: ExtractedData, rawText: string): string[] {
   const warnings: string[] = [];
+  warnings.push(...pruneUnbackedCustomerCopyFields(ed, rawText));
   const criticIssues = detectCriticIssues({
     title: ed.title,
     destination: ed.destination,
