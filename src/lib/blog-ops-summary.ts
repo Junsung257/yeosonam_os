@@ -156,6 +156,15 @@ function isRecentOrDueQueue(row: QueueRow, now: Date): boolean {
   return recent || dueSoon;
 }
 
+function isManualReviewQueue(row: QueueRow): boolean {
+  const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? row.meta : {};
+  return row.status === 'failed' && (
+    meta.self_heal_blocked === true ||
+    Boolean(meta.quarantine_reason) ||
+    Boolean(meta.self_heal_closed_at)
+  );
+}
+
 async function settle<T>(label: string, promise: PromiseLike<QueryResult<T>>, warnings: string[]): Promise<T[]> {
   try {
     const result = await promise;
@@ -236,6 +245,8 @@ export async function buildBlogOpsSummary(supabase: any) {
   const hiddenHistory = queueRows.filter((row) => !isRecentOrDueQueue(row, now)).length;
   const overdueQueued = queueRows.filter((row) => row.status === 'queued' && row.target_publish_at && new Date(row.target_publish_at) < now).length;
   const staleGenerating = queueRows.filter((row) => row.status === 'generating' && row.created_at && now.getTime() - new Date(row.created_at).getTime() > 90 * 60 * 1000).length;
+  const manualReviewQueue = queueRows.filter(isManualReviewQueue);
+  const retryableFailedQueue = queueRows.filter((row) => row.status === 'failed' && !isManualReviewQueue(row));
   const failureBuckets = countBy(queueRows.filter((row) => row.status === 'failed'), (row) => classifyQueueError(row.last_error, row.meta?.failure_code));
 
   const publishedRows = postRows.filter((row) => row.status === 'published');
@@ -296,7 +307,9 @@ export async function buildBlogOpsSummary(supabase: any) {
   };
 
   const dailyLevel: BlogOpsLevel = publishedToday >= dailyTarget ? 'healthy' : publishedYesterday < dailyTarget ? 'risk' : 'watch';
-  const queueLevel: BlogOpsLevel = (queueCounts.failed || 0) > 0 || staleGenerating > 0 || publishedStateMismatches.length > 0 ? 'risk' : overdueQueued > 0 ? 'watch' : 'healthy';
+  const queueLevel: BlogOpsLevel = retryableFailedQueue.length > 0 || staleGenerating > 0 || publishedStateMismatches.length > 0
+    ? 'risk'
+    : overdueQueued > 0 || manualReviewQueue.length > 0 ? 'watch' : 'healthy';
   const indexingLevel: BlogOpsLevel = googleUnknownUrls > 0 || recentIndexingFailures > 0 ? 'risk' : indexingActive > 0 ? 'watch' : 'healthy';
   const cronLevel: BlogOpsLevel = unhealthyCrons.some((row) => row.cron_name === 'blog-publisher') ? 'blocked' : unhealthyCrons.length > 0 ? 'risk' : 'healthy';
   const qualityLevel: BlogOpsLevel = lowQualityRecent > 0 ? 'risk' : 'healthy';
@@ -312,12 +325,20 @@ export async function buildBlogOpsSummary(supabase: any) {
       action: 'run_publisher',
     });
   }
-  if ((queueCounts.failed || 0) > 0) {
+  if (retryableFailedQueue.length > 0) {
     nextActions.push({
       severity: 'risk',
       title: '실패 큐 정리 필요',
-      detail: `실패 ${queueCounts.failed}건. 원인별로 재시도 또는 숨김 처리하세요.`,
+      detail: `재시도 가능한 실패 ${retryableFailedQueue.length}건. 원인별로 재시도 또는 숨김 처리하세요.`,
       href: '/admin/blog/queue?scope=attention',
+    });
+  }
+  if (manualReviewQueue.length > 0) {
+    nextActions.push({
+      severity: 'watch',
+      title: '수동 재작성 항목 확인',
+      detail: `자동 재시도에서 제외된 글감 ${manualReviewQueue.length}건이 있습니다. 자동발행은 막지 않지만 사람이 주제와 브리프를 다시 잡아야 합니다.`,
+      href: '/admin/blog/queue?scope=manual',
     });
   }
   if (publishedStateMismatches.length > 0) {
@@ -402,6 +423,8 @@ export async function buildBlogOpsSummary(supabase: any) {
       counts: queueCounts,
       active_count: activeQueue.length,
       hidden_history: hiddenHistory,
+      manual_review_count: manualReviewQueue.length,
+      retryable_failed_count: retryableFailedQueue.length,
       published_state_mismatch: publishedStateMismatches.length,
       published_state_mismatch_sample: publishedStateMismatches.slice(0, 8).map((row) => {
         const post = row.content_creative_id ? postById.get(row.content_creative_id) : null;
