@@ -63,7 +63,7 @@ export async function saveWebVital(payload: WebVitalPayload): Promise<void> {
   if (error) {
     // 중복 키 또는 rate limit은 silent
     if (error.code === '23505' || error.code === '42501') return;
-    console.error('[WebVital] save error:', error.message);
+    return;
   }
 }
 

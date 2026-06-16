@@ -53,8 +53,8 @@ export async function POST(req: NextRequest) {
     };
 
     // 비동기 저장 (await 안 함 — 응답 지연 방지)
-    void saveWebVital(payload);
-    void alertIfPoorVital(payload);
+    void saveWebVital(payload).catch(() => {});
+    void alertIfPoorVital(payload).catch(() => {});
 
     return apiResponse({ ok: true });
   } catch {
