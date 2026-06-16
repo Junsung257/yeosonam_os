@@ -59,6 +59,7 @@ interface QueueSummary {
   active_count: number;
   attention_count: number;
   manual_review_count: number;
+  retryable_failed_count: number;
   history_hidden: number;
   overdue_queued: number;
   stale_generating: number;
@@ -104,7 +105,7 @@ const VIEW_TABS = [
   { key: 'attention', label: '문제', scope: 'attention', status: 'all' },
   { key: 'manual', label: '수동 재작성', scope: 'manual', status: 'all' },
   { key: 'queued', label: '대기', scope: 'all', status: 'queued' },
-  { key: 'failed', label: '실패', scope: 'all', status: 'failed' },
+  { key: 'failed', label: '재시도 실패', scope: 'attention', status: 'failed' },
   { key: 'history', label: '과거/숨김', scope: 'history', status: 'all' },
   { key: 'all', label: '전체', scope: 'all', status: 'all' },
 ] as const;
@@ -227,10 +228,10 @@ export default function BlogQueueClient() {
 
   const summaryCards: Array<{ label: string; value: number; hint: string; icon: LucideIcon }> = [
     { label: '운영 필요', value: summary?.active_count ?? 0, hint: '오늘 볼 큐', icon: ListChecks },
-    { label: '문제', value: summary?.attention_count ?? 0, hint: '실패/지연/정체', icon: AlertTriangle },
+    { label: '문제', value: summary?.attention_count ?? 0, hint: '자동화 조치 대상', icon: AlertTriangle },
     { label: '수동 재작성', value: summary?.manual_review_count ?? 0, hint: '자동복구 제외', icon: PenLine },
     { label: '대기', value: counts.queued ?? 0, hint: '전체 queued', icon: Clock },
-    { label: '실패', value: counts.failed ?? 0, hint: '재시도 필요', icon: AlertTriangle },
+    { label: '재시도 실패', value: summary?.retryable_failed_count ?? 0, hint: '수동 재작성 제외', icon: AlertTriangle },
     { label: '숨김 이력', value: summary?.history_hidden ?? 0, hint: '기본 화면 제외', icon: Archive },
   ];
 

@@ -36,6 +36,7 @@ const EMPTY_QUEUE_RESPONSE = {
     active_count: 0,
     attention_count: 0,
     manual_review_count: 0,
+    retryable_failed_count: 0,
     history_hidden: 0,
     overdue_queued: 0,
     stale_generating: 0,
@@ -176,7 +177,7 @@ export async function GET(request: NextRequest) {
     let filtered = enriched;
 
     if (scope === 'active') filtered = filtered.filter((row: any) => !row.ops.history && !row.ops.manual_review && ['queued', 'generating', 'failed'].includes(row.status));
-    if (scope === 'attention') filtered = filtered.filter((row: any) => row.ops.attention);
+    if (scope === 'attention') filtered = filtered.filter((row: any) => row.ops.attention && !row.ops.manual_review);
     if (scope === 'manual') filtered = filtered.filter((row: any) => row.ops.manual_review);
     if (scope === 'history') filtered = filtered.filter((row: any) => row.ops.history);
     if (q) {
@@ -196,7 +197,7 @@ export async function GET(request: NextRequest) {
 
     const issueCounts: Record<string, number> = {};
     enriched.forEach((row: any) => {
-      if (!row.ops.attention) return;
+      if (!row.ops.attention || row.ops.manual_review) return;
       issueCounts[row.ops.issue] = (issueCounts[row.ops.issue] || 0) + 1;
     });
 
@@ -205,8 +206,9 @@ export async function GET(request: NextRequest) {
       total_rows: count ?? enriched.length,
       returned: Math.min(filtered.length, limit),
       active_count: enriched.filter((row: any) => !row.ops.history && !row.ops.manual_review && ['queued', 'generating', 'failed'].includes(row.status)).length,
-      attention_count: enriched.filter((row: any) => row.ops.attention).length,
+      attention_count: enriched.filter((row: any) => row.ops.attention && !row.ops.manual_review).length,
       manual_review_count: enriched.filter((row: any) => row.ops.manual_review).length,
+      retryable_failed_count: enriched.filter((row: any) => row.status === 'failed' && !row.ops.manual_review).length,
       history_hidden: enriched.filter((row: any) => row.ops.history).length,
       overdue_queued: enriched.filter((row: any) => row.ops.urgency === 'overdue').length,
       stale_generating: enriched.filter((row: any) => row.ops.urgency === 'stale').length,
