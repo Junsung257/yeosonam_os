@@ -2,13 +2,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { BookingTaskActionCard } from './BookingTaskActionCard';
-import type { BookingOpsSummary } from '@/lib/booking-ops';
+import type { BookingOpsAction, BookingOpsSummary } from '@/lib/booking-ops';
 
 export function MobileBookingOpsQueue() {
   const [summary, setSummary] = useState<BookingOpsSummary | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [snoozeFor, setSnoozeFor] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -28,6 +29,44 @@ export function MobileBookingOpsQueue() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const removeAction = useCallback((action: BookingOpsAction) => {
+    const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setSummary((prev) => prev
+      ? {
+        ...prev,
+        actions: prev.actions.filter((item) => !taskIds.includes(item.id)),
+      }
+      : prev,
+    );
+  }, []);
+
+  const resolve = useCallback(async (action: BookingOpsAction) => {
+    const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    removeAction(action);
+    const results = await Promise.all(taskIds.map((taskId) =>
+      fetch(`/api/admin/booking-tasks/${taskId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution: action.recommendedAction }),
+      }),
+    ));
+    if (results.some((res) => !res.ok)) await load();
+  }, [load, removeAction]);
+
+  const snooze = useCallback(async (action: BookingOpsAction, hours: number) => {
+    const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setSnoozeFor(null);
+    removeAction(action);
+    const results = await Promise.all(taskIds.map((taskId) =>
+      fetch(`/api/admin/booking-tasks/${taskId}/snooze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hours }),
+      }),
+    ));
+    if (results.some((res) => !res.ok)) await load();
+  }, [load, removeAction]);
 
   const actions = summary?.actions ?? [];
   const visible = expanded ? actions : actions.slice(0, 2);
@@ -85,6 +124,10 @@ export function MobileBookingOpsQueue() {
                 action={action}
                 compact
                 mobileHref={`/m/admin/bookings/${action.bookingId}`}
+                snoozeOpen={snoozeFor === action.id}
+                onResolve={resolve}
+                onSnooze={snooze}
+                onToggleSnooze={(next) => setSnoozeFor((prev) => prev === next.id ? null : next.id)}
               />
             ))}
           </div>
