@@ -15,6 +15,7 @@
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import BookingDrawer from '@/components/BookingDrawer';
 import { BookingTaskActionCard } from '@/components/admin/booking-ops/BookingTaskActionCard';
 import { PageHeader } from '@/components/admin/patterns';
@@ -94,10 +95,12 @@ function formatTaskType(t: string): string {
 
 // ─── 메인 컴포넌트 ────────────────────────────────────────────────────────────
 export default function InboxPage() {
+  const searchParams = useSearchParams();
+  const initialTypeFilter = searchParams?.get('type') ?? 'all';
   const [data, setData] = useState<InboxResponse>({ tasks: [], health: null, bank_health: null });
   const [loading, setLoading] = useState(true);
   const [priorityFilter, setPriorityFilter] = useState<TaskPriority | 'all'>('all');
-  const [typeFilter, setTypeFilter] = useState<string | 'all'>('all');
+  const [typeFilter, setTypeFilter] = useState<string | 'all'>(initialTypeFilter);
   const [drawerBookingId, setDrawerBookingId] = useState<string | null>(null);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
@@ -106,6 +109,10 @@ export default function InboxPage() {
 
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setTypeFilter(searchParams?.get('type') ?? 'all');
+  }, [searchParams]);
 
   // ── Toast ───────────────────────────────────────────────────────────────────
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {

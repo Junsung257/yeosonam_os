@@ -200,7 +200,11 @@ export function BookingOpsPanel({
             </div>
             <div className="grid gap-2 md:grid-cols-2">
               {ruleSignals.map((rule) => (
-                <div key={rule.taskType} className="rounded-admin-sm border border-amber-100 bg-white px-3 py-2">
+                <Link
+                  key={rule.taskType}
+                  href={`/admin/inbox?type=${encodeURIComponent(rule.taskType)}`}
+                  className="rounded-admin-sm border border-amber-100 bg-white px-3 py-2 hover:border-amber-300"
+                >
                   <div className="flex items-center justify-between gap-2">
                     <div className="min-w-0">
                       <div className="truncate text-admin-xs font-semibold text-admin-text">
@@ -217,7 +221,7 @@ export function BookingOpsPanel({
                   <div className="mt-1 text-[11px] text-admin-muted-2">
                     자동해결 {rule.autoResolveRatePct}% · 보류 {rule.snoozed}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
