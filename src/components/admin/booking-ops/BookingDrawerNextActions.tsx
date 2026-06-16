@@ -18,6 +18,8 @@ export function BookingDrawerNextActions({
   const [actions, setActions] = useState<BookingOpsAction[]>([]);
   const [loading, setLoading] = useState(true);
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null);
+  const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; message: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -40,6 +42,8 @@ export function BookingDrawerNextActions({
 
   const resolve = useCallback(async (action: BookingOpsAction) => {
     const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setBusyActionId(action.id);
+    setFeedback(null);
     setActions((prev) => prev.filter((item) => !taskIds.includes(item.id)));
     const results = await Promise.all(taskIds.map((taskId) =>
       fetch(`/api/admin/booking-tasks/${taskId}/resolve`, {
@@ -47,13 +51,21 @@ export function BookingDrawerNextActions({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolution: action.recommendedAction }),
       }),
-    ));
-    if (results.some((res) => !res.ok)) await load();
-    onChanged?.();
+    )).catch(() => null);
+    if (!results || results.some((res) => !res.ok)) {
+      setFeedback({ type: 'err', message: '처리 완료에 실패했습니다. 목록을 다시 확인했습니다.' });
+      await load();
+    } else {
+      setFeedback({ type: 'ok', message: `${taskIds.length}개 작업을 처리 완료했습니다.` });
+      onChanged?.();
+    }
+    setBusyActionId(null);
   }, [load, onChanged]);
 
   const snooze = useCallback(async (action: BookingOpsAction, hours: number) => {
     const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setBusyActionId(action.id);
+    setFeedback(null);
     setSnoozeFor(null);
     setActions((prev) => prev.filter((item) => !taskIds.includes(item.id)));
     const results = await Promise.all(taskIds.map((taskId) =>
@@ -62,9 +74,16 @@ export function BookingDrawerNextActions({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hours }),
       }),
-    ));
-    if (results.some((res) => !res.ok)) await load();
-    onChanged?.();
+    )).catch(() => null);
+    if (!results || results.some((res) => !res.ok)) {
+      setFeedback({ type: 'err', message: '다시 알림 설정에 실패했습니다. 목록을 다시 확인했습니다.' });
+      await load();
+    } else {
+      const label = hours < 24 ? `${hours}시간 후` : `${Math.round(hours / 24)}일 후`;
+      setFeedback({ type: 'ok', message: `${taskIds.length}개 작업을 ${label} 다시 보도록 보류했습니다.` });
+      onChanged?.();
+    }
+    setBusyActionId(null);
   }, [load, onChanged]);
 
   if (loading && actions.length === 0) {
@@ -76,7 +95,7 @@ export function BookingDrawerNextActions({
     );
   }
 
-  if (actions.length === 0) return null;
+  if (actions.length === 0 && !feedback) return null;
 
   return (
     <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-3 shadow-sm">
@@ -90,6 +109,15 @@ export function BookingDrawerNextActions({
           새로고침
         </button>
       </div>
+      {feedback && (
+        <div className={`mb-2 rounded-lg border px-3 py-2 text-[12px] font-semibold ${
+          feedback.type === 'ok'
+            ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            : 'border-red-200 bg-red-50 text-red-800'
+        }`}>
+          {feedback.message}
+        </div>
+      )}
       <div className="space-y-2">
         {actions.map((action) => (
           <BookingTaskActionCard
@@ -97,6 +125,7 @@ export function BookingDrawerNextActions({
             action={action}
             compact
             snoozeOpen={snoozeFor === action.id}
+            busy={busyActionId === action.id}
             onOpen={onOpen}
             onResolve={resolve}
             onSnooze={snooze}

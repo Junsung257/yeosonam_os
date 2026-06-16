@@ -10,6 +10,8 @@ export function MobileBookingOpsQueue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [snoozeFor, setSnoozeFor] = useState<string | null>(null);
+  const [busyActionId, setBusyActionId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; message: string } | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,6 +45,8 @@ export function MobileBookingOpsQueue() {
 
   const resolve = useCallback(async (action: BookingOpsAction) => {
     const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setBusyActionId(action.id);
+    setFeedback(null);
     removeAction(action);
     const results = await Promise.all(taskIds.map((taskId) =>
       fetch(`/api/admin/booking-tasks/${taskId}/resolve`, {
@@ -50,12 +54,20 @@ export function MobileBookingOpsQueue() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ resolution: action.recommendedAction }),
       }),
-    ));
-    if (results.some((res) => !res.ok)) await load();
+    )).catch(() => null);
+    if (!results || results.some((res) => !res.ok)) {
+      setFeedback({ type: 'err', message: '처리 완료에 실패했습니다. 목록을 다시 확인했습니다.' });
+      await load();
+    } else {
+      setFeedback({ type: 'ok', message: `${taskIds.length}개 작업을 처리 완료했습니다.` });
+    }
+    setBusyActionId(null);
   }, [load, removeAction]);
 
   const snooze = useCallback(async (action: BookingOpsAction, hours: number) => {
     const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setBusyActionId(action.id);
+    setFeedback(null);
     setSnoozeFor(null);
     removeAction(action);
     const results = await Promise.all(taskIds.map((taskId) =>
@@ -64,8 +76,15 @@ export function MobileBookingOpsQueue() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hours }),
       }),
-    ));
-    if (results.some((res) => !res.ok)) await load();
+    )).catch(() => null);
+    if (!results || results.some((res) => !res.ok)) {
+      setFeedback({ type: 'err', message: '다시 알림 설정에 실패했습니다. 목록을 다시 확인했습니다.' });
+      await load();
+    } else {
+      const label = hours < 24 ? `${hours}시간 후` : `${Math.round(hours / 24)}일 후`;
+      setFeedback({ type: 'ok', message: `${taskIds.length}개 작업을 ${label} 다시 보도록 보류했습니다.` });
+    }
+    setBusyActionId(null);
   }, [load, removeAction]);
 
   const actions = summary?.actions ?? [];
@@ -94,6 +113,16 @@ export function MobileBookingOpsQueue() {
             </button>
           )}
         </div>
+
+        {feedback && (
+          <div className={`mb-2 rounded-admin-sm border px-3 py-2 text-[11px] font-semibold ${
+            feedback.type === 'ok'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-red-200 bg-red-50 text-red-800'
+          }`}>
+            {feedback.message}
+          </div>
+        )}
 
         {loading && !summary ? (
           <div className="space-y-2">
@@ -125,6 +154,7 @@ export function MobileBookingOpsQueue() {
                 compact
                 mobileHref={`/m/admin/bookings/${action.bookingId}`}
                 snoozeOpen={snoozeFor === action.id}
+                busy={busyActionId === action.id}
                 onResolve={resolve}
                 onSnooze={snooze}
                 onToggleSnooze={(next) => setSnoozeFor((prev) => prev === next.id ? null : next.id)}

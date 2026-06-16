@@ -23,6 +23,7 @@ interface BookingTaskActionCardProps {
   active?: boolean;
   mobileHref?: string;
   snoozeOpen?: boolean;
+  busy?: boolean;
   onOpen?: (action: BookingOpsAction) => void;
   onResolve?: (action: BookingOpsAction) => void;
   onSnooze?: (action: BookingOpsAction, hours: number) => void;
@@ -35,6 +36,7 @@ export function BookingTaskActionCard({
   active = false,
   mobileHref,
   snoozeOpen = false,
+  busy = false,
   onOpen,
   onResolve,
   onSnooze,
@@ -141,8 +143,9 @@ export function BookingTaskActionCard({
           {onResolve && (
             <button
               type="button"
+              disabled={busy}
               onClick={() => onResolve(action)}
-              className="inline-flex h-8 items-center gap-1.5 rounded-admin-sm bg-success px-3 text-admin-xs font-semibold text-white hover:opacity-90"
+              className="inline-flex h-8 items-center gap-1.5 rounded-admin-sm bg-success px-3 text-admin-xs font-semibold text-white hover:opacity-90 disabled:cursor-wait disabled:opacity-60"
             >
               <CheckCircle2 size={13} />
               처리 완료
@@ -152,8 +155,9 @@ export function BookingTaskActionCard({
             <div className="relative">
               <button
                 type="button"
+                disabled={busy}
                 onClick={() => onToggleSnooze(action)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-admin-sm border border-admin-border-mid px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2"
+                className="inline-flex h-8 items-center gap-1.5 rounded-admin-sm border border-admin-border-mid px-3 text-admin-xs font-semibold text-admin-text-2 hover:bg-admin-surface-2 disabled:cursor-wait disabled:opacity-60"
               >
                 <Clock size={13} />
                 내일 다시
@@ -164,8 +168,9 @@ export function BookingTaskActionCard({
                     <button
                       key={preset.label}
                       type="button"
+                      disabled={busy}
                       onClick={() => onSnooze(action, preset.hours)}
-                      className="block w-full px-3 py-2 text-left text-admin-xs text-admin-text-2 hover:bg-admin-surface-2"
+                      className="block w-full px-3 py-2 text-left text-admin-xs text-admin-text-2 hover:bg-admin-surface-2 disabled:cursor-wait disabled:opacity-60"
                     >
                       {preset.label}
                     </button>
