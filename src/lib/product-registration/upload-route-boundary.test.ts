@@ -746,13 +746,18 @@ describe('upload route registration pipeline boundary', () => {
     expect(reextract).not.toContain('raw_extracted_text');
   });
 
-  it('keeps upload review auto replay from starving older recoverable failures', () => {
+  it('keeps upload review auto replay focused on recoverable customer render failures', () => {
     const cron = readUploadReviewAutoReplayCron();
 
     expect(cron).toContain('return 10;');
+    expect(cron).toContain('RECOVERABLE_REASON_FILTER');
+    expect(cron).toContain('itinerary duplicate day');
+    expect(cron).toContain('price date disagreement');
+    expect(cron).toContain('flight time source mismatch');
     expect(cron).toContain("request.nextUrl.searchParams.get('queueId')");
     expect(cron).toContain(".eq('id', queueId)");
-    expect(cron).toContain("order('created_at', { ascending: true })");
+    expect(cron).toContain('.or(RECOVERABLE_REASON_FILTER)');
+    expect(cron).toContain("order('created_at', { ascending: false })");
     expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
     expect(cron).toContain('runUploadRegistrationPipeline({');
   });

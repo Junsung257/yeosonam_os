@@ -24,6 +24,23 @@ type ReplaySummary = {
   savedIds?: string[];
 };
 
+const RECOVERABLE_REASON_FILTER = [
+  'error_reason.ilike.%itinerary duplicate day%',
+  'error_reason.ilike.%duration overflow%',
+  'error_reason.ilike.%product_prices missing%',
+  'error_reason.ilike.%price_dates missing%',
+  'error_reason.ilike.%price date disagreement%',
+  'error_reason.ilike.%price amount disagreement%',
+  'error_reason.ilike.%model-derived price source%',
+  'error_reason.ilike.%Too Many Requests%',
+  'error_reason.ilike.%flight time source mismatch%',
+  'error_reason.ilike.%destination code unresolved%',
+  'error_reason.ilike.%Destination resolution failed%',
+  'error_reason.ilike.%destination_code:UNK%',
+  'error_reason.ilike.%catalog split%',
+  'error_reason.ilike.%PRODUCT_COUNT_MISMATCH%',
+].join(',');
+
 function safeAfter(task: () => Promise<void> | void): void {
   try {
     nextAfter(task);
@@ -160,7 +177,10 @@ export async function GET(request: NextRequest) {
   if (queueId) {
     query = query.eq('id', queueId);
   } else {
-    query = query.order('created_at', { ascending: true }).limit(limit);
+    query = query
+      .or(RECOVERABLE_REASON_FILTER)
+      .order('created_at', { ascending: false })
+      .limit(limit);
   }
 
   const { data, error } = await query;
