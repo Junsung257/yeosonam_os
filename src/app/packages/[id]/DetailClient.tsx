@@ -1503,6 +1503,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     sIdx > 0 &&
                     currentDay.schedule?.[sIdx - 1]?.type === 'flight';
                   if (isArrivalFlightItem) return null;
+                  const isOptionalTourScheduleLine =
+                    item.entity_kind === 'optional_tour'
+                    || item.type === 'optional'
+                    || /추천\s*선택\s*관광|선택\s*관광|옵션/.test(item.activity || '');
+                  if (isOptionalTourScheduleLine && view.optionalTours.count > 0) return null;
                   // P2 (2026-04-27): "X공항 도착" 만 있는 단순 도착 행만 skip.
                   // "청도공항 도착 후 가이드 미팅 ..." 처럼 도착 뒤 추가 활동이 있으면 보존
                   // (이전 정규식 /공항 도착/ 이 "후 가이드 미팅" 같은 핵심 정보까지 삼키던 버그 수정).

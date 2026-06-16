@@ -114,6 +114,12 @@ describe('normalizeOptionalTour', () => {
     expect(r?.price).toBe('50');
   });
 
+  it('USD30 같은 옵션 가격 문자열은 고객용 $30/인 표기로 정규화', () => {
+    const r = normalizeOptionalTour({ name: '발마사지30분', price: 'USD30', price_usd: 30 });
+    expect(r?.price).toBe('$30/인');
+    expect(r?.price_usd).toBe(30);
+  });
+
   it('잘못된 numeric 필드는 null', () => {
     const r = normalizeOptionalTour({ name: 'spa', price_usd: 'NaN' as unknown as number, day: 'x' as unknown as number });
     expect(r?.price_usd).toBeNull();

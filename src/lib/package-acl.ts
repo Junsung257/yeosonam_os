@@ -84,6 +84,20 @@ interface LegacyTour {
   note?: string | null; day?: number;
 }
 
+function normalizeOptionalTourPrice(t: LegacyTour): string | null {
+  const usd = t.price_usd != null && !isNaN(Number(t.price_usd)) ? Number(t.price_usd) : null;
+  const krw = t.price_krw != null && !isNaN(Number(t.price_krw)) ? Number(t.price_krw) : null;
+  if (usd && usd > 0) return `$${usd}/인`;
+  if (krw && krw > 0) return `${krw.toLocaleString('ko-KR')}원/인`;
+  if (typeof t.price === 'number') return String(t.price);
+  if (typeof t.price !== 'string') return null;
+
+  const raw = t.price.trim();
+  const usdMatch = raw.match(/^(?:USD|US\$|\$)\s*(\d+(?:\.\d+)?)$/i);
+  if (usdMatch) return `$${Number(usdMatch[1])}/인`;
+  return raw || null;
+}
+
 export function normalizeOptionalTour(raw: unknown): PackageCore['optional_tours'][number] | null {
   if (!raw || typeof raw !== 'object') return null;
   const t = raw as LegacyTour;
@@ -92,7 +106,7 @@ export function normalizeOptionalTour(raw: unknown): PackageCore['optional_tours
   return {
     name: t.name,
     region: (inferred as PackageCore['optional_tours'][number]['region']) || null,
-    price: typeof t.price === 'string' ? t.price : (t.price != null ? String(t.price) : null),
+    price: normalizeOptionalTourPrice(t),
     price_usd: t.price_usd != null && !isNaN(Number(t.price_usd)) ? Number(t.price_usd) : null,
     price_krw: t.price_krw != null && !isNaN(Number(t.price_krw)) ? Number(t.price_krw) : null,
     note: t.note || null,

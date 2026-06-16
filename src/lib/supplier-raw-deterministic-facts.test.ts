@@ -633,4 +633,53 @@ BX782
     expect(scheduleText).not.toContain('현금영수증');
     expect(scheduleText).not.toContain('특별 약관 상품');
   });
+
+  it('keeps supplier category headers out of Taiwan package title and duration', () => {
+    const raw = `중화권｜인도차이나｜골프
+부산광역시 동구 중앙대로 236번길 3-4
+
+★~6/26일까지 선발특가★ 대만 / 노쇼핑 단수이 4일 7C 주간 요금표
+여 행 경 비
+적용기간
+
+[노쇼핑] 101타워 포함, 타이베이 / 단수이 / 예스지 4일 7C 주간
+출 발 일 자
+월화수목금토일 데일리 운항
+인    원
+8명부터 출발
+옵       션
+발마사지30분 $30, 전신마사지60분 $50
+쇼       핑
+노쇼핑
+
+제1일
+부  산
+타이베이
+7C6151
+09:30
+11:00
+부산 김해 국제공항 출발
+타이베이 도원 국제공항 도착 후 가이드 미팅
+제4일
+타이베이
+부  산
+7C6152
+12:00
+15:30
+타이베이 도원 국제공항 출발
+부산 김해 국제공항 도착`;
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.title).toBe('대만 / 노쇼핑 단수이 4일 7C 주간');
+    expect(facts.region).toBe('대만');
+    expect(facts.durationDays).toBe(4);
+    expect(facts.tripStyle).toBe('3박4일');
+    expect(facts.minParticipants).toBe(8);
+    expect(facts.title).not.toContain('중화권');
+    expect(facts.optionalTours).toEqual([
+      expect.objectContaining({ name: '발마사지30분', priceLabel: '$30/인' }),
+      expect.objectContaining({ name: '전신마사지60분', priceLabel: '$50/인' }),
+    ]);
+  });
 });

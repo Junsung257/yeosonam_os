@@ -178,7 +178,7 @@ function extractFreeformOptionalTours(rawText: string) {
 }
 
 function extractOptionalTours(rawText: string) {
-  const section = rawText.match(/선택관광\s*\n([\s\S]*?)(?=^\s*(?:\d+\s*일차|DAY\s*\d+|공지|비\s*고|안내사항|주의사항|쇼핑\s*센터|일\s*자|PKG))/m)?.[1] ?? '';
+  const section = rawText.match(/(?:선택관광|옵\s*션)\s*\n([\s\S]*?)(?=^\s*(?:\d+\s*일차|DAY\s*\d+|공지|비\s*고|안내사항|주의사항|쇼\s*핑|쇼핑\s*센터|REMARK|일\s*자|제\s*\d+\s*일|PKG))/m)?.[1] ?? '';
   const sectionTours = section
     .split(/\r?\n/)
     .map(line => line.trim().replace(/^[-•]\s*/, ''))
@@ -188,6 +188,56 @@ function extractOptionalTours(rawText: string) {
     .filter((tour): tour is { name: string; region: string; priceLabel: string; note: null } => Boolean(tour));
 
   return sectionTours.length > 0 ? sectionTours : extractFreeformOptionalTours(rawText);
+}
+
+const SUPPLIER_CATEGORY_HEADER_RE = /^(?:중화권｜인도차이나｜골프|중화권\s*[|｜]\s*인도차이나\s*[|｜]\s*골프)$/;
+const CONTACT_OR_ADDRESS_RE = /^(?:부산광역시|서울특별시|T\.\s*\d|F\.\s*\d|수\s*신|발\s*신|발\s*신\s*일|룸\s*타\s*입|인\s*원)$/;
+const KNOWN_DESTINATION_WORDS = [
+  '대만', '타이베이', '단수이',
+  '나트랑', '달랏', '다낭', '푸꾸옥', '하노이', '호치민',
+  '후쿠오카', '벳부', '유후인', '오사카', '도쿄', '시즈오카', '대마도',
+  '장가계', '서안', '연길', '백두산', '클락', '보홀', '세부',
+];
+
+function isSupplierHeaderLine(line: string): boolean {
+  const normalized = line.replace(/\s+/g, ' ').trim();
+  if (!normalized) return true;
+  if (SUPPLIER_CATEGORY_HEADER_RE.test(normalized)) return true;
+  if (CONTACT_OR_ADDRESS_RE.test(normalized)) return true;
+  if (/^\d{2,3}-\d{3,4}-\d{4}/.test(normalized)) return true;
+  return false;
+}
+
+function cleanTitleCandidate(line: string): string {
+  return line
+    .replace(/★?\s*~?\s*\d{1,2}\s*\/\s*\d{1,2}\s*일까지\s*선발특가\s*★?/g, ' ')
+    .replace(/★/g, ' ')
+    .replace(/\s*요금표\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function titleCandidateScore(line: string): number {
+  const cleaned = cleanTitleCandidate(line);
+  if (isSupplierHeaderLine(cleaned)) return -1000;
+  if (cleaned.length < 6 || cleaned.length > 90) return -100;
+  if (/^(여\s*행\s*경\s*비|적용기간|요일|COM|포함\s*사\s*항|불포함\s*사항|옵\s*션|쇼\s*핑|REMARK)$/i.test(cleaned)) return -1000;
+  if (/^\d{1,3}(?:,\d{3})+$/.test(cleaned)) return -1000;
+
+  let score = 0;
+  if (KNOWN_DESTINATION_WORDS.some(word => cleaned.includes(word))) score += 40;
+  if (/\d+\s*박\s*\d+\s*일|\d+\s*일/.test(cleaned)) score += 25;
+  if (/\b[A-Z0-9]{2}\d{0,4}\b/.test(cleaned)) score += 10;
+  if (/노쇼핑|노옵션|노팁|포함|단수이|예스지|타이베이/.test(cleaned)) score += 10;
+  if (/대만\s*\/\s*노쇼핑/.test(cleaned)) score += 15;
+  if (/^\[[^\]]+\]/.test(cleaned)) score -= 8;
+  if (/요금|특가|까지|담당자|주소|T\.|F\./i.test(line)) score -= 8;
+  return score;
+}
+
+function inferKnownDestination(text: string): string | null {
+  const firstChunk = text.split(/\r?\n/).slice(0, 80).join(' ');
+  return KNOWN_DESTINATION_WORDS.find(word => firstChunk.includes(word)) ?? null;
 }
 
 function extractRegion(rawText: string): string | null {
@@ -204,15 +254,26 @@ function extractRegion(rawText: string): string | null {
     .replace(/[()]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  const primary = cleaned.split(/[\/|·,，]/)[0].trim();
-  if (primary === '서안') return primary;
+  if (isSupplierHeaderLine(cleaned)) return inferKnownDestination(rawText);
+  const primary = cleaned.split(/[|·,，]/)[0].trim();
+  if (/[\/]/.test(primary)) {
+    const parts = primary.split('/').map(part => part.trim()).filter(Boolean);
+    if (parts.length > 1 && parts.every(part => KNOWN_DESTINATION_WORDS.includes(part))) {
+      return parts.join('/');
+    }
+  }
+  const known = inferKnownDestination(cleaned);
+  if (known) return known;
+  const singlePrimary = cleaned.split(/[\/|·,，]/)[0].trim();
+  if (KNOWN_DESTINATION_WORDS.includes(singlePrimary)) return singlePrimary;
+  if (singlePrimary === '서안') return singlePrimary;
   if (!cleaned || cleaned.length < 2) return null;
   return cleaned;
 }
 
 function extractTitle(rawText: string): string | null {
   const title = rawText.match(/(?:상품명|상품명칭|행사명)\s*[:：]\s*([^\n]+)/)?.[1]?.trim();
-  if (title) return title;
+  if (title && !isSupplierHeaderLine(title)) return cleanTitleCandidate(title);
   const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
   const pkgTitle = pkgIndex >= 0
@@ -222,25 +283,38 @@ function extractTitle(rawText: string): string | null {
         && !/^(출\s*발\s*일|판\s*매\s*가|포함사항|불포함사항|비고|주의사항)$/i.test(line)
       ))
     : null;
-  if (pkgTitle) return pkgTitle;
+  if (pkgTitle && !isSupplierHeaderLine(pkgTitle)) return cleanTitleCandidate(pkgTitle);
+
+  const scored = lines
+    .slice(0, 80)
+    .map(line => ({ line: cleanTitleCandidate(line), score: titleCandidateScore(line) }))
+    .filter(item => item.score > 0)
+    .sort((a, b) => b.score - a.score);
+  if (scored[0]) return scored[0].line;
 
   const first = lines.find(line => (
     line.length >= 4
     && !/^\d{2,4}[./-]\d{1,2}/.test(line)
     && !/^(PKG|현금영수증|취소규정|일본골프상품)/.test(line)
+    && !isSupplierHeaderLine(line)
   ));
-  return first ?? null;
+  return first ? cleanTitleCandidate(first) : null;
 }
 
 function extractTripStyle(rawText: string): string | null {
   const match = rawText.match(/(\d+)\s*박\s*(\d+)\s*일/);
-  return match ? `${match[1]}박${match[2]}일` : null;
+  if (match) return `${match[1]}박${match[2]}일`;
+  const dayOnly = extractDurationDays(rawText);
+  return dayOnly && dayOnly >= 2 ? `${dayOnly - 1}박${dayOnly}일` : null;
 }
 
 function extractDurationDays(rawText: string): number | null {
   const match = rawText.match(/\d+\s*박\s*(\d+)\s*일/);
   const n = Number(match?.[1]);
-  return Number.isFinite(n) && n > 0 ? n : null;
+  if (Number.isFinite(n) && n > 0) return n;
+  const title = extractTitle(rawText) ?? '';
+  const titleDay = Number(title.match(/(?:^|[^\d/])(\d{1,2})\s*일(?:\s|$|[^\d])/u)?.[1]);
+  return Number.isFinite(titleDay) && titleDay > 0 && titleDay <= 30 ? titleDay : null;
 }
 
 function extractNights(rawText: string): number | null {
@@ -255,8 +329,8 @@ function extractDepartureAirport(rawText: string): string | null {
 }
 
 function extractMinParticipants(rawText: string): number | null {
-  const match = rawText.match(/최소\s*출발\s*([0-9]+)\s*명|최소출발\s*([0-9]+)\s*명|최소\s*인원\s*([0-9]+)\s*명|([0-9]+)\s*명\s*이상/);
-  const n = Number(match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4]);
+  const match = rawText.match(/최소\s*출발\s*([0-9]+)\s*명|최소출발\s*([0-9]+)\s*명|최소\s*인원\s*([0-9]+)\s*명|([0-9]+)\s*명\s*이상|([0-9]+)\s*명\s*부터\s*출발/);
+  const n = Number(match?.[1] ?? match?.[2] ?? match?.[3] ?? match?.[4] ?? match?.[5]);
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 

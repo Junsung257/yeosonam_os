@@ -264,6 +264,13 @@ function analyzeMobileHtml(
       message: `[${surface}] optional_tours DB 에 있으나 섹션 미렌더`,
     });
   }
+  if (expected.hasOptionalTours && /추천\s*선택\s*관광/.test(text)) {
+    incidents.push({
+      id: `${prefix}optional_tours_duplicated_in_schedule`,
+      severity: 'high',
+      message: `[${surface}] 선택관광이 일정 본문과 선택관광 섹션에 중복 노출됨`,
+    });
+  }
 
   const trip = parseTripStyle(expected.tripStyle);
   if (trip) {
