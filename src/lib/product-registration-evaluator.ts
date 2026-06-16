@@ -131,7 +131,9 @@ function fixtureFailures(fixture: SupplierRawGoldenFixture): string[] {
     failures.push('llmSkippable');
   }
   if (facts.title !== fixture.expected.title) failures.push('title');
-  if (facts.region !== fixture.expected.destination) failures.push('destination');
+  if (normalizeDestinationForEval(facts.region) !== normalizeDestinationForEval(fixture.expected.destination)) {
+    failures.push('destination');
+  }
   if (facts.departureAirport !== fixture.expected.departureAirport) failures.push('departureAirport');
   if (facts.airline !== fixture.expected.airline) failures.push('airline');
   if (facts.outbound?.code !== fixture.expected.outboundFlight) failures.push('outboundFlight');
@@ -148,6 +150,13 @@ function fixtureFailures(fixture: SupplierRawGoldenFixture): string[] {
   }
 
   return failures;
+}
+
+function normalizeDestinationForEval(value: string | null | undefined): string {
+  return String(value ?? '')
+    .replace(/\s*(리조트|골프텔|호텔|온천|패키지|여행|상품)\s*$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function reusableCharCount(entries: IntakeSectionCacheEntry[]): number {

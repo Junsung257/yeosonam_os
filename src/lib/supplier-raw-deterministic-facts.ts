@@ -601,6 +601,18 @@ function knownMojibakeFacts(rawText: string): SupplierRawDeterministicFacts | nu
   return null;
 }
 
+function resolveRegionWithTitleSlash(rawText: string, currentRegion: string | null): string | null {
+  const title = extractTitle(rawText) ?? '';
+  const nonDestinationTokens = new Set(['노쇼핑', '노옵션', '노팁', '쇼핑', '옵션', '단수이', '주간', '야간']);
+  const slashRegion = title.match(/([가-힣]{2,}(?:\s*\/\s*[가-힣]{2,})+)/)?.[1]
+    ?.split('/')
+    .map(part => part.trim().split(/\s+/)[0])
+    .filter(Boolean)
+    .filter(part => !nonDestinationTokens.has(part))
+    .join('/');
+  return slashRegion && slashRegion.includes('/') ? slashRegion : currentRegion;
+}
+
 export function extractSupplierRawDeterministicFacts(rawText: string): SupplierRawDeterministicFacts {
   const known = knownMojibakeFacts(rawText);
   if (known) return known;
@@ -609,7 +621,7 @@ export function extractSupplierRawDeterministicFacts(rawText: string): SupplierR
   const routeFlights = extractRouteFlightSegments(rawText);
   return {
     title: extractTitle(rawText),
-    region: extractRegion(rawText),
+    region: resolveRegionWithTitleSlash(rawText, extractRegion(rawText)),
     tripStyle: extractTripStyle(rawText),
     durationDays: extractDurationDays(rawText),
     departureAirport: extractDepartureAirport(rawText),

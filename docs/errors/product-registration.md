@@ -1,5 +1,25 @@
 # Product Registration Errors
 
+## ERR-micro-ledger-and-standard-md-proof-gap@2026-06-16
+
+- **Discovered**: 2026-06-16
+- **Domain**: product registration | standard markdown | micro QA | regression proof
+- **Source vs result**: The code had a `YSN-PRODUCT-MD v1` bypass and a four-phase micro QA ledger, but the proof was weaker than the operating promise. One upload-boundary test still used corrupted Korean fixture text, and the micro QA ledger repeated the repaired result across later phases instead of preserving phase-specific initial vs repaired audit evidence.
+- **Root cause**:
+  - The standard markdown unit parser had readable Korean coverage, but the upload boundary test still proved the bypass with mojibake text.
+  - `runMicroAutoQA()` correctly performed bounded deterministic repair, but its ledger events did not clearly separate initial audit evidence, repair evidence, and final read-only re-audit evidence.
+- **Fix**:
+  - Replaced the upload-boundary standard markdown fixture with readable Korean `## 기본정보` / `상품명: 테스트 상품`.
+  - Extended the product-registration contract checker so future standard markdown boundary tests fail if they regress to mojibake fixtures or stop proving zero token usage.
+  - Updated `runMicroAutoQA()` ledger construction so attempt 0 records initial audit evidence, attempt 1 records deterministic fixes, and later phases record read-only repaired-state audits without duplicating the same fix list.
+- **Verification**:
+  - `npx vitest run src/lib/product-registration/upload-document-parsing.test.ts src/lib/product-registration/auto-qa.test.ts`
+  - `npm run check:product-registration-contract`
+- **Status**: FIXED IN CODE
+- **Prevention**: A future claim that standard markdown bypasses AI parsing must be backed by readable Korean upload-boundary tests. A future claim about three micro verification passes must show phase-specific ledger evidence, not just repeated copies of the same result.
+
+---
+
 ## ERR-YSN-standard-md-mojibake-and-option-price@2026-06-16
 
 - **Discovered**: 2026-06-16

@@ -91,11 +91,11 @@ describe('parseUploadDocumentForRegistration', () => {
     }));
   });
 
-  it('routes YSN standard markdown directly to the deterministic markdown parser', async () => {
+  it('routes readable Korean YSN standard markdown directly to the deterministic parser', async () => {
     const standardRaw = 'YSN-PRODUCT-MD v1\n\n## 기본정보\n- 상품명: 테스트 상품';
     const standardParsed = {
       filename: 'standard.md',
-      fileType: 'hwp',
+      fileType: 'hwp' as const,
       rawText: standardRaw,
       extractedData: {
         title: '테스트 상품',
@@ -123,6 +123,7 @@ describe('parseUploadDocumentForRegistration', () => {
     expect(mocks.parseStandardProductMarkdown).toHaveBeenCalledWith(standardRaw, 'standard.md');
     expect(result.parsedDocument).toBe(standardParsed);
     expect(result.parsedDocument.extractedData._llm_meta?.provider).toBe('standard-markdown');
+    expect(result.parsedDocument.extractedData._llm_meta?.tokens_input).toBe(0);
   });
 
   it('runs legacy parseDocument for catalog-looking direct text', async () => {

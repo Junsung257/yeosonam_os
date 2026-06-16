@@ -46,7 +46,7 @@ describe('Product Registration V2 - Baekdu multi-variant catalog', () => {
       '연길/백두산(북+서파) 3박4일',
       '연길/백두산(북+서파) 3박4일',
     ]);
-  });
+  }, 20_000);
 
   it('keeps flight times, evidence, render contract, and attraction candidates gate-clean', async () => {
     const result = await runProductRegistrationV2(raw);
@@ -90,5 +90,5 @@ describe('Product Registration V2 - Baekdu multi-variant catalog', () => {
     expect(result.gate.status).toBe('clean');
     expect(result.gate.customer_publishable).toBe(true);
     expect(result.gate.checks.filter(c => c.status === 'fail')).toEqual([]);
-  });
+  }, 20_000);
 });

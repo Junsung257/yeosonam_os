@@ -150,6 +150,8 @@ describe('runMicroAutoQA', () => {
       expect.objectContaining({ field: 'itinerary_data.days[].schedule', kind: 'deterministic' }),
     ]));
     expect(result.attempts[1]?.ruleCandidate).toBe(true);
+    expect(result.attempts[2]?.autoFixesApplied).toEqual([]);
+    expect(result.attempts[3]?.autoFixesApplied).toEqual([]);
   });
 
   it('applies deterministic customer selling price repair before final render audit', () => {
@@ -194,6 +196,8 @@ describe('runMicroAutoQA', () => {
     expect(result.attempts[1]?.autoFixesApplied).toEqual(expect.arrayContaining([
       expect.objectContaining({ field: 'product_prices.adult_selling_price', kind: 'deterministic' }),
     ]));
+    expect(result.attempts[2]?.autoFixesApplied).toEqual([]);
+    expect(result.attempts[3]?.autoFixesApplied).toEqual([]);
   });
 
   it('rebuilds price_dates from product_prices date-level minimum', () => {

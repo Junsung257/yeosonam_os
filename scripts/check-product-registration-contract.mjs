@@ -131,6 +131,25 @@ const required = [
       },
     ],
   },
+  {
+    file: 'src/lib/product-registration/upload-document-parsing.test.ts',
+    checks: [
+      {
+        label: 'readable Korean standard markdown boundary fixture',
+        pattern: /## 기본정보[\s\S]*상품명:\s*테스트 상품/,
+      },
+      {
+        label: 'standard markdown proves zero token usage',
+        pattern: /tokens_input\)\.toBe\(0\)/,
+      },
+    ],
+    forbidden: [
+      {
+        label: 'mojibake standard markdown fixture',
+        pattern: /(湲곕낯|곹뭹|뚯뒪|mojibake)/,
+      },
+    ],
+  },
 ];
 
 const failures = [];
@@ -144,6 +163,11 @@ for (const item of required) {
   for (const check of item.checks) {
     if (!check.pattern.test(content)) {
       failures.push(`${item.file}: missing ${check.label}`);
+    }
+  }
+  for (const check of item.forbidden ?? []) {
+    if (check.pattern.test(content)) {
+      failures.push(`${item.file}: forbidden ${check.label}`);
     }
   }
 }

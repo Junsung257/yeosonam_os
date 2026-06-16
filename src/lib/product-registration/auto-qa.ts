@@ -401,24 +401,28 @@ export function runMicroAutoQA(input: {
       ...a4Audit.failures,
       ...remainingTriggers.map(trigger => `trigger:${trigger}`),
     ];
-  const attempts = Array.from({ length: attemptCount }, (_, index) => buildImprovementLedgerEvent({
-    uploadId: input.uploadId,
-    productId: input.productId,
-    packageId: input.packageId,
-    attemptNo: index,
-    attemptPhase: attemptPhaseFor(index),
-    rawText: input.rawText,
-    sectionRawText: input.sectionRawText,
-    registration: index === 0 ? input.registration : repairedRegistration,
-    blockersBefore: index === 0 ? blockersBefore : blockersAfter,
-    blockersAfter,
-    comparedFields: COMPARED_FIELDS,
-    autoFixesApplied: index === 0 ? [] : recommendedFixes,
-    packagesAudit,
-    a4Audit,
-    finalStatus: status,
-    createdAt: input.createdAt,
-  }));
+  const attempts = Array.from({ length: attemptCount }, (_, index) => {
+    const isInitialAudit = index === 0;
+    const isRepairPhase = index === 1;
+    return buildImprovementLedgerEvent({
+      uploadId: input.uploadId,
+      productId: input.productId,
+      packageId: input.packageId,
+      attemptNo: index,
+      attemptPhase: attemptPhaseFor(index),
+      rawText: input.rawText,
+      sectionRawText: input.sectionRawText,
+      registration: isInitialAudit ? input.registration : repairedRegistration,
+      blockersBefore: isInitialAudit || isRepairPhase ? blockersBefore : blockersAfter,
+      blockersAfter: isInitialAudit ? blockersBefore : blockersAfter,
+      comparedFields: COMPARED_FIELDS,
+      autoFixesApplied: isRepairPhase ? recommendedFixes : [],
+      packagesAudit: isInitialAudit ? initialPackagesAudit : packagesAudit,
+      a4Audit: isInitialAudit ? initialA4Audit : a4Audit,
+      finalStatus: status,
+      createdAt: input.createdAt,
+    });
+  });
 
   return {
     status,
