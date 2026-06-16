@@ -181,9 +181,10 @@ export default function BlogSystemPage() {
     setLoading(true);
     setLoadError(null);
     try {
+      const cacheBust = Date.now();
       const [res, opsRes] = await Promise.all([
-        fetch('/api/ops/blog-system', { cache: 'no-store' }),
-        fetch('/api/admin/blog/ops-summary', { cache: 'no-store' }),
+        fetch(`/api/ops/blog-system?ts=${cacheBust}`, { cache: 'no-store' }),
+        fetch(`/api/admin/blog/ops-summary?ts=${cacheBust}`, { cache: 'no-store' }),
       ]);
       const json = await res.json();
       const opsJson = await opsRes.json().catch(() => null);
