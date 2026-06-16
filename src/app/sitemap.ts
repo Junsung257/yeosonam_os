@@ -83,7 +83,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const { data: posts } = await supabaseAdmin
       .from('content_creatives')
-      .select('slug, destination, published_at, updated_at')
+      .select('slug, destination, angle_type, published_at, updated_at')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
@@ -93,17 +93,21 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const postList = (posts || []) as Array<{
       slug: string;
       destination: string | null;
+      angle_type: string | null;
       published_at: string | null;
       updated_at: string | null;
     }>;
 
+    const ANGLES = ['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food'];
     const destinations = new Set<string>();
+    const anglesWithPosts = new Set<string>();
     for (const post of postList) {
       const destination = post.destination?.trim();
       if (destination) destinations.add(destination);
+      if (post.angle_type && ANGLES.includes(post.angle_type)) {
+        anglesWithPosts.add(post.angle_type);
+      }
     }
-
-    const ANGLES = ['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food'];
 
     for (const dest of destinations) {
       routes.push({
@@ -114,7 +118,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       });
     }
 
-    for (const angle of ANGLES) {
+    for (const angle of anglesWithPosts) {
       routes.push({
         url: `${BASE_URL}/blog/angle/${angle}`,
         lastModified: new Date(),

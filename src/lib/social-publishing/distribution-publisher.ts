@@ -6,9 +6,10 @@ import {
 } from '@/lib/content-pipeline/threads-automation';
 import {
   applyBlogPublishQualityToUpdate,
-  evaluateBlogPublishQuality,
+  prepareBlogForPublish,
   resolveBlogDestination,
 } from '@/lib/blog-publish-quality';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { supabaseAdmin } from '@/lib/supabase';
 import { getThreadsConfig, publishToThreads } from '@/lib/threads-publisher';
 
@@ -234,7 +235,7 @@ async function publishDistributionProvider(
       if (existingRow) {
         if (existingRow.status !== 'published') {
           const destination = resolveBlogDestination(existingRow);
-          const qaReport = await evaluateBlogPublishQuality({
+          const prepared = await prepareBlogForPublish({
             id: row.blog_post_id,
             blog_html: existingRow.blog_html ?? '',
             slug: existingRow.slug ?? '',
@@ -246,12 +247,14 @@ async function publishDistributionProvider(
             primary_keyword: destination || existingRow.seo_title || existingRow.slug,
             excludeContentCreativeId: row.blog_post_id,
           });
+          const qaReport = prepared.report;
           if (!qaReport.passed) {
             return { status: 'failed', error: `Blog quality gate: ${qaReport.summary}` };
           }
           const updateData: Record<string, unknown> = {
             status: 'published',
             published_at: new Date().toISOString(),
+            blog_html: prepared.blogHtml,
           };
           applyBlogPublishQualityToUpdate(updateData, qaReport);
           await supabaseAdmin
@@ -260,6 +263,14 @@ async function publishDistributionProvider(
             .eq('id', row.blog_post_id);
         }
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL ?? 'https://yeosonam.com';
+        if (existingRow.slug) {
+          await enqueueBlogIndexingJob({
+            slug: existingRow.slug,
+            baseUrl,
+            contentCreativeId: row.blog_post_id,
+            source: 'distribution_publisher',
+          });
+        }
         return {
           status: 'published',
           external_id: row.blog_post_id,

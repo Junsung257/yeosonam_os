@@ -4,6 +4,60 @@ import { getAffiliateRefCookieMaxAgeSec } from '@/lib/affiliate-ref-cookie-polic
 import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { getSecret } from '@/lib/secret-registry';
 import { isUuid } from '@/lib/uuid';
+import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+
+function safeDecodeRouteValue(value: string): string {
+  let decoded = value;
+  for (let i = 0; i < 2; i += 1) {
+    try {
+      const next = decodeURIComponent(decoded);
+      if (next === decoded) break;
+      decoded = next;
+    } catch {
+      break;
+    }
+  }
+  return decoded;
+}
+
+function destinationSlugFromRouteValue(value: string): string {
+  return safeDecodeRouteValue(value)
+    .trim()
+    .replace(/[\/\\／]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+function getLegacyDestinationRedirectPath(request: NextRequest): string | null {
+  const { pathname } = request.nextUrl;
+  if (!pathname.startsWith('/destinations/') || pathname.startsWith('/destinations/region/')) return null;
+
+  let rest = pathname.slice('/destinations/'.length);
+  let suffix = '';
+  if (rest.endsWith('/rss.xml')) {
+    rest = rest.slice(0, -'/rss.xml'.length);
+    suffix = '/rss.xml';
+  }
+
+  const segments = rest.split('/').filter(Boolean);
+  const hasExtraCitySegments = segments.length > 1;
+  const hasEncodedSlash = /%2f|%252f/i.test(request.url) || /%2f|%252f/i.test(rest);
+  if (!hasExtraCitySegments && !hasEncodedSlash) return null;
+
+  const slug = destinationSlugFromRouteValue(rest);
+  return slug ? `/destinations/${encodeURIComponent(slug)}${suffix}` : null;
+}
+
+function getLegacyBlogRedirectPath(request: NextRequest): string | null {
+  const { pathname } = request.nextUrl;
+  if (!pathname.startsWith('/blog/')) return null;
+  const rest = pathname.slice('/blog/'.length);
+  if (!rest || rest.includes('/')) return null;
+  const slug = safeDecodeRouteValue(rest).trim();
+  const redirectedSlug = resolveBlogSlugRedirect(slug);
+  return redirectedSlug ? `/blog/${encodeURIComponent(redirectedSlug)}` : null;
+}
 
 function setAffiliateRefCookie(res: NextResponse, request: NextRequest, value: string, isSecure: boolean) {
   const maxAge = getAffiliateRefCookieMaxAgeSec(request);
@@ -73,6 +127,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
   '/api/cron/blog-publisher',
+  '/api/cron/blog-indexing-worker',
   '/api/cron/blog-learn',
   '/api/cron/publish-scheduled',
   '/api/cron/sync-engagement',
@@ -362,6 +417,39 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
   }
 }
 
+async function activeDestinationExists(destinationOrSlug: string): Promise<boolean | null> {
+  const exact = await supabaseRowExists('active_destinations', { destination: destinationOrSlug });
+  if (exact !== false) return exact;
+
+  const config = getSupabaseRestConfig();
+  if (!config) return null;
+
+  try {
+    const endpoint = new URL(`${config.url}/rest/v1/active_destinations`);
+    endpoint.searchParams.set('select', 'destination');
+    endpoint.searchParams.set('limit', '2000');
+
+    const res = await fetch(endpoint, {
+      headers: {
+        apikey: config.key,
+        authorization: `Bearer ${config.key}`,
+        accept: 'application/json',
+      },
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+
+    const targetSlug = destinationSlugFromRouteValue(destinationOrSlug);
+    const data = await res.json();
+    return Array.isArray(data) && data.some((row) => {
+      const destination = typeof row?.destination === 'string' ? row.destination : '';
+      return destinationSlugFromRouteValue(destination) === targetSlug;
+    });
+  } catch {
+    return null;
+  }
+}
+
 async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextResponse | null> {
   const segments = pathname.split('/').filter(Boolean);
 
@@ -384,7 +472,7 @@ async function getPublicDynamicNotFoundResponse(pathname: string): Promise<NextR
   if (segments[0] === 'destinations' && segments.length === 2) {
     const destination = safeDecodePathSegment(segments[1]).trim();
     if (!destination) return plainNotFound();
-    const exists = await supabaseRowExists('active_destinations', { destination });
+    const exists = await activeDestinationExists(destination);
     if (exists === false) return plainNotFound();
   }
 
@@ -421,16 +509,18 @@ export async function middleware(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== 'production';
   const isAdminPath = pathname.startsWith('/admin') || pathname.startsWith('/m/admin');
 
-  // Legacy links can carry a literal encoded slash (`%2F`) inside the city
-  // segment. Redirect to the canonical double-encoded form before routing.
-  const legacyDestinationSlash = request.url.match(
-    /^(https?:\/\/[^/]+\/destinations\/)(?!region\/)([^?#]*%2f[^?#]*)(.*)$/i,
-  );
-  if (legacyDestinationSlash) {
-    return NextResponse.redirect(
-      `${legacyDestinationSlash[1]}${legacyDestinationSlash[2].replace(/%2f/gi, '%252F')}${legacyDestinationSlash[3]}`,
-      308,
-    );
+  const legacyDestinationRedirectPath = getLegacyDestinationRedirectPath(request);
+  if (legacyDestinationRedirectPath) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = legacyDestinationRedirectPath;
+    return NextResponse.redirect(redirectUrl, 308);
+  }
+
+  const legacyBlogRedirectPath = getLegacyBlogRedirectPath(request);
+  if (legacyBlogRedirectPath) {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.pathname = legacyBlogRedirectPath;
+    return NextResponse.redirect(redirectUrl, 308);
   }
 
   // ── 1. 서버사이드 세션 쿠키 (Safari ITP 대응) ──────────────

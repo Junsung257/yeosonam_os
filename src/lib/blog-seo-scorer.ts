@@ -152,6 +152,14 @@ function extractLinks(markdownOrHtml: string): string[] {
   return [...new Set(links.filter(Boolean))];
 }
 
+function stripMarkdownUrlTargets(markdownOrHtml: string): string {
+  return markdownOrHtml
+    .replace(/!\[([^\]]*)]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, '$1')
+    .replace(/\[([^\]]+)]\((https?:\/\/[^)\s]+)(?:\s+"[^"]*")?\)/g, '$1')
+    .replace(/<img\b[^>]*\bsrc=["']https?:\/\/[^"']+["'][^>]*>/gi, '')
+    .replace(/<a\b([^>]*)\bhref=["']https?:\/\/[^"']+["']([^>]*)>/gi, '<a$1$2>');
+}
+
 function countOccurrences(text: string, keyword: string): number {
   if (!keyword) return 0;
   const variants = [
@@ -203,8 +211,8 @@ function scoreMeta(input: ScorerInput, keyword: string): SeoScoreDetail {
 
 function scoreHeadings(input: ScorerInput, keyword: string, dest: string): SeoScoreDetail {
   const text = input.blogHtml;
-  const h1 = text.match(/^#\s+.+$/gm) || [];
-  const h2 = text.match(/^##\s+.+$/gm) || [];
+  const h1 = text.match(/^#[ \t]+.+$/gm) || [];
+  const h2 = text.match(/^##[ \t]+.+$/gm) || [];
   let score = 0;
   const expected = input.blogType === 'info' ? { min: 5, max: 9 } : { min: 3, max: 7 };
 
@@ -360,12 +368,13 @@ function scoreHelpfulContent(input: ScorerInput, plainText: string): SeoScoreDet
 
 function scoreMobile(blogHtml: string): SeoScoreDetail {
   const tableRows = (blogHtml.match(/(^|\n)\s*\|.+\|/g) || []).length;
-  const longRawUrls = (blogHtml.match(/https?:\/\/\S{90,}/g) || []).length;
+  const visibleUrlText = stripMarkdownUrlTargets(blogHtml);
+  const longRawUrls = (visibleUrlText.match(/https?:\/\/\S{90,}/g) || []).length;
   let score = 0;
   if (tableRows <= 18) score += 2;
   if (longRawUrls === 0) score += 1;
   if (!/<table\b[^>]*style=/i.test(blogHtml)) score += 1;
-  return detail('mobile_snippet_safety', score, 4, 3, 2, `table rows ${tableRows}, long raw urls ${longRawUrls}`);
+  return detail('mobile_snippet_safety', score, 4, 2, 1, `table rows ${tableRows}, long raw urls ${longRawUrls}`);
 }
 
 function scoreSlug(input: ScorerInput, keyword: string): SeoScoreDetail {

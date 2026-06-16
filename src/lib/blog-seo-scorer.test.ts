@@ -78,6 +78,32 @@ describe('computeSeoScore', () => {
     expect(result.details.filter((detail) => detail.status === 'fail').length).toBeGreaterThan(0);
   });
 
+  it('does not count markdown image and link targets as long raw urls', () => {
+    const longUrl = 'https://images.pexels.com/photos/123456789/pexels-photo-123456789.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=627&w=1200&utm_source=very-long-tracking-value';
+    const result = computeSeoScore({
+      blogHtml: [
+        '# Guam preparation checklist',
+        '',
+        'Practical 2026 preparation details with costs, timing, weather, and booking checks.',
+        '',
+        '## Summary',
+        '',
+        `![Guam beach](${longUrl})`,
+        '',
+        `[Official guide](${longUrl})`,
+      ].join('\n'),
+      slug: 'guam-preparation-checklist',
+      seoTitle: 'Guam preparation checklist 2026',
+      seoDescription: 'Guam preparation checklist for 2026 with costs, weather, booking timing, and final travel checks.',
+      primaryKeyword: 'Guam preparation',
+      destination: 'Guam',
+      blogType: 'info',
+    });
+
+    const mobile = result.details.find((detail) => detail.name === 'mobile_snippet_safety');
+    expect(mobile?.message).toContain('long raw urls 0');
+  });
+
   it('matches hyphenated slug keywords against readable spaced article text', () => {
     const result = computeSeoScore({
       blogHtml: [

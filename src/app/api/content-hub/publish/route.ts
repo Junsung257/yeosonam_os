@@ -6,9 +6,10 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   applyBlogPublishQualityToUpdate,
   blogPublishQualityWarnings,
-  evaluateBlogPublishQuality,
+  prepareBlogForPublish,
   resolveBlogDestination,
 } from '@/lib/blog-publish-quality';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 
 const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)';
 
@@ -57,7 +58,7 @@ export async function POST(request: NextRequest) {
       }
 
       const destination = resolveBlogDestination(row);
-      const qaReport = await evaluateBlogPublishQuality({
+      const prepared = await prepareBlogForPublish({
         id: creative_id,
         blog_html: row.blog_html,
         slug: row.slug,
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
         primary_keyword: destination || row.seo_title || row.slug,
         excludeContentCreativeId: creative_id,
       });
+      const qaReport = prepared.report;
       if (!qaReport.passed) {
         return apiResponse({
           error: 'Blog publish quality gate failed',
@@ -82,6 +84,7 @@ export async function POST(request: NextRequest) {
       }
 
       updateData.published_at = new Date().toISOString();
+      updateData.blog_html = prepared.blogHtml;
       applyBlogPublishQualityToUpdate(updateData, qaReport);
     }
 
@@ -104,10 +107,14 @@ export async function POST(request: NextRequest) {
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       if (slug) {
-        const { notifyIndexing } = await import('@/lib/indexing');
-        notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
-          .then(r => console.log(`[content-hub/publish] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
-          .catch(() => {});
+        void enqueueBlogIndexingJob({
+          slug,
+          baseUrl,
+          contentCreativeId: creative_id,
+          source: 'content_hub_publish',
+        }).then((result) => {
+          if (!result.ok) console.warn('[content-hub/publish] indexing enqueue failed:', result.error);
+        });
       }
     }
 

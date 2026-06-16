@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { encodeDestinationPathSegment } from '@/lib/regions';
+import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -42,10 +42,32 @@ function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
 }
 
+async function resolveDestinationRouteParam(value: string): Promise<string | null> {
+  const decoded = safeDecodePathSegment(value).trim();
+  if (!decoded) return null;
+  if (!isSupabaseConfigured) return decoded;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('active_destinations')
+      .select('destination')
+      .limit(2000);
+    if (error) return decoded;
+
+    const match = ((data ?? []) as Array<{ destination: string | null }>)
+      .map(row => row.destination?.trim() ?? '')
+      .find(destination => destination && destinationSlugMatches(destination, decoded));
+
+    return match || decoded;
+  } catch {
+    return decoded;
+  }
+}
+
 export async function GET(_request: NextRequest, props: { params: Promise<{ city?: string | string[] }> }) {
   const params = await props.params;
   const city = getRouteParam(params.city);
-  const decoded = safeDecodePathSegment(city).trim();
+  const decoded = (await resolveDestinationRouteParam(city)) ?? '';
   if (!decoded) {
     return new NextResponse('<error>missing destination</error>', { status: 404 });
   }

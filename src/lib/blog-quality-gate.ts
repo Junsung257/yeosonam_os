@@ -18,6 +18,7 @@ import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-re
 import { inspectBlogImageQuality } from './blog-image-quality';
 import { inspectBlogStructure } from './blog-structure-audit';
 import { inspectBlogIntentQuality } from './blog-content-intent';
+import { evaluateBlogEditorialQuality, evaluateBlogTopicFit } from './blog-topic-fit-gate';
 
 // style-guide.ts 의 "절대 금지 표현 2) AI 클리셰 형용사" 와 동기화.
 // 여기만 수정하면 생성/검증 양쪽이 같은 기준을 사용.
@@ -43,7 +44,7 @@ const THRESHOLDS = {
 const DEDUP_WINDOW_DAYS = 14;
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'intent_quality' | 'image_quality';
+  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -441,6 +442,68 @@ export function checkIntentQuality(input: CheckInput): GateResult {
   };
 }
 
+export function checkTopicFit(input: CheckInput): GateResult {
+  const report = evaluateBlogTopicFit({
+    topic: input.primary_keyword,
+    destination: input.destination,
+    primaryKeyword: input.primary_keyword,
+    angleType: input.angle_type,
+    category: input.category,
+    contentType: input.content_type,
+    productId: input.product_id,
+  });
+
+  return {
+    gate: 'topic_fit',
+    passed: report.passed,
+    reason: report.passed
+      ? undefined
+      : `topic fit ${report.score}/100: ${report.issues
+          .filter((issue) => issue.severity === 'critical')
+          .slice(0, 5)
+          .map((issue) => issue.code)
+          .join(', ')}`,
+    evidence: {
+      score: report.score,
+      criticalCount: report.issues.filter((issue) => issue.severity === 'critical').length,
+      warningCount: report.issues.filter((issue) => issue.severity === 'warning').length,
+      issues: report.issues.slice(0, 12),
+    },
+  };
+}
+
+export function checkEditorialQuality(input: CheckInput): GateResult {
+  const report = evaluateBlogEditorialQuality({
+    slug: input.slug,
+    topic: input.primary_keyword,
+    destination: input.destination,
+    primaryKeyword: input.primary_keyword,
+    angleType: input.angle_type,
+    category: input.category,
+    contentType: input.content_type,
+    productId: input.product_id,
+    blogHtml: input.blog_html,
+  });
+
+  return {
+    gate: 'editorial_quality',
+    passed: report.passed,
+    reason: report.passed
+      ? undefined
+      : `editorial quality ${report.score}/100: ${report.issues
+          .filter((issue) => issue.severity === 'critical')
+          .slice(0, 5)
+          .map((issue) => issue.code)
+          .join(', ')}`,
+    evidence: {
+      score: report.score,
+      criticalCount: report.issues.filter((issue) => issue.severity === 'critical').length,
+      warningCount: report.issues.filter((issue) => issue.severity === 'warning').length,
+      issues: report.issues.slice(0, 12),
+    },
+  };
+}
+
 export async function checkDuplicate(input: CheckInput): Promise<GateResult> {
   const since = new Date();
   since.setDate(since.getDate() - DEDUP_WINDOW_DAYS);
@@ -585,8 +648,10 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
   gates.push(await checkRenderIntegrity(input.blog_html));
   // 의미 구조 검증 — 테이블 문단 오염, 원시 :::, 중복 FAQ/요약, 무너진 체크리스트 차단
   gates.push(await checkStructureIntegrity(input));
+  gates.push(checkTopicFit(input));
   // 글 의도 계약 검증 — 정보/상품/날씨/준비물/일정별 필수 블록과 읽기 디자인 차단
   gates.push(checkIntentQuality(input));
+  gates.push(checkEditorialQuality(input));
   // 이미지 품질 기준 검증 — 깨진 URL, 중복, 빈 alt, 주제 무관 alt/caption 차단
   gates.push(checkImageQuality(input));
 

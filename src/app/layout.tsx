@@ -7,23 +7,44 @@ import LayoutClientWidgets from '@/components/LayoutClientWidgets';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const ENABLE_SPEED_INSIGHTS = process.env.VERCEL === '1';
+const SITE_NAME = '여소남';
+const SITE_TITLE = '여소남 | 믿고 떠나는 프리미엄 패키지 여행';
+const SITE_DESCRIPTION =
+  '여소남은 믿고 떠나는 프리미엄 패키지 여행 전문 플랫폼입니다. 랜드사 직거래 없이 안심하고 비교·예약하세요. 숨은 비용 없는 투명한 여행.';
+const SOCIAL_PROFILES = [
+  'https://blog.naver.com/yeosonam_official',
+  'https://blog.naver.com/yeosonam_',
+  'https://www.instagram.com/yeosonam/',
+  'https://www.threads.com/@yeosonam',
+  'https://www.youtube.com/@yeosonam',
+];
 
 export const metadata: Metadata = {
   metadataBase: new URL(BASE_URL),
   title: {
-    default: '여소남 | 믿고 떠나는 프리미엄 패키지 여행',
-    template: '%s | 여소남',
+    default: SITE_TITLE,
+    template: `%s | ${SITE_NAME}`,
   },
-  description:
-    '여소남은 믿고 떠나는 프리미엄 패키지 여행 전문 플랫폼입니다. 랜드사 직거래 없이 안심하고 비교·예약하세요. 숨은 비용 없는 투명한 여행.',
+  description: SITE_DESCRIPTION,
   keywords: [
-    '단체여행', '패키지여행', '랜드사', '여행사', '해외여행',
-    '단체해외여행', '허니문', '효도여행', '여행견적', '여행비교',
-    '발리여행', '태국여행', '유럽여행', '크루즈',
+    '단체여행',
+    '패키지여행',
+    '랜드사',
+    '여행사',
+    '해외여행',
+    '단체해외여행',
+    '허니문',
+    '효도여행',
+    '여행견적',
+    '여행비교',
+    '발리여행',
+    '태국여행',
+    '유럽여행',
+    '크루즈',
   ],
-  authors: [{ name: '여소남', url: BASE_URL }],
-  creator: '여소남',
-  publisher: '여소남',
+  authors: [{ name: SITE_NAME, url: BASE_URL }],
+  creator: SITE_NAME,
+  publisher: SITE_NAME,
   robots: {
     index: true,
     follow: true,
@@ -33,22 +54,22 @@ export const metadata: Metadata = {
     type: 'website',
     locale: 'ko_KR',
     url: BASE_URL,
-    siteName: '여소남',
-    title: '여소남 | 믿고 떠나는 프리미엄 패키지 여행',
-    description: '믿고 떠나는 프리미엄 패키지 여행. AI 비교로 숨은 비용 제로.',
+    siteName: SITE_NAME,
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: [
       {
         url: `${BASE_URL}/og-image.png`,
         width: 1200,
         height: 630,
-        alt: '여소남 — 믿고 떠나는 프리미엄 패키지 여행',
+        alt: SITE_TITLE,
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: '여소남 | 믿고 떠나는 프리미엄 패키지 여행',
-    description: '믿고 떠나는 프리미엄 패키지 여행. AI 비교로 숨은 비용 제로.',
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
     images: [`${BASE_URL}/og-image.png`],
   },
   alternates: {
@@ -65,7 +86,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: '여소남 관리',
+    title: SITE_NAME,
   },
   other: {
     'mobile-web-app-capable': 'yes',
@@ -104,15 +125,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'Organization',
-              name: '여소남',
+              name: SITE_NAME,
               url: BASE_URL,
               logo: `${BASE_URL}/logo.png`,
-              description: '단체·패키지 여행 전문 AI 중개 플랫폼',
+              description: '단체·패키지 여행 전문 플랫폼',
               address: { '@type': 'PostalAddress', addressCountry: 'KR' },
-              sameAs: [
-                'https://blog.naver.com/yesonam',
-                'https://www.instagram.com/yesonam',
-              ],
+              sameAs: SOCIAL_PROFILES,
             }),
           }}
         />
@@ -123,7 +141,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'WebSite',
-              name: '여소남',
+              name: SITE_NAME,
               url: BASE_URL,
               potentialAction: {
                 '@type': 'SearchAction',

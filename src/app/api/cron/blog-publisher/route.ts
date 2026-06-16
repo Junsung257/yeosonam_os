@@ -6,7 +6,8 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, ANGLE_PRESETS, type AngleType } from '@/lib/content-generator';
-import { notifyIndexing } from '@/lib/indexing';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
+import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
@@ -36,6 +37,7 @@ import { VALID_CATEGORIES } from '@/lib/blog-categories';
 import { getRandomPexelsPhoto, destToEnKeyword, isPexelsConfigured } from '@/lib/pexels';
 import { buildFreshnessPromptBlock, classifyBlogFreshnessRisk } from '@/lib/blog-freshness-risk';
 import { buildOriginalityPromptBlock, fetchBlogOriginalitySignals } from '@/lib/blog-originality-signals';
+import { buildBlogContentBrief, buildBlogContentBriefPromptBlock } from '@/lib/blog-content-brief';
 import { buildBlogIntentPromptContract, classifyBlogIntent } from '@/lib/blog-content-intent';
 import {
   repairBlogEditorialQuality,
@@ -43,11 +45,6 @@ import {
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
 import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
-import {
-  buildGoogleVisibilitySnapshot,
-  buildNaverVisibilitySnapshot,
-  recordBlogVisibilitySnapshot,
-} from '@/lib/blog-visibility-snapshots';
 import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
 
 /**
@@ -175,9 +172,16 @@ function neutralizeBannedCliches(markdown: string): string {
 function isUsableBlogSlug(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   const slug = value.trim().toLowerCase();
+  const lowQualitySlug =
+    /^(?:post|draft|test)(?:-|$)/.test(slug) ||
+    /^\d+(?:-|$)/.test(slug) ||
+    /(?:^|-)post-[a-z0-9]{3,8}$/.test(slug) ||
+    /-[a-f0-9]{6,8}$/.test(slug) ||
+    /^(?:vs-){2,}/.test(slug);
   return /^[a-z0-9][a-z0-9-]{2,79}$/.test(slug)
     && /[a-z]/.test(slug)
     && !slug.endsWith('-')
+    && !lowQualitySlug
     && !/^((preparation|currency|weather|visa|budget|food|faq|itinerary|transport)(-v\d+)?)$/.test(slug);
 }
 
@@ -423,6 +427,23 @@ async function repairFailedQualityGates(
       }
     }
 
+    if (changed) {
+      const structureRepair = repairBlogStructureQuality({
+        title: generated.seo_title,
+        slug: generated.slug,
+        primaryKeyword,
+        angleType: item.angle_type,
+        category: item.category,
+        contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+        productId: item.product_id ?? null,
+        blogHtml: generated.blog_html,
+      });
+      if (structureRepair.changed) {
+        generated.blog_html = structureRepair.blogHtml;
+        changes.push(...structureRepair.changes);
+      }
+    }
+
     if (!changed) break;
 
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
@@ -552,7 +573,7 @@ async function runBlogPublisher(request: NextRequest) {
       }
     }
 
-    // notifyIndexing + revalidatePath — allSettled로 모든 결과를 기다림
+    // Indexing outbox + revalidatePath. External provider requests run in blog-indexing-worker.
     const indexingPromises: Promise<void>[] = [];
     for (const r of results) {
       if (r.status === 'published' && r.reason) {
@@ -560,51 +581,14 @@ async function runBlogPublisher(request: NextRequest) {
         const contentCreativeId = creativeIdBySlug.get(slug) ?? null;
         indexingPromises.push(
           Promise.resolve(
-            notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
-              .then(async (report) => {
-                await supabaseAdmin.from('indexing_reports').insert({
-                  url: report.url,
-                  content_creative_id: contentCreativeId,
-                  google_status: report.google,
-                  google_error: report.google_error ?? null,
-                  indexnow_status: report.indexnow,
-                  indexnow_error: report.indexnow_error ?? null,
-                  sitemap_pings: report.sitemap_pings,
-                  duration_ms: report.duration_ms,
-                });
-                const naverIndexNowOk = report.sitemap_pings.some(
-                  (ping) => ping.provider === 'naver_indexnow' && ping.ok === true,
-                );
-                await Promise.allSettled([
-                  recordBlogVisibilitySnapshot(
-                    supabaseAdmin,
-                    buildGoogleVisibilitySnapshot({
-                      slug,
-                      url: report.url,
-                      requestStatus: report.google === 'failed' ? 'request_failed' : 'requested',
-                      evidence: {
-                        request_status: report.google,
-                        request_error: report.google_error ?? null,
-                        sitemap_pings: report.sitemap_pings,
-                      },
-                      source: 'publish_indexing_request',
-                    }),
-                  ),
-                  recordBlogVisibilitySnapshot(
-                    supabaseAdmin,
-                    buildNaverVisibilitySnapshot({
-                      slug,
-                      url: report.url,
-                      indexNowOk: naverIndexNowOk,
-                      evidence: {
-                        request_status: report.indexnow,
-                        request_error: report.indexnow_error ?? null,
-                        sitemap_pings: report.sitemap_pings,
-                      },
-                      source: 'publish_indexnow_request',
-                    }),
-                  ),
-                ]);
+            enqueueBlogIndexingJob({
+              slug,
+              baseUrl,
+              contentCreativeId,
+              source: 'blog_publisher',
+            })
+              .then(async (result) => {
+                if (!result.ok) throw new Error(result.error || `indexing enqueue failed: ${slug}`);
               })
               .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
           ),
@@ -648,9 +632,19 @@ async function runBlogPublisher(request: NextRequest) {
     try { revalidatePath('/blog'); } catch { /* noop */ }
     try { revalidateTag('blog-list'); } catch { /* noop */ }
 
+    const indexingWorker = await processDueBlogIndexingJobs({
+      workerName: 'blog-publisher-inline-indexing',
+      limit: 10,
+      baseUrl,
+    });
+    if (indexingWorker.errors.length > 0) {
+      errors.push(...indexingWorker.errors.map((error) => `indexing: ${error}`));
+    }
+
     return {
       processed: results.length,
       published: results.filter(r => r.status === 'published').length,
+      indexingWorker,
       dailyQuota: {
         day: todayQuota.dayKey,
         target: targetPostsToday,
@@ -806,9 +800,15 @@ async function processQueueItem(
 
     // Cold-start safety: AI가 internal link / CTA를 빠뜨렸을 때 표준 CTA 블록을 주입
     // links-gate(내부링크 ≥1) + cta-gate(링크 ≥2) 동시 통과
-    const internalLinkCount = (generated.blog_html.match(/\[([^\]]+)\]\(\/[^)]*\)/g) || []).length;
-    const mdLinkCount = (generated.blog_html.match(/\[([^\]]+)\]\((?:\/|https?:\/\/)[^)]*\)/g) || []).length;
-    if (internalLinkCount < 1 || mdLinkCount < 2) {
+    const generatedLinks = [...generated.blog_html.matchAll(/(?<!!)\[[^\]]+]\(([^)\s]+)(?:\s+"[^"]*")?\)/g)]
+      .map((match) => match[1])
+      .filter(Boolean);
+    const internalLinkCount = generatedLinks.filter((href) => href.startsWith('/') || /yeosonam\.com/i.test(href)).length;
+    const ctaLinkCount = generatedLinks.filter((href) => {
+      const decoded = decodeURIComponent(href);
+      return /\/packages|utm_|kakao|consult|문의|예약/i.test(decoded);
+    }).length;
+    if (internalLinkCount < 3 || ctaLinkCount < 2) {
       generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
         destination: item.destination,
         slug: generated.slug,
@@ -819,6 +819,7 @@ async function processQueueItem(
     // 생성기가 스타일 가이드 금지 표현을 섞어도 자동발행 큐가 멈추지 않도록
     // 의미가 과장되지 않는 중립 표현으로 발행 직전에 정규화한다.
     generated.blog_html = neutralizeBannedCliches(generated.blog_html);
+    generated.blog_html = generated.blog_html.replace(/에어컨|에어콘/g, '냉방');
 
     // 외부 공식 링크가 빠지면 links-gate 에서 자동발행이 막힌다.
     // 기준은 유지하되, 발행 직전 최소 공식 출처를 보강한다.
@@ -830,7 +831,8 @@ async function processQueueItem(
     // Compound destinations (X/Y/Z): use only first city to avoid inflated density
     const rawKeyword = item.source === 'pillar'
       ? null
-      : (item.primary_keyword
+      : ((generated.generation_meta?.content_brief as { primary_keyword?: string } | undefined)?.primary_keyword
+          || item.primary_keyword
           || item.destination
           || (item.meta?.keywords as string[] | undefined)?.[0]
           || null);
@@ -878,8 +880,21 @@ async function processQueueItem(
       console.log(`[blog-publisher] 에디토리얼 자동 보강: ${editorialRepair.changes.join(', ')}`);
     }
 
-    // 🆕 가독성 점수 계산 (한국어 휴리스틱)
-    const readability = computeReadability(generated.blog_html);
+    // Normalize generated structure before any publish gate so backfill-only repairs do not recur.
+    const structureRepair = repairBlogStructureQuality({
+      title: generated.seo_title,
+      slug: generated.slug,
+      primaryKeyword,
+      angleType: item.angle_type,
+      category: item.category,
+      contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+      productId: item.product_id ?? null,
+      blogHtml: generated.blog_html,
+    });
+    if (structureRepair.changed) {
+      generated.blog_html = structureRepair.blogHtml;
+      console.log(`[blog-publisher] structure repair: ${structureRepair.changes.join(', ')}`);
+    }
 
     let qa = await runGeneratedQualityGates(generated, item, blogType, primaryKeyword);
 
@@ -993,6 +1008,16 @@ async function processQueueItem(
     });
     let seoScore = computeSeoScore(buildSeoScoreInput());
 
+    if (seoScore.details.some(d => d.name === 'internal_links_cta' && d.status === 'fail')) {
+      generated.blog_html += `\n\n---\n\n${buildStandardBlogCtaMarkdown({
+        destination: item.destination,
+        slug: generated.slug,
+        utmSource: 'naver_blog',
+      })}`;
+      seoScore = computeSeoScore(buildSeoScoreInput());
+      console.log(`[blog-publisher] SEO CTA repair -> ${seoScore.score}/${seoScore.maxScore}`);
+    }
+
     if (!seoScore.passed && seoScore.details.some(d => d.status === 'fail' && ['title', 'meta_description'].includes(d.name))) {
       const seoRepair = repairBlogSeoMetadata({
         seoTitle: generated.seo_title,
@@ -1017,6 +1042,7 @@ async function processQueueItem(
       return { id: item.id, topic: item.topic, status: 'seo_score_failed', reason: seoScore.summary };
     }
 
+    const readability = computeReadability(generated.blog_html);
     const now = new Date().toISOString();
     const generationMeta: Record<string, unknown> = {
       queue_item_id: item.id,
@@ -1472,11 +1498,24 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
 
   // 키워드 tier 기반 SEO 분기
   const tier = (item.keyword_tier as 'head' | 'mid' | 'longtail' | null) || 'mid';
-  const primaryKw = item.primary_keyword || item.destination || item.topic.split(' ')[0];
+  const queuedKeywords = Array.isArray(item.meta?.keywords) ? item.meta.keywords as string[] : [];
+  const contentBrief = buildBlogContentBrief({
+    topic: item.topic,
+    destination: item.destination,
+    primaryKeyword: item.primary_keyword || item.destination || item.topic.split(' ')[0],
+    category: item.category,
+    source: item.source,
+    keywords: queuedKeywords,
+  });
+  if (!contentBrief.passed) {
+    throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
+  }
+  const effectiveTopic = contentBrief.title;
+  const primaryKw = contentBrief.primaryKeyword;
   const volume = item.monthly_search_volume;
   const trendScore = item.trend_score;
   const intentPromptBlock = buildBlogIntentPromptContract(classifyBlogIntent({
-    title: item.topic,
+    title: effectiveTopic,
     slug: queueSlug,
     primaryKeyword: primaryKw,
     angleType: item.angle_type,
@@ -1541,7 +1580,7 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
           const { analyzeSerpGap } = await import('@/lib/serp-gap-analyzer');
           const gapResult = analyzeSerpGap(
             primaryKw,
-            item.topic,
+            effectiveTopic,
             [primaryKw, ...serpData.recommended_entities_to_include.slice(0, 5)],
           );
           if (gapResult.missingTopics.length > 0) {
@@ -1571,12 +1610,15 @@ ${gapResult.missingTopics.map((t, i) => `${i + 1}. ${t} — ${gapResult.suggesti
 ${item.destination ? `**목적지**: ${item.destination}` : ''}
 **카테고리**: ${item.category || 'travel_tips'}
 **Primary Keyword**: ${primaryKw}
+**Final Content Brief Topic**: ${effectiveTopic}
+**Brief Secondary Keywords**: ${contentBrief.secondaryKeywords.join(', ')}
 **부가 키워드**: ${(item.meta?.keywords || []).join(', ')}
 
 ${reviewPromptBlock}
 ${originalityPromptBlock}
 ${freshnessPromptBlock}
 ${intentPromptBlock}
+${buildBlogContentBriefPromptBlock(contentBrief)}
 
 ${tierGuidance[tier]}
 ${trendBlock}
@@ -1607,21 +1649,21 @@ ${serpGapBlock}
 
   // SEO 제목: SERP 분석 결과 있으면 power word·연도 패턴 반영, 없으면 단순 절삭
   const seo_title = serpData
-    ? buildOptimalTitle(item.topic, serpData, tier)
-    : item.topic.substring(0, 55);
+    ? buildOptimalTitle(effectiveTopic, serpData, tier)
+    : effectiveTopic.substring(0, 55);
   // SEO 설명: 주제 기반 맞춤형 (카테고리별 템플릿 다양화)
   const cat = (item.category || '').toLowerCase();
   let descTemplate: string;
   if (cat.includes('visa') || cat.includes('입국')) {
-    descTemplate = `${item.topic} | ${new Date().getFullYear()}년 최신 입국 정보·필요 서류·면세 한도·비자 필수 사항을 여소남이 정리했습니다.`;
+    descTemplate = `${effectiveTopic} | ${new Date().getFullYear()}년 최신 입국 정보·필요 서류·면세 한도·비자 필수 사항을 여소남이 정리했습니다.`;
   } else if (cat.includes('itinerary') || cat.includes('일정')) {
-    descTemplate = `${item.topic} | 추천 일정·예상 경비·필수 방문지·맛집 정보를 여소남의 현지 경험으로 엄선했습니다.`;
+    descTemplate = `${effectiveTopic} | 추천 일정·예상 경비·필수 방문지·맛집 정보를 여소남의 현지 경험으로 엄선했습니다.`;
   } else if (cat.includes('preparation') || cat.includes('준비')) {
-    descTemplate = `${item.topic} | 여행 준비물·체크리스트·예약 꿀팁·주의사항까지 여소남이 꼼꼼하게 정리한 가이드.`;
+    descTemplate = `${effectiveTopic} | 여행 준비물·체크리스트·예약 꿀팁·주의사항까지 여소남이 꼼꼼하게 정리한 가이드.`;
   } else if (cat.includes('local') || cat.includes('현지')) {
-    descTemplate = `${item.topic} | 현지인 추천 맛집·교통 꿀팁·쇼핑 명소·숨은 여행지 정보를 여소남이 전해드립니다.`;
+    descTemplate = `${effectiveTopic} | 현지인 추천 맛집·교통 꿀팁·쇼핑 명소·숨은 여행지 정보를 여소남이 전해드립니다.`;
   } else {
-    descTemplate = `${item.topic} | 실용적인 여행 정보와 팁을 여소남이 정리한 완벽 가이드. 준비부터 현지까지 한 번에 해결.`;
+    descTemplate = `${effectiveTopic} | 실용적인 여행 정보와 팁을 여소남이 정리한 완벽 가이드. 준비부터 현지까지 한 번에 해결.`;
   }
   const seo_description = descTemplate.substring(0, 160);
 
@@ -1638,6 +1680,16 @@ ${serpGapBlock}
   }
 
   const generation_meta: Record<string, unknown> = {
+    content_brief: {
+      title: contentBrief.title,
+      primary_keyword: contentBrief.primaryKeyword,
+      secondary_keywords: contentBrief.secondaryKeywords,
+      search_intent: contentBrief.searchIntent,
+      required_sections: contentBrief.requiredSections,
+      forbidden_angles: contentBrief.forbiddenAngles,
+      source_requirements: contentBrief.sourceRequirements,
+      evidence: contentBrief.evidence,
+    },
     serp_analyzed: Boolean(serpData),
     freshness_risk: freshnessRisk,
     originality_signals: {
@@ -1653,6 +1705,7 @@ ${serpGapBlock}
       serp_analysis: {
         keyword: serpData.keyword,
         source: serpData.source,
+        signal_source: serpData.signal_source ?? 'naver_serp',
         fetched_at: serpData.fetched_at,
         cached: serpData.cached,
         recommended_title_patterns: serpData.recommended_title_patterns,

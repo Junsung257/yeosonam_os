@@ -264,7 +264,53 @@ export async function autoHealQueue(): Promise<{
 }> {
   const details: string[] = [];
   let recovered = 0;
+  let stillFailed = 0;
   const now = new Date().toISOString();
+  const staleGeneratingCutoff = new Date(Date.now() - 90 * 60 * 1000).toISOString();
+
+  const { data: staleGeneratingItems } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id, topic, attempts, last_error, meta')
+    .eq('status', 'generating')
+    .lt('updated_at', staleGeneratingCutoff);
+
+  if (staleGeneratingItems && staleGeneratingItems.length > 0) {
+    for (const item of (staleGeneratingItems as Array<{ id: string; topic: string; attempts: number; last_error: string | null; meta?: unknown }>)) {
+      const meta = typeof item.meta === 'object' && item.meta !== null && !Array.isArray(item.meta)
+        ? { ...(item.meta as Record<string, unknown>) }
+        : {};
+      const decision = classifyBlogQueueFailure(item.last_error ?? '');
+      const canRequeue = shouldSelfHealBlogQueueItem({ lastError: item.last_error, meta }) && item.attempts < 2;
+      const nextStatus = canRequeue ? 'queued' : 'failed';
+
+      const { error } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .update({
+          status: nextStatus,
+          last_error: `stale generating ${nextStatus} ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+          target_publish_at: nextStatus === 'queued' ? now : undefined,
+          meta: {
+            ...meta,
+            failure_code: typeof meta.failure_code === 'string' ? meta.failure_code : decision.code,
+            stale_generating_recovered_at: now,
+            stale_generating_attempts: item.attempts || 0,
+            self_heal_blocked: nextStatus === 'failed' ? true : meta.self_heal_blocked,
+            ...(nextStatus === 'failed' ? { quarantine_reason: 'stale_generating_or_quality_failure' } : {}),
+          } as never,
+        })
+        .eq('id', item.id);
+
+      if (!error) {
+        if (nextStatus === 'queued') {
+          recovered++;
+          details.push(`stale generating 복구: ${item.topic}`);
+        } else {
+          stillFailed++;
+          details.push(`stale generating 격리: ${item.topic}`);
+        }
+      }
+    }
+  }
 
   // blog_topic_queue 에서 failed 상태 + 재시도 3회 미만 → queued 로 복구
   const { data: failedItems } = await supabaseAdmin
@@ -294,6 +340,7 @@ export async function autoHealQueue(): Promise<{
       const exactDuplicateSlug = item.last_error?.match(/동일 slug 이미 존재:\s*([a-z0-9-]+)/i)?.[1] ?? null;
       if (!shouldSelfHealBlogQueueItem({ lastError: item.last_error, meta })) {
         const decision = classifyBlogQueueFailure(item.last_error ?? '');
+        stillFailed++;
         await supabaseAdmin
           .from('blog_topic_queue')
           .update({
@@ -382,7 +429,7 @@ export async function autoHealQueue(): Promise<{
 
   return {
     recovered,
-    stillFailed: (failedItems?.length ?? 0) - recovered,
+    stillFailed,
     details,
   };
 }

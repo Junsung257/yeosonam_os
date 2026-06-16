@@ -118,6 +118,143 @@ describe('blog editorial repair', () => {
     expect(result.blogHtml).toContain('판단 기준 빠른 비교');
   });
 
+  it('adds a publish checklist and splits overlong headings before publish gates', () => {
+    const source = [
+      '# Cebu budget checklist',
+      '',
+      '## [Cebu travel budget] This heading accidentally contains a long paragraph about comparing flights, hotels, transfer time, payment methods, and cancellation rules before booking',
+      '',
+      'Travelers should compare each cost before departure.',
+      '',
+      '## FAQ',
+      '',
+      'Q. When should I check prices?',
+      '',
+      'A. Check again before booking.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Cebu budget checklist',
+      slug: 'cebu-budget-checklist',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: 'Cebu budget',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toEqual(
+      expect.arrayContaining(['split_overlong_headings', 'added_publish_checklist']),
+    );
+    expect(result.blogHtml).toContain('## Cebu travel budget');
+    expect(result.blogHtml).toContain('\uC5EC\uD589 \uCCB4\uD06C\uB9AC\uC2A4\uD2B8');
+    expect(result.blogHtml).toContain('- Cebu budget');
+  });
+
+  it('moves prose-only markdown table rows outside the table', () => {
+    const source = [
+      '# Europe summer travel',
+      '',
+      '| City | Weather | Note |',
+      '| --- | --- | --- |',
+      '| Oslo | mild | jacket |',
+      '| Check point: July northern Europe can stay bright late into the night. Confirm blackout curtains and pack a sleep mask before departure. | | |',
+      '| Zurich | cool | layers |',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Europe summer travel checklist',
+      slug: 'europe-summer-travel',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: 'Europe summer travel',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('split_table_prose_rows');
+    expect(result.blogHtml).not.toContain('| Check point: July northern Europe');
+    expect(result.blogHtml).toContain('Check point: July northern Europe can stay bright late into the night.');
+    expect(result.blogHtml).toContain('| Zurich | cool | layers |');
+  });
+
+  it('adds markdown table boundaries before following prose', () => {
+    const source = [
+      '# Europe summer travel',
+      '',
+      '| City | Weather |',
+      '| --- | --- |',
+      '| Oslo | mild |',
+      'Check point: July northern Europe can stay bright late into the night.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Europe summer travel checklist',
+      slug: 'europe-summer-travel',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: 'Europe summer travel',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('added_markdown_table_boundaries');
+    expect(result.blogHtml).toContain('| Oslo | mild |\n\nCheck point: July northern Europe');
+  });
+
+  it('caps excessive h2 headings by demoting later support sections', () => {
+    const source = [
+      '# City planning guide',
+      '',
+      ...Array.from({ length: 12 }, (_, index) => [
+        `## Section ${index + 1}`,
+        '',
+        `Planning note ${index + 1} with enough detail for the article body.`,
+        '',
+      ]).flat(),
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'City planning guide',
+      slug: 'city-planning-guide',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: 'City planning',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('capped_h2_headings');
+    expect(result.blogHtml.match(/^##\s+\S/gm) || []).toHaveLength(9);
+    expect(result.blogHtml).toContain('### Section 10');
+  });
+
+  it('repairs blank headings before numbered subsections', () => {
+    const source = [
+      '# Europe travel guide',
+      '',
+      '##',
+      '',
+      '1. Weather and clothes',
+      '',
+      'Pack layers before departure.',
+    ].join('\n');
+
+    const result = repairBlogStructureQuality({
+      title: 'Europe travel guide',
+      slug: 'europe-travel-guide',
+      category: 'travel_tips',
+      contentType: 'guide',
+      primaryKeyword: 'Europe travel',
+      blogHtml: source,
+    });
+
+    expect(result.changed).toBe(true);
+    expect(result.changes).toContain('repaired_blank_headings');
+    expect(result.blogHtml).not.toContain('\n##\n');
+    expect(result.blogHtml).toContain('### 1. Weather and clothes');
+  });
+
   it('reduces excessive primary keyword density deterministically', () => {
     const source = Array.from(
       { length: 18 },

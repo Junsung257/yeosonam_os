@@ -8,6 +8,7 @@ import {
 } from './keyword-research';
 import { fetchRelatedQueries } from './related-queries';
 import { supabaseAdmin } from './supabase';
+import { filterTopicFitPassed } from './blog-topic-fit-gate';
 
 const DEFAULT_LOOKBACK_DAYS = 28;
 const DEFAULT_LIMIT = 8;
@@ -640,7 +641,7 @@ export async function expandGscLongtailTopics(
     return { seeds, candidates, inserted: [], skipped, dryRun, errors };
   }
 
-  const rows = candidates.map((candidate) => ({
+  const rowsRaw = candidates.map((candidate) => ({
     topic: candidate.topic,
     source: 'gsc_longtail',
     priority: candidate.priority,
@@ -663,6 +664,17 @@ export async function expandGscLongtailTopics(
       generated_by: 'blog-longtail-expander',
     },
   }));
+  const { rows, rejected } = filterTopicFitPassed(rowsRaw);
+  for (const item of rejected) {
+    skipped.push({
+      keyword: item.row.primary_keyword || item.row.topic || 'unknown',
+      reason: `topic_fit_failed:${item.report.issues.map((issue) => issue.code).join(',')}`,
+    });
+  }
+
+  if (rows.length === 0) {
+    return { seeds, candidates: [], inserted: [], skipped, dryRun, errors };
+  }
 
   const { data: insertedRows, error: insertError } = await supabaseAdmin
     .from('blog_topic_queue')
@@ -672,13 +684,15 @@ export async function expandGscLongtailTopics(
   if (insertError) throw insertError;
 
   const inserted = (insertedRows || []) as Array<{ id: string; primary_keyword: string | null }>;
-  await persistKeywordFamilies(candidates, inserted).catch((err) => {
+  const insertedKeywords = new Set(inserted.map((row) => row.primary_keyword).filter(Boolean));
+  const acceptedCandidates = candidates.filter((candidate) => insertedKeywords.has(candidate.keyword));
+  await persistKeywordFamilies(acceptedCandidates, inserted).catch((err) => {
     errors.push(`keyword family persist failed: ${err instanceof Error ? err.message : String(err)}`);
   });
 
   return {
     seeds,
-    candidates,
+    candidates: acceptedCandidates,
     inserted,
     skipped,
     dryRun,

@@ -19,6 +19,7 @@ import { supabaseAdmin } from './supabase';
 import { pickSeasonalTopics, generateNextQuarterTopics } from './blog-seasonal-calendar';
 import { analyzeCoverageGaps } from './blog-coverage-analyzer';
 import { researchKeywordsBatch, classifyKeywordTier, type KeywordTier } from './keyword-research';
+import { filterTopicFitPassed } from './blog-topic-fit-gate';
 
 // fallback (DB 정책 없을 때) — publishing_policies.scope='global' 우선
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
@@ -121,7 +122,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     const primaryKeywords = seasonals.map(s => (s.keywords?.[0] || s.topic.split(' ').slice(0, 3).join(' ')));
     const research = await researchKeywordsBatch(primaryKeywords).catch(() => new Map());
 
-    const seasonalRows = seasonals.map((s, idx) => {
+    const seasonalRowsRaw = seasonals.map((s, idx) => {
       const pk = primaryKeywords[idx];
       const r = research.get(pk);
       return {
@@ -137,6 +138,8 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         meta: { keywords: s.keywords, season_tag: s.season_tag },
       };
     });
+    const { rows: seasonalRows } = filterTopicFitPassed(seasonalRowsRaw);
+    if (seasonalRows.length > 0) {
     const { data: inserted, error } = await supabaseAdmin
       .from('blog_topic_queue')
       .insert(seasonalRows)
@@ -163,6 +166,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         )
       );
     }
+    }
   }
 
   // 커버리지 갭 — 단일 batch INSERT + 키워드 리서치 (mid tier 기본)
@@ -173,7 +177,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
     const gapKeywords = toAddGaps.map(g => g.topic.replace(/ 완벽 체크리스트| 완벽 가이드| 총정리| 가이드$/g, '').trim());
     const research = await researchKeywordsBatch(gapKeywords).catch(() => new Map());
 
-    const gapRows = toAddGaps.map((g, idx) => {
+    const gapRowsRaw = toAddGaps.map((g, idx) => {
       const pk = gapKeywords[idx];
       const r = research.get(pk);
       return {
@@ -189,11 +193,14 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         meta: { expected_slug: g.slug_suffix },
       };
     });
-    const { data: inserted, error } = await supabaseAdmin
-      .from('blog_topic_queue')
-      .insert(gapRows)
-      .select('topic');
-    if (!error) coverageAdded = (inserted ?? []).length;
+    const { rows: gapRows } = filterTopicFitPassed(gapRowsRaw);
+    if (gapRows.length > 0) {
+      const { data: inserted, error } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .insert(gapRows)
+        .select('topic');
+      if (!error) coverageAdded = (inserted ?? []).length;
+    }
   }
 
   // --- 상품: 최근 7일 내 approved 됐는데 아직 블로그 없는 상품
@@ -256,7 +263,7 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
   if (eligibleProducts.length > 0) {
     const today = new Date();
     // 상품 블로그는 longtail — "{출발지+}부산출발 다낭 4박5일 가성비 리뷰"
-    const productRows = eligibleProducts.map(p => {
+    const productRowsRaw = eligibleProducts.map(p => {
       const pk = `${p.destination || ''} ${p.title || '패키지'}`.trim();
 
       // 발권기한 있는 상품: 발권기한 15일 전을 목표 발행일로, priority 상향
@@ -301,11 +308,14 @@ export async function refillWeeklyQueue(opts?: { postsPerDay?: number }): Promis
         },
       };
     });
-    const { data: inserted, error } = await supabaseAdmin
-      .from('blog_topic_queue')
-      .insert(productRows)
-      .select('id');
-    if (!error) productAdded = (inserted ?? []).length;
+    const { rows: productRows } = filterTopicFitPassed(productRowsRaw);
+    if (productRows.length > 0) {
+      const { data: inserted, error } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .insert(productRows)
+        .select('id');
+      if (!error) productAdded = (inserted ?? []).length;
+    }
   }
 
   // assignPublishSlots는 route.ts(cron 엔트리)에서 호출하므로 여기서는 생략

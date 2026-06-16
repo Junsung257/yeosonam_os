@@ -18,12 +18,20 @@ const maxPages = Number(argValue('--pages', '12'));
 const limit = Number(argValue('--limit', '0')) || 0;
 const json = hasFlag('--json');
 const browserFallback = hasFlag('--browser-fallback') || hasFlag('--browser');
+const strict = hasFlag('--strict');
+const TABLE_EXPECTED_RE =
+  /budget|cost|weather|itinerary|checklist|visa|currency|expense|\uBE44\uC6A9|\uC608\uC0B0|\uB0A0\uC528|\uC6D4\uBCC4|\uC77C\uC815|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uBE44\uC790|\uD658\uC804/i;
+const RELATED_HEADING_RE =
+  /\uAD00\uB828\s*(?:\uAE00|\uC0C1\uD488)|\uCD94\uCC9C\s*\uC0C1\uD488|\uAC19\uC774\s*\uBCF4\uBA74|\uD568\uAED8\s*\uBCF4\uBA74/i;
 
 async function fetchText(url) {
   const response = await fetch(url, {
+    cache: 'no-store',
     headers: {
       'user-agent': 'yeosonam-blog-render-audit/1.0',
       accept: 'text/html,application/xhtml+xml',
+      'cache-control': 'no-cache',
+      pragma: 'no-cache',
     },
   });
   if (!response.ok) {
@@ -70,6 +78,13 @@ function inspectArticle(html, path) {
   const article = $('article').first();
   const root = article.length ? article : $('body');
   const text = root.text();
+  const pageTitle = ($('title').text() || '').trim();
+  const tableExpected = TABLE_EXPECTED_RE.test(`${path} ${pageTitle} ${text.slice(0, 1200)}`);
+  const relatedHeadingPollution = root
+    .find('h2, h3')
+    .toArray()
+    .filter((element) => RELATED_HEADING_RE.test($(element).text()))
+    .length;
   const artifacts = {
     markdownImages: count(text, /!\[[^\]]*]\(/g),
     markdownHeadings: count(text, /(^|\n)#{1,6}\s/gm),
@@ -84,15 +99,19 @@ function inspectArticle(html, path) {
   const failed =
     artifactTotal > 0 ||
     imgCount === 0 ||
-    h2Count < 2;
+    h2Count < 2 ||
+    (tableExpected && tableCount === 0) ||
+    relatedHeadingPollution > 0;
   return {
     path,
-    title: ($('title').text() || '').trim(),
+    title: pageTitle,
     failed,
     artifactTotal,
     imgCount,
     h2Count,
     tableCount,
+    tableExpected,
+    relatedHeadingPollution,
     ...artifacts,
   };
 }
@@ -128,6 +147,17 @@ async function inspectArticleInBrowser(browser, path) {
       const article = document.querySelector('article');
       const root = article || document.body;
       const text = root.textContent || '';
+      const tableExpected =
+        /budget|cost|weather|itinerary|checklist|visa|currency|expense|\uBE44\uC6A9|\uC608\uC0B0|\uB0A0\uC528|\uC6D4\uBCC4|\uC77C\uC815|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uBE44\uC790|\uD658\uC804/i.test(
+          `${location.pathname} ${document.title} ${text.slice(0, 1200)}`,
+        );
+      const relatedHeadingPollution = [...root.querySelectorAll('h2, h3')]
+        .filter((element) =>
+          /\uAD00\uB828\s*(?:\uAE00|\uC0C1\uD488)|\uCD94\uCC9C\s*\uC0C1\uD488|\uAC19\uC774\s*\uBCF4\uBA74|\uD568\uAED8\s*\uBCF4\uBA74/i.test(
+            element.textContent || '',
+          ),
+        )
+        .length;
       const artifacts = {
         markdownImages: count(text, /!\[[^\]]*]\(/g),
         markdownHeadings: count(text, /(^|\n)#{1,6}\s/gm),
@@ -145,6 +175,8 @@ async function inspectArticleInBrowser(browser, path) {
         imgCount,
         h2Count,
         tableCount,
+        tableExpected,
+        relatedHeadingPollution,
         ...artifacts,
       };
     });
@@ -152,7 +184,7 @@ async function inspectArticleInBrowser(browser, path) {
       path,
       ...result,
       checkedBy: 'browser',
-      failed: result.artifactTotal > 0 || result.imgCount === 0 || result.h2Count < 2,
+      failed: result.artifactTotal > 0 || result.imgCount === 0 || result.h2Count < 2 || (result.tableExpected && result.tableCount === 0) || result.relatedHeadingPollution > 0,
     };
   } finally {
     await page.close();
@@ -217,6 +249,7 @@ async function main() {
   };
   if (json) {
     console.log(JSON.stringify(output, null, 2));
+    if (strict && (summary.failed > 0 || summary.errors > 0)) process.exitCode = 1;
     return;
   }
   console.log(`Blog render integrity: ${summary.score}/100 (${summary.passed}/${summary.fetched} passed, errors=${summary.errors})`);

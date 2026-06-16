@@ -18,6 +18,45 @@ export interface SeasonalTopicSeed {
   season_tag?: string | null;
 }
 
+const MONTH_RE = /(\d{1,2})\s*월/;
+const SEASONAL_MONTH_KEYWORD_RE = /(?:^|\s)(\d{1,2})\s*월(?:\s|$)/;
+const LODGING_TANGENT_RE = /에어컨|에어콘|숙소|호텔|리조트|숙박|air\s*con|aircon|a\/c|accommodation|hotel|resort/i;
+const CORE_SEASONAL_TRAVEL_RE = /날씨|옷차림|준비물|체크리스트|우기|건기|기온|강수|방수|모기|weather|clothing|packing|checklist/i;
+
+function monthFromSeed(seed: SeasonalTopicSeed): string | null {
+  const text = [seed.topic, ...seed.keywords, seed.year_month].join(' ');
+  const explicit = text.match(MONTH_RE) || text.match(SEASONAL_MONTH_KEYWORD_RE);
+  if (explicit?.[1]) return `${Number(explicit[1])}월`;
+  const month = seed.year_month.match(/^\d{4}-(\d{2})$/)?.[1];
+  return month ? `${Number(month)}월` : null;
+}
+
+export function normalizeSeasonalTopicSeed(seed: SeasonalTopicSeed): SeasonalTopicSeed {
+  const month = monthFromSeed(seed);
+  const destination = seed.destination?.trim();
+  if (!month || !destination) return seed;
+
+  const text = [seed.topic, ...seed.keywords].join(' ');
+  const hasMonthDestinationKeyword = seed.keywords.some((keyword) =>
+    keyword.includes(destination) && keyword.includes(month),
+  );
+  if (!hasMonthDestinationKeyword) return seed;
+  if (!LODGING_TANGENT_RE.test(text)) return seed;
+  if (CORE_SEASONAL_TRAVEL_RE.test(seed.topic) && !LODGING_TANGENT_RE.test(seed.topic)) return seed;
+
+  return {
+    ...seed,
+    topic: `${destination} ${month} 날씨와 옷차림 여행 준비물 체크리스트`,
+    keywords: [
+      `${destination} ${month} 날씨`,
+      `${destination} ${month} 옷차림`,
+      `${destination} 여행 준비물`,
+      `${destination} ${month}`,
+    ],
+    season_tag: seed.season_tag ?? month,
+  };
+}
+
 // AI 키 없을 때 쓰는 최소 한국인 여행 시즌 토픽 — 실제론 AI 로 대체됨
 const FALLBACK_MONTHLY: Record<string, SeasonalTopicSeed[]> = {
   '01': [
@@ -106,7 +145,7 @@ export async function generateNextQuarterTopics(opts?: { force?: boolean }): Pro
       if ((count ?? 0) > 0) { skipped++; continue; }
     }
 
-    const seeds = await generateMonthTopics(ym);
+    const seeds = (await generateMonthTopics(ym)).map(normalizeSeasonalTopicSeed);
 
     if (seeds.length > 0) {
       const { error } = await supabaseAdmin
@@ -184,5 +223,5 @@ export async function pickSeasonalTopics(limit: number): Promise<SeasonalTopicSe
     .order('year_month', { ascending: true })
     .limit(limit);
 
-  return (data || []) as SeasonalTopicSeed[];
+  return ((data || []) as SeasonalTopicSeed[]).map(normalizeSeasonalTopicSeed);
 }

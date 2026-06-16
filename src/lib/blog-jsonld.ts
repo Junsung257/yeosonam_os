@@ -286,7 +286,13 @@ export function buildBlogPostPageJsonLd(input: BlogPostPageJsonLdInput): BlogPos
         '@type': 'Organization',
         name: '여소남',
         url: baseUrl,
-        sameAs: ['https://blog.naver.com/yesonam', 'https://www.instagram.com/yesonam'],
+        sameAs: [
+          'https://blog.naver.com/yeosonam_official',
+          'https://blog.naver.com/yeosonam_',
+          'https://www.instagram.com/yeosonam/',
+          'https://www.threads.com/@yeosonam',
+          'https://www.youtube.com/@yeosonam',
+        ],
       },
       {
         '@type': 'Person',

@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { mrtProvider, buildMylinkUrl } from '@/lib/travel-providers/mrt';
@@ -14,8 +15,9 @@ import { logAndSanitize } from '@/lib/error-sanitizer';
 import {
   applyBlogPublishQualityToUpdate,
   blogPublishQualityWarnings,
-  evaluateBlogPublishQuality,
+  prepareBlogForPublish,
 } from '@/lib/blog-publish-quality';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 
 export const maxDuration = 60;
 
@@ -175,8 +177,8 @@ ${filtered.map((hotel, i) => {
     const seoTitle = `${city} ${tierLabel} 호텔 TOP ${topN} ${year}년 최신`.slice(0, 60);
     const seoDesc = `${city} ${tierLabel} 호텔 ${topN}곳을 평점, 가격, 위치 기준으로 비교했습니다. MyRealTrip 실시간 호텔 데이터를 바탕으로 예약 링크까지 정리했습니다.`.slice(0, 160);
 
-    const qaReport = publish
-      ? await evaluateBlogPublishQuality({
+    const prepared = publish
+      ? await prepareBlogForPublish({
           blog_html: blogHtml,
           slug: finalSlug,
           seo_title: seoTitle,
@@ -188,6 +190,7 @@ ${filtered.map((hotel, i) => {
           secondary_keywords: [`${city} 호텔 추천`, `${city} 호텔 가격`, `${city} 숙소 위치`],
         })
       : null;
+    const qaReport = prepared?.report ?? null;
     if (qaReport && !qaReport.passed) {
       return NextResponse.json({
         error: 'Blog publish quality gate failed',
@@ -202,7 +205,7 @@ ${filtered.map((hotel, i) => {
 
     const insertData: Record<string, unknown> = {
       channel: 'naver_blog',
-      blog_html: blogHtml,
+      blog_html: prepared?.blogHtml ?? blogHtml,
       slides: [],
       status: publish ? 'published' : 'draft',
       category: 'hotel_ranking',
@@ -229,6 +232,17 @@ ${filtered.map((hotel, i) => {
       .single();
 
     if (error) throw error;
+
+    if (publish) {
+      revalidatePath('/blog');
+      revalidatePath(`/blog/${finalSlug}`);
+      await enqueueBlogIndexingJob({
+        slug: finalSlug,
+        baseUrl,
+        contentCreativeId: creative?.id ?? null,
+        source: 'mrt_hotel_ranking',
+      });
+    }
 
     return NextResponse.json({
       ok: true,

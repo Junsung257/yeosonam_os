@@ -1,11 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { destinationSlugMatches } from '@/lib/regions';
+
+async function resolveDestinationRouteParam(city: string): Promise<string> {
+  const decoded = decodeURIComponent(city).trim();
+  if (!decoded || !isSupabaseConfigured) return decoded;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('active_destinations')
+      .select('destination')
+      .limit(2000);
+    if (error) return decoded;
+
+    const match = ((data ?? []) as Array<{ destination: string | null }>)
+      .map(row => row.destination?.trim() ?? '')
+      .find(destination => destination && destinationSlugMatches(destination, decoded));
+
+    return match || decoded;
+  } catch {
+    return decoded;
+  }
+}
 
 export async function GET(_req: NextRequest, props: { params: Promise<{ city: string }> }) {
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ data: null });
   const { city } = params;
-  const destination = decodeURIComponent(city);
+  const destination = await resolveDestinationRouteParam(city);
 
   const { data, error } = await supabaseAdmin
     .from('destination_metadata')
@@ -23,7 +45,7 @@ export async function PATCH(req: NextRequest, props: { params: Promise<{ city: s
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
   const { city } = params;
-  const destination = decodeURIComponent(city);
+  const destination = await resolveDestinationRouteParam(city);
 
   let body: {
     tagline?: string;
@@ -53,7 +75,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ city: st
   const params = await props.params;
   if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB not configured' }, { status: 503 });
   const { city } = params;
-  const destination = decodeURIComponent(city);
+  const destination = await resolveDestinationRouteParam(city);
 
   const { generateDestinationTaglines } = await import('@/lib/destination-setup');
 

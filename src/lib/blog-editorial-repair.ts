@@ -306,6 +306,397 @@ function splitCollapsedChecklistItems(markdown: string): { text: string; changed
   return { text: next.join('\n'), changed };
 }
 
+function hasChecklistIntent(markdown: string, input: BlogEditorialRepairInput): boolean {
+  const haystack = [
+    input.title,
+    input.slug,
+    input.primaryKeyword,
+    input.category,
+    input.contentType,
+    markdown.slice(0, 2000),
+  ].filter(Boolean).join(' ');
+
+  return /checklist|packing|preparation|weather|budget|itinerary|visa|currency|transport|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC900\uBE44\uBB3C|\uD544\uC218|\uB0A0\uC528|\uBE44\uC6A9|\uC608\uC0B0|\uC77C\uC815|\uBE44\uC790|\uC11C\uB958|\uD658\uC804|\uAD50\uD1B5/i.test(haystack);
+}
+
+function hasChecklistHeading(markdown: string): boolean {
+  return /^#{2,3}\s+.*(?:checklist|packing\s+list|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC900\uBE44\uBB3C|\uD544\uC218\s*\uC544\uC774\uD15C)/im.test(markdown);
+}
+
+function ensurePublishChecklist(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
+  if (!hasChecklistIntent(markdown, input) || hasChecklistHeading(markdown)) {
+    return { text: markdown, changed: false };
+  }
+
+  const keyword = input.primaryKeyword || input.title || input.slug || '\uC5EC\uD589';
+  const block = [
+    '',
+    '## \uC5EC\uD589 \uCCB4\uD06C\uB9AC\uC2A4\uD2B8',
+    '',
+    `- ${keyword} \uC77C\uC815\uC740 \uD56D\uACF5, \uC219\uC18C, \uC774\uB3D9 \uC2DC\uAC04\uC744 \uAC19\uC774 \uBE44\uAD50\uD569\uB2C8\uB2E4.`,
+    '- \uC5EC\uAD8C, \uC785\uAD6D \uC11C\uB958, \uC608\uC57D \uBC88\uD638\uB97C \uCD9C\uBC1C \uC804\uC5D0 \uB2E4\uC2DC \uD655\uC778\uD569\uB2C8\uB2E4.',
+    '- \uD604\uC9C0 \uB0A0\uC528, \uACB0\uC81C \uC218\uB2E8, \uD1B5\uC2E0 \uC900\uBE44\uB97C \uBAA9\uB85D\uC73C\uB85C \uBD84\uB9AC\uD569\uB2C8\uB2E4.',
+    '- \uCDE8\uC18C \uADDC\uC815, \uCD94\uAC00 \uBE44\uC6A9, \uBE44\uC0C1 \uC5F0\uB77D\uCC98\uB294 \uB530\uB85C \uC800\uC7A5\uD569\uB2C8\uB2E4.',
+    '',
+  ].join('\n');
+
+  const firstFaq = markdown.search(/^##\s*(FAQ|Q\s*&\s*A)/im);
+  if (firstFaq > 0) {
+    return {
+      text: `${markdown.slice(0, firstFaq).trimEnd()}\n${block}${markdown.slice(firstFaq).trimStart()}`,
+      changed: true,
+    };
+  }
+
+  return { text: `${markdown.trimEnd()}\n${block}`, changed: true };
+}
+
+function splitOverlongHeadings(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  let changed = false;
+  const next: string[] = [];
+
+  for (const line of lines) {
+    const match = line.match(/^(#{2,3})\s+(.+)$/);
+    if (!match) {
+      next.push(line);
+      continue;
+    }
+
+    const [, level, headingText] = match;
+    const plain = stripMarkup(headingText).replace(/\s+/g, ' ').trim();
+    if (plain.length <= 90) {
+      next.push(line);
+      continue;
+    }
+
+    const bracket = plain.match(/^\[([^\]]{4,70})]\s+(.{20,})$/);
+    if (bracket) {
+      next.push(`${level} ${bracket[1].trim()}`);
+      next.push('');
+      next.push(bracket[2].trim());
+      changed = true;
+      continue;
+    }
+
+    const splitAt = Math.max(
+      plain.lastIndexOf(' ', 78),
+      plain.indexOf('. ') > 35 ? plain.indexOf('. ') + 1 : -1,
+    );
+    if (splitAt > 35 && splitAt < plain.length - 20) {
+      next.push(`${level} ${plain.slice(0, splitAt).trim()}`);
+      next.push('');
+      next.push(plain.slice(splitAt).trim());
+      changed = true;
+      continue;
+    }
+
+    next.push(`${level} ${plain.slice(0, 86).trim()}`);
+    next.push('');
+    next.push(plain.slice(86).trim());
+    changed = true;
+  }
+
+  return { text: next.join('\n'), changed };
+}
+
+function parseMarkdownTableCells(line: string): string[] {
+  const trimmed = line.trim();
+  if (!trimmed.startsWith('|') || !trimmed.includes('|', 1)) return [];
+  return trimmed
+    .slice(1, trimmed.endsWith('|') ? -1 : undefined)
+    .split('|')
+    .map((cell) => cell.trim());
+}
+
+function isMarkdownTableSeparator(line: string): boolean {
+  const cells = parseMarkdownTableCells(line);
+  return cells.length >= 2 && cells.every((cell) => /^:?-{2,}:?$/.test(cell));
+}
+
+function splitTableProseRows(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  const pendingProse: string[] = [];
+  let changed = false;
+  let inTable = false;
+
+  const flushPending = () => {
+    if (pendingProse.length === 0) return;
+    if (next[next.length - 1]?.trim()) next.push('');
+    next.push(...pendingProse);
+    next.push('');
+    pendingProse.length = 0;
+  };
+
+  for (const line of lines) {
+    const cells = parseMarkdownTableCells(line);
+    const isTableLine = cells.length >= 2;
+
+    if (!isTableLine) {
+      if (inTable) flushPending();
+      inTable = false;
+      next.push(line);
+      continue;
+    }
+
+    inTable = true;
+    if (isMarkdownTableSeparator(line)) {
+      next.push(line);
+      continue;
+    }
+
+    const firstCell = stripMarkup(cells[0] || '').replace(/\s+/g, ' ').trim();
+    const emptyTrailingCells = cells.slice(1).every((cell) => stripMarkup(cell).trim().length === 0);
+    const hasSentenceShape = /[.!?。！？]|\uB2E4\.|\uC694\.|\uB2C8\uB2E4/.test(firstCell);
+    const startsLikeNote = /^(?:check\s*point|note|tip|key\s*point|[\uCCB4]\uD06C\s*\uD3EC\uC778\uD2B8)/i.test(firstCell);
+    const looksLikeProseRow =
+      cells.length >= 2 &&
+      firstCell.length >= 45 &&
+      hasSentenceShape &&
+      (emptyTrailingCells || firstCell.length >= 95 || startsLikeNote);
+
+    if (looksLikeProseRow) {
+      pendingProse.push(firstCell);
+      changed = true;
+      continue;
+    }
+
+    next.push(line);
+  }
+
+  if (inTable) flushPending();
+
+  return {
+    text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'),
+    changed,
+  };
+}
+
+function splitHtmlTableProseRows(markdown: string): { text: string; changed: boolean } {
+  const extracted: string[] = [];
+  const rowRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  const cellRe = /<t[dh]\b[^>]*>([\s\S]*?)<\/t[dh]>/gi;
+  const text = markdown.replace(rowRe, (row, rowInner) => {
+    const cells = [...String(rowInner).matchAll(cellRe)].map((match) =>
+      stripMarkup(match[1] || '').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim(),
+    );
+    if (cells.length < 2) return row;
+
+    const firstCell = cells[0] || '';
+    const emptyTrailingCells = cells.slice(1).every((cell) => cell.length === 0);
+    const hasSentenceShape = /[.!?。！？]|\uB2E4\.|\uC694\.|\uB2C8\uB2E4/.test(firstCell);
+    const startsLikeNote = /^(?:check\s*point|note|tip|key\s*point|[\uCCB4]\uD06C\s*\uD3EC\uC778\uD2B8)/i.test(firstCell);
+    if (firstCell.length < 45 || !hasSentenceShape || (!emptyTrailingCells && firstCell.length < 95 && !startsLikeNote)) {
+      return row;
+    }
+
+    extracted.push(firstCell);
+    return '';
+  });
+
+  if (extracted.length === 0) return { text: markdown, changed: false };
+
+  const insert = `\n\n${extracted.join('\n\n')}\n`;
+  const tableEnd = text.search(/<\/table>/i);
+  if (tableEnd >= 0) {
+    const endMatch = text.slice(tableEnd).match(/<\/table>/i);
+    const endIndex = tableEnd + (endMatch?.[0].length ?? 8);
+    return {
+      text: `${text.slice(0, endIndex)}${insert}${text.slice(endIndex)}`.replace(/\n{4,}/g, '\n\n\n'),
+      changed: true,
+    };
+  }
+
+  return { text: `${text.trimEnd()}${insert}`, changed: true };
+}
+
+function ensureMarkdownTableBoundaries(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (const line of lines) {
+    const previous = next[next.length - 1] ?? '';
+    const previousIsTable = parseMarkdownTableCells(previous).length >= 2;
+    const currentIsTable = parseMarkdownTableCells(line).length >= 2;
+    const currentIsContent = line.trim().length > 0;
+
+    if (previousIsTable && currentIsContent && !currentIsTable) {
+      next.push('');
+      changed = true;
+    }
+
+    next.push(line);
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
+function capH2Headings(markdown: string, maxH2 = 9): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  let h2Count = 0;
+  let changed = false;
+  const next = lines.map((line) => {
+    if (!/^##[ \t]+\S/.test(line) || /^###[ \t]+/.test(line)) return line;
+    h2Count += 1;
+    if (h2Count <= maxH2) return line;
+    changed = true;
+    return line.replace(/^##[ \t]+/, '### ');
+  });
+
+  return { text: next.join('\n'), changed };
+}
+
+function dedupeRepeatedHeadings(markdown: string, maxRepeats = 2): { text: string; changed: boolean } {
+  const seen = new Map<string, number>();
+  let changed = false;
+  const lines = markdown.split('\n');
+  const next = lines.filter((line) => {
+    const match = line.match(/^(#{2,3})[ \t]+(.+)$/);
+    if (!match) return true;
+    const key = stripMarkup(match[2] || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!key) return true;
+    const count = (seen.get(key) || 0) + 1;
+    seen.set(key, count);
+    if (count <= maxRepeats) return true;
+    changed = true;
+    return false;
+  });
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
+function repairBlankHeadingLines(markdown: string): { text: string; changed: boolean } {
+  const lines = markdown.split('\n');
+  const next: string[] = [];
+  let changed = false;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    if (!/^#{2,3}\s*$/.test(line)) {
+      next.push(line);
+      continue;
+    }
+
+    let cursor = index + 1;
+    while (cursor < lines.length && (lines[cursor] ?? '').trim() === '') cursor += 1;
+    const headingText = (lines[cursor] ?? '').trim();
+    if (/^\d{1,2}\.\s+\S/.test(headingText)) {
+      next.push(`### ${headingText}`);
+      index = cursor;
+    }
+    changed = true;
+  }
+
+  return { text: next.join('\n').replace(/\n{4,}/g, '\n\n\n'), changed };
+}
+
+function dedupeRepeatedSupportBlocks(markdown: string): { text: string; changed: boolean } {
+  const blocks = markdown.split(/\n{2,}/);
+  const seen = new Set<string>();
+  let changed = false;
+
+  const next = blocks.filter((block) => {
+    const trimmed = block.trim();
+    if (!trimmed || /^#{1,6}\s/.test(trimmed) || /^\|/.test(trimmed)) return true;
+    const plain = stripMarkup(trimmed).replace(/\s+/g, ' ').trim();
+    if (plain.length < 35 || plain.length > 260) return true;
+
+    const isSupportBlock =
+      /^[-*]\s+/.test(trimmed) ||
+      /월별 기온|성수기 혼잡도|예약 타이밍|출발 직전|현지 결제|추가 비용|취소 조건/.test(plain);
+    if (!isSupportBlock) return true;
+
+    const repeatedWeatherPhrase = plain.match(/월별 기온, 우기, 성수기 혼잡도를[^.。!?]+/);
+    const repeatedPlanningPhrase = plain.match(/비용, 이동 시간, 현지 결제[^.。!?]+/);
+    const key = (repeatedWeatherPhrase?.[0] || repeatedPlanningPhrase?.[0] || plain).toLowerCase();
+    if (seen.has(key)) {
+      changed = true;
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+
+  return { text: next.join('\n\n'), changed };
+}
+
+function softenRepeatedLongtailBulletPrefixes(markdown: string): { text: string; changed: boolean } {
+  const prefixCounts = new Map<string, number>();
+  let changed = false;
+  const text = markdown.replace(
+    /^([-*][ \t]+)([^:\n]{8,80})[ \t]+(일정|비용|준비물|예약|날씨|사용법|비교|속도):/gm,
+    (match, marker: string, prefix: string, topic: string) => {
+      const key = prefix.replace(/\s+/g, ' ').trim();
+      const count = (prefixCounts.get(key) || 0) + 1;
+      prefixCounts.set(key, count);
+      if (count <= 3) return match;
+      changed = true;
+      return `${marker}${topic}:`;
+    },
+  );
+
+  return { text, changed };
+}
+
+function flattenMalformedInlineTables(markdown: string): { text: string; changed: boolean } {
+  const blocks = markdown.split(/\n{2,}/);
+  let changed = false;
+  const next = blocks.map((block) => {
+    if (!/\|:?-{2,}|:?-{2,}\s*\|/.test(block)) return block;
+    const tableLineCount = block
+      .split('\n')
+      .filter((line) => parseMarkdownTableCells(line).length >= 2).length;
+    if (tableLineCount >= 2) return block;
+
+    changed = true;
+    return block
+      .replace(/\s*\|?\s*:?-{2,}:?(?:\s*\|\s*:?-{2,}:?)+\s*\|?/g, ' ')
+      .replace(/\s*\|\s*/g, ' / ')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  });
+
+  return { text: next.join('\n\n'), changed };
+}
+
+function limitRepeatedPlanningHooks(markdown: string): { text: string; changed: boolean } {
+  let definitionCount = 0;
+  let planningCount = 0;
+  let questionBlockCount = 0;
+  let questionHeadingCount = 0;
+  const text = markdown
+    .replace(
+      /\n{0,2}##[ \t]+[^\n]{0,80}에서 가장 먼저 확인할 것은\?[ \t]*\n\s*\n1\.[ \t]*현지 결제 가능 수단\s*\n2\.[ \t]*공항·호텔 이동 시간\s*\n3\.[ \t]*예약 전 추가 비용 여부\s*/g,
+      (match) => {
+        questionBlockCount += 1;
+        return questionBlockCount <= 1 ? match : '\n';
+      },
+    )
+    .replace(/^#{2,3}[ \t]+[^\n]{0,80}에서 가장 먼저 확인할 것은\?[ \t]*$/gm, (match) => {
+      questionHeadingCount += 1;
+      return questionHeadingCount <= 2 ? match : '';
+    })
+    .replace(
+      /[^\n.。!?]{1,80}에서 가장 먼저 확인할 것은 무엇일까요\?\s*여행 전 비용, 이동 시간, 현지 결제 조건을 비교하면 현지에서 낭비되는 1~2시간을 줄일 수 있습니다\./g,
+      (match) => {
+        definitionCount += 1;
+        return definitionCount <= 2 ? match : '';
+      },
+    )
+    .replace(
+      /[^\n.。!?]{0,50}비용, 이동 시간, 현지 결제 조건을 비교하면 현지에서 낭비되는 1~2시간을 줄일 수 있습니다\./g,
+      (match) => {
+        planningCount += 1;
+        return planningCount <= 2 ? match : '';
+      },
+    )
+    .replace(/\n{4,}/g, '\n\n\n');
+
+  return { text, changed: text !== markdown };
+}
+
 function ensureMinimumReadingStructure(markdown: string, input: BlogEditorialRepairInput): { text: string; changed: boolean } {
   let text = markdown;
   const before = text;
@@ -463,6 +854,42 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('split_collapsed_checklist_items');
   }
 
+  const headingRepair = splitOverlongHeadings(blogHtml);
+  if (headingRepair.changed) {
+    blogHtml = headingRepair.text;
+    changes.push('split_overlong_headings');
+  }
+
+  const blankHeadingRepair = repairBlankHeadingLines(blogHtml);
+  if (blankHeadingRepair.changed) {
+    blogHtml = blankHeadingRepair.text;
+    changes.push('repaired_blank_headings');
+  }
+
+  const publishChecklistRepair = ensurePublishChecklist(blogHtml, input);
+  if (publishChecklistRepair.changed) {
+    blogHtml = publishChecklistRepair.text;
+    changes.push('added_publish_checklist');
+  }
+
+  const tableBoundaryRepair = ensureMarkdownTableBoundaries(blogHtml);
+  if (tableBoundaryRepair.changed) {
+    blogHtml = tableBoundaryRepair.text;
+    changes.push('added_markdown_table_boundaries');
+  }
+
+  const tableProseRepair = splitTableProseRows(blogHtml);
+  if (tableProseRepair.changed) {
+    blogHtml = tableProseRepair.text;
+    changes.push('split_table_prose_rows');
+  }
+
+  const htmlTableProseRepair = splitHtmlTableProseRows(blogHtml);
+  if (htmlTableProseRepair.changed) {
+    blogHtml = htmlTableProseRepair.text;
+    changes.push('split_html_table_prose_rows');
+  }
+
   const inlineSplitRepair = splitInlineScanElements(blogHtml);
   if (inlineSplitRepair.changed) {
     blogHtml = inlineSplitRepair.text;
@@ -487,6 +914,42 @@ export function repairBlogStructureQuality(input: BlogEditorialRepairInput): Blo
     changes.push('added_reading_design_tip');
   }
 
+  const h2CapRepair = capH2Headings(blogHtml);
+  if (h2CapRepair.changed) {
+    blogHtml = h2CapRepair.text;
+    changes.push('capped_h2_headings');
+  }
+
+  const repeatedHeadingRepair = dedupeRepeatedHeadings(blogHtml);
+  if (repeatedHeadingRepair.changed) {
+    blogHtml = repeatedHeadingRepair.text;
+    changes.push('deduped_repeated_headings');
+  }
+
+  const repeatedSupportRepair = dedupeRepeatedSupportBlocks(blogHtml);
+  if (repeatedSupportRepair.changed) {
+    blogHtml = repeatedSupportRepair.text;
+    changes.push('deduped_repeated_support_blocks');
+  }
+
+  const longtailPrefixRepair = softenRepeatedLongtailBulletPrefixes(blogHtml);
+  if (longtailPrefixRepair.changed) {
+    blogHtml = longtailPrefixRepair.text;
+    changes.push('softened_repeated_longtail_bullet_prefixes');
+  }
+
+  const malformedTableRepair = flattenMalformedInlineTables(blogHtml);
+  if (malformedTableRepair.changed) {
+    blogHtml = malformedTableRepair.text;
+    changes.push('flattened_malformed_inline_tables');
+  }
+
+  const repeatedPlanningHookRepair = limitRepeatedPlanningHooks(blogHtml);
+  if (repeatedPlanningHookRepair.changed) {
+    blogHtml = repeatedPlanningHookRepair.text;
+    changes.push('limited_repeated_planning_hooks');
+  }
+
   const after = inspectBlogIntentQuality({ ...input, blogHtml });
 
   return {
@@ -503,12 +966,28 @@ function splitInlineScanElements(markdown: string): { text: string; changed: boo
   const before = text;
 
   text = text
+    .replace(/^(#{2,3}[ \t]+(?:\uC5EC\uD589 \uC900\uBE44\uB97C \uC704\uD55C \uC2E4\uC804 \uD301|\uC790\uC8FC \uBB3B\uB294 \uC9C8\uBB38))[ \t]+(.+)$/gm, '$1\n\n$2')
+    .replace(/^(#{2,3}[^\n]+?)[ \t]+(#{2,3}[ \t]+)/gm, '$1\n\n$2');
+
+  text = text
+    .replace(/\s+(##[ \t]+\uD56D\uACF5)/g, '\n\n$1')
+    .replace(/([.!?。！？]|\uB2E4\.|\uC694\.|\uB2C8\uB2E4\.)\s+(\|[^|\n]+(?:\|[^|\n]+){1,}\|)/g, '$1\n\n$2')
+    .replace(/(\|[^|\n]+\|[^|\n]+\|)[ \t]+(?=[\uAC00-\uD7A3A-Za-z][^|\n]{45,})/g, '$1\n\n')
+    .replace(/\|\s+\|(?=\s*\*)/g, '|\n\n|');
+
+  text = text
+    .replace(/([.!?。！？]|\uB2E4\.|\uC694\.|\uB2C8\uB2E4\.)\s+(#{1,6}\s+)/g, '$1\n\n$2')
+    .replace(/\s+(TL;DR:)/gi, '\n\n$1');
+
+  text = text
     .replace(/\|\s+\|(?=\s*(?::?-{2,}|[가-힣A-Za-z0-9]))/g, '|\n\n|')
     .replace(/\s+(Q[.:]\s*)/g, '\n\n$1')
     .replace(/\s+(A[.:]\s*)/g, '\n\n$1')
     .replace(/\s+(-\s*\[[ xX]\]\s*)/g, '\n\n$1')
     .replace(/\s+(-\s+(?=\S))/g, '\n\n$1')
-    .replace(/\s+(\d{1,2}\.\s+(?=\S))/g, '\n\n$1');
+    .replace(/\s+(\*\s+(?=\S))/g, '\n\n$1')
+    .replace(/\s+(\*\*\d{1,2}\.\s+[^*]{2,60}\*\*)/g, '\n\n$1')
+    .replace(/(?<!#)\s+(\d{1,2}\.\s+(?=\S))/g, '\n\n$1');
 
   return { text, changed: text !== before };
 }
@@ -521,7 +1000,7 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
     const trimmed = paragraph.trim();
     const plain = stripMarkup(trimmed).replace(/\s+/g, ' ').trim();
     if (
-      plain.length < 520 ||
+      plain.length < 420 ||
       /^#{1,6}\s/.test(trimmed) ||
       /^\|/.test(trimmed) ||
       /^:::/m.test(trimmed) ||
@@ -534,7 +1013,14 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
       .split(/(?<=[.!?。！？]|요\.|다\.|죠\.|니다\.)\s+/)
       .map((sentence) => sentence.trim())
       .filter(Boolean);
-    if (sentences.length < 4) {
+    const sentenceParts = sentences.length >= 4
+      ? sentences
+      : trimmed
+        .split(/(?<=[.!?。！？])\s+|(?<=\uB2E4\.)\s+|(?<=\uC694\.)\s+|(?<=\uB2C8\uB2E4\.)\s+/)
+        .map((sentence) => sentence.trim())
+        .filter(Boolean);
+
+    if (sentenceParts.length < 4) {
       const words = trimmed.split(/\s+/).filter(Boolean);
       if (words.length < 30) return paragraph;
 
@@ -558,7 +1044,7 @@ function splitLongParagraphs(markdown: string): { text: string; changed: boolean
 
     const chunks: string[] = [];
     let chunk = '';
-    for (const sentence of sentences) {
+    for (const sentence of sentenceParts) {
       const candidate = chunk ? `${chunk} ${sentence}` : sentence;
       if (stripMarkup(candidate).length > 280 && chunk) {
         chunks.push(chunk);

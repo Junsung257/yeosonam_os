@@ -13,6 +13,8 @@ let getRandomPexelsPhoto: typeof import('../src/lib/pexels').getRandomPexelsPhot
 let isPexelsConfigured: typeof import('../src/lib/pexels').isPexelsConfigured;
 let extractDestination: typeof import('../src/lib/slug-utils').extractDestination;
 let repairBlogEditorialQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogEditorialQuality;
+let repairBlogStructureQuality: typeof import('../src/lib/blog-editorial-repair').repairBlogStructureQuality;
+let repairKeywordDensityToTarget: typeof import('../src/lib/blog-editorial-repair').repairKeywordDensityToTarget;
 
 async function loadLocalModules() {
   ({ finalizeBlogPost } = await import('../src/lib/blog-post-finalizer'));
@@ -20,7 +22,7 @@ async function loadLocalModules() {
   ({ evaluateBlogPublishQuality } = await import('../src/lib/blog-publish-quality'));
   ({ destToEnKeyword, getRandomPexelsPhoto, isPexelsConfigured } = await import('../src/lib/pexels'));
   ({ extractDestination } = await import('../src/lib/slug-utils'));
-  ({ repairBlogEditorialQuality } = await import('../src/lib/blog-editorial-repair'));
+  ({ repairBlogEditorialQuality, repairBlogStructureQuality, repairKeywordDensityToTarget } = await import('../src/lib/blog-editorial-repair'));
 }
 
 type BlogRow = {
@@ -31,6 +33,11 @@ type BlogRow = {
   og_image_url: string | null;
   destination: string | null;
   blog_html: string | null;
+  generation_meta?: {
+    keywords?: string[] | null;
+    serp_analysis?: { keyword?: string | null } | null;
+  } | null;
+  target_ad_keywords?: string[] | null;
 };
 
 type AuditRow = {
@@ -54,6 +61,13 @@ type AuditRow = {
     reason: string | null;
     evidence?: unknown;
   }>;
+  qualityIssues: Array<{
+    code: string;
+    source: string;
+    severity: string;
+    message: string;
+    evidence?: unknown;
+  }>;
   seoScore: number | null;
   readabilityScore: number | null;
   titleChanged: boolean;
@@ -68,6 +82,7 @@ type AuditRow = {
     before: string;
     after: string;
   } | null;
+  debugHtmlExcerpt?: string | null;
   changed: boolean;
 };
 
@@ -95,8 +110,84 @@ if (!supabaseUrl || !supabaseKey) {
 
 const supabase = createClient(supabaseUrl, supabaseKey, { auth: { persistSession: false } });
 
+function blogUrl(slug: string): string {
+  return `${baseUrl}/blog/${slug.replace(/^\/+|\/+$/g, '')}`;
+}
+
+async function enqueueIndexingJob(row: { id: string; slug: string }, source: string) {
+  const url = blogUrl(row.slug);
+  const now = new Date().toISOString();
+
+  const { data: existingRows, error: existingError } = await supabase
+    .from('blog_indexing_jobs')
+    .select('id')
+    .eq('url', url)
+    .eq('type', 'URL_UPDATED')
+    .in('status', ['pending', 'retry', 'processing'])
+    .limit(1);
+
+  if (existingError) throw existingError;
+  const existing = existingRows?.[0] as { id?: string } | undefined;
+  if (existing?.id) {
+    const { error: updateError } = await supabase
+      .from('blog_indexing_jobs')
+      .update({
+        content_creative_id: row.id,
+        slug: row.slug,
+        source,
+        next_attempt_at: now,
+        updated_at: now,
+      })
+      .eq('id', existing.id);
+    if (updateError) throw updateError;
+    return { jobId: existing.id, deduped: true };
+  }
+
+  const { data, error } = await supabase
+    .from('blog_indexing_jobs')
+    .insert({
+      content_creative_id: row.id,
+      slug: row.slug,
+      url,
+      source,
+      type: 'URL_UPDATED',
+      status: 'pending',
+      next_attempt_at: now,
+      updated_at: now,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return { jobId: (data as { id?: string } | null)?.id, deduped: false };
+}
+
 function countInlineImages(html: string): number {
   return (html.match(/!\[[^\]]*\]\(([^)]+)\)|<img\b/gi) || []).length;
+}
+
+function ensureMinimumInlineImagesFromOg(
+  markdown: string,
+  destination: string | null,
+  slug: string,
+  ogImageUrl: string | null,
+  minImages = 3,
+): string {
+  if (countInlineImages(markdown) >= minImages) return markdown;
+  const label = cleanDescriptionPart(destination) || '\uC5EC\uD589';
+  const fallbackUrl = `${baseUrl}/og-image.png?blog=${encodeURIComponent(slug || label)}`;
+  const imageUrl = ogImageUrl && !markdown.includes(ogImageUrl) ? ogImageUrl : fallbackUrl;
+  const imageBlock = [
+    '',
+    `![${label} \uC5EC\uD589 \uC900\uBE44 \uC774\uBBF8\uC9C0](${imageUrl})`,
+    `<figcaption>${label} \uC5EC\uD589 \uC900\uBE44 \uC774\uBBF8\uC9C0</figcaption>`,
+    '',
+  ].join('\n');
+  const insertBefore = markdown.search(/\n##\s*(?:\uC790\uC8FC \uBB3B\uB294 \uC9C8\uBB38|FAQ|\uACF5\uC2DD \uD655\uC778)/i);
+  if (insertBefore > 0) {
+    return `${markdown.slice(0, insertBefore).trimEnd()}${imageBlock}${markdown.slice(insertBefore).trimStart()}`;
+  }
+  return `${markdown.trimEnd()}${imageBlock}`;
 }
 
 function countHighlights(html: string): number {
@@ -106,6 +197,7 @@ function countHighlights(html: string): number {
 }
 
 function hasFaq(html: string): boolean {
+  if (/(^|\n)#{2,3}\s*(FAQ|\uC790\uC8FC\s*\uBB3B\uB294\s*\uC9C8\uBB38)/im.test(html)) return true;
   return /(^|\n)##\s*(FAQ|자주 묻는 질문)/im.test(html);
 }
 
@@ -360,6 +452,33 @@ function normalizeLooseMarkdownImages(markdown: string): string {
   );
 }
 
+const GENERATED_APPENDIX_PATTERNS = [
+  /^##\s+.+\uC5D0\uC11C\s+\uAC00\uC7A5\s+\uBA3C\uC800\s+\uD655\uC778\uD560\s+\uAC83\uC740\?/m,
+  /^###\s+.+\uC5D0\uC11C\s+\uAC00\uC7A5\s+\uBA3C\uC800\s+\uD655\uC778\uD560\s+\uAC83\uC740\?/m,
+  /^##\s+\uACF5\uC2DD\s+\uD655\uC778\s+\uB9C1\uD06C/m,
+  /^###\s+\uACF5\uC2DD\s+\uD655\uC778\s+\uB9C1\uD06C/m,
+  /^##\s+\uD310\uB2E8\s+\uAE30\uC900\s+\uBE60\uB978\s+\uBE44\uAD50/m,
+  /^##\s+\uD568\uAED8\s+\uCC3E\uB294\s+\uC138\uBD80\s+\uD0A4\uC6CC\uB4DC/m,
+  /^###\s+\uD568\uAED8\s+\uCC3E\uB294\s+\uC138\uBD80\s+\uD0A4\uC6CC\uB4DC/m,
+  /^###\s+\uC5EC\uD589\s+\uCCB4\uD06C\uB9AC\uC2A4\uD2B8/m,
+  /^###\s+\uC900\uBE44\uBB3C\s+\uCCB4\uD06C\uB9AC\uC2A4\uD2B8/m,
+];
+
+function stripGeneratedSeoAppendix(markdown: string): string {
+  const indexes = GENERATED_APPENDIX_PATTERNS
+    .map((pattern) => markdown.search(pattern))
+    .filter((index) => index >= 0);
+  if (indexes.length === 0) return markdown;
+  return markdown.slice(0, Math.min(...indexes)).trim();
+}
+
+function removeLoneHashHeadings(markdown: string): string {
+  return markdown
+    .replace(/(^|\n)#\s*(?=\n|$)/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 function ensureChecklistSection(markdown: string): string {
   const hasChecklistIntent = /체크리스트|필수\s*아이템|준비물|챙길\s*것/.test(markdown);
   const hasStandardChecklist = /^##\s+준비물 체크리스트\s*$/m.test(markdown);
@@ -511,7 +630,18 @@ function firstDiffSummary(before: string, after: string): AuditRow['firstHtmlDif
 }
 
 function isSameStoredBlogHtml(before: string, after: string): boolean {
-  return before.trim() === after.trim();
+  const normalize = (value: string) =>
+    value
+      .replace(/\r\n?/g, '\n')
+      .replace(
+        /\n###\s+\uBE44\uC6A9\s+\uAE30\uC900\s+\uB2E4\uC2DC\s+\uBCF4\uAE30[\s\S]*?(?=\n###\s+.+\uC5D0\uC11C\s+\uAC00\uC7A5\s+\uBA3C\uC800\s+\uD655\uC778\uD560\s+\uAC83\uC740\?)/g,
+        '\n',
+      )
+      .replace(/\n{2,}(?=\|)/g, '\n')
+      .replace(/(\|[^\n]*\|)\n{2,}(?=\|)/g, '$1\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  return normalize(before) === normalize(after);
 }
 
 function primaryKeywordFor(row: BlogRow): string {
@@ -524,12 +654,15 @@ function primaryKeywordFor(row: BlogRow): string {
 }
 
 function isWeakGeneratedSlug(slug: string | null | undefined): boolean {
-  return !slug || /^(?:top-\d+|\d+-post-[a-z0-9]+|[a-z]+-\d+|.*-[a-z0-9]{4})$/i.test(slug);
+  if (!slug) return true;
+  const value = slug.toLowerCase();
+  if (/^(?:top-\d+|\d+-post-[a-z0-9]+|[a-z]+-\d+)$/i.test(value)) return true;
+  return /-[a-z0-9]{4}$/i.test(value) && !/-\d{4}$/.test(value);
 }
 
 function buildSeoKeyword(row: BlogRow, primaryKeyword: string): string {
-  return normalizePrimaryKeyword(row.destination)
-    || normalizePrimaryKeyword(primaryKeyword)
+  return normalizePrimaryKeyword(primaryKeyword)
+    || normalizePrimaryKeyword(row.destination)
     || normalizePrimaryKeyword(extractDestination(row.seo_title || row.slug || ''))
     || '여행';
 }
@@ -548,25 +681,26 @@ function topicKindFor(row: BlogRow, primaryKeyword: string): 'weather' | 'commun
 function improveBackfillSeoTitle(title: string, row: BlogRow, primaryKeyword: string): string {
   const keyword = buildSeoKeyword(row, primaryKeyword);
   const cleaned = normalizeBlogTitle(title) || title || `${keyword} 여행 가이드`;
+  const hasFreshness = /\b20\d{2}\b|최신/.test(cleaned);
   const hasModifier = /\b20\d{2}\b|최신|월별|비용|일정|준비물|가격|코스|날씨|체크리스트/.test(cleaned);
   const hasKeyword = keyword.length > 1 && cleaned.includes(keyword);
-  const weak = cleaned.length < 25 || cleaned.length > 60 || !hasModifier || !hasKeyword || isWeakGeneratedSlug(row.slug);
+  const weak = cleaned.length < 32 || cleaned.length > 60 || !hasFreshness || !hasModifier || !hasKeyword || isWeakGeneratedSlug(row.slug);
   if (!weak) return cleaned;
 
   const topicKind = topicKindFor(row, primaryKeyword);
   const modifier = topicKind === 'weather'
-    ? '월별 날씨·옷차림 체크'
+    ? '월별 날씨·옷차림 체크리스트'
     : topicKind === 'communication'
-      ? '비용·속도·사용법 체크'
+      ? '비용·속도·사용법 비교 체크'
       : topicKind === 'visa'
-        ? '서류·입국조건 체크'
+        ? '서류·입국조건 체크리스트'
         : topicKind === 'currency'
-          ? '환전·결제·팁 체크'
+          ? '환전·결제·현금 준비 체크'
           : topicKind === 'cost'
-            ? '예산·경비·비용 체크'
+            ? '예산·경비·비용 절약 체크'
             : topicKind === 'itinerary'
               ? '코스·동선·이동시간 체크'
-              : '비용·준비물·현지팁 체크';
+              : '비용·준비물·예약 체크리스트';
   const base = `${keyword} 여행 가이드 2026 | ${modifier}`;
   if (base.length <= 60) return base;
   const compact = `${keyword} 여행 2026 | ${modifier}`;
@@ -588,6 +722,23 @@ function cleanDescriptionPart(value: string | null | undefined): string {
     .replace(/[-_]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function keywordFromStoredMeta(row: BlogRow): string | null {
+  return row.generation_meta?.serp_analysis?.keyword
+    || row.generation_meta?.keywords?.find((keyword) => normalizePrimaryKeyword(keyword))
+    || row.target_ad_keywords?.find((keyword) => normalizePrimaryKeyword(keyword))
+    || null;
+}
+
+function replacePlaceholderContext(markdown: string, primaryKeyword: string, destination: string | null, slug: string | null): string {
+  const label = cleanDescriptionPart(destination) || cleanDescriptionPart(primaryKeyword) || primaryKeyword || '여행';
+  const campaignBasis = slug && !isWeakGeneratedSlug(slug) ? slug : label;
+  const campaign = encodeURIComponent(campaignBasis).slice(0, 80) || 'travel';
+  return markdown
+    .replace(/관련\s*지역/g, label)
+    .replace(/목적지명|여행지명/g, label)
+    .replace(/\butm_campaign=[^&#)\n]+/gi, `utm_campaign=${campaign}`);
 }
 
 function topicLabelForDescription(row: BlogRow, primaryKeyword: string): string {
@@ -645,6 +796,31 @@ function improveBackfillSeoDescriptionV2(description: string | null, row: BlogRo
   return normalizeBlogDescription(compact) || compact;
 }
 
+function ensureStrictSeoDescription(description: string, row: BlogRow, primaryKeyword: string): string {
+  const keyword = normalizePrimaryKeyword(primaryKeyword) || cleanDescriptionPart(row.destination) || cleanDescriptionPart(row.slug) || 'travel';
+  let next = normalizeBlogDescription(description) || '';
+  if (!next) next = `${keyword} 2026 travel planning guide.`;
+
+  if (keyword.length >= 2 && !next.toLowerCase().includes(keyword.toLowerCase())) {
+    next = `${keyword} ${next}`;
+  }
+
+  if (!/\d/.test(next)) {
+    next = `${next} 2026\uB144 \uAE30\uC900.`;
+  }
+
+  if (!/비용|일정|준비|준비물|예약|날씨|체크/.test(next)) {
+    next = `${next} \uBE44\uC6A9, \uC77C\uC815, \uC900\uBE44\uBB3C, \uC608\uC57D \uCCB4\uD06C\uB97C \uD55C \uBC88\uC5D0 \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4.`;
+  }
+
+  next = normalizeBlogDescription(next) || next;
+  if (next.length <= 160) return next;
+
+  const compact = `${keyword} 2026\uB144 \uAE30\uC900 \uBE44\uC6A9, \uC77C\uC815, \uC900\uBE44\uBB3C, \uC608\uC57D \uCCB4\uD06C\uB97C \uD55C \uBC88\uC5D0 \uC815\uB9AC\uD588\uC2B5\uB2C8\uB2E4.`;
+  if (compact.length <= 160) return compact;
+  return compact.slice(0, 157).trimEnd() + '...';
+}
+
 function buildSecondaryKeywords(primaryKeyword: string, destination?: string | null): string[] {
   const keyword = normalizePrimaryKeyword(primaryKeyword) || normalizePrimaryKeyword(destination) || '여행';
   if (/와이파이|유심|esim|eSIM|로밍|통신/i.test(keyword)) {
@@ -666,9 +842,6 @@ function buildSecondaryKeywords(primaryKeyword: string, destination?: string | n
 }
 
 function ensureLongtailCoverageSection(markdown: string, secondaryKeywords: string[]): string {
-  if (/^##\s*\uD568\uAED8\s*\uCC3E\uB294\s*\uC138\uBD80\s*\uD0A4\uC6CC\uB4DC/m.test(markdown)) {
-    return markdown;
-  }
   const missing = secondaryKeywords.filter((keyword) => keyword.length > 2 && !markdown.includes(keyword)).slice(0, 4);
   if (missing.length === 0) return markdown;
 
@@ -679,6 +852,10 @@ function ensureLongtailCoverageSection(markdown: string, secondaryKeywords: stri
     if (/예약/.test(keyword)) return `- ${keyword}: 일정 조건, 취소 조건, 현지 추가 비용을 상담 단계에서 같이 비교합니다.`;
     return `- ${keyword}: 월별 기온, 우기, 성수기 혼잡도를 확인해 일정 강도를 조절합니다.`;
   });
+
+  if (/^##\s*\uD568\uAED8\s*\uCC3E\uB294\s*\uC138\uBD80\s*\uD0A4\uC6CC\uB4DC/m.test(markdown)) {
+    return markdown;
+  }
 
   return `${markdown.trim()}\n\n## 함께 찾는 세부 키워드\n\n${bullets.join('\n')}\n`;
 }
@@ -787,7 +964,7 @@ async function main() {
 
   let query = supabase
     .from('content_creatives')
-    .select('id, slug, seo_title, seo_description, og_image_url, destination, blog_html')
+    .select('id, slug, seo_title, seo_description, og_image_url, destination, blog_html, generation_meta, target_ad_keywords')
     .eq('channel', 'naver_blog')
     .eq('status', 'published')
     .not('slug', 'is', null)
@@ -805,25 +982,28 @@ async function main() {
   const rows = ((data || []) as BlogRow[]).filter((row) => typeof row.slug === 'string' && typeof row.blog_html === 'string');
   const auditRows: AuditRow[] = [];
   const changedSlugs: string[] = [];
+  let indexingQueued = 0;
 
   for (const row of rows) {
     const originalHtml = row.blog_html || '';
+    const repairSourceHtmlBase = removeLoneHashHeadings(stripGeneratedSeoAppendix(originalHtml));
     const originalOg = row.og_image_url?.trim() || null;
     const originalTitle = row.seo_title?.trim() || null;
     const originalDescription = row.seo_description?.trim() || null;
     const destination = row.destination || extractDestination(row.seo_title || row.slug || '');
-    const primaryKeyword = primaryKeywordFor(row);
+    const primaryKeyword = normalizePrimaryKeyword(keywordFromStoredMeta(row)) || primaryKeywordFor(row);
+    const repairSourceHtml = replacePlaceholderContext(repairSourceHtmlBase, primaryKeyword, destination, row.slug);
     const resolvedOgImage = await resolveOgImage(row);
     const normalizedTitle = improveBackfillSeoTitle(
       normalizeBlogTitle(row.seo_title) || row.seo_title || row.slug || '여행 가이드',
       row,
       primaryKeyword,
     );
-    const normalizedDescription = improveBackfillSeoDescriptionV2(
+    const normalizedDescription = ensureStrictSeoDescription(improveBackfillSeoDescriptionV2(
       normalizeBlogDescription(row.seo_description) || row.seo_description || null,
       row,
       primaryKeyword,
-    );
+    ), row, primaryKeyword);
     const secondaryKeywords = buildSecondaryKeywords(primaryKeyword, destination);
     const slug = row.slug || row.id;
     const editorialRepair = repairBlogEditorialQuality({
@@ -833,7 +1013,7 @@ async function main() {
       category: normalizedTitle,
       contentType: 'guide',
       productId: null,
-      blogHtml: originalHtml,
+      blogHtml: repairSourceHtml,
     });
     const repairedDraft = softenKeywordDensity(
       repairLegacyStructureArtifacts(
@@ -883,8 +1063,23 @@ async function main() {
       primaryKeyword,
       'info',
     );
-    const nextHtml = normalizeMarkdownLinkLabels(ensureInternalFunnelLinks(repairedFinal, destination, slug));
+    const longtailRepairedFinal = ensureLongtailCoverageSection(repairedFinal, secondaryKeywords);
+    const preStructureHtml = normalizeMarkdownLinkLabels(ensureInternalFunnelLinks(longtailRepairedFinal, destination, slug));
+    const structureRepair = repairBlogStructureQuality({
+      title: normalizedTitle,
+      slug,
+      primaryKeyword,
+      category: normalizedTitle,
+      contentType: 'guide',
+      productId: null,
+      blogHtml: preStructureHtml,
+    });
     const nextOg = finalized.ogImageUrl;
+    let nextHtml = removeLoneHashHeadings(ensureMinimumInlineImagesFromOg(structureRepair.blogHtml, destination, slug, nextOg));
+    const densityRepair = repairKeywordDensityToTarget(nextHtml, primaryKeyword, 'info');
+    if (densityRepair.changed) {
+      nextHtml = densityRepair.blogHtml;
+    }
     const qaReport = await evaluateBlogPublishQuality({
       id: row.id,
       blog_html: nextHtml,
@@ -935,12 +1130,20 @@ async function main() {
           reason: gate.reason ?? null,
           evidence: gate.evidence,
         })),
+      qualityIssues: qaReport.blogQualityScore.issues.map((issue) => ({
+        code: issue.code,
+        source: issue.source,
+        severity: issue.severity,
+        message: issue.message,
+        evidence: issue.evidence,
+      })),
       seoScore: qaReport.seoScore.score,
       readabilityScore: qaReport.readability.score,
       titleChanged: normalizedTitle !== originalTitle,
       descriptionChanged: normalizedDescription !== originalDescription,
       changeReasons,
       firstHtmlDiff: debugDiff && htmlChanged ? firstDiffSummary(originalHtml, nextHtml) : null,
+      debugHtmlExcerpt: debugDiff ? nextHtml.slice(0, 9000) : null,
       changed,
     });
 
@@ -970,6 +1173,16 @@ async function main() {
       continue;
     }
 
+    try {
+      await enqueueIndexingJob({ id: row.id, slug }, 'blog_quality_backfill');
+      indexingQueued += 1;
+    } catch (indexingError) {
+      console.error(
+        `[blog-quality] indexing enqueue failed for ${slug}:`,
+        indexingError instanceof Error ? indexingError.message : indexingError,
+      );
+    }
+
     changedSlugs.push(slug);
     console.log(`[blog-quality] updated ${slug}`);
   }
@@ -989,6 +1202,7 @@ async function main() {
     scanned: auditRows.length,
     changed: auditRows.filter((row) => row.changed).length,
     updated: changedSlugs.length,
+    indexingQueued,
     titlesNormalized: auditRows.filter((row) => row.titleChanged).length,
     descriptionsNormalized: auditRows.filter((row) => row.descriptionChanged).length,
     missingOgBefore: auditRows.filter((row) => row.missingOgBefore).length,
@@ -1024,6 +1238,7 @@ async function main() {
           slug: row.slug,
           changeReasons: row.changeReasons,
           firstHtmlDiff: row.firstHtmlDiff,
+          debugHtmlExcerpt: row.debugHtmlExcerpt,
         }))
       : undefined,
     failedSamples: auditRows
@@ -1033,6 +1248,7 @@ async function main() {
         slug: row.slug,
         reason: row.qualityGateSummary,
         failedGates: row.failedGates.slice(0, 3),
+        qualityIssues: row.qualityIssues.slice(0, 5),
       })),
   };
 

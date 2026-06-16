@@ -52,6 +52,16 @@ const ROMAN_MAP: Record<string, string> = {
   '부산': 'busan', '서울': 'seoul', '제주': 'jeju', '인천': 'incheon',
 };
 
+const ROMAN_MAP_EXTRA: Record<string, string> = {
+  '\uD074\uB77D': 'clark',
+  '\uC720\uB7FD': 'europe',
+  '\uC2DC\uB4DC\uB2C8': 'sydney',
+  '\uD638\uC8FC': 'australia',
+  '\uC5F0\uAE38': 'yanji',
+  '\uBC31\uB450\uC0B0': 'baekdusan',
+  '\uC5F0\uAE38/\uBC31\uB450\uC0B0': 'yanji-baekdusan',
+};
+
 const TOPIC_TERM_MAP: Array<[RegExp, string]> = [
   [/여행\s*준비물\s*완벽\s*체크리스트|준비물\s*완벽\s*체크리스트|여행\s*준비물|준비물|체크리스트/g, ' preparation '],
   [/월별\s*날씨와\s*옷차림|월별\s*날씨|날씨와\s*옷차림|날씨|옷차림|기온/g, ' weather '],
@@ -90,7 +100,7 @@ export function extractDestination(topic: string): string {
 /** 목적지명을 영문 slug로 변환 (다낭→danang, 다낭/호이안→danang-hoian) */
 export function romanize(dest: string): string {
   const parts = dest.split(/[\/\s,]+/).filter(Boolean);
-  const romanParts = parts.map(p => ROMAN_MAP[p] || null).filter(Boolean);
+  const romanParts = parts.map(p => ROMAN_MAP[p] || ROMAN_MAP_EXTRA[p] || null).filter(Boolean);
   if (romanParts.length > 0) return romanParts.join('-');
   // 매핑 실패 시 알파벳/숫자만 유지 (한글 제거)
   return dest.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
@@ -101,7 +111,7 @@ export function slugifyTopic(topic: string): string {
   // 1) 모든 목적지명을 순차 치환
   let slug = topic.toLowerCase();
   // ROMAN_MAP 엔트리를 긴 키부터 정렬 (부분 매칭 방지: "보라카이"가 "보라"보다 우선)
-  const sorted = Object.entries(ROMAN_MAP).sort((a, b) => b[0].length - a[0].length);
+  const sorted = Object.entries({ ...ROMAN_MAP, ...ROMAN_MAP_EXTRA }).sort((a, b) => b[0].length - a[0].length);
   for (const [kr, en] of sorted) {
     slug = slug.replace(new RegExp(kr, 'g'), en);
   }
