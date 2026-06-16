@@ -227,7 +227,9 @@ export async function buildBlogOpsSummary(supabase: any) {
   const recentIndexingFailures = indexingReports.filter((row) => row.google_error || row.indexnow_error || row.google_status === 'error' || row.indexnow_status === 'error').length;
   const googleUnknownUrls = indexingReports.filter((row) => String(row.google_coverage_state || '').includes('알려지지 않은 URL')).length;
   const googleIndexedReports = indexingReports.filter((row) => String(row.google_index_verdict || '').toUpperCase() === 'PASS').length;
-  const indexNowOk = indexingReports.filter((row) => row.indexnow_status === 'ok').length;
+  const indexNowOk = indexingReports.filter((row) =>
+    ['ok', 'success', 'succeeded'].includes(String(row.indexnow_status || '').toLowerCase()),
+  ).length;
   const indexNowKnown = indexingReports.filter((row) => row.indexnow_status).length;
   const indexNowSuccessRate = indexNowKnown ? Math.round((indexNowOk / indexNowKnown) * 1000) / 10 : null;
 

@@ -25,22 +25,22 @@ import { fmtDateTime } from '@/lib/admin-utils';
 
 interface QueueItem {
   id: string;
-  topic: string;
-  source: string;
-  priority: number;
+  topic: string | null;
+  source: string | null;
+  priority: number | null;
   destination: string | null;
   angle_type: string | null;
   category: string | null;
   target_publish_at: string | null;
   status: string;
-  attempts: number;
+  attempts: number | null;
   last_error: string | null;
   content_creative_id: string | null;
   created_at: string;
   primary_keyword: string | null;
-  keyword_tier: 'head' | 'mid' | 'longtail' | null;
+  keyword_tier: string | null;
   monthly_search_volume: number | null;
-  competition_level: 'low' | 'medium' | 'high' | null;
+  competition_level: string | null;
   trend_score: number | null;
   meta?: Record<string, unknown> | null;
   ops?: {
@@ -85,13 +85,13 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 const ISSUE_LABELS: Record<string, string> = {
-  topic_fit: '주제 적합성',
+  topic_fit: '주제 적합도',
   editorial_quality: '편집 품질',
   seo_score: 'SEO 점수',
   schema_constraint: 'DB 제약',
   self_heal_blocked: '자동복구 차단',
   image_quality: '이미지 품질',
-  timeout: '시간초과',
+  timeout: '시간 초과',
   unknown_failure: '원인 미상',
   other: '기타',
   none: '정상',
@@ -137,11 +137,16 @@ function jsonPreview(value: unknown): string {
   }
 }
 
-export default function BlogQueuePage() {
+function safeNumber(value: number | null | undefined) {
+  return Number(value || 0).toLocaleString('ko-KR');
+}
+
+export default function BlogQueueClient() {
   const [items, setItems] = useState<QueueItem[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [summary, setSummary] = useState<QueueSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
   const [view, setView] = useState<(typeof VIEW_TABS)[number]['key']>('active');
   const [source, setSource] = useState('all');
   const [age, setAge] = useState('all');
@@ -149,7 +154,6 @@ export default function BlogQueuePage() {
   const [running, setRunning] = useState<string | null>(null);
   const [actionLog, setActionLog] = useState('');
   const [selected, setSelected] = useState<QueueItem | null>(null);
-
   const [seedOpen, setSeedOpen] = useState(false);
   const [seedTopic, setSeedTopic] = useState('');
   const [seedDest, setSeedDest] = useState('');
@@ -158,6 +162,7 @@ export default function BlogQueuePage() {
 
   const fetchItems = useCallback(async () => {
     setLoading(true);
+    setError('');
     const params = new URLSearchParams({
       scope: currentView.scope,
       limit: '160',
@@ -166,13 +171,29 @@ export default function BlogQueuePage() {
     if (currentView.status !== 'all') params.set('status', currentView.status);
     if (source !== 'all') params.set('source', source);
     if (query.trim()) params.set('q', query.trim());
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 12_000);
+
     try {
-      const res = await fetch(`/api/blog/queue?${params}`, { cache: 'no-store' });
+      const res = await fetch(`/api/blog/queue?${params}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      });
       const data = await res.json();
-      setItems(data.items || []);
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setItems(Array.isArray(data.items) ? data.items : []);
       setCounts(data.counts || {});
       setSummary(data.summary || null);
+    } catch (err) {
+      const message = err instanceof Error && err.name === 'AbortError'
+        ? '발행 큐 API 응답이 12초 안에 돌아오지 않았습니다.'
+        : err instanceof Error ? err.message : '발행 큐를 불러오지 못했습니다.';
+      setError(message);
+      setItems([]);
+      setSummary(null);
     } finally {
+      window.clearTimeout(timer);
       setLoading(false);
     }
   }, [age, currentView.scope, currentView.status, query, source]);
@@ -204,10 +225,11 @@ export default function BlogQueuePage() {
         body: JSON.stringify({ action }),
       });
       const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setActionLog(`${action} 결과\n${JSON.stringify(data.result || data, null, 2).slice(0, 3000)}`);
       await fetchItems();
-    } catch (error) {
-      setActionLog(`실행 실패: ${(error as Error).message}`);
+    } catch (err) {
+      setActionLog(`실행 실패: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setRunning(null);
     }
@@ -234,8 +256,8 @@ export default function BlogQueuePage() {
       setSeedOpen(false);
       setActionLog(`토픽 추가 완료\n${JSON.stringify(data.item || data, null, 2).slice(0, 1600)}`);
       await fetchItems();
-    } catch (error) {
-      setActionLog(`토픽 추가 실패: ${(error as Error).message}`);
+    } catch (err) {
+      setActionLog(`토픽 추가 실패: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setRunning(null);
     }
@@ -254,8 +276,8 @@ export default function BlogQueuePage() {
       setActionLog(`${action === 'requeue' ? '재시도 등록' : '숨김 처리'} 완료`);
       setSelected(null);
       await fetchItems();
-    } catch (error) {
-      setActionLog(`처리 실패: ${(error as Error).message}`);
+    } catch (err) {
+      setActionLog(`처리 실패: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setRunning(null);
     }
@@ -295,7 +317,7 @@ export default function BlogQueuePage() {
               <p className="text-admin-xs font-semibold uppercase tracking-wider text-admin-muted">{label}</p>
               <Icon size={15} className="text-admin-muted-2" />
             </div>
-            <p className="mt-2 text-admin-display font-bold text-admin-text admin-num">{value.toLocaleString('ko-KR')}</p>
+            <p className="mt-2 text-admin-display font-bold text-admin-text admin-num">{safeNumber(value)}</p>
             <p className="mt-1 text-admin-xs text-admin-muted">{hint}</p>
           </div>
         ))}
@@ -303,8 +325,8 @@ export default function BlogQueuePage() {
 
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         {([
-          ['run_scheduler', '스케줄러', '큐 충전 + 슬롯', Calendar],
-          ['run_trend_miner', '트렌드', '검색/소셜 후보', Flame],
+          ['run_scheduler', '스케줄러', '큐 충전 + 슬롯 정리', Calendar],
+          ['run_trend_miner', '트렌드', '검색/소셜 후보 발굴', Flame],
           ['run_publisher', '발행자', '품질게이트 후 발행', PenLine],
           ['run_lifecycle', '라이프사이클', '만료/보관 처리', Archive],
         ] as const).map(([action, label, desc, Icon]) => (
@@ -336,7 +358,7 @@ export default function BlogQueuePage() {
             <input
               value={seedTopic}
               onChange={(event) => setSeedTopic(event.target.value)}
-              placeholder="예: 다낭 7월 여행 준비물 옷차림 날씨 우기"
+              placeholder="예: 다낭 7월 여행 준비물 옷차림 우기"
               className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text focus:border-brand focus:outline-none focus:shadow-admin-focus"
             />
             <input
@@ -403,8 +425,22 @@ export default function BlogQueuePage() {
         )}
       </div>
 
+      {error && (
+        <div className="rounded-admin-md border border-danger/25 bg-danger-light p-4 text-admin-sm text-danger">
+          <div className="flex items-start gap-2">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="font-semibold">발행 큐를 불러오지 못했습니다.</p>
+              <p className="mt-1 text-admin-xs">{error}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {loading ? (
-        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-8 text-center text-admin-sm text-admin-muted">큐를 불러오는 중</div>
+        <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-8 text-center text-admin-sm text-admin-muted">
+          큐를 불러오는 중
+        </div>
       ) : items.length === 0 ? (
         <div className="rounded-admin-md border border-admin-border-mid bg-admin-surface">
           <EmptyState
@@ -442,17 +478,17 @@ export default function BlogQueuePage() {
                   </td>
                   <td className="min-w-0">
                     <button onClick={() => setSelected(item)} className="block max-w-full truncate text-left text-admin-sm font-semibold text-admin-text hover:text-brand">
-                      {item.topic}
+                      {item.topic || '(제목 없음)'}
                     </button>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       {item.destination && <span className="rounded-admin-xs bg-admin-surface-2 px-1.5 py-0.5 text-admin-2xs text-admin-muted">{item.destination}</span>}
                       {item.primary_keyword && <span className="rounded-admin-xs bg-brand-light px-1.5 py-0.5 text-admin-2xs font-semibold text-brand">{item.primary_keyword}</span>}
                       {item.keyword_tier && <span className="rounded-admin-xs bg-admin-surface-2 px-1.5 py-0.5 text-admin-2xs font-mono text-admin-muted">{item.keyword_tier}</span>}
-                      {item.monthly_search_volume ? <span className="text-admin-2xs text-admin-muted admin-num">{item.monthly_search_volume.toLocaleString('ko-KR')}/mo</span> : null}
+                      {item.monthly_search_volume ? <span className="text-admin-2xs text-admin-muted admin-num">{safeNumber(item.monthly_search_volume)}/mo</span> : null}
                     </div>
                     {item.last_error && <p className="mt-1 truncate text-admin-2xs text-danger">{compactError(item.last_error)}</p>}
                   </td>
-                  <td className="text-admin-xs text-admin-muted">{SOURCE_LABELS[item.source] || item.source || '-'}</td>
+                  <td className="text-admin-xs text-admin-muted">{SOURCE_LABELS[item.source || ''] || item.source || '-'}</td>
                   <td className="text-admin-xs text-admin-muted admin-num">
                     {item.attempts || 0}회
                     <span className="block text-admin-2xs">P{item.priority || 0}</span>
@@ -490,7 +526,7 @@ export default function BlogQueuePage() {
         open={!!selected}
         onClose={() => setSelected(null)}
         title={selected?.topic || '큐 상세'}
-        subtitle={selected ? `${SOURCE_LABELS[selected.source] || selected.source || '-'} · ${selected.status}` : undefined}
+        subtitle={selected ? `${SOURCE_LABELS[selected.source || ''] || selected.source || '-'} · ${selected.status}` : undefined}
         width="w-full sm:w-[560px] lg:w-[680px]"
         actions={
           selected && (
@@ -526,7 +562,7 @@ export default function BlogQueuePage() {
                 ['상태', selected.status],
                 ['긴급도', urgencyLabel(selected)],
                 ['목적지', selected.destination || '-'],
-                ['우선순위', selected.priority],
+                ['우선순위', selected.priority || 0],
                 ['발행 예정', selected.target_publish_at ? fmtDateTime(selected.target_publish_at) : '-'],
                 ['생성일', selected.created_at ? fmtDateTime(selected.created_at) : '-'],
                 ['키워드', selected.primary_keyword || '-'],
