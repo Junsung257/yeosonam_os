@@ -714,6 +714,10 @@ function isCatalogTable(rawText: string): boolean {
   return /일\s*자[\s\S]{0,250}주\s*요\s*행\s*사\s*일\s*정[\s\S]{0,250}제\s*1\s*일/.test(rawText);
 }
 
+function isKoreanCatalogTable(rawText: string): boolean {
+  return /일\s*자[\s\S]{0,250}지\s*역[\s\S]{0,250}교통편[\s\S]{0,250}시\s*간[\s\S]{0,250}일\s*정[\s\S]{0,250}제\s*1\s*일/.test(rawText);
+}
+
 function parseCatalogMeal(line: string): { slot: 'breakfast' | 'lunch' | 'dinner'; enabled: boolean; note: string | null } | null {
   const match = line.match(/^([조중석])\s*:\s*(.+)$/);
   if (!match) return null;
@@ -935,19 +939,22 @@ function findCatalogAppendixStart(rawText: string, start: number, end: number): 
 }
 
 function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { flight_segments?: ReturnType<typeof makeFlightSegmentsFromCatalog> }) | null {
-  if (!isCatalogTable(rawText)) return null;
+  if (!isCatalogTable(rawText) && !isKoreanCatalogTable(rawText)) return null;
 
   const facts = extractSupplierRawDeterministicFacts(rawText);
   const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
   const flightOut = facts.outbound?.code ?? rawFlightCodes[0] ?? null;
   const flightIn = facts.inbound?.code ?? (rawFlightCodes.length > 1 ? rawFlightCodes[rawFlightCodes.length - 1] : null);
   const dayMatches = [...rawText.matchAll(/^제\s*(\d+)\s*일\s*$/gm)];
-  if (dayMatches.length === 0) return null;
+  const koreanDayMatches = [...rawText.matchAll(/^제\s*(\d+)\s*일\s*$/gm)];
+  const effectiveDayMatches = (dayMatches.length > 0 ? dayMatches : koreanDayMatches)
+    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  if (effectiveDayMatches.length === 0) return null;
 
   const nextPkgMatch = /\nPKG\s*\n/g;
-  const days: DaySchedule[] = dayMatches.map((match, index) => {
+  const days: DaySchedule[] = effectiveDayMatches.map((match, index) => {
     const start = (match.index ?? 0) + match[0].length;
-    const nextDay = dayMatches[index + 1]?.index;
+    const nextDay = effectiveDayMatches[index + 1]?.index;
     nextPkgMatch.lastIndex = start;
     const nextPkg = nextPkgMatch.exec(rawText)?.index;
     const structuralEnd = Math.min(nextDay ?? rawText.length, nextPkg ?? rawText.length);

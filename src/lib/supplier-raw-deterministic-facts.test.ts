@@ -683,3 +683,63 @@ BX782
     ]);
   });
 });
+
+describe('Korean catalog table flight recovery', () => {
+  it('recovers vertically stacked outbound and inbound flight segments from Phu Quoc style day tables', () => {
+    const raw = [
+      '일 자',
+      '지  역',
+      '교통편',
+      '시 간',
+      '일                   정',
+      '식  사',
+      '제1일',
+      '부  산',
+      '푸꾸옥',
+      '',
+      'ZE981',
+      '',
+      '18:55',
+      '21:30',
+      '',
+      '부산 김해공항 출발',
+      '푸꾸옥 국제공항 도착 후 가이드 미팅',
+      '제2일',
+      '푸꾸옥',
+      '차량',
+      '전 일',
+      '선셋 타운 관광',
+      '제5일',
+      '푸꾸옥',
+      '',
+      'ZE982',
+      '',
+      '23:25',
+      '푸꾸옥 국제공항 출발',
+      '제6일',
+      '부 산',
+      '',
+      '06:55',
+      '부산 김해공항 도착',
+    ].join('\n');
+
+    const itinerary = buildSupplierRawDeterministicItinerary(raw);
+
+    expect(itinerary?.days.map(day => day.day)).toEqual([1, 2, 5, 6]);
+    expect(itinerary?.flight_segments).toMatchObject([
+      {
+        leg: 'outbound',
+        flight_no: 'ZE981',
+        dep_time: '18:55',
+        arr_time: '21:30',
+      },
+      {
+        leg: 'inbound',
+        flight_no: 'ZE982',
+        dep_time: '23:25',
+        arr_time: '06:55',
+        arr_day_offset: 1,
+      },
+    ]);
+  });
+});
