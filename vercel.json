@@ -346,6 +346,10 @@
       "schedule": "24 2 * * 1"
     },
     {
+      "path": "/api/cron/upload-review-auto-replay",
+      "schedule": "*/30 * * * *"
+    },
+    {
       "path": "/api/admin/optimization",
       "schedule": "0 21 * * *"
     },
