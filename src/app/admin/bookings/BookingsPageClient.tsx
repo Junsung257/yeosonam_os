@@ -23,6 +23,7 @@ import { createPortal } from 'react-dom';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import BookingDrawer from '@/components/BookingDrawer';
+import { BookingOpsPanel } from '@/components/admin/booking-ops/BookingOpsPanel';
 import CommandPalette from '@/components/CommandPalette';
 import { useVendors } from '@/hooks/useVendors';
 import { useLocations } from '@/hooks/useLocations';
@@ -768,6 +769,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   // - ?dq=missing_total_price|missing_total_cost|missing_operator|missing_region|missing_margin_calc|payment_status_mismatch
   //                    → 데이터 품질 모니터 drilldown
   const searchParams = useSearchParams();
+  const highlightedTaskId = searchParams?.get('task') ?? null;
   const initialLifecycle: 'active' | 'done' | 'cancelled' | 'trash' = (() => {
     const mode = searchParams?.get('mode');
     if (mode === 'recognized') return 'done';
@@ -1613,6 +1615,18 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             </div>
           ))}
         </div>
+      )}
+
+      {!isTrash && (
+        <BookingOpsPanel
+          className="mb-3 shrink-0"
+          limit={4}
+          highlightedTaskId={highlightedTaskId}
+          onOpenBooking={(bookingId) => {
+            lastClickedRowRef.current = bookingId;
+            setDrawerBookingId(bookingId);
+          }}
+        />
       )}
 
       {/* 통합 검색바 */}

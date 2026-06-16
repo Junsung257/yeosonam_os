@@ -312,6 +312,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const paymentBarRef = useRef<PaymentCommandBarHandle | null>(null);
   const _skipInitialFetch = useRef(!!(initialTransactions && initialErp));
   const [bundleTx, setBundleTx] = useState<BankTransaction | null>(null);
+  const openedTxParamRef = useRef<string | null>(null);
 
   // 일괄 가져오기 모달
   const [showImport, setShowImport] = useState(false);
@@ -494,6 +495,28 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     setMultiSelected(new Set());
     setOverflowAction(null);
   }
+
+  useEffect(() => {
+    const txId = searchParams?.get('tx');
+    const bookingId = searchParams?.get('booking');
+    const openKey = `${txId ?? ''}:${bookingId ?? ''}`;
+    if (!txId || openedTxParamRef.current === openKey) return;
+    const tx = transactions.find((item) => item.id === txId);
+    if (!tx) return;
+    openedTxParamRef.current = openKey;
+    if (tx.transaction_type === '출금' && !tx.is_refund) {
+      setTab('outflow');
+    } else if (tx.match_status === 'review') {
+      setTab('review');
+    } else if (tx.match_status === 'auto' || tx.match_status === 'manual') {
+      setTab('matched');
+    } else {
+      setTab('unmatched');
+    }
+    openMatchModal(tx);
+    if (bookingId) setSingleBookingId(bookingId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, transactions]);
 
   const selectedBooking = useMemo(() =>
     bookings.find(b => b.id === singleBookingId) || null,

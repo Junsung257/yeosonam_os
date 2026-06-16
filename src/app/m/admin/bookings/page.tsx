@@ -1,4 +1,5 @@
 import { MobileHeader } from '@/components/admin/mobile/MobileHeader';
+import { MobileBookingOpsQueue } from '@/components/admin/booking-ops/MobileBookingOpsQueue';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   parseSort,
@@ -94,6 +95,7 @@ export default async function MobileBookingsPage(
             : `${activeTab.label} · ${SORT_LABELS[sort]}`
         }
       />
+      <MobileBookingOpsQueue />
       <div
         className="sticky z-30 bg-admin-bg border-b border-admin-border-mid"
         style={{ top: 'calc(3.5rem + env(safe-area-inset-top))' }}

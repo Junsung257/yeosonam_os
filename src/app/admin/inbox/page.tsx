@@ -16,6 +16,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import BookingDrawer from '@/components/BookingDrawer';
+import { BookingTaskActionCard } from '@/components/admin/booking-ops/BookingTaskActionCard';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { RefreshCw, Inbox as InboxIcon } from 'lucide-react';
@@ -27,6 +28,7 @@ import {
   type InboxTaskRow,
   type TaskPriority,
 } from '@/types/booking-tasks';
+import { toBookingOpsAction } from '@/lib/booking-ops';
 
 // ─── 타입 ────────────────────────────────────────────────────────────────────
 interface HealthSummary {
@@ -447,6 +449,18 @@ function TaskCard({
   snoozeMenuOpen,
   onToggleSnoozeMenu,
 }: CardProps) {
+  return (
+    <BookingTaskActionCard
+      action={toBookingOpsAction(task)}
+      active={active}
+      snoozeOpen={snoozeMenuOpen}
+      onOpen={onOpen}
+      onResolve={onResolve}
+      onSnooze={(_, hours) => onSnooze(hours)}
+      onToggleSnooze={onToggleSnoozeMenu}
+    />
+  );
+
   const ctx = task.context as Record<string, unknown>;
   const customerName = (ctx.customer_name as string) || task.customer_name || '—';
   const bookingNo = task.booking_no || (ctx.booking_no as string) || '—';

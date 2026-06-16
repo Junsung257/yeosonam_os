@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { getSupabaseClient } from '@/lib/supabase';
+import { getSupabase } from '@/lib/supabase';
 
 interface Opts {
   table: string;
@@ -28,8 +28,9 @@ export function useRealtimeRefresh({
 }: Opts) {
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const supabase = getSupabaseClient();
+    const supabase = getSupabase();
     if (!supabase) return;
+    const client = supabase;
 
     let timer: ReturnType<typeof setTimeout> | null = null;
     const trigger = () => {
@@ -45,7 +46,7 @@ export function useRealtimeRefresh({
       .slice(2, 8)}`;
 
     let removed = false;
-    let channel = supabase.channel(channelName);
+    let channel = client.channel(channelName);
     for (const evt of events) {
       channel = channel.on(
         'postgres_changes' as const,
@@ -58,7 +59,7 @@ export function useRealtimeRefresh({
     function onVisibility() {
       if (document.visibilityState === 'hidden' && !removed) {
         removed = true;
-        supabase.removeChannel(channel);
+        client.removeChannel(channel);
       }
     }
     document.addEventListener('visibilitychange', onVisibility);
@@ -66,7 +67,7 @@ export function useRealtimeRefresh({
     return () => {
       if (timer) clearTimeout(timer);
       document.removeEventListener('visibilitychange', onVisibility);
-      if (!removed) supabase.removeChannel(channel);
+      if (!removed) client.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [table, schema, filter, events.join(','), debounceMs]);

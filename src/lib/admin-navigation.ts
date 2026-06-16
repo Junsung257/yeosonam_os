@@ -109,7 +109,7 @@ export const adminNavGroups: NavGroup[] = [
     icon: LayoutDashboard,
     items: [
       { href: '/admin', label: '대시보드', icon: LayoutDashboard, exact: true },
-      { href: '/admin/inbox', label: '고객 문의', icon: Inbox },
+      { href: '/admin/inbox', label: '예약 액션큐', icon: Inbox },
       { href: '/admin/leads', label: '예약 문의', icon: MessageSquare },
       { href: '/admin/bookings', label: '예약 관리', icon: BookOpenCheck },
       { href: '/admin/customers', label: '고객 관리', icon: Users },

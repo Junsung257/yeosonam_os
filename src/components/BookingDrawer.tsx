@@ -6,6 +6,7 @@ import {
   JOURNEY_STEPS, ALLOWED_TRANSITIONS, getStepIndex,
   getStatusLabel, getStatusBadgeClass,
 } from '@/lib/booking-state-machine';
+import { BookingDrawerNextActions } from '@/components/admin/booking-ops/BookingDrawerNextActions';
 import LedgerViewer from './LedgerViewer';
 import { fmtMonthDayTime } from '@/lib/admin-utils';
 
@@ -1310,6 +1311,11 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 )}
 
                 {/* 기본 정보 */}
+                <BookingDrawerNextActions
+                  bookingId={booking.id}
+                  onChanged={() => fetchAll(booking.id)}
+                />
+
                 <div className="bg-white rounded-2xl ring-1 ring-gray-900/5 shadow-sm p-4">
                   <h3 className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-3">기본 정보</h3>
                   <div className="space-y-2.5">
