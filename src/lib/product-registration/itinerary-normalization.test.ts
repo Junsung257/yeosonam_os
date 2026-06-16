@@ -105,4 +105,56 @@ describe('normalizeUploadItinerary', () => {
     expect(days).toHaveLength(6);
     expect(result.warnings).toContain('duplicate itinerary days collapsed: day 1, 2, 3, 4, 5, 6');
   });
+
+  it('preserves source-backed top-level flight segments after itinerary normalization', async () => {
+    const flightSegments = [
+      {
+        leg: 'outbound',
+        flight_no: 'ZE981',
+        dep_airport: 'Busan',
+        dep_time: '18:55',
+        arr_airport: 'Phu Quoc',
+        arr_time: '21:30',
+        arr_day_offset: 0,
+        day_pair: [0, 0],
+      },
+      {
+        leg: 'inbound',
+        flight_no: 'ZE982',
+        dep_airport: 'Phu Quoc',
+        dep_time: '23:25',
+        arr_airport: 'Busan',
+        arr_time: '06:55',
+        arr_day_offset: 1,
+        day_pair: [4, 5],
+      },
+    ];
+
+    const result = await normalizeUploadItinerary({
+      destination: 'Phu Quoc',
+      durationDays: 6,
+      activeAttractions: [],
+      productRawText: [
+        'ZE981',
+        '18:55',
+        '21:30',
+        'ZE982',
+        '23:25',
+        '06:55',
+      ].join('\n'),
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: 'Busan departure' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: 'Sunset Town' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: 'Island hopping' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: 'Grand World' }] },
+          { day: 5, schedule: [{ type: 'flight', activity: 'Phu Quoc departure' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: 'Busan arrival' }] },
+        ],
+        flight_segments: flightSegments,
+      } as never,
+    });
+
+    expect((result.itineraryDataToSave as { flight_segments?: unknown[] } | null)?.flight_segments).toEqual(flightSegments);
+  });
 });

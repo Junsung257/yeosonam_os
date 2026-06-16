@@ -52,6 +52,26 @@ function attachShoppingHighlight<T extends ItineraryDataLike | null>(itineraryDa
   } as unknown as T;
 }
 
+function topLevelFlightSegments(itineraryData: ItineraryDataLike | null | undefined): unknown[] | null {
+  const segments = (itineraryData as { flight_segments?: unknown } | null | undefined)?.flight_segments;
+  return Array.isArray(segments) && segments.length > 0 ? segments : null;
+}
+
+function preserveTopLevelFlightSegments<T extends ItineraryDataLike | null>(
+  itineraryData: T,
+  source: ItineraryDataLike | null | undefined,
+): T {
+  if (!itineraryData) return itineraryData;
+  const existing = topLevelFlightSegments(itineraryData);
+  if (existing) return itineraryData;
+  const sourceSegments = topLevelFlightSegments(source);
+  if (!sourceSegments) return itineraryData;
+  return {
+    ...itineraryData,
+    flight_segments: sourceSegments,
+  } as T;
+}
+
 function activityKey(value: unknown): string {
   return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
 }
@@ -232,7 +252,7 @@ export async function normalizeUploadItinerary(input: {
   );
   const duplicateDayRepair = collapseDuplicateDayEntries(postMergePrune.itineraryData, input.durationDays);
   warnings.push(...duplicateDayRepair.warnings);
-  const itineraryDataToSave = duplicateDayRepair.itineraryData;
+  const itineraryDataToSave = preserveTopLevelFlightSegments(duplicateDayRepair.itineraryData, itineraryInput);
 
   const extractedCandidateRows: Array<{ activity: string; destination?: string }> = [];
   for (const day of itineraryDataToSave?.days ?? []) {
