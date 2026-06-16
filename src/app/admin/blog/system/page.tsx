@@ -133,6 +133,24 @@ function humanizeCronError(error: string) {
     .replace(/google_actual_index_low/g, '구글 실제 색인 낮음')
     .replace(/IndexNow/g, '네이버 수집 알림')
     .replace(/GSC/g, '구글 서치콘솔')
+    .replace(/Pillar/g, '허브 글')
+    .replace(/partial_failure/g, '부분 실패')
+    .replace(/status=overdue/g, '상태 지연')
+    .replace(/status=failing/g, '상태 실패 중')
+    .replace(/consecutive_failures=(\d+)/g, '연속 실패 $1회')
+    .replace(/intent\/design quality/g, '의도/구성 품질')
+    .replace(/intent quality/g, '의도 품질')
+    .replace(/topic fit/g, '토픽 적합도')
+    .replace(/editorial quality/g, '편집 품질')
+    .replace(/missing_intent_contract/g, '의도 기준 누락')
+    .replace(/missing_topic/g, '주제 누락')
+    .replace(/weak_travel_intent/g, '여행 의도 약함')
+    .replace(/checklist_shape_invalid/g, '체크리스트 구조 오류')
+    .replace(/excessive_highlights/g, '형광펜 과다')
+    .replace(/internal_links_cta/g, '내부 링크/상담 버튼')
+    .replace(/critical=none/g, '핵심 오류 없음')
+    .replace(/content_creatives_angle_type_check/g, '글 발행 각도 형식 검사')
+    .replace(/content_creatives/g, '글 데이터')
     .replace(/sitemap/g, '사이트맵')
     .replace(/pending/g, '대기')
     .replace(/published/g, '발행 완료');
@@ -458,16 +476,26 @@ export default function BlogSystemPage() {
               <p className="px-3 py-4 text-admin-xs text-admin-muted">없음</p>
             ) : (
               <ul className="divide-y divide-admin-border max-h-56 overflow-y-auto">
-                {data.blog_failures_24h.map((f, i) => (
-                  <li key={i} className="px-3 py-2 text-admin-xs">
-                    <span className="font-semibold text-admin-text">{f.cron_name}</span>{' '}
-                    <span className="text-danger font-semibold">{f.status}</span>{' '}
-                    <span className="text-admin-muted-2 admin-num">{fmtDateTime(f.started_at)}</span>
-                    {f.error_messages?.length ? (
-                      <pre className="mt-1 text-danger whitespace-pre-wrap font-mono text-admin-2xs">{f.error_messages.join('\n')}</pre>
-                    ) : null}
-                  </li>
-                ))}
+                {data.blog_failures_24h.map((f, i) => {
+                  const failure = f as any;
+                  const copy = cronCopy(String(failure.cron_name || ''));
+                  const messages = Array.isArray(failure.error_messages) ? failure.error_messages.map((message: unknown) => humanizeCronError(String(message || ''))).slice(0, 4) : [];
+                  return (
+                    <li key={i} className="px-3 py-2 text-admin-xs">
+                      <span className="font-semibold text-admin-text">{copy.label}</span>{' '}
+                      <span className="text-danger font-semibold">{labelStatus(failure.status)}</span>{' '}
+                      <span className="text-admin-muted-2 admin-num">{fmtDateTime(failure.started_at)}</span>
+                      <span className="ml-1 font-mono text-admin-2xs text-admin-muted-2">{failure.cron_name || '-'}</span>
+                      {messages.length ? (
+                        <ul className="mt-1 space-y-0.5">
+                          {messages.map((message: string, messageIndex: number) => (
+                            <li key={messageIndex} className="text-danger text-admin-2xs">{message}</li>
+                          ))}
+                        </ul>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </div>
