@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSecret } from '@/lib/secret-registry';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { classifySearchIntent, intentPriorityDelta } from '@/lib/blog-search-intent';
 import { computeSeasonalTargetPublishAt } from '@/lib/blog-season-publish';
 import { attachTopicFitMeta, evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
@@ -23,12 +23,95 @@ async function fetchCronEndpoint(path: string): Promise<Response> {
  *   DELETE /api/blog/queue?id=xxx                     → 큐에서 제거
  */
 
-export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ items: [] });
+type QueueScope = 'active' | 'attention' | 'history' | 'all';
 
+const EMPTY_QUEUE_RESPONSE = {
+  items: [],
+  total: 0,
+  counts: {},
+  summary: {
+    scope: 'active' as QueueScope,
+    total_rows: 0,
+    returned: 0,
+    active_count: 0,
+    attention_count: 0,
+    history_hidden: 0,
+    overdue_queued: 0,
+    stale_generating: 0,
+    issue_counts: {},
+  },
+};
+
+function isQueueHistory(row: any, now = new Date()): boolean {
+  if (['published', 'skipped'].includes(String(row.status))) return true;
+  if (row.status === 'queued') {
+    const created = row.created_at ? new Date(row.created_at) : null;
+    const target = row.target_publish_at ? new Date(row.target_publish_at) : null;
+    const recent = created ? now.getTime() - created.getTime() <= 7 * 24 * 60 * 60 * 1000 : false;
+    const dueSoon = target ? target.getTime() <= now.getTime() + 14 * 24 * 60 * 60 * 1000 : false;
+    return !recent && !dueSoon;
+  }
+  return false;
+}
+
+function isQueueAttention(row: any, now = new Date()): boolean {
+  if (row.status === 'failed') return true;
+  if (row.status === 'generating') {
+    const created = row.created_at ? new Date(row.created_at) : null;
+    return !created || now.getTime() - created.getTime() > 90 * 60 * 1000;
+  }
+  if (row.status === 'queued' && row.target_publish_at) return new Date(row.target_publish_at) < now;
+  return false;
+}
+
+function classifyQueueIssue(row: any): string {
+  const text = String(row.last_error || row.meta?.failure_code || '').toLowerCase();
+  if (!text) return row.status === 'failed' ? 'unknown_failure' : 'none';
+  if (text.includes('topic_fit') || text.includes('intent_mismatch')) return 'topic_fit';
+  if (text.includes('editorial')) return 'editorial_quality';
+  if (text.includes('seo')) return 'seo_score';
+  if (text.includes('constraint')) return 'schema_constraint';
+  if (text.includes('self-heal') || text.includes('self_heal')) return 'self_heal_blocked';
+  if (text.includes('image')) return 'image_quality';
+  if (text.includes('timeout')) return 'timeout';
+  return 'other';
+}
+
+function enrichQueueItem(row: any, now = new Date()) {
+  const attention = isQueueAttention(row, now);
+  const history = isQueueHistory(row, now);
+  const target = row.target_publish_at ? new Date(row.target_publish_at) : null;
+  const urgency =
+    row.status === 'failed' ? 'blocked'
+    : row.status === 'generating' && attention ? 'stale'
+    : target && target < now ? 'overdue'
+    : history ? 'history'
+    : 'normal';
+  return {
+    ...row,
+    ops: {
+      attention,
+      history,
+      urgency,
+      issue: classifyQueueIssue(row),
+    },
+  };
+}
+
+export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const status = searchParams.get('status');
-  const limit = Math.min(200, parseInt(searchParams.get('limit') ?? '100'));
+  const scope = (searchParams.get('scope') || (status ? 'all' : 'active')) as QueueScope;
+  const source = searchParams.get('source');
+  const q = searchParams.get('q')?.trim().toLowerCase() || '';
+  const age = searchParams.get('age') || 'all';
+  const limit = Math.min(300, parseInt(searchParams.get('limit') ?? '120'));
+  if (!isSupabaseAdminConfigured) {
+    return NextResponse.json({
+      ...EMPTY_QUEUE_RESPONSE,
+      summary: { ...EMPTY_QUEUE_RESPONSE.summary, scope },
+    });
+  }
 
   try {
     let query = supabaseAdmin
@@ -36,9 +119,10 @@ export async function GET(request: NextRequest) {
       .select('*', { count: 'exact' })
       .order('target_publish_at', { ascending: true, nullsFirst: false })
       .order('priority', { ascending: false })
-      .limit(limit);
+      .limit(500);
 
     if (status && status !== 'all') query = query.eq('status', status);
+    if (source && source !== 'all') query = query.eq('source', source);
 
     const { data, count, error } = await query;
     if (error) throw error;
@@ -53,14 +137,54 @@ export async function GET(request: NextRequest) {
       counts[r.status] = (counts[r.status] || 0) + 1;
     });
 
-    return NextResponse.json({ items: data || [], total: count ?? 0, counts });
+    const now = new Date();
+    const enriched = (data || []).map((row: any) => enrichQueueItem(row, now));
+    let filtered = enriched;
+
+    if (scope === 'active') filtered = filtered.filter((row: any) => !row.ops.history && ['queued', 'generating', 'failed'].includes(row.status));
+    if (scope === 'attention') filtered = filtered.filter((row: any) => row.ops.attention);
+    if (scope === 'history') filtered = filtered.filter((row: any) => row.ops.history);
+    if (q) {
+      filtered = filtered.filter((row: any) => {
+        const haystack = [row.topic, row.destination, row.primary_keyword, row.source, row.last_error].filter(Boolean).join(' ').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    if (age !== 'all') {
+      const createdAt = (row: any) => row.created_at ? new Date(row.created_at).getTime() : 0;
+      const dayMs = 24 * 60 * 60 * 1000;
+      if (age === 'today') filtered = filtered.filter((row: any) => now.getTime() - createdAt(row) <= dayMs);
+      if (age === '7d') filtered = filtered.filter((row: any) => now.getTime() - createdAt(row) <= 7 * dayMs);
+      if (age === '30d') filtered = filtered.filter((row: any) => now.getTime() - createdAt(row) <= 30 * dayMs);
+      if (age === 'stale') filtered = filtered.filter((row: any) => row.ops.history || row.ops.urgency === 'stale' || row.ops.urgency === 'overdue');
+    }
+
+    const issueCounts: Record<string, number> = {};
+    enriched.forEach((row: any) => {
+      if (!row.ops.attention) return;
+      issueCounts[row.ops.issue] = (issueCounts[row.ops.issue] || 0) + 1;
+    });
+
+    const summary = {
+      scope,
+      total_rows: count ?? enriched.length,
+      returned: Math.min(filtered.length, limit),
+      active_count: enriched.filter((row: any) => !row.ops.history && ['queued', 'generating', 'failed'].includes(row.status)).length,
+      attention_count: enriched.filter((row: any) => row.ops.attention).length,
+      history_hidden: enriched.filter((row: any) => row.ops.history).length,
+      overdue_queued: enriched.filter((row: any) => row.ops.urgency === 'overdue').length,
+      stale_generating: enriched.filter((row: any) => row.ops.urgency === 'stale').length,
+      issue_counts: issueCounts,
+    };
+
+    return NextResponse.json({ items: filtered.slice(0, limit), total: filtered.length, counts, summary });
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : '조회 실패' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseAdminConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
     const body = await request.json();
@@ -177,13 +301,22 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseAdminConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
 
   try {
-    const { id, priority, status, target_publish_at } = await request.json();
+    const { id, priority, status, target_publish_at, action } = await request.json();
     if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
 
     const update: Record<string, unknown> = {};
+    if (action === 'requeue') {
+      update.status = 'queued';
+      update.attempts = 0;
+      update.last_error = null;
+      update.target_publish_at = target_publish_at ?? new Date().toISOString();
+    }
+    if (action === 'hide') {
+      update.status = 'skipped';
+    }
     if (priority !== undefined) update.priority = priority;
     if (status !== undefined) update.status = status;
     if (target_publish_at !== undefined) update.target_publish_at = target_publish_at;
@@ -202,7 +335,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  if (!isSupabaseAdminConfigured) return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
   const id = request.nextUrl.searchParams.get('id');
   if (!id) return NextResponse.json({ error: 'id 필수' }, { status: 400 });
 

@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { fmtDateTime } from '@/lib/admin-utils';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, RefreshCw, Calendar, Clock as ClockIcon } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowLeft, Calendar, CheckCircle2, Clock as ClockIcon, Flame, PenLine, RefreshCw, Search } from 'lucide-react';
 
 type CronHealthRow = Record<string, unknown>;
 
@@ -33,8 +33,36 @@ interface BlogSystemPayload {
   generated_at: string;
 }
 
+interface BlogOpsSummary {
+  level: 'healthy' | 'watch' | 'risk' | 'blocked';
+  publish: { published_today: number; daily_target: number; remaining_today: number; level: string };
+  queue: { counts: Record<string, number>; active_count: number; overdue_queued: number; stale_generating: number; level: string };
+  indexing: {
+    active_jobs: number;
+    recent_failures: number;
+    google_unknown_urls?: number;
+    google_indexed_reports?: number;
+    inspected_reports?: number;
+    indexnow_success_rate: number | null;
+    level: string;
+  };
+  cron: {
+    unhealthy_count: number;
+    core: Array<{
+      cron_name: string;
+      last_status: string;
+      last_run_at: string | null;
+      last_elapsed_ms: number | null;
+      last_error_count: number | null;
+      last_summary: Record<string, unknown> | null;
+    }>;
+  };
+  contract: { passed: boolean; failed_checks: string[] };
+}
+
 export default function BlogSystemPage() {
   const [data, setData] = useState<BlogSystemPayload | null>(null);
+  const [ops, setOps] = useState<BlogOpsSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [running, setRunning] = useState<string | null>(null);
   /** 수동 실행(발행자 등) 응답 — 새로고침 전까지 유지 */
@@ -46,14 +74,19 @@ export default function BlogSystemPage() {
     setLoading(true);
     setLoadError(null);
     try {
-      const res = await fetch('/api/ops/blog-system');
+      const [res, opsRes] = await Promise.all([
+        fetch('/api/ops/blog-system', { cache: 'no-store' }),
+        fetch('/api/admin/blog/ops-summary', { cache: 'no-store' }),
+      ]);
       const json = await res.json();
+      const opsJson = await opsRes.json().catch(() => null);
       if (!res.ok) {
         setData(null);
         setLoadError(`API 오류: ${json.error || res.statusText}`);
       } else {
         setData(json as BlogSystemPayload);
       }
+      if (opsRes.ok && opsJson?.ok !== false) setOps(opsJson as BlogOpsSummary);
     } catch (e) {
       setData(null);
       setLoadError((e as Error).message);
@@ -119,6 +152,60 @@ export default function BlogSystemPage() {
         }
       />
 
+      {ops && (
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            ['오늘 발행', `${ops.publish.published_today}/${ops.publish.daily_target}`, ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성', Activity, ops.publish.remaining_today ? 'text-danger' : 'text-success'],
+            ['큐 문제', `${ops.queue.counts.failed || 0}`, `지연 ${ops.queue.overdue_queued} · 정체 ${ops.queue.stale_generating}`, AlertTriangle, (ops.queue.counts.failed || 0) ? 'text-danger' : 'text-success'],
+            ['색인 작업', `${ops.indexing.active_jobs}`, ops.indexing.indexnow_success_rate == null ? '집계 대기' : `IndexNow ${ops.indexing.indexnow_success_rate}%`, Search, ops.indexing.active_jobs ? 'text-warning' : 'text-success'],
+            ['계약 상태', ops.contract.passed ? '통과' : '점검', ops.contract.failed_checks.join(', ') || '핵심 계약 정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
+          ].map(([label, value, hint, Icon, tone]) => (
+            <div key={String(label)} className="admin-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-admin-xs font-semibold uppercase tracking-wider text-admin-muted">{String(label)}</p>
+                <Icon size={15} className="text-admin-muted-2" />
+              </div>
+              <p className={`mt-2 text-admin-display font-bold admin-num ${tone}`}>{String(value)}</p>
+              <p className="mt-1 text-admin-xs leading-5 text-admin-muted">{String(hint)}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
+      {ops?.cron.core?.length ? (
+        <div className="admin-card overflow-hidden">
+          <div className="px-3 py-2.5 bg-admin-surface-2 border-b border-admin-border text-admin-xs font-semibold text-admin-text-2">
+            핵심 블로그 크론 상태
+          </div>
+          <table className="admin-data-table">
+            <thead>
+              <tr>
+                <th>크론</th>
+                <th>상태</th>
+                <th>최근 실행</th>
+                <th className="text-right">시간</th>
+                <th className="text-right">오류</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ops.cron.core.map((row) => (
+                <tr key={row.cron_name}>
+                  <td className="font-mono text-admin-xs text-admin-text-2">{row.cron_name}</td>
+                  <td>
+                    <span className={`rounded-admin-xs px-2 py-0.5 text-admin-2xs font-semibold ${row.last_status === 'success' ? 'bg-status-successBg text-status-successFg' : 'bg-danger-light text-danger'}`}>
+                      {row.last_status || '-'}
+                    </span>
+                  </td>
+                  <td className="text-admin-xs text-admin-muted admin-num">{row.last_run_at ? fmtDateTime(row.last_run_at) : '-'}</td>
+                  <td className="text-right text-admin-xs text-admin-muted admin-num">{row.last_elapsed_ms ? `${Math.round(row.last_elapsed_ms / 1000)}s` : '-'}</td>
+                  <td className="text-right text-admin-xs text-admin-muted admin-num">{row.last_error_count || 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
       {/* 환경 힌트 */}
       {data && (
         <div
@@ -141,10 +228,10 @@ export default function BlogSystemPage() {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           {(
             [
-              ['run_scheduler', '🗓️ 스케줄러'],
-              ['run_trend_miner', '🔥 트렌드'],
-              ['run_publisher', '✍️ 발행자'],
-              ['run_lifecycle', '🗄️ 라이프사이클'],
+              ['run_scheduler', '스케줄러'],
+              ['run_trend_miner', '트렌드'],
+              ['run_publisher', '발행자'],
+              ['run_lifecycle', '라이프사이클'],
             ] as const
           ).map(([action, label]) => (
             <button

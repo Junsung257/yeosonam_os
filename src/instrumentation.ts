@@ -4,36 +4,25 @@ export async function register() {
       await import('../sentry.server.config');
     }
 
-    // 환경변수 누락 체크 (개발 서버 시작 시 경고)
     try {
       const { checkMissingEnvVars } = await import('@/lib/env-check');
       checkMissingEnvVars();
     } catch {
-      // env-check 실패해도 서버 시작은 계속
+      // Env diagnostics must never block a serverless cold start.
     }
 
-    // 환경변수 누락 체크 (개발 서버 시작 시 경고)
-    try {
-      const { checkMissingEnvVars } = await import('@/lib/env-check');
-      checkMissingEnvVars();
-    } catch {
-      // env-check 실패해도 서버 시작은 계속
-    }
-
-    // OpenTelemetry — Vercel OTel 자동 export.
-    // Vercel 배포 환경에서는 OTel collector 가 자동 활성화 (수동 endpoint 불필요).
-    // 로컬/타사 환경은 OTEL_EXPORTER_OTLP_ENDPOINT 설정 시 동작.
     if (process.env.VERCEL || process.env.OTEL_EXPORTER_OTLP_ENDPOINT) {
       try {
         const { registerOTel } = await import('@vercel/otel');
         registerOTel({
           serviceName: process.env.OTEL_SERVICE_NAME || 'yeosonam-os',
         });
-      } catch (e) {
-        console.warn('[instrumentation] OTel 등록 실패:', e instanceof Error ? e.message : String(e));
+      } catch (error) {
+        console.warn('[instrumentation] OTel registration failed:', error instanceof Error ? error.message : String(error));
       }
     }
   }
+
   if (process.env.NEXT_RUNTIME === 'edge') {
     if (process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN) {
       await import('../sentry.edge.config');

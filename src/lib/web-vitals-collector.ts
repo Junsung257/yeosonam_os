@@ -1,5 +1,13 @@
-import { supabaseAdmin as supabase } from '@/lib/supabase';
+import { getSupabaseAdmin } from '@/lib/supabase';
 import { fmtDateTime } from '@/lib/admin-utils';
+
+type LooseSupabaseAdmin = {
+  from(table: string): any;
+};
+
+function getLooseSupabaseAdmin(): LooseSupabaseAdmin | null {
+  return getSupabaseAdmin() as unknown as LooseSupabaseAdmin | null;
+}
 
 export interface WebVitalPayload {
   /** 'LCP' | 'CLS' | 'INP' | 'FCP' | 'TTFB' */
@@ -40,6 +48,9 @@ export function classifyCwv(name: string, value: number): 'good' | 'needs-improv
 }
 
 export async function saveWebVital(payload: WebVitalPayload): Promise<void> {
+  const supabase = getLooseSupabaseAdmin();
+  if (!supabase) return;
+
   const { error } = await supabase.from('web_vitals').insert({
     name: payload.name,
     value: payload.value,
@@ -61,6 +72,9 @@ const CWV_ALERT_COOLDOWN_MS = 3600_000; // 1시간
 
 export async function alertIfPoorVital(payload: WebVitalPayload): Promise<void> {
   if (!SLACK_WEBHOOK_URL) return;
+  const supabase = getLooseSupabaseAdmin();
+  if (!supabase) return;
+
   const rating = classifyCwv(payload.name, payload.value);
   if (rating !== 'poor') return;
 
@@ -94,6 +108,9 @@ export async function getCwvStats(
   period: 'day' | 'week' = 'day',
   pageType?: string,
 ) {
+  const supabase = getLooseSupabaseAdmin();
+  if (!supabase) return null;
+
   const since =
     period === 'day'
       ? new Date(Date.now() - 86400_000).toISOString()

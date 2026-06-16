@@ -7,7 +7,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { Activity, AlertTriangle, ArrowLeft, BookOpen, CheckCircle2, ListChecks } from 'lucide-react';
 
 interface Policy {
   id: number;
@@ -25,17 +25,43 @@ interface Policy {
   daily_summary_webhook: string | null;
 }
 
+interface OpsSummary {
+  publish: {
+    published_today: number;
+    daily_target: number;
+    remaining_today: number;
+    per_destination_daily_cap: number | null;
+    product_ratio: number | null;
+    slot_times: string[];
+  };
+  queue: {
+    active_count: number;
+    counts: Record<string, number>;
+    overdue_queued: number;
+  };
+  contract: { passed: boolean; failed_checks: string[] };
+}
+
 export default function PolicyPage() {
   const [policy, setPolicy] = useState<Policy | null>(null);
+  const [ops, setOps] = useState<OpsSummary | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
   const [loadErr, setLoadErr] = useState('');
 
   useEffect(() => {
-    fetch('/api/admin/publishing-policy?scope=global')
-      .then(r => {
+    Promise.all([
+      fetch('/api/admin/publishing-policy?scope=global'),
+      fetch('/api/admin/blog/ops-summary', { cache: 'no-store' }).catch(() => null),
+    ])
+      .then(async ([r, opsRes]) => {
         if (!r.ok) throw new Error('API ' + r.status);
-        return r.json();
+        const policyJson = await r.json();
+        if (opsRes?.ok) {
+          const opsJson = await opsRes.json().catch(() => null);
+          if (opsJson?.ok !== false) setOps(opsJson as OpsSummary);
+        }
+        return policyJson;
       })
       .then(d => {
         if (d.error) throw new Error(d.error);
@@ -64,6 +90,7 @@ export default function PolicyPage() {
   const dailyTotal = policy!.posts_per_day;
   const product = Math.round(dailyTotal * policy!.product_ratio);
   const info = dailyTotal - product;
+  const queuePressure = ops ? Math.max(0, ops.queue.active_count - dailyTotal) : 0;
 
   const save = async () => {
     if (!policy) return;
@@ -113,6 +140,49 @@ export default function PolicyPage() {
           </Link>
         }
       />
+
+      {ops && (
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            ['오늘 발행', `${ops.publish.published_today}/${ops.publish.daily_target}`, ops.publish.remaining_today ? `남은 ${ops.publish.remaining_today}편` : '목표 달성', Activity, ops.publish.remaining_today ? 'text-danger' : 'text-success'],
+            ['큐 압력', queuePressure.toLocaleString('ko-KR'), queuePressure ? '현재 정책보다 큐가 많음' : '정책 범위 안', ListChecks, queuePressure ? 'text-warning' : 'text-success'],
+            ['실패 큐', `${ops.queue.counts.failed || 0}`, `지연 ${ops.queue.overdue_queued}`, AlertTriangle, (ops.queue.counts.failed || 0) ? 'text-danger' : 'text-success'],
+            ['계약 상태', ops.contract.passed ? '통과' : '점검', ops.contract.failed_checks.join(', ') || '정상', CheckCircle2, ops.contract.passed ? 'text-success' : 'text-danger'],
+          ].map(([label, value, hint, Icon, tone]) => (
+            <div key={String(label)} className="admin-card p-4">
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-admin-xs font-semibold uppercase tracking-wider text-admin-muted">{String(label)}</p>
+                <Icon size={15} className="text-admin-muted-2" />
+              </div>
+              <p className={`mt-2 text-admin-display font-bold admin-num ${tone}`}>{String(value)}</p>
+              <p className="mt-1 text-admin-xs leading-5 text-admin-muted">{String(hint)}</p>
+            </div>
+          ))}
+        </section>
+      )}
+
+      <section className="admin-card p-4">
+        <div className="grid gap-3 md:grid-cols-3">
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">현재 정책 미리보기</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              다음 스케줄러 실행부터 하루 {dailyTotal}편, 정보성 {info}편, 상품 {product}편 기준으로 큐 슬롯을 잡습니다.
+            </p>
+          </div>
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">목적지 분산</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              목적지별 하루 최대 {policy!.per_destination_daily_cap}편입니다. 같은 여행지 반복 발행과 키워드 잠식을 줄이는 안전장치입니다.
+            </p>
+          </div>
+          <div>
+            <p className="text-admin-xs font-semibold text-admin-text-2">운영 기준</p>
+            <p className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              정책 저장만으로 완료가 아닙니다. 블로그 OS 홈에서 발행 목표, 품질 계약, 색인 상태가 같이 통과해야 완료입니다.
+            </p>
+          </div>
+        </div>
+      </section>
 
       <div className="admin-card p-5 space-y-4">
         {/* posts_per_day */}
