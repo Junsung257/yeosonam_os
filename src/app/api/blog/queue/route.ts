@@ -23,7 +23,7 @@ async function fetchCronEndpoint(path: string): Promise<Response> {
  *   DELETE /api/blog/queue?id=xxx                     → 큐에서 제거
  */
 
-type QueueScope = 'active' | 'attention' | 'history' | 'all';
+type QueueScope = 'active' | 'attention' | 'manual' | 'history' | 'all';
 
 const EMPTY_QUEUE_RESPONSE = {
   items: [],
@@ -35,6 +35,7 @@ const EMPTY_QUEUE_RESPONSE = {
     returned: 0,
     active_count: 0,
     attention_count: 0,
+    manual_review_count: 0,
     history_hidden: 0,
     overdue_queued: 0,
     stale_generating: 0,
@@ -52,6 +53,15 @@ function isQueueHistory(row: any, now = new Date()): boolean {
     return !recent && !dueSoon;
   }
   return false;
+}
+
+function isManualReviewQueue(row: any): boolean {
+  const meta = row.meta && typeof row.meta === 'object' && !Array.isArray(row.meta) ? row.meta : {};
+  return (
+    row.status === 'failed' &&
+    (meta.self_heal_blocked === true || meta.self_heal_closed_at || meta.quarantine_reason) &&
+    Number(row.attempts || 0) >= 3
+  );
 }
 
 function isQueueAttention(row: any, now = new Date()): boolean {
@@ -99,11 +109,13 @@ function classifyQueueIssue(row: any): string {
 }
 
 function enrichQueueItem(row: any, now = new Date()) {
+  const manualReview = isManualReviewQueue(row);
   const attention = isQueueAttention(row, now);
   const history = isQueueHistory(row, now);
   const target = row.target_publish_at ? new Date(row.target_publish_at) : null;
   const urgency =
-    row.status === 'failed' ? 'blocked'
+    manualReview ? 'manual_review'
+    : row.status === 'failed' ? 'blocked'
     : row.status === 'generating' && attention ? 'stale'
     : target && target < now ? 'overdue'
     : history ? 'history'
@@ -113,6 +125,7 @@ function enrichQueueItem(row: any, now = new Date()) {
     ops: {
       attention,
       history,
+      manual_review: manualReview,
       urgency,
       issue: classifyQueueIssue(row),
     },
@@ -162,8 +175,9 @@ export async function GET(request: NextRequest) {
     const enriched = (data || []).map((row: any) => enrichQueueItem(row, now));
     let filtered = enriched;
 
-    if (scope === 'active') filtered = filtered.filter((row: any) => !row.ops.history && ['queued', 'generating', 'failed'].includes(row.status));
+    if (scope === 'active') filtered = filtered.filter((row: any) => !row.ops.history && !row.ops.manual_review && ['queued', 'generating', 'failed'].includes(row.status));
     if (scope === 'attention') filtered = filtered.filter((row: any) => row.ops.attention);
+    if (scope === 'manual') filtered = filtered.filter((row: any) => row.ops.manual_review);
     if (scope === 'history') filtered = filtered.filter((row: any) => row.ops.history);
     if (q) {
       filtered = filtered.filter((row: any) => {
@@ -190,8 +204,9 @@ export async function GET(request: NextRequest) {
       scope,
       total_rows: count ?? enriched.length,
       returned: Math.min(filtered.length, limit),
-      active_count: enriched.filter((row: any) => !row.ops.history && ['queued', 'generating', 'failed'].includes(row.status)).length,
+      active_count: enriched.filter((row: any) => !row.ops.history && !row.ops.manual_review && ['queued', 'generating', 'failed'].includes(row.status)).length,
       attention_count: enriched.filter((row: any) => row.ops.attention).length,
+      manual_review_count: enriched.filter((row: any) => row.ops.manual_review).length,
       history_hidden: enriched.filter((row: any) => row.ops.history).length,
       overdue_queued: enriched.filter((row: any) => row.ops.urgency === 'overdue').length,
       stale_generating: enriched.filter((row: any) => row.ops.urgency === 'stale').length,

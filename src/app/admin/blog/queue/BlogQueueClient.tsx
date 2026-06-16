@@ -46,7 +46,8 @@ interface QueueItem {
   ops?: {
     attention: boolean;
     history: boolean;
-    urgency: 'blocked' | 'stale' | 'overdue' | 'history' | 'normal';
+    manual_review?: boolean;
+    urgency: 'blocked' | 'manual_review' | 'stale' | 'overdue' | 'history' | 'normal';
     issue: string;
   };
 }
@@ -57,6 +58,7 @@ interface QueueSummary {
   returned: number;
   active_count: number;
   attention_count: number;
+  manual_review_count: number;
   history_hidden: number;
   overdue_queued: number;
   stale_generating: number;
@@ -100,6 +102,7 @@ const ISSUE_LABELS: Record<string, string> = {
 const VIEW_TABS = [
   { key: 'active', label: '운영 필요', scope: 'active', status: 'all' },
   { key: 'attention', label: '문제', scope: 'attention', status: 'all' },
+  { key: 'manual', label: '수동 재작성', scope: 'manual', status: 'all' },
   { key: 'queued', label: '대기', scope: 'all', status: 'queued' },
   { key: 'failed', label: '실패', scope: 'all', status: 'failed' },
   { key: 'history', label: '과거/숨김', scope: 'history', status: 'all' },
@@ -108,6 +111,7 @@ const VIEW_TABS = [
 
 function urgencyClass(item: QueueItem): string {
   const urgency = item.ops?.urgency;
+  if (urgency === 'manual_review') return 'bg-violet-50 text-violet-700 border-violet-200';
   if (urgency === 'blocked') return 'bg-danger-light text-danger border-danger/30';
   if (urgency === 'stale' || urgency === 'overdue') return 'bg-status-warningBg text-status-warningFg border-warning/30';
   if (urgency === 'history') return 'bg-admin-surface-2 text-admin-muted border-admin-border';
@@ -116,6 +120,7 @@ function urgencyClass(item: QueueItem): string {
 
 function urgencyLabel(item: QueueItem): string {
   const urgency = item.ops?.urgency;
+  if (urgency === 'manual_review') return '수동 재작성';
   if (urgency === 'blocked') return '차단';
   if (urgency === 'stale') return '생성 정체';
   if (urgency === 'overdue') return '발행 지연';
@@ -223,6 +228,7 @@ export default function BlogQueueClient() {
   const summaryCards: Array<{ label: string; value: number; hint: string; icon: LucideIcon }> = [
     { label: '운영 필요', value: summary?.active_count ?? 0, hint: '오늘 볼 큐', icon: ListChecks },
     { label: '문제', value: summary?.attention_count ?? 0, hint: '실패/지연/정체', icon: AlertTriangle },
+    { label: '수동 재작성', value: summary?.manual_review_count ?? 0, hint: '자동복구 제외', icon: PenLine },
     { label: '대기', value: counts.queued ?? 0, hint: '전체 queued', icon: Clock },
     { label: '실패', value: counts.failed ?? 0, hint: '재시도 필요', icon: AlertTriangle },
     { label: '숨김 이력', value: summary?.history_hidden ?? 0, hint: '기본 화면 제외', icon: Archive },
@@ -323,7 +329,7 @@ export default function BlogQueueClient() {
         }
       />
 
-      <section className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         {summaryCards.map(({ label, value, hint, icon: Icon }) => (
           <div key={label} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-4 shadow-admin-xs">
             <div className="flex items-start justify-between gap-3">
@@ -477,7 +483,7 @@ export default function BlogQueueClient() {
             </thead>
             <tbody>
               {items.map((item) => (
-                <tr key={item.id} className={item.ops?.attention ? 'bg-danger-light/25' : ''}>
+                <tr key={item.id} className={item.ops?.manual_review ? 'bg-violet-50/35' : item.ops?.attention ? 'bg-danger-light/25' : ''}>
                   <td>
                     <span className={`inline-flex rounded-admin-xs border px-2 py-1 text-admin-2xs font-semibold ${urgencyClass(item)}`}>
                       {urgencyLabel(item)}
@@ -514,7 +520,7 @@ export default function BlogQueueClient() {
                           글
                         </Link>
                       )}
-                      {item.status === 'failed' && (
+                      {item.status === 'failed' && !item.ops?.manual_review && (
                         <button onClick={() => patchItem(item.id, 'requeue')} className="inline-flex h-7 items-center gap-1 rounded-admin-xs border border-admin-border px-2 text-admin-2xs font-semibold text-admin-text-2 hover:bg-admin-surface-2">
                           <RotateCcw size={12} />
                           재시도
@@ -544,7 +550,7 @@ export default function BlogQueueClient() {
         actions={
           selected && (
             <>
-              {selected.status === 'failed' && (
+              {selected.status === 'failed' && !selected.ops?.manual_review && (
                 <Button variant="secondary" size="sm" onClick={() => patchItem(selected.id, 'requeue')}>
                   <RotateCcw size={14} />
                   재시도
