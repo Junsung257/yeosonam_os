@@ -127,7 +127,7 @@ describe('buildUploadReviewRegressionReport', () => {
     expect(report.checks[0]?.reason).toContain('expected a recovered multi-product catalog');
   });
 
-  it('marks rows partial when itinerary replay passes but other blocker codes are not covered', () => {
+  it('passes when itinerary and price disagreement blockers both recover from source evidence', () => {
     const report = buildUploadReviewRegressionReport({
       rows: [
         row({
@@ -137,13 +137,32 @@ describe('buildUploadReviewRegressionReport', () => {
       ],
     });
 
-    expect(report.passed).toBe(0);
-    expect(report.partial).toBe(1);
+    expect(report.passed).toBe(1);
+    expect(report.partial).toBe(0);
     expect(report.failed).toBe(0);
     expect(report.checks[0]?.coveredCodes).toContain('ITINERARY_DUPLICATE_DAY');
-    expect(report.checks[0]?.uncoveredCodes).toContain('PRICE_DATE_DISAGREEMENT');
+    expect(report.checks[0]?.coveredCodes).toContain('PRICE_DATE_DISAGREEMENT');
     expect(report.codeCounts.PRICE_DATE_DISAGREEMENT).toBe(1);
-    expect(report.uncoveredCodeCounts.PRICE_DATE_DISAGREEMENT).toBe(1);
+    expect(report.uncoveredCodeCounts.PRICE_DATE_DISAGREEMENT).toBeUndefined();
+    expect(report.checks[0]?.reason).toContain('source-backed price/date evidence recovered');
+  });
+
+  it('does not let the umbrella customer render blocker prevent replay when specific blockers pass', () => {
+    const report = buildUploadReviewRegressionReport({
+      rows: [
+        row({
+          error_reason: 'Customer landing/A4 blocked: itinerary duplicate day number: duplicate day entries must be resolved before render. | itinerary duration overflow: product duration 6 days but itinerary has 12 days.',
+          raw_text_chunk: RECOVERABLE_INLINE_PKG_RAW,
+        }),
+      ],
+    });
+
+    expect(report.checked).toBe(1);
+    expect(report.failed).toBe(0);
+    expect(report.partial).toBe(0);
+    expect(report.passed).toBe(1);
+    expect(report.checks[0]?.codes).toContain('CUSTOMER_RENDER_BLOCKED');
+    expect(report.checks[0]?.uncoveredCodes).not.toContain('CUSTOMER_RENDER_BLOCKED');
   });
 
   it('skips synthetic regression upload rows in live replay strictness', () => {
@@ -179,8 +198,9 @@ DAY 1
 
     expect(report.checked).toBe(1);
     expect(report.failed).toBe(0);
-    expect(report.partial).toBe(1);
+    expect(report.partial).toBe(0);
+    expect(report.passed).toBe(1);
     expect(report.checks[0]?.coveredCodes).toContain('FLIGHT_TIME_MISMATCH');
-    expect(report.checks[0]?.uncoveredCodes).toContain('CUSTOMER_RENDER_BLOCKED');
+    expect(report.checks[0]?.uncoveredCodes).not.toContain('CUSTOMER_RENDER_BLOCKED');
   });
 });

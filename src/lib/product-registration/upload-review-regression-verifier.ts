@@ -60,6 +60,8 @@ const SUPPORTED_ITINERARY_CODES = new Set<ProductRegistrationFailureCode>([
 const SUPPORTED_PRICE_EVIDENCE_CODES = new Set<ProductRegistrationFailureCode>([
   'PRICE_ROWS_MISSING',
   'PRICE_DATES_MISSING',
+  'PRICE_DATE_DISAGREEMENT',
+  'PRICE_AMOUNT_DISAGREEMENT',
   'MODEL_PRICE_UNSUPPORTED',
 ]);
 
@@ -82,9 +84,11 @@ function splitCoverage(codes: ProductRegistrationFailureCode[]): {
   coveredCodes: ProductRegistrationFailureCode[];
   uncoveredCodes: ProductRegistrationFailureCode[];
 } {
+  const specificCodes = codes.filter(code => code !== 'CUSTOMER_RENDER_BLOCKED');
+  const replayCodes = specificCodes.length > 0 ? specificCodes : codes;
   return {
-    coveredCodes: codes.filter(code => SUPPORTED_CODES.has(code)),
-    uncoveredCodes: codes.filter(code => !SUPPORTED_CODES.has(code)),
+    coveredCodes: replayCodes.filter(code => SUPPORTED_CODES.has(code)),
+    uncoveredCodes: replayCodes.filter(code => !SUPPORTED_CODES.has(code)),
   };
 }
 

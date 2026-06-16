@@ -66,6 +66,10 @@ function readUploadReviewQueue(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-review-queue.ts'), 'utf8');
 }
 
+function readUploadReviewAutoReplayCron(): string {
+  return readFileSync(join(process.cwd(), 'src/app/api/cron/upload-review-auto-replay/route.ts'), 'utf8');
+}
+
 function readUploadContextLoader(): string {
   return readFileSync(join(process.cwd(), 'src/lib/product-registration/upload-context-loader.ts'), 'utf8');
 }
@@ -740,5 +744,16 @@ describe('upload route registration pipeline boundary', () => {
     expect(reextract).not.toContain("from '@/lib/parser/extract-itinerary'");
     expect(reextract).not.toContain('extractItineraryData(');
     expect(reextract).not.toContain('raw_extracted_text');
+  });
+
+  it('keeps upload review auto replay from starving older recoverable failures', () => {
+    const cron = readUploadReviewAutoReplayCron();
+
+    expect(cron).toContain('return 10;');
+    expect(cron).toContain("request.nextUrl.searchParams.get('queueId')");
+    expect(cron).toContain(".eq('id', queueId)");
+    expect(cron).toContain("order('created_at', { ascending: true })");
+    expect(cron).toContain('buildUploadReviewRegressionReport({ rows: [row] })');
+    expect(cron).toContain('runUploadRegistrationPipeline({');
   });
 });

@@ -40,7 +40,7 @@ function safeAfter(task: () => Promise<void> | void): void {
 
 function clampLimit(value: string | null): number {
   const parsed = Number(value);
-  if (!Number.isFinite(parsed)) return 3;
+  if (!Number.isFinite(parsed)) return 10;
   return Math.max(1, Math.min(10, Math.trunc(parsed)));
 }
 
@@ -149,14 +149,21 @@ export async function GET(request: NextRequest) {
   }
 
   const limit = clampLimit(request.nextUrl.searchParams.get('limit'));
-  const { data, error } = await supabaseAdmin
+  const queueId = request.nextUrl.searchParams.get('queueId')?.trim();
+  let query = supabaseAdmin
     .from('upload_review_queue')
     .select('id,created_at,status,severity,error_reason,source_filename,file_hash,normalized_content_hash,raw_text_chunk,parsed_draft_json,product_title,land_operator_id')
     .eq('status', 'pending')
     .in('severity', ['critical', 'high'])
-    .not('raw_text_chunk', 'is', null)
-    .order('created_at', { ascending: false })
-    .limit(limit);
+    .not('raw_text_chunk', 'is', null);
+
+  if (queueId) {
+    query = query.eq('id', queueId);
+  } else {
+    query = query.order('created_at', { ascending: true }).limit(limit);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
