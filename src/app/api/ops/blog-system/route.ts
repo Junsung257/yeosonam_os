@@ -9,6 +9,8 @@ import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const BLOG_CRON_PREFIX = 'blog-';
 const BLOG_CRON_NAMES = new Set([
@@ -98,6 +100,10 @@ export async function GET() {
         base_url_for_cron_fetch: process.env.NEXT_PUBLIC_BASE_URL || null,
       },
       generated_at: new Date().toISOString(),
+    }, {
+      headers: {
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+      },
     });
   } catch (err) {
     console.error('[ops/blog-system] failed:', sanitizeDbError(err));
