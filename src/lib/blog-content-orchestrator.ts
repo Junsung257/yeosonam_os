@@ -61,6 +61,11 @@ const EXPECTED_INTERVALS: Record<CronName, number> = {
 /**
  * 시스템 건강 상태
  */
+function closeBlockedSelfHealError(error: string | null | undefined, now: string): string {
+  const base = String(error || '').replace(/^(self-heal blocked [^:]+:\s*)+/i, '').trim();
+  return `self-heal quarantined ${now}: ${base}`.slice(0, 500);
+}
+
 export interface SystemHealth {
   healthy: boolean;
   cronStatuses: Array<{
@@ -290,6 +295,7 @@ export async function autoHealQueue(): Promise<{
         .update({
           status: nextStatus,
           last_error: `stale generating ${nextStatus} ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+          attempts: nextStatus === 'failed' ? Math.max(3, item.attempts || 0) : item.attempts,
           target_publish_at: nextStatus === 'queued' ? now : undefined,
           meta: {
             ...meta,
@@ -346,18 +352,19 @@ export async function autoHealQueue(): Promise<{
         await supabaseAdmin
           .from('blog_topic_queue')
           .update({
-            last_error: `self-heal blocked ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+            attempts: Math.max(3, item.attempts || 0),
+            last_error: closeBlockedSelfHealError(item.last_error, now),
             meta: {
               ...meta,
               failure_code: typeof meta.failure_code === 'string' ? meta.failure_code : decision.code,
               self_heal_blocked: true,
               quarantine_reason: meta.quarantine_reason ?? 'non_retryable_failure',
               self_heal_blocked_at: now,
+              self_heal_closed_at: now,
             } as never,
           })
           .eq('id', item.id);
         details.push(`복구 차단: ${item.topic}`);
-        stillFailed++;
         continue;
       }
       const topicSlug = slugifyTopic(item.topic || '');

@@ -123,6 +123,19 @@ function urgencyLabel(item: QueueItem): string {
   return '정상';
 }
 
+function issueLabel(issue: string): string {
+  const preciseLabels: Record<string, string> = {
+    context_missing: '문맥 부족',
+    duplicate_content: '중복 콘텐츠',
+    keyword_density: '키워드 밀도',
+    structure_integrity: '구조 품질',
+    intent_quality: '검색 의도',
+    db_write: 'DB 저장',
+    card_news_render_pending: '카드뉴스 렌더 대기',
+  };
+  return preciseLabels[issue] || ISSUE_LABELS[issue] || issue;
+}
+
 function compactError(error: string | null): string {
   if (!error) return '-';
   return error.replace(/\s+/g, ' ').slice(0, 140);
@@ -418,7 +431,7 @@ export default function BlogQueueClient() {
           <div className="flex flex-wrap gap-1.5">
             {issueChips.map(([issue, value]) => (
               <span key={issue} className="rounded-admin-xs bg-danger-light px-2 py-1 text-admin-2xs font-semibold text-danger">
-                {ISSUE_LABELS[issue] || issue} {value}
+                {issueLabel(issue)} {value}
               </span>
             ))}
           </div>

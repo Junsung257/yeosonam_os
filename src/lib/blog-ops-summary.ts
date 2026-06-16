@@ -104,9 +104,30 @@ function startOfKstDay(offsetDays = 0): Date {
   return new Date(kst.getTime() - 9 * 60 * 60 * 1000);
 }
 
-function classifyQueueError(message: string | null | undefined): string {
+function classifyQueueFailureCode(code: unknown): string | null {
+  const value = typeof code === 'string' ? code.toLowerCase() : '';
+  if (!value) return null;
+  if (value === 'context_missing' || value === 'linked_draft_invalid') return 'context_missing';
+  if (value === 'duplicate_content') return 'duplicate_content';
+  if (value === 'keyword_density') return 'keyword_density';
+  if (value === 'structure_integrity') return 'structure_integrity';
+  if (value === 'intent_quality') return 'intent_quality';
+  if (value === 'seo_score') return 'seo_score';
+  if (value === 'db_write') return 'db_write';
+  if (value === 'card_news_render_pending') return 'card_news_render_pending';
+  return value;
+}
+
+function classifyQueueError(message: string | null | undefined, failureCode?: unknown): string {
+  const metaIssue = classifyQueueFailureCode(failureCode);
+  if (metaIssue) return metaIssue;
   const text = (message || '').toLowerCase();
   if (!text) return 'unknown';
+  if (text.includes('context missing') || text.includes('insufficient context')) return 'context_missing';
+  if (text.includes('duplicate') || text.includes('slug already')) return 'duplicate_content';
+  if (text.includes('keyword_density')) return 'keyword_density';
+  if (text.includes('structure_integrity')) return 'structure_integrity';
+  if (text.includes('intent_quality')) return 'intent_quality';
   if (text.includes('topic_fit') || text.includes('intent_mismatch')) return 'topic_fit';
   if (text.includes('editorial')) return 'editorial_quality';
   if (text.includes('seo')) return 'seo_score';
@@ -209,7 +230,7 @@ export async function buildBlogOpsSummary(supabase: any) {
   const hiddenHistory = queueRows.filter((row) => !isRecentOrDueQueue(row, now)).length;
   const overdueQueued = queueRows.filter((row) => row.status === 'queued' && row.target_publish_at && new Date(row.target_publish_at) < now).length;
   const staleGenerating = queueRows.filter((row) => row.status === 'generating' && row.created_at && now.getTime() - new Date(row.created_at).getTime() > 90 * 60 * 1000).length;
-  const failureBuckets = countBy(queueRows.filter((row) => row.status === 'failed'), (row) => classifyQueueError(row.last_error));
+  const failureBuckets = countBy(queueRows.filter((row) => row.status === 'failed'), (row) => classifyQueueError(row.last_error, row.meta?.failure_code));
 
   const publishedRows = postRows.filter((row) => row.status === 'published');
   const publishedToday = publishedRows.filter((row) => row.published_at && new Date(row.published_at) >= todayStart && new Date(row.published_at) < tomorrowStart).length;

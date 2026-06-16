@@ -64,9 +64,30 @@ function isQueueAttention(row: any, now = new Date()): boolean {
   return false;
 }
 
+function classifyQueueIssueCode(code: unknown): string | null {
+  const value = typeof code === 'string' ? code.toLowerCase() : '';
+  if (!value) return null;
+  if (value === 'context_missing' || value === 'linked_draft_invalid') return 'context_missing';
+  if (value === 'duplicate_content') return 'duplicate_content';
+  if (value === 'keyword_density') return 'keyword_density';
+  if (value === 'structure_integrity') return 'structure_integrity';
+  if (value === 'intent_quality') return 'intent_quality';
+  if (value === 'seo_score') return 'seo_score';
+  if (value === 'db_write') return 'db_write';
+  if (value === 'card_news_render_pending') return 'card_news_render_pending';
+  return value;
+}
+
 function classifyQueueIssue(row: any): string {
-  const text = String(row.last_error || row.meta?.failure_code || '').toLowerCase();
+  const metaIssue = classifyQueueIssueCode(row.meta?.failure_code);
+  if (metaIssue) return metaIssue;
+  const text = String(row.last_error || '').toLowerCase();
   if (!text) return row.status === 'failed' ? 'unknown_failure' : 'none';
+  if (text.includes('context missing') || text.includes('insufficient context')) return 'context_missing';
+  if (text.includes('duplicate') || text.includes('slug already')) return 'duplicate_content';
+  if (text.includes('keyword_density')) return 'keyword_density';
+  if (text.includes('structure_integrity')) return 'structure_integrity';
+  if (text.includes('intent_quality')) return 'intent_quality';
   if (text.includes('topic_fit') || text.includes('intent_mismatch')) return 'topic_fit';
   if (text.includes('editorial')) return 'editorial_quality';
   if (text.includes('seo')) return 'seo_score';
