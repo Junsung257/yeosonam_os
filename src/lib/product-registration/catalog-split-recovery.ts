@@ -17,6 +17,13 @@ function inferTitle(section: string, index: number): string {
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean);
+  const specialPriceIndex = lines.findIndex(line => /SPECIAL\s+PRICE/i.test(line));
+  if (specialPriceIndex >= 0) {
+    const titleAfterSpecialPrice = lines
+      .slice(specialPriceIndex + 1, Math.min(lines.length, specialPriceIndex + 6))
+      .find(line => !/^\d{1,2}[./]\d{1,2}\b/.test(line) && /[가-힣]/.test(line));
+    if (titleAfterSpecialPrice) return titleAfterSpecialPrice;
+  }
   const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
   const pkgTitle = pkgIndex >= 0
     ? lines.slice(pkgIndex + 1).find(hasDurationSignal)
@@ -27,8 +34,8 @@ function inferTitle(section: string, index: number): string {
     ?? `카탈로그 상품 ${index + 1}`;
 }
 
-function inferTripStyle(title: string): { nights?: number; duration?: number; tripStyle?: string } {
-  const match = title.match(KOREAN_DURATION_RE);
+function inferTripStyle(title: string, section?: string): { nights?: number; duration?: number; tripStyle?: string } {
+  const match = title.match(KOREAN_DURATION_RE) ?? section?.match(KOREAN_DURATION_RE);
   if (match) {
     return {
       nights: Number(match[1]),
@@ -64,7 +71,7 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
   return sections.map((section, index) => {
     const sectionRawText = standardizeKnownMojibakeSupplierText(((sharedPrefix ? `${sharedPrefix}\n\n---\n\n` : '') + section).trim());
     const title = standardizeKnownMojibakeTitle(inferTitle(section, index));
-    const trip = inferTripStyle(title);
+    const trip = inferTripStyle(title, sectionRawText);
     const extractedData: ExtractedData = {
       title,
       category: 'package',

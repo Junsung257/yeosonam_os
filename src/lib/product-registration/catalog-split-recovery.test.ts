@@ -6,6 +6,79 @@ import { recoverCatalogSplitFromRawText } from './catalog-split-recovery';
 import { recoverUploadPriceData } from './price-recovery';
 
 describe('recoverCatalogSplitFromRawText', () => {
+  it('splits repeated SPECIAL PRICE supplier blocks into separate products', () => {
+    const raw = `♥ SPECIAL PRICE ♥
+부산 - 푸꾸옥 세이브 여유로운 6일
+
+7/11 4박6일 선착순 4명 1인 599,000원
+
+최소출발인원
+ 성인4명이상
+포 함 내 역
+ 왕복 항공료 및 텍스, 유류할증료, 호텔(2인1실), 일정상의 차량 & 식사
+선택관광
+ △ 혼똠섬 케이블카 &워터파크 $60/인
+일 자
+지 역
+교통편
+시 간
+일 정
+식 사
+제1일
+부 산
+푸꾸옥
+ZE981
+18:55
+22:25
+ 부산 김해공항 출발
+ 푸꾸옥 국제공항 도착 후 호텔 체크인 및 휴식
+제6일
+부 산
+06:55
+ 부산 국제공항 도착
+
+♥ SPECIAL PRICE ♥
+부산 - 푸꾸옥 스탠다드 완전정복 6일
+
+7/11 4박6일 선착순 4명 1인 799,000원
+
+최소출발인원
+ 성인4명이상
+포 함 내 역
+ 왕복 항공료 및 텍스, 유류할증료, 호텔(2인1실), 일정상의 차량 & 식사
+선택관광
+ 키스 오브 더 씨 쇼 포함
+일 자
+지 역
+교통편
+시 간
+일 정
+식 사
+제1일
+부 산
+푸꾸옥
+ZE981
+18:55
+21:30
+ 부산 김해공항 출발
+ 푸꾸옥 국제공항 도착 후 호텔 체크인 및 휴식
+제6일
+부 산
+06:55
+ 부산 국제공항 도착`;
+
+    const products = recoverCatalogSplitFromRawText(raw);
+
+    expect(products).toHaveLength(2);
+    expect(products[0]?.extractedData.title).toBe('부산 - 푸꾸옥 세이브 여유로운 6일');
+    expect(products[1]?.extractedData.title).toBe('부산 - 푸꾸옥 스탠다드 완전정복 6일');
+    expect(products[0]?.extractedData.duration).toBe(6);
+    expect(products[0]?.extractedData.nights).toBe(4);
+    expect(products[0]?.sectionRawText).toContain('599,000원');
+    expect(products[0]?.sectionRawText).not.toContain('799,000원');
+    expect(products[1]?.sectionRawText).toContain('799,000원');
+  });
+
   it('recovers newline PKG catalog sections before upload route blocks customer delivery', () => {
     const raw = `공통 가격표
 스팟특가

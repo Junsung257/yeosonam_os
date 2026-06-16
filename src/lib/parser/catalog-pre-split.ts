@@ -53,6 +53,39 @@ export function collectVariantCatalogBlockStarts(raw: string): number[] {
   return deduped;
 }
 
+export function collectSpecialPriceBlockStarts(raw: string): number[] {
+  const text = raw.replace(/\r\n/g, '\n');
+  const starts: number[] = [];
+  const lines = text.split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/SPECIAL\s+PRICE/i.test(lines[i])) continue;
+    const window = lines.slice(i, Math.min(lines.length, i + 40)).join('\n');
+    const hasPrice = /(?:\d{1,3}(?:,\d{3})+|\d+\s*만원|\d+\s*만)/.test(window);
+    const hasDuration = /\d+\s*박\s*\d+\s*일|여유로운\s*\d+\s*일|완전정복\s*\d+\s*일/.test(window);
+    const hasTransport = /\b(?:BX|ZE|7C|LJ|KE|OZ|TW|RS)\s*\d{2,4}\b|항공|출발|도착/.test(window);
+    if (hasPrice && hasDuration && hasTransport) starts.push(offsets[i]);
+  }
+
+  const sorted = [...new Set(starts)].sort((a, b) => a - b);
+  if (sorted.length <= 1) return sorted;
+
+  const deduped: number[] = [sorted[0]];
+  const MIN_SPECIAL_PRICE_GAP = 200;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i] - deduped[deduped.length - 1] >= MIN_SPECIAL_PRICE_GAP) {
+      deduped.push(sorted[i]);
+    }
+  }
+  return deduped;
+}
+
 /**
  * 카탈로그형 원문을 일정표 헤더 기준으로 분할 (Lost-in-the-middle 완화).
  * 각 섹션 = 한 상품의 `[코드]…일정표`부터 다음 동일 헤더 직전까지.
@@ -158,6 +191,7 @@ export function countCatalogItineraryHeaders(raw: string): number {
   return Math.max(
     collectItineraryHeaderStarts(raw).length,
     collectVariantCatalogBlockStarts(raw).length,
+    collectSpecialPriceBlockStarts(raw).length,
     collectPkgBlockStarts(raw).length,
   );
 }
@@ -307,6 +341,13 @@ export function extractProductRawTextSection(
     return ((sharedPrefix ? `${sharedPrefix}\n\n---\n\n` : '') + section).trim();
   }
 
+  const specialPriceStarts = collectSpecialPriceBlockStarts(text);
+  if (specialPriceStarts.length >= totalProducts && specialPriceStarts.length >= 2) {
+    const start = specialPriceStarts[idx] ?? specialPriceStarts[specialPriceStarts.length - 1];
+    const end = idx + 1 < specialPriceStarts.length ? specialPriceStarts[idx + 1] : text.length;
+    return text.slice(start, end).trim();
+  }
+
   const pkgStarts = collectPkgBlockStarts(text);
   if (pkgStarts.length >= totalProducts && pkgStarts.length >= 2) {
     const start = pkgStarts[idx] ?? pkgStarts[pkgStarts.length - 1];
@@ -344,13 +385,16 @@ export function extractProductRawTextSection(
 export function splitCatalogByItineraryHeaders(raw: string): CatalogSplitResult {
   const text = raw.replace(/\r\n/g, '\n');
   const variantStarts = collectVariantCatalogBlockStarts(text);
+  const specialPriceStarts = collectSpecialPriceBlockStarts(text);
   const itineraryStarts = collectItineraryHeaderStarts(text);
   const pkgStarts = collectPkgBlockStarts(text);
   const starts = pkgStarts.length >= 2
     ? pkgStarts
-    : variantStarts.length >= 2
-      ? variantStarts
-      : itineraryStarts;
+    : specialPriceStarts.length >= 2
+      ? specialPriceStarts
+      : variantStarts.length >= 2
+        ? variantStarts
+        : itineraryStarts;
 
   if (starts.length <= 1) {
     return { sharedPrefix: '', sections: [text] };
