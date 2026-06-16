@@ -36,10 +36,12 @@ export function BookingOpsPanel({
 }: BookingOpsPanelProps) {
   const [summary, setSummary] = useState<BookingOpsSummary | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const openedTaskRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams({ limit: String(limit) });
       if (bookingId) params.set('booking_id', bookingId);
@@ -58,6 +60,7 @@ export function BookingOpsPanel({
       }
     } catch {
       setSummary(null);
+      setError('예약 운영판 데이터를 불러오지 못했습니다.');
     } finally {
       setLoading(false);
     }
@@ -228,13 +231,33 @@ export function BookingOpsPanel({
         )}
 
         {loading && !summary ? (
-          <div className="grid gap-2 md:grid-cols-2">
-            {Array.from({ length: compact ? 2 : 4 }).map((_, index) => (
-              <div key={index} className="h-24 animate-pulse rounded-admin-sm bg-admin-surface-2" />
-            ))}
+          <div className="space-y-2">
+            <div className="rounded-admin-sm border border-admin-border-mid bg-admin-surface-2 px-3 py-2">
+              <div className="mb-2 h-3 w-28 animate-pulse rounded bg-admin-border-mid" />
+              <div className="h-2 w-full animate-pulse rounded bg-admin-border-mid" />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {Array.from({ length: compact ? 2 : 4 }).map((_, index) => (
+                <div key={index} className="h-24 animate-pulse rounded-admin-sm bg-admin-surface-2" />
+              ))}
+            </div>
+          </div>
+        ) : error ? (
+          <div className="rounded-admin-sm border border-red-100 bg-red-50 px-4 py-5">
+            <div className="text-admin-sm font-bold text-red-800">운영판 확인이 필요합니다</div>
+            <div className="mt-1 text-admin-xs leading-relaxed text-red-700">
+              {error} 예약표는 계속 사용할 수 있지만, 우선순위 큐는 최신 상태가 아닐 수 있습니다.
+            </div>
+            <button
+              type="button"
+              onClick={load}
+              className="mt-3 rounded-admin-sm border border-red-200 bg-white px-3 py-1.5 text-admin-xs font-semibold text-red-800 hover:bg-red-50"
+            >
+              다시 불러오기
+            </button>
           </div>
         ) : actions.length === 0 ? (
-          <div className="rounded-admin-sm border border-dashed border-admin-border px-4 py-6 text-center">
+          <div className="rounded-admin-sm border border-dashed border-emerald-200 bg-emerald-50/40 px-4 py-6 text-center">
             <div className="text-admin-sm font-semibold text-admin-text">처리할 예약 작업이 없습니다.</div>
             <div className="mt-1 text-admin-xs text-admin-muted">새 예약이나 예외가 생기면 이곳에 먼저 올라옵니다.</div>
           </div>

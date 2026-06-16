@@ -1,27 +1,33 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BookingTaskActionCard } from './BookingTaskActionCard';
 import type { BookingOpsSummary } from '@/lib/booking-ops';
 
 export function MobileBookingOpsQueue() {
   const [summary, setSummary] = useState<BookingOpsSummary | null>(null);
   const [expanded, setExpanded] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch('/api/admin/booking-ops/summary?limit=5', { cache: 'no-store' });
+      if (!res.ok) throw new Error(await res.text());
+      setSummary((await res.json()) as BookingOpsSummary);
+    } catch {
+      setSummary(null);
+      setError('예약 액션큐를 확인하지 못했습니다.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-    fetch('/api/admin/booking-ops/summary?limit=5', { cache: 'no-store' })
-      .then((res) => res.ok ? res.json() : null)
-      .then((data: BookingOpsSummary | null) => {
-        if (alive) setSummary(data);
-      })
-      .catch(() => {
-        if (alive) setSummary(null);
-      });
-    return () => {
-      alive = false;
-    };
-  }, []);
+    load();
+  }, [load]);
 
   const actions = summary?.actions ?? [];
   const visible = expanded ? actions : actions.slice(0, 2);
@@ -50,9 +56,26 @@ export function MobileBookingOpsQueue() {
           )}
         </div>
 
-        {actions.length === 0 ? (
-          <div className="rounded-admin-sm bg-admin-bg px-3 py-4 text-center text-xs text-admin-muted">
-            지금 처리할 예약 작업이 없습니다.
+        {loading && !summary ? (
+          <div className="space-y-2">
+            <div className="h-12 animate-pulse rounded-admin-sm bg-admin-bg" />
+            <div className="h-20 animate-pulse rounded-admin-sm bg-admin-bg" />
+          </div>
+        ) : error ? (
+          <div className="rounded-admin-sm border border-red-100 bg-red-50 px-3 py-4 text-xs text-red-700">
+            <p className="font-bold text-red-800">액션큐 확인이 필요합니다</p>
+            <p className="mt-1 leading-relaxed">{error} 예약표는 계속 열 수 있습니다.</p>
+            <button
+              type="button"
+              onClick={load}
+              className="mt-3 rounded-admin-sm border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-800"
+            >
+              다시 불러오기
+            </button>
+          </div>
+        ) : actions.length === 0 ? (
+          <div className="rounded-admin-sm border border-dashed border-emerald-200 bg-emerald-50/50 px-3 py-4 text-center text-xs text-emerald-800">
+            지금 바로 처리할 예약 작업이 없습니다.
           </div>
         ) : (
           <div className="space-y-2">
