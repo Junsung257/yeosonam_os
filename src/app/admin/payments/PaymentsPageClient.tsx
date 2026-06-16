@@ -221,6 +221,125 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
 
 // ─── TSV 파싱 (일괄 가져오기용) ───────────────────────────────────────────────
 
+function formatKRW(value: number): string {
+  return `${Math.round(value).toLocaleString('ko-KR')}원`;
+}
+
+function MatchDecisionPanel({
+  tx,
+  booking,
+  multiMode,
+  multiSelectedCount,
+  multiTotal,
+}: {
+  tx: BankTransaction;
+  booking: BookingFull | null;
+  multiMode: boolean;
+  multiSelectedCount: number;
+  multiTotal: number;
+}) {
+  if (multiMode) {
+    const diff = tx.amount - multiTotal;
+    const matched = Math.abs(diff) <= 500;
+    const tone = matched
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      : diff > 0
+        ? 'border-amber-200 bg-amber-50 text-amber-900'
+        : 'border-orange-200 bg-orange-50 text-orange-900';
+
+    return (
+      <section className={`rounded-lg border p-3 ${tone}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-bold uppercase opacity-70">묶음 매칭 검증</p>
+            <p className="mt-1 text-admin-sm font-extrabold">
+              {multiSelectedCount}건 선택 · {matched ? '금액 일치' : diff > 0 ? '잔액 남음' : '입금 초과'}
+            </p>
+          </div>
+          <div className="text-right text-[12px] font-bold tabular-nums">
+            <p>{formatKRW(multiTotal)}</p>
+            <p className="opacity-70">입금 {formatKRW(tx.amount)}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-[12px] leading-relaxed">
+          {matched
+            ? '선택한 예약 잔금 합계와 입금액이 거의 일치합니다. 확정 전 예약 구성만 확인하세요.'
+            : diff > 0
+              ? `입금액 중 ${formatKRW(diff)}이 아직 배정되지 않았습니다. 예약을 더 선택하거나 수수료/보류 처리하세요.`
+              : `선택 예약 합계가 입금액보다 ${formatKRW(Math.abs(diff))} 큽니다. 일부 예약 금액을 다시 확인하세요.`}
+        </p>
+      </section>
+    );
+  }
+
+  if (!booking) {
+    return (
+      <section className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-slate-700">
+        <p className="text-[11px] font-bold uppercase text-slate-500">매칭 검증</p>
+        <p className="mt-1 text-[12px] leading-relaxed">
+          예약을 선택하면 입금자명, 잔금, 확정 후 반영 결과를 여기서 바로 확인할 수 있습니다.
+        </p>
+      </section>
+    );
+  }
+
+  const balance = getBalance(booking);
+  const diff = tx.amount - balance;
+  const absoluteDiff = Math.abs(diff);
+  const nameScore = nameSim(booking.customers?.name, tx.counterparty_name);
+  const amountMatched = absoluteDiff <= 500;
+  const nameMatched = nameScore >= 0.7;
+  const paymentAfterMatch = (booking.paid_amount || 0) + tx.amount;
+  const remainingAfterMatch = Math.max(0, (booking.total_price || 0) - paymentAfterMatch);
+  const tone = amountMatched && nameMatched
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+    : amountMatched || nameMatched
+      ? 'border-amber-200 bg-amber-50 text-amber-900'
+      : 'border-rose-200 bg-rose-50 text-rose-900';
+
+  return (
+    <section className={`rounded-lg border p-3 ${tone}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] font-bold uppercase opacity-70">매칭 검증</p>
+          <p className="mt-1 truncate text-admin-sm font-extrabold">
+            {booking.customers?.name || booking.booking_no || '선택 예약'}
+          </p>
+        </div>
+        <div className="shrink-0 text-right text-[12px] font-bold tabular-nums">
+          <p>{amountMatched ? '금액 일치' : diff > 0 ? '초과 입금' : '부분 입금'}</p>
+          <p className="opacity-70">{formatKRW(absoluteDiff)}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+        <DecisionMetric label="입금액" value={formatKRW(tx.amount)} />
+        <DecisionMetric label="예약 잔금" value={formatKRW(balance)} />
+        <DecisionMetric label="이름 유사도" value={`${Math.round(nameScore * 100)}%`} />
+      </div>
+
+      <div className="mt-3 rounded-md bg-white/70 p-2 text-[12px] leading-relaxed text-inherit">
+        {amountMatched ? (
+          <p>확정하면 이 예약의 잔금이 거의 닫힙니다. 입금자명과 고객명이 맞는지만 확인하세요.</p>
+        ) : diff > 0 ? (
+          <p>입금액이 예약 잔금보다 큽니다. 아래에서 마일리지 적립 또는 환불 대기금을 선택한 뒤 확정하세요.</p>
+        ) : (
+          <p>부분 입금으로 처리됩니다. 확정 후 남은 잔금은 {formatKRW(remainingAfterMatch)}입니다.</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function DecisionMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-md bg-white/70 px-2 py-2">
+      <p className="text-[10px] font-bold opacity-60">{label}</p>
+      <p className="mt-0.5 truncate text-[12px] font-extrabold tabular-nums">{value}</p>
+    </div>
+  );
+}
+
 interface ImportRow {
   receivedAt: string; depositAmount: number; withdrawAmount: number;
   counterpartyName: string; memo: string;
@@ -1311,6 +1430,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   if (next.has(id)) next.delete(id); else next.add(id);
                   return next;
                 })}
+              />
+
+              <MatchDecisionPanel
+                tx={selectedTx}
+                booking={selectedBooking}
+                multiMode={matchMode === 'multi'}
+                multiSelectedCount={multiSelected.size}
+                multiTotal={multiTotal}
               />
 
               {/* 신규 예약 생성 (입금→고객→예약→매칭 원스톱) */}
