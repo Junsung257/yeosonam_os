@@ -51,13 +51,27 @@ function main() {
   let changedFiles;
   try {
     // HEAD^ 가 없는 첫 커밋 등 edge case 는 보수적으로 빌드 진행.
-    changedFiles = execSync('git diff --name-only HEAD^ HEAD', { encoding: 'utf8' })
+    changedFiles = execSync('git diff --name-only HEAD^ HEAD', {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    })
       .split('\n')
       .map((s) => s.trim())
       .filter(Boolean);
   } catch {
-    console.log('[ignore-build] cannot diff HEAD^..HEAD — proceeding with build');
-    process.exit(1);
+    try {
+      changedFiles = execSync('git show --pretty="" --name-only HEAD', {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+        .split('\n')
+        .map((s) => s.trim())
+        .filter(Boolean);
+      console.log('[ignore-build] HEAD^ unavailable; using HEAD file list');
+    } catch {
+      console.log('[ignore-build] cannot inspect changed files; proceeding with build');
+      process.exit(1);
+    }
   }
 
   if (changedFiles.length === 0) {
