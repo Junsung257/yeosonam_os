@@ -4,6 +4,7 @@ import { supabaseAdmin, isSupabaseAdminConfigured } from '@/lib/supabase';
 import { classifySearchIntent, intentPriorityDelta } from '@/lib/blog-search-intent';
 import { computeSeasonalTargetPublishAt } from '@/lib/blog-season-publish';
 import { attachTopicFitMeta, evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
+import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 
 /** 서버에서 자기 호스트 크론 URL 호출 시 CRON_SECRET 전달 (프로덕션에서 발행자·트렌드 마이너 401 방지) */
 async function fetchCronEndpoint(path: string): Promise<Response> {
@@ -276,7 +277,7 @@ export async function POST(request: NextRequest) {
       const slides = cn[0].slides as Array<{ headline?: string }>;
       const topic = slides?.[0]?.headline || `카드뉴스 기반 블로그 ${card_news_id.slice(0, 8)}`;
 
-      const queueRow = attachTopicFitMeta({
+      const queueRow = normalizeBlogTopicQueueRow(attachTopicFitMeta({
         topic,
         source: 'card_news',
         priority: 85,
@@ -284,7 +285,7 @@ export async function POST(request: NextRequest) {
         card_news_id: card_news_id,
         target_publish_at: target_publish_at ?? new Date().toISOString(),
         meta: { slide_count: (cn[0].slide_image_urls as string[]).length },
-      });
+      }));
       const topicFit = queueRow.meta?.topic_fit_gate as ReturnType<typeof evaluateBlogTopicFit> | undefined;
       if (!topicFit?.passed) {
         return NextResponse.json({ error: 'topic_fit_failed', topic_fit_gate: topicFit }, { status: 422 });
@@ -312,7 +313,7 @@ export async function POST(request: NextRequest) {
         computeSeasonalTargetPublishAt(seasonal_month) ??
         new Date().toISOString();
 
-      const queueRow = attachTopicFitMeta({
+      const queueRow = normalizeBlogTopicQueueRow(attachTopicFitMeta({
         topic,
         source: 'user_seed',
         priority: effectivePriority,
@@ -321,7 +322,7 @@ export async function POST(request: NextRequest) {
         category: category ?? null,
         target_publish_at: resolvedPublishAt,
         search_intent: intent,
-      });
+      }));
       const topicFit = queueRow.meta?.topic_fit_gate as ReturnType<typeof evaluateBlogTopicFit> | undefined;
       if (!topicFit?.passed) {
         return NextResponse.json({ error: 'topic_fit_failed', topic_fit_gate: topicFit }, { status: 422 });

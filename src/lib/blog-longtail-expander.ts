@@ -9,6 +9,7 @@ import {
 import { fetchRelatedQueries } from './related-queries';
 import { supabaseAdmin } from './supabase';
 import { filterTopicFitPassed } from './blog-topic-fit-gate';
+import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
 
 const DEFAULT_LOOKBACK_DAYS = 28;
 const DEFAULT_LIMIT = 8;
@@ -641,7 +642,7 @@ export async function expandGscLongtailTopics(
     return { seeds, candidates, inserted: [], skipped, dryRun, errors };
   }
 
-  const rowsRaw = candidates.map((candidate) => ({
+  const rowsRaw = candidates.map((candidate) => normalizeBlogTopicQueueRow({
     topic: candidate.topic,
     source: 'gsc_longtail',
     priority: candidate.priority,

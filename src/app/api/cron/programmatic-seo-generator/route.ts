@@ -3,6 +3,7 @@ import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
+import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 
 /**
  * Programmatic SEO Generator — destination × angle × month 매트릭스 promote 크론
@@ -141,26 +142,28 @@ async function processTopic(
 
   const targetPublishAt = new Date(Date.now() + slotOffsetMin * 60_000).toISOString();
 
+  const queuePayload = normalizeBlogTopicQueueRow({
+    topic: hint.title,
+    source: 'programmatic_seo',
+    priority: topic.priority,
+    destination: topic.destination,
+    angle_type: topic.angle,
+    category: 'programmatic',
+    target_publish_at: targetPublishAt,
+    search_intent: topic.primary_keyword,
+    meta: {
+      pseo_topic_id: topic.id,
+      primary_keyword: topic.primary_keyword,
+      month: topic.month,
+      expected_tier: topic.expected_tier,
+      intro_hint: hint.intro,
+      title_fallback: hint.fallback,
+    },
+  });
+
   const { data: queueRows, error: queueErr } = await supabaseAdmin
     .from('blog_topic_queue')
-    .insert({
-      topic: hint.title,
-      source: 'programmatic_seo',
-      priority: topic.priority,
-      destination: topic.destination,
-      angle_type: topic.angle,
-      category: 'programmatic',
-      target_publish_at: targetPublishAt,
-      search_intent: topic.primary_keyword,
-      meta: {
-        pseo_topic_id: topic.id,
-        primary_keyword: topic.primary_keyword,
-        month: topic.month,
-        expected_tier: topic.expected_tier,
-        intro_hint: hint.intro,
-        title_fallback: hint.fallback,
-      },
-    })
+    .insert(queuePayload)
     .select('id')
     .limit(1);
 

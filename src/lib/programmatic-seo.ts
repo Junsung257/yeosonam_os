@@ -23,6 +23,7 @@ import { supabaseAdmin } from './supabase';
 import { researchKeywordsBatch, classifyKeywordTier } from './keyword-research';
 import { classifySearchIntent, intentPriorityDelta } from './blog-search-intent';
 import { computeSeasonalTargetPublishAt } from './blog-season-publish';
+import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
 
 // 12 angle × 시즌 적합도
 interface AngleTemplate {
@@ -259,11 +260,12 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     const seasonalAt = computeSeasonalTargetPublishAt(
       typeof c.month === 'number' ? c.month : null,
     );
-    queueRows.push({
+    queueRows.push(normalizeBlogTopicQueueRow({
       topic: c.topic_template,
       source: 'coverage_gap',  // programmatic은 coverage gap 일종
       priority,
       destination: c.destination,
+      angle_type: c.angle,
       category: 'travel_tips',
       primary_keyword: c.primary_keyword,
       keyword_tier: tier,
@@ -276,7 +278,7 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
         programmatic_month: c.month,
         search_intent: intent,
       },
-    });
+    }));
   }
 
   const { data: inserted, error } = await supabaseAdmin

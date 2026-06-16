@@ -4,6 +4,7 @@ import { collectAllTrends, classifyKeywordTier, detectDestination } from '@/lib/
 import { classifySearchIntent } from '@/lib/blog-search-intent';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
 
 /**
  * 트렌드 토픽 마이너 — 매일 06:00 KST (21:00 UTC) 실행
@@ -141,7 +142,7 @@ async function runTrendMiner(request: NextRequest) {
       raw: (c as { raw?: object }).raw ?? {},
     });
 
-    queueRows.push({
+    queueRows.push(normalizeBlogTopicQueueRow({
       topic,
       source: 'trend',
       priority: PRIORITY_TREND,
@@ -159,7 +160,7 @@ async function runTrendMiner(request: NextRequest) {
         raw: c.raw,
         search_intent: classifySearchIntent(c.keyword),
       },
-    });
+    }));
     archiveLink.push({ keyword: c.keyword, observed_at, source: c.source });
   }
 

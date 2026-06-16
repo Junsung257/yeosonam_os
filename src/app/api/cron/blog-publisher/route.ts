@@ -5,7 +5,7 @@ import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
-import { generateBlogPost, generateBlogSeo, ANGLE_PRESETS, type AngleType } from '@/lib/content-generator';
+import { generateBlogPost, generateBlogSeo, type AngleType } from '@/lib/content-generator';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { withCronLogging } from '@/lib/cron-observability';
@@ -46,6 +46,7 @@ import {
 } from '@/lib/blog-editorial-repair';
 import { normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
+import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -244,7 +245,7 @@ function normalizeGeneratedSlug(generated: GeneratedBlog, item: any): boolean {
 }
 
 function normalizeAngleType(value: unknown): AngleType {
-  return typeof value === 'string' && value in ANGLE_PRESETS ? value as AngleType : 'value';
+  return normalizeBlogAngleType(value);
 }
 
 function strengthenIntroHook(markdown: string, item: any, primaryKeyword?: string | null): string {

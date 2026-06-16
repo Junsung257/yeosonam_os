@@ -1,6 +1,17 @@
 # Blog Errors
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
+
+## ERR-BLOG-queue-contract-drift@2026-06-17
+
+- [x] **ERR-BLOG-queue-contract-drift@2026-06-17**: Blog automation could keep cycling through failures or misleading "published" counts because queue producers, publisher, and DB constraints did not share one queue contract.
+- **Root cause**: `blog_topic_queue.angle_type` accepted free-form producer labels, while `content_creatives.angle_type` only allowed the final content angle set. Some producers used values like `trend` or `longtail`; programmatic/manual paths also sent `search_intent` as a top-level queue column even though the table has no such column. Separately, product lifecycle archiving changed `content_creatives.status` to `archived` but left linked queue rows as `published`.
+- **Fix**: Added `src/lib/blog-queue-normalize.ts` and wired it into publisher, programmatic SEO, GSC longtail, trend miner, manual queue, and card-news queue paths. Search intent now moves to `meta.search_intent`; raw producer angle moves to `meta.raw_angle_type`; publishable `angle_type` is normalized to the allowed content angle set. `blog-lifecycle` now reconciles published queue rows whose linked article is no longer public.
+- **Production cleanup**: On 2026-06-17, live Supabase queue data was repaired: 17 active queue rows received a valid publish angle, 9 published/archived mismatches were moved out of published counts, and the DB source check was updated to include `gsc_longtail`.
+- **Prevention**: Every queue producer must call `normalizeBlogTopicQueueRow()` before insert. New queue sources require DB constraint, admin label, and runbook updates. Unknown queue fields belong in `meta`, not in the table payload.
+- **Verification**: `npm run type-check`; `npx vitest run src/lib/blog-queue-normalize.test.ts`; Supabase verification showed published queue/article mismatch `0`.
+
+---
 
 ## ERR-BLOG-briefless-generation@2026-06-16
 

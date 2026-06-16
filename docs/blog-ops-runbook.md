@@ -1,6 +1,6 @@
 # Blog Ops Runbook
 
-Last updated: 2026-06-16
+Last updated: 2026-06-17
 
 This runbook defines how operators decide whether the Yeosonam blog automation is healthy. The durable publish contract remains `docs/blog-autopublish-contract.md`; this file explains the daily operating workflow shown in `/admin/blog`.
 
@@ -79,3 +79,31 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Google URL Inspection evidence is a separate risk from IndexNow: recent reports included many `Google에는 아직 알려지지 않은 URL입니다` states.
 - Repeated DB publish failure found: product queue rows used Ad OS scenario angle values such as `safety`, `family`, `price_objection`, `differentiator`, but `content_creatives.angle_type` accepts the content-generator angle set. The live queued rows were repaired to `value`, and publisher code now normalizes angle values before quality gates and DB insert.
 - Vercel runtime logs showed repeated `env-check` warnings. `instrumentation.ts` was deduplicated and `env-check` now logs readable messages once per process.
+
+## 2026-06-17 Autopublish Hardening Evidence
+
+- Root cause class: queue producers and the publisher did not share one data contract.
+- `content_creatives.angle_type` only accepts `value`, `emotional`, `filial`, `luxury`, `urgency`, `activity`, and `food`.
+- Several producers used producer-only labels such as `trend`, `longtail`, or programmatic SEO angles. These labels must be stored as context in `meta.raw_angle_type`, not as publishable `angle_type`.
+- `programmatic-seo-generator`, `promotePendingTopics()`, and manual queue insertion previously sent `search_intent` as if it were a `blog_topic_queue` table column. It is not a table column. Search intent must live in `meta.search_intent`.
+- Live DB repair applied on 2026-06-17:
+  - normalized 17 queued/generating rows with empty publish angle to `value`;
+  - reconciled 9 queue rows that were still `published` while their linked articles were already `archived`;
+  - updated `blog_topic_queue_source_check` to allow the live `gsc_longtail` producer.
+- Code hardening:
+  - `src/lib/blog-queue-normalize.ts` is the single queue normalization contract;
+  - queue producers must call `normalizeBlogTopicQueueRow()` before insert;
+  - publisher calls `normalizeBlogAngleType()` before quality gates and DB write;
+  - `blog-lifecycle` reconciles published queue rows whose linked article is no longer public.
+- Verification:
+  - `npm run type-check` passed;
+  - `npx vitest run src/lib/blog-queue-normalize.test.ts` passed;
+  - recent 14-day published posts all had `blog_indexing_jobs` rows;
+  - after live repair, published queue rows matched public articles: `published queue 107`, `published article 107`, mismatch `0`.
+
+### Queue Producer Rules
+
+- Do not insert producer-only values directly into `blog_topic_queue.angle_type`.
+- Do not insert unknown fields into `blog_topic_queue`; put non-schema fields under `meta`.
+- Do not add a new queue `source` without updating the DB check constraint, admin labels, and this runbook.
+- Do not mark the system healthy while `published_state_mismatch > 0`.
