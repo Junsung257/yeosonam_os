@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { cache } from 'react';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
+import { encodeDestinationPathSegment, destinationSlugMatches, destinationToSlug } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
@@ -34,7 +35,7 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
-async function resolveDestinationRouteParam(value: string): Promise<string> {
+const resolveDestinationRouteParam = cache(async (value: string): Promise<string> => {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded || !isSupabaseConfigured) return decoded;
 
@@ -53,9 +54,9 @@ async function resolveDestinationRouteParam(value: string): Promise<string> {
   } catch {
     return decoded;
   }
-}
+});
 
-async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[]; packages: { id: string; title: string; price: number | null }[] }> {
+const getPostsByDestination = cache(async (dest: string): Promise<{ posts: BlogPost[]; packages: { id: string; title: string; price: number | null }[] }> => {
   if (!isSupabaseConfigured) return { posts: [], packages: [] };
 
   const destination = await resolveDestinationRouteParam(dest);
@@ -93,6 +94,30 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
     return { posts, packages: (pkgData || []) as { id: string; title: string; price: number | null }[] };
   } catch {
     return { posts: [], packages: [] };
+  }
+});
+
+export async function generateStaticParams() {
+  if (!isSupabaseConfigured) return [];
+
+  try {
+    const { data } = await supabaseAdmin
+      .from('content_creatives')
+      .select('destination')
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('destination', 'is', null)
+      .limit(2000);
+
+    const destinations = new Set<string>();
+    for (const row of (data || []) as Array<{ destination: string | null }>) {
+      const destination = row.destination?.trim();
+      if (destination) destinations.add(destinationToSlug(destination));
+    }
+
+    return [...destinations].map(dest => ({ dest }));
+  } catch {
+    return [];
   }
 }
 

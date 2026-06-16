@@ -40,7 +40,7 @@ export interface BookingOpsAction {
   relatedActions: BookingOpsRelatedAction[];
 }
 
-export interface BookingOpsRelatedAction {
+interface BookingOpsRelatedAction {
   id: string;
   taskType: string;
   taskTypeLabel: string;
@@ -51,7 +51,7 @@ export interface BookingOpsRelatedAction {
   score: number;
 }
 
-export interface BookingOpsPaymentBookingCandidate {
+interface BookingOpsPaymentBookingCandidate {
   bookingId: string;
   bookingNo: string | null;
   customerName: string | null;
@@ -61,7 +61,7 @@ export interface BookingOpsPaymentBookingCandidate {
   reasons: string[];
 }
 
-export interface BookingOpsPaymentCandidate {
+interface BookingOpsPaymentCandidate {
   transactionId: string;
   amount: number;
   counterpartyName: string | null;
@@ -205,7 +205,7 @@ export function getBookingTaskAction(taskType: string): {
   };
 }
 
-export function getBookingOpsPriorityRank(priority: TaskPriority): number {
+function getBookingOpsPriorityRank(priority: TaskPriority): number {
   return priority;
 }
 

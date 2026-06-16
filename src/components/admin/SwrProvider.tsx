@@ -1,6 +1,9 @@
 'use client';
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
 import { SWRConfig } from 'swr';
+import { adminJson, shouldRetryAdminQuery } from '@/lib/admin-http';
 
 /**
  * 어드민 영역 전용 SWR Provider.
@@ -14,26 +17,38 @@ import { SWRConfig } from 'swr';
  * 감사: docs/audits/2026-05-11-admin-perf-audit.md
  */
 export default function AdminSwrProvider({ children }: { children: React.ReactNode }) {
-  return (
-    <SWRConfig
-      value={{
-        fetcher: async (key: string) => {
-          const res = await fetch(key, { credentials: 'same-origin' });
-          if (!res.ok) {
-            const text = await res.text().catch(() => '');
-            throw new Error(`fetch ${res.status}: ${text.slice(0, 200)}`);
-          }
-          return res.json();
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            gcTime: 5 * 60_000,
+            refetchOnWindowFocus: false,
+            retry: shouldRetryAdminQuery,
+          },
+          mutations: {
+            retry: false,
+          },
         },
-        dedupingInterval: 30_000,
-        revalidateOnFocus: false,
-        revalidateOnReconnect: true,
-        keepPreviousData: true,
-        errorRetryCount: 2,
-        errorRetryInterval: 2000,
-      }}
-    >
-      {children}
-    </SWRConfig>
+      }),
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>
+      <SWRConfig
+        value={{
+          fetcher: adminJson,
+          dedupingInterval: 30_000,
+          revalidateOnFocus: false,
+          revalidateOnReconnect: true,
+          keepPreviousData: true,
+          errorRetryCount: 2,
+          errorRetryInterval: 2000,
+        }}
+      >
+        {children}
+      </SWRConfig>
+    </QueryClientProvider>
   );
 }

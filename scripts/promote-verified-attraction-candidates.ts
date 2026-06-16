@@ -35,6 +35,7 @@ type CandidateRow = {
   source_context: Record<string, unknown> | null;
   suggested_master: Record<string, unknown> | null;
   external_sources: Array<{ name?: string | null; id?: string | null; source?: string | null }> | null;
+  source_unmatched_ids: string[] | null;
   verification_score: number | null;
   package_count: number | null;
 };
@@ -87,7 +88,7 @@ function chooseMasterName(row: CandidateRow): string {
 async function fetchCandidates(): Promise<CandidateRow[]> {
   let query = supabase
     .from('entity_master_candidates')
-    .select('id, candidate_key, raw_label, normalized_label, canonical_name, destination_scope, country_scope, region_scope, source_context, suggested_master, external_sources, verification_score, package_count')
+    .select('id, candidate_key, raw_label, normalized_label, canonical_name, destination_scope, country_scope, region_scope, source_context, suggested_master, external_sources, source_unmatched_ids, verification_score, package_count')
     .eq('category', 'attraction')
     .eq('auto_action', 'create_internal_master')
     .eq('auto_verification_status', 'verified_internal')
@@ -194,6 +195,25 @@ async function promote(row: CandidateRow) {
         promoted_at: new Date().toISOString(),
       })
       .eq('candidate_key', row.candidate_key);
+
+    const sourceUnmatchedIds = (row.source_unmatched_ids ?? []).filter(Boolean);
+    if (sourceUnmatchedIds.length > 0) {
+      const now = new Date().toISOString();
+      const { error } = await supabase
+        .from('unmatched_activities')
+        .update({
+          status: 'added',
+          resolved_at: now,
+          resolved_kind: 'auto_internal_candidate_promoted',
+          resolved_attraction_id: attractionId,
+          resolved_by: 'promote_verified_attraction_candidates',
+          updated_at: now,
+        })
+        .in('id', sourceUnmatchedIds)
+        .eq('status', 'pending')
+        .is('resolved_at', null);
+      if (error) throw error;
+    }
   }
 
   return { status: created ? 'created' : 'linked_existing', candidate_key: row.candidate_key, attractionId, masterName, aliases };

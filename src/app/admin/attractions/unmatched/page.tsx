@@ -81,6 +81,13 @@ interface UnmatchedSummary {
   pending_high_occurrence: number;
   auto_alias_resolved_total: number;
   manual_link_alias_total: number;
+  pending_resolved_conflict_count?: number;
+  legacy_resolved_status_count?: number;
+  active_pending_count?: number;
+  terminal_reingest_blocked_recent?: number;
+  candidate_queued_total?: number;
+  auto_ignored_total?: number;
+  cron_last_success_at?: string | null;
   high_occurrence_threshold: number;
   recent_auto_alias: Array<{
     id: string;
@@ -407,6 +414,13 @@ export default function UnmatchedPage() {
           ...json,
           manual_link_alias_total: typeof json.manual_link_alias_total === 'number' ? json.manual_link_alias_total : 0,
           high_occurrence_threshold: typeof json.high_occurrence_threshold === 'number' ? json.high_occurrence_threshold : 3,
+          pending_resolved_conflict_count: typeof json.pending_resolved_conflict_count === 'number' ? json.pending_resolved_conflict_count : 0,
+          legacy_resolved_status_count: typeof json.legacy_resolved_status_count === 'number' ? json.legacy_resolved_status_count : 0,
+          active_pending_count: typeof json.active_pending_count === 'number' ? json.active_pending_count : undefined,
+          terminal_reingest_blocked_recent: typeof json.terminal_reingest_blocked_recent === 'number' ? json.terminal_reingest_blocked_recent : 0,
+          candidate_queued_total: typeof json.candidate_queued_total === 'number' ? json.candidate_queued_total : 0,
+          auto_ignored_total: typeof json.auto_ignored_total === 'number' ? json.auto_ignored_total : 0,
+          cron_last_success_at: typeof json.cron_last_success_at === 'string' ? json.cron_last_success_at : null,
         } as UnmatchedSummary);
       }
     } catch {
@@ -575,7 +589,10 @@ export default function UnmatchedPage() {
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 text-center">
-            <div className="text-2xl font-bold text-admin-text-2">{summary.counts.pending}</div>
+            <div className="text-2xl font-bold text-admin-text-2">{summary.active_pending_count ?? summary.counts.pending}</div>
+            {(summary.pending_resolved_conflict_count ?? 0) > 0 && (
+              <div className="mt-1 text-[10px] text-red-600">conflict {summary.pending_resolved_conflict_count}</div>
+            )}
             <div className="text-xs text-admin-muted">대기중</div>
           </div>
           <div className="bg-white border border-amber-200 rounded-admin-md p-3 text-center">
@@ -597,6 +614,33 @@ export default function UnmatchedPage() {
           </div>
           <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 text-left text-xs text-admin-muted">
             <div className="font-semibold text-admin-text-2 mb-1">최근 자동 처리</div>
+            <div className="mt-1 space-y-0.5">
+              <div className="flex justify-between">
+                <span>legacy resolved</span>
+                <span className="font-semibold text-admin-text-2">{summary.legacy_resolved_status_count ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>blocked re-ingest</span>
+                <span className="font-semibold text-admin-text-2">{summary.terminal_reingest_blocked_recent ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>candidate queue</span>
+                <span className="font-semibold text-admin-text-2">{summary.candidate_queued_total ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>ignored</span>
+                <span className="font-semibold text-admin-text-2">{summary.auto_ignored_total ?? 0}</span>
+              </div>
+              {summary.cron_last_success_at && (
+                <div className="flex justify-between gap-2">
+                  <span>last cron</span>
+                  <span className="font-semibold text-admin-text-2 truncate">
+                    {new Date(summary.cron_last_success_at).toLocaleString('ko-KR')}
+                  </span>
+                </div>
+              )}
+            </div>
+            <div className="font-semibold text-admin-text-2 mt-2 mb-1">Recent auto</div>
             {summary.recent_auto_alias.length === 0 ? (
               <span className="text-admin-muted-2">아직 없음</span>
             ) : (

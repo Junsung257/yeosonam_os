@@ -13,6 +13,13 @@ export interface UnmatchedSummary {
   auto_alias_resolved_total: number;
   /** PATCH link_alias (어드민 1클릭) — resolved_kind = manual_link_alias */
   manual_link_alias_total: number;
+  pending_resolved_conflict_count: number;
+  legacy_resolved_status_count: number;
+  active_pending_count: number;
+  terminal_reingest_blocked_recent: number;
+  candidate_queued_total: number;
+  auto_ignored_total: number;
+  cron_last_success_at: string | null;
   /** `pending_high_occurrence` 집계에 쓰인 등장 횟수 하한 (env와 부트스트랩 기본과 동일) */
   high_occurrence_threshold: number;
   recent_auto_alias: Array<{
@@ -31,9 +38,91 @@ export interface UnmatchedSummary {
  */
 export async function getUnmatchedSummary(): Promise<UnmatchedSummary> {
   const { minOccurrences: highOccMin } = getUnmatchedBootstrapEnvDefaults();
-  const { data, error } = await supabaseAdmin.rpc('get_unmatched_summary', { p_high_occ_min: highOccMin });
+  const [
+    { data, error },
+    activePending,
+    pendingResolvedConflict,
+    legacyResolved,
+    terminalRecent,
+    candidateQueued,
+    autoIgnored,
+    cronLastSuccess,
+  ] = await Promise.all([
+    supabaseAdmin.rpc('get_unmatched_summary', { p_high_occ_min: highOccMin }),
+    countRows(query => query.eq('status', 'pending').is('resolved_at', null)),
+    countRows(query => query.eq('status', 'pending').not('resolved_at', 'is', null)),
+    countRows(query => query.eq('status', 'resolved')),
+    countTerminalReingests(),
+    countRows(query => query.eq('suggested_action', 'candidate_queue')),
+    countRows(query => query.eq('status', 'ignored')),
+    getLastUnmatchedCronSuccessAt(),
+  ]);
   if (error) throw error;
-  return data as UnmatchedSummary;
+  return {
+    ...(data as UnmatchedSummary),
+    active_pending_count: activePending,
+    pending_resolved_conflict_count: pendingResolvedConflict,
+    legacy_resolved_status_count: legacyResolved,
+    terminal_reingest_blocked_recent: terminalRecent,
+    candidate_queued_total: candidateQueued,
+    auto_ignored_total: autoIgnored,
+    cron_last_success_at: cronLastSuccess,
+  };
+}
+
+type CountableQuery = {
+  eq: (column: string, value: unknown) => CountableQuery;
+  is: (column: string, value: unknown) => CountableQuery;
+  not: (column: string, operator: string, value: unknown) => CountableQuery;
+  then: Promise<{ count: number | null; error: unknown }>['then'];
+};
+
+async function countRows(apply: (query: CountableQuery) => CountableQuery): Promise<number> {
+  const query = apply(
+    supabaseAdmin
+      .from('unmatched_activities')
+      .select('*', { count: 'exact', head: true }) as unknown as CountableQuery,
+  );
+  const { count, error } = await query;
+  if (error) throw error;
+  return count ?? 0;
+}
+
+async function countTerminalReingests(): Promise<number> {
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const { data, error } = await supabaseAdmin
+    .from('unmatched_activities')
+    .select('updated_at, resolved_at')
+    .in('status', ['added', 'ignored', 'resolved'])
+    .not('resolved_at', 'is', null)
+    .gte('updated_at', since)
+    .limit(5000);
+  if (error) throw error;
+  return (data ?? []).filter(row => {
+    const updatedAt = Date.parse(String((row as { updated_at?: string | null }).updated_at ?? ''));
+    const resolvedAt = Date.parse(String((row as { resolved_at?: string | null }).resolved_at ?? ''));
+    return Number.isFinite(updatedAt) && Number.isFinite(resolvedAt) && updatedAt > resolvedAt;
+  }).length;
+}
+
+async function getLastUnmatchedCronSuccessAt(): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from('cron_run_logs')
+    .select('finished_at')
+    .in('cron_name', [
+      'unmatched-orchestrator',
+      'unmatched-classify',
+      'resweep-unmatched',
+      'unmatched-auto-resolve',
+      'entity-master-candidates',
+      'entity-resolution',
+      'promote-internal-candidates',
+    ])
+    .eq('status', 'success')
+    .order('finished_at', { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return (data?.[0] as { finished_at?: string | null } | undefined)?.finished_at ?? null;
 }
 
 export interface BootstrapCandidateRow {

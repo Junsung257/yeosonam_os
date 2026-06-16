@@ -1,4 +1,4 @@
-export type BookingOpsTimelineKind =
+type BookingOpsTimelineKind =
   | 'booking'
   | 'payment'
   | 'task'

@@ -14,7 +14,7 @@
  */
 
 import { NextRequest } from 'next/server'
-import { supabaseAdmin } from '@/lib/supabase'
+import { isSupabaseAdminConfigured, supabaseAdmin } from '@/lib/supabase'
 import { getQaChatPackageContext } from '@/lib/qa-chat-packages'
 import { buildQaPackageHintSource, extractQaDestinationHint } from '@/lib/qa-destination-hint'
 import { extractAndStoreFacts, loadActiveFacts } from '@/lib/jarvis/fact-extractor'
@@ -160,6 +160,20 @@ export async function POST(req: NextRequest) {
           correlationId,
           source: 'qa_chat',
         })
+
+        if (!isSupabaseAdminConfigured) {
+          const approvalRequired = requiresApproval(preDecision.riskLevel)
+          emitSSE('error', {
+            message: approvalRequired
+              ? '환불, 결제 취소, 예약 변경처럼 확인이 필요한 요청입니다. 지금은 운영 DB 연결이 없어 자동 처리하지 않고 상담원 확인으로 넘겨야 합니다.'
+              : '현재 운영 DB 연결이 없어 실시간 고객 상담 답변을 완료할 수 없습니다. 잠시 후 다시 시도하거나 상담원에게 연결해 주세요.',
+            code: 'SUPABASE_ADMIN_NOT_CONFIGURED',
+            escalate: true,
+            riskLevel: preDecision.riskLevel,
+          })
+          emitSSE('done', {})
+          return
+        }
 
         agentTaskId = await createAgentTask(preDecision.envelope).then(t => t.id)
         await transitionAgentTask(agentTaskId!, 'queued', 'running')

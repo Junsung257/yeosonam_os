@@ -1,273 +1,290 @@
 import { type NextRequest } from 'next/server';
-import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
-// P11-3: suggestFromWikidata → reconcilePlaceName 로 대체됨
-import { cleanActivity } from '@/lib/unmatched-suggest';
-import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
 import { canCreateAttractionRecord } from '@/lib/attraction-policy';
-import { apiResponse } from '@/lib/api-response';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-change';
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { cleanActivity, suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
+import {
+  closeUnmatchedAsCandidateQueued,
+  countActiveUnmatched,
+} from '@/lib/unmatched-lifecycle';
 
 export const dynamic = 'force-dynamic';
 
-/**
- * 고신뢰 미매칭 자동해결 크론
- * - 1차: 내부 attractions 매칭 (score >= UNMATCHED_AUTO_RESOLVE_MIN_SCORE, 기본 75)
- * - 2차: 내부 매칭 실패 → Wikidata reconcile
- *   - 기존 qid가 있으면 alias 자동 연결
- *   - 신규 qid는 자동 INSERT 하지 않고 note 제안만 저장 (어드민 수동 확인)
- *
- * SSOT: docs/product-registration-v3-standard-language.md
- *   - 자동 신규 attraction INSERT 금지
- *   - match/alias/unmatched review 흐름만 자동화
- */
-export async function GET(request: NextRequest) {
-  if (!isCronAuthorized(request)) {
-    return cronUnauthorizedResponse();
+type UnmatchedRow = {
+  id: string;
+  activity: string;
+  region: string | null;
+  country: string | null;
+  note: string | null;
+  segment_kind_guess: string | null;
+  confidence: number | null;
+};
+
+type WikidataSuggestion = {
+  qid: string;
+  label_ko: string | null;
+  label_en: string | null;
+  description: string | null;
+  image_url: string | null;
+  confidence: number;
+};
+
+function limitFrom(request: NextRequest): number {
+  const raw = request.nextUrl.searchParams.get('limit') ?? process.env.UNMATCHED_AUTO_RESOLVE_LIMIT ?? '500';
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.max(1, Math.min(2000, Math.floor(value))) : 500;
+}
+
+function minScoreFrom(): number {
+  const value = Number(process.env.UNMATCHED_AUTO_RESOLVE_MIN_SCORE ?? 75);
+  return Number.isFinite(value) ? value : 75;
+}
+
+async function addAlias(attractionId: string, aliases: string[] | null, alias: string, now: string) {
+  const cleanAlias = alias.replace(/\s+/g, ' ').trim();
+  if (!cleanAlias || aliases?.includes(cleanAlias)) return;
+  const { error } = await supabaseAdmin
+    .from('attractions')
+    .update({ aliases: [...new Set([...(aliases ?? []), cleanAlias])], updated_at: now })
+    .eq('id', attractionId);
+  if (error) throw error;
+}
+
+async function queueWikidataCandidate(unmatched: UnmatchedRow, top: WikidataSuggestion, now: string): Promise<number> {
+  const label = top.label_ko || top.label_en || unmatched.activity;
+  const candidateKey = `wikidata:${top.qid}:${unmatched.country ?? ''}:${unmatched.region ?? ''}`;
+  const { data, error } = await supabaseAdmin
+    .from('entity_master_candidates')
+    .upsert({
+      candidate_key: candidateKey,
+      category: 'attraction',
+      raw_label: unmatched.activity,
+      normalized_label: label,
+      destination_scope: unmatched.region ?? unmatched.country,
+      country_scope: unmatched.country,
+      region_scope: unmatched.region,
+      evidence_count: 1,
+      occurrence_count: 1,
+      package_count: 0,
+      source_unmatched_ids: [unmatched.id],
+      source_context: {
+        analyzer: 'unmatched-auto-resolve-wikidata',
+        analyzed_at: now,
+        unmatched_activity: unmatched.activity,
+      },
+      external_sources: [{
+        source: 'wikidata',
+        id: top.qid,
+        url: `https://www.wikidata.org/wiki/${top.qid}`,
+        confidence: top.confidence,
+        name: label,
+      }],
+      suggested_master: {
+        label,
+        category: 'attraction',
+        country: unmatched.country,
+        region: unmatched.region,
+        customer_publishable: false,
+        verification_status: 'needs_review',
+        wikidata_qid: top.qid,
+        description: top.description,
+        image_url: top.image_url,
+      },
+      confidence: Math.max(0.55, Math.min(0.85, top.confidence)),
+      promotion_status: 'needs_review',
+      auto_action: 'needs_review',
+      decision_reason: 'Wikidata reconciliation suggestion requires review before master mutation',
+      auto_verification_status: 'needs_review',
+      verification_score: Math.max(0.55, Math.min(0.85, top.confidence)),
+      canonical_name: label,
+      canonical_name_source: 'wikidata',
+      source_reliability_snapshot: {
+        source_count: 1,
+        sources: ['wikidata'],
+        wikidata_top_score: top.confidence,
+      },
+      updated_at: now,
+    }, { onConflict: 'candidate_key' })
+    .select('id, candidate_key, category, promotion_status, canonical_name, normalized_label')
+    .single();
+  if (error || !data) throw error ?? new Error('failed to queue Wikidata candidate');
+
+  const candidate = data as {
+    id: string;
+    candidate_key: string;
+    category: string;
+    promotion_status: string;
+    canonical_name: string | null;
+    normalized_label: string | null;
+  };
+  return closeUnmatchedAsCandidateQueued([unmatched.id], {
+    candidateId: candidate.id,
+    candidateKey: candidate.candidate_key,
+    candidateStatus: candidate.promotion_status,
+    candidateCategory: candidate.category,
+    candidateLabel: candidate.canonical_name ?? candidate.normalized_label,
+    resolvedBy: 'cron_unmatched_auto_resolve',
+  });
+}
+
+async function handleUnmatchedAutoResolve(request: NextRequest) {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+
+  if (!isSupabaseConfigured) {
+    return { ok: true, scanned: 0, resolved: 0, wikidataSuggested: 0, errors: [] as string[] };
   }
 
-  if (!isSupabaseConfigured) return apiResponse({ ok: true, scanned: 0, resolved: 0 });
+  const minScore = minScoreFrom();
+  const limit = limitFrom(request);
+  const wikidataEnabled = process.env.UNMATCHED_AUTO_RESOLVE_WIKIDATA !== 'false';
+  const errors: string[] = [];
+  const affectedAttractionIds = new Set<string>();
+  let scanned = 0;
+  let resolved = 0;
+  let wikidataSuggested = 0;
 
-  try {
-    const minScore = parseFloat(process.env.UNMATCHED_AUTO_RESOLVE_MIN_SCORE || '75');
-    const limit = Math.max(1, parseInt(new URL(request.url).searchParams.get('limit') || (process.env.UNMATCHED_AUTO_RESOLVE_LIMIT || '500'), 10));
-    const wikidataEnabled = process.env.UNMATCHED_AUTO_RESOLVE_WIKIDATA !== 'false';
+  const [{ data: unresolved, error: unmatchedError }, { data: attractions, error: attractionsError }] = await Promise.all([
+    supabaseAdmin
+      .from('unmatched_activities')
+      .select('id, activity, region, country, note, segment_kind_guess, confidence')
+      .eq('status', 'pending')
+      .is('resolved_at', null)
+      .order('occurrence_count', { ascending: false })
+      .limit(limit),
+    supabaseAdmin
+      .from('attractions')
+      .select('id, name, aliases, region, country, category, emoji, short_desc')
+      .eq('is_active', true)
+      .limit(5000),
+  ]);
+  if (unmatchedError) throw unmatchedError;
+  if (attractionsError) throw attractionsError;
 
-    const [{ data: unresolved }, { data: attractions }] = await Promise.all([
-      supabaseAdmin
-        .from('unmatched_activities')
-        .select('id, activity, region, country, note, segment_kind_guess, suggested_action, confidence')
-        .eq('status', 'pending')
-        .is('resolved_at', null)
-        .order('occurrence_count', { ascending: false })
-        .limit(limit),
-      supabaseAdmin
-        .from('attractions')
-        .select('id, name, aliases, region, country, category, emoji, short_desc')
-        .eq('is_active', true)
-        .limit(5000),
-    ]);
+  const candidateRows = (attractions ?? []) as AttractionSuggestRow[];
+  for (const row of (unresolved ?? []) as UnmatchedRow[]) {
+    scanned += 1;
+    try {
+      const entityKind = row.segment_kind_guess ?? 'attraction';
+      if (entityKind !== 'attraction') continue;
 
-    const candidateRows = (attractions || []) as AttractionSuggestRow[];
-    let resolved = 0;
-    let scanned = 0;
-    let wikidataSuggested = 0;
-    const errors: string[] = [];
-    const affectedAttractionIds = new Set<string>();
-
-    for (const row of unresolved || []) {
-      scanned++;
-      const u = row as {
-        id: string;
-        activity: string;
-        region: string | null;
-        country: string | null;
-        segment_kind_guess?: string | null;
-        suggested_action?: string | null;
-        confidence?: number | null;
-      };
-      const entityKind = u.segment_kind_guess ?? 'attraction';
-      if (['meal', 'transfer'].includes(entityKind) && (u.confidence ?? 0) >= 0.85) {
-        const { error: updErr } = await supabaseAdmin
-          .from('unmatched_activities')
-          .update({
-            status: 'added',
-            resolved_at: new Date().toISOString(),
-            resolved_kind: `auto_entity_${entityKind}`,
-            resolved_by: 'cron_unmatched_auto_resolve',
-          })
-          .eq('id', u.id);
-        if (updErr) errors.push(sanitizeDbError(updErr, `Failed to resolve ${entityKind}`));
-        else resolved++;
-        continue;
-      }
-      if (['free_time', 'price_noise'].includes(entityKind) && (u.confidence ?? 0) >= 0.85) {
-        const { error: updErr } = await supabaseAdmin
-          .from('unmatched_activities')
-          .update({
-            status: 'ignored',
-            resolved_at: new Date().toISOString(),
-            resolved_kind: `auto_ignore_${entityKind}`,
-            resolved_by: 'cron_unmatched_auto_resolve',
-          })
-          .eq('id', u.id);
-        if (updErr) errors.push(sanitizeDbError(updErr, `Failed to ignore ${entityKind}`));
-        else resolved++;
-        continue;
-      }
-      if (entityKind !== 'attraction') {
-        continue;
-      }
-      const scoped = candidateRows.filter(a =>
-        (!u.region || !a.region || a.region === u.region) &&
-        (!u.country || !a.country || a.country === u.country),
-      );
+      const scoped = candidateRows.filter(attraction =>
+        (!row.region || !attraction.region || attraction.region === row.region) &&
+        (!row.country || !attraction.country || attraction.country === row.country));
       const pool = scoped.length > 0 ? scoped : candidateRows;
-      const { suggestions } = suggestAttractionsForActivity(u.activity, pool, minScore, 1);
+      const { suggestions } = suggestAttractionsForActivity(row.activity, pool, minScore, 1);
+      const now = new Date().toISOString();
+
       if (suggestions.length > 0) {
         const top = suggestions[0];
-        const { data: target } = await supabaseAdmin
+        const { data: target, error: targetError } = await supabaseAdmin
           .from('attractions')
           .select('id, aliases')
           .eq('id', top.id)
           .single();
-        if (!target) continue;
+        if (targetError || !target) throw targetError ?? new Error('matched attraction not found');
 
-        const aliases = ((target.aliases as string[] | null) || []);
-        const newAlias = u.activity;
-        if (!aliases.includes(newAlias)) {
-          const { error: aliasErr } = await supabaseAdmin
-            .from('attractions')
-            .update({ aliases: [...aliases, newAlias] })
-            .eq('id', top.id);
-          if (aliasErr) {
-            errors.push(sanitizeDbError(aliasErr, 'Failed to update attraction alias'));
-            continue;
-          }
-        }
-
-        const { error: updErr } = await supabaseAdmin
+        await addAlias(top.id, (target as { aliases: string[] | null }).aliases, row.activity, now);
+        const { error: updateError } = await supabaseAdmin
           .from('unmatched_activities')
           .update({
             status: 'added',
-            resolved_at: new Date().toISOString(),
+            resolved_at: now,
             resolved_kind: 'auto_cron_high_confidence',
             resolved_attraction_id: top.id,
             resolved_by: 'cron_unmatched_auto_resolve',
+            updated_at: now,
           })
-          .eq('id', u.id);
-        if (updErr) {
-          errors.push(sanitizeDbError(updErr, 'Failed to resolve unmatched activity'));
-          continue;
-        }
-        resolved++;
+          .eq('id', row.id)
+          .eq('status', 'pending')
+          .is('resolved_at', null);
+        if (updateError) throw updateError;
+        resolved += 1;
         affectedAttractionIds.add(top.id);
         continue;
       }
 
-      // 2차: 내부 매칭 실패 → Wikidata reconcile
-      //   confidence >= 0.85 이면 기존 qid alias 연결 시도
-      //   신규 qid는 note 제안만 저장 (자동 INSERT 금지)
-      if (wikidataEnabled) {
-        try {
-          const cleaned = cleanActivity(u.activity);
-          if (cleaned && cleaned.length >= 2) {
-            const { reconcilePlaceName } = await import('@/lib/wikidata-reconcile');
-            const reconciled = await reconcilePlaceName(cleaned, {
-              country: u.country || undefined,
-              typeId: 'Q570',
-              topRes: 3,
-            });
+      if (!wikidataEnabled) continue;
+      const cleaned = cleanActivity(row.activity);
+      if (!cleaned || cleaned.length < 2) continue;
 
-            if (reconciled.length > 0) {
-              const top = reconciled[0];
-              const now = new Date().toISOString();
+      const { reconcilePlaceName } = await import('@/lib/wikidata-reconcile');
+      const reconciled = await reconcilePlaceName(cleaned, {
+        country: row.country || undefined,
+        typeId: 'Q570',
+        topRes: 3,
+      });
+      if (reconciled.length === 0) continue;
 
-              if (top.confidence >= 0.85) {
-                // SSOT: docs/product-registration-v3-standard-language.md
-                // 자동 신규 INSERT 금지. 기존 attraction 매칭/alias 연결까지만 자동 처리.
-                const { data: existing } = await supabaseAdmin
-                  .from('attractions')
-                  .select('id, aliases')
-                  .eq('qid', top.qid)
-                  .maybeSingle();
+      const top = reconciled[0] as WikidataSuggestion;
+      if (top.confidence >= 0.85) {
+        const { data: existing, error: existingError } = await supabaseAdmin
+          .from('attractions')
+          .select('id, aliases')
+          .eq('qid', top.qid)
+          .maybeSingle();
+        if (existingError) throw existingError;
+        if (existing) {
+          await addAlias((existing as { id: string }).id, (existing as { aliases: string[] | null }).aliases, row.activity, now);
+          const { error: updateError } = await supabaseAdmin
+            .from('unmatched_activities')
+            .update({
+              status: 'added',
+              note: `auto-matched: ${top.qid} (conf=${top.confidence.toFixed(2)})`,
+              resolved_at: now,
+              resolved_kind: 'auto_cron_wikidata_match',
+              resolved_attraction_id: (existing as { id: string }).id,
+              resolved_by: 'cron_unmatched_auto_resolve',
+              updated_at: now,
+            })
+            .eq('id', row.id)
+            .eq('status', 'pending')
+            .is('resolved_at', null);
+          if (updateError) throw updateError;
+          resolved += 1;
+          affectedAttractionIds.add((existing as { id: string }).id);
+          continue;
+        }
 
-                if (existing) {
-                  // 기존 attraction 에 alias 연결
-                  const existingAliases: string[] = (existing.aliases as string[] | null) ?? [];
-                  if (!existingAliases.includes(u.activity)) {
-                    await supabaseAdmin.from('attractions').update({
-                      aliases: [...new Set([...existingAliases, u.activity])],
-                      updated_at: now,
-                    }).eq('id', existing.id);
-                  }
-                  await supabaseAdmin.from('unmatched_activities').update({
-                    status: 'added',
-                    note: `auto-matched: ${top.qid} (conf=${top.confidence.toFixed(2)})`,
-                    resolved_at: now,
-                    resolved_kind: 'auto_cron_wikidata_match',
-                    resolved_attraction_id: existing.id,
-                    resolved_by: 'cron_unmatched_auto_resolve',
-                  }).eq('id', u.id);
-                  affectedAttractionIds.add(existing.id);
-                } else {
-                  if (canCreateAttractionRecord('cron')) {
-                    errors.push('policy violation: cron attraction auto-create must be disabled');
-                    continue;
-                  }
-                  // 신규 후보는 unmatched 큐 유지 + 제안 정보만 note에 저장
-                  const wdInfo = JSON.stringify({
-                    wikidata_suggested_at: now,
-                    qid: top.qid,
-                    label: top.label_ko,
-                    description: top.description,
-                    image_url: top.image_url,
-                    confidence: top.confidence,
-                  });
-                  const existingNote = (row as { note?: string | null }).note || '';
-                  const newNote = existingNote
-                    ? `${existingNote}\n[WIKIDATA_SUGGEST] ${wdInfo}`
-                    : `[WIKIDATA_SUGGEST] ${wdInfo}`;
-                  await supabaseAdmin.from('unmatched_activities').update({
-                    note: newNote,
-                    status: 'pending',
-                  }).eq('id', u.id);
-                }
-              } else {
-                // ── low confidence: note 에만 저장 ──
-                const wdInfo = JSON.stringify({
-                  wikidata_suggested_at: now,
-                  qid: top.qid,
-                  label: top.label_ko,
-                  description: top.description,
-                  image_url: top.image_url,
-                  confidence: top.confidence,
-                });
-                const existingNote = (row as { note?: string | null }).note || '';
-                const newNote = existingNote
-                  ? `${existingNote}\n[WIKIDATA] ${wdInfo}`
-                  : `[WIKIDATA] ${wdInfo}`;
-                await supabaseAdmin.from('unmatched_activities').update({
-                  note: newNote,
-                }).eq('id', u.id);
-                wikidataSuggested++;
-              }
-            }
-          }
-        } catch {
-          // Wikidata 실패는 무시
+        if (canCreateAttractionRecord('cron')) {
+          errors.push('policy violation: cron attraction auto-create must be disabled');
         }
       }
-    }
 
-    // PR #93 갭 E — cron 일일 sweep 후 영향받은 패키지 itinerary_data 일괄 재계산 + ISR 무효화
-    let reenrich: { scanned_packages: number; updated_packages: number; revalidated_paths: number } | null = null;
-    if (affectedAttractionIds.size > 0) {
-      try {
-        const r = await reEnrichAffectedPackages([...affectedAttractionIds], { maxPackages: 200 });
-        reenrich = { scanned_packages: r.scanned_packages, updated_packages: r.updated_packages, revalidated_paths: r.revalidated_paths };
-      } catch (e) {
-        console.warn(
-          '[cron unmatched-auto-resolve] re-enrich failed:',
-          sanitizeDbError(e, 're-enrich failed'),
-        );
-      }
+      const closed = await queueWikidataCandidate(row, top, now);
+      resolved += closed;
+      wikidataSuggested += 1;
+    } catch (error) {
+      errors.push(sanitizeDbError(error, `failed to resolve unmatched ${row.id}`));
     }
-
-    return apiResponse({
-      ok: true,
-      scanned,
-      resolved,
-      minScore,
-      wikidataSuggested,
-      reenrich,
-      errors: errors.slice(0, 20),
-    });
-  } catch (e) {
-    return apiResponse(
-      { ok: false, error: sanitizeDbError(e, 'failed') },
-      { status: 500 },
-    );
   }
+
+  let reenrich: { scanned_packages: number; updated_packages: number; revalidated_paths: number } | null = null;
+  if (affectedAttractionIds.size > 0) {
+    try {
+      const result = await reEnrichAffectedPackages([...affectedAttractionIds], { maxPackages: 200 });
+      reenrich = {
+        scanned_packages: result.scanned_packages,
+        updated_packages: result.updated_packages,
+        revalidated_paths: result.revalidated_paths,
+      };
+    } catch (error) {
+      errors.push(sanitizeDbError(error, 're-enrich failed'));
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    scanned,
+    resolved,
+    minScore,
+    wikidataSuggested,
+    reenrich,
+    active_pending_after: await countActiveUnmatched(),
+    errors: errors.slice(0, 20),
+  };
 }
+
+export const GET = withCronLogging('unmatched-auto-resolve', handleUnmatchedAutoResolve);

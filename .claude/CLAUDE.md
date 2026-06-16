@@ -1,5 +1,30 @@
 @../AGENTS.md
 
+## 2026-06-16 Superpowers Adoption
+
+Use Superpowers, when available in the Codex/Claude harness, as a general development workflow layer for brainstorming, planning, TDD, systematic debugging, code review, and verification-before-completion.
+
+Superpowers is not the source of truth for Yeosonam domain decisions. For product registration, DB/RLS/schema changes, supplier parsing, attractions, render contracts, AI routing, and customer-facing data safety, the project SSOT files below still take priority:
+
+- `docs/product-registration-current-ssot.md`
+- `.claude/skills/register/SKILL.md`
+- `.claude/CLAUDE.md`
+- `.cursor/rules/*.mdc`
+- `CURRENT_STATUS.md`
+- `db/error-registry.md`
+
+If Superpowers guidance conflicts with Yeosonam-specific rules, follow the Yeosonam rule and mention the conflict in the final report. Do not install or configure a Superpowers MCP wrapper unless the Codex plugin is unavailable in the target harness and the user explicitly wants cross-IDE MCP support.
+
+## 2026-06-16 MCP Tooling
+
+Codex global MCP setup includes Context7, Serena, and apifable. See `docs/agent-mcp-tooling.md`.
+
+- Use Context7 for current library/API documentation before changing framework, SDK, auth, deployment, or integration code.
+- Use Serena for symbol-aware exploration/refactoring across multiple files in this large codebase.
+- Use apifable before writing admin frontend/API integration code; verify exact endpoint method/path/params/response against `docs/api-spec.json`.
+
+These tools support engineering workflow only. Yeosonam domain SSOT rules still take priority.
+
 ## 2026-06-05 Product Registration SSOT
 
 For supplier upload registration, mobile landing, and A4 readiness, read `docs/product-registration-current-ssot.md` first.

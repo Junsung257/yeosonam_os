@@ -6,7 +6,7 @@ import {
   recordBlogVisibilitySnapshot,
 } from '@/lib/blog-visibility-snapshots';
 
-export type BlogIndexingJobType = 'URL_UPDATED' | 'URL_DELETED';
+type BlogIndexingJobType = 'URL_UPDATED' | 'URL_DELETED';
 
 export interface BlogIndexingJobRow {
   id: string;
@@ -48,7 +48,7 @@ function cleanBaseUrl(baseUrl?: string | null): string {
   return configured;
 }
 
-export function blogIndexingUrlForSlug(slug: string, baseUrl?: string | null): string {
+function blogIndexingUrlForSlug(slug: string, baseUrl?: string | null): string {
   return `${cleanBaseUrl(baseUrl)}/blog/${slug.replace(/^\/+|\/+$/g, '')}`;
 }
 

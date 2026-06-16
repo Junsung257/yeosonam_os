@@ -1,0 +1,310 @@
+import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { suggestAttractionsForActivity, type AttractionSuggestRow } from '@/lib/unmatched-suggest';
+
+export type UnmatchedEntityCategory =
+  | 'attraction'
+  | 'hotel'
+  | 'meal'
+  | 'transfer'
+  | 'shopping'
+  | 'optional_tour'
+  | 'free_time'
+  | 'notice'
+  | 'price_noise'
+  | 'unknown';
+
+export type ClassifiedUnmatched = {
+  category: UnmatchedEntityCategory;
+  confidence: number;
+  terminalStatus: 'pending' | 'added' | 'ignored';
+  suggestedAction:
+    | 'auto_resolve_existing'
+    | 'auto_ignore_noise'
+    | 'needs_new_master'
+    | 'needs_review';
+  resolvedKind: string | null;
+};
+
+type UnmatchedRow = {
+  id: string;
+  activity: string;
+  package_id: string | null;
+  package_title: string | null;
+  day_number: number | null;
+  country: string | null;
+  region: string | null;
+  occurrence_count: number | null;
+  segment_kind_guess: string | null;
+  confidence: number | null;
+};
+
+const PRICE_NOISE_RE =
+  /(?:^\s*$|^\d{1,4}(?:,\d{3})*(?:\s*(?:원|krw|usd|\$|위안|엔))?$|가격|요금|판매가|출발일|성인|아동|소아|예약금|잔금|총\s*금액|취소료|수수료|^\d{1,2}[./-]\d{1,2})/i;
+const MEAL_RE = /(?:조식|중식|석식|식사|식당|레스토랑|뷔페|도시락|breakfast|lunch|dinner|meal|restaurant)/i;
+const TRANSFER_RE = /(?:이동|차량|버스|공항|픽업|샌딩|전용차|기사|transfer|pickup|drop[-\s]?off|airport)/i;
+const HOTEL_RE = /(?:호텔|리조트|숙박|객실|체크\s*인|체크\s*아웃|투숙|hotel|resort|villa|room|check[-\s]?in|check[-\s]?out)/i;
+const SHOPPING_RE = /(?:쇼핑|면세|기념품|토산품|라텍스|잡화|토속품|mall|outlet|shopping)/i;
+const OPTION_RE = /(?:선택\s*관광|옵션|마사지|스파|공연|입장권|체험|골프|라운딩|optional|option|spa|massage|ticket)/i;
+const FREE_TIME_RE = /(?:자유\s*시간|자유일정|휴식|외부\s*자유|free\s*time|rest)/i;
+const NOTICE_RE = /(?:안내|공지|주의|취소|환불|비자|여권|입국|출국|예약금|수수료|변경|현지사정|선사사정|양해|notice|caution|refund|cancel|visa)/i;
+const ATTRACTION_HINT_RE = /(?:공원|사원|성당|교회|유적|박물관|기념관|거리|시장|타워|비치|광장|전망대|케이블카|마을|천등|폭포|온천|정원|temple|park|museum|beach|market|tower|garden)/i;
+
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function categoryFromExisting(value: string | null): UnmatchedEntityCategory | null {
+  const allowed = new Set<UnmatchedEntityCategory>([
+    'attraction',
+    'hotel',
+    'meal',
+    'transfer',
+    'shopping',
+    'optional_tour',
+    'free_time',
+    'notice',
+    'price_noise',
+    'unknown',
+  ]);
+  return allowed.has(value as UnmatchedEntityCategory) ? value as UnmatchedEntityCategory : null;
+}
+
+export function classifyUnmatchedActivity(
+  activity: string,
+  existingCategory: string | null = null,
+): ClassifiedUnmatched {
+  const text = normalizeText(activity);
+  const existing = categoryFromExisting(existingCategory);
+
+  let category: UnmatchedEntityCategory = existing ?? 'attraction';
+  let confidence = existing ? 0.72 : 0.65;
+
+  if (!text || PRICE_NOISE_RE.test(text)) {
+    category = 'price_noise';
+    confidence = 0.92;
+  } else if (FREE_TIME_RE.test(text)) {
+    category = 'free_time';
+    confidence = 0.92;
+  } else if (MEAL_RE.test(text)) {
+    category = 'meal';
+    confidence = 0.9;
+  } else if (TRANSFER_RE.test(text)) {
+    category = 'transfer';
+    confidence = 0.9;
+  } else if (HOTEL_RE.test(text)) {
+    category = 'hotel';
+    confidence = 0.86;
+  } else if (SHOPPING_RE.test(text)) {
+    category = 'shopping';
+    confidence = 0.86;
+  } else if (OPTION_RE.test(text)) {
+    category = 'optional_tour';
+    confidence = 0.86;
+  } else if (NOTICE_RE.test(text)) {
+    category = 'notice';
+    confidence = 0.84;
+  } else if (ATTRACTION_HINT_RE.test(text)) {
+    category = 'attraction';
+    confidence = 0.78;
+  }
+
+  if (category === 'meal' || category === 'transfer') {
+    return {
+      category,
+      confidence,
+      terminalStatus: confidence >= 0.85 ? 'added' : 'pending',
+      suggestedAction: confidence >= 0.85 ? 'auto_resolve_existing' : 'needs_review',
+      resolvedKind: confidence >= 0.85 ? `auto_entity_${category}` : null,
+    };
+  }
+
+  if (category === 'free_time' || category === 'price_noise') {
+    return {
+      category,
+      confidence,
+      terminalStatus: confidence >= 0.85 ? 'ignored' : 'pending',
+      suggestedAction: confidence >= 0.85 ? 'auto_ignore_noise' : 'needs_review',
+      resolvedKind: confidence >= 0.85 ? `auto_ignore_${category}` : null,
+    };
+  }
+
+  return {
+    category,
+    confidence,
+    terminalStatus: 'pending',
+    suggestedAction: category === 'attraction' || category === 'hotel' ? 'needs_new_master' : 'needs_review',
+    resolvedKind: null,
+  };
+}
+
+function sourceContext(row: UnmatchedRow, category: UnmatchedEntityCategory): Record<string, unknown> {
+  return {
+    package_id: row.package_id,
+    package_title: row.package_title,
+    day_number: row.day_number,
+    country: row.country,
+    destination: row.region ?? row.country,
+    customer_visible: !['price_noise', 'free_time'].includes(category),
+    classifier: 'unmatched-classifier-v2',
+    classified_at: new Date().toISOString(),
+  };
+}
+
+function resolution(
+  row: UnmatchedRow,
+  classified: ClassifiedUnmatched,
+  attractionSuggestion: Record<string, unknown> | null,
+): Record<string, unknown> {
+  return {
+    category: classified.category,
+    action: classified.suggestedAction,
+    country_scope: row.country,
+    destination_scope: row.region ?? row.country,
+    attraction_suggestion: attractionSuggestion,
+    policy: classified.category === 'attraction'
+      ? 'match-existing-only-no-auto-create'
+      : 'entity-category-classification-no-master-create',
+  };
+}
+
+async function fetchActiveUnmatched(limit: number): Promise<UnmatchedRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from('unmatched_activities')
+    .select('id, activity, package_id, package_title, day_number, country, region, occurrence_count, segment_kind_guess, confidence')
+    .eq('status', 'pending')
+    .is('resolved_at', null)
+    .order('occurrence_count', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return (data ?? []) as UnmatchedRow[];
+}
+
+async function fetchAttractions(): Promise<AttractionSuggestRow[]> {
+  const rows: AttractionSuggestRow[] = [];
+  const pageSize = 1000;
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabaseAdmin
+      .from('attractions')
+      .select('id, name, aliases, region, country, category, emoji, short_desc')
+      .eq('is_active', true)
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...(data as AttractionSuggestRow[]));
+    if (data.length < pageSize) break;
+  }
+  return rows;
+}
+
+async function addAlias(attraction: AttractionSuggestRow, alias: string): Promise<boolean> {
+  const cleanAlias = normalizeText(alias);
+  if (cleanAlias.length < 2 || cleanAlias.length > 80) return false;
+  const aliases = attraction.aliases ?? [];
+  if (aliases.includes(cleanAlias) || attraction.name === cleanAlias) return false;
+  const nextAliases = [...new Set([...aliases, cleanAlias])];
+  const { error } = await supabaseAdmin
+    .from('attractions')
+    .update({ aliases: nextAliases })
+    .eq('id', attraction.id);
+  if (error) throw error;
+  attraction.aliases = nextAliases;
+  return true;
+}
+
+export async function runUnmatchedClassification(options: {
+  limit?: number;
+  minAttractionScore?: number;
+} = {}) {
+  if (!isSupabaseConfigured) {
+    return { ok: true, scanned: 0, updated: 0, autoAdded: 0, autoIgnored: 0, aliasAdded: 0, errors: [] as string[] };
+  }
+
+  const limit = Math.max(1, Math.min(1000, options.limit ?? 300));
+  const minAttractionScore = Math.max(30, Math.min(120, options.minAttractionScore ?? 95));
+  const [rows, attractions] = await Promise.all([fetchActiveUnmatched(limit), fetchAttractions()]);
+  const errors: string[] = [];
+  let updated = 0;
+  let autoAdded = 0;
+  let autoIgnored = 0;
+  let aliasAdded = 0;
+
+  for (const row of rows) {
+    try {
+      const classified = classifyUnmatchedActivity(row.activity, row.segment_kind_guess);
+      let resolvedAttractionId: string | null = null;
+      let attractionSuggestion: Record<string, unknown> | null = null;
+      let status = classified.terminalStatus;
+      let resolvedKind = classified.resolvedKind;
+      let suggestedAction = classified.suggestedAction;
+
+      if (classified.category === 'attraction') {
+        const scoped = attractions.filter(attr =>
+          (!row.region || !attr.region || row.region === attr.region) &&
+          (!row.country || !attr.country || row.country === attr.country));
+        const pool = scoped.length > 0 ? scoped : attractions;
+        const { suggestions } = suggestAttractionsForActivity(row.activity, pool, minAttractionScore, 1);
+        if (suggestions.length > 0) {
+          const top = suggestions[0];
+          const target = attractions.find(attr => attr.id === top.id);
+          if (target) {
+            if (await addAlias(target, row.activity)) aliasAdded++;
+            resolvedAttractionId = top.id;
+            status = 'added';
+            resolvedKind = 'auto_classifier_existing_attraction';
+            suggestedAction = 'auto_resolve_existing';
+            attractionSuggestion = {
+              id: top.id,
+              name: top.name,
+              score: top.score,
+              matched_via: top.matched_via,
+              matched_term: top.matched_term,
+            };
+          }
+        }
+      }
+
+      const now = new Date().toISOString();
+      const update: Record<string, unknown> = {
+        segment_kind_guess: classified.category,
+        confidence: classified.confidence,
+        suggested_action: suggestedAction,
+        suggested_resolution: resolution(row, { ...classified, suggestedAction }, attractionSuggestion),
+        source_context: sourceContext(row, classified.category),
+        classification_version: 'unmatched-classifier-v2',
+        updated_at: now,
+      };
+
+      if (status !== 'pending') {
+        update.status = status;
+        update.resolved_at = now;
+        update.resolved_kind = resolvedKind ?? `auto_classifier_${classified.category}`;
+        update.resolved_by = 'cron_unmatched_classify';
+        if (resolvedAttractionId) update.resolved_attraction_id = resolvedAttractionId;
+      }
+
+      const { error } = await supabaseAdmin
+        .from('unmatched_activities')
+        .update(update)
+        .eq('id', row.id)
+        .eq('status', 'pending')
+        .is('resolved_at', null);
+      if (error) throw error;
+      updated++;
+      if (status === 'added') autoAdded++;
+      if (status === 'ignored') autoIgnored++;
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  return {
+    ok: errors.length === 0,
+    scanned: rows.length,
+    updated,
+    autoAdded,
+    autoIgnored,
+    aliasAdded,
+    minAttractionScore,
+    errors: errors.slice(0, 20),
+  };
+}

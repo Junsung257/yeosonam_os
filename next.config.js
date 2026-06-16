@@ -122,6 +122,9 @@ const nextConfig = {
   },
   // Next server chunks are emitted under .next/server/chunks; keep runtime lookup aligned.
   webpack(config, { isServer }) {
+    if (isProd) {
+      config.devtool = false;
+    }
     if (isServer && config.output) {
       config.output.chunkFilename = 'chunks/[name].js';
     }

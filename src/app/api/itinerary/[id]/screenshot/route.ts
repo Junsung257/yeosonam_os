@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
 
 /**
  * POST /api/itinerary/[id]/screenshot
@@ -23,6 +22,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     url.searchParams.set('mode', mode);
     if (departureDate) url.searchParams.set('date', departureDate);
 
+    const { default: puppeteer } = await import('puppeteer');
     const browser = await puppeteer.launch({
       headless: true,
       args: [

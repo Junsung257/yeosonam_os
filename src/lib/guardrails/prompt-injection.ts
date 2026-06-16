@@ -1,35 +1,58 @@
 const INJECTION_PATTERNS = [
-  /이전\s*지시(를)?\s*무시/i,
-  /위\s*지시(를)?\s*무시/i,
-  /시스템\s*프롬프트/i,
-  /개발자\s*메시지/i,
-  /숨겨진\s*(지시|규칙|프롬프트)/i,
-  /권한\s*우회/i,
-  /관리자\s*권한.*(부여|획득|전환)/i,
-  /테넌트.*우회/i,
-  /RLS.*(끄|해제|우회|무시)/i,
-  /승인\s*없이.*(실행|처리|변경)/i,
-  /도구.*강제\s*실행/i,
-  /tool.*force/i,
-  /결제.*1원/i,
-  /환불.*무조건/i,
   /ignore\s+previous\s+instructions/i,
+  /ignore\s+(system|developer)\s+instructions/i,
   /ignore\s+(all\s+)?(system|developer)\s+instructions/i,
   /reveal\s+system\s+prompt/i,
   /show\s+me\s+(your\s+)?(system|developer)\s+(prompt|message)/i,
   /bypass\s+(auth|authorization|permission|rls|tenant)/i,
   /run\s+tool\s+without\s+approval/i,
+  /tool.*force/i,
 ];
+
+const INJECTION_TERMS = [
+  '\uc774\uc804 \uc9c0\uc2dc \ubb34\uc2dc',
+  '\uc9c0\uc2dc \ubb34\uc2dc',
+  '\uc2dc\uc2a4\ud15c \ud504\ub86c\ud504\ud2b8',
+  '\uac1c\ubc1c\uc790 \uba54\uc2dc\uc9c0',
+  '\uc228\uaca8\uc9c4 \uc9c0\uc2dc',
+  '\uc228\uaca8\uc9c4 \ud504\ub86c\ud504\ud2b8',
+  '\uad8c\ud55c \uc6b0\ud68c',
+  '\uad00\ub9ac\uc790 \uad8c\ud55c',
+  '\ud14c\ub10c\ud2b8 \uc6b0\ud68c',
+  'rls \ud574\uc81c',
+  'rls \uc6b0\ud68c',
+  'rls \ubb34\uc2dc',
+  '\uc2b9\uc778 \uc5c6\uc774',
+  '\uc2b9\uc778\uc5c6\uc774',
+  '\ub3c4\uad6c \uac15\uc81c \uc2e4\ud589',
+  '\ubb34\uc870\uac74 \ud658\ubd88',
+  '1\uc6d0 \uacb0\uc81c',
+];
+
+function normalize(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
 export function detectPromptInjection(message: string): {
   blocked: boolean;
   reason: string | null;
 } {
-  const hit = INJECTION_PATTERNS.find((re) => re.test(message));
-  if (!hit) return { blocked: false, reason: null };
+  const normalized = normalize(message);
+  const regexHit = INJECTION_PATTERNS.find((re) => re.test(message));
+  if (regexHit) {
+    return {
+      blocked: true,
+      reason: `suspicious pattern: ${regexHit.toString()}`,
+    };
+  }
+
+  const termHit = INJECTION_TERMS.find((term) => normalized.includes(normalize(term)));
+  if (!termHit) return { blocked: false, reason: null };
   return {
     blocked: true,
-    reason: `의심 패턴 탐지: ${hit.toString()}`,
+    reason: `suspicious term: ${termHit}`,
   };
 }
-

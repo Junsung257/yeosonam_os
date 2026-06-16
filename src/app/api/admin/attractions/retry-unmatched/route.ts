@@ -3,7 +3,7 @@
  *
  * unmatched_activities 의 pending 항목을 새 Hangul fuzzy + MRT canonical 매칭기로 retry.
  * 매칭 성공 시:
- *   - unmatched_activities.status = 'resolved'
+ *   - unmatched_activities.status = 'added'
  *   - attractions_aliases 자동 누적 (matcher 내부에서 fire-and-forget)
  *
  * 2026-05-14 Sprint 1 후속 — 누적된 537건의 unmatched 를 새 매칭기로 자동 해소.
@@ -75,7 +75,7 @@ const postHandler = async (request: NextRequest) => {
       await supabaseAdmin
         .from('unmatched_activities')
         .update({
-          status: 'resolved',
+          status: 'added',
           resolved_at: new Date().toISOString(),
           resolved_by: 'hangul-fuzzy-retry',
           resolved_attraction_id: match.id ?? null,

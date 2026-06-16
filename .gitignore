@@ -177,6 +177,9 @@ dev-server.log
 
 .vercel
 .env*.local
+.serena/
+.tsbuildinfo*
+logs/
 
 # 세션 작업 파일 (git에 포함 금지)
 .commit-msg.txt
@@ -203,5 +206,3 @@ tmp-*.png
 # Local desktop cleanup archives
 .desktop-dev-archive/
 .desktop-worktrees/
-
-.vercel

@@ -442,7 +442,7 @@ export function checkIntentQuality(input: CheckInput): GateResult {
   };
 }
 
-export function checkTopicFit(input: CheckInput): GateResult {
+function checkTopicFit(input: CheckInput): GateResult {
   const report = evaluateBlogTopicFit({
     topic: input.primary_keyword,
     destination: input.destination,
@@ -472,7 +472,7 @@ export function checkTopicFit(input: CheckInput): GateResult {
   };
 }
 
-export function checkEditorialQuality(input: CheckInput): GateResult {
+function checkEditorialQuality(input: CheckInput): GateResult {
   const report = evaluateBlogEditorialQuality({
     slug: input.slug,
     topic: input.primary_keyword,

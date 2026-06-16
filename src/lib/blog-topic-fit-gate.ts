@@ -1,8 +1,8 @@
 import { stripMarkup } from './blog-text-utils';
 
-export type BlogGateSeverity = 'critical' | 'warning';
+type BlogGateSeverity = 'critical' | 'warning';
 
-export interface BlogGateIssue {
+interface BlogGateIssue {
   code:
     | 'missing_topic'
     | 'placeholder_text'

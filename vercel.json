@@ -42,20 +42,12 @@
       "schedule": "0 1 * * *"
     },
     {
-      "path": "/api/cron/resweep-unmatched",
-      "schedule": "30 1 * * *"
-    },
-    {
-      "path": "/api/cron/unmatched-auto-resolve",
-      "schedule": "45 1 * * *"
-    },
-    {
-      "path": "/api/cron/entity-resolution",
-      "schedule": "50 1 * * *"
+      "path": "/api/cron/unmatched-orchestrator",
+      "schedule": "18 1 * * *"
     },
     {
       "path": "/api/cron/legacy-sections-backfill",
-      "schedule": "55 1 * * *"
+      "schedule": "58 1 * * *"
     },
     {
       "path": "/api/cron/fill-attraction-photos",

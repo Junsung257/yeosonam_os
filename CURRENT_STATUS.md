@@ -4,6 +4,10 @@
 
 > AI·코파일럿 진입 요약: 루트 **`AGENTS.md`** → (심층) `.claude/CLAUDE.md`.
 
+> Agent workflow note: Superpowers는 설치 가능 시 일반 개발 절차 보조로 사용하되, 여소남 도메인 SSOT가 항상 우선입니다. 상세: `docs/agent-superpowers-adoption.md`.
+
+> MCP tooling note: Codex 전역 MCP에 Context7, Serena, apifable을 연결했습니다. 상세: `docs/agent-mcp-tooling.md`.
+
 ---
 
 ## 1. 어드민 사이드바 메뉴 + 세부 기능
@@ -439,4 +443,3 @@ CREATE TABLE IF NOT EXISTS rfq_messages (
 ---
 
 ## 5. 핵심 아키텍처 패턴
-

@@ -14,15 +14,16 @@
  *   1) attractionIds 가 명시되면 그 attraction(s) 만 매칭 대상으로 좁힘 (좁은 sweep, 빠름)
  *      attractionIds 가 없으면 모든 attractions 와 매칭 (전체 sweep, 일일 cron 용)
  *   2) resolved_at IS NULL 인 unmatched_activities 만 처리
- *   3) 매칭 성공 → resolved_at/resolved_kind/resolved_attraction_id set
+ *   3) 매칭 성공 → status=added + resolved_at/resolved_kind/resolved_attraction_id set
  *
  * 안전성:
- *   - status 컬럼은 변경하지 않음 (check constraint 호환)
+ *   - active queue 기준은 status='pending' AND resolved_at IS NULL
  *   - 신규 attraction 시드 안 함 (ERR-20260418-33 정책 준수)
  *   - fire-and-forget 가능 (await 없이 호출 시 background 실행)
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
+import { closeUnmatchedAsAdded } from './unmatched-lifecycle';
 
 interface AttractionLike {
   id: string;
@@ -122,6 +123,7 @@ export async function resweepUnmatchedActivities(attractionIds?: string[]): Prom
     const { data, error } = await supabaseAdmin
       .from('unmatched_activities')
       .select('id, activity, region, country')
+      .eq('status', 'pending')
       .is('resolved_at', null)
       .order('id')
       .range(offset, offset + PAGE - 1);
@@ -133,23 +135,26 @@ export async function resweepUnmatchedActivities(attractionIds?: string[]): Prom
   }
 
   // 3) 매칭 시도
-  const now = new Date().toISOString();
   let matched = 0;
   let errors = 0;
   for (const u of unmatched) {
     const m = matchAttr(u.activity, candidates);
     if (!m) continue;
-    const { error } = await supabaseAdmin
-      .from('unmatched_activities')
-      .update({
-        resolved_at: now,
-        resolved_kind: 'auto_resweep',
-        resolved_attraction_id: m.attr.id,
-        resolved_by: attractionIds ? 'attraction_hook' : 'cron_resweep',
-      })
-      .eq('id', u.id);
-    if (error) errors++;
-    else matched++;
+    const closed = await closeUnmatchedAsAdded([u.id], {
+      resolvedKind: 'auto_resweep',
+      resolvedBy: attractionIds ? 'attraction_hook' : 'cron_resweep',
+      resolvedAttractionId: m.attr.id,
+      suggestedAction: 'auto_resolve_existing',
+      suggestedResolution: {
+        attraction_id: m.attr.id,
+        attraction_name: m.attr.name,
+        matched_via: m.via,
+      },
+      segmentKindGuess: 'attraction',
+      classificationVersion: 'unmatched-resweep-v2',
+    });
+    if (closed > 0) matched += closed;
+    else errors++;
   }
 
   return {

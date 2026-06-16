@@ -7,6 +7,7 @@ import { reEnrichAffectedPackages } from '@/lib/package-reenrich-on-attraction-c
 import { rateLimitMutation } from '@/lib/rate-limiter';
 import { canCreateAttractionViaReconcileAction } from '@/lib/unmatched-policy';
 import { requireAdminRequest } from '@/lib/admin-guard';
+import { isTerminalUnmatched } from '@/lib/unmatched-lifecycle';
 
 // ── Internal interfaces for type safety (no `as any`) ──
 interface AttractionBase {
@@ -42,6 +43,86 @@ type UnmatchedEntityPayload = {
   source_context?: Record<string, unknown>;
   classification_version?: string;
 };
+
+type ExistingUnmatchedFallbackRow = {
+  id: string;
+  status: string | null;
+  resolved_at: string | null;
+  occurrence_count: number | null;
+  source_context: Record<string, unknown> | null;
+};
+
+async function terminalPreservingFallbackUpsert(item: UnmatchedEntityPayload): Promise<boolean> {
+  const now = new Date().toISOString();
+  const scopeKey = item.package_id || 'global';
+  const { data: existing, error: selectError } = await supabaseAdmin
+    .from('unmatched_activities')
+    .select('id, status, resolved_at, occurrence_count, source_context')
+    .eq('unmatched_scope_key', scopeKey)
+    .eq('activity', item.activity)
+    .maybeSingle<ExistingUnmatchedFallbackRow>();
+  if (selectError) return false;
+
+  if (existing) {
+    const currentContext = existing.source_context && typeof existing.source_context === 'object'
+      ? existing.source_context
+      : {};
+    const updatePayload: Record<string, unknown> = {
+      occurrence_count: (existing.occurrence_count ?? 0) + 1,
+      updated_at: now,
+      package_id: item.package_id || null,
+      package_title: item.package_title || null,
+      day_number: item.day_number || null,
+      country: item.country || null,
+      region: item.region || null,
+      segment_kind_guess: item.segment_kind_guess || undefined,
+      confidence: item.confidence ?? undefined,
+      suggested_action: item.suggested_action || undefined,
+      suggested_resolution: item.suggested_resolution || undefined,
+      source_context: {
+        ...currentContext,
+        ...(item.source_context ?? {}),
+        reingest_count: Number(currentContext.reingest_count ?? 0) + 1,
+        last_reingested_at: now,
+        terminal_reingest_blocked: isTerminalUnmatched(existing),
+      },
+      classification_version: item.classification_version || undefined,
+    };
+    for (const key of Object.keys(updatePayload)) {
+      if (updatePayload[key] === undefined) delete updatePayload[key];
+    }
+    if (!isTerminalUnmatched(existing)) updatePayload.status = 'pending';
+
+    const { error: updateError } = await supabaseAdmin
+      .from('unmatched_activities')
+      .update(updatePayload)
+      .eq('id', existing.id);
+    return !updateError;
+  }
+
+  const { error: insertError } = await supabaseAdmin
+    .from('unmatched_activities')
+    .insert({
+      activity: item.activity,
+      package_id: item.package_id || null,
+      package_title: item.package_title || null,
+      day_number: item.day_number || null,
+      country: item.country || null,
+      region: item.region || null,
+      occurrence_count: 1,
+      status: 'pending',
+      segment_kind_guess: item.segment_kind_guess || 'attraction',
+      confidence: item.confidence ?? null,
+      suggested_action: item.suggested_action || null,
+      suggested_resolution: item.suggested_resolution || null,
+      source_context: item.source_context || null,
+      classification_version: item.classification_version || null,
+      normalizer_version: 'unmatched-activity-fallback',
+      created_at: now,
+      updated_at: now,
+    });
+  return !insertError;
+}
 
 /**
  * POST /api/unmatched — 미매칭 관광지 자동 수집
@@ -82,29 +163,7 @@ export async function POST(request: NextRequest) {
         p_source_context: item.source_context || null,
         p_classification_version: item.classification_version || null,
       }).single();
-
-      if (error) {
-        // RPC 부재 fallback — count 갱신 없이 단순 upsert (관리자 미매칭 큐 적재가 우선)
-        const { error: e2 } = await supabaseAdmin
-          .from('unmatched_activities')
-          .upsert({
-            activity: item.activity,
-            package_id: item.package_id || null,
-            package_title: item.package_title || null,
-            day_number: item.day_number || null,
-            country: item.country || null,
-            region: item.region || null,
-            occurrence_count: 1,
-            status: 'pending',
-            segment_kind_guess: item.segment_kind_guess || 'attraction',
-            confidence: item.confidence ?? null,
-            suggested_action: item.suggested_action || null,
-            suggested_resolution: item.suggested_resolution || null,
-            source_context: item.source_context || null,
-            classification_version: item.classification_version || null,
-          }, { onConflict: 'unmatched_scope_key,activity' });
-        return !e2;
-      }
+      if (error) return terminalPreservingFallbackUpsert(item);
       return true;
     };
 
@@ -174,6 +233,7 @@ export async function GET(request: NextRequest) {
         .order('occurrence_count', { ascending: false })
         .order('created_at', { ascending: false });
       if (status !== 'all') q = q.eq('status', status);
+      if (status === 'pending') q = q.is('resolved_at', null);
       const category = searchParams.get('category');
       if (category && category !== 'all') q = q.eq('segment_kind_guess', category);
       return q;

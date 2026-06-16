@@ -1,6 +1,6 @@
 import type { SerpAnalysis } from './serp-analyzer';
 
-export type BlogBriefIntent =
+type BlogBriefIntent =
   | 'weather'
   | 'preparation'
   | 'cost'

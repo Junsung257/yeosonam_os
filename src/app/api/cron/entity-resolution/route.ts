@@ -1,6 +1,6 @@
 import { type NextRequest } from 'next/server';
-import { withCronGuard } from '@/lib/cron-auth';
-import { apiResponse } from '@/lib/api-response';
+import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { withCronLogging } from '@/lib/cron-observability';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import {
   resolveItineraryEntityCandidate,
@@ -8,6 +8,7 @@ import {
   type EntityResolutionDecision,
 } from '@/lib/itinerary-entity-resolution-engine';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { countActiveUnmatched } from '@/lib/unmatched-lifecycle';
 
 export const dynamic = 'force-dynamic';
 
@@ -41,8 +42,9 @@ function updatePayload(decision: EntityResolutionDecision) {
   };
 }
 
-export const GET = withCronGuard(async (request: NextRequest) => {
-  if (!isSupabaseConfigured) return apiResponse({ ok: true, scanned: 0, updated: 0, errors: [] });
+const handleEntityResolution = async (request: NextRequest) => {
+  if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  if (!isSupabaseConfigured) return { ok: true, scanned: 0, updated: 0, errors: [] as string[] };
 
   const limit = limitFrom(request);
   const category = request.nextUrl.searchParams.get('category');
@@ -63,10 +65,8 @@ export const GET = withCronGuard(async (request: NextRequest) => {
 
   const { data, error } = await query;
   if (error) {
-    return apiResponse(
-      { ok: false, error: sanitizeDbError(error, 'Failed to load entity candidates') },
-      { status: 500 },
-    );
+    const message = sanitizeDbError(error, 'Failed to load entity candidates');
+    return { ok: false, error: message, errors: [message] };
   }
 
   let updated = 0;
@@ -108,7 +108,7 @@ export const GET = withCronGuard(async (request: NextRequest) => {
     }
   }
 
-  return apiResponse({
+  return {
     ok: true,
     scanned: data?.length ?? 0,
     updated,
@@ -116,6 +116,9 @@ export const GET = withCronGuard(async (request: NextRequest) => {
     category: category || 'all',
     byStatus,
     byAction,
+    active_pending_after: await countActiveUnmatched(),
     errors: errors.slice(0, 20),
-  });
-});
+  };
+};
+
+export const GET = withCronLogging('entity-resolution', handleEntityResolution);
