@@ -36,6 +36,7 @@ export interface BookingOpsAction {
   amountAtRisk: number;
   daysToDeparture: number | null;
   groupedTaskCount: number;
+  groupedTaskIds: string[];
   relatedActions: BookingOpsRelatedAction[];
 }
 
@@ -355,6 +356,7 @@ export function toBookingOpsAction(
     amountAtRisk: riskAmount,
     daysToDeparture: departureDays,
     groupedTaskCount: 1,
+    groupedTaskIds: [task.id],
     relatedActions: [],
   };
 }
@@ -397,6 +399,7 @@ export function groupBookingOpsActions(actions: BookingOpsAction[]): BookingOpsA
         ? [...primary.scoreReasons, `관련 작업 ${rest.length}건`].slice(0, 4)
         : primary.scoreReasons,
       groupedTaskCount: sorted.length,
+      groupedTaskIds: sorted.map((item) => item.id),
       relatedActions,
     };
   }));

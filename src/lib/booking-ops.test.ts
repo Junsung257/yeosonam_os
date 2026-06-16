@@ -99,6 +99,7 @@ describe('booking ops task mapping', () => {
     expect(grouped[0]).toMatchObject({
       id: 'balance',
       groupedTaskCount: 2,
+      groupedTaskIds: ['balance', 'docs'],
     });
     expect(grouped[0].relatedActions.map((action) => action.id)).toEqual(['docs']);
   });

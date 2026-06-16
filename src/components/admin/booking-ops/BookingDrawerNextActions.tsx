@@ -39,25 +39,31 @@ export function BookingDrawerNextActions({
   }, [load]);
 
   const resolve = useCallback(async (action: BookingOpsAction) => {
-    setActions((prev) => prev.filter((item) => item.id !== action.id));
-    const res = await fetch(`/api/admin/booking-tasks/${action.id}/resolve`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ resolution: action.recommendedAction }),
-    });
-    if (!res.ok) await load();
+    const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
+    setActions((prev) => prev.filter((item) => !taskIds.includes(item.id)));
+    const results = await Promise.all(taskIds.map((taskId) =>
+      fetch(`/api/admin/booking-tasks/${taskId}/resolve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolution: action.recommendedAction }),
+      }),
+    ));
+    if (results.some((res) => !res.ok)) await load();
     onChanged?.();
   }, [load, onChanged]);
 
   const snooze = useCallback(async (action: BookingOpsAction, hours: number) => {
+    const taskIds = action.groupedTaskIds.length > 0 ? action.groupedTaskIds : [action.id];
     setSnoozeFor(null);
-    setActions((prev) => prev.filter((item) => item.id !== action.id));
-    const res = await fetch(`/api/admin/booking-tasks/${action.id}/snooze`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ hours }),
-    });
-    if (!res.ok) await load();
+    setActions((prev) => prev.filter((item) => !taskIds.includes(item.id)));
+    const results = await Promise.all(taskIds.map((taskId) =>
+      fetch(`/api/admin/booking-tasks/${taskId}/snooze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hours }),
+      }),
+    ));
+    if (results.some((res) => !res.ok)) await load();
     onChanged?.();
   }, [load, onChanged]);
 
