@@ -2,6 +2,7 @@ import { runQualityGates, type QualityGateReport } from './blog-quality-gate';
 import { calculateBlogQualityScore, type BlogQualityScoreReport } from './blog-quality-score';
 import { computeReadability, type ReadabilityResult } from './blog-readability';
 import { computeSeoScore, type SeoScoreResult } from './blog-seo-scorer';
+import { repairBlogEditorialQuality, repairBlogStructureQuality } from './blog-editorial-repair';
 
 type TravelPackageRef =
   | { destination?: string | null }
@@ -33,6 +34,13 @@ export interface BlogPublishQualityReport {
   readability: ReadabilityResult;
   blogQualityScore: BlogQualityScoreReport;
   summary: string;
+}
+
+export interface PreparedBlogPublishResult {
+  blogHtml: string;
+  changed: boolean;
+  changes: string[];
+  report: BlogPublishQualityReport;
 }
 
 export function resolveBlogDestination(row: {
@@ -141,6 +149,59 @@ export async function evaluateBlogPublishQuality(
     ...report,
     passed: blogQualityScore.isPerfect,
     summary: buildSummary(report),
+  };
+}
+
+export async function prepareBlogForPublish(
+  input: BlogPublishQualityInput,
+): Promise<PreparedBlogPublishResult> {
+  const changes: string[] = [];
+  let blogHtml = input.blog_html;
+  const primaryKeyword = input.primary_keyword || input.destination || input.seo_title || input.slug;
+  const contentType = input.content_type ?? (input.product_id ? 'package_intro' : 'guide');
+
+  const editorialRepair = repairBlogEditorialQuality({
+    title: input.seo_title ?? input.slug,
+    slug: input.slug,
+    primaryKeyword,
+    angleType: input.angle_type ?? null,
+    category: input.category ?? null,
+    contentType,
+    productId: input.product_id ?? null,
+    blogHtml,
+  });
+  if (editorialRepair.changed) {
+    blogHtml = editorialRepair.blogHtml;
+    changes.push(...editorialRepair.changes);
+  }
+
+  const structureRepair = repairBlogStructureQuality({
+    title: input.seo_title ?? input.slug,
+    slug: input.slug,
+    primaryKeyword,
+    angleType: input.angle_type ?? null,
+    category: input.category ?? null,
+    contentType,
+    productId: input.product_id ?? null,
+    blogHtml,
+  });
+  if (structureRepair.changed) {
+    blogHtml = structureRepair.blogHtml;
+    changes.push(...structureRepair.changes);
+  }
+
+  const report = await evaluateBlogPublishQuality({
+    ...input,
+    blog_html: blogHtml,
+    primary_keyword: primaryKeyword,
+    content_type: contentType,
+  });
+
+  return {
+    blogHtml,
+    changed: blogHtml !== input.blog_html,
+    changes,
+    report,
   };
 }
 

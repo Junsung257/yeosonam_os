@@ -228,8 +228,20 @@ export function getRegionUrl(slug: string): string {
   return `/destinations/region/${slug}`;
 }
 
+export function destinationToSlug(city: string): string {
+  return city
+    .trim()
+    .replace(/[\/\\／]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+export function destinationSlugMatches(destination: string, slugOrDestination: string): boolean {
+  const normalized = slugOrDestination.trim();
+  return destination === normalized || destinationToSlug(destination) === destinationToSlug(normalized);
+}
+
 export function encodeDestinationPathSegment(city: string): string {
-  // Some edge/CDN layers decode %2F before Next.js route matching.
-  // Double-encode slash-bearing city names so they remain a single segment.
-  return encodeURIComponent(city).replace(/%2F/gi, '%252F');
+  return encodeURIComponent(destinationToSlug(city));
 }

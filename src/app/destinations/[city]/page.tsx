@@ -8,7 +8,7 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import DestinationPackagesSection from '@/components/customer/DestinationPackagesSection';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
-import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment } from '@/lib/regions';
+import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment, destinationToSlug, destinationSlugMatches } from '@/lib/regions';
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300;
@@ -29,7 +29,7 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
       .not('destination', 'is', null)
       .limit(2000);
     const unique: string[] = [...new Set(((data ?? []) as Array<{ destination: string | null }>).map((r) => r.destination ?? '').filter((d): d is string => d.length > 0))];
-    return unique.slice(0, 50).map((city) => ({ city }));
+    return unique.slice(0, 50).map((city) => ({ city: destinationToSlug(city) }));
   } catch {
     return [];
   }
@@ -96,6 +96,31 @@ async function destinationExistsForMetadata(city: string): Promise<boolean | nul
     return Array.isArray(data) && data.length > 0;
   } catch {
     return null;
+  }
+}
+
+async function resolveDestinationRouteParam(value: string): Promise<string | null> {
+  const decoded = safeDecodePathSegment(value).trim();
+  if (!decoded) return null;
+  if (!isSupabaseConfigured) return decoded;
+
+  const exact = await destinationExistsForMetadata(decoded);
+  if (exact === true) return decoded;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('active_destinations')
+      .select('destination')
+      .limit(2000);
+    if (error) return decoded;
+
+    const match = ((data ?? []) as Array<{ destination: string | null }>)
+      .map(row => row.destination?.trim() ?? '')
+      .find(destination => destination && destinationSlugMatches(destination, decoded));
+
+    return match || decoded;
+  } catch {
+    return decoded;
   }
 }
 
@@ -387,7 +412,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
 export async function generateMetadata({ params }: { params: Promise<{ city?: string | string[] }> }): Promise<Metadata> {
   const { city: rawCity } = await params;
   const city = getRouteParam(rawCity);
-  const decoded = safeDecodePathSegment(city).trim();
+  const decoded = (await resolveDestinationRouteParam(city)) ?? '';
   const encodedCity = encodeDestinationPathSegment(decoded);
   const canonical = encodedCity ? `${BASE_URL}/destinations/${encodedCity}` : `${BASE_URL}/destinations`;
   const fallbackTitle = '여행지 가이드';
@@ -459,7 +484,7 @@ async function renderPillarBody(md: string): Promise<string> {
 export default async function DestinationPillarPage({ params }: { params: Promise<{ city?: string | string[] }> }) {
   const { city: rawCity } = await params;
   const city = getRouteParam(rawCity);
-  const decoded = safeDecodePathSegment(city).trim();
+  const decoded = (await resolveDestinationRouteParam(city)) ?? '';
   if (!decoded) notFound();
   const encodedCity = encodeDestinationPathSegment(decoded);
   let data: PillarData | null = null;

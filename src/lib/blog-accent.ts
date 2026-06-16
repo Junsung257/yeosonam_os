@@ -76,7 +76,7 @@ export function applyMarkdownAccents(md: string): string {
 
   // 1-c) 비교 패턴: X보다 Y, A vs B → <mark> 형광펜
   //     예: "호텔보다 게스트하우스", "에어비앤비 vs 호텔"
-  out = out.replace(
+  if (process.env.BLOG_AUTO_COMPARE_MARK === '1') out = out.replace(
     /([가-힣]+)\s*(보다|vs\.?)\s*([가-힣]+)/gi,
     (_m, a, cmp, b) => `<mark>${a} ${cmp} ${b}</mark>`,
   );

@@ -6,9 +6,10 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
   applyBlogPublishQualityToUpdate,
   blogPublishQualityWarnings,
-  evaluateBlogPublishQuality,
+  prepareBlogForPublish,
   resolveBlogDestination,
 } from '@/lib/blog-publish-quality';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 
 const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, travel_packages(id, title, destination)';
 
@@ -96,7 +97,7 @@ const postHandler = async (request: NextRequest) => {
       const finalTitle = seo_title ?? row.seo_title ?? null;
       const finalDescription = seo_description ?? row.seo_description ?? null;
       const destination = resolveBlogDestination(row);
-      const qaReport = await evaluateBlogPublishQuality({
+      const prepared = await prepareBlogForPublish({
         id: creative_id,
         blog_html: row.blog_html,
         slug,
@@ -108,6 +109,7 @@ const postHandler = async (request: NextRequest) => {
         primary_keyword: destination || finalTitle || slug,
         excludeContentCreativeId: creative_id,
       });
+      const qaReport = prepared.report;
       if (!qaReport.passed) {
         return NextResponse.json({
           error: 'Blog publish quality gate failed',
@@ -124,6 +126,7 @@ const postHandler = async (request: NextRequest) => {
         status: 'published',
         published_at: new Date().toISOString(),
         slug,
+        blog_html: prepared.blogHtml,
       };
       if (seo_title) updateData.seo_title = seo_title;
       if (seo_description) updateData.seo_description = seo_description;
@@ -142,10 +145,14 @@ const postHandler = async (request: NextRequest) => {
       if (destination) revalidatePath(`/blog/destination/${encodeURIComponent(destination)}`);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      const { notifyIndexing } = await import('@/lib/indexing');
-      notifyIndexing(`${baseUrl}/blog/${slug}`, baseUrl)
-        .then(r => console.log(`[content-queue approve] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
-        .catch(() => {});
+      void enqueueBlogIndexingJob({
+        slug,
+        baseUrl,
+        contentCreativeId: creative_id,
+        source: 'content_queue_approve',
+      }).then((result) => {
+        if (!result.ok) console.warn('[content-queue approve] indexing enqueue failed:', result.error);
+      });
 
       return NextResponse.json({ ok: true, status: 'published', seo_score: qaReport.seoScore.score });
     }

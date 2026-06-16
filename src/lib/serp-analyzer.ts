@@ -62,6 +62,7 @@ export interface SerpAnalysis {
   source: string;
   fetched_at: string;
   cached: boolean;
+  signal_source?: 'naver_serp' | 'free_google_suggest';
   // 제목 패턴
   avg_title_len: number;
   power_words: Array<{ word: string; count: number }>;
@@ -109,6 +110,57 @@ async function fetchNaverSerp(
   } catch {
     return [];
   }
+}
+
+export function parseGoogleSuggestPayload(payload: unknown, keyword: string): SerpSnippet[] {
+  if (!Array.isArray(payload)) return [];
+  const suggestions = Array.isArray(payload[1]) ? payload[1] : [];
+  return suggestions
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .map((title, idx) => ({
+      rank: idx + 1,
+      title: stripHtml(title),
+      url: `https://www.google.com/search?q=${encodeURIComponent(title)}`,
+      snippet: `${keyword} related search intent suggestion`,
+    }))
+    .slice(0, 10);
+}
+
+async function fetchGoogleSuggestSnippets(keyword: string): Promise<SerpSnippet[]> {
+  const queries = [
+    keyword,
+    `${keyword} 날씨`,
+    `${keyword} 준비물`,
+    `${keyword} 옷차림`,
+  ];
+  const snippets: SerpSnippet[] = [];
+  const seen = new Set<string>();
+
+  for (const query of queries) {
+    try {
+      const res = await fetch(
+        `https://suggestqueries.google.com/complete/search?client=firefox&hl=ko&gl=kr&q=${encodeURIComponent(query)}`,
+        {
+          headers: { 'User-Agent': 'YeosonamSearchIntentBot/1.0' },
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (!res.ok) continue;
+      const parsed = parseGoogleSuggestPayload(await res.json(), keyword);
+      for (const item of parsed) {
+        const key = item.title.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        snippets.push({ ...item, rank: snippets.length + 1 });
+        if (snippets.length >= 10) break;
+      }
+      if (snippets.length >= 10) break;
+    } catch {
+      // Free suggest is best-effort. A failure must not block publishing.
+    }
+  }
+
+  return snippets.slice(0, 10);
 }
 
 function stripHtml(s: string): string {
@@ -224,15 +276,22 @@ export async function analyzeSerp(
           year_inclusion_rate: row.year_inclusion_rate,
           bracket_rate: row.bracket_rate,
           entities: row.entities || [],
+          signal_source: row.raw?.signal_source || 'naver_serp',
           recommended_title_patterns: row.raw?.recommended_title_patterns || [],
-          recommended_entities_to_include: (row.entities || []).slice(0, 6).map((e: any) => e.entity),
+          recommended_entities_to_include: row.raw?.recommended_entities_to_include
+            || (row.entities || []).slice(0, 6).map((e: any) => e.entity),
         };
       }
     }
   } catch { /* 캐시 미스 */ }
 
-  // 2) SERP fetch
-  const snippets = await fetchNaverSerp(keyword, source);
+  // 2) SERP fetch. If Naver keys are unavailable, use free autocomplete intent signals.
+  let signalSource: SerpAnalysis['signal_source'] = 'naver_serp';
+  let snippets = await fetchNaverSerp(keyword, source);
+  if (snippets.length === 0) {
+    snippets = await fetchGoogleSuggestSnippets(keyword);
+    if (snippets.length > 0) signalSource = 'free_google_suggest';
+  }
   if (snippets.length === 0) return null;
 
   // 3) 스냅샷 저장
@@ -254,6 +313,19 @@ export async function analyzeSerp(
 
   // 4) 패턴 분석
   const patterns = extractPatterns(snippets);
+  if (signalSource === 'free_google_suggest') {
+    const freeSuggestions = snippets.map((snippet) => snippet.title).slice(0, 6);
+    patterns.recommended_title_patterns = [
+      ...patterns.recommended_title_patterns,
+      `Free autocomplete intent signals: ${freeSuggestions.join(' / ')}`,
+    ];
+    patterns.recommended_entities_to_include = [
+      ...new Set([
+        ...patterns.recommended_entities_to_include,
+        ...freeSuggestions,
+      ]),
+    ].slice(0, 8);
+  }
 
   // 5) 분석 결과 캐시
   try {
@@ -268,7 +340,9 @@ export async function analyzeSerp(
       recommended_title_pattern: patterns.recommended_title_patterns.join(' / '),
       raw: {
         recommended_title_patterns: patterns.recommended_title_patterns,
+        recommended_entities_to_include: patterns.recommended_entities_to_include,
         snippets_count: snippets.length,
+        signal_source: signalSource,
       },
       fetched_at: fetchedAt,
     }, { onConflict: 'keyword' });
@@ -279,6 +353,7 @@ export async function analyzeSerp(
     source,
     fetched_at: fetchedAt,
     cached: false,
+    signal_source: signalSource,
     ...patterns,
   };
 }
@@ -293,6 +368,11 @@ export function buildSerpPromptBlock(
   if (!analysis && !serpGapAnalysis) return '';
 
   const lines: string[] = [];
+  if (analysis?.signal_source === 'free_google_suggest') {
+    lines.push('## Search Intent Signals (free Google Suggest fallback)');
+    lines.push('- Naver SERP API keys were unavailable or returned no data, so this uses autocomplete intent signals. Use this for keyword/intent guidance, not ranking proof.');
+    lines.push('');
+  }
 
   if (analysis) {
     lines.push('## 🎯 경쟁 SERP 분석 (Naver 상위 10개)');

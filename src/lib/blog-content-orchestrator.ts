@@ -342,6 +342,7 @@ export async function autoHealQueue(): Promise<{
       const exactDuplicateSlug = item.last_error?.match(/동일 slug 이미 존재:\s*([a-z0-9-]+)/i)?.[1] ?? null;
       if (!shouldSelfHealBlogQueueItem({ lastError: item.last_error, meta })) {
         const decision = classifyBlogQueueFailure(item.last_error ?? '');
+        stillFailed++;
         await supabaseAdmin
           .from('blog_topic_queue')
           .update({

@@ -1,6 +1,26 @@
 # Blog Errors
 
-Last updated: 2026-06-10
+Last updated: 2026-06-16
+
+## ERR-BLOG-briefless-generation@2026-06-16
+
+- [x] **ERR-BLOG-briefless-generation@2026-06-16**: A good seasonal seed such as `보라카이 7월` could drift into an irrelevant micro-topic such as air-conditioner lodging, then still pass technical SEO/render checks because the generator started from the queued topic instead of a validated search-intent brief.
+- **Root cause**: The publisher had keyword research, SERP analysis, topic-fit gates, and editorial audits as separate pieces, but `generateFromTopic()` trusted `blog_topic_queue.topic` as the writing source of truth. SERP data was appended as prompt context after the topic was chosen; it did not first create a canonical content brief with primary keyword, secondary keyword cluster, intent, required H2 sections, forbidden angles, and source requirements.
+- **Fix**: Added `src/lib/blog-content-brief.ts` and wired it into `src/app/api/cron/blog-publisher/route.ts`. Automatic topic generation now builds a `content_brief` before LLM writing, rewrites destination-month seasonal tangents into weather/clothing/preparation briefs, stores the brief in `generation_meta.content_brief`, and uses the brief primary keyword for publish quality gates.
+- **Prevention**: No automatic informational post may treat a raw queue topic as the final writing contract. Topic queue input is only a seed; `content_brief` is the source of truth for final title, primary keyword, secondary keywords, required sections, forbidden angles, and source requirements. Repeated bad examples must become deterministic brief tests before they are considered learned.
+- **Verification**: `npx vitest run src/lib/blog-content-brief.test.ts`; then run type-check, lint, and the production editorial audit before considering the pipeline healthy.
+
+---
+
+## ERR-BLOG-topic-fit-editorial-gate@2026-06-15
+
+- [x] **ERR-BLOG-topic-fit-editorial-gate@2026-06-15**: Recent automatically published posts could pass high SEO/readability scores while still having reader-facing failures: machine-looking slugs, nonsensical longtail combinations, placeholder text, excessive highlight marks, generic image text, and related-content headings polluting article structure.
+- **Root cause**: Existing automation optimized generation, keyword scoring, metadata, and renderer integrity, but topic suitability and Korean editorial quality were not hard blockers at the queue boundary and publish boundary. Public DOM audits also allowed table-required posts to pass with `tableCount=0`.
+- **Fix**: Added `src/lib/blog-topic-fit-gate.ts`; connected `topic_fit` and `editorial_quality` to `runQualityGates()`; filtered scheduler, GSC longtail expansion, card-news enqueue, and manual topic enqueue before `blog_topic_queue` insert; made render audit fail table-required posts with no rendered table; removed `h2` from `InlineRelated`; disabled automatic comparison `<mark>` unless `BLOG_AUTO_COMPARE_MARK=1`.
+- **Prevention**: No automatic path may treat `published` as complete until topic fit, editorial quality, rendered DOM, image quality, SEO, readability, and indexing evidence are present. Repeated bad examples must become deterministic gate rules or tests before the issue is considered closed.
+- **Verification**: Run `npx vitest run src/lib/blog-topic-fit-gate.test.ts src/lib/blog-renderer.test.ts`; `npm run type-check`; `npm run audit:blog-render -- --base=https://www.yeosonam.com --limit=10 --json`.
+
+---
 
 ## ERR-BLOG-legacy-backfill-preview-vs-write@2026-06-09
 
@@ -9,6 +29,17 @@ Last updated: 2026-06-10
 - **Fix**: Backfill is now dry-run by default, write mode is explicit, failed samples include `failedGates` evidence, renderer no longer treats hashtags as literal headings, raw `:::tip` insertion was replaced by safe HTML, legacy table/heading/checklist/FAQ repair handles the full published corpus, loose image Markdown is normalized, residual linked-image Markdown is rendered, official reference links are topped up, and SEO title/description/longtail coverage are repaired by topic type.
 - **Prevention**: Never run `backfill:blog-quality:write` from preview results alone. Full write requires `qualityGateFailed=0` for the full batch, or a deliberately scoped slug batch with 0 failures and reviewable evidence. After write, re-run render/image/SEO/editorial/revenue audits and bulk reindex.
 - **Verification**: `npx vitest run src/lib/blog-renderer.test.ts src/lib/blog-structure-audit.test.ts src/lib/blog-editorial-repair.test.ts src/lib/blog-content-intent.test.ts src/lib/blog-publish-quality.test.ts`; `npm run backfill:blog-quality -- --limit=120`; `npm run audit:blog-editorial -- --base=https://www.yeosonam.com --repair-preview`; `npm run audit:blog-revenue-funnel -- --strict`.
+
+---
+
+## ERR-BLOG-topic-fit-editorial-gate@2026-06-15
+
+- [x] **ERR-BLOG-topic-fit-editorial-gate@2026-06-15**: Recent posts could receive high SEO/render scores while still being reader-hostile: machine slugs (`post-*`, `7-post-*`), placeholder text, malformed comparison/highlight wording, weak table rendering, and impossible destination/intent combinations such as `석가장 신혼여행`.
+- **Root cause**: The pipeline scored technical SEO, render shape, and keyword density, but did not block invalid topic fit before queue insertion or final editorial quality before publish/backfill. Backfill also used slugs as fallback keywords even when real target keywords existed in `generation_meta`.
+- **Fix**: Added `src/lib/blog-topic-fit-gate.ts`, wired `topic_fit` and `editorial_quality` into `runQualityGates()`, filtered queue insertion paths, repaired renderer loose-table normalization, disabled automatic comparison highlight by default, made slug migration repeat-safe, and made backfill use stored keywords before slug fallback.
+- **Production cleanup**: Migrated five latest machine slugs, backfilled all repairable latest published posts, archived `shijiazhuang-itinerary`, queued `URL_DELETED` for the bad URL, and drained all indexing jobs.
+- **Verification**: Latest published 10 dry-run returned `changed=0`, `qualityGateFailed=0`, `failedSamples=[]`; active indexing queue returned `0`; `npx vitest run src/lib/blog-topic-fit-gate.test.ts src/lib/blog-renderer.test.ts`, `npm run type-check`, and `npm run lint` passed.
+- **Prevention**: A blog is not complete because SEO score is high. It must pass topic fit, editorial quality, render integrity, image quality, SEO, readability, and indexing evidence. Bad topic fit is quarantined, not rewritten into another public article.
 
 ---
 

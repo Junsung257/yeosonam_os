@@ -84,9 +84,9 @@ export default function InlineRelated({
         >
           +
         </span>
-        <h2 className="text-sm font-bold text-text-primary">
+        <div className="text-sm font-bold text-text-primary">
           {destination ? `${destination} 더 살펴보기` : '함께 보면 좋아요'}
-        </h2>
+        </div>
       </div>
 
       {products.length > 0 && (

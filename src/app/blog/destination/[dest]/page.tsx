@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { encodeDestinationPathSegment } from '@/lib/regions';
+import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
@@ -34,10 +34,31 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
+async function resolveDestinationRouteParam(value: string): Promise<string> {
+  const decoded = safeDecodePathSegment(value).trim();
+  if (!decoded || !isSupabaseConfigured) return decoded;
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('active_destinations')
+      .select('destination')
+      .limit(2000);
+    if (error) return decoded;
+
+    const match = ((data ?? []) as Array<{ destination: string | null }>)
+      .map(row => row.destination?.trim() ?? '')
+      .find(destination => destination && destinationSlugMatches(destination, decoded));
+
+    return match || decoded;
+  } catch {
+    return decoded;
+  }
+}
+
 async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[]; packages: { id: string; title: string; price: number | null }[] }> {
   if (!isSupabaseConfigured) return { posts: [], packages: [] };
 
-  const destination = safeDecodePathSegment(dest);
+  const destination = await resolveDestinationRouteParam(dest);
 
   try {
     // 블로그 글 (해당 목적지)
@@ -48,10 +69,16 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(100);
+      .limit(1000);
 
     const posts = ((allPosts || []) as unknown as BlogPost[]).filter(
-      p => (p.destination || p.travel_packages?.destination || '').includes(destination)
+      p => {
+        const postDestination = (p.destination || p.travel_packages?.destination || '').trim();
+        return (
+          postDestination.includes(destination) ||
+          destinationSlugMatches(postDestination, destination)
+        );
+      },
     );
 
     // 관련 상품
@@ -72,12 +99,15 @@ async function getPostsByDestination(dest: string): Promise<{ posts: BlogPost[];
 export async function generateMetadata({ params }: { params: Promise<{ dest?: string | string[] }> }): Promise<Metadata> {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const destination = safeDecodePathSegment(dest);
+  const destination = await resolveDestinationRouteParam(dest);
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
+  const { posts, packages } = await getPostsByDestination(dest);
+  const hasIndexableContent = posts.length > 0 || packages.length > 0;
   return {
     title: `${destination} 여행 가이드`,
     description: `${destination} 여행의 모든 것. 가성비 패키지부터 럭셔리까지, 여소남이 엄선한 ${destination} 여행 정보를 만나보세요.`,
     alternates: { canonical },
+    robots: hasIndexableContent ? undefined : { index: false, follow: true },
     openGraph: {
       title: `${destination} 여행 가이드 | 여소남`,
       description: `${destination} 여행 패키지 추천, 관광지 정보, 꿀팁 가이드`,
@@ -89,7 +119,7 @@ export async function generateMetadata({ params }: { params: Promise<{ dest?: st
 export default async function DestinationBlogPage({ params }: { params: Promise<{ dest?: string | string[] }> }) {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const destination = safeDecodePathSegment(dest);
+  const destination = await resolveDestinationRouteParam(dest);
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
   const { posts, packages } = await getPostsByDestination(dest);
 

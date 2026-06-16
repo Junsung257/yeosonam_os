@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Sparkles, Search } from 'lucide-react';
+import { encodeDestinationPathSegment, getDestinationUrl } from '@/lib/regions';
 
 interface DestMeta {
   tagline: string | null;
@@ -30,6 +31,10 @@ interface PexelsResult {
 }
 
 type StatusFilter = 'all' | 'missing' | 'pending' | 'approved';
+
+function getDestinationApiUrl(destination: string): string {
+  return `/api/destinations/${encodeDestinationPathSegment(destination)}`;
+}
 
 function statusBadge(meta: DestMeta | null) {
   if (!meta) return { label: '미설정', color: 'bg-rose-100 text-rose-700', icon: '🔴' };
@@ -101,7 +106,7 @@ export default function AdminDestinationsPage() {
   async function patchMeta(destination: string, patch: Partial<DestMeta>) {
     setSaving(p => ({ ...p, [destination]: true }));
     try {
-      const res = await fetch(`/api/destinations/${encodeURIComponent(destination)}`, {
+      const res = await fetch(getDestinationApiUrl(destination), {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(patch),
@@ -131,7 +136,7 @@ export default function AdminDestinationsPage() {
     setSaving(p => ({ ...p, [destination]: true }));
     setMsg(`⏳ ${destination} 타이틀 생성 중...`);
     try {
-      const res = await fetch(`/api/destinations/${encodeURIComponent(destination)}`, { method: 'POST' });
+      const res = await fetch(getDestinationApiUrl(destination), { method: 'POST' });
       const json = await res.json();
       if (res.ok) {
         setRows(prev =>
@@ -440,7 +445,7 @@ export default function AdminDestinationsPage() {
                       {/* 고객 페이지 링크 */}
                       <div className="flex gap-3 pt-2 border-t border-admin-border">
                         <a
-                          href={`/destinations/${encodeURIComponent(row.destination)}`}
+                          href={getDestinationUrl(row.destination)}
                           target="_blank"
                           rel="noopener"
                           className="text-xs text-brand hover:underline font-medium"

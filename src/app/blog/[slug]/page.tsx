@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { notFound, redirect } from 'next/navigation';
+import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
@@ -32,6 +32,9 @@ import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { classifyBlogIntent } from '@/lib/blog-content-intent';
 import { recommendBestPackages } from '@/lib/scoring/recommend';
+import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+
+export const dynamic = 'force-dynamic';
 
 function isNextNotFoundError(err: unknown): boolean {
   return (
@@ -70,7 +73,7 @@ function buildHeadlineVariants(original: string): string[] {
   ];
 }
 
-export const revalidate = 3600;
+export const revalidate = 0;
 // 자동 발행 글은 계속 늘어나므로 정적 slug 목록을 빌드/개발 서버에 고정하지 않는다.
 // 각 상세 페이지는 첫 요청 시 on-demand ISR로 생성하고, 미존재 slug는 noindex 404로 방어한다.
 
@@ -498,6 +501,10 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { slug: rawSlug } = await params;
   const slug = safeDecodeSlug(rawSlug);
+  const redirectedSlug = resolveBlogSlugRedirect(slug);
+  if (redirectedSlug) {
+    permanentRedirect(`/blog/${redirectedSlug}`);
+  }
   // 숫자 slug(연도 등)는 noindex
   if (/^\d+$/.test(slug)) {
     return { title: '글을 찾을 수 없습니다', robots: { index: false, follow: false } };
@@ -568,6 +575,10 @@ export default async function BlogDetailPage({
 }) {
   const { slug: rawSlug } = await params;
   const slug = safeDecodeSlug(rawSlug);
+  const redirectedSlug = resolveBlogSlugRedirect(slug);
+  if (redirectedSlug) {
+    permanentRedirect(`/blog/${redirectedSlug}`);
+  }
   const qp = await searchParams;
   const utmCampaign = (qp.utm_campaign as string) || null;
   const utmTerm = (qp.utm_term as string) || null;

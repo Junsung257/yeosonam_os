@@ -13,6 +13,8 @@ export interface RenderedBlogIntegrityReport {
     renderedImageCount: number;
     markdownHeadingCount: number;
     renderedHeadingCount: number;
+    markdownTableRowCount: number;
+    renderedTableCount: number;
     artifactCount: number;
     artifacts: string[];
     artifactSamples?: string[];
@@ -34,8 +36,10 @@ const MARKDOWN_SIGNAL_PATTERNS = [
 const HTML_TAG_RE = /<[a-z][\s\S]*>/i;
 const MARKDOWN_IMAGE_RE = /!\[[^\]]*]\([^)]+\)/g;
 const MARKDOWN_HEADING_RE = /(^|\n)\s{0,3}#{1,6}\s+\S/g;
+const MARKDOWN_TABLE_ROW_RE = /(^|\n)\s{0,3}\|.+\|\s*(?=\n|$)/g;
 const RENDERED_IMAGE_RE = /<img\b/gi;
 const RENDERED_HEADING_RE = /<h[2-4]\b/gi;
+const RENDERED_TABLE_RE = /<table\b/gi;
 const SUPABASE_BLOG_ASSET_RE = /https?:\/\/[^"')\s]+supabase\.co\/storage\/v1\/object\/public\/blog-assets\/[^"')\s]+/gi;
 const LONG_HEADING_SPLIT_KEYWORDS = [
   '가이드',
@@ -228,6 +232,58 @@ function normalizeCollapsedTableRows(source: string): string {
   return normalized.join('\n');
 }
 
+function isMarkdownTableRowLine(line: string): boolean {
+  const trimmed = line.trim();
+  return trimmed.startsWith('|') && trimmed.endsWith('|') && countPipes(trimmed) >= 2;
+}
+
+function isMarkdownTableSeparatorLine(line: string): boolean {
+  return /^\|?\s*:?-{2,}:?\s*(?:\|\s*:?-{2,}:?\s*)+\|?$/.test(line.trim());
+}
+
+function tableSeparatorFor(row: string): string {
+  const cellCount = row.split('|').filter((cell) => cell.trim().length > 0).length;
+  return `|${Array.from({ length: Math.max(2, cellCount) }, () => '---').join('|')}|`;
+}
+
+function normalizeLooseMarkdownTables(source: string): string {
+  const lines = source.split('\n');
+  const out: string[] = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    if (!isMarkdownTableRowLine(lines[index])) {
+      out.push(lines[index]);
+      index += 1;
+      continue;
+    }
+
+    const block: string[] = [];
+    while (index < lines.length) {
+      const current = lines[index];
+      const next = lines[index + 1] ?? '';
+      if (isMarkdownTableRowLine(current)) {
+        block.push(current.trim());
+        index += 1;
+        continue;
+      }
+      if (current.trim() === '' && isMarkdownTableRowLine(next)) {
+        index += 1;
+        continue;
+      }
+      break;
+    }
+
+    if (block.length >= 2 && !isMarkdownTableSeparatorLine(block[1])) {
+      out.push(block[0], tableSeparatorFor(block[0]), ...block.slice(1));
+    } else {
+      out.push(...block);
+    }
+  }
+
+  return out.join('\n');
+}
+
 export function normalizeStoredBlogMarkdownStructure(source: string): string {
   let out = source.replace(/\r\n?/g, '\n');
 
@@ -253,6 +309,7 @@ export function normalizeStoredBlogMarkdownStructure(source: string): string {
   out = out.replace(/(\|[^\n]+\|)(?=#{2,6}\s+\S)/g, '$1\n\n');
   out = out.replace(/(^|\n)(#{2,6}\s+[^\n|]{1,100})\|/g, '$1$2\n\n|');
   out = normalizeCollapsedTableRows(out);
+  out = normalizeLooseMarkdownTables(out);
   out = out.replace(/\n\|[^|\n]+(?:\|[^|\n]+)+\|\n\|---(?:\|---)+\|\n(?!\|)/g, '\n');
   out = normalizeCollapsedBulletLines(out);
   out = out
@@ -462,6 +519,8 @@ export function inspectRenderedBlogIntegrity(
   const renderedImageCount = countMatches(renderedHtml, RENDERED_IMAGE_RE);
   const markdownHeadingCount = countMatches(sourceMarkdown, MARKDOWN_HEADING_RE);
   const renderedHeadingCount = countMatches(renderedHtml, RENDERED_HEADING_RE);
+  const markdownTableRowCount = countMatches(sourceMarkdown, MARKDOWN_TABLE_ROW_RE);
+  const renderedTableCount = countMatches(renderedHtml, RENDERED_TABLE_RE);
   const renderedText = stripHtmlForArtifactScan(renderedHtml);
   const artifacts: string[] = [];
   const artifactSamples: string[] = [];
@@ -503,6 +562,9 @@ export function inspectRenderedBlogIntegrity(
   if (markdownHeadingCount >= 2 && renderedHeadingCount < Math.min(markdownHeadingCount, 2)) {
     artifacts.push('missing_rendered_headings');
   }
+  if (markdownTableRowCount >= 2 && renderedTableCount === 0) {
+    artifacts.push('missing_rendered_table');
+  }
 
   return {
     passed: artifacts.length === 0,
@@ -512,6 +574,8 @@ export function inspectRenderedBlogIntegrity(
       renderedImageCount,
       markdownHeadingCount,
       renderedHeadingCount,
+      markdownTableRowCount,
+      renderedTableCount,
       artifactCount: artifacts.length,
       artifacts,
       artifactSamples,

@@ -73,6 +73,7 @@ These audits contain recent evidence for the current product-registration engine
 
 | Date | File | Use |
 |---|---|---|
+| 2026-06-15 | `2026-06-15-blog-autopublish-quality-incident.md` + `../blog-autopublish-contract.md` | Blog autopublish repeated-quality root cause, evidence-backed prevention contract, verification commands, and remaining slug migration gate. |
 | 2026-06-08 | `2026-06-08-blog-production-visual-audit.md` | Blog visual QA, GSC canonical/domain evidence, and 100-point prevention gate. |
 | 2026-06-09 | `2026-06-09-blog-publish-quality-reverification.md` | Blog publish-path SEO/readability/render quality gate reverification. |
 | 2026-06-09 | `2026-06-09-blog-image-proxy-reverification.md` | Browser-side Pexels image blocking root cause and image proxy verification. |

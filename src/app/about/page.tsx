@@ -46,8 +46,11 @@ export default function AboutPage() {
       email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'help@yeosonam.com',
     },
     sameAs: [
-      'https://blog.naver.com/yeosonam',
-      'https://www.instagram.com/yeosonam_official/',
+      'https://blog.naver.com/yeosonam_official',
+      'https://blog.naver.com/yeosonam_',
+      'https://www.instagram.com/yeosonam/',
+      'https://www.threads.com/@yeosonam',
+      'https://www.youtube.com/@yeosonam',
     ],
     knowsAbout: ['패키지여행', '해외여행', '단체여행', '여행 SaaS', 'B2B2C 여행 플랫폼'],
   };

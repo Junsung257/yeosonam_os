@@ -38,7 +38,7 @@ test('ERR-BLOG-publish-quality-bypass: direct publish APIs call evaluator and pe
   for (const parts of publishFiles) {
     const source = read(...parts);
     const label = parts.join('/');
-    assert.match(source, /evaluateBlogPublishQuality/, `${label} must evaluate publish quality`);
+    assert.match(source, /evaluateBlogPublishQuality|prepareBlogForPublish/, `${label} must prepare or evaluate publish quality`);
     assert.ok(
       /quality_gate/.test(source) || /applyBlogPublishQualityToUpdate/.test(source),
       `${label} must persist quality gate evidence`,

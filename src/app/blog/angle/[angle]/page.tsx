@@ -59,11 +59,14 @@ export async function generateMetadata({ params }: { params: Promise<{ angle?: s
   const angle = getRouteParam(rawAngle);
   const canonical = `${BASE_URL}/blog/angle/${encodeURIComponent(angle)}`;
   const meta = ANGLE_META[angle];
+  const posts = meta ? await getPostsByAngle(angle) : [];
+  const hasIndexableContent = posts.length > 0;
   if (!meta) return { title: '블로그' };
   return {
     title: `${meta.label} 여행 가이드 | 여소남`,
     description: `${meta.tagline}. 여소남이 엄선한 ${meta.label} 여행 콘텐츠 모음.`,
     alternates: { canonical },
+    robots: hasIndexableContent ? undefined : { index: false, follow: true },
     openGraph: {
       title: `${meta.label} 여행 가이드 | 여소남`,
       description: meta.tagline,

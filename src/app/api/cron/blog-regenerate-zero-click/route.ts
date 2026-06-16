@@ -23,9 +23,10 @@ import crypto from 'crypto';
 import { revalidatePath } from 'next/cache';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { evaluateBlogPublishQuality } from '@/lib/blog-publish-quality';
+import { prepareBlogForPublish } from '@/lib/blog-publish-quality';
 import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -218,7 +219,7 @@ async function runRegenerator(request: NextRequest) {
           ? post.travel_packages[0]?.destination
           : post.travel_packages?.destination) ?? post.destination ?? null;
 
-        const qa = await evaluateBlogPublishQuality({
+        const prepared = await prepareBlogForPublish({
           id: post.id,
           blog_html: newHtml,
           slug,
@@ -229,8 +230,9 @@ async function runRegenerator(request: NextRequest) {
           primary_keyword: dest,
           excludeContentCreativeId: post.id,
         });
+        const qa = prepared.report;
 
-        const newHash = sha256(newHtml);
+        const newHash = sha256(prepared.blogHtml);
 
         if (!qa.passed) {
           await updateLog({
@@ -246,7 +248,7 @@ async function runRegenerator(request: NextRequest) {
         const { error: upErr } = await supabaseAdmin
           .from('content_creatives')
           .update({
-            blog_html: newHtml,
+            blog_html: prepared.blogHtml,
             updated_at: new Date().toISOString(),
             quality_gate: qa.qualityGate,
             seo_score: qa.seoScore,
@@ -274,6 +276,11 @@ async function runRegenerator(request: NextRequest) {
 
         try { revalidatePath('/blog'); } catch { /* noop */ }
         try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
+        await enqueueBlogIndexingJob({
+          slug,
+          contentCreativeId: post.id,
+          source: 'blog_regenerate_zero_click',
+        });
         results.push({ slug, status: 'replaced' });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);

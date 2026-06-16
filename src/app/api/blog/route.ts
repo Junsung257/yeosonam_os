@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { notifyIndexing } from '@/lib/indexing';
+import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import {
   applyBlogPublishQualityToUpdate,
   blogPublishQualityWarnings,
-  evaluateBlogPublishQuality,
+  prepareBlogForPublish,
   resolveBlogDestination,
   type BlogPublishQualityReport,
 } from '@/lib/blog-publish-quality';
@@ -165,8 +165,9 @@ export async function POST(request: NextRequest) {
     }
 
     let qaReport: BlogPublishQualityReport | null = null;
+    let finalBlogHtml = blog_html;
     if (status === 'published') {
-      qaReport = await evaluateBlogPublishQuality({
+      const prepared = await prepareBlogForPublish({
         blog_html,
         slug: cleanSlug,
         seo_title: seo_title || null,
@@ -176,13 +177,15 @@ export async function POST(request: NextRequest) {
         product_id: product_id || null,
         primary_keyword: destinationForQa || seo_title || cleanSlug,
       });
+      qaReport = prepared.report;
       if (!qaReport.passed) {
         return qualityGateFailedResponse(qaReport);
       }
+      finalBlogHtml = prepared.blogHtml;
     }
 
     const insertData: Record<string, unknown> = {
-      blog_html,
+      blog_html: finalBlogHtml,
       slug: cleanSlug,
       seo_title: seo_title || null,
       seo_description: seo_description || null,
@@ -209,9 +212,15 @@ export async function POST(request: NextRequest) {
       revalidatePath(`/blog/${cleanSlug}`);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      notifyIndexing(`${baseUrl}/blog/${cleanSlug}`, baseUrl)
-        .then(r => console.log(`[blog POST] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
-        .catch(() => {});
+      const contentCreativeId = (data?.[0] as { id?: string } | undefined)?.id ?? null;
+      void enqueueBlogIndexingJob({
+        slug: cleanSlug,
+        baseUrl,
+        contentCreativeId,
+        source: 'api_blog_post',
+      }).then((result) => {
+        if (!result.ok) console.warn('[blog POST] indexing enqueue failed:', result.error);
+      });
     }
 
     return apiResponse({ post: data?.[0], success: true }, { status: 201 });
@@ -243,8 +252,13 @@ export async function PATCH(request: NextRequest) {
       revalidatePath('/blog');
       revalidatePath(`/blog/${target.slug}`);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-      const report = await notifyIndexing(`${baseUrl}/blog/${target.slug}`, baseUrl);
-      return apiResponse({ success: true, force_revalidate: true, slug: target.slug, indexing: report });
+      const queued = await enqueueBlogIndexingJob({
+        slug: target.slug,
+        baseUrl,
+        contentCreativeId: id,
+        source: 'api_blog_force_revalidate',
+      });
+      return apiResponse({ success: true, force_revalidate: true, slug: target.slug, indexing_queued: queued });
     }
 
     const updateData: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -287,7 +301,7 @@ export async function PATCH(request: NextRequest) {
           return apiResponse({ error: 'Blog quality gate input missing' }, { status: 400 });
         }
 
-        qaReport = await evaluateBlogPublishQuality({
+        const prepared = await prepareBlogForPublish({
           blog_html: finalHtml,
           slug: finalSlug,
           seo_title: finalTitle,
@@ -298,6 +312,8 @@ export async function PATCH(request: NextRequest) {
           primary_keyword: destination || finalTitle || finalSlug,
           excludeContentCreativeId: id,
         });
+        qaReport = prepared.report;
+        updateData.blog_html = prepared.blogHtml;
         applyBlogPublishQualityToUpdate(updateData, qaReport);
       } catch (qaErr) {
         console.warn('[blog PATCH] quality gate failed to run:', qaErr);
@@ -329,9 +345,14 @@ export async function PATCH(request: NextRequest) {
 
       if (finalSlug) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
-        notifyIndexing(`${baseUrl}/blog/${finalSlug}`, baseUrl)
-          .then(r => console.log(`[blog PATCH] indexing notified: google=${r.google}, indexnow=${r.indexnow}`))
-          .catch(() => {});
+        void enqueueBlogIndexingJob({
+          slug: finalSlug,
+          baseUrl,
+          contentCreativeId: id,
+          source: 'api_blog_patch',
+        }).then((result) => {
+          if (!result.ok) console.warn('[blog PATCH] indexing enqueue failed:', result.error);
+        });
       }
     }
 
