@@ -19,6 +19,7 @@ import { resolveDestinationClimate } from '@/lib/destination-climate-lookup';
 import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload';
 import { isUuid } from '@/lib/uuid';
 import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
+import { formatProductTypeLabel } from '@/lib/product-type-label';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -56,7 +57,8 @@ function buildPackageSeoTitle(input: {
   id: string;
 }): string {
   const parts = [input.title.trim()];
-  if (input.productType?.trim()) parts.push(input.productType.trim());
+  const productTypeLabel = formatProductTypeLabel(input.productType);
+  if (productTypeLabel) parts.push(productTypeLabel);
   if (Number.isFinite(Number(input.price))) {
     parts.push(`${Number(input.price).toLocaleString('ko-KR')}원~`);
   }

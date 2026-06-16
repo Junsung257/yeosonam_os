@@ -14,9 +14,9 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('⛳');
-    expect(copy).toContain('나트랑을 편하게 즐기고 싶은 분');
+    expect(copy).toContain('나트랑에서 골프와 휴식을 함께');
     expect(copy).toContain('다이아몬드베이 골프텔');
-    expect(copy).toContain('3박5일 안에서도');
+    expect(copy).toContain('3박5일 동안');
     expect(copy).not.toContain('현지에서 따로 드는 비용');
     expect(copy).not.toContain('상담');
     expect(copy).not.toContain('배포');
@@ -35,6 +35,7 @@ describe('generateRecommendationCopy', () => {
     expect(copy).toContain('🛳️');
     expect(copy).toContain('팬스타크루즈로 대마도까지');
     expect(copy).toContain('히타카츠');
+    expect(copy).toContain('이동 부담은 줄이고');
   });
 
   it('generates onsen copy for hot-spring packages', () => {
@@ -46,7 +47,7 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('♨️');
-    expect(copy).toContain('벳부의 온천');
+    expect(copy).toContain('벳부에서 관광도 하고 온천 휴식도');
     expect(copy).toContain('유노하나 재배지');
   });
 
@@ -60,7 +61,7 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('✈️');
-    expect(copy).toContain('장가계를 처음 방문해도');
+    expect(copy).toContain('장가계를 처음 방문해도 하루 흐름을');
     expect(copy).toContain('천문산 케이블카');
     expect(copy).not.toContain('선발특가');
     expect(copy).not.toContain('배포');
@@ -83,11 +84,15 @@ describe('isWeakCopy', () => {
     expect(isWeakCopy('현지에서 따로 드는 비용은 상담 때 한 번에 정리해드릴게요.')).toBe(true);
   });
 
+  it('treats mechanical product-description copy as weak', () => {
+    expect(isWeakCopy('나트랑 다이아몬드베이 골프텔 3박5일 상품입니다. 에어부산 왕복 항공과 골프텔 숙박, 다이아몬드CC 라운딩 중심 일정으로 구성됩니다.')).toBe(true);
+  });
+
   it('keeps specific customer-facing copy', () => {
     const copy = [
-      '⛳ 골프를 중심으로 나트랑을 편하게 즐기고 싶은 분께 좋은 일정입니다.',
-      '🏨 다이아몬드CC 골프텔에 머물며 라운딩 동선을 줄이고, 남는 시간은 휴식에 집중할 수 있어요.',
-      '🌴 3박5일 안에서도 라운딩과 리조트형 휴식을 함께 기대할 수 있는 나트랑 골프 여행입니다.',
+      '⛳ 나트랑에서 골프와 휴식을 함께 챙기고 싶은 분께 잘 맞는 상품입니다.',
+      '🏨 다이아몬드CC 골프텔을 중심으로 라운딩 동선을 줄이고, 일정 사이사이 여유 있게 쉬어갈 수 있어요.',
+      '🌴 3박5일 동안 라운딩의 즐거움과 리조트형 휴식 분위기를 함께 기대할 수 있는 나트랑 골프 여행입니다.',
     ].join('\n\n');
 
     expect(isWeakCopy(copy)).toBe(false);

@@ -113,33 +113,33 @@ export function generateRecommendationCopy(input: CopyInput): string {
   if (isGolf(input)) {
     const stay = extractGolfStayPhrase(input) ?? `${destination} 골프텔`;
     return joinLines([
-      `⛳ 골프를 중심으로 ${eulReul(destination)} 편하게 즐기고 싶은 분께 좋은 일정입니다.`,
-      `🏨 ${stay}에 머물며 라운딩 동선을 줄이고, 남는 시간은 휴식에 집중할 수 있어요.`,
-      `🌴 ${duration ? `${duration} 안에서도` : '짧은 일정 안에서도'} 라운딩과 리조트형 휴식을 함께 기대할 수 있는 ${destination} 골프 여행입니다.`,
+      `⛳ ${destination}에서 골프와 휴식을 함께 챙기고 싶은 분께 잘 맞는 상품입니다.`,
+      `🏨 ${stay}를 중심으로 라운딩 동선을 줄이고, 일정 사이사이 여유 있게 쉬어갈 수 있어요.`,
+      `🌴 ${duration ? `${duration} 동안` : '여행하는 동안'} 라운딩의 즐거움과 리조트형 휴식 분위기를 함께 기대할 수 있는 ${destination} 골프 여행입니다.`,
     ]);
   }
 
   if (isFerry(input)) {
     const carrier = cleanText(input.airline);
     return joinLines([
-      `🛳️ ${carrier ? `${carrier}로 ` : ''}${destination}까지 이동하는 순간부터 여행 분위기를 느낄 수 있는 일정입니다.`,
-      `🧭 ${highlights[0] ? `${highlights[0]} 등` : '대표 코스와 이동 동선'}을 일정표 흐름에 맞춰 둘러보도록 구성했어요.`,
-      `🌊 ${duration ? `${duration} 동안` : '짧은 일정에도'} 부담을 줄이고 핵심 경험에 집중할 수 있는 ${destination} 여행입니다.`,
+      `🛳️ ${carrier ? `${carrier}로 ` : ''}${destination}까지 이동하는 순간부터 여행 기분을 느낄 수 있는 상품입니다.`,
+      `🧭 ${highlights[0] ? `${highlights[0]} 등` : '대표 코스와 이동 동선'}을 하루 흐름에 맞춰 부담 없이 둘러보도록 구성했어요.`,
+      `🌊 ${duration ? `${duration} 동안` : '짧은 일정에도'} 이동 부담은 줄이고, ${destination}의 핵심 경험에 집중할 수 있습니다.`,
     ]);
   }
 
   if (isOnsen(input)) {
     return joinLines([
-      `♨️ ${destination}의 온천과 주요 관광을 함께 즐기고 싶은 분께 잘 맞는 일정입니다.`,
-      `🏨 ${highlights[0] ? `${highlights[0]}을 중심으로` : '숙박과 이동 흐름을'} 여행 피로를 줄이는 방향으로 구성했어요.`,
-      `🌿 ${duration ? `${duration} 동안` : '여행 중'} 관광과 휴식을 균형 있게 기대할 수 있는 ${destination} 여행입니다.`,
+      `♨️ ${destination}에서 관광도 하고 온천 휴식도 함께 누리고 싶은 분께 잘 맞는 상품입니다.`,
+      `🏨 ${highlights[0] ? `${highlights[0]}을 중심으로` : '숙박과 이동 흐름을'} 여행 피로를 줄이는 방향으로 이어지게 구성했어요.`,
+      `🌿 ${duration ? `${duration} 동안` : '여행 중'} 볼거리와 쉬어가는 시간을 균형 있게 기대할 수 있는 ${destination} 여행입니다.`,
     ]);
   }
 
   return joinLines([
-    `✈️ ${eulReul(destination)} 처음 방문해도 일정 흐름을 따라가기 쉬운 패키지입니다.`,
-    `📍 ${highlights[0] ? `${highlights[0]} 등 핵심 포인트를` : '대표 관광지와 이동 동선을'} 하루별 일정에 맞춰 둘러보도록 구성했어요.`,
-    `🌿 ${duration ? `${duration} 동안` : '여행 중'} 관광, 식사, 이동이 자연스럽게 이어지는 ${destination} 여행을 기대할 수 있습니다.`,
+    `✈️ ${eulReul(destination)} 처음 방문해도 하루 흐름을 따라가기 쉬운 상품입니다.`,
+    `📍 ${highlights[0] ? `${highlights[0]} 등 핵심 포인트를` : '대표 관광지와 이동 동선을'} 일정표에 맞춰 자연스럽게 둘러보도록 구성했어요.`,
+    `🌿 ${duration ? `${duration} 동안` : '여행 중'} 관광, 식사, 이동이 매끄럽게 이어지는 ${destination} 여행을 기대할 수 있습니다.`,
   ]);
 }
 
@@ -154,6 +154,8 @@ export function isWeakCopy(copy: string | null | undefined, title?: string | nul
   const cleanCopy = cleanText(copy);
   if (!cleanCopy || cleanCopy.length < 20) return true;
   if (/현지에서\s*따로\s*드는\s*비용|상담\s*때\s*.*정리/.test(cleanCopy)) return true;
+  if (/상품입니다[.\s]*(?:.+?)중심\s*일정으로\s*구성됩니다/.test(cleanCopy)) return true;
+  if (/상품입니다[.\s]*(?:.+?)왕복\s*항공과(?:.+?)숙박(?:.+?)중심\s*일정/.test(cleanCopy)) return true;
   if (/^[가-힣A-Za-z0-9\s/·+-]+패키지\s*여행$/.test(cleanCopy)) return true;
 
   const cleanTitle = cleanText(title);

@@ -33,6 +33,7 @@ import {
   getCustomerPriceOptionsForDate,
   type CustomerProductPriceRow,
 } from '@/lib/customer-package-price-options';
+import { formatProductTypeLabel } from '@/lib/product-type-label';
 
 const RecommendationCard = nextDynamic(() => import('@/components/customer/RecommendationCard'), { loading: () => null });
 const TravelFitnessCard = nextDynamic(() => import('@/components/customer/TravelFitnessCard'), { loading: () => null });
@@ -636,6 +637,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
+  const productTypeLabel = formatProductTypeLabel(pkg.product_type);
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
   // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
@@ -814,8 +816,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
         {/* 히어로 콘텐츠 */}
         <div className="absolute bottom-0 left-0 right-0 p-5 pb-7">
-          {pkg.product_type && (
-            <span className="bg-white/90 text-brand px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider mb-3 inline-block shadow-sm">{pkg.product_type}</span>
+          {productTypeLabel && (
+            <span className="bg-white/90 text-brand px-3 py-1 rounded-full text-[11px] font-extrabold tracking-wider mb-3 inline-block shadow-sm">{productTypeLabel}</span>
           )}
           {/* 2-tier hero (2026-04-29):
               ① Headline (h1, 큰 굵은 글씨, 8~14자) — display_title
@@ -1134,7 +1136,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         )}
         <div className="flex flex-col items-center gap-1">
           <span className="text-xl">🏷️</span>
-          <span className="text-sm font-bold text-gray-700">{pkg.product_type || '단체'}</span>
+          <span className="text-sm font-bold text-gray-700">{productTypeLabel || '단체'}</span>
         </div>
       </div>
 
