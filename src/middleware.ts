@@ -126,6 +126,7 @@ const PUBLIC_EXACT = new Set([
   '/api/cron/auto-archive',
   '/api/cron/magic-tokens-cleanup',
   '/api/cron/resweep-unmatched',
+  '/api/cron/upload-review-auto-replay',
   '/api/cron/embed-products',
   '/api/cron/blog-lifecycle',
   '/api/cron/blog-scheduler',
