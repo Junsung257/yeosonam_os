@@ -14,7 +14,7 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('⛳');
-    expect(copy).toContain('나트랑에서 골프와 휴식을 함께');
+    expect(copy).toContain('나트랑에서 라운딩과 휴식을 함께');
     expect(copy).toContain('다이아몬드베이 골프텔');
     expect(copy).toContain('3박5일 동안');
     expect(copy).not.toContain('현지에서 따로 드는 비용');
@@ -47,13 +47,13 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('♨️');
-    expect(copy).toContain('벳부에서 관광도 하고 온천 휴식도');
+    expect(copy).toContain('벳부에서 관광과 온천 휴식');
     expect(copy).toContain('유노하나 재배지');
   });
 
   it('generates general package copy without raw internal distribution phrases', () => {
     const copy = generateRecommendationCopy({
-      title: '선발특가 6/ 까지 6/4 배포 장가계 4일',
+      title: '선발특가 6/까지 6/4 배포 장가계 4일',
       destination: '장가계',
       duration: 4,
       product_type: 'package',
@@ -61,11 +61,11 @@ describe('generateRecommendationCopy', () => {
     });
 
     expect(copy).toContain('✈️');
-    expect(copy).toContain('장가계를 처음 방문해도 하루 흐름을');
+    expect(copy).toContain('장가계를 처음 방문해도 하루 흐름을 따라가기 쉬운 상품입니다.');
     expect(copy).toContain('천문산 케이블카');
     expect(copy).not.toContain('선발특가');
     expect(copy).not.toContain('배포');
-    expect(copy).not.toContain('6/ 까지');
+    expect(copy).not.toContain('6/까지');
   });
 });
 
@@ -73,11 +73,11 @@ describe('isWeakCopy', () => {
   it('treats empty and very short copy as weak', () => {
     expect(isWeakCopy(null)).toBe(true);
     expect(isWeakCopy(undefined)).toBe(true);
-    expect(isWeakCopy('짧은 카피')).toBe(true);
+    expect(isWeakCopy('현지 카페')).toBe(true);
   });
 
   it('treats internal distribution copy as weak', () => {
-    expect(isWeakCopy('BX 5일 나트랑 다이아몬드베이 골프텔 선발특가 6/ 까지 배포 스팟특가 여행')).toBe(true);
+    expect(isWeakCopy('BX 5일 나트랑 다이아몬드베이 골프텔 선발특가 6/까지 배포 스팟 여행')).toBe(true);
   });
 
   it('treats cost-counseling language as weak for recommendation copy', () => {
@@ -90,9 +90,9 @@ describe('isWeakCopy', () => {
 
   it('keeps specific customer-facing copy', () => {
     const copy = [
-      '⛳ 나트랑에서 골프와 휴식을 함께 챙기고 싶은 분께 잘 맞는 상품입니다.',
-      '🏨 다이아몬드CC 골프텔을 중심으로 라운딩 동선을 줄이고, 일정 사이사이 여유 있게 쉬어갈 수 있어요.',
-      '🌴 3박5일 동안 라운딩의 즐거움과 리조트형 휴식 분위기를 함께 기대할 수 있는 나트랑 골프 여행입니다.',
+      '⛳ 나트랑에서 라운딩과 휴식을 함께 챙기고 싶은 분께 잘 맞는 상품입니다.',
+      '🏌️ 다이아몬드CC 골프텔을 중심으로 이동 부담은 줄이고, 일정 사이사이 여유롭게 쉬어갈 수 있도록 구성했어요.',
+      '🌿 3박5일 동안 골프 여행의 즐거움과 리조트형 휴식 분위기를 함께 기대할 수 있습니다.',
     ].join('\n\n');
 
     expect(isWeakCopy(copy)).toBe(false);
