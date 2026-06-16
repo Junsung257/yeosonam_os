@@ -19,8 +19,14 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { LEAK_PATTERNS } from '@/lib/customer-leak-sanitizer';
 import { isCustomerVisibleStatus } from '@/lib/visibility-status';
 import { getSecret } from '@/lib/secret-registry';
+import {
+  hashSourceText,
+  normalizeBlockerSignature,
+  type ImprovementLedgerEvent,
+} from '@/lib/product-registration/improvement-ledger';
+import { persistImprovementLedgerEvents } from '@/lib/product-registration/improvement-ledger-persistence';
 
-interface QAIncident {
+export interface QAIncident {
   id: string;
   severity: 'critical' | 'high' | 'medium';
   message: string;
@@ -41,6 +47,7 @@ type ExpectedRender = {
   status: string | null;
   shortCode: string | null;
   internalCode: string | null;
+  rawText: string | null;
   lastDayNumber: number | null;
   lastDayArrivalCity: string | null;
   homeCity: string | null;
@@ -71,6 +78,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
     status: null,
     shortCode: null,
     internalCode: null,
+    rawText: null,
     lastDayNumber: null,
     lastDayArrivalCity: null,
     homeCity: null,
@@ -78,7 +86,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
-      .select('title, display_title, destination, duration, nights, trip_style, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code')
+      .select('title, display_title, destination, duration, nights, trip_style, departure_airport, itinerary_data, optional_tours, status, short_code, internal_code, raw_text')
       .eq('id', packageId)
       .maybeSingle();
     if (!data) {
@@ -122,6 +130,7 @@ async function loadExpectedRender(packageId: string): Promise<ExpectedRender> {
       status: (data as { status?: string | null }).status ?? null,
       shortCode: (data as { short_code?: string | null }).short_code ?? null,
       internalCode: (data as { internal_code?: string | null }).internal_code ?? null,
+      rawText: (data as { raw_text?: string | null }).raw_text ?? null,
       lastDayNumber: typeof lastDay?.day === 'number' ? lastDay.day : days.length || null,
       lastDayArrivalCity,
       homeCity,
@@ -325,6 +334,63 @@ function analyzeMobileHtml(
   return incidents;
 }
 
+export function buildMobileQaImprovementEvent(input: {
+  packageId: string;
+  expected: ExpectedRender;
+  incidents: QAIncident[];
+  createdAt?: string;
+}): ImprovementLedgerEvent | null {
+  if (input.incidents.length === 0) return null;
+
+  const failures = input.incidents.map(incident => `${incident.id}: ${incident.message}`);
+  const normalizedBlockerSignatures = [...new Set(
+    failures.map(normalizeBlockerSignature).filter(Boolean),
+  )];
+  const hasBlockingIncident = input.incidents.some(incident =>
+    incident.severity === 'critical' || incident.severity === 'high',
+  );
+
+  return {
+    uploadId: `mobile-qa:${input.packageId}`,
+    productId: input.expected.internalCode,
+    packageId: input.packageId,
+    attemptNo: 0,
+    attemptPhase: 'render_payload_audit_repair',
+    rawTextHash: hashSourceText(input.expected.rawText || input.packageId),
+    sectionRawTextHash: null,
+    parserVersion: 'auto-mobile-qa',
+    detectedFormat: 'post_save_mobile_landing',
+    blockersBefore: failures,
+    blockersAfter: failures,
+    normalizedBlockerSignatures,
+    evidenceSpans: [],
+    comparedFields: [
+      'mobile_landing_html',
+      'lp_html',
+      'hero_image',
+      'flight_card',
+      'hotel_names',
+      'optional_tours',
+      'customer_visible_copy',
+    ],
+    autoFixesApplied: [],
+    packagesAudit: {
+      status: hasBlockingIncident ? 'fail' : 'warn',
+      failures: input.incidents
+        .filter(incident => incident.severity === 'critical' || incident.severity === 'high')
+        .map(incident => `${incident.id}: ${incident.message}`),
+      warnings: input.incidents
+        .filter(incident => incident.severity === 'medium')
+        .map(incident => `${incident.id}: ${incident.message}`),
+    },
+    a4Audit: { status: 'unknown', failures: [], warnings: [] },
+    finalStatus: hasBlockingIncident ? 'BLOCKED' : 'REVIEW_NEEDED',
+    fixtureCandidate: true,
+    ruleCandidate: normalizedBlockerSignatures.length > 0,
+    createdAt: input.createdAt ?? new Date().toISOString(),
+  };
+}
+
 async function fetchSurfaceHtml(pageUrl: string): Promise<string | null> {
   const res = await fetch(pageUrl, { headers: { 'User-Agent': 'YeosonamAutoQA/1.0' } });
   if (!res.ok) return null;
@@ -426,6 +492,17 @@ export async function runAutoMobileQA(packageId: string, baseUrl?: string): Prom
 
     if (incidents.length > 0) {
       console.warn(`[AutoQA] ${packageId}: ${incidents.length} mobile incident(s)`);
+      const ledgerEvent = buildMobileQaImprovementEvent({ packageId, expected, incidents });
+      if (ledgerEvent) {
+        const persisted = await persistImprovementLedgerEvents({
+          supabase: supabaseAdmin,
+          isSupabaseConfigured,
+          events: [ledgerEvent],
+        });
+        if (persisted.error) {
+          console.warn('[AutoQA] improvement ledger save failed:', persisted.error);
+        }
+      }
 
       // G5: high/critical incident 시 admin_alerts 적재 (사장님 어드민 대시보드 빨간 배지)
       const hiSev = incidents.filter(i => i.severity === 'high' || i.severity === 'critical');

@@ -318,6 +318,8 @@ describe('upload route registration pipeline boundary', () => {
     expect(autoMobileQa).toContain("audit_status: 'blocked'");
     expect(autoMobileQa).toContain(".from('travel_packages')");
     expect(autoMobileQa).toContain(".from('products')");
+    expect(autoMobileQa).toContain('persistImprovementLedgerEvents');
+    expect(autoMobileQa).toContain("detectedFormat: 'post_save_mobile_landing'");
   });
 
   it('post-save mobile QA checks semantic package render failures, not only page availability', () => {

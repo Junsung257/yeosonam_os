@@ -1,5 +1,22 @@
 # Product Registration Errors
 
+## ERR-mobile-qa-not-feeding-macro-ledger@2026-06-16
+
+- **Discovered**: 2026-06-16
+- **Domain**: product registration | post-save mobile QA | macro learning
+- **Source vs result**: Post-save mobile QA could fetch the customer mobile/LP HTML, detect high/critical incidents, and demote the package to `pending_review`, but those incidents were only written to `ai_quality_log` and package audit fields. They were not persisted into `product_registration_improvement_events`, so the macro learning engine could not mine repeated real mobile landing failures.
+- **Root cause**: The pre-save micro QA ledger and the post-save mobile QA were separate loops. The post-save loop was operationally useful, but not connected to the durable product-registration improvement ledger.
+- **Fix**:
+  - Added `buildMobileQaImprovementEvent()` so mobile/LP incidents become redacted learning events with raw-text hashes only.
+  - Connected `runAutoMobileQA()` to `persistImprovementLedgerEvents()` when incidents are found.
+  - Added regression coverage proving mobile incidents become `post_save_mobile_landing` ledger evidence without storing raw text.
+- **Verification**:
+  - `npx vitest run src/lib/auto-mobile-qa.test.ts src/lib/product-registration/upload-route-boundary.test.ts`
+- **Status**: FIXED IN CODE
+- **Prevention**: Customer mobile/LP failures must feed the same durable macro ledger as pre-save parser failures. Otherwise the system can block a bad page once but fail to learn from the repeated pattern.
+
+---
+
 ## ERR-micro-ledger-and-standard-md-proof-gap@2026-06-16
 
 - **Discovered**: 2026-06-16
