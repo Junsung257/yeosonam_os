@@ -62,8 +62,8 @@ let templateCache: TermsTemplate[] = [];
 let cacheExpiry = 0;
 const CACHE_TTL = 60_000;
 const TERMS_TEMPLATE_QUERY_TIMEOUT_MS = Math.max(
-  1000,
-  Number(process.env.TERMS_TEMPLATE_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '3500') || 3500,
+  500,
+  Number(process.env.TERMS_TEMPLATE_QUERY_TIMEOUT_MS || '900') || 900,
 );
 
 async function loadTemplates(): Promise<TermsTemplate[]> {

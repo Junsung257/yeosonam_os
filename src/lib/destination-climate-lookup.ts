@@ -35,8 +35,8 @@ export type DestinationClimateRow = {
 const CLIMATE_COLS =
   'destination, primary_city, country, lat, lon, timezone, utc_offset_minutes, monthly_normals, fitness_scores, seasonal_signals';
 const CLIMATE_QUERY_TIMEOUT_MS = Math.max(
-  1000,
-  Number(process.env.CLIMATE_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '3500') || 3500,
+  500,
+  Number(process.env.CLIMATE_QUERY_TIMEOUT_MS || '900') || 900,
 );
 
 /** destination 정규화 후 가능한 lookup 키 목록을 우선순위대로 반환 (중복 제거). */

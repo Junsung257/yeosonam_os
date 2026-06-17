@@ -27,17 +27,32 @@ const BASE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ||
   'https://www.yeosonam.com'
 ).replace(/\/+$/, '');
-const PACKAGE_DETAIL_QUERY_TIMEOUT_MS = Math.max(
+const PACKAGE_DETAIL_CORE_QUERY_TIMEOUT_MS = Math.max(
   1000,
   Number(process.env.PACKAGE_DETAIL_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '3500') || 3500,
+);
+const PACKAGE_DETAIL_OPTIONAL_QUERY_TIMEOUT_MS = Math.max(
+  500,
+  Number(process.env.PACKAGE_DETAIL_OPTIONAL_QUERY_TIMEOUT_MS || '900') || 900,
 );
 
 function publicResultFallback<T>(data: T, count: number | null = null) {
   return { data, error: null, count, status: 200, statusText: 'fallback' };
 }
 
-function safePackageQuery<T>(promise: PromiseLike<T>, fallback: unknown): Promise<T> {
-  return withPublicQueryFallback(promise, fallback as T, PACKAGE_DETAIL_QUERY_TIMEOUT_MS);
+function safePackageQuery<T>(
+  promise: PromiseLike<T> & { abortSignal?: (signal: AbortSignal) => PromiseLike<T> },
+  fallback: unknown,
+  timeoutMs = PACKAGE_DETAIL_OPTIONAL_QUERY_TIMEOUT_MS,
+): Promise<T> {
+  return withPublicQueryFallback(promise, fallback as T, timeoutMs);
+}
+
+function safePackageCoreQuery<T>(
+  promise: PromiseLike<T> & { abortSignal?: (signal: AbortSignal) => PromiseLike<T> },
+  fallback: unknown,
+): Promise<T> {
+  return safePackageQuery(promise, fallback, PACKAGE_DETAIL_CORE_QUERY_TIMEOUT_MS);
 }
 
 function getPackageUrl(id: string): string {
@@ -123,7 +138,7 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
   try {
     const sb = getPackageReadClient();
     if (!sb) return [];
-    const { data } = await safePackageQuery(
+    const { data } = await safePackageCoreQuery(
       sb
         .from('travel_packages')
         .select('id')
@@ -196,7 +211,7 @@ export async function generateMetadata({
     audit_status?: string | null;
   } | null = null;
   try {
-    const result = await safePackageQuery(
+    const result = await safePackageCoreQuery(
       sb
         .from('travel_packages')
         .select('title, destination, price, product_type, product_summary, status, audit_status')
@@ -255,7 +270,7 @@ export default async function PackageDetailPage({
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
-  const pkgResult = await safePackageQuery(
+  const pkgResult = await safePackageCoreQuery(
     sb.from('travel_packages')
       .select(DETAIL_FIELDS)
       .eq('id', id)
@@ -740,7 +755,7 @@ export default async function PackageDetailPage({
       lpHeroImageUrl = await withPublicQueryFallback(
         resolveLpHeroPhotoUrl(sb, normalizedPkg as { destination?: string | null; itinerary_data?: unknown }),
         null,
-        PACKAGE_DETAIL_QUERY_TIMEOUT_MS,
+        PACKAGE_DETAIL_OPTIONAL_QUERY_TIMEOUT_MS,
       );
     } catch {
       lpHeroImageUrl = null;

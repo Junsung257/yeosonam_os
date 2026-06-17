@@ -6,6 +6,7 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
+import { withPublicQueryFallback } from '@/lib/public-query-timeout';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,14 @@ export const dynamic = 'force-dynamic';
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
+const DESTINATIONS_STATS_TIMEOUT_MS = Math.max(
+  1000,
+  Number(process.env.DESTINATIONS_STATS_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '2500') || 2500,
+);
+const DESTINATIONS_ATTRACTIONS_TIMEOUT_MS = Math.max(
+  500,
+  Number(process.env.DESTINATIONS_ATTRACTIONS_TIMEOUT_MS || '900') || 900,
+);
 
 export const metadata: Metadata = {
   title: '여행지 완벽 가이드 | 목적지별 총정리',
@@ -93,22 +102,31 @@ async function getDestinations() {
   if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
 
   try {
-    const { data: stats } = await supabaseAdmin
-      .from('active_destinations')
-      .select('*')
-      .order('package_count', { ascending: false });
+    const { data: stats } = await withPublicQueryFallback(
+      supabaseAdmin
+        .from('active_destinations')
+        .select('destination, package_count, avg_rating, total_reviews, min_price')
+        .order('package_count', { ascending: false })
+        .limit(80),
+      { data: [] },
+      DESTINATIONS_STATS_TIMEOUT_MS,
+    );
 
     // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
     const normalizedStats = ((stats as Array<Partial<DestinationStat>> | null) ?? [])
       .map(normalizeDestinationStat)
       .filter((stat): stat is DestinationStat => stat !== null);
     const destinations = normalizedStats.map(s => s.destination);
-    const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
-      .from('attractions')
-      .select('destination, name, photos')
-      .in('destination', destinations)
-      .not('photos', 'is', null)
-      .limit(4000) : { data: null };
+    const { data: attractions } = destinations.length > 0 ? await withPublicQueryFallback(
+      supabaseAdmin
+        .from('attractions')
+        .select('destination, name, photos')
+        .in('destination', destinations)
+        .not('photos', 'is', null)
+        .limit(Math.min(800, Math.max(120, destinations.length * 12))),
+      { data: null },
+      DESTINATIONS_ATTRACTIONS_TIMEOUT_MS,
+    ) : { data: null };
 
     const attractionsByDest: Record<string, AttractionSample> = {};
     ((attractions as unknown[] | null) ?? []).forEach((row) => {
