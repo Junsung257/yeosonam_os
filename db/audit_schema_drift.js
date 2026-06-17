@@ -30,9 +30,28 @@ if (fs.existsSync(envPath)) {
   }
 }
 
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 const DETAIL = process.argv.includes('--detail');
 const JSON_OUT = process.argv.includes('--json');
+const FAIL_ON_DRIFT = process.argv.includes('--fail-on-drift');
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !serviceRoleKey) {
+  const message = '[schema-drift] NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY is not configured';
+  if (JSON_OUT) {
+    console.log(JSON.stringify({
+      scanned_at: new Date().toISOString(),
+      skipped: true,
+      reason: 'supabase_unconfigured',
+      message,
+    }, null, 2));
+  } else {
+    console.error(message);
+  }
+  process.exit(FAIL_ON_DRIFT ? 1 : 0);
+}
+
+const sb = createClient(supabaseUrl, serviceRoleKey);
 
 const AMBIGUOUS_OT = ['2층버스', '리버보트', '야시장투어', '크루즈', '마사지', '스카이파크', '스카이 파크'];
 const INTERNAL_KEYWORDS_LEAK = ['커미션', 'commission_rate', '정산', '스키마 제약', 'LAND_OPERATOR', '[랜드사', 'net_price', 'margin_rate'];
@@ -244,7 +263,7 @@ async function paginatedFetch(table, select, filter) {
     console.log('✅ Drift 없음. 모든 레코드가 정규 스키마 준수.\n');
   } else {
     console.log(`⚠️  총 ${totalDrift}건 drift 발견. --detail 플래그로 상세 확인.\n`);
-    if (process.argv.includes('--fail-on-drift')) {
+    if (FAIL_ON_DRIFT) {
       console.error('❌ --fail-on-drift: drift 있음 → exit 1 (CI gate).');
       process.exit(1);
     }

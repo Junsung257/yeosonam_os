@@ -36,7 +36,15 @@ if (fs.existsSync(envPath)) {
 }
 
 const STRICT = process.argv.includes('--strict');
-const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!supabaseUrl || !serviceRoleKey) {
+  console.error('[audit-select] NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY is not configured');
+  process.exit(STRICT ? 1 : 0);
+}
+
+const sb = createClient(supabaseUrl, serviceRoleKey);
 
 // 대상: (파일경로, 상수명, DB 테이블) 튜플
 const TARGETS = [

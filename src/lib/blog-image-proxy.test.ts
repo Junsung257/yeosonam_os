@@ -12,7 +12,7 @@ describe('blog-image-proxy', () => {
 
     expect(isProxyableBlogImageUrl(src)).toBe(true);
     expect(toBlogImageDisplaySrc(src)).toBe(
-      `/api/blog/image?src=${encodeURIComponent(src)}`,
+      `/api/blog/image?src=${encodeURIComponent(src)}&w=960`,
     );
   });
 
@@ -29,7 +29,7 @@ describe('blog-image-proxy', () => {
 
     const rewritten = proxyBlogImageUrlsInHtml(html);
 
-    expect(rewritten).toContain(`/api/blog/image?src=${encodeURIComponent(src)}`);
+    expect(rewritten).toContain(`/api/blog/image?src=${encodeURIComponent(src)}&w=960`);
     expect(rewritten).toContain('alt="장가계 월별 날씨"');
     expect(rewritten).not.toContain('src="https://images.pexels.com');
   });

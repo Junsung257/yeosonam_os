@@ -253,6 +253,35 @@ function sanitizeServerBlogHtml(html: string): string {
 }
 
 // ── 데이터 페칭 ──────────────────────────────────────────────
+const BLOG_OPTIONAL_QUERY_TIMEOUT_MS = 1800;
+
+async function withOptionalBlogTimeout<T>(
+  label: string,
+  promise: PromiseLike<T>,
+  fallback: T,
+  timeoutMs = BLOG_OPTIONAL_QUERY_TIMEOUT_MS,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      console.warn(`[blog/detail] optional ${label} timed out after ${timeoutMs}ms`);
+      resolve(fallback);
+    }, timeoutMs);
+  });
+
+  try {
+    return await Promise.race([
+      Promise.resolve(promise).catch((error) => {
+        logError(`[blog/detail] optional ${label} failed`, error);
+        return fallback;
+      }),
+      timeout,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function getPost(slug: string): Promise<BlogPost | null> {
   if (!isSupabaseConfigured) return null;
 
@@ -285,6 +314,35 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   }
   if (!data || data.length === 0) return null;
   return data[0] as unknown as BlogPost;
+}
+
+async function getPostMetadata(slug: string): Promise<BlogPost | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const dbSlug = safeDecodeSlug(slug);
+
+  const { data, error } = await supabaseAdmin
+    .from('content_creatives')
+    .select(
+      'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, updated_at, destination, travel_packages(title, destination)',
+    )
+    .eq('slug', dbSlug)
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .not('slug', 'is', null)
+    .limit(1);
+
+  if (error) {
+    logError('[blog/getPostMetadata] supabase error', error, {
+      slug: dbSlug,
+      rawParam: slug,
+      code: error && typeof error === 'object' && 'code' in error ? (error as { code: string }).code : null,
+      hint: error && typeof error === 'object' && 'hint' in error ? (error as { hint: string }).hint : null,
+    });
+    return null;
+  }
+  if (!data || data.length === 0) return null;
+  return { ...(data[0] as unknown as BlogPost), blog_html: null };
 }
 
 async function getRelatedProducts(
@@ -509,7 +567,7 @@ export async function generateMetadata({
   if (/^\d+$/.test(slug)) {
     return { title: '글을 찾을 수 없습니다', robots: { index: false, follow: false } };
   }
-  const post = await getPost(slug);
+  const post = await getPostMetadata(slug);
   // 404 캐시가 색인되지 않도록 명시적 noindex.
   if (!post) {
     notFound();
@@ -521,7 +579,12 @@ export async function generateMetadata({
   const cleanedTitle = rawTitle
     .replace(/\s*\|\s*여소남(\s*\d{4})?\s*$/g, '')
     .trim();
-  const duplicateTitleSuffix = await getDuplicateTitleSuffix(post);
+  const duplicateTitleSuffix = await withOptionalBlogTimeout(
+    'duplicate-title-suffix',
+    getDuplicateTitleSuffix(post),
+    '',
+    900,
+  );
   const metadataTitle = buildSeoTitleWithSuffix(cleanedTitle, duplicateTitleSuffix);
 
   const description = buildSeoDescription(post);
@@ -657,17 +720,28 @@ async function renderBlogDetail({
     // 실험 찾기 또는 생성 (없으면 무시 — 실험은 어드민에서 생성됨)
     // assignVariant는 experimentId를 받으므로, 실험이 존재해야 함.
     // 여기서는 기존 실험 ID를 조회하거나, 없으면 조용히 넘어감.
-    const { data: existingExps } = await supabaseAdmin
-      .from('ab_experiments')
-      .select('id')
-      .eq('creative_id', post.id)
-      .eq('variant_type', 'headline')
-      .in('status', ['running', 'paused'])
-      .limit(1);
+    const existingExps = await withOptionalBlogTimeout(
+      'headline-experiment',
+      supabaseAdmin
+        .from('ab_experiments')
+        .select('id')
+        .eq('creative_id', post.id)
+        .eq('variant_type', 'headline')
+        .in('status', ['running', 'paused'])
+        .limit(1)
+        .then((res) => res.data),
+      [],
+      900,
+    );
 
     if (existingExps && existingExps.length > 0) {
       const expId = (existingExps[0] as { id: string }).id;
-      const result = await assignVariant(expId, abTestVisitorId);
+      const result = await withOptionalBlogTimeout(
+        'headline-variant',
+        assignVariant(expId, abTestVisitorId),
+        null,
+        900,
+      );
 
       if (result) {
         abTestExperimentId = expId;
@@ -698,8 +772,8 @@ async function renderBlogDetail({
           },
         )
       : Promise.resolve(null),
-    getRelatedPosts(slug, effectiveDestination, post.angle_type),
-    getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent),
+    withOptionalBlogTimeout('inline-related-posts', getRelatedPosts(slug, effectiveDestination, post.angle_type), []),
+    withOptionalBlogTimeout('inline-related-products', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -1126,7 +1200,11 @@ async function RelatedPostsSection({
   destination: string | undefined;
   angleType: string | undefined;
 }) {
-  const relatedPosts = await getRelatedPosts(currentSlug, destination, angleType);
+  const relatedPosts = await withOptionalBlogTimeout(
+    'related-posts-section',
+    getRelatedPosts(currentSlug, destination, angleType),
+    [],
+  );
   if (relatedPosts.length === 0) return null;
 
   return (
@@ -1209,7 +1287,11 @@ async function SidebarRelatedPosts({
   destination: string | undefined;
   angleType: string | undefined;
 }) {
-  const posts = await getRelatedPosts(currentSlug, destination, angleType);
+  const posts = await withOptionalBlogTimeout(
+    'sidebar-related-posts',
+    getRelatedPosts(currentSlug, destination, angleType),
+    [],
+  );
   if (posts.length === 0) return null;
 
   return (
@@ -1249,7 +1331,11 @@ async function CurationSection({
   intent?: string | null;
 }) {
   if (!isInfoBlog || !destination) return null;
-  const curationProducts = await getCurationProductsForInfo(destination);
+  const curationProducts = await withOptionalBlogTimeout(
+    'curation-products',
+    getCurationProductsForInfo(destination),
+    [],
+  );
   if (curationProducts.length === 0) return null;
 
   return (
@@ -1284,7 +1370,11 @@ async function PrevNextSection({
   slug: string;
   publishedAt: string;
 }) {
-  const prevNext = await getPrevNextPosts(slug, publishedAt);
+  const prevNext = await withOptionalBlogTimeout(
+    'prev-next-posts',
+    getPrevNextPosts(slug, publishedAt),
+    { prev: null, next: null },
+  );
   if (!prevNext.prev && !prevNext.next) return null;
 
   return (

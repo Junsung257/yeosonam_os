@@ -21,6 +21,12 @@ export interface RenderedBlogIntegrityReport {
   };
 }
 
+export interface BlogAssetReachabilityOptions {
+  validateRemote?: boolean;
+  timeoutMs?: number;
+  maxUrls?: number;
+}
+
 const MARKDOWN_SIGNAL_PATTERNS = [
   /(^|\n)\s{0,3}#{1,6}\s+\S/,
   /(^|\n)\s{0,3}!\[[^\]]*]\([^)]+\)/,
@@ -453,9 +459,9 @@ export async function renderBlogContentToHtml(
   return proxyBlogImageUrlsInHtml(applyHtmlAccents(normalizedHtml));
 }
 
-async function isReachableUrl(url: string): Promise<boolean> {
+async function isReachableUrl(url: string, timeoutMs = 1200): Promise<boolean> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 4000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const head = await fetch(url, {
@@ -484,13 +490,19 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-export async function removeUnreachableBlogAssetImages(html: string): Promise<string> {
-  const urls = [...new Set(html.match(SUPABASE_BLOG_ASSET_RE) ?? [])];
+export async function removeUnreachableBlogAssetImages(
+  html: string,
+  options: BlogAssetReachabilityOptions = {},
+): Promise<string> {
+  const shouldValidateRemote = options.validateRemote ?? process.env.BLOG_ASSET_REACHABILITY_CHECKS === '1';
+  if (!shouldValidateRemote) return html;
+
+  const urls = [...new Set(html.match(SUPABASE_BLOG_ASSET_RE) ?? [])].slice(0, options.maxUrls ?? 8);
   if (urls.length === 0) return html;
 
   const checks = await Promise.all(urls.map(async (url) => ({
     url,
-    ok: await isReachableUrl(url),
+    ok: await isReachableUrl(url, options.timeoutMs),
   })));
   const brokenUrls = checks.filter((check) => !check.ok).map((check) => check.url);
   if (brokenUrls.length === 0) return html;

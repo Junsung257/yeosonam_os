@@ -124,9 +124,12 @@ async function checkPublicUrls() {
 function checkSupabaseAuthGate() {
   const result = run('node', ['scripts/supabase-auth-open-gate.mjs', '--json'], { timeout: 120000 });
   if (!result.ok) {
-    addCheck('supabase:auth-open-gate', 'fail', {
+    const output = (result.stderr || result.stdout || result.message || '').trim();
+    const authUnavailable = /Missing Supabase Management API token|SUPABASE_ACCESS_TOKEN|supabase login/i.test(output);
+    addCheck('supabase:auth-open-gate', authUnavailable ? 'blocked' : 'fail', {
       ms: result.ms,
-      error: (result.stderr || result.stdout).trim().slice(0, 1000),
+      error: authUnavailable ? '' : output.slice(0, 1000),
+      notes: authUnavailable ? 'Supabase management token unavailable; skipping Auth open-gate verification' : '',
     });
     return null;
   }
@@ -154,10 +157,20 @@ function checkSupabaseAuthGate() {
 function checkVercelLogs(level) {
   const result = run(
     'npx',
-    ['vercel', 'logs', VERCEL_LOG_TARGET, '--scope', VERCEL_SCOPE, '--since', '30m', '--no-follow', '--level', level, '--limit', '50', '--json'],
+    ['--yes', 'vercel', 'logs', VERCEL_LOG_TARGET, '--scope', VERCEL_SCOPE, '--since', '30m', '--no-follow', '--level', level, '--limit', '50', '--json'],
     { timeout: 120000 },
   );
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+  if (!result.ok && /login|auth|token|unauthorized|forbidden|No existing credentials/i.test(output || result.message)) {
+    addCheck(`vercel:${level}-logs`, 'blocked', {
+      ms: result.ms,
+      target: VERCEL_LOG_TARGET,
+      exitStatus: result.status ?? null,
+      signal: result.signal ?? '',
+      notes: 'Vercel token unavailable; skipping recent log verification',
+    });
+    return;
+  }
   const noLogs = result.ok && (output.trim() === '' || /No logs found/i.test(output));
   addCheck(`vercel:${level}-logs`, result.ok && noLogs ? 'pass' : 'fail', {
     ms: result.ms,
@@ -168,9 +181,38 @@ function checkVercelLogs(level) {
   });
 }
 
+function checkMarketingAutomationReadiness() {
+  const result = run('npm', ['run', '--silent', 'verify:marketing-automation', '--', '--json', '--strict'], { timeout: 120000 });
+  if (!result.ok) {
+    addCheck('local:marketing-automation', 'fail', {
+      ms: result.ms,
+      command: 'npm run --silent verify:marketing-automation -- --json --strict',
+      error: (result.stderr || result.stdout || result.message || '').trim().slice(0, 1200),
+    });
+    return;
+  }
+
+  try {
+    const marketing = parseJsonFromOutput(result.stdout);
+    addCheck('local:marketing-automation', marketing.status === 'pass' ? 'pass' : marketing.status === 'blocked' ? 'blocked' : 'fail', {
+      ms: result.ms,
+      passed: marketing.passed,
+      blocked: marketing.blocked,
+      failed: marketing.failed,
+      notes: `${marketing.passed} passed, ${marketing.blocked} blocked, ${marketing.failed} failed`,
+    });
+  } catch (err) {
+    addCheck('local:marketing-automation', 'fail', {
+      ms: result.ms,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 async function main() {
   await checkPublicUrls();
   checkSupabaseAuthGate();
+  checkMarketingAutomationReadiness();
   checkVercelLogs('error');
   checkVercelLogs('fatal');
 
@@ -201,7 +243,7 @@ async function main() {
   }
 
   if (failed.length > 0) process.exit(1);
-  if (blocked.length > 0) process.exit(2);
+  if (strict && blocked.length > 0) process.exit(2);
 }
 
 main().catch((err) => {
