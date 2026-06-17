@@ -16,6 +16,7 @@
 
 import { supabaseAdmin } from '@/lib/supabase'
 import { getSecret } from '@/lib/secret-registry'
+import { selectEvidenceHits } from './evidence-selection'
 
 const EMBED_ENDPOINT = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent'
 const RERANK_MODEL = 'gemini-2.5-flash'
@@ -122,9 +123,11 @@ export async function retrieve(q: RetrievalQuery): Promise<RetrievalHit[]> {
     bm25Score: r.bm25_score,
   }))
 
-  if (!q.rerank || hits.length <= limit) return hits.slice(0, limit)
+  const evidenceHits = selectEvidenceHits(q.query, hits, queryLimit)
 
-  return rerankWithFlash(q.query, hits, limit)
+  if (!q.rerank || evidenceHits.length <= limit) return evidenceHits.slice(0, limit)
+
+  return rerankWithFlash(q.query, evidenceHits, limit)
 }
 
 /**
