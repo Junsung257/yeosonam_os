@@ -9,6 +9,11 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
 export const revalidate = 300;
+export const dynamicParams = true;
+const BLOG_DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
+  0,
+  Number(process.env.BLOG_DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,
+);
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
@@ -98,6 +103,7 @@ const getPostsByDestination = cache(async (dest: string): Promise<{ posts: BlogP
 });
 
 export async function generateStaticParams() {
+  if (BLOG_DESTINATION_STATIC_PRERENDER_LIMIT <= 0) return [];
   if (!isSupabaseConfigured) return [];
 
   try {
@@ -107,7 +113,7 @@ export async function generateStaticParams() {
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('destination', 'is', null)
-      .limit(2000);
+      .limit(BLOG_DESTINATION_STATIC_PRERENDER_LIMIT);
 
     const destinations = new Set<string>();
     for (const row of (data || []) as Array<{ destination: string | null }>) {
@@ -115,7 +121,7 @@ export async function generateStaticParams() {
       if (destination) destinations.add(destinationToSlug(destination));
     }
 
-    return [...destinations].map(dest => ({ dest }));
+    return [...destinations].slice(0, BLOG_DESTINATION_STATIC_PRERENDER_LIMIT).map(dest => ({ dest }));
   } catch {
     return [];
   }
