@@ -45,6 +45,22 @@ export interface RetrievalHit {
   bm25Score: number
 }
 
+export function serializePgVector(values: number[] | null): string | null {
+  if (!values) return null
+
+  if (values.length !== 1536) {
+    throw new Error(`[rag] embedding dimension mismatch: expected 1536, got ${values.length}`)
+  }
+
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      throw new Error('[rag] embedding contains a non-finite value')
+    }
+  }
+
+  return `[${values.join(',')}]`
+}
+
 /** 쿼리 → 임베딩 벡터. 실패 시 null (retrieval 은 BM25 only 로 폴백). */
 async function embedQuery(query: string): Promise<number[] | null> {
   const apiKey = getSecret('GOOGLE_AI_API_KEY')
@@ -79,7 +95,7 @@ export async function retrieve(q: RetrievalQuery): Promise<RetrievalHit[]> {
   const embedding = await embedQuery(q.query)
 
   const { data, error } = await supabaseAdmin.rpc('jarvis_hybrid_search', {
-    p_query_embedding: embedding ?? new Array(1536).fill(0),
+    p_query_embedding: serializePgVector(embedding),
     p_query_text: q.query,
     p_tenant_id: q.tenantId ?? null,
     p_source_types: q.sourceTypes ?? null,
