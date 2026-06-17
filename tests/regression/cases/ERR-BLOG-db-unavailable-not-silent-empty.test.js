@@ -83,6 +83,7 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
   assert.match(source, /abortSignal\(controller\.signal\)/);
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
+  assert.match(source, /stale-if-error=86400/);
   assert.match(source, /status: 503/);
 });
 
