@@ -18,6 +18,11 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+const SPECIAL_PAGE_SHIMS = {
+  _app: 'next/dist/pages/_app',
+  _error: 'next/dist/pages/_error',
+  _document: 'next/dist/pages/_document',
+};
 
 function ensureSpecialPagesManifest() {
   const distDir = process.env.NEXT_DIST_DIR || '.next';
@@ -34,18 +39,24 @@ function ensureSpecialPagesManifest() {
       current = null;
     }
   }
-  if (current && Object.keys(current).length > 0) return;
 
-  const manifest = {};
+  const manifest = current && typeof current === 'object' ? current : {};
+  let added = 0;
   for (const name of ['_app', '_error', '_document']) {
-    if (fs.existsSync(path.join(pagesDir, `${name}.js`))) {
-      manifest[`/${name}`] = `pages/${name}.js`;
+    const pagePath = path.join(pagesDir, `${name}.js`);
+    if (!fs.existsSync(pagePath)) {
+      fs.writeFileSync(pagePath, `module.exports = require('${SPECIAL_PAGE_SHIMS[name]}');\n`);
     }
+    if (manifest[`/${name}`] || !fs.existsSync(pagePath)) continue;
+    manifest[`/${name}`] = `pages/${name}.js`;
+    added += 1;
   }
   if (Object.keys(manifest).length === 0) return;
 
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  console.log(`[next-shim] rebuilt pages-manifest.json with ${Object.keys(manifest).length} special page(s)`);
+  if (added > 0) {
+    console.log(`[next-shim] added ${added} special page(s) to pages-manifest.json`);
+  }
 }
 
 function ensureAppPathsManifest() {

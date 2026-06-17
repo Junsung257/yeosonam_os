@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -17,10 +18,32 @@ import { getDestinationUrl } from '@/lib/regions';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
+const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
+  .replace(/\/+$/, '');
+const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 // Build-safe: home data depends on live Supabase rows, so render on demand instead of blocking deploy prerender.
 export const revalidate = 300;
 export const dynamic = 'force-dynamic';
+
+export const metadata: Metadata = {
+  title: '여소남 | 프리미엄 패키지 여행',
+  description: '부산 출발 프리미엄 패키지 여행과 단독 맞춤여행을 비교하고 상담할 수 있는 여소남 공식 사이트입니다.',
+  alternates: { canonical: BASE_URL },
+  openGraph: {
+    title: '여소남 | 프리미엄 패키지 여행',
+    description: '검증된 해외 패키지와 단독 맞춤여행 상담을 한 곳에서 확인하세요.',
+    url: BASE_URL,
+    type: 'website',
+    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: '여소남 | 프리미엄 패키지 여행',
+    description: '검증된 해외 패키지와 단독 맞춤여행 상담을 한 곳에서 확인하세요.',
+    images: [SOCIAL_IMAGE_URL],
+  },
+};
 
 const HOME_AGG_PACKAGE_LIMIT = 500;
 const HOME_RATING_LIMIT = 500;
@@ -523,7 +546,6 @@ export default async function HomePage() {
   const weightedSum = ((ratingAgg as Array<{ avg_rating: number; review_count: number }>) || [])
     .reduce((s, r) => s + (r.avg_rating * r.review_count), 0);
   const aggregateRating = totalReviews > 0 ? (weightedSum / totalReviews) : null;
-  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
   const consultTelHref = getConsultTelHref();
   const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
 

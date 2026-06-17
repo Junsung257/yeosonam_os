@@ -7,6 +7,11 @@ const root = process.cwd();
 const distDirName = process.env.NEXT_DIST_DIR || '.next';
 const distDir = path.resolve(root, distDirName);
 const lockPath = path.join(root, '.next-build.lock');
+const SPECIAL_PAGE_SHIMS = {
+  _app: 'next/dist/pages/_app',
+  _error: 'next/dist/pages/_error',
+  _document: 'next/dist/pages/_document',
+};
 let activeChild = null;
 let buildStartedAt = 0;
 
@@ -131,9 +136,48 @@ function ensureServerPagesDir() {
   fs.mkdirSync(path.join(serverDir, 'pages'), { recursive: true });
 }
 
+function ensureSpecialPagesManifest() {
+  const serverDir = path.join(distDir, 'server');
+  if (!fs.existsSync(serverDir)) return;
+
+  const pagesDir = path.join(serverDir, 'pages');
+  const manifestPath = path.join(serverDir, 'pages-manifest.json');
+  fs.mkdirSync(pagesDir, { recursive: true });
+
+  let current = null;
+  if (fs.existsSync(manifestPath)) {
+    try {
+      current = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    } catch {
+      current = null;
+    }
+  }
+
+  const manifest = current && typeof current === 'object' ? current : {};
+  let added = 0;
+  for (const name of ['_app', '_error', '_document']) {
+    const filename = `${name}.js`;
+    const pagePath = path.join(pagesDir, filename);
+    if (!fs.existsSync(pagePath)) {
+      fs.writeFileSync(pagePath, `module.exports = require('${SPECIAL_PAGE_SHIMS[name]}');\n`);
+    }
+    if (manifest[`/${name}`] || !fs.existsSync(pagePath)) continue;
+    manifest[`/${name}`] = `pages/${filename}`;
+    added += 1;
+  }
+
+  if (added > 0 || !fs.existsSync(manifestPath)) {
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+    if (added > 0) {
+      console.log(`[next-shim] added ${added} special page(s) to pages-manifest.json`);
+    }
+  }
+}
+
 function ensureBuildShims(options = {}) {
   const { includeGeneratedRoutes = true, includeStaticStatusPages = true, includeNotFoundTrace = true } = options;
   ensureServerPagesDir();
+  ensureSpecialPagesManifest();
   if (includeNotFoundTrace) {
     ensureNotFoundTraceManifest();
   }

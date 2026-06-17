@@ -1,5 +1,10 @@
 import { getSecret } from '@/lib/secret-registry';
 
+const SLACK_ALERT_TIMEOUT_MS = Math.max(
+  1000,
+  Number(process.env.SLACK_ALERT_TIMEOUT_MS || '5000') || 5000,
+);
+
 /**
  * 운영 경고용 Slack 알림 유틸.
  * env SLACK_ALERT_WEBHOOK_URL 미설정 시 조용히 skip.
@@ -16,6 +21,7 @@ export async function sendSlackAlert(message: string, context?: Record<string, u
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: body }),
+      signal: AbortSignal.timeout(SLACK_ALERT_TIMEOUT_MS),
     });
   } catch (e) {
     console.warn('[slack-alert] 실패 (무시):', e instanceof Error ? e.message : e);

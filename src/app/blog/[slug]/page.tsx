@@ -661,8 +661,17 @@ export async function generateMetadata({
     post = await getPostFast(slug);
   } catch (err) {
     if (isBlogDatabaseUnavailableError(err)) {
+      const canonical = `${BASE_URL}/blog/${slug}`;
       return {
         title: { absolute: '블로그 데이터를 불러올 수 없습니다 | 여소남' },
+        alternates: { canonical },
+        openGraph: {
+          type: 'article',
+          title: 'Blog data is temporarily unavailable',
+          url: canonical,
+          siteName: 'Yeosonam',
+          locale: 'ko_KR',
+        },
         robots: { index: false, follow: true },
       };
     }
