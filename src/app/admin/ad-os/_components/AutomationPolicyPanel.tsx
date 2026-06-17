@@ -29,7 +29,7 @@ export function AutomationPolicyPanel({
       </div>
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
         {(automationModes || []).map((mode, index) => (
-          <div key={mode.id} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
+          <div key={mode.id ?? `${mode.label}-${mode.levelMin}-${mode.levelMax}-${index}`} className="rounded-admin-sm border border-admin-border bg-admin-surface p-3">
             <div className="flex items-center justify-between gap-2">
               <span className="admin-num text-admin-2xs font-bold text-admin-muted">{index + 1} step</span>
               <StatusPill tone={index < 2 ? 'good' : index === 2 ? 'warn' : 'neutral'}>{mode.label}</StatusPill>
@@ -43,10 +43,10 @@ export function AutomationPolicyPanel({
       </div>
       {tenantGuardrails && (
         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
-          {tenantGuardrails.map((guardrail) => {
+          {tenantGuardrails.map((guardrail, index) => {
             const statusView = getGuardrailStatusView(guardrail.status);
             return (
-              <div key={guardrail.id} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+              <div key={guardrail.id ?? `${guardrail.label}-${guardrail.status}-${index}`} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-admin-xs font-semibold text-admin-text">{guardrail.label}</p>
                   <StatusPill tone={statusView.tone}>{statusView.label}</StatusPill>
@@ -59,10 +59,10 @@ export function AutomationPolicyPanel({
       )}
       {tenantAdReadiness && (
         <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-4">
-          {tenantAdReadiness.map((item) => {
+          {tenantAdReadiness.map((item, index) => {
             const statusView = getGuardrailStatusView(item.status);
             return (
-              <div key={item.id} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
+              <div key={item.id ?? `${item.label}-${item.status}-${index}`} className="rounded-admin-sm border border-admin-border bg-admin-surface-2 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-admin-xs font-semibold text-admin-text">{item.label}</p>
                   <StatusPill tone={statusView.tone}>{statusView.label}</StatusPill>

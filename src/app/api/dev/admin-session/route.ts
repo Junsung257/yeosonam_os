@@ -33,6 +33,10 @@ export function GET() {
     path: '/',
     maxAge: 0,
   });
+  response.cookies.set('sb-refresh-token-present', '', {
+    path: '/',
+    maxAge: 0,
+  });
 
   return response;
 }

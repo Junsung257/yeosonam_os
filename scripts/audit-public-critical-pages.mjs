@@ -37,7 +37,7 @@ const corePages = [
     path: '/concierge',
     budgetMs: 5000,
     mustHaveAny: ['컨시어지', '상담', '여행'],
-    ctaAny: ['상담', '문의', '시작', '검색', '담기'],
+    ctaAny: ['상담', '문의', '시작', '검색', '열기'],
   },
   {
     name: 'group-inquiry',

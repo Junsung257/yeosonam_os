@@ -21,6 +21,14 @@ const REFRESH_COOKIE = {
   maxAge: 60 * 60 * 24 * 365,
 };
 
+const REFRESH_MARKER_COOKIE = {
+  httpOnly: false,
+  secure: IS_SECURE,
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 60 * 60 * 24 * 365,
+};
+
 const singleFlightRefresh = createSingleFlight<string, Response>();
 
 function buildAccessCookie(expiresAt?: number) {
@@ -37,10 +45,16 @@ function fail(status: number, error: string, extra?: Record<string, unknown>) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!request.cookies.get('sb-refresh-token')?.value?.trim()) {
+    const res = fail(401, 'refresh_token missing');
+    res.cookies.delete('sb-refresh-token-present');
+    return res;
+  }
+
   const { url: supabaseUrl, anonKey } = getSupabasePublicConfig();
 
   if (!supabaseUrl || !anonKey) {
-    return fail(500, 'Supabase 설정이 없습니다.');
+    return fail(503, 'Supabase unconfigured');
   }
 
   const refreshTokenRaw = request.cookies.get('sb-refresh-token')?.value;
@@ -95,6 +109,7 @@ export async function POST(request: NextRequest) {
       if (!isRotatedRace) {
         res.cookies.delete('sb-access-token');
         res.cookies.delete('sb-refresh-token');
+        res.cookies.delete('sb-refresh-token-present');
       }
       return res;
     }
@@ -117,6 +132,7 @@ export async function POST(request: NextRequest) {
     res.cookies.set('sb-access-token', payload.access_token, buildAccessCookie(payload.expires_at));
     if (payload.refresh_token) {
       res.cookies.set('sb-refresh-token', payload.refresh_token, REFRESH_COOKIE);
+      res.cookies.set('sb-refresh-token-present', '1', REFRESH_MARKER_COOKIE);
     }
     return res;
   } catch (err) {

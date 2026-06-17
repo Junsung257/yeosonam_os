@@ -82,6 +82,7 @@ const PUBLIC_EXACT = new Set([
   '/auth/reset-password',
   '/api/auth/session',
   '/api/auth/refresh',
+  '/api/dev/admin-session',
   '/api/v1/health',
   '/api/user-actions',
   '/api/bookings',
@@ -612,6 +613,7 @@ export async function middleware(request: NextRequest) {
     });
     if (mode === 'off') {
       res.cookies.set('ys-dev-admin', '', { path: '/', maxAge: 0 });
+      res.cookies.set('sb-refresh-token-present', '', { path: '/', maxAge: 0 });
     } else {
       res.cookies.set('ys-dev-admin', '1', {
         httpOnly: false,

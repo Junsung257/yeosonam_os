@@ -13,7 +13,13 @@ import type { CreateCampaignRequest } from '@/types/meta-ads';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({
+      campaigns: [],
+      degraded: true,
+      mock: true,
+      reason: 'supabase_unconfigured',
+      message: 'Supabase 연동이 설정되지 않아 빈 캠페인 목록을 표시합니다.',
+    });
   }
 
   const { searchParams } = request.nextUrl;
@@ -33,7 +39,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ error: 'Supabase 연동이 설정되지 않아 캠페인을 생성할 수 없습니다.' }, { status: 503 });
   }
 
   try {

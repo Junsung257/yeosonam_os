@@ -7,7 +7,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ creatives: [] });
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({
+      creatives: [],
+      degraded: true,
+      access_state: 'supabase_unconfigured',
+      message: 'Supabase 연동이 설정되지 않아 빈 소재 목록을 표시합니다.',
+    });
+  }
 
   const { supabaseAdmin } = await import('@/lib/supabase');
   const { searchParams } = request.nextUrl;
@@ -40,7 +47,10 @@ export async function GET(request: NextRequest) {
 
 export async function PATCH(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+    return NextResponse.json(
+      { error: 'Supabase 연동이 설정되지 않아 소재 상태를 변경할 수 없습니다.' },
+      { status: 503 },
+    );
   }
 
   const { supabaseAdmin } = await import('@/lib/supabase');

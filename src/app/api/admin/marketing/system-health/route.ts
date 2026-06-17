@@ -84,7 +84,7 @@ async function countRows(table: string): Promise<number> {
 
 async function dbChecks(): Promise<Check[]> {
   if (!isSupabaseConfigured) {
-    return [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message: 'Supabase is not configured.' }];
+    return [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message: 'Supabase 연동이 설정되지 않았습니다.' }];
   }
 
   const [content, queue, cardNews, distributions, adAccounts, campaigns, traffic, conversions] = await Promise.all([
@@ -364,7 +364,7 @@ async function getHandler(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Marketing system health unavailable';
     db = [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message }];
-    cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Skipped because Supabase health check timed out.' }];
+    cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Supabase 상태 확인 시간이 초과되어 건너뛰었습니다.' }];
     threads = [{ key: 'threads.health', label: 'Threads health', status: 'warn', message: 'Skipped because system health check timed out.' }];
     adOs = [{
       key: 'ad_os.completion_audit',

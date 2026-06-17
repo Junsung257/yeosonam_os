@@ -34,7 +34,7 @@ async function getHandler(request: NextRequest): Promise<NextResponse> {
   const sinceDate = since.toISOString().slice(0, 10);
 
   if (!isSupabaseConfigured) {
-    return apiResponse({ snapshots: [], trend: [], skipped: 'Supabase is not configured' });
+    return apiResponse({ snapshots: [], trend: [], skipped: 'Supabase 연동이 설정되지 않았습니다.' });
   }
 
   const { data, error } = await withTimeout(

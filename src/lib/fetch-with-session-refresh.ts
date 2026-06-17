@@ -5,8 +5,28 @@
  */
 
 let refreshInFlight: Promise<boolean> | null = null;
+const REFRESH_MARKER_COOKIE = 'sb-refresh-token-present';
+const DEV_ADMIN_COOKIE = 'ys-dev-admin';
+
+function hasCookie(name: string): boolean {
+  if (typeof document === 'undefined') return true;
+  return document.cookie
+    .split(';')
+    .map((part) => part.trim())
+    .some((part) => part === name || part.startsWith(`${name}=`));
+}
+
+function shouldAttemptSessionRefresh(): boolean {
+  if (typeof document === 'undefined') return true;
+  if (hasCookie(DEV_ADMIN_COOKIE)) return false;
+  return hasCookie(REFRESH_MARKER_COOKIE);
+}
 
 export function ensureSessionRefreshed(): Promise<boolean> {
+  if (!shouldAttemptSessionRefresh()) {
+    return Promise.resolve(false);
+  }
+
   if (!refreshInFlight) {
     refreshInFlight = fetch('/api/auth/refresh', {
       method: 'POST',
