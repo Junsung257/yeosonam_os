@@ -175,3 +175,38 @@ test('public sitemap is cached and does not fan out long DB reads during outages
   assert.doesNotMatch(source, /limit\(5000\)/);
   assert.doesNotMatch(source, /limit\(10000\)/);
 });
+
+test('public blog surface monitor covers all angle tabs and survives DB outages', () => {
+  const surfaces = read('src', 'lib', 'blog-public-surfaces.ts');
+  const checker = read('src', 'lib', 'blog-public-surface-check.ts');
+  const revalidate = read('src', 'lib', 'revalidate-blog-cache.ts');
+  const opsRoute = read('src', 'app', 'api', 'ops', 'blog-system', 'route.ts');
+
+  for (const angle of ['value', 'luxury', 'filial', 'emotional', 'activity', 'food', 'urgency']) {
+    assert.match(surfaces, new RegExp(`['"]${angle}['"]`));
+    assert.match(surfaces, new RegExp(`/blog/angle/\\$\\{angle\\}`));
+  }
+
+  assert.match(surfaces, /\/blog\/destination\/\$\{encodePathSegment\(destination\)\}/);
+  assert.match(surfaces, /\/sitemap\.xml/);
+  assert.match(surfaces, /\/api\/blog\?limit=3/);
+  assert.match(surfaces, /\/api\/v1\/health/);
+
+  assert.match(checker, /checkPublicBlogSurfaces/);
+  assert.match(checker, /Promise\.race/);
+  assert.match(checker, /silent_zero_posts/);
+  assert.match(checker, /blog_api_db_timeout/);
+  assert.match(checker, /db_timeout/);
+  assert.match(checker, /warmPublicBlogSurfacesBestEffort/);
+
+  assert.match(revalidate, /warmPublicBlogSurfacesBestEffort\(\{ slug, destination \}\)/);
+
+  assert.match(opsRoute, /public_surfaces/);
+  assert.match(opsRoute, /emptyBlogSystemPayload/);
+  assert.match(opsRoute, /BLOG_SYSTEM_DB_TIMEOUT_MS/);
+  assert.match(opsRoute, /withBlogSystemDbTimeout/);
+  assert.match(opsRoute, /Promise\.all/);
+  assert.match(opsRoute, /status:\s*200/);
+  assert.match(opsRoute, /checkPublicBlogSurfaces/);
+  assert.doesNotMatch(opsRoute, /status:\s*500/);
+});
