@@ -40,6 +40,17 @@ const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const repairPreview = hasFlag('--repair-preview');
 const concurrency = Math.max(1, Math.min(8, Number(argValue('--concurrency', '4')) || 4));
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
+const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
+
+let hardTimer: NodeJS.Timeout | null = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-blog-editorial] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
 
 function destinationFrom(post: BlogListPost): string | null {
   if (post.destination) return post.destination;
@@ -50,6 +61,7 @@ function destinationFrom(post: BlogListPost): string | null {
 
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(`${baseUrl}${path}`, {
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       accept: 'application/json',
       'user-agent': 'yeosonam-blog-editorial-audit/1.0',
@@ -61,6 +73,7 @@ async function getJson<T>(path: string): Promise<T> {
 
 async function getText(path: string): Promise<string> {
   const res = await fetch(`${baseUrl}${path}`, {
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       accept: 'text/html,application/xhtml+xml',
       'user-agent': 'yeosonam-blog-editorial-audit/1.0',
@@ -279,7 +292,46 @@ function summarize(allRows: Awaited<ReturnType<typeof inspectPost>>[]) {
 }
 
 async function main() {
-  const posts = await collectPosts();
+  let posts: BlogListPost[];
+  try {
+    posts = await collectPosts();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const payload = {
+      summary: {
+        baseUrl,
+        source,
+        repairPreview,
+        total: 0,
+        skipped: 0,
+        passed: 0,
+        failed: 1,
+        score100: 0,
+        fleetScore: 0,
+        averageScore: 0,
+        issueCounts: { collect_posts_failed: 1 },
+        intentCounts: {},
+        best: [],
+        worst: [],
+      },
+      rows: [{
+        id: null,
+        slug: null,
+        title: null,
+        passed: false,
+        score: 0,
+        intent: null,
+        issues: [{ code: 'collect_posts_failed', severity: 'critical', message }],
+      }],
+    };
+    if (outputJson) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      console.log(`Blog editorial quality: 0/100 (collect failed: ${message})`);
+    }
+    if (strict) process.exitCode = 1;
+    return;
+  }
   const rows = await mapLimit(posts, inspectPost);
   const summary = summarize(rows);
 
@@ -298,7 +350,13 @@ async function main() {
   if (strict && summary.failed > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });
