@@ -98,7 +98,7 @@ const checks = [
     owner: 'google',
     required: true,
     script: 'audit:site-indexability',
-    args: withLimit([`--base=${baseUrl}`, '--strict', '--json'], siteLimit),
+    args: withLimit([`--base=${baseUrl}`, '--strict', '--json', timeoutArg, hardTimeoutArg], siteLimit),
   },
 ];
 
