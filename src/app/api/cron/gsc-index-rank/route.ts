@@ -39,6 +39,18 @@ const PAGE_LOOKBACK_DAYS = 7;       // 최근 7일 평균
 const MAX_INSPECT_PER_RUN = 25;     // URL Inspection 일일 한도 보호
 const PAGE_AGGREGATE_QUERY_KEY = '__page__';
 
+type RankHistoryRow = {
+  slug: string;
+  query: string;
+  date: string;
+  position: number;
+  impressions: number;
+  clicks: number;
+  ctr: number;
+  page_url: string;
+  source: string;
+};
+
 function toDateString(d: Date): string {
   return d.toISOString().split('T')[0];
 }
@@ -111,6 +123,55 @@ async function inspectCanonicalUrl(siteUrlCandidates: string[], url: string) {
   };
 }
 
+function buildRankHistoryRows(
+  metrics: Array<{ page: string; impressions: number; clicks: number; position: number }>,
+  endDate: string,
+  baseUrl: string,
+): RankHistoryRow[] {
+  const grouped = new Map<string, {
+    slug: string;
+    impressions: number;
+    clicks: number;
+    weightedPosition: number;
+    positionWeight: number;
+  }>();
+
+  for (const m of metrics) {
+    const slug = extractBlogSlugFromUrl(m.page);
+    if (!slug) continue;
+
+    const impressions = Number.isFinite(m.impressions) ? Math.max(0, m.impressions) : 0;
+    const clicks = Number.isFinite(m.clicks) ? Math.max(0, m.clicks) : 0;
+    const position = Number.isFinite(m.position) ? Math.max(0, m.position) : 0;
+    const positionWeight = impressions > 0 ? impressions : 1;
+    const existing = grouped.get(slug) ?? {
+      slug,
+      impressions: 0,
+      clicks: 0,
+      weightedPosition: 0,
+      positionWeight: 0,
+    };
+
+    existing.impressions += impressions;
+    existing.clicks += clicks;
+    existing.weightedPosition += position * positionWeight;
+    existing.positionWeight += positionWeight;
+    grouped.set(slug, existing);
+  }
+
+  return Array.from(grouped.values()).map((row) => ({
+    slug: row.slug,
+    query: PAGE_AGGREGATE_QUERY_KEY,
+    date: endDate,
+    position: row.positionWeight > 0 ? row.weightedPosition / row.positionWeight : 0,
+    impressions: row.impressions,
+    clicks: row.clicks,
+    ctr: row.impressions > 0 ? row.clicks / row.impressions : 0,
+    page_url: `${baseUrl}/blog/${row.slug}`,
+    source: 'gsc-page',
+  }));
+}
+
 async function runGscIndexRank(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -132,6 +193,7 @@ async function runGscIndexRank(request: NextRequest) {
     || process.env.NEXT_PUBLIC_BASE_URL
     || 'https://www.yeosonam.com/';
   const errors: string[] = [];
+  const baseUrl = getCanonicalInspectionBaseUrl();
 
   // GSC 는 보통 1~2일 지연 → endDate = today-2
   const endDateObj = new Date();
@@ -153,23 +215,7 @@ async function runGscIndexRank(request: NextRequest) {
   //    date 컬럼은 aggregate 의 endDate 기준 (1행 = 1페이지 = 1주 평균)
   let inserted = 0;
   if (metrics.length > 0) {
-    const rows = metrics
-      .map((m) => {
-        const slug = extractBlogSlugFromUrl(m.page);
-        if (!slug) return null;
-        return {
-          slug,
-          query: PAGE_AGGREGATE_QUERY_KEY,
-          date: endDate,
-          position: m.position,
-          impressions: m.impressions,
-          clicks: m.clicks,
-          ctr: m.ctr,
-          page_url: m.page,
-          source: 'gsc-page',
-        };
-      })
-      .filter(Boolean) as Array<Record<string, unknown>>;
+    const rows = buildRankHistoryRows(metrics, endDate, baseUrl);
 
     if (rows.length > 0) {
       const { error: upErr } = await supabaseAdmin
@@ -224,7 +270,6 @@ async function runGscIndexRank(request: NextRequest) {
     .filter((r) => !seenSlugs.has(r.slug))
     .slice(0, MAX_INSPECT_PER_RUN);
 
-  const baseUrl = getCanonicalInspectionBaseUrl();
   const siteUrlCandidates = getGscSiteUrlCandidates(siteUrl, baseUrl);
   let inspected = 0;
   let notIndexed = 0;
