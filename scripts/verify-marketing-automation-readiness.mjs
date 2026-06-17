@@ -153,6 +153,16 @@ function staticChecks() {
     '"verify:marketing-automation"',
     '"verify:marketing-automation:ci"',
     '"verify:marketing-automation:live"',
+    '"audit:blog-search-daily"',
+    '"audit:site-indexability"',
+  ]);
+
+  requireIncludes('open-readiness:blog-search-quality-gate', 'scripts/open-readiness-check.mjs', [
+    'checkBlogSearchQualityReadiness',
+    'public:blog-search-quality',
+    'audit:blog-search-daily',
+    'OPEN_CHECK_BLOG_AUDIT_LIMIT',
+    'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
   ]);
 
   requireIncludes('ci:marketing-readiness-wired', '.github/workflows/ci.yml', [
@@ -167,6 +177,8 @@ function staticChecks() {
     'deployment_status:',
     'npm run verify:marketing-automation:ci',
     'npm run open:readiness -- --json',
+    'OPEN_CHECK_BLOG_AUDIT_LIMIT',
+    'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
   ]);
 }
 

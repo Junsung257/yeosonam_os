@@ -10,6 +10,10 @@ const REF_CODE = process.env.OPEN_CHECK_REF_CODE || DEFAULT_REF;
 const VERCEL_SCOPE = process.env.VERCEL_SCOPE || 'zzbaa0317-4596s-projects';
 const VERCEL_LOG_TARGET = process.env.VERCEL_LOG_TARGET || BASE_URL;
 const TIMEOUT_MS = Number(process.env.OPEN_CHECK_TIMEOUT_MS || 30000);
+const BLOG_AUDIT_LIMIT = Number(process.env.OPEN_CHECK_BLOG_AUDIT_LIMIT || 10);
+const BLOG_AUDIT_SITE_LIMIT = Number(process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || 50);
+const BLOG_AUDIT_TIMEOUT_MS = Number(process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || 15000);
+const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || 180000);
 
 const strict = process.argv.includes('--strict');
 const json = process.argv.includes('--json');
@@ -247,11 +251,68 @@ function checkMarketingAutomationReadiness() {
   }
 }
 
+function checkBlogSearchQualityReadiness() {
+  const args = [
+    'run',
+    '--silent',
+    'audit:blog-search-daily',
+    '--',
+    `--base=${BASE_URL}`,
+    '--strict',
+    '--json',
+    `--limit=${BLOG_AUDIT_LIMIT}`,
+    `--site-limit=${BLOG_AUDIT_SITE_LIMIT}`,
+    `--timeout-ms=${BLOG_AUDIT_TIMEOUT_MS}`,
+    `--hard-timeout-ms=${BLOG_AUDIT_HARD_TIMEOUT_MS}`,
+  ];
+  const result = run('npm', args, { timeout: Math.max(BLOG_AUDIT_HARD_TIMEOUT_MS + 30000, 240000) });
+
+  try {
+    const report = parseJsonFromOutput(result.stdout);
+    const summary = report?.summary || {};
+    const failedRequiredChecks = Array.isArray(summary.failedRequiredChecks)
+      ? summary.failedRequiredChecks
+      : [];
+    const issueCounts = summary.issueCounts && typeof summary.issueCounts === 'object'
+      ? summary.issueCounts
+      : {};
+    const passed = result.ok && summary.ok === true;
+
+    addCheck('public:blog-search-quality', passed ? 'pass' : 'fail', {
+      ms: result.ms,
+      strictScore: summary.strictScore ?? null,
+      fleetScore: summary.fleetScore ?? null,
+      failedRequiredChecks,
+      issueCounts,
+      reportPath: report?.reportPath || '',
+      notes: passed
+        ? `strict=${summary.strictScore ?? 'n/a'}, fleet=${summary.fleetScore ?? 'n/a'}`
+        : `failed=${failedRequiredChecks.join(', ') || 'unknown'}, strict=${summary.strictScore ?? 'n/a'}`,
+      error: passed
+        ? ''
+        : (
+            failedRequiredChecks.join(', ') ||
+            Object.keys(issueCounts).join(', ') ||
+            result.stderr ||
+            result.message ||
+            ''
+          ).trim().slice(0, 1200),
+    });
+  } catch (err) {
+    addCheck('public:blog-search-quality', 'fail', {
+      ms: result.ms,
+      command: `npm ${args.join(' ')}`,
+      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+    });
+  }
+}
+
 async function main() {
   await checkPublicUrls();
   checkPublicCriticalAudit();
   checkSupabaseAuthGate();
   checkMarketingAutomationReadiness();
+  checkBlogSearchQualityReadiness();
   checkVercelLogs('error');
   checkVercelLogs('fatal');
 
