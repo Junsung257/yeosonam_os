@@ -9,7 +9,7 @@ const BLOG_LIMIT = 10000;
 const DESTINATION_LIMIT = 1000;
 const QUERY_TIMEOUT_MS = Math.max(
   1000,
-  Number(process.env.SITEMAP_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '2500') || 2500,
+  Number(process.env.SITEMAP_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '9000') || 9000,
 );
 
 export const revalidate = 3600;

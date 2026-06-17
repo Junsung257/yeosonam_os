@@ -116,15 +116,24 @@ async function auditCanonical() {
   const $ = cheerio.load(result.text);
   const canonical = $('link[rel="canonical"]').attr('href') || '';
   const ogUrl = $('meta[property="og:url"]').attr('content') || '';
+  const robots = $('meta[name="robots"]').attr('content') || '';
+  const title = $('title').first().text().replace(/\s+/g, ' ').trim();
   const expected = expectedUrl(samplePath);
+  const indexable = !/noindex/i.test(robots) && !/데이터를 불러올 수 없습니다|temporarily unavailable/i.test(title);
   return {
     url: `${preferredOrigin}${samplePath}`,
     finalUrl: result.finalUrl,
     status: result.status,
     canonical,
     ogUrl,
+    robots,
+    title,
+    indexable,
     expected,
-    passed: result.ok && normalizeToPreferredOrigin(canonical) === expected && normalizeToPreferredOrigin(ogUrl) === expected,
+    passed: result.ok
+      && indexable
+      && normalizeToPreferredOrigin(canonical) === expected
+      && normalizeToPreferredOrigin(ogUrl) === expected,
   };
 }
 
@@ -172,8 +181,19 @@ async function main() {
   for (const redirect of redirects) {
     if (!redirect.passed) issues.push(`redirect:${redirect.inputUrl}`);
   }
-  if (!canonical.passed) issues.push('canonical_or_og_url');
-  if (!sitemap.passed) issues.push('sitemap_origin_or_sample_url');
+  if (!canonical.passed) {
+    issues.push(canonical.indexable ? 'canonical_or_og_url' : 'sample_noindex_or_unavailable');
+  }
+  const sitemapPassed = sitemap.status >= 200
+    && sitemap.status < 300
+    && sitemap.hasPreferredOriginOnly
+    && (!canonical.indexable || sitemap.hasSampleUrl);
+  sitemap.passed = sitemapPassed;
+  if (!sitemapPassed) {
+    if (!sitemap.hasPreferredOriginOnly) issues.push('sitemap_origin');
+    if (canonical.indexable && !sitemap.hasSampleUrl) issues.push('sitemap_sample_url');
+    if (sitemap.status < 200 || sitemap.status >= 300) issues.push('sitemap_status');
+  }
   if (!env.passed) issues.push('gsc_site_url_env_mismatch');
 
   const output = {
