@@ -96,6 +96,16 @@ function asNumber(value: unknown): number {
   return 0;
 }
 
+function isCanonicalGoogleInspectionUrl(value: string | null | undefined): boolean {
+  if (!value) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' && url.hostname === 'www.yeosonam.com' && url.pathname.startsWith('/blog/');
+  } catch {
+    return false;
+  }
+}
+
 function startOfKstDay(offsetDays = 0): Date {
   const now = new Date();
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -263,7 +273,10 @@ export async function buildBlogOpsSummary(supabase: any) {
   const indexingCounts = countBy(indexingJobs, (row) => row.status);
   const indexingActive = indexingJobs.filter((row) => !['succeeded', 'done', 'completed'].includes(String(row.status || ''))).length;
   const recentIndexingFailures = indexingReports.filter((row) => row.google_error || row.indexnow_error || row.google_status === 'error' || row.indexnow_status === 'error').length;
-  const googleUnknownUrls = indexingReports.filter((row) => String(row.google_coverage_state || '').includes('알려지지 않은 URL')).length;
+  const googleUnknownUrls = indexingReports.filter((row) =>
+    isCanonicalGoogleInspectionUrl(row.url)
+    && String(row.google_coverage_state || '').includes('알려지지 않은 URL')
+  ).length;
   const googleIndexedReports = indexingReports.filter((row) => String(row.google_index_verdict || '').toUpperCase() === 'PASS').length;
   const indexNowOk = indexingReports.filter((row) =>
     ['ok', 'success', 'succeeded'].includes(String(row.indexnow_status || '').toLowerCase()),

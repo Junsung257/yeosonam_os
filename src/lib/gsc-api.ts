@@ -157,28 +157,6 @@ export interface UrlInspectionResult {
  *
  * scopes: webmasters (search console 읽기) 면 충분.
  */
-const GSC_SITE_HOST = (() => {
-  try {
-    const raw = process.env.GSC_SITE_URL || '';
-    return raw ? new URL(raw).hostname : 'www.yeosonam.com';
-  } catch {
-    return 'www.yeosonam.com';
-  }
-})();
-
-function normalizeInspectionUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    if (parsed.hostname.startsWith('www.') && !GSC_SITE_HOST.startsWith('www.')) {
-      parsed.hostname = parsed.hostname.replace(/^www\./, '');
-      return parsed.toString();
-    }
-    return url;
-  } catch {
-    return url;
-  }
-}
-
 export async function inspectUrlIndexState(
   siteUrl: string,
   inspectionUrl: string,
@@ -189,9 +167,7 @@ export async function inspectUrlIndexState(
     return makeInspectionError(inspectionUrl, 'GSC_SERVICE_ACCOUNT_JSON 미설정');
   }
 
-  // GSC 속성과 inspectionUrl의 도메인을 일치시킨다 (www 유무 차이 해결)
-  const normalizedUrl = normalizeInspectionUrl(inspectionUrl);
-
+  // Do not rewrite inspectionUrl to the GSC property host. It must stay on the public canonical URL.
   try {
     const client = await auth.getClient();
     const tokenRes = await client.getAccessToken();
@@ -208,7 +184,7 @@ export async function inspectUrlIndexState(
       },
       body: JSON.stringify({
         siteUrl,
-        inspectionUrl: normalizedUrl,
+        inspectionUrl,
         languageCode,
       }),
     });

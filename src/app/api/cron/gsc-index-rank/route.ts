@@ -43,13 +43,72 @@ function toDateString(d: Date): string {
   return d.toISOString().split('T')[0];
 }
 
-function getGscInspectionBaseUrl(siteUrl: string): string {
+function cleanOrigin(value: string | undefined | null): string | null {
+  if (!value) return null;
   try {
-    const parsed = new URL(siteUrl);
+    if (value.startsWith('sc-domain:')) return null;
+    const parsed = new URL(value);
     return `${parsed.protocol}//${parsed.hostname}`.replace(/\/+$/, '');
   } catch {
-    return 'https://www.yeosonam.com';
+    return null;
   }
+}
+
+function getCanonicalInspectionBaseUrl(): string {
+  return (
+    cleanOrigin(process.env.BLOG_CANONICAL_ORIGIN)
+    || cleanOrigin(process.env.NEXT_PUBLIC_BASE_URL)
+    || cleanOrigin(process.env.NEXT_PUBLIC_SITE_URL)
+    || 'https://www.yeosonam.com'
+  );
+}
+
+function getGscSiteUrlCandidates(siteUrl: string, canonicalBaseUrl: string): string[] {
+  const candidates = new Set<string>();
+  const add = (value: string | undefined | null) => {
+    if (!value) return;
+    candidates.add(value.startsWith('sc-domain:') ? value : value.replace(/\/?$/, '/'));
+  };
+
+  add(siteUrl);
+  add(process.env.GSC_SITE_URL);
+  add(`${canonicalBaseUrl}/`);
+
+  try {
+    const host = new URL(canonicalBaseUrl).hostname.replace(/^www\./, '');
+    add(`sc-domain:${host}`);
+    add(`https://${host}/`);
+  } catch {
+    add('sc-domain:yeosonam.com');
+    add('https://yeosonam.com/');
+  }
+
+  return Array.from(candidates);
+}
+
+async function inspectCanonicalUrl(siteUrlCandidates: string[], url: string) {
+  const errors: string[] = [];
+  for (const candidateSiteUrl of siteUrlCandidates) {
+    const result = await inspectUrlIndexState(candidateSiteUrl, url);
+    if (!result.error) return { result, siteUrl: candidateSiteUrl, errors };
+    errors.push(`${candidateSiteUrl}: ${result.error}`);
+  }
+  return {
+    result: {
+      url,
+      verdict: null,
+      coverageState: null,
+      indexingState: null,
+      lastCrawlTime: null,
+      pageFetchState: null,
+      robotsTxtState: null,
+      googleCanonical: null,
+      userCanonical: null,
+      error: errors.join(' | '),
+    },
+    siteUrl: siteUrlCandidates[0] ?? null,
+    errors,
+  };
 }
 
 async function runGscIndexRank(request: NextRequest) {
@@ -165,7 +224,8 @@ async function runGscIndexRank(request: NextRequest) {
     .filter((r) => !seenSlugs.has(r.slug))
     .slice(0, MAX_INSPECT_PER_RUN);
 
-  const baseUrl = getGscInspectionBaseUrl(siteUrl);
+  const baseUrl = getCanonicalInspectionBaseUrl();
+  const siteUrlCandidates = getGscSiteUrlCandidates(siteUrl, baseUrl);
   let inspected = 0;
   let notIndexed = 0;
   const inspectionResults: Array<Record<string, unknown>> = [];
@@ -175,7 +235,8 @@ async function runGscIndexRank(request: NextRequest) {
   for (const candidate of candidates) {
     const slug = candidate.slug;
     const url = `${baseUrl}/blog/${slug}`;
-    const r = await inspectUrlIndexState(siteUrl, url);
+    const inspectedResult = await inspectCanonicalUrl(siteUrlCandidates, url);
+    const r = inspectedResult.result;
     inspected += 1;
     if (r.error) {
       errors.push(`URL Inspection 실패 (${slug}): ${r.error}`);
@@ -190,7 +251,9 @@ async function runGscIndexRank(request: NextRequest) {
       google_error: null,
       indexnow_status: 'skipped',
       indexnow_error: null,
-      sitemap_pings: [],
+      sitemap_pings: inspectedResult.siteUrl
+        ? [{ provider: 'gsc_url_inspection_site_url', ok: true, siteUrl: inspectedResult.siteUrl }]
+        : [],
       google_index_verdict: r.verdict,
       google_coverage_state: r.coverageState,
       google_indexing_state: r.indexingState,
@@ -213,6 +276,7 @@ async function runGscIndexRank(request: NextRequest) {
           page_fetch_state: r.pageFetchState,
           google_canonical: r.googleCanonical,
           user_canonical: r.userCanonical,
+          inspected_site_url: inspectedResult.siteUrl,
         },
         source: 'gsc_url_inspection',
       }),
@@ -226,6 +290,7 @@ async function runGscIndexRank(request: NextRequest) {
       page_fetch_state: r.pageFetchState,
       google_canonical: r.googleCanonical,
       user_canonical: r.userCanonical,
+      inspected_site_url: inspectedResult.siteUrl,
     });
   }
 

@@ -129,3 +129,16 @@ The blog system is complete only when the admin UI can answer these questions wi
   - `evaluateBlogTopicFit()` blocks the above cases;
   - `blog-publisher` blocks failed topic-fit rows before AI generation;
   - `trend-topic-miner`, `programmatic-seo-generator`, and `promotePendingTopics()` filter failed topic-fit rows before queue insert.
+
+## 2026-06-17 Google Inspection URL Evidence
+
+- Root cause: `gsc-index-rank` used `GSC_SITE_URL` to build inspected blog URLs. When `GSC_SITE_URL` pointed to a non-www Search Console property, URL Inspection checked `https://yeosonam.com/blog/...` while public redirects, canonical tags, OG URLs, robots sitemap, and sitemap locs all used `https://www.yeosonam.com/blog/...`.
+- Evidence:
+  - `audit:blog-gsc-domain -- --json` passed with score 100;
+  - redirect, canonical, OG URL, and sitemap all resolved to `https://www.yeosonam.com`;
+  - recent URL Inspection reports with `Google에는 아직 알려지지 않은 URL입니다.` were stored against non-www URLs.
+- Fix:
+  - URL Inspection now builds inspected URLs from the canonical public origin (`BLOG_CANONICAL_ORIGIN`, `NEXT_PUBLIC_BASE_URL`, `NEXT_PUBLIC_SITE_URL`, fallback `https://www.yeosonam.com`);
+  - the Search Console property is tried separately through candidates: configured property, canonical URL-prefix, domain property, and non-www fallback;
+  - `/api/admin/blog/ops-summary` counts Google unknown URLs only for canonical `https://www.yeosonam.com/blog/...` inspection records.
+- Do not use the GSC property host to rewrite the URL being inspected. The inspected URL must stay equal to the public canonical URL.
