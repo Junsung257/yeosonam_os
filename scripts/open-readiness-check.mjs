@@ -155,9 +155,13 @@ function checkSupabaseAuthGate() {
 }
 
 function checkVercelLogs(level) {
+  const args = ['--yes', 'vercel', 'logs', VERCEL_LOG_TARGET, '--scope', VERCEL_SCOPE, '--since', '30m', '--no-follow', '--level', level, '--limit', '50', '--json'];
+  if (process.env.VERCEL_TOKEN) {
+    args.push('--token', process.env.VERCEL_TOKEN);
+  }
   const result = run(
     'npx',
-    ['--yes', 'vercel', 'logs', VERCEL_LOG_TARGET, '--scope', VERCEL_SCOPE, '--since', '30m', '--no-follow', '--level', level, '--limit', '50', '--json'],
+    args,
     { timeout: 120000 },
   );
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;

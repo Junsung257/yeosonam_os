@@ -12,8 +12,19 @@ const hasFlag = (name) => args.includes(name);
 const baseUrl = (getArg('--base', process.env.SITE_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(12, Number(getArg('--concurrency', '8')) || 8));
+const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', process.env.SITE_AUDIT_TIMEOUT_MS || '10000')) || 10000);
+const requestedHardTimeoutMs = Number(getArg('--hard-timeout-ms', process.env.SITE_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
+
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-site-indexability] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
 
 function extractLocs(xml) {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1].trim()).filter(Boolean);
@@ -52,15 +63,24 @@ function textContent(html, pattern) {
 }
 
 async function fetchText(url, init = {}) {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'user-agent': 'YeosonamIndexabilityAudit/1.0',
-      ...(init.headers || {}),
-    },
-  });
-  const text = await res.text().catch(() => '');
-  return { res, text };
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      signal,
+      headers: {
+        'user-agent': 'YeosonamIndexabilityAudit/1.0',
+        ...(init.headers || {}),
+      },
+    });
+    const text = await res.text().catch(() => '');
+    return { res, text };
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      throw new Error(`${url} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
 }
 
 async function auditUrl(url, disallows) {
@@ -166,7 +186,13 @@ async function main() {
   if (strict && failedRows.length > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

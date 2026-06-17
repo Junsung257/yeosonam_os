@@ -154,6 +154,20 @@ function staticChecks() {
     '"verify:marketing-automation:ci"',
     '"verify:marketing-automation:live"',
   ]);
+
+  requireIncludes('ci:marketing-readiness-wired', '.github/workflows/ci.yml', [
+    'Marketing automation readiness',
+    'npm run verify:marketing-automation:ci',
+  ]);
+  requireIncludes('ci:pr-quality-gate-wired', '.github/workflows/pr-quality-gate.yml', [
+    'Marketing automation readiness',
+    'npm run verify:marketing-automation:ci',
+  ]);
+  requireIncludes('ci:open-readiness-deployment-wired', '.github/workflows/open-readiness.yml', [
+    'deployment_status:',
+    'npm run verify:marketing-automation:ci',
+    'npm run open:readiness -- --json',
+  ]);
 }
 
 async function fetchWithTimeout(url, options = {}) {
