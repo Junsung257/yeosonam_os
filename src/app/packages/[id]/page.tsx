@@ -93,6 +93,11 @@ function buildPackageNoindexMetadata(id: string, canonical: string): Metadata {
 export const revalidate = 60;
 export const dynamicParams = true;
 
+const STATIC_PACKAGE_PRERENDER_LIMIT = Math.max(
+  0,
+  Number(process.env.PACKAGE_STATIC_PRERENDER_LIMIT ?? '0') || 0,
+);
+
 /**
  * 빌드 시 prerender 대상: 최근 활성 상품 50개. 인기 핫패스를 0ms 응답으로 즉시 처리.
  * 나머지 상품(아카이브·승인대기 등)은 첫 요청 시 ISR 캐시 생성 + 60초 재사용.
@@ -100,6 +105,7 @@ export const dynamicParams = true;
  * - 50개 선정 기준: status in (active, approved) + updated_at desc — 최근 운영 상품 우선.
  */
 export async function generateStaticParams(): Promise<Array<{ id: string }>> {
+  if (STATIC_PACKAGE_PRERENDER_LIMIT <= 0) return [];
   if (!isSupabaseConfigured) return [];
   try {
     const sb = getPackageReadClient();
@@ -109,7 +115,7 @@ export async function generateStaticParams(): Promise<Array<{ id: string }>> {
       .select('id')
       .in('status', ['active', 'approved'])
       .order('updated_at', { ascending: false })
-      .limit(50);
+      .limit(STATIC_PACKAGE_PRERENDER_LIMIT);
     return ((data ?? []) as Array<{ id?: unknown }>)
       .map((p) => (typeof p.id === 'string' ? p.id.trim() : ''))
       .filter((id): id is string => id.length > 0)
