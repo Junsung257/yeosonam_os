@@ -4,10 +4,27 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const HARD_LIMIT = 45000;
+const PACKAGE_LIMIT = 5000;
+const BLOG_LIMIT = 10000;
+const DESTINATION_LIMIT = 1000;
+const QUERY_TIMEOUT_MS = 8000;
 
-export const revalidate = 60;
-export const dynamic = 'force-static';
+export const revalidate = 3600;
+export const dynamic = 'force-dynamic';
+
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 function safeLastModified(iso: string | null | undefined): Date {
   if (!iso) return new Date();
@@ -44,12 +61,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 2. 패키지
   try {
-    const { data: pkgs } = await supabaseAdmin
-      .from('travel_packages')
-      .select('id, updated_at')
-      .in('status', ['active', 'approved'])
-      .order('updated_at', { ascending: false })
-      .limit(HARD_LIMIT);
+    const { data: pkgs } = await withTimeout(
+      supabaseAdmin
+        .from('travel_packages')
+        .select('id, updated_at')
+        .in('status', ['active', 'approved'])
+        .order('updated_at', { ascending: false })
+        .limit(PACKAGE_LIMIT),
+      QUERY_TIMEOUT_MS,
+      { data: [] } as any,
+    );
 
     for (const pkg of pkgs || []) {
       routes.push({
@@ -65,9 +86,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 3. 목적지
   try {
-    const { data: activeDests } = await supabaseAdmin
-      .from('active_destinations')
-      .select('destination');
+    const { data: activeDests } = await withTimeout(
+      supabaseAdmin
+        .from('active_destinations')
+        .select('destination')
+        .limit(DESTINATION_LIMIT),
+      QUERY_TIMEOUT_MS,
+      { data: [] } as any,
+    );
     for (const d of (activeDests || []) as Array<{ destination: string }>) {
       if (d.destination) {
         routes.push({
@@ -84,14 +110,18 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 4. 블로그
   try {
-    const { data: posts } = await supabaseAdmin
-      .from('content_creatives')
-      .select('slug, destination, angle_type, published_at, updated_at')
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(HARD_LIMIT);
+    const { data: posts } = await withTimeout(
+      supabaseAdmin
+        .from('content_creatives')
+        .select('slug, destination, angle_type, published_at, updated_at')
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .not('slug', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(BLOG_LIMIT),
+      QUERY_TIMEOUT_MS,
+      { data: [] } as any,
+    );
 
     const postList = (posts || []) as Array<{
       slug: string;
