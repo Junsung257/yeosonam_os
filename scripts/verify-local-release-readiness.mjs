@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
-import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { closeSync, mkdirSync, openSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 const rawArgs = process.argv.slice(2);
 const runId = `${process.pid}-${Date.now()}`;
@@ -24,6 +24,7 @@ const skipTests = hasFlag('--skip-tests');
 const skipBuild = hasFlag('--skip-build');
 const skipOpenReadiness = hasFlag('--skip-open-readiness');
 const strictOpenReadiness = hasFlag('--strict-open');
+const reportPath = argValue('--report', process.env.LOCAL_RELEASE_REPORT_PATH || '');
 
 const openPort = Number(argValue('--open-port', process.env.LOCAL_RELEASE_OPEN_PORT || '3044'));
 const openMode = argValue('--open-mode', process.env.LOCAL_RELEASE_OPEN_MODE || 'dev');
@@ -90,6 +91,13 @@ function outputPath(id, streamName) {
   mkdirSync('.tmp', { recursive: true });
   const safeId = id.replace(/[^A-Za-z0-9_.-]+/g, '-');
   return resolve('.tmp', `local-release-${runId}-${safeId}.${streamName}.log`);
+}
+
+function writeReport(path, report) {
+  if (!path) return;
+  const target = resolve(path);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`);
 }
 
 function combinedOutput(result) {
@@ -332,6 +340,8 @@ const report = {
   },
   checks: summaries,
 };
+
+writeReport(reportPath, report);
 
 if (jsonOutput) {
   console.log(JSON.stringify(report, null, 2));

@@ -200,6 +200,19 @@ function staticChecks() {
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
   ]);
+  requireIncludes('ci:local-release-readiness-wired', '.github/workflows/local-release-readiness.yml', [
+    'Local Release Readiness',
+    'workflow_dispatch:',
+    'schedule:',
+    'push:',
+    'npm run verify:local-release',
+    'strict_open',
+    '--report=.tmp/local-release-readiness-report.json',
+    'GITHUB_STEP_SUMMARY',
+    '.tmp/local-release-readiness-report.json',
+    'actions/upload-artifact@v4',
+    'LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS',
+  ]);
 
   requireIncludes('live:marketing-runtime-contract-wired', 'scripts/verify-marketing-automation-readiness.mjs', [
     'DEV_ADMIN_SESSION_PATH',
@@ -240,6 +253,8 @@ function staticChecks() {
     'check:bundle',
     'parseJsonFromOutput',
     'strictOpenReadiness',
+    'reportPath',
+    'writeReport',
     'outputPath',
     'tailFile',
     'NEXT_BUILD_RECOVERY_WAIT_MS',

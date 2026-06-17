@@ -1,0 +1,97 @@
+name: Local Release Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict_open:
+        description: Treat local open-readiness blocked checks as failures
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  schedule:
+    - cron: '0 19 * * *'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: local-release-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-release-readiness:
+    name: Full Local Release Readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+      SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+      NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3050'
+      LOCAL_RELEASE_OPEN_PORT: '3050'
+      LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS: '180000'
+      LOCAL_RELEASE_MARKETING_RUNTIME_READY_TIMEOUT_MS: '180000'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Run full local release readiness
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          args=(--json --open-port="${LOCAL_RELEASE_OPEN_PORT}" --report=.tmp/local-release-readiness-report.json)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict_open }}" == "true" ]]; then
+            args+=(--strict-open)
+          fi
+          npm run verify:local-release -- "${args[@]}" | tee .tmp/local-release-readiness-summary.json
+
+      - name: Summarize local release readiness
+        if: always()
+        run: |
+          node - <<'NODE'
+          const fs = require('node:fs');
+          const reportPath = '.tmp/local-release-readiness-report.json';
+          const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+          if (!summaryPath || !fs.existsSync(reportPath)) process.exit(0);
+          const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+          const rows = (report.checks || [])
+            .map((check) => `| ${check.id} | ${check.status} | ${check.durationMs || 0} | ${check.failed ?? ''} | ${check.blocked ?? ''} |`)
+            .join('\n');
+          fs.appendFileSync(summaryPath, [
+            '# Local Release Readiness',
+            '',
+            `Status: **${report.status}**`,
+            '',
+            `Passed: ${report.passed} / Blocked: ${report.blocked} / Failed: ${report.failed} / Total: ${report.total}`,
+            '',
+            '| Check | Status | Duration ms | Failed | Blocked |',
+            '| --- | --- | ---: | ---: | ---: |',
+            rows,
+            '',
+          ].join('\n'));
+          NODE
+
+      - name: Upload local release readiness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-release-readiness-${{ github.run_id }}
+          path: |
+            .tmp/local-release-*.log
+            .tmp/local-release-readiness-report.json
+            .tmp/local-release-readiness-summary.json
+            .tmp/open-readiness-local-*.log
+            .tmp/marketing-runtime-*.log
+            .tmp/blog-search-quality-daily-*.json
+          if-no-files-found: ignore
