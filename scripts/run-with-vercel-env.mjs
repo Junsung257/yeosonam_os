@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { spawnSync } from 'child_process';
@@ -67,12 +67,26 @@ if (commandArgs.length === 0) {
   process.exit(1);
 }
 
+function readLinkedVercelScope() {
+  const projectPath = join(process.cwd(), '.vercel', 'project.json');
+  if (!existsSync(projectPath)) return null;
+  try {
+    const parsed = JSON.parse(readFileSync(projectPath, 'utf8'));
+    return typeof parsed.orgId === 'string' && parsed.orgId.trim() ? parsed.orgId.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 const tmpDir = mkdtempSync(join(tmpdir(), 'yeosonam-vercel-env-'));
 const envPath = join(tmpDir, `${environment}.env`);
 let exitCode = 0;
 
 try {
-  const pull = run(['vercel', 'env', 'pull', envPath, '--environment', environment, '--yes'], {
+  const scope = readLinkedVercelScope();
+  const pullArgs = ['vercel', 'env', 'pull', envPath, '--environment', environment, '--yes', '--non-interactive'];
+  if (scope) pullArgs.push('--scope', scope);
+  const pull = run(pullArgs, {
     encoding: 'utf8',
     stdio: ['ignore', 'inherit', 'inherit'],
   });

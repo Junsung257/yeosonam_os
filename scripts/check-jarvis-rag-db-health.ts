@@ -32,6 +32,19 @@ async function withQueryTimeout<T>(
   }
 }
 
+async function runCount(
+  label: string,
+  query: { abortSignal: (signal: AbortSignal) => PromiseLike<{ count: number | null; error: { message?: string } | null }> },
+  timeoutMs: number,
+) {
+  const result = await withQueryTimeout(label, query, timeoutMs)
+  return {
+    label,
+    count: result.count ?? null,
+    error: result.error ? `${label}: ${result.error.message ?? String(result.error)}` : null,
+  }
+}
+
 async function main() {
   const timeoutMs = readNumberArg(process.argv.slice(2), '--timeout-ms', 15000)
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
@@ -45,23 +58,21 @@ async function main() {
   })
 
   const startedAt = Date.now()
-  const [chunks, policies, entities, links] = await Promise.all([
-    withQueryTimeout('chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }), timeoutMs),
-    withQueryTimeout('policy chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }).eq('source_type', 'policy'), timeoutMs),
-    withQueryTimeout('graph entities count', supabase.from('jarvis_knowledge_entities').select('id', { count: 'exact', head: true }), timeoutMs),
-    withQueryTimeout('graph links count', supabase.from('jarvis_knowledge_entity_links').select('id', { count: 'exact', head: true }), timeoutMs),
-  ])
+  const chunks = await runCount('chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }), timeoutMs)
+  const policies = await runCount('policy chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }).eq('source_type', 'policy'), timeoutMs)
+  const entities = await runCount('graph entities count', supabase.from('jarvis_knowledge_entities').select('id', { count: 'exact', head: true }), timeoutMs)
+  const links = await runCount('graph links count', supabase.from('jarvis_knowledge_entity_links').select('id', { count: 'exact', head: true }), timeoutMs)
 
   const errors = [chunks.error, policies.error, entities.error, links.error].filter(Boolean)
   const payload = {
     ok: errors.length === 0,
     latencyMs: Date.now() - startedAt,
     timeoutMs,
-    chunks: chunks.count ?? null,
-    policyChunks: policies.count ?? null,
-    graphEntities: entities.count ?? null,
-    graphLinks: links.count ?? null,
-    errors: errors.map((error) => error?.message),
+    chunks: chunks.count,
+    policyChunks: policies.count,
+    graphEntities: entities.count,
+    graphLinks: links.count,
+    errors,
   }
 
   console.log(JSON.stringify(payload, null, 2))

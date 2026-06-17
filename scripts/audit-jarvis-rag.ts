@@ -19,6 +19,7 @@ type CliOptions = {
   minScore: number;
   staleDays: number;
   sourceType: string | null;
+  timeoutMs: number;
 };
 
 function readNumberArg(args: string[], name: string, fallback: number): number {
@@ -43,11 +44,31 @@ function parseCliOptions(args: string[]): CliOptions {
     minScore: readNumberArg(args, '--min-score', args.includes('--strict') ? 90 : 80),
     staleDays: Math.max(1, Math.floor(readNumberArg(args, '--stale-days', 30))),
     sourceType: readStringArg(args, '--source'),
+    timeoutMs: Math.max(1000, Math.floor(readNumberArg(args, '--timeout-ms', 30000))),
   };
 }
 
 function printJson(payload: unknown): void {
   console.log(JSON.stringify(payload, null, 2));
+}
+
+async function withQueryTimeout<T>(
+  label: string,
+  query: { abortSignal: (signal: AbortSignal) => PromiseLike<T> },
+  timeoutMs: number,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await query.abortSignal(controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function main(): Promise<void> {
@@ -96,9 +117,35 @@ async function main(): Promise<void> {
     sampleQuery = sampleQuery.eq('source_type', options.sourceType);
   }
 
-  const [totalRes, sampleRes] = await Promise.all([totalQuery, sampleQuery]);
-  if (totalRes.error || sampleRes.error) {
-    const error = totalRes.error ?? sampleRes.error;
+  let totalRes;
+  let sampleRes;
+  try {
+    totalRes = await withQueryTimeout('jarvis_knowledge_chunks count', totalQuery, options.timeoutMs);
+    if (totalRes.error) {
+      const payload = {
+        ok: false,
+        error: `jarvis_knowledge_chunks count: ${totalRes.error.message ?? 'Unknown Supabase error'}`,
+        timeoutMs: options.timeoutMs,
+      };
+      if (options.json) printJson(payload);
+      else console.error(`Jarvis RAG audit failed: ${payload.error}`);
+      process.exitCode = 1;
+      return;
+    }
+    sampleRes = await withQueryTimeout('jarvis_knowledge_chunks sample', sampleQuery, options.timeoutMs);
+  } catch (error) {
+    const payload = {
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+      timeoutMs: options.timeoutMs,
+    };
+    if (options.json) printJson(payload);
+    else console.error(`Jarvis RAG audit failed: ${payload.error}`);
+    process.exitCode = 1;
+    return;
+  }
+  if (sampleRes.error) {
+    const error = sampleRes.error;
     const payload = {
       ok: false,
       error: error?.message ?? 'Unknown Supabase error',

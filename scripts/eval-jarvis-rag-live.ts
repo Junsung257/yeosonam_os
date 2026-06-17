@@ -25,6 +25,7 @@ interface LiveRagCaseResult extends LiveRagCase {
   confidenceLevel: string
   actualRequiresEscalation: boolean
   reasons: string[]
+  error?: string
 }
 
 const CASES: LiveRagCase[] = [
@@ -74,6 +75,7 @@ function parseArgs() {
     strict: args.includes('--strict'),
     requireDb: args.includes('--require-db'),
     retries: Math.max(0, Number(args.find((arg) => arg.startsWith('--retries='))?.slice('--retries='.length) ?? 2)),
+    timeoutMs: Math.max(1000, Number(args.find((arg) => arg.startsWith('--timeout-ms='))?.slice('--timeout-ms='.length) ?? 30000)),
   }
 }
 
@@ -89,21 +91,45 @@ function hasLiveEnv(): boolean {
   )
 }
 
+async function withTimeout<T>(label: string, promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  try {
+    return await Promise.race([promise, timeout])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
+}
+
 async function evaluateCase(
   testCase: LiveRagCase,
   retrieve: (query: { query: string; sourceTypes: SourceType[]; limit: number; rerank: boolean }) => Promise<RetrievalHit[]>,
   assessRetrievalConfidence: (query: string, hits: RetrievalHit[]) => RetrievalConfidenceDecision,
   retries: number,
+  timeoutMs: number,
 ): Promise<LiveRagCaseResult> {
   let hits: RetrievalHit[] = []
+  let error: string | undefined
   for (let attempt = 0; attempt <= retries; attempt++) {
-    hits = await retrieve({
-      query: testCase.query,
-      sourceTypes: testCase.sourceTypes,
-      limit: 3,
-      rerank: true,
-    })
-    if (hits.length > 0) break
+    try {
+      hits = await withTimeout(
+        `${testCase.id} retrieve attempt ${attempt + 1}`,
+        retrieve({
+          query: testCase.query,
+          sourceTypes: testCase.sourceTypes,
+          limit: 3,
+          rerank: true,
+        }),
+        timeoutMs,
+      )
+      error = undefined
+    } catch (caught) {
+      error = caught instanceof Error ? caught.message : String(caught)
+      hits = []
+    }
+    if (hits.length > 0 || error) break
     if (attempt < retries) await sleep(750 * (attempt + 1))
   }
   const decision = assessRetrievalConfidence(testCase.query, hits)
@@ -131,11 +157,23 @@ async function evaluateCase(
     confidenceLevel: decision.level,
     actualRequiresEscalation: decision.requiresEscalation,
     reasons: decision.reasons,
+    ...(error ? { error } : {}),
   }
 }
 
 async function main() {
   const options = parseArgs()
+  const hardStopMs = Math.max(15000, options.timeoutMs * (CASES.length + 1) + 10000)
+  const hardStop = setTimeout(() => {
+    const payload = {
+      skipped: false,
+      ok: false,
+      error: `Live RAG eval exceeded hard stop after ${hardStopMs}ms`,
+      timeoutMs: options.timeoutMs,
+    }
+    console.log(options.json ? JSON.stringify(payload, null, 2) : payload.error)
+    process.exit(1)
+  }, hardStopMs)
 
   if (!hasLiveEnv()) {
     const payload = {
@@ -144,6 +182,7 @@ async function main() {
       reason: 'Missing Supabase service role or Google AI embedding key.',
     }
     console.log(options.json ? JSON.stringify(payload, null, 2) : `Jarvis live RAG eval skipped: ${payload.reason}`)
+    clearTimeout(hardStop)
     if (options.requireDb) process.exitCode = 1
     return
   }
@@ -159,6 +198,7 @@ async function main() {
       retrieve,
       assessRetrievalConfidence,
       options.retries,
+      options.timeoutMs,
     ))
     await sleep(250)
   }
@@ -168,6 +208,7 @@ async function main() {
   const payload = {
     skipped: false,
     ok,
+    timeoutMs: options.timeoutMs,
     total: results.length,
     passed,
     failed: results.length - passed,
@@ -184,7 +225,12 @@ async function main() {
     }
   }
 
-  if (!ok) process.exitCode = 1
+  clearTimeout(hardStop)
+
+  if (!ok) {
+    process.exitCode = 1
+    if (results.some((result) => result.error)) process.exit(1)
+  }
 }
 
 main().catch((error) => {
