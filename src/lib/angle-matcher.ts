@@ -18,6 +18,7 @@ export interface AnglePackage {
 
 const SELECT_FIELDS =
   'id, title, destination, price, product_type, product_highlights, ticketing_deadline, display_title';
+const ANGLE_PACKAGE_QUERY_TIMEOUT_MS = 2500;
 
 const KEYWORD_RULES: Record<string, RegExp> = {
   emotional: /감성|뷰|일몰|온천|벚꽃|단풍|야경|로맨틱|풍경/,
@@ -39,6 +40,16 @@ function matchesKeyword(pkg: AnglePackage, regex: RegExp): boolean {
   return regex.test(haystack);
 }
 
+async function withAngleTimeout<T>(promise: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('angle package query timed out')), ANGLE_PACKAGE_QUERY_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 /**
  * 앵글에 맞는 추천 상품 6개 반환.
  * 각 앵글마다 다른 정렬/필터 룰 적용.
@@ -48,13 +59,13 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
 
   try {
     // 일단 충분히 가져와서 클라이언트 사이드에서 매칭/정렬 (DB JSONB 검색은 비용 큼)
-    const { data } = await supabaseAdmin
+    const { data } = await withAngleTimeout(supabaseAdmin
       .from('travel_packages')
       .select(SELECT_FIELDS)
       .in('status', ['active', 'approved'])
       .not('price', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(50);
+      .limit(50));
 
     const all = (data || []) as AnglePackage[];
 

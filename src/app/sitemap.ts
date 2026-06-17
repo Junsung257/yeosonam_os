@@ -4,9 +4,10 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const SITEMAP_PACKAGE_LIMIT = 1000;
-const SITEMAP_BLOG_LIMIT = 1000;
-const SITEMAP_DESTINATION_LIMIT = 250;
+const SITEMAP_PACKAGE_LIMIT = 200;
+const SITEMAP_BLOG_LIMIT = 200;
+const SITEMAP_DESTINATION_LIMIT = 80;
+const SITEMAP_QUERY_TIMEOUT_MS = 2500;
 
 export const revalidate = 21600;
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,16 @@ function isSafeSitemapBlogSlug(slug: string | null | undefined): boolean {
   if (s.startsWith('/') || s.includes('//') || s.includes('?') || s.includes('#')) return false;
   if (!/[0-9a-zA-Z가-힣]/.test(s)) return true;
   return true;
+}
+
+async function withSitemapTimeout<T>(promise: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('sitemap query timed out')), SITEMAP_QUERY_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
@@ -46,12 +57,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 2. 패키지
   try {
-    const { data: pkgs } = await supabaseAdmin
+    const { data: pkgs } = await withSitemapTimeout(supabaseAdmin
       .from('travel_packages')
       .select('id, updated_at')
       .in('status', ['active', 'approved'])
       .order('updated_at', { ascending: false })
-      .limit(SITEMAP_PACKAGE_LIMIT);
+      .limit(SITEMAP_PACKAGE_LIMIT));
 
     for (const pkg of pkgs || []) {
       routes.push({
@@ -67,10 +78,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 3. 목적지
   try {
-    const { data: activeDests } = await supabaseAdmin
+    const { data: activeDests } = await withSitemapTimeout(supabaseAdmin
       .from('active_destinations')
       .select('destination')
-      .limit(SITEMAP_DESTINATION_LIMIT);
+      .limit(SITEMAP_DESTINATION_LIMIT));
     for (const d of (activeDests || []) as Array<{ destination: string }>) {
       if (d.destination) {
         routes.push({
@@ -87,14 +98,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   // 4. 블로그
   try {
-    const { data: posts } = await supabaseAdmin
+    const { data: posts } = await withSitemapTimeout(supabaseAdmin
       .from('content_creatives')
       .select('slug, destination, angle_type, published_at, updated_at')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(SITEMAP_BLOG_LIMIT);
+      .limit(SITEMAP_BLOG_LIMIT));
 
     const postList = (posts || []) as Array<{
       slug: string;

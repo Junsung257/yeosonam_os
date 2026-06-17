@@ -6,6 +6,17 @@ const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SI
 // ISR 10분 — Edge CDN + 프레임워크 캐시 둘 다 활용. force-dynamic 보다 cold start 빠름.
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
+const RSS_QUERY_TIMEOUT_MS = 3000;
+
+async function withRssTimeout<T>(promise: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('rss query timed out')), RSS_QUERY_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 export async function GET() {
   const headers = {
@@ -20,14 +31,14 @@ export async function GET() {
   try {
     // blog_html 제외 (전체 본문은 무거움. snippet 은 seo_description fallback).
     //   이전: blog_html 포함 시 50개 row 가 수 MB 됨 → 5초+ TTFB
-    const { data: posts } = await supabaseAdmin
+    const { data: posts } = await withRssTimeout(supabaseAdmin
       .from('content_creatives')
       .select('slug, seo_title, seo_description, published_at, og_image_url, travel_packages(title, destination)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(50);
+      .limit(30));
 
     return new Response(buildFeed(posts || []), { headers });
   } catch {

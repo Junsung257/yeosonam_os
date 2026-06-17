@@ -9,6 +9,9 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
+const DESTINATION_INDEX_LIMIT = 80;
+const DESTINATION_ATTRACTION_LIMIT = 200;
+const DESTINATION_QUERY_TIMEOUT_MS = 3500;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
@@ -89,27 +92,37 @@ function normalizeAttractionSample(row: unknown): AttractionSample | null {
   };
 }
 
+async function withDestinationTimeout<T>(promise: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('destinations query timed out')), DESTINATION_QUERY_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 async function getDestinations() {
   if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
 
   try {
-    const { data: stats } = await supabaseAdmin
+    const { data: stats } = await withDestinationTimeout(supabaseAdmin
       .from('active_destinations')
       .select('destination, package_count, avg_rating, total_reviews, min_price')
       .order('package_count', { ascending: false })
-      .limit(250);
+      .limit(DESTINATION_INDEX_LIMIT));
 
     // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
     const normalizedStats = ((stats as Array<Partial<DestinationStat>> | null) ?? [])
       .map(normalizeDestinationStat)
       .filter((stat): stat is DestinationStat => stat !== null);
     const destinations = normalizedStats.map(s => s.destination);
-    const { data: attractions } = destinations.length > 0 ? await supabaseAdmin
+    const { data: attractions } = destinations.length > 0 ? await withDestinationTimeout(supabaseAdmin
       .from('attractions')
       .select('destination, name, photos')
       .in('destination', destinations)
       .not('photos', 'is', null)
-      .limit(800) : { data: null };
+      .limit(DESTINATION_ATTRACTION_LIMIT)) : { data: null };
 
     const attractionsByDest: Record<string, AttractionSample> = {};
     ((attractions as unknown[] | null) ?? []).forEach((row) => {

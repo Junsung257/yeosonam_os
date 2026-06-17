@@ -10,6 +10,17 @@ const QA_PACKAGE_SELECT =
 type CacheEntry = { t: number; rows: Record<string, unknown>[] };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 90_000;
+const QA_PACKAGE_QUERY_TIMEOUT_MS = 3500;
+
+async function withQaPackageTimeout<T>(promise: PromiseLike<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('qa package query timed out')), QA_PACKAGE_QUERY_TIMEOUT_MS);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 
 function sanitizeQaPackageRows(rows: Record<string, unknown>[]): Record<string, unknown>[] {
   return rows.map((row) => ({
@@ -23,27 +34,27 @@ function fresh(entry: CacheEntry | undefined, now: number): boolean {
 }
 
 async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<Record<string, unknown>[]> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await withQaPackageTimeout(supabaseAdmin
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
     .or('audit_status.is.null,audit_status.neq.blocked')
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
-    .limit(50);
+    .limit(50));
 
   if (error) throw error;
   return sanitizeQaPackageRows(await rankQaPackagesForHint((data || []) as Record<string, unknown>[], destinationHint));
 }
 
 async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
-  const { data, error } = await supabaseAdmin
+  const { data, error } = await withQaPackageTimeout(supabaseAdmin
     .from('travel_packages')
     .select(QA_PACKAGE_SELECT)
     .eq('status', 'approved')
     .or('audit_status.is.null,audit_status.neq.blocked')
     .order('created_at', { ascending: false })
-    .limit(80);
+    .limit(80));
 
   if (error) throw error;
   return sanitizeQaPackageRows((data || []) as Record<string, unknown>[]);
