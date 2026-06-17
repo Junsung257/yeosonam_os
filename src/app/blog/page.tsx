@@ -1,9 +1,8 @@
 import type { Metadata } from 'next';
-import { Suspense } from 'react';
 import BlogData from './BlogData';
-import Loading from './loading';
 
-export const revalidate = 86400;
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
@@ -25,9 +24,5 @@ export default function BlogListPage({
 }: {
   searchParams: Promise<{ page?: string; destination?: string; angle?: string }>;
 }) {
-  return (
-    <Suspense fallback={<Loading />}>
-      <BlogData searchParams={searchParams} />
-    </Suspense>
-  );
+  return <BlogData searchParams={searchParams} />;
 }
