@@ -45,6 +45,8 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /connection timeout/i);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
+  assert.match(source, /totalLabel = unavailable \? '확인 중' : total\.toLocaleString\(\)/);
+  assert.match(source, /numberOfItems: unavailable \? undefined : total/);
   assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });
 

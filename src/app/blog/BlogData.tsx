@@ -434,7 +434,8 @@ export default async function BlogData({ searchParams }: Props) {
   const destination = params.destination || undefined;
   const angle = params.angle || undefined;
   const { featured, posts, total, destinations, angleCounts, unavailable } = await getBlogData(page, { destination, angle });
-  const totalPages = Math.ceil(total / PER_PAGE);
+  const totalPages = unavailable ? 0 : Math.ceil(total / PER_PAGE);
+  const totalLabel = unavailable ? '확인 중' : total.toLocaleString();
   const visibleAngleChips = ANGLE_CHIPS.filter(c => (angleCounts[c.v] ?? 0) > 0 || c.v === angle);
 
   const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
@@ -480,8 +481,8 @@ export default async function BlogData({ searchParams }: Props) {
                 inLanguage: 'ko-KR',
                 mainEntity: {
                   '@type': 'ItemList',
-                  numberOfItems: total,
-                  itemListElement: posts.slice(0, 10).map((p, i) => ({
+                  numberOfItems: unavailable ? undefined : total,
+                  itemListElement: unavailable ? [] : posts.slice(0, 10).map((p, i) => ({
                     '@type': 'ListItem',
                     position: i + 1,
                     url: `${BASE_URL}/blog/${p.slug}`,
@@ -512,7 +513,7 @@ export default async function BlogData({ searchParams }: Props) {
             <p className="mt-2 text-body md:text-[15px] text-text-secondary">
               운영팀이 직접 검증한 가이드와 엄선 패키지
               <span className="mx-2 text-[#E5E7EB]">·</span>
-              <b className="text-text-primary font-semibold">{total.toLocaleString()}</b>편
+              <b className="text-text-primary font-semibold">{totalLabel}</b>{unavailable ? '' : '편'}
             </p>
           </div>
         </header>
@@ -626,7 +627,7 @@ export default async function BlogData({ searchParams }: Props) {
               <span className="text-text-primary font-semibold">
                 {destination || ''}{destination && angle ? ' · ' : ''}{angle ? ANGLE_LABELS[angle] : ''}
               </span>
-              <span className="text-text-secondary">관련 글 {total}편</span>
+              <span className="text-text-secondary">{unavailable ? 'DB 확인 중' : `관련 글 ${total}편`}</span>
               <Link href="/blog" className="ml-1 text-brand hover:underline">필터 해제</Link>
             </div>
           )}
