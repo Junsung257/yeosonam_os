@@ -46,6 +46,16 @@ test('ERR-BLOG-edge-middleware-timeout: blog list queries are abortable', () => 
   assert.match(source, /runBlogQuery\('posts'/);
 });
 
+test('ERR-BLOG-edge-middleware-timeout: ops monitors allow CRON_SECRET server calls', () => {
+  const source = read('src', 'middleware.ts');
+
+  assert.match(source, /safeEqualString/);
+  assert.match(source, /function cronSecretAllowsRequest/);
+  assert.match(source, /pathname\.startsWith\('\/api\/ops\/'\)/);
+  assert.match(source, /request\.headers\.get\('authorization'\)/);
+  assert.match(source, /Bearer \$\{cronSecret\}/);
+});
+
 test('ERR-BLOG-edge-middleware-timeout: blog routes do not stream skeleton-only loading HTML', () => {
   assert.equal(exists('src', 'app', 'blog', 'loading.tsx'), false);
   assert.equal(exists('src', 'app', 'blog', '[slug]', 'loading.tsx'), false);
