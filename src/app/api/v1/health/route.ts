@@ -19,13 +19,34 @@
  */
 
 import { NextRequest } from 'next/server'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase'
 import { apiResponse } from '@/lib/api-response'
 
 const START_TIME = Date.now()
 
+async function checkDatabase(timeoutMs = 2500): Promise<'connected' | 'timeout' | 'not_configured'> {
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return 'not_configured'
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const { error } = await supabaseAdmin
+      .from('active_destinations')
+      .select('destination')
+      .limit(1)
+      .abortSignal(controller.signal)
+
+    return error ? 'timeout' : 'connected'
+  } catch {
+    return 'timeout'
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function GET(_request: NextRequest) {
-  const dbOk = isSupabaseConfigured
+  const db = await checkDatabase()
+  const dbOk = db === 'connected'
 
   const status = dbOk ? 'healthy' : 'degraded'
 
@@ -35,7 +56,7 @@ export async function GET(_request: NextRequest) {
       status,
       version: '1.0.0',
       uptime: Math.floor((Date.now() - START_TIME) / 1000),
-      db: dbOk ? 'connected' : 'not_configured',
+      db,
       timestamp: new Date().toISOString(),
     },
   })

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { ScrollReveal } from '@/components/blog/ScrollReveal';
 import { BackToTop } from '@/components/blog/BackToTop';
 import { getDestinationUrl } from '@/lib/regions';
@@ -103,6 +103,8 @@ type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
 };
 
+type BlogQueryResult<T> = T & { __blogQueryUnavailable?: true };
+
 async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: T, timeoutMs = 6000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -110,6 +112,9 @@ async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback
     return await query.abortSignal(controller.signal);
   } catch (err) {
     console.warn(`[blog/list] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    if (fallback && typeof fallback === 'object') {
+      return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogQueryResult<T>;
+    }
     return fallback;
   } finally {
     clearTimeout(timer);
@@ -122,8 +127,9 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   total: number;
   destinations: DestinationStat[];
   angleCounts: Record<string, number>;
+  unavailable: boolean;
 }> {
-  if (!isSupabaseConfigured) return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {} };
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {}, unavailable: true };
 
   const offset = (page - 1) * PER_PAGE;
 
@@ -178,6 +184,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     runBlogQuery('angleCounts', angleQuery, { data: [] }),
   ]);
 
+  const unavailable = Boolean((listRes as { __blogQueryUnavailable?: true }).__blogQueryUnavailable);
   const posts = (listRes.data as unknown as BlogPost[]) || [];
   const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
     const angle = row.angle_type?.trim();
@@ -200,6 +207,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     total: listRes.count ?? 0,
     destinations: (destRes.data as unknown as DestinationStat[]) || [],
     angleCounts,
+    unavailable,
   };
 }
 
@@ -413,7 +421,7 @@ export default async function BlogData({ searchParams }: Props) {
   const page = Math.max(1, parseInt(params.page || '1'));
   const destination = params.destination || undefined;
   const angle = params.angle || undefined;
-  const { featured, posts, total, destinations, angleCounts } = await getBlogData(page, { destination, angle });
+  const { featured, posts, total, destinations, angleCounts, unavailable } = await getBlogData(page, { destination, angle });
   const totalPages = Math.ceil(total / PER_PAGE);
   const visibleAngleChips = ANGLE_CHIPS.filter(c => (angleCounts[c.v] ?? 0) > 0 || c.v === angle);
 
@@ -611,7 +619,17 @@ export default async function BlogData({ searchParams }: Props) {
             </div>
           )}
 
-          {posts.length === 0 ? (
+          {unavailable ? (
+            <div className="py-24 text-center">
+              <p className="text-[32px] mb-3">!</p>
+              <p className="text-text-body font-medium">
+                블로그 데이터를 잠시 불러오지 못했습니다.
+              </p>
+              <p className="mt-2 text-[13px] text-text-secondary">
+                발행 글이 없는 상태가 아니라 DB 응답 지연입니다. 잠시 후 다시 확인해주세요.
+              </p>
+            </div>
+          ) : posts.length === 0 ? (
             <div className="py-24 text-center">
               <p className="text-[32px] mb-3">🔍</p>
               <p className="text-text-body font-medium">

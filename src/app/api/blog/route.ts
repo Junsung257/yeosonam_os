@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import {
   applyBlogPublishQualityToUpdate,
@@ -10,6 +10,23 @@ import {
   type BlogPublishQualityReport,
 } from '@/lib/blog-publish-quality';
 import { apiResponse } from '@/lib/api-response';
+
+type AbortableQuery<T> = {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+};
+
+async function runApiBlogQuery<T>(label: string, query: AbortableQuery<T>, timeoutMs = 8000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await query.abortSignal(controller.signal);
+  } catch (error) {
+    console.warn(`[api/blog] ${label} query timed out or failed`, error instanceof Error ? error.message : error);
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 function normalizeSlug(slug: string): string {
   return slug
@@ -33,7 +50,9 @@ function qualityGateFailedResponse(report: BlogPublishQualityReport) {
 }
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return apiResponse({ posts: [] });
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    return apiResponse({ error: 'Blog database is not configured' }, { status: 503 });
+  }
 
   const { searchParams } = request.nextUrl;
   const slug = searchParams.get('slug');
@@ -48,11 +67,11 @@ export async function GET(request: NextRequest) {
       if (!UUID_RE.test(id)) {
         return apiResponse({ error: 'Post not found' }, { status: 404 });
       }
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await runApiBlogQuery('id', supabaseAdmin
         .from('content_creatives')
         .select('id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, category, tracking_id, tone, published_at, created_at, updated_at, product_id, travel_packages(id, title, destination, price, duration, nights, category)')
         .eq('id', id)
-        .limit(1);
+        .limit(1));
 
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -72,20 +91,20 @@ export async function GET(request: NextRequest) {
       if (adminStatus && adminStatus !== 'all') {
         adminQuery = adminQuery.eq('status', adminStatus);
       }
-      const { data, count, error } = await adminQuery;
+      const { data, count, error } = await runApiBlogQuery('admin', adminQuery);
       if (error) throw error;
       return apiResponse({ posts: data || [], total: count ?? 0 });
     }
 
     if (slug) {
-      const { data, error } = await supabaseAdmin
+      const { data, error } = await runApiBlogQuery('slug', supabaseAdmin
         .from('content_creatives')
         .select('id, slug, seo_title, seo_description, og_image_url, angle_type, channel, published_at, created_at, product_id, tracking_id, travel_packages(id, title, destination, price, duration, nights, category)')
         .eq('slug', slug)
         .eq('status', 'published')
         .eq('channel', 'naver_blog')
         .not('slug', 'is', null)
-        .limit(1);
+        .limit(1));
 
       if (error) throw error;
       if (!data || data.length === 0) {
@@ -110,7 +129,7 @@ export async function GET(request: NextRequest) {
 
     if (destination) query = query.eq('travel_packages.destination', destination);
 
-    const { data, error, count } = await query;
+    const { data, error, count } = await runApiBlogQuery('list', query);
     if (error) throw error;
 
     return apiResponse({
@@ -122,6 +141,12 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (err) {
+    if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
+      return apiResponse(
+        { error: 'Blog database request timed out' },
+        { status: 503, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
     return apiResponse(
       { error: err instanceof Error ? err.message : 'Query failed' },
       { status: 500 },

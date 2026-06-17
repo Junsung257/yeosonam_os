@@ -30,6 +30,9 @@ export const env = createEnv({
 
     // ── Supabase (server) ──
     SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SECRET_KEY: z.string().min(1).optional(),
+    SUPABASE_SECRET_DEFAULT_KEY: z.string().min(1).optional(),
+    SUPABASE_SERVICE_KEY: z.string().min(1).optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().min(1).optional(),
     SUPABASE_JWT_SECRET: z.string().min(1).optional(),
 
@@ -79,6 +82,9 @@ export const env = createEnv({
   runtimeEnv: {
     NODE_ENV: process.env.NODE_ENV,
     SUPABASE_URL: process.env.SUPABASE_URL,
+    SUPABASE_SECRET_KEY: process.env.SUPABASE_SECRET_KEY,
+    SUPABASE_SECRET_DEFAULT_KEY: process.env.SUPABASE_SECRET_DEFAULT_KEY,
+    SUPABASE_SERVICE_KEY: process.env.SUPABASE_SERVICE_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
     SUPABASE_JWT_SECRET: process.env.SUPABASE_JWT_SECRET,
     ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,

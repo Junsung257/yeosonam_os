@@ -23,8 +23,13 @@ const supabaseUrl =
   getSecret('SUPABASE_URL');
 const supabaseKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  getSecret('SUPABASE_PUBLISHABLE_KEY') ||
   getSecret('SUPABASE_ANON_KEY');
-const supabaseServiceKey = getSecret('SUPABASE_SERVICE_ROLE_KEY');
+const supabaseServiceKey =
+  getSecret('SUPABASE_SECRET_KEY') ||
+  getSecret('SUPABASE_SECRET_DEFAULT_KEY') ||
+  getSecret('SUPABASE_SERVICE_ROLE_KEY') ||
+  getSecret('SUPABASE_SERVICE_KEY');
 
 function isValidUrl(url?: string | null): url is string {
   return typeof url === 'string' && /^https?:\/\//.test(url);

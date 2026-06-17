@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import Link from 'next/link';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import BlogTracker from '@/components/BlogTracker';
 import TableOfContents from '@/components/blog/TableOfContents';
 import TldrBox from '@/components/blog/TldrBox';
@@ -135,6 +135,8 @@ type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
 };
 
+type BlogDetailQueryResult<T> = T & { __blogQueryUnavailable?: true };
+
 async function runBlogDetailQuery<T>(
   label: string,
   query: AbortableQuery<T>,
@@ -147,6 +149,9 @@ async function runBlogDetailQuery<T>(
     return await query.abortSignal(controller.signal);
   } catch (err) {
     console.warn(`[blog/detail] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    if (fallback && typeof fallback === 'object') {
+      return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogDetailQueryResult<T>;
+    }
     return fallback;
   } finally {
     clearTimeout(timer);
@@ -333,10 +338,12 @@ async function getPost(slug: string): Promise<BlogPost | null> {
 }
 
 async function getPostFast(slug: string): Promise<BlogPost | null> {
-  if (!isSupabaseConfigured) return null;
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    throw new Error('BLOG_DATABASE_UNAVAILABLE');
+  }
 
   const dbSlug = safeDecodeSlug(slug);
-  const { data, error } = await runBlogDetailQuery(
+  const postResult = await runBlogDetailQuery(
     'postFast',
     supabaseAdmin
       .from('content_creatives')
@@ -350,6 +357,11 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
       .limit(1),
     { data: null, error: null },
   );
+  const { data, error } = postResult;
+
+  if ((postResult as { __blogQueryUnavailable?: true }).__blogQueryUnavailable) {
+    throw new Error('BLOG_DATABASE_UNAVAILABLE');
+  }
 
   if (error) {
     logError('[blog/getPostFast] supabase error', error, { slug: dbSlug, rawParam: slug });
