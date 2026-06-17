@@ -1,6 +1,16 @@
 # Blog Errors
 
-Last updated: 2026-06-17
+Last updated: 2026-06-18
+
+## ERR-BLOG-supabase-rest-522@2026-06-18
+
+- [ ] **ERR-BLOG-supabase-rest-522@2026-06-18**: Production blog list/detail/API can appear empty or delayed when the Supabase REST/Data API returns 522 or never returns a response after an API key is accepted.
+- **Observed production evidence**: `/api/blog?limit=3` returned `503 Blog database request timed out`, `/api/v1/health` reported `db:"timeout"`, and direct Supabase REST calls to `/rest/v1/content_creatives?select=id&limit=1` returned no body after 70 seconds with a valid legacy anon key. Supabase API logs showed repeated `522` for `content_creatives`, `travel_packages`, `active_destinations`, `cron_run_logs`, and other app tables.
+- **Root cause status**: Not closed yet. This is below the blog query layer: even a one-row REST read times out, while unauthenticated REST returns `401` immediately. Supabase project status can still show `ACTIVE_HEALTHY`, so the app must not treat this as "no posts".
+- **Additional finding**: The project exposes a new `sb_secret_...` key through the Supabase CLI, but this key returned `401 Invalid API key` against this project's REST/Data API. Production must prefer the verified legacy `SUPABASE_SERVICE_ROLE_KEY` while this migration remains unverified.
+- **Mitigation already applied**: Blog list/detail/API now use explicit aborts and render DB-unavailable states instead of silent empty lists or false 404s. `supabaseAdmin` key selection keeps `SUPABASE_SERVICE_ROLE_KEY` ahead of unvalidated secret-key aliases.
+- **Next recovery step**: Restart the Supabase project from the Dashboard if REST continues to 522 after load reduction. Supabase's HTTP API troubleshooting guide lists under-provisioning or ongoing workload as common causes and project restart as a temporary recovery step.
+- **Prevention**: Do not add `SUPABASE_SECRET_KEY` to Vercel production until a direct REST one-row read succeeds with that key. When `/api/v1/health` is degraded, do not run "published count" cleanup or blog UI audits as if the data were authoritative.
 
 ## ERR-BLOG-queue-contract-drift@2026-06-17
 

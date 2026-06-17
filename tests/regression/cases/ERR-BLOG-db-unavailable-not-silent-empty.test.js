@@ -11,7 +11,7 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
 
-test('Supabase server client supports new secret API key names before legacy service role', () => {
+test('Supabase server client keeps verified service role ahead of unvalidated secret key aliases', () => {
   const registry = read('src', 'lib', 'secret-registry.ts');
   const supabase = read('src', 'lib', 'supabase.ts');
 
@@ -23,7 +23,7 @@ test('Supabase server client supports new secret API key names before legacy ser
   const legacyIndex = supabase.indexOf("getSecret('SUPABASE_SERVICE_ROLE_KEY')");
   assert.ok(secretIndex > 0, 'new secret key should be read');
   assert.ok(legacyIndex > 0, 'legacy service role should remain supported');
-  assert.ok(secretIndex < legacyIndex, 'new secret key should take precedence');
+  assert.ok(legacyIndex < secretIndex, 'verified service role should take precedence');
 });
 
 test('/api/v1/health performs a real DB probe with a short timeout', () => {
