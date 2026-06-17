@@ -34,6 +34,8 @@ import { recommendBestPackages } from '@/lib/scoring/recommend';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
 
 function isNextNotFoundError(err: unknown): boolean {
   return (
@@ -237,6 +239,28 @@ function estimateReadingMinutes(html: string): number {
   const text = html.replace(/<[^>]+>/g, '').trim();
   // 한국어 기준 분당 500자. 최소 3분.
   return Math.max(3, Math.round(text.length / 500));
+}
+
+async function withBlogRenderTimeout<T>(
+  label: string,
+  promise: Promise<T>,
+  fallback: T,
+  timeoutMs = 3500,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } catch (err) {
+    console.warn(`[blog/detail] ${label} failed`, err instanceof Error ? err.message : err);
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function sanitizeServerBlogHtml(html: string): string {
@@ -688,17 +712,21 @@ async function renderBlogDetail({
   // 핵심 경로에 유지. curationProducts, prevNext는 Suspense로 streaming.
   const [dki, relatedPosts, relatedProducts] = await Promise.all([
     isLanding
-      ? resolveDki(
-          { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
-          {
-            seo_title: abTestTitle,
-            landing_headline: post.landing_headline,
-            landing_subtitle: post.landing_subtitle,
-          },
+      ? withBlogRenderTimeout(
+          'dki',
+          resolveDki(
+            { utm_campaign: utmCampaign, utm_term: utmTerm, utm_source: utmSource, content_creative_id: post.id },
+            {
+              seo_title: abTestTitle,
+              landing_headline: post.landing_headline,
+              landing_subtitle: post.landing_subtitle,
+            },
+          ),
+          null,
         )
       : Promise.resolve(null),
-    getRelatedPosts(slug, effectiveDestination, post.angle_type),
-    getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent),
+    withBlogRenderTimeout('relatedPosts', getRelatedPosts(slug, effectiveDestination, post.angle_type), []),
+    withBlogRenderTimeout('relatedProducts', getRelatedProducts(pkg?.id, effectiveDestination, blogRecommendationIntent), []),
   ]);
   const durationStr = formatDuration(pkg?.duration, pkg?.nights);
   const tldrItems = extractTldrItems(post);
@@ -724,23 +752,23 @@ async function renderBlogDetail({
   }
 
   const [curationSection, sidebarRelatedPosts, relatedPostsSection, prevNextSection] = await Promise.all([
-    CurationSection({
+    withBlogRenderTimeout('curationSection', CurationSection({
       destination: effectiveDestination ?? null,
       isInfoBlog,
       contentCreativeId: post.id,
       intent: blogRecommendationIntent,
-    }),
-    SidebarRelatedPosts({
+    }), null),
+    withBlogRenderTimeout('sidebarRelatedPosts', SidebarRelatedPosts({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
-    }),
-    RelatedPostsSection({
+    }), null),
+    withBlogRenderTimeout('relatedPostsSection', RelatedPostsSection({
       currentSlug: slug,
       destination: effectiveDestination,
       angleType: post.angle_type,
-    }),
-    PrevNextSection({ slug, publishedAt: post.published_at }),
+    }), null),
+    withBlogRenderTimeout('prevNextSection', PrevNextSection({ slug, publishedAt: post.published_at }), null),
   ]);
 
   const productDurationDays =

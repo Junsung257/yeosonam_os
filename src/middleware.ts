@@ -402,6 +402,8 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
   if (!config) return null;
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
     const endpoint = new URL(`${config.url}/rest/v1/${table}`);
     endpoint.searchParams.set('select', table === 'active_destinations' ? 'destination' : 'id');
     endpoint.searchParams.set('limit', '1');
@@ -416,7 +418,9 @@ async function supabaseRowExists(table: string, filters: Record<string, string>)
         accept: 'application/json',
       },
       cache: 'no-store',
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!res.ok) return null;
 
     const data = await res.json();
@@ -434,6 +438,8 @@ async function activeDestinationExists(destinationOrSlug: string): Promise<boole
   if (!config) return null;
 
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
     const endpoint = new URL(`${config.url}/rest/v1/active_destinations`);
     endpoint.searchParams.set('select', 'destination');
     endpoint.searchParams.set('limit', '2000');
@@ -445,7 +451,9 @@ async function activeDestinationExists(destinationOrSlug: string): Promise<boole
         accept: 'application/json',
       },
       cache: 'no-store',
+      signal: controller.signal,
     });
+    clearTimeout(timer);
     if (!res.ok) return null;
 
     const targetSlug = destinationSlugFromRouteValue(destinationOrSlug);
@@ -617,9 +625,6 @@ export async function middleware(request: NextRequest) {
   }
 
   // ── 3. 공개 경로 → 쿠키 설정된 응답 반환 ──────────────────
-  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
-  if (dynamicNotFound) return dynamicNotFound;
-
   if (isPublicPath(request)) {
     return response || NextResponse.next();
   }
@@ -627,6 +632,9 @@ export async function middleware(request: NextRequest) {
   if (!hasKnownTopLevelRoute(pathname)) {
     return response || NextResponse.next();
   }
+
+  const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
+  if (dynamicNotFound) return dynamicNotFound;
 
   // ── 3-0. 서버-to-서버 API 호출은 아래 x-admin-token 검증만 허용 ──
 

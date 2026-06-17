@@ -99,6 +99,23 @@ function getDisplayImageUrl(post: BlogPost): string | null {
   return toBlogImageDisplaySrc(extractFirstBlogImageUrl(post.blog_html));
 }
 
+type AbortableQuery<T> = {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+};
+
+async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: T, timeoutMs = 6000): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await query.abortSignal(controller.signal);
+  } catch (err) {
+    console.warn(`[blog/list] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<{
   featured: BlogPost[];
   posts: BlogPost[];
@@ -136,13 +153,12 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
 
   if (filter.destination) angleQuery = angleQuery.eq('destination', filter.destination);
 
-  const [destRes, featuredRes, listRes, angleRes] = await Promise.all([
-    supabaseAdmin
+  const destQuery = supabaseAdmin
       .from('active_destinations')
       .select('destination, package_count, country')
       .order('package_count', { ascending: false })
-      .limit(16),
-    supabaseAdmin
+      .limit(16);
+  const featuredQuery = supabaseAdmin
       .from('content_creatives')
       .select(
         'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
@@ -153,9 +169,13 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
       .not('slug', 'is', null)
       .order('featured_order', { ascending: true, nullsFirst: false })
       .order('published_at', { ascending: false })
-      .limit(3),
-    listQuery,
-    angleQuery,
+      .limit(3);
+
+  const [destRes, featuredRes, listRes, angleRes] = await Promise.all([
+    runBlogQuery('destinations', destQuery, { data: [] }),
+    runBlogQuery('featured', featuredQuery, { data: [] }),
+    runBlogQuery('posts', listQuery, { data: [], count: 0 }),
+    runBlogQuery('angleCounts', angleQuery, { data: [] }),
   ]);
 
   const posts = (listRes.data as unknown as BlogPost[]) || [];
