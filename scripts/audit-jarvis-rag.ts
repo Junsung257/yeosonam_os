@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import {
   auditRagIndexRows,
+  DEFAULT_RAG_SOURCE_TYPES,
   getRagIndexIssueSeverity,
   type RagIndexAuditRow,
 } from '../src/lib/jarvis/eval/rag-index-audit';
@@ -22,6 +23,20 @@ type CliOptions = {
   sourceType: string | null;
   timeoutMs: number;
 };
+
+const RAG_AUDIT_COLUMNS = [
+  'id',
+  'tenant_id',
+  'source_type',
+  'source_id',
+  'source_url',
+  'source_title',
+  'chunk_index',
+  'chunk_text',
+  'contextual_text',
+  'content_hash',
+  'updated_at',
+].join(', ');
 
 function readNumberArg(args: string[], name: string, fallback: number): number {
   const prefix = `${name}=`;
@@ -102,31 +117,14 @@ async function main(): Promise<void> {
   let totalQuery = supabase
     .from('jarvis_knowledge_chunks')
     .select('id', { count: options.exactCount ? 'exact' : 'estimated', head: true });
-  let sampleQuery = supabase
-    .from('jarvis_knowledge_chunks')
-    .select([
-      'id',
-      'tenant_id',
-      'source_type',
-      'source_id',
-      'source_url',
-      'source_title',
-      'chunk_index',
-      'chunk_text',
-      'contextual_text',
-      'content_hash',
-      'updated_at',
-    ].join(', '))
-    .order('updated_at', { ascending: false })
-    .limit(options.limit);
 
   if (options.sourceType) {
     totalQuery = totalQuery.eq('source_type', options.sourceType);
-    sampleQuery = sampleQuery.eq('source_type', options.sourceType);
   }
 
   let totalRes;
-  let sampleRes;
+  let sampleRows: RagIndexAuditRow[] = [];
+  let sampleError: { message?: string } | null = null;
   try {
     totalRes = await withQueryTimeout('jarvis_knowledge_chunks count', totalQuery, options.timeoutMs);
     if (totalRes.error) {
@@ -140,7 +138,57 @@ async function main(): Promise<void> {
       process.exitCode = 1;
       return;
     }
-    sampleRes = await withQueryTimeout('jarvis_knowledge_chunks sample', sampleQuery, options.timeoutMs);
+
+    if (options.sourceType) {
+      const sampleQuery = supabase
+        .from('jarvis_knowledge_chunks')
+        .select(RAG_AUDIT_COLUMNS)
+        .eq('source_type', options.sourceType)
+        .order('updated_at', { ascending: false })
+        .limit(options.limit);
+      const sampleRes = await withQueryTimeout('jarvis_knowledge_chunks sample', sampleQuery, options.timeoutMs);
+      sampleError = sampleRes.error;
+      sampleRows = (sampleRes.data ?? []) as unknown as RagIndexAuditRow[];
+    } else {
+      const rowsById = new Map<string, RagIndexAuditRow>();
+      const perSourceLimit = Math.max(1, Math.floor(options.limit / DEFAULT_RAG_SOURCE_TYPES.length));
+
+      for (const sourceType of DEFAULT_RAG_SOURCE_TYPES) {
+        const sourceQuery = supabase
+          .from('jarvis_knowledge_chunks')
+          .select(RAG_AUDIT_COLUMNS)
+          .eq('source_type', sourceType)
+          .order('updated_at', { ascending: false })
+          .limit(perSourceLimit);
+        const sourceRes = await withQueryTimeout(`jarvis_knowledge_chunks ${sourceType} sample`, sourceQuery, options.timeoutMs);
+        if (sourceRes.error) {
+          sampleError = sourceRes.error;
+          break;
+        }
+        for (const row of (sourceRes.data ?? []) as unknown as RagIndexAuditRow[]) {
+          rowsById.set(row.id, row);
+        }
+      }
+
+      if (!sampleError && rowsById.size < options.limit) {
+        const latestQuery = supabase
+          .from('jarvis_knowledge_chunks')
+          .select(RAG_AUDIT_COLUMNS)
+          .order('updated_at', { ascending: false })
+          .limit(options.limit);
+        const latestRes = await withQueryTimeout('jarvis_knowledge_chunks latest sample', latestQuery, options.timeoutMs);
+        if (latestRes.error) {
+          sampleError = latestRes.error;
+        } else {
+          for (const row of (latestRes.data ?? []) as unknown as RagIndexAuditRow[]) {
+            rowsById.set(row.id, row);
+            if (rowsById.size >= options.limit) break;
+          }
+        }
+      }
+
+      sampleRows = [...rowsById.values()].slice(0, options.limit);
+    }
   } catch (error) {
     const payload = {
       ok: false,
@@ -152,8 +200,8 @@ async function main(): Promise<void> {
     process.exitCode = 1;
     return;
   }
-  if (sampleRes.error) {
-    const error = sampleRes.error;
+  if (sampleError) {
+    const error = sampleError;
     const payload = {
       ok: false,
       error: error?.message ?? 'Unknown Supabase error',
@@ -164,8 +212,9 @@ async function main(): Promise<void> {
     return;
   }
 
-  const summary = auditRagIndexRows((sampleRes.data ?? []) as unknown as RagIndexAuditRow[], {
+  const summary = auditRagIndexRows(sampleRows, {
     staleAfterDays: options.staleDays,
+    expectedSourceTypes: options.sourceType ? [options.sourceType] : DEFAULT_RAG_SOURCE_TYPES,
   });
   const ok = summary.qualityScore >= options.minScore && summary.readinessLevel !== 'blocked';
   const payload = {

@@ -110,4 +110,17 @@ describe('Jarvis live RAG index audit', () => {
       }),
     ]);
   });
+
+  it('does not penalize coverage for source-specific audits', () => {
+    const summary = auditRagIndexRows([
+      row({ source_type: 'blog', source_url: '/blog/sample', source_title: 'Sample Blog' }),
+    ], {
+      now: NOW,
+      expectedSourceTypes: ['blog'],
+    });
+
+    expect(summary.readinessLevel).toBe('ready');
+    expect(summary.coverage.missingSourceTypes).toEqual([]);
+    expect(summary.issueCounts.missing_expected_source).toBe(0);
+  });
 });

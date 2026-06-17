@@ -80,11 +80,13 @@ export interface RagIndexAuditSummary {
   remediationActions: RagIndexRemediationAction[];
 }
 
+export const DEFAULT_RAG_SOURCE_TYPES = ['package', 'blog', 'attraction', 'policy'];
+
 const DEFAULT_OPTIONS: Required<Omit<RagIndexAuditOptions, 'now'>> = {
   staleAfterDays: 30,
   minChunkChars: 80,
   minContextualChars: 120,
-  expectedSourceTypes: ['package', 'blog', 'attraction', 'policy'],
+  expectedSourceTypes: DEFAULT_RAG_SOURCE_TYPES,
   sampleIssueLimit: 12,
 };
 
@@ -132,6 +134,10 @@ function incrementIssue(
   counts[code] = (counts[code] ?? 0) + 1;
 }
 
+function issuePriority(issues: RagIndexIssueCode[]): number {
+  return issues.reduce((max, issue) => Math.max(max, ISSUE_WEIGHT[ISSUE_SEVERITY[issue]]), 0);
+}
+
 function emptyIssueCounts(): Record<RagIndexIssueCode, number> {
   return {
     empty_chunk_text: 0,
@@ -148,6 +154,22 @@ function emptyIssueCounts(): Record<RagIndexIssueCode, number> {
   };
 }
 
+function emptyIssueSourceSets(): Record<RagIndexIssueCode, Set<string>> {
+  return {
+    empty_chunk_text: new Set(),
+    empty_contextual_text: new Set(),
+    short_chunk_text: new Set(),
+    short_contextual_text: new Set(),
+    context_not_enriched: new Set(),
+    missing_source_title: new Set(),
+    missing_source_ref: new Set(),
+    missing_content_hash: new Set(),
+    stale_chunk: new Set(),
+    duplicate_source_chunk: new Set(),
+    missing_expected_source: new Set(),
+  };
+}
+
 function sourceAdapterName(sourceType: string): string {
   if (sourceType === 'package') return 'packages';
   if (sourceType === 'blog') return 'blogs';
@@ -156,16 +178,15 @@ function sourceAdapterName(sourceType: string): string {
   return sourceType;
 }
 
-function sourceTypesForIssues(
-  samples: RagIndexIssueSample[],
+function sourceTypesForIssueSets(
+  issueSourceSets: Record<RagIndexIssueCode, Set<string>>,
   issueCodes: RagIndexIssueCode[],
 ): string[] {
-  return [...new Set(
-    samples
-      .filter((sample) => sample.issues.some((issue) => issueCodes.includes(issue)))
-      .map((sample) => sample.sourceType)
-      .filter((sourceType) => sourceType !== 'unknown'),
-  )].sort();
+  const sourceTypes = new Set<string>();
+  for (const issueCode of issueCodes) {
+    for (const sourceType of issueSourceSets[issueCode]) sourceTypes.add(sourceType);
+  }
+  return [...sourceTypes].sort();
 }
 
 function sampleIdsForIssues(
@@ -190,6 +211,7 @@ function buildRemediationActions(
   issueCounts: Record<RagIndexIssueCode, number>,
   samples: RagIndexIssueSample[],
   missingSourceTypes: string[],
+  issueSourceSets: Record<RagIndexIssueCode, Set<string>>,
 ): RagIndexRemediationAction[] {
   const actions: RagIndexRemediationAction[] = [];
 
@@ -204,7 +226,7 @@ function buildRemediationActions(
     title: 'Review duplicate source chunks',
     description: 'Duplicate source/chunk rows can skew hybrid retrieval and citations. Review duplicate groups before deleting rows, especially shared tenant_id NULL chunks.',
     affectedIssueCodes: ['duplicate_source_chunk'],
-    affectedSourceTypes: sourceTypesForIssues(samples, ['duplicate_source_chunk']),
+    affectedSourceTypes: sourceTypesForIssueSets(issueSourceSets, ['duplicate_source_chunk']),
     sampleIds: sampleIdsForIssues(samples, ['duplicate_source_chunk']),
     commands: [
       'npm run audit:jarvis-rag -- --json',
@@ -216,7 +238,7 @@ function buildRemediationActions(
     'empty_contextual_text',
     'context_not_enriched',
   ];
-  const brokenContentSources = sourceTypesForIssues(samples, brokenContentIssues);
+  const brokenContentSources = sourceTypesForIssueSets(issueSourceSets, brokenContentIssues);
   addAction({
     id: 'rerun-contextual-indexing',
     priority: 1,
@@ -230,7 +252,7 @@ function buildRemediationActions(
   }, brokenContentIssues.some((issue) => issueCounts[issue] > 0));
 
   const thinContentIssues: RagIndexIssueCode[] = ['short_chunk_text', 'short_contextual_text'];
-  const thinContentSources = sourceTypesForIssues(samples, thinContentIssues);
+  const thinContentSources = sourceTypesForIssueSets(issueSourceSets, thinContentIssues);
   addAction({
     id: 'review-thin-rag-content',
     priority: 2,
@@ -247,7 +269,7 @@ function buildRemediationActions(
   }, thinContentIssues.some((issue) => issueCounts[issue] > 0));
 
   const metadataIssues: RagIndexIssueCode[] = ['missing_source_title', 'missing_source_ref', 'missing_content_hash'];
-  const metadataSources = sourceTypesForIssues(samples, metadataIssues);
+  const metadataSources = sourceTypesForIssueSets(issueSourceSets, metadataIssues);
   addAction({
     id: 'repair-citation-metadata',
     priority: 2,
@@ -260,7 +282,7 @@ function buildRemediationActions(
     commands: reindexCommands(metadataSources),
   }, metadataIssues.some((issue) => issueCounts[issue] > 0));
 
-  const staleSources = sourceTypesForIssues(samples, ['stale_chunk']);
+  const staleSources = sourceTypesForIssueSets(issueSourceSets, ['stale_chunk']);
   addAction({
     id: 'refresh-stale-rag-source',
     priority: 3,
@@ -302,6 +324,7 @@ export function auditRagIndexRows(
   const opts = { ...DEFAULT_OPTIONS, ...options };
   const now = options.now ?? new Date();
   const issueCounts = emptyIssueCounts();
+  const issueSourceSets = emptyIssueSourceSets();
   const rowIssues = new Map<string, RagIndexIssueCode[]>();
   const duplicateKeys = new Map<string, number>();
 
@@ -344,7 +367,11 @@ export function auditRagIndexRows(
 
     if (issues.length > 0) {
       rowIssues.set(row.id, issues);
-      for (const issue of issues) incrementIssue(issueCounts, issue);
+      const sourceType = normalizeText(row.source_type);
+      for (const issue of issues) {
+        incrementIssue(issueCounts, issue);
+        if (sourceType) issueSourceSets[issue].add(sourceType);
+      }
     }
   }
 
@@ -380,6 +407,7 @@ export function auditRagIndexRows(
 
   const samples = rows
     .filter((row) => rowIssues.has(row.id))
+    .sort((a, b) => issuePriority(rowIssues.get(b.id) ?? []) - issuePriority(rowIssues.get(a.id) ?? []))
     .slice(0, opts.sampleIssueLimit)
     .map((row) => ({
       id: row.id,
@@ -388,7 +416,7 @@ export function auditRagIndexRows(
       chunkIndex: row.chunk_index,
       issues: rowIssues.get(row.id) ?? [],
     }));
-  const remediationActions = buildRemediationActions(issueCounts, samples, missingSourceTypes);
+  const remediationActions = buildRemediationActions(issueCounts, samples, missingSourceTypes, issueSourceSets);
 
   return {
     sampledRows: rows.length,

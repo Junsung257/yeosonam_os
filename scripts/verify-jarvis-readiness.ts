@@ -7,7 +7,7 @@ import { evaluateJarvisGoldenSet } from '../src/lib/jarvis/eval/offline-evaluato
 import { evaluateRagGoldenSet } from '../src/lib/jarvis/eval/rag-evaluator';
 import { TRACE_GOLDEN_CASES } from '../src/lib/jarvis/eval/trace-golden-cases';
 import { gradeJarvisTraceSet } from '../src/lib/jarvis/eval/trace-grader';
-import { auditRagIndexRows, type RagIndexAuditRow } from '../src/lib/jarvis/eval/rag-index-audit';
+import { auditRagIndexRows, DEFAULT_RAG_SOURCE_TYPES, type RagIndexAuditRow } from '../src/lib/jarvis/eval/rag-index-audit';
 import { evaluateJarvisReadiness } from '../src/lib/jarvis/eval/readiness-gate';
 
 dotenv.config({ path: '.env.local' });
@@ -28,6 +28,20 @@ type CommandResult = {
   stdout: string;
   stderr: string;
 };
+
+const RAG_AUDIT_COLUMNS = [
+  'id',
+  'tenant_id',
+  'source_type',
+  'source_id',
+  'source_url',
+  'source_title',
+  'chunk_index',
+  'chunk_text',
+  'contextual_text',
+  'content_hash',
+  'updated_at',
+].join(', ');
 
 function readNumberArg(args: string[], name: string, fallback: number): number {
   const prefix = `${name}=`;
@@ -98,28 +112,42 @@ async function loadLiveRagAudit(limit: number): Promise<{
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  const [totalRes, sampleRes] = await Promise.all([
-    supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }),
-    supabase
-      .from('jarvis_knowledge_chunks')
-      .select([
-        'id',
-        'tenant_id',
-        'source_type',
-        'source_id',
-        'source_url',
-        'source_title',
-        'chunk_index',
-        'chunk_text',
-        'contextual_text',
-        'content_hash',
-        'updated_at',
-      ].join(', '))
-      .order('updated_at', { ascending: false })
-      .limit(limit),
-  ]);
+  const totalRes = await supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true });
+  const rowsById = new Map<string, RagIndexAuditRow>();
+  const perSourceLimit = Math.max(1, Math.floor(limit / DEFAULT_RAG_SOURCE_TYPES.length));
 
-  const error = totalRes.error ?? sampleRes.error;
+  let sampleError: { message: string } | null = null;
+  for (const sourceType of DEFAULT_RAG_SOURCE_TYPES) {
+    const sourceRes = await supabase
+      .from('jarvis_knowledge_chunks')
+      .select(RAG_AUDIT_COLUMNS)
+      .eq('source_type', sourceType)
+      .order('updated_at', { ascending: false })
+      .limit(perSourceLimit);
+    if (sourceRes.error) {
+      sampleError = sourceRes.error;
+      break;
+    }
+    for (const row of (sourceRes.data ?? []) as unknown as RagIndexAuditRow[]) rowsById.set(row.id, row);
+  }
+
+  if (!sampleError && rowsById.size < limit) {
+    const latestRes = await supabase
+      .from('jarvis_knowledge_chunks')
+      .select(RAG_AUDIT_COLUMNS)
+      .order('updated_at', { ascending: false })
+      .limit(limit);
+    if (latestRes.error) {
+      sampleError = latestRes.error;
+    } else {
+      for (const row of (latestRes.data ?? []) as unknown as RagIndexAuditRow[]) {
+        rowsById.set(row.id, row);
+        if (rowsById.size >= limit) break;
+      }
+    }
+  }
+
+  const error = totalRes.error ?? sampleError;
   if (error) {
     return {
       skipped: false,
@@ -133,7 +161,9 @@ async function loadLiveRagAudit(limit: number): Promise<{
     skipped: false,
     error: null,
     totalRows: totalRes.count ?? 0,
-    audit: auditRagIndexRows((sampleRes.data ?? []) as unknown as RagIndexAuditRow[]),
+    audit: auditRagIndexRows([...rowsById.values()].slice(0, limit), {
+      expectedSourceTypes: DEFAULT_RAG_SOURCE_TYPES,
+    }),
   };
 }
 
