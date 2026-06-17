@@ -15,6 +15,7 @@ type CliOptions = {
   json: boolean;
   strict: boolean;
   requireDb: boolean;
+  exactCount: boolean;
   limit: number;
   minScore: number;
   staleDays: number;
@@ -40,6 +41,7 @@ function parseCliOptions(args: string[]): CliOptions {
     json: args.includes('--json'),
     strict: args.includes('--strict'),
     requireDb: args.includes('--require-db'),
+    exactCount: args.includes('--exact-count') || args.includes('--exact-counts'),
     limit: Math.max(1, Math.floor(readNumberArg(args, '--limit', 250))),
     minScore: readNumberArg(args, '--min-score', args.includes('--strict') ? 90 : 80),
     staleDays: Math.max(1, Math.floor(readNumberArg(args, '--stale-days', 30))),
@@ -58,16 +60,22 @@ async function withQueryTimeout<T>(
   timeoutMs: number,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
   try {
-    return await query.abortSignal(controller.signal);
+    return await Promise.race([query.abortSignal(controller.signal), timeout]);
   } catch (error) {
-    if (controller.signal.aborted) {
+    if (controller.signal.aborted && !(error instanceof Error)) {
       throw new Error(`${label} timed out after ${timeoutMs}ms`);
     }
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -93,7 +101,7 @@ async function main(): Promise<void> {
 
   let totalQuery = supabase
     .from('jarvis_knowledge_chunks')
-    .select('id', { count: 'exact', head: true });
+    .select('id', { count: options.exactCount ? 'exact' : 'estimated', head: true });
   let sampleQuery = supabase
     .from('jarvis_knowledge_chunks')
     .select([
@@ -163,6 +171,7 @@ async function main(): Promise<void> {
   const payload = {
     ok,
     totalRows: totalRes.count ?? 0,
+    countStrategy: options.exactCount ? 'exact' : 'estimated',
     sampledRows: summary.sampledRows,
     minScore: options.minScore,
     sourceFilter: options.sourceType,
@@ -209,4 +218,6 @@ async function main(): Promise<void> {
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
+}).finally(() => {
+  process.exit(process.exitCode ?? 0);
 });

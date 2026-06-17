@@ -46,7 +46,7 @@ const CASES: LiveRagCase[] = [
   },
   {
     id: 'live-deposit-check',
-    query: '입금 확인은 어떻게 하나요',
+    query: '입금 확인은 어떻게 하나요?',
     sourceTypes: ['policy', 'package', 'blog'],
     expectedTopSourceTypes: ['policy'],
     minConfidence: 0.65,
@@ -61,7 +61,7 @@ const CASES: LiveRagCase[] = [
   },
   {
     id: 'live-package-recommendation',
-    query: '나트랑 가격 비교해줘',
+    query: '베트남 가격 비교해줘',
     sourceTypes: ['package', 'blog', 'policy'],
     expectedTopSourceTypes: ['package'],
     minConfidence: 0.7,
@@ -236,4 +236,6 @@ async function main() {
 main().catch((error) => {
   console.error(error)
   process.exitCode = 1
+}).finally(() => {
+  process.exit(process.exitCode ?? 0)
 })

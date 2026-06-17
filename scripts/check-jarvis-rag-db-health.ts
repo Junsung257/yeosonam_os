@@ -19,16 +19,22 @@ async function withQueryTimeout<T>(
   timeoutMs: number,
 ): Promise<T> {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+  let timer: ReturnType<typeof setTimeout> | null = null
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      controller.abort()
+      reject(new Error(`${label} timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
+  })
   try {
-    return await query.abortSignal(controller.signal)
+    return await Promise.race([query.abortSignal(controller.signal), timeout])
   } catch (error) {
-    if (controller.signal.aborted) {
+    if (controller.signal.aborted && !(error instanceof Error)) {
       throw new Error(`${label} timed out after ${timeoutMs}ms`)
     }
     throw error
   } finally {
-    clearTimeout(timer)
+    if (timer) clearTimeout(timer)
   }
 }
 
@@ -46,7 +52,9 @@ async function runCount(
 }
 
 async function main() {
-  const timeoutMs = readNumberArg(process.argv.slice(2), '--timeout-ms', 15000)
+  const args = process.argv.slice(2)
+  const timeoutMs = readNumberArg(args, '--timeout-ms', 15000)
+  const countStrategy = args.includes('--exact-counts') ? 'exact' : 'estimated'
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!supabaseUrl || !supabaseKey) {
@@ -58,16 +66,17 @@ async function main() {
   })
 
   const startedAt = Date.now()
-  const chunks = await runCount('chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }), timeoutMs)
-  const policies = await runCount('policy chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: 'exact', head: true }).eq('source_type', 'policy'), timeoutMs)
-  const entities = await runCount('graph entities count', supabase.from('jarvis_knowledge_entities').select('id', { count: 'exact', head: true }), timeoutMs)
-  const links = await runCount('graph links count', supabase.from('jarvis_knowledge_entity_links').select('id', { count: 'exact', head: true }), timeoutMs)
+  const chunks = await runCount('chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: countStrategy, head: true }), timeoutMs)
+  const policies = await runCount('policy chunks count', supabase.from('jarvis_knowledge_chunks').select('id', { count: countStrategy, head: true }).eq('source_type', 'policy'), timeoutMs)
+  const entities = await runCount('graph entities count', supabase.from('jarvis_knowledge_entities').select('id', { count: countStrategy, head: true }), timeoutMs)
+  const links = await runCount('graph links count', supabase.from('jarvis_knowledge_entity_links').select('id', { count: countStrategy, head: true }), timeoutMs)
 
   const errors = [chunks.error, policies.error, entities.error, links.error].filter(Boolean)
   const payload = {
     ok: errors.length === 0,
     latencyMs: Date.now() - startedAt,
     timeoutMs,
+    countStrategy,
     chunks: chunks.count,
     policyChunks: policies.count,
     graphEntities: entities.count,
@@ -82,4 +91,6 @@ async function main() {
 main().catch((error) => {
   console.error(error)
   process.exitCode = 1
+}).finally(() => {
+  process.exit(process.exitCode ?? 0)
 })
