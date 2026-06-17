@@ -54,7 +54,7 @@ export async function getPackagesByAngle(angle: string, limit = 6): Promise<Angl
       .in('status', ['active', 'approved'])
       .not('price', 'is', null)
       .order('created_at', { ascending: false })
-      .limit(120);
+      .limit(50);
 
     const all = (data || []) as AnglePackage[];
 

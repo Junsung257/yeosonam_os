@@ -27,7 +27,7 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
       .select('destination')
       .in('status', ['active', 'approved'])
       .not('destination', 'is', null)
-      .limit(2000);
+      .limit(500);
     const unique: string[] = [...new Set(((data ?? []) as Array<{ destination: string | null }>).map((r) => r.destination ?? '').filter((d): d is string => d.length > 0))];
     return unique.slice(0, 50).map((city) => ({ city: destinationToSlug(city) }));
   } catch {
@@ -111,7 +111,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
     const { data, error } = await supabaseAdmin
       .from('active_destinations')
       .select('destination')
-      .limit(2000);
+      .limit(300);
     if (error) return decoded;
 
     const match = ((data ?? []) as Array<{ destination: string | null }>)
@@ -283,7 +283,7 @@ async function getPillarData(city: string): Promise<PillarData | null> {
         .from('active_destinations')
         .select('destination, package_count')
         .order('package_count', { ascending: false })
-        .limit(500)
+        .limit(200)
     : Promise.resolve({ data: null });
 
   // destination_metadata는 테이블이 없을 수 있으므로 별도 try/catch
@@ -304,7 +304,8 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     .select('departure_airport')
     .eq('destination', city)
     .in('status', ['approved', 'active'])
-    .not('departure_airport', 'is', null);
+    .not('departure_airport', 'is', null)
+    .limit(200);
 
   const [
     { data: stats },
@@ -317,7 +318,11 @@ async function getPillarData(city: string): Promise<PillarData | null> {
     climateResult,
     { data: departurePkgs },
   ] = await Promise.all([
-    supabaseAdmin.from('active_destinations').select('*').eq('destination', city).limit(1),
+    supabaseAdmin
+      .from('active_destinations')
+      .select('destination, package_count, min_price, avg_rating, total_reviews')
+      .eq('destination', city)
+      .limit(1),
     supabaseAdmin
       .from('attractions')
       .select('id, name, short_desc, photos, badge_type')

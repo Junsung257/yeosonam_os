@@ -43,7 +43,7 @@ async function getPostsByAngle(angle: string): Promise<BlogPost[]> {
       .eq('angle_type', angle)
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(60);
+      .limit(24);
     return (data || []) as unknown as BlogPost[];
   } catch {
     return [];

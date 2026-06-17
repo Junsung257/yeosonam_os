@@ -43,7 +43,7 @@ async function getRegions(): Promise<RegionEntry[]> {
       .select('region')
       .not('region', 'is', null)
       .order('mention_count', { ascending: false })
-      .limit(4000);
+      .limit(800);
 
     if (!regionRows) return [];
     const { data: coverRows } = await supabaseAdmin
@@ -52,7 +52,7 @@ async function getRegions(): Promise<RegionEntry[]> {
       .not('region', 'is', null)
       .not('photos', 'is', null)
       .order('mention_count', { ascending: false })
-      .limit(450);
+      .limit(250);
 
     const map = new Map<string, RegionEntry>();
     for (const r of regionRows) {

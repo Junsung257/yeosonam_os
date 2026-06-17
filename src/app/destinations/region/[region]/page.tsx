@@ -153,7 +153,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const { data: allDests } = await supabaseAdmin
     .from('active_destinations')
     .select('destination, package_count, min_price, avg_rating, total_reviews')
-    .limit(500);
+    .limit(250);
 
   // 이 region 에 속하는 도시만 필터 — 토큰화 매칭(cityInRegion)으로 멀티시티 "북경/홍콩" false-positive 방지.
   const regionDests = ((allDests as unknown[] | null) ?? [])
@@ -167,7 +167,7 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const emptyResult = { data: null } as { data: null };
   const [attrsRes, pkgsRes, blogRes] = await Promise.all([
     dests.length > 0
-      ? supabaseAdmin.from('attractions').select('region, photos').in('region', dests).not('photos', 'is', null).limit(2000)
+      ? supabaseAdmin.from('attractions').select('region, photos').in('region', dests).not('photos', 'is', null).limit(600)
       : Promise.resolve(emptyResult),
     dests.length > 0
       // travel_packages 에는 hero_image_url / thumbnail_urls 컬럼 없음 — 포함 시 쿼리 통째로 에러 → data=null

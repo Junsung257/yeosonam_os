@@ -10,7 +10,7 @@ async function resolveDestinationRouteParam(city: string): Promise<string> {
     const { data, error } = await supabaseAdmin
       .from('active_destinations')
       .select('destination')
-      .limit(2000);
+      .limit(300);
     if (error) return decoded;
 
     const match = ((data ?? []) as Array<{ destination: string | null }>)

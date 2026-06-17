@@ -94,8 +94,9 @@ async function getDestinations() {
   try {
     const { data: stats } = await supabaseAdmin
       .from('active_destinations')
-      .select('*')
-      .order('package_count', { ascending: false });
+      .select('destination, package_count, avg_rating, total_reviews, min_price')
+      .order('package_count', { ascending: false })
+      .limit(250);
 
     // 각 destination의 대표 이미지 (attractions 첫 번째 사진)
     const normalizedStats = ((stats as Array<Partial<DestinationStat>> | null) ?? [])
@@ -107,7 +108,7 @@ async function getDestinations() {
       .select('destination, name, photos')
       .in('destination', destinations)
       .not('photos', 'is', null)
-      .limit(4000) : { data: null };
+      .limit(800) : { data: null };
 
     const attractionsByDest: Record<string, AttractionSample> = {};
     ((attractions as unknown[] | null) ?? []).forEach((row) => {

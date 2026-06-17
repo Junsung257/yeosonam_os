@@ -30,7 +30,7 @@ async function fetchApprovedPackagesFiltered(destinationHint: string): Promise<R
     .or('audit_status.is.null,audit_status.neq.blocked')
     .ilike('destination', `%${destinationHint}%`)
     .order('created_at', { ascending: false })
-    .limit(120);
+    .limit(50);
 
   if (error) throw error;
   return sanitizeQaPackageRows(await rankQaPackagesForHint((data || []) as Record<string, unknown>[], destinationHint));
@@ -43,7 +43,7 @@ async function fetchApprovedPackagesAll(): Promise<Record<string, unknown>[]> {
     .eq('status', 'approved')
     .or('audit_status.is.null,audit_status.neq.blocked')
     .order('created_at', { ascending: false })
-    .limit(150);
+    .limit(80);
 
   if (error) throw error;
   return sanitizeQaPackageRows((data || []) as Record<string, unknown>[]);

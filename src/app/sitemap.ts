@@ -4,11 +4,11 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const SITEMAP_PACKAGE_LIMIT = 5000;
-const SITEMAP_BLOG_LIMIT = 5000;
-const SITEMAP_DESTINATION_LIMIT = 500;
+const SITEMAP_PACKAGE_LIMIT = 1000;
+const SITEMAP_BLOG_LIMIT = 1000;
+const SITEMAP_DESTINATION_LIMIT = 250;
 
-export const revalidate = 3600;
+export const revalidate = 21600;
 export const dynamic = 'force-static';
 
 function safeLastModified(iso: string | null | undefined): Date {

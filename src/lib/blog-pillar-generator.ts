@@ -71,7 +71,9 @@ export async function queuePillarGeneration(input: PillarGenerationInput): Promi
 export async function ensureAllDestinationsHavePillar(): Promise<{ queued: number; skipped: number }> {
   const { data: dests } = await supabaseAdmin
     .from('active_destinations')
-    .select('destination');
+    .select('destination')
+    .order('package_count', { ascending: false })
+    .limit(250);
 
   let queued = 0;
   let skipped = 0;

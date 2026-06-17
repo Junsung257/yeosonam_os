@@ -24,8 +24,8 @@ const PKG_COUNT_DISCLOSE_MIN = 6;
 export const revalidate = 300;
 export const dynamic = 'force-static';
 
-const HOME_AGG_PACKAGE_LIMIT = 1000;
-const HOME_RATING_LIMIT = 1000;
+const HOME_AGG_PACKAGE_LIMIT = 500;
+const HOME_RATING_LIMIT = 500;
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';

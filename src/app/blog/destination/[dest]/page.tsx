@@ -43,7 +43,7 @@ const resolveDestinationRouteParam = cache(async (value: string): Promise<string
     const { data, error } = await supabaseAdmin
       .from('active_destinations')
       .select('destination')
-      .limit(2000);
+      .limit(300);
     if (error) return decoded;
 
     const match = ((data ?? []) as Array<{ destination: string | null }>)
@@ -68,9 +68,10 @@ const getPostsByDestination = cache(async (dest: string): Promise<{ posts: BlogP
       .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
+      .ilike('destination', `%${destination}%`)
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(1000);
+      .limit(60);
 
     const posts = ((allPosts || []) as unknown as BlogPost[]).filter(
       p => {
@@ -107,7 +108,7 @@ export async function generateStaticParams() {
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .not('destination', 'is', null)
-      .limit(2000);
+      .limit(500);
 
     const destinations = new Set<string>();
     for (const row of (data || []) as Array<{ destination: string | null }>) {
