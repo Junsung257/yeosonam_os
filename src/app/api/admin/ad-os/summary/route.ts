@@ -359,6 +359,7 @@ function buildDegradedSummary(error: unknown) {
   return {
     ok: true,
     degraded: true,
+    reason: message.toLowerCase().includes('supabase') ? 'supabase_unconfigured' : 'summary_degraded',
     error: message,
     generated_at: new Date().toISOString(),
     kpis: {

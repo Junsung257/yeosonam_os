@@ -25,7 +25,13 @@ const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const limit = Number(argValue('--limit', full ? '0' : '30')) || 0;
 const siteLimit = Number(argValue('--site-limit', full ? '0' : '200')) || 0;
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
+const hardTimeoutMs = Math.max(timeoutMs + 1000, Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || String(Math.max(30000, timeoutMs * 4)))) || 0);
 const outDir = argValue('--out-dir', '.tmp') || '.tmp';
+const hasSupabaseAdminEnv = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const editorialSource = argValue('--editorial-source', hasSupabaseAdminEnv ? 'db' : 'web') || (hasSupabaseAdminEnv ? 'db' : 'web');
+const timeoutArg = `--timeout-ms=${timeoutMs}`;
+const hardTimeoutArg = `--hard-timeout-ms=${hardTimeoutMs}`;
 
 if (!baseUrl) {
   console.error('--base is required');
@@ -44,7 +50,7 @@ const checks = [
     owner: 'content',
     required: true,
     script: 'audit:blog-render:browser',
-    args: withLimit([`--base=${baseUrl}`, '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'image_quality',
@@ -52,7 +58,7 @@ const checks = [
     owner: 'content',
     required: true,
     script: 'audit:blog-images',
-    args: withLimit([`--base=${baseUrl}`, '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'seo_quality',
@@ -68,7 +74,7 @@ const checks = [
     owner: 'naver',
     required: true,
     script: 'audit:blog-editorial',
-    args: withLimit([`--base=${baseUrl}`, '--source=db', '--strict', '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, `--source=${editorialSource}`, '--strict', '--json'], limit),
   },
   {
     id: 'revenue_funnel',
@@ -95,6 +101,15 @@ const checks = [
     args: withLimit([`--base=${baseUrl}`, '--strict', '--json'], siteLimit),
   },
 ];
+
+const PROCESS_PATTERNS_BY_CHECK_ID = {
+  render_integrity: 'audit-blog-render-integrity',
+  image_quality: 'audit-blog-image-quality',
+  seo_quality: 'audit-blog-seo-quality',
+  editorial_intent: 'audit-blog-editorial-quality',
+  google_domain: 'audit-blog-gsc-domain',
+  site_indexability: 'audit-site-indexability',
+};
 
 function parseJson(stdout) {
   const text = String(stdout || '').trim();
@@ -190,6 +205,22 @@ function isStrictScore100(row) {
   return row.ok && strictIssues(row).length === 0;
 }
 
+function cleanupTimedOutCheck(check) {
+  const pattern = PROCESS_PATTERNS_BY_CHECK_ID[check.id];
+  if (!pattern) return;
+
+  if (process.platform === 'win32') {
+    spawnSync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `$targets = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*${pattern}*' }; foreach ($p in $targets) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ], { encoding: 'utf8', timeout: 5000 });
+    return;
+  }
+
+  spawnSync('pkill', ['-f', pattern], { encoding: 'utf8', timeout: 5000 });
+}
+
 function runCheck(check) {
   const startedAt = Date.now();
   const command = process.platform === 'win32' ? 'cmd.exe' : npmBin;
@@ -201,8 +232,12 @@ function runCheck(check) {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024 * 20,
     shell: false,
+    timeout: Math.max(10000, hardTimeoutMs + 5000),
   });
   const payload = parseJson(result.stdout);
+  if (result.error && result.error.code === 'ETIMEDOUT') {
+    cleanupTimedOutCheck(check);
+  }
   const score = scoreFromPayload(payload);
   const failed = failedFromPayload(payload);
   const ok = result.status === 0;

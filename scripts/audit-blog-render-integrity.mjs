@@ -18,6 +18,8 @@ const maxPages = Number(argValue('--pages', '12'));
 const limit = Number(argValue('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(10, Number(argValue('--concurrency', '4')) || 4));
 const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', '15000')) || 15000);
+const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const json = hasFlag('--json');
 const quiet = json || hasFlag('--quiet');
 const browserFallback = hasFlag('--browser-fallback') || hasFlag('--browser');
@@ -26,6 +28,14 @@ const TABLE_EXPECTED_RE =
   /budget|cost|weather|itinerary|checklist|visa|currency|expense|\uBE44\uC6A9|\uC608\uC0B0|\uB0A0\uC528|\uC6D4\uBCC4|\uC77C\uC815|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uBE44\uC790|\uD658\uC804/i;
 const RELATED_HEADING_RE =
   /\uAD00\uB828\s*(?:\uAE00|\uC0C1\uD488)|\uCD94\uCC9C\s*\uC0C1\uD488|\uAC19\uC774\s*\uBCF4\uBA74|\uD568\uAED8\s*\uBCF4\uBA74/i;
+
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-blog-render] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
 
 async function fetchText(url) {
   const controller = new AbortController();
@@ -83,6 +93,7 @@ async function collectBlogLinks() {
       if (!href || /\/blog\/(angle|destination)\//.test(href)) return;
       links.add(href.split('#')[0]);
     });
+    if (limit > 0 && links.size >= limit) return [...links].slice(0, limit);
     if (page > 1 && links.size === before) break;
   }
   const all = [...links];
@@ -161,7 +172,7 @@ async function inspectArticleWithRetry(path) {
 async function inspectArticleInBrowser(browser, path) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
   try {
-    await page.goto(absolutize(path), { waitUntil: 'networkidle', timeout: 120000 });
+    await page.goto(absolutize(path), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
     await page.waitForTimeout(500);
     const result = await page.evaluate(() => {
       const count = (text, pattern) => (text.match(pattern) || []).length;
@@ -300,7 +311,13 @@ async function main() {
   if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

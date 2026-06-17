@@ -14,7 +14,18 @@ const hasFlag = (name) => args.includes(name);
 const baseUrl = (getArg('--base', process.env.BLOG_AUDIT_BASE_URL || 'http://localhost:3000') || '').replace(/\/$/, '');
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(12, Number(getArg('--concurrency', '2')) || 2));
+const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', '15000')) || 15000);
+const requestedHardTimeoutMs = Number(getArg('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const outputJson = hasFlag('--json');
+
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-blog-images] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
 
 const STOP_WORDS = new Set([
   '여소남',
@@ -93,9 +104,26 @@ function titleTokens(title) {
 }
 
 async function fetchText(path) {
-  const res = await fetch(`${baseUrl}${path}`);
-  if (!res.ok) throw new Error(`${path} returned ${res.status}`);
-  return res.text();
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${baseUrl}${path}`, {
+      signal: controller.signal,
+      headers: {
+        'user-agent': 'yeosonam-blog-image-audit/1.0',
+        accept: 'text/html,application/xhtml+xml',
+      },
+    });
+    if (!res.ok) throw new Error(`${path} returned ${res.status}`);
+    return res.text();
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`${path} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function probeImageUrl(url) {
@@ -137,6 +165,7 @@ async function collectBlogLinks() {
       if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) continue;
       links.add(href);
     }
+    if (limit > 0 && links.size >= limit) return [...links].slice(0, limit);
     if (links.size === before && page > 1) break;
     if (!html.includes(`page=${page + 1}`) && !html.includes(`>${page + 1}<`)) break;
     page += 1;
@@ -180,9 +209,9 @@ function summarize(rows) {
 }
 
 async function auditPage(page, path) {
-  await page.goto(`${baseUrl}${path}`, { waitUntil: 'domcontentloaded', timeout: 45000 });
-  await page.waitForSelector('article, body', { timeout: 15000 }).catch(() => undefined);
-  await page.waitForSelector('article img', { timeout: 7000 }).catch(() => undefined);
+  await page.goto(`${baseUrl}${path}`, { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+  await page.waitForSelector('article, body', { timeout: Math.min(timeoutMs, 5000) }).catch(() => undefined);
+  await page.waitForSelector('article img', { timeout: Math.min(timeoutMs, 3000) }).catch(() => undefined);
   await page.evaluate(async () => {
     const article = document.querySelector('article') || document.body;
     const imgs = [...article.querySelectorAll('img')];
@@ -210,6 +239,7 @@ async function auditPage(page, path) {
       const fig = img.closest('figure')?.querySelector('figcaption') || img.nextElementSibling;
       return {
         src: img.currentSrc || img.src || '',
+        srcset: img.getAttribute('srcset') || '',
         alt: img.getAttribute('alt') || '',
         caption: fig?.tagName?.toLowerCase() === 'figcaption' ? fig.textContent?.trim() || '' : '',
         naturalWidth: img.naturalWidth || 0,
@@ -235,6 +265,7 @@ async function auditPageWithRetry(page, path) {
   let lastRow = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const row = await auditPage(page, path);
+    if (/\b5\d\d\b|GATEWAY_TIMEOUT|TIMEOUT/i.test(row.title || '')) return row;
     if (row.images.length > 0) return row;
     lastRow = { ...row, retryReason: 'no_article_images', attempts: attempt + 1 };
     await page.waitForTimeout(500 * (attempt + 1));
@@ -252,9 +283,19 @@ function judge(row) {
   let tiny = 0;
   let contextual = 0;
 
+  function maxSrcsetWidth(srcset) {
+    return Math.max(
+      0,
+      ...String(srcset || '')
+        .split(',')
+        .map((candidate) => Number(candidate.trim().match(/\s(\d+)w(?:\s|$)/)?.[1] || 0)),
+    );
+  }
+
   for (const image of row.images) {
     if (image.reachable === false) broken += 1;
-    if (image.naturalWidth > 0 && image.naturalWidth < 320) tiny += 1;
+    const declaredMaxWidth = maxSrcsetWidth(image.srcset);
+    if (declaredMaxWidth > 0 ? declaredMaxWidth < 320 : image.naturalWidth > 0 && image.naturalWidth < 320) tiny += 1;
     if ((image.alt || '').trim().length < 3) missingAlt += 1;
     if (seen.has(image.src)) duplicateUrls.push(image.src);
     seen.add(image.src);
@@ -334,7 +375,13 @@ async function main() {
   if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

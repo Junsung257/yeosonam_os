@@ -1,0 +1,41 @@
+name: Open Readiness
+
+on:
+  deployment_status:
+    types: [created, updated]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: open-readiness-${{ github.event.deployment_status.target_url || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  readiness:
+    if: github.event_name == 'workflow_dispatch' || github.event.deployment_status.state == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      OPEN_CHECK_BASE_URL: ${{ github.event.deployment_status.target_url || secrets.VERCEL_BASE_URL || 'https://www.yeosonam.com' }}
+      VERCEL_LOG_TARGET: ${{ github.event.deployment_status.target_url || secrets.VERCEL_BASE_URL || 'https://www.yeosonam.com' }}
+      VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE || 'zzbaa0317-4596s-projects' }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Marketing automation readiness
+        run: npm run verify:marketing-automation:ci
+
+      - name: Public open readiness
+        run: npm run open:readiness -- --json

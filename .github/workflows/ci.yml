@@ -36,6 +36,9 @@ jobs:
       - name: Sensitive API guard audit
         run: npm run audit:sensitive-api-guards
 
+      - name: Marketing automation readiness
+        run: npm run verify:marketing-automation:ci
+
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
         env:
