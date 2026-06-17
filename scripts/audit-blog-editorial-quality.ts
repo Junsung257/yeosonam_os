@@ -353,10 +353,9 @@ async function main() {
 main()
   .then(() => {
     if (hardTimer) clearTimeout(hardTimer);
-    process.exit(process.exitCode ?? 0);
   })
   .catch((error) => {
     if (hardTimer) clearTimeout(hardTimer);
     console.error(error);
-    process.exit(1);
+    process.exitCode = 1;
   });

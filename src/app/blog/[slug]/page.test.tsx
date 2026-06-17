@@ -90,6 +90,7 @@ vi.mock('@/lib/supabase', () => {
 
   return {
     isSupabaseConfigured: true,
+    isSupabaseAdminConfigured: true,
     supabaseAdmin: {
       from: vi.fn((table: string) => makeQuery(table)),
     },
