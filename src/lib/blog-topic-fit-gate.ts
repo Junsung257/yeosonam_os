@@ -8,10 +8,12 @@ interface BlogGateIssue {
     | 'placeholder_text'
     | 'machine_slug_topic'
     | 'nonsensical_comparison'
+    | 'duplicate_destination_prefix'
     | 'destination_intent_mismatch'
     | 'weak_travel_intent'
     | 'unsupported_honeymoon_topic'
     | 'seasonal_intent_mismatch'
+    | 'seasonal_lodging_tangent'
     | 'malformed_korean_particle'
     | 'excessive_highlights'
     | 'generic_image_context'
@@ -57,6 +59,11 @@ export interface BlogTopicQueueGateInput {
 }
 
 const MACHINE_SLUG_RE = /(?:^|\s)(?:post|guide)[-_][a-z0-9]{3,}(?:\s|$)|(?:^|\s)\d+[-_](?:post|guide)[-_][a-z0-9]{2,}(?:\s|$)/i;
+const KO_MONTH_TOKEN_RE = /\d{1,2}\s*(?:\uC6D4|month)/i;
+const KO_SEASONAL_LODGING_TANGENT_RE = /(?:\uC5D0\uC5B4\uCEE8|\uC5D0\uC5B4\uCF58|\uC219\uC18C|\uD638\uD154|\uB9AC\uC870\uD2B8|\uAC1D\uC2E4|air\s*con|aircon|a\/c|accommodation|hotel|resort)/i;
+const KO_SEASONAL_CORE_INTENT_RE = /(?:\uB0A0\uC528|\uC637\uCC28\uB9BC|\uC900\uBE44\uBB3C|\uCCB4\uD06C\uB9AC\uC2A4\uD2B8|\uC6B0\uAE30|\uAC74\uAE30|\uAE30\uC628|\uAC15\uC218|\uBC29\uC218|\uBAA8\uAE30|weather|clothing|packing|checklist)/i;
+const KO_HONEYMOON_RE = /(?:\uC2E0\uD63C\uC5EC\uD589|\uD5C8\uB2C8\uBB38|honeymoon)/i;
+const KO_BAD_HONEYMOON_DESTINATION_RE = /(?:\uC11D\uAC00\uC7A5|shijiazhuang)/i;
 const NONSENSE_VS_RE = /(?:^|\s)vs\s+vs(?:\s|$)|\bversus\s+versus\b/i;
 const PLACEHOLDER_RE = /관련\s*지역|목적지명|여행지명|undefined|null|\[object\s+object\]|\{\{[^}]+}}|TODO|TBD/i;
 const TRAVEL_INTENT_RE = /여행|관광|일정|코스|날씨|월별|옷차림|준비물|체크리스트|비용|예산|항공|공항|호텔|숙소|맛집|교통|입국|비자|환전|패키지|투어|가이드|eSIM|유심|추천|가족|효도|신혼|허니문|honeymoon|itinerary|weather|budget|visa|hotel|flight|airport|travel|tour|guide/i;
@@ -93,6 +100,18 @@ function scoreFromIssues(issues: BlogGateIssue[]): number {
   const critical = issues.filter((issue) => issue.severity === 'critical').length;
   const warning = issues.filter((issue) => issue.severity === 'warning').length;
   return Math.max(0, 100 - critical * 30 - warning * 8);
+}
+
+function escapeGateRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasDuplicateDestinationPrefix(topic: string, destination: string | null | undefined): boolean {
+  const cleanDestination = typeof destination === 'string' ? destination.replace(/\s+/g, ' ').trim() : '';
+  if (!cleanDestination) return false;
+  const cleanTopic = topic.replace(/\s+/g, ' ').trim();
+  const pattern = new RegExp(`^${escapeGateRegExp(cleanDestination)}\\s+${escapeGateRegExp(cleanDestination)}(?:\\s|\\(|\\[|$)`, 'i');
+  return pattern.test(cleanTopic);
 }
 
 function meaningfulContextTokens(input: BlogEditorialQualityInput): string[] {
@@ -167,6 +186,13 @@ export function evaluateBlogTopicFit(input: BlogTopicFitInput): BlogGateReport {
     });
   }
 
+  if (hasDuplicateDestinationPrefix(topicText, input.destination)) {
+    addIssue(issues, 'duplicate_destination_prefix', 'critical', 'Topic repeats the destination name at the start and should be rewritten before publishing.', {
+      topic: topicText,
+      destination: input.destination,
+    });
+  }
+
   if (!TRAVEL_INTENT_RE.test(allText) && !input.productId) {
     addIssue(issues, 'weak_travel_intent', 'critical', 'Topic has no clear travel, destination, or booking intent.', {
       topic: topicText,
@@ -188,6 +214,13 @@ export function evaluateBlogTopicFit(input: BlogTopicFitInput): BlogGateReport {
     }
   }
 
+  if (KO_HONEYMOON_RE.test(allText) && KO_BAD_HONEYMOON_DESTINATION_RE.test(allText)) {
+    addIssue(issues, 'destination_intent_mismatch', 'critical', 'Destination and honeymoon intent are not compatible for automated publishing.', {
+      destination: input.destination,
+      topic: topicText,
+    });
+  }
+
   if (
     input.source === 'seasonal' &&
     SEASONAL_MONTH_DESTINATION_RE.test(compact([input.destination, input.primaryKeyword, input.topic])) &&
@@ -199,6 +232,24 @@ export function evaluateBlogTopicFit(input: BlogTopicFitInput): BlogGateReport {
       'seasonal_intent_mismatch',
       'critical',
       'Seasonal destination-month keywords must target weather, clothing, and preparation instead of lodging micro-topics.',
+      {
+        topic: topicText,
+        destination: input.destination,
+        primaryKeyword: input.primaryKeyword,
+      },
+    );
+  }
+
+  if (
+    KO_MONTH_TOKEN_RE.test(allText) &&
+    KO_SEASONAL_LODGING_TANGENT_RE.test(topicText) &&
+    !KO_SEASONAL_CORE_INTENT_RE.test(topicText)
+  ) {
+    addIssue(
+      issues,
+      'seasonal_lodging_tangent',
+      'critical',
+      'Monthly destination articles must focus on weather, clothing, and preparation instead of lodging micro-topics.',
       {
         topic: topicText,
         destination: input.destination,

@@ -111,3 +111,21 @@ The blog system is complete only when the admin UI can answer these questions wi
 - Do not insert unknown fields into `blog_topic_queue`; put non-schema fields under `meta`.
 - Do not add a new queue `source` without updating the DB check constraint, admin labels, and this runbook.
 - Do not mark the system healthy while `published_state_mismatch > 0`.
+- Every automated producer must run the topic-fit gate before inserting queue rows. Current required blockers:
+  - seasonal month topics must be weather, clothing, packing, rainy/dry season, or checklist led; lodging micro-topics such as air-conditioner/no-air-conditioner are not publishable;
+  - unsupported honeymoon pairings such as Shijiazhuang + honeymoon are not publishable;
+  - topics that repeat the destination prefix, for example `Destination Destination(...)`, are not publishable.
+- The publisher must re-run topic-fit before generation so old bad queue rows cannot leak into publication even if they were inserted before the current producer rules.
+
+## 2026-06-17 Topic Quality Cleanup Evidence
+
+- Live cleanup skipped 8 queued rows before they could publish:
+  - 7 rows with duplicate destination prefix such as `연길/백두산 연길/백두산(...)`;
+  - 1 unsupported destination topic for `석가장`.
+- After cleanup, active bad-topic candidates matching air-conditioner lodging tangents, unsupported Shijiazhuang topics, or duplicate destination prefixes: `0`.
+- Queue counts after cleanup: `published 107`, `queued 14`, `failed 9`, `skipped 259`.
+- Published queue/article mismatch remained `0`.
+- Code prevention:
+  - `evaluateBlogTopicFit()` blocks the above cases;
+  - `blog-publisher` blocks failed topic-fit rows before AI generation;
+  - `trend-topic-miner`, `programmatic-seo-generator`, and `promotePendingTopics()` filter failed topic-fit rows before queue insert.

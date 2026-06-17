@@ -5,6 +5,7 @@ import { classifySearchIntent } from '@/lib/blog-search-intent';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
+import { filterTopicFitPassed } from '@/lib/blog-topic-fit-gate';
 
 /**
  * 트렌드 토픽 마이너 — 매일 06:00 KST (21:00 UTC) 실행
@@ -164,11 +165,17 @@ async function runTrendMiner(request: NextRequest) {
     archiveLink.push({ keyword: c.keyword, observed_at, source: c.source });
   }
 
+  const topicFit = filterTopicFitPassed(queueRows);
+  const acceptedQueueRows = topicFit.rows;
+  if (topicFit.rejected.length > 0) {
+    errors.push(`topic_fit_rejected: ${topicFit.rejected.length}`);
+  }
+
   let queued = 0;
-  if (queueRows.length > 0) {
+  if (acceptedQueueRows.length > 0) {
     const { data: inserted, error: qErr } = await supabaseAdmin
       .from('blog_topic_queue')
-      .insert(queueRows)
+      .insert(acceptedQueueRows)
       .select('id, primary_keyword');
     if (qErr) {
       errors.push(`큐 INSERT 실패: ${qErr.message}`);

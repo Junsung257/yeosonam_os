@@ -24,6 +24,7 @@ import { researchKeywordsBatch, classifyKeywordTier } from './keyword-research';
 import { classifySearchIntent, intentPriorityDelta } from './blog-search-intent';
 import { computeSeasonalTargetPublishAt } from './blog-season-publish';
 import { normalizeBlogTopicQueueRow } from './blog-queue-normalize';
+import { filterTopicFitPassed } from './blog-topic-fit-gate';
 
 // 12 angle × 시즌 적합도
 interface AngleTemplate {
@@ -281,9 +282,17 @@ export async function promotePendingTopics(opts?: { limit?: number }): Promise<{
     }));
   }
 
+  const topicFit = filterTopicFitPassed(queueRows);
+  const acceptedQueueRows = topicFit.rows;
+  if (topicFit.rejected.length > 0) {
+    errors.push(`topic_fit_rejected: ${topicFit.rejected.length}`);
+  }
+
+  if (acceptedQueueRows.length === 0) return { promoted: 0, errors };
+
   const { data: inserted, error } = await supabaseAdmin
     .from('blog_topic_queue')
-    .insert(queueRows)
+    .insert(acceptedQueueRows)
     .select('id, primary_keyword');
 
   if (error) {

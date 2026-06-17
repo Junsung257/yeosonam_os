@@ -47,6 +47,7 @@ import {
 import { getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
 import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
+import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -711,6 +712,25 @@ async function processQueueItem(
     //   2) card_news 연결 → from-card-news API 위임 (PNG 삽입 블로그)
     //   3) product_id 있음 → generateBlogPost (템플릿)
     //   4) 나머지 → Gemini 정보성 글
+    const topicFit = evaluateBlogTopicFit({
+      topic: item.topic,
+      destination: item.destination,
+      primaryKeyword: item.primary_keyword,
+      angleType: item.angle_type,
+      category: item.category,
+      contentType: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
+      source: item.source,
+      productId: item.product_id,
+    });
+    if (!topicFit.passed) {
+      const reason = `topic_fit_failed_before_generation: ${topicFit.issues
+        .filter((issue) => issue.severity === 'critical')
+        .map((issue) => issue.code)
+        .join(', ') || 'unknown'}`;
+      await handleFailure(item, reason, { topic_fit_gate: topicFit }, true);
+      return { id: item.id, topic: item.topic, status: 'skipped', reason };
+    }
+
     let generated: GeneratedBlog;
     /** 카드뉴스로 이미 만든 draft 행을 published 로 승격할 때 사용 */
     let promoteDraftId: string | null = null;

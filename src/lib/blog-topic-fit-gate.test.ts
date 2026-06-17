@@ -6,6 +6,46 @@ import {
 } from './blog-topic-fit-gate';
 
 describe('blog topic fit gate', () => {
+  it('blocks real Korean seasonal lodging tangents before generation', () => {
+    const report = evaluateBlogTopicFit({
+      topic: '7월 필리핀 보라카이, 에어컨 없는 숙소 괜찮을까?',
+      destination: '보라카이',
+      primaryKeyword: '보라카이 7월',
+      category: 'travel_tips',
+      source: 'coverage_gap',
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('seasonal_lodging_tangent');
+  });
+
+  it('blocks real Korean bad honeymoon destination combinations', () => {
+    const report = evaluateBlogTopicFit({
+      topic: '석가장 신혼여행 일정 추천',
+      destination: '석가장',
+      primaryKeyword: '석가장 신혼여행',
+      category: 'travel_tips',
+      source: 'gsc_longtail',
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('destination_intent_mismatch');
+  });
+
+  it('blocks product topics that repeat the destination prefix', () => {
+    const report = evaluateBlogTopicFit({
+      topic: '연길/백두산 연길/백두산(북+남파) 3박4일 가성비 리뷰',
+      destination: '연길/백두산',
+      primaryKeyword: '연길/백두산 연길/백두산(북+남파) 3박4일',
+      category: 'product_intro',
+      source: 'product',
+      productId: 'pkg-1',
+    });
+
+    expect(report.passed).toBe(false);
+    expect(report.issues.map((issue) => issue.code)).toContain('duplicate_destination_prefix');
+  });
+
   it('blocks unsupported honeymoon destination combinations', () => {
     const report = evaluateBlogTopicFit({
       topic: '석가장 신혼여행 일정 추천',

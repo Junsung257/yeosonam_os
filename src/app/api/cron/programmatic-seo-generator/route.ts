@@ -4,6 +4,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
 import { normalizeBlogTopicQueueRow } from '@/lib/blog-queue-normalize';
+import { attachTopicFitMeta, evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 
 /**
  * Programmatic SEO Generator — destination × angle × month 매트릭스 promote 크론
@@ -142,7 +143,7 @@ async function processTopic(
 
   const targetPublishAt = new Date(Date.now() + slotOffsetMin * 60_000).toISOString();
 
-  const queuePayload = normalizeBlogTopicQueueRow({
+  const queuePayload = normalizeBlogTopicQueueRow(attachTopicFitMeta({
     topic: hint.title,
     source: 'programmatic_seo',
     priority: topic.priority,
@@ -159,7 +160,21 @@ async function processTopic(
       intro_hint: hint.intro,
       title_fallback: hint.fallback,
     },
-  });
+  }));
+  const topicFit = queuePayload.meta?.topic_fit_gate as ReturnType<typeof evaluateBlogTopicFit> | undefined;
+  if (!topicFit?.passed) {
+    await supabaseAdmin
+      .from('programmatic_seo_topics')
+      .update({ status: 'dropped' })
+      .eq('id', topic.id);
+    return {
+      id: topic.id,
+      destination: topic.destination,
+      angle: topic.angle,
+      status: 'dropped',
+      reason: `topic_fit_rejected: ${topicFit?.issues.map((issue) => issue.code).join(', ') || 'unknown'}`,
+    };
+  }
 
   const { data: queueRows, error: queueErr } = await supabaseAdmin
     .from('blog_topic_queue')

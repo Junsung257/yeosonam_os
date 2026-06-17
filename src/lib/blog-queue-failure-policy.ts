@@ -4,6 +4,7 @@ type BlogQueueFailureCode =
   | 'keyword_density'
   | 'structure_integrity'
   | 'intent_quality'
+  | 'topic_fit'
   | 'seo_score'
   | 'db_write'
   | 'linked_draft_invalid'
@@ -23,6 +24,7 @@ const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'keyword_density',
   'structure_integrity',
   'intent_quality',
+  'topic_fit',
   'seo_score',
   'linked_draft_invalid',
 ]);
@@ -68,6 +70,10 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (hasFailedGate(qa, 'intent_quality') || /\[intent_quality\]|intent_quality|weak_reading_design|weak_list_or_table/i.test(text)) {
     return { code: 'intent_quality', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'topic_fit') || /topic_fit|topic fit/i.test(text)) {
+    return { code: 'topic_fit', retryable: false, selfHealAllowed: false, skipped: true };
   }
 
   if (/seo score|seo_score/i.test(text)) {
