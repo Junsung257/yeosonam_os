@@ -1,4 +1,5 @@
 import { retrieve } from '@/lib/jarvis/rag/retriever'
+import { assessRetrievalConfidence } from '@/lib/jarvis/rag/retrieval-confidence'
 
 const queries = [
   '다낭 가족여행 추천',
@@ -15,10 +16,12 @@ async function main() {
       sourceTypes: ['package', 'blog', 'policy'],
       limit: 3,
     })
+    const retrievalConfidence = assessRetrievalConfidence(query, hits)
 
     results.push({
       query,
       count: hits.length,
+      retrievalConfidence,
       top: hits[0]
         ? {
             sourceType: hits[0].sourceType,

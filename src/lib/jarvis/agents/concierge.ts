@@ -14,6 +14,7 @@
 
 import { runDeepSeekAgentLoop } from '../deepseek-agent-loop'
 import { retrieve } from '../rag/retriever'
+import { assessRetrievalConfidence } from '../rag/retrieval-confidence'
 import { YEOSONAM_BUSINESS_RULES } from '../prompts'
 import type { AgentRunParams, AgentRunResult, JarvisContext } from '../types'
 import { supabaseAdmin } from '@/lib/supabase'
@@ -23,6 +24,11 @@ import { getKnowledgeScope } from '../persona'
 const CONCIERGE_PROMPT = `당신은 여소남 여행사의 AI 컨시어지입니다. 고객의 여행 상담을 돕습니다.
 
 ${YEOSONAM_BUSINESS_RULES}
+
+## 검색 근거 신뢰도 규칙
+- knowledge_search 결과의 retrievalConfidence.level 이 low 또는 none 이면 답을 확정하지 말고 필요한 조건을 물어보거나 상담원 확인으로 전환하세요.
+- retrievalConfidence.requiresEscalation 이 true 이면 환불, 결제취소, 예약 변경, 개인정보 정정, 가격 변경, 보상 등 실행·확정 업무를 약속하지 마세요.
+- retrievalConfidence.guidance 를 우선 따르세요. 근거가 약한데도 가격, 일정, 환불금, 변경 가능 여부를 만들어 말하면 안 됩니다.
 
 ## 답변 원칙
 1. 고객 질문을 받으면 먼저 knowledge_search 로 관련 상품/블로그/관광지를 조회하세요.
@@ -150,14 +156,19 @@ function buildExecutor(ctx: JarvisContext) {
           rerank: true,
         })
         // LLM 이 소비하기 쉽게 slim 형태로 — package 는 source_id 추가 (recommend 도구로 chain 가능)
-        return hits.map(h => ({
-          title: h.sourceTitle,
-          source: h.sourceType,
-          source_id: h.sourceId,
-          url: h.sourceUrl,
-          excerpt: h.chunkText.slice(0, 500),
-          score: Number(h.score.toFixed(3)),
-        }))
+        const retrievalConfidence = assessRetrievalConfidence(args.query, hits)
+        return {
+          retrievalConfidence,
+          hits: hits.map(h => ({
+            title: h.sourceTitle,
+            source: h.sourceType,
+            source_id: h.sourceId,
+            url: h.sourceUrl,
+            excerpt: h.chunkText.slice(0, 500),
+            score: Number(h.score.toFixed(3)),
+            vectorScore: Number(h.vectorScore.toFixed(3)),
+          })),
+        }
       }
       case 'recommend_best_packages': {
         if (!args.destination) throw new Error('destination 필수')
