@@ -551,7 +551,7 @@ SEO 100 is not complete if the blog does not move qualified readers toward sella
 ### 100-Point Standard
 
 - Information posts must use `post.destination` as a fallback for product recommendations.
-- Blog product cards must use `recommendBestPackages()`, `package_scores`, or an equivalent scoring policy, not price-only sorting.
+- Blog product cards must use `package_scores`, `recommendBestPackages()`, or an equivalent scoring policy, not price-only sorting. Public blog render paths should prefer bounded `package_scores` reads and use price sorting only as a short-timeout fallback; heavy real-time scoring belongs in jobs or APIs, not the reader page render path.
 - `recommendation_outcomes.source` must support `blog`.
 - Product impressions from blog cards must record `content_creative_id`, `package_id`, rank, intent, policy id, and session id.
 - Product clicks must capture the clicked `package_id`, not only a boolean CTA click.

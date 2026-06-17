@@ -93,8 +93,12 @@ test('public blog publish paths invalidate list and detail data caches', () => {
 
   assert.match(cache, /BLOG_LIST_CACHE_TAG = ['"]blog-list['"]/);
   assert.match(cache, /BLOG_DETAIL_CACHE_TAG = ['"]blog-detail['"]/);
+  assert.match(cache, /BLOG_DESTINATION_CACHE_TAG = ['"]blog-destination['"]/);
+  assert.match(cache, /BLOG_ANGLE_CACHE_TAG = ['"]blog-angle['"]/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_LIST_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_DETAIL_CACHE_TAG\)/);
+  assert.match(revalidate, /safeRevalidateTag\(BLOG_DESTINATION_CACHE_TAG\)/);
+  assert.match(revalidate, /safeRevalidateTag\(BLOG_ANGLE_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidatePath\('\/blog'\)/);
   assert.match(revalidate, /safeRevalidatePath\(`\/blog\/\$\{slug\}`\)/);
 
@@ -109,4 +113,28 @@ test('public blog publish paths invalidate list and detail data caches', () => {
   ]) {
     assert.match(read(...file), /revalidatePublicBlogCache/);
   }
+});
+
+test('blog destination and angle tabs do not cache unavailable empty states', () => {
+  const destination = read('src', 'app', 'blog', 'destination', '[dest]', 'page.tsx');
+  const angle = read('src', 'app', 'blog', 'angle', '[angle]', 'page.tsx');
+  const matcher = read('src', 'lib', 'angle-matcher.ts');
+
+  assert.match(destination, /getCachedDestinationPageData/);
+  assert.match(destination, /BLOG_DESTINATION_CACHE_TAG/);
+  assert.match(destination, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(destination, /\.eq\('destination', destination\)/);
+  assert.doesNotMatch(destination, /\.limit\(1000\)/);
+  assert.match(destination, /runBlogDestinationQuery\('posts'/);
+  assert.match(destination, /블로그 데이터를 잠시 불러오지 못했습니다/);
+
+  assert.match(angle, /getCachedAnglePageData/);
+  assert.match(angle, /BLOG_ANGLE_CACHE_TAG/);
+  assert.match(angle, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(angle, /runBlogAngleQuery/);
+  assert.match(angle, /블로그 데이터를 잠시 불러오지 못했습니다/);
+
+  assert.match(matcher, /runAnglePackageQuery/);
+  assert.match(matcher, /abortSignal\(controller\.signal\)/);
+  assert.match(matcher, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });

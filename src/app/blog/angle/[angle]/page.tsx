@@ -1,12 +1,18 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
-import { getPackagesByAngle } from '@/lib/angle-matcher';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
+import { getPackagesByAngle, type AnglePackage } from '@/lib/angle-matcher';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
+import {
+  BLOG_ANGLE_CACHE_TAG,
+  createBlogDatabaseUnavailableError,
+  isBlogDatabaseUnavailableError,
+} from '@/lib/blog-cache';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -25,29 +31,114 @@ const ANGLE_META: Record<string, { label: string; tagline: string; emoji: string
 
 interface BlogPost {
   id: string; slug: string; seo_title: string | null; seo_description: string | null;
-  og_image_url: string | null; angle_type: string; published_at: string;
+  og_image_url: string | null; angle_type: string; published_at: string; destination: string | null;
   travel_packages: { id: string; title: string; destination: string; price: number | null } | null;
+}
+
+type AnglePageData = {
+  posts: BlogPost[];
+  recommendedPackages: AnglePackage[];
+  unavailable: boolean;
+};
+
+type AbortableQuery<T> = {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+};
+
+type BlogAngleQueryResult<T> = T & { __blogQueryUnavailable?: true };
+
+function isBlogAngleQueryUnavailable(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
+  if (maybeResult.__blogQueryUnavailable) return true;
+  const error = maybeResult.error;
+  if (!error) return false;
+  const message = typeof error === 'object' ? JSON.stringify(error) : String(error);
+  return /abort|timeout|timed out|connection timeout/i.test(message);
+}
+
+async function runBlogAngleQuery<T>(
+  label: string,
+  query: AbortableQuery<T>,
+  fallback: unknown,
+  timeoutMs = 6000,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await query.abortSignal(controller.signal);
+  } catch (err) {
+    console.warn(`[blog/angle] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    if (fallback && typeof fallback === 'object') {
+      return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogAngleQueryResult<T>;
+    }
+    return fallback as T;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
 
-async function getPostsByAngle(angle: string): Promise<BlogPost[]> {
-  if (!isSupabaseConfigured) return [];
+async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    return { posts: [], recommendedPackages: [], unavailable: true };
+  }
+
   try {
-    const { data } = await supabaseAdmin
+    const postsResult = await runBlogAngleQuery(
+      'posts',
+      supabaseAdmin
       .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, travel_packages!inner(id, title, destination, price)')
+      .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
       .eq('angle_type', angle)
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(60);
-    return (data || []) as unknown as BlogPost[];
+      .limit(60),
+      { data: [] as BlogPost[], error: null },
+      6000,
+    );
+
+    if (isBlogAngleQueryUnavailable(postsResult) || postsResult.error) {
+      return { posts: [], recommendedPackages: [], unavailable: true };
+    }
+
+    const recommendedPackages = await getPackagesByAngle(angle, 6);
+
+    return {
+      posts: (postsResult.data || []) as unknown as BlogPost[],
+      recommendedPackages,
+      unavailable: false,
+    };
   } catch {
-    return [];
+    return { posts: [], recommendedPackages: [], unavailable: true };
+  }
+}
+
+const getCachedAnglePageData = unstable_cache(
+  async (angle: string) => {
+    const data = await getAnglePageDataUncached(angle);
+    if (data.unavailable) {
+      throw createBlogDatabaseUnavailableError();
+    }
+    return data;
+  },
+  ['blog-angle-page-v1'],
+  { revalidate: 300, tags: [BLOG_ANGLE_CACHE_TAG] },
+);
+
+async function getAnglePageData(angle: string): Promise<AnglePageData> {
+  try {
+    return await getCachedAnglePageData(angle);
+  } catch (err) {
+    if (isBlogDatabaseUnavailableError(err)) {
+      return { posts: [], recommendedPackages: [], unavailable: true };
+    }
+    throw err;
   }
 }
 
@@ -60,8 +151,11 @@ export async function generateMetadata({ params }: { params: Promise<{ angle?: s
   const angle = getRouteParam(rawAngle);
   const canonical = `${BASE_URL}/blog/angle/${encodeURIComponent(angle)}`;
   const meta = ANGLE_META[angle];
-  const posts = meta ? await getPostsByAngle(angle) : [];
-  const hasIndexableContent = posts.length > 0;
+  const angleData: AnglePageData = meta
+    ? await getAnglePageData(angle)
+    : { posts: [], recommendedPackages: [], unavailable: false };
+  const { posts, unavailable } = angleData;
+  const hasIndexableContent = !unavailable && posts.length > 0;
   if (!meta) return { title: '블로그' };
   return {
     title: `${meta.label} 여행 가이드 | 여소남`,
@@ -82,10 +176,7 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
   const meta = ANGLE_META[angle];
   if (!meta) notFound();
 
-  const [posts, recommendedPackages] = await Promise.all([
-    getPostsByAngle(angle),
-    getPackagesByAngle(angle, 6),
-  ]);
+  const { posts, recommendedPackages, unavailable } = await getAnglePageData(angle);
 
   return (
     <>
@@ -188,7 +279,13 @@ export default async function AngleBlogPage({ params }: { params: Promise<{ angl
           {/* 블로그 글 목록 */}
           <section>
             <SectionHeader title={`${meta.label} 가이드`} />
-            {posts.length === 0 ? (
+            {unavailable ? (
+              <div className="py-20 text-center">
+                <p className="text-[32px] mb-3">!</p>
+                <p className="text-slate-500 text-base">블로그 데이터를 잠시 불러오지 못했습니다.</p>
+                <p className="mt-2 text-sm text-slate-400">발행 글이 없는 상태가 아니라 DB 응답 지연입니다.</p>
+              </div>
+            ) : posts.length === 0 ? (
               <p className="py-20 text-center text-slate-400 text-base">{meta.label} 카테고리의 가이드가 준비 중입니다.</p>
             ) : (
               <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">

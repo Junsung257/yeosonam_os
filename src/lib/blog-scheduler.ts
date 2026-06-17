@@ -25,7 +25,7 @@ import { filterTopicFitPassed } from './blog-topic-fit-gate';
 export const DAILY_PUBLISH_SLOTS = ['09:00', '12:30', '15:30', '18:30'];
 
 export const MIN_POSTS_PER_DAY = 3;
-export const MAX_POSTS_PER_DAY = 8;
+export const MAX_POSTS_PER_DAY = 4;
 export const DEFAULT_POSTS_PER_DAY = 4;
 export const PRODUCT_RATIO = 0.4; // 40% — multi-angle drip 도입으로 상품 비중 상향
 

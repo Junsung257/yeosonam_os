@@ -31,7 +31,6 @@ import AbTestTracker from '@/components/blog/AbTestTracker';
 import { logError } from '@/lib/sentry-logger';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { classifyBlogIntent } from '@/lib/blog-content-intent';
-import { recommendBestPackages } from '@/lib/scoring/recommend';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
 import {
   BLOG_DETAIL_CACHE_TAG,
@@ -429,46 +428,59 @@ async function getRelatedProducts(
   intent: string = 'blog',
 ): Promise<RelatedProductLite[]> {
   if (!isSupabaseConfigured || !destination) return [];
-  try {
-    const scored = await recommendBestPackages({
-      destination,
-      limit: currentProductId ? 5 : 4,
-    });
-    const ranked = scored.ranked
-      .filter((item) => item.package_id !== currentProductId)
-      .slice(0, 4);
-    if (ranked.length > 0) {
-      const ids = ranked.map((item) => item.package_id);
-      const { data: detailRows } = await supabaseAdmin
-        .from('travel_packages')
-        .select('id, title, destination, price, duration, nights, airline, departure_airport')
-        .in('id', ids);
-      const detailById = new Map(
-        ((detailRows || []) as unknown as RelatedProductLite[]).map((row) => [row.id, row]),
-      );
-      return ranked.map((item) => {
-        const detail = detailById.get(item.package_id);
-        return {
-          id: item.package_id,
-          title: detail?.title || item.title,
-          destination: detail?.destination || item.destination,
-          price: detail?.price ?? item.effective_price ?? item.list_price,
-          duration: detail?.duration ?? item.duration_days,
-          nights: detail?.nights ?? Math.max(0, item.duration_days - 1),
-          airline: detail?.airline ?? null,
-          departure_airport: detail?.departure_airport ?? null,
-          recommended_rank: item.rank,
-          policy_id: null,
-          recommendation_intent: intent,
-        };
+  const today = new Date().toISOString().slice(0, 10);
+  const scoreResult = await runBlogDetailQuery(
+    'relatedProductScores',
+    supabaseAdmin
+      .from('package_scores')
+      .select('package_id, rank_in_group, effective_price, list_price, travel_packages!inner(id, title, destination, price, duration, nights, airline, departure_airport, status)')
+      .ilike('travel_packages.destination', `%${destination}%`)
+      .gte('departure_date', today)
+      .order('rank_in_group', { ascending: true })
+      .order('effective_price', { ascending: true })
+      .limit(currentProductId ? 8 : 6),
+    {
+      data: [] as Array<{
+        package_id: string;
+        rank_in_group: number | null;
+        effective_price: number | null;
+        list_price: number | null;
+        travel_packages: RelatedProductLite & { status?: string | null };
+      }>,
+      error: null,
+    },
+    2200,
+  );
+  if (!isBlogDetailQueryUnavailable(scoreResult) && !scoreResult.error && scoreResult.data) {
+    const seen = new Set<string>();
+    const scored: RelatedProductLite[] = [];
+    for (const [index, row] of (scoreResult.data as Array<{
+      package_id: string;
+      rank_in_group: number | null;
+      effective_price: number | null;
+      list_price: number | null;
+      travel_packages: (RelatedProductLite & { status?: string | null }) | Array<RelatedProductLite & { status?: string | null }> | null;
+    }>).entries()) {
+      const pkg = Array.isArray(row.travel_packages) ? row.travel_packages[0] : row.travel_packages;
+      if (!pkg || pkg.status && !['active', 'approved'].includes(pkg.status)) continue;
+      if (pkg.id === currentProductId || seen.has(pkg.id)) continue;
+      seen.add(pkg.id);
+      scored.push({
+        id: pkg.id,
+        title: pkg.title,
+        destination: pkg.destination,
+        price: row.effective_price ?? pkg.price ?? row.list_price,
+        duration: pkg.duration,
+        nights: pkg.nights,
+        airline: pkg.airline,
+        departure_airport: pkg.departure_airport,
+        recommended_rank: row.rank_in_group ?? index + 1,
+        policy_id: null,
+        recommendation_intent: `${intent}:package_scores`,
       });
+      if (scored.length >= 4) break;
     }
-  } catch (err) {
-    logError('[blog/getRelatedProducts] scored recommendation failed', err, {
-      destination,
-      currentProductId,
-      intent,
-    });
+    if (scored.length > 0) return scored;
   }
 
   let query = supabaseAdmin
@@ -479,7 +491,14 @@ async function getRelatedProducts(
     .order('price', { ascending: true })
     .limit(4);
   if (currentProductId) query = query.neq('id', currentProductId);
-  const { data } = await query;
+  const result = await runBlogDetailQuery(
+    'relatedProducts',
+    query,
+    { data: [] as RelatedProductLite[], error: null },
+    2500,
+  );
+  if (isBlogDetailQueryUnavailable(result) || result.error) return [];
+  const { data } = result;
   return ((data as unknown as RelatedProductLite[]) || []).map((item, index) => ({
     ...item,
     recommended_rank: index + 1,
@@ -510,19 +529,24 @@ async function getRelatedPosts(
 ): Promise<RelatedPost[]> {
   if (!isSupabaseConfigured) return [];
 
-  const { data } = await supabaseAdmin
-    .from('content_creatives')
-    .select(
-      'id, slug, seo_title, og_image_url, angle_type, published_at, travel_packages(destination, price, duration, nights)',
-    )
-    .eq('status', 'published')
-    .eq('channel', 'naver_blog')
-    .not('slug', 'is', null)
-    .neq('slug', currentSlug)
-    .order('published_at', { ascending: false })
-    .limit(50);
-
-  if (!data) return [];
+  const result = await runBlogDetailQuery(
+    'relatedPosts',
+    supabaseAdmin
+      .from('content_creatives')
+      .select(
+        'id, slug, seo_title, og_image_url, angle_type, published_at, travel_packages(destination, price, duration, nights)',
+      )
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .neq('slug', currentSlug)
+      .order('published_at', { ascending: false })
+      .limit(50),
+    { data: [] as RelatedPost[], error: null },
+    2500,
+  );
+  if (isBlogDetailQueryUnavailable(result) || result.error || !result.data) return [];
+  const { data } = result;
   const posts = data as unknown as RelatedPost[];
 
   // 우선순위: 같은 destination + 같은 angle → 같은 destination → 같은 angle → 최신
@@ -572,15 +596,20 @@ async function getCurationProductsForInfo(destination: string) {
     price_dates: Array<{ date?: string; price?: number }> | null;
   }
 
-  const { data } = await supabaseAdmin
-    .from('travel_packages')
-    .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
-    .eq('destination', destination)
-    .in('status', ['approved', 'active'])
-    .order('price', { ascending: true })
-    .limit(12);
-
-  if (!data || data.length === 0) return [];
+  const result = await runBlogDetailQuery(
+    'curationProducts',
+    supabaseAdmin
+      .from('travel_packages')
+      .select('id, title, destination, duration, nights, price, category, airline, departure_airport, price_dates')
+      .eq('destination', destination)
+      .in('status', ['approved', 'active'])
+      .order('price', { ascending: true })
+      .limit(12),
+    { data: [] as CurationPackage[], error: null },
+    2500,
+  );
+  if (isBlogDetailQueryUnavailable(result) || result.error || !result.data || result.data.length === 0) return [];
+  const { data } = result;
 
   // 미래 출발일 있는 상품만 필터
   const alive = (data as unknown as CurationPackage[]).filter((p) => {
@@ -610,22 +639,42 @@ async function getPrevNextPosts(
 ): Promise<{ prev: NavPost | null; next: NavPost | null }> {
   if (!isSupabaseConfigured) return { prev: null, next: null };
 
-  const base = supabaseAdmin
-    .from('content_creatives')
-    .select('slug, seo_title, og_image_url, destination')
-    .eq('status', 'published')
-    .eq('channel', 'naver_blog')
-    .not('slug', 'is', null)
-    .neq('slug', slug);
-
   const [prevRes, nextRes] = await Promise.all([
-    base.lt('published_at', publishedAt).order('published_at', { ascending: false }).limit(1),
-    base.gt('published_at', publishedAt).order('published_at', { ascending: true }).limit(1),
+    runBlogDetailQuery(
+      'prevPost',
+      supabaseAdmin
+        .from('content_creatives')
+        .select('slug, seo_title, og_image_url, destination')
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .not('slug', 'is', null)
+        .neq('slug', slug)
+        .lt('published_at', publishedAt)
+        .order('published_at', { ascending: false })
+        .limit(1),
+      { data: [] as NavPost[], error: null },
+      2000,
+    ),
+    runBlogDetailQuery(
+      'nextPost',
+      supabaseAdmin
+        .from('content_creatives')
+        .select('slug, seo_title, og_image_url, destination')
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .not('slug', 'is', null)
+        .neq('slug', slug)
+        .gt('published_at', publishedAt)
+        .order('published_at', { ascending: true })
+        .limit(1),
+      { data: [] as NavPost[], error: null },
+      2000,
+    ),
   ]);
 
   return {
-    prev: (prevRes.data?.[0] as NavPost) ?? null,
-    next: (nextRes.data?.[0] as NavPost) ?? null,
+    prev: isBlogDetailQueryUnavailable(prevRes) || prevRes.error ? null : ((prevRes.data?.[0] as NavPost) ?? null),
+    next: isBlogDetailQueryUnavailable(nextRes) || nextRes.error ? null : ((nextRes.data?.[0] as NavPost) ?? null),
   };
 }
 
