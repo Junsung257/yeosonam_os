@@ -28,6 +28,7 @@ export function revalidatePublicBlogCache(slug?: string | null, destination?: st
   safeRevalidateTag(BLOG_DESTINATION_CACHE_TAG);
   safeRevalidateTag(BLOG_ANGLE_CACHE_TAG);
   safeRevalidatePath('/blog');
+  safeRevalidatePath('/sitemap.xml');
 
   if (slug) safeRevalidatePath(`/blog/${slug}`);
   if (destination) safeRevalidatePath(`/blog/destination/${encodeURIComponent(destination)}`);

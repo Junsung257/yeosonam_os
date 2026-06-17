@@ -100,6 +100,7 @@ test('public blog publish paths invalidate list and detail data caches', () => {
   assert.match(revalidate, /safeRevalidateTag\(BLOG_DESTINATION_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_ANGLE_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidatePath\('\/blog'\)/);
+  assert.match(revalidate, /safeRevalidatePath\('\/sitemap\.xml'\)/);
   assert.match(revalidate, /safeRevalidatePath\(`\/blog\/\$\{slug\}`\)/);
 
   for (const file of [
@@ -137,4 +138,21 @@ test('blog destination and angle tabs do not cache unavailable empty states', ()
   assert.match(matcher, /runAnglePackageQuery/);
   assert.match(matcher, /abortSignal\(controller\.signal\)/);
   assert.match(matcher, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
+});
+
+test('public sitemap is cached and does not fan out long DB reads during outages', () => {
+  const source = read('src', 'app', 'sitemap.ts');
+
+  assert.match(source, /export const revalidate = 3600/);
+  assert.doesNotMatch(source, /export const dynamic = ['"]force-dynamic['"]/);
+  assert.match(source, /const PACKAGE_LIMIT = 1000/);
+  assert.match(source, /const BLOG_LIMIT = 2000/);
+  assert.match(source, /const DESTINATION_LIMIT = 500/);
+  assert.match(source, /const QUERY_TIMEOUT_MS = 2500/);
+  assert.match(source, /Promise\.all/);
+  assert.match(source, /abortSignal\(signal\)/);
+  assert.match(source, /isSupabaseAdminConfigured/);
+  assert.doesNotMatch(source, /withTimeout/);
+  assert.doesNotMatch(source, /limit\(5000\)/);
+  assert.doesNotMatch(source, /limit\(10000\)/);
 });

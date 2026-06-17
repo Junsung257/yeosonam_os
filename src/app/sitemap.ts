@@ -1,30 +1,20 @@
 import type { MetadataRoute } from 'next';
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const PACKAGE_LIMIT = 5000;
-const BLOG_LIMIT = 10000;
-const DESTINATION_LIMIT = 1000;
-const QUERY_TIMEOUT_MS = 8000;
+const PACKAGE_LIMIT = 1000;
+const BLOG_LIMIT = 2000;
+const DESTINATION_LIMIT = 500;
+const QUERY_TIMEOUT_MS = 2500;
+
+type SitemapQueryResponse<T> = {
+  data: T[] | null;
+  error: { message?: string } | null;
+};
 
 export const revalidate = 3600;
-export const dynamic = 'force-dynamic';
-
-async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  try {
-    return await Promise.race([
-      promise,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => resolve(fallback), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 function safeLastModified(iso: string | null | undefined): Date {
   if (!iso) return new Date();
@@ -32,20 +22,49 @@ function safeLastModified(iso: string | null | undefined): Date {
   return Number.isFinite(d.getTime()) ? d : new Date();
 }
 
-function isSafeSitemapBlogSlug(slug: string | null | undefined): boolean {
+function isSafeSitemapBlogSlug(slug: string | null | undefined): slug is string {
   if (slug == null || typeof slug !== 'string') return false;
   const s = slug.trim();
   if (s.length === 0 || s.length > 512) return false;
-  if (s.startsWith('/') || s.includes('//') || s.includes('?') || s.includes('#')) return false;
-  if (!/[0-9a-zA-Z가-힣]/.test(s)) return true;
-  return true;
+  if (s.startsWith('/') || s.includes('/') || s.includes('\\')) return false;
+  if (s.includes('//') || s.includes('?') || s.includes('#')) return false;
+  return encodeURIComponent(s).length <= 1024;
+}
+
+function isAbortLikeError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.name === 'AbortError' || /abort|timeout|timed out/i.test(err.message);
+  }
+  return false;
+}
+
+async function runSitemapQuery<T>(
+  label: string,
+  queryFactory: (signal: AbortSignal) => PromiseLike<SitemapQueryResponse<T>>,
+): Promise<T[]> {
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return [];
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
+
+  try {
+    const result = await queryFactory(controller.signal);
+    if (result.error) {
+      console.warn(`[sitemap] ${label} query failed:`, result.error.message || result.error);
+      return [];
+    }
+    return Array.isArray(result.data) ? result.data : [];
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[sitemap] ${label} query ${isAbortLikeError(err) ? 'timed out' : 'failed'}:`, reason);
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const routes: MetadataRoute.Sitemap = [];
-
-  // 1. 정적 경로
-  routes.push(
+  const routes: MetadataRoute.Sitemap = [
     { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
     { url: `${BASE_URL}/private-tour`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
     { url: `${BASE_URL}/packages`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
@@ -55,62 +74,32 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
     { url: `${BASE_URL}/privacy`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
     { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
-  );
+  ];
 
-  if (!isSupabaseConfigured) return routes;
-
-  // 2. 패키지
-  try {
-    const { data: pkgs } = await withTimeout(
+  const [pkgs, activeDests, posts] = await Promise.all([
+    runSitemapQuery<{ id: string; updated_at: string | null }>('packages', (signal) =>
       supabaseAdmin
         .from('travel_packages')
         .select('id, updated_at')
         .in('status', ['active', 'approved'])
         .order('updated_at', { ascending: false })
-        .limit(PACKAGE_LIMIT),
-      QUERY_TIMEOUT_MS,
-      { data: [] } as any,
-    );
-
-    for (const pkg of pkgs || []) {
-      routes.push({
-        url: `${BASE_URL}/packages/${pkg.id}`,
-        lastModified: pkg.updated_at ? new Date(pkg.updated_at) : new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.85,
-      });
-    }
-  } catch (err) {
-    console.warn('[sitemap] packages error:', err);
-  }
-
-  // 3. 목적지
-  try {
-    const { data: activeDests } = await withTimeout(
+        .limit(PACKAGE_LIMIT)
+        .abortSignal(signal),
+    ),
+    runSitemapQuery<{ destination: string }>('destinations', (signal) =>
       supabaseAdmin
         .from('active_destinations')
         .select('destination')
-        .limit(DESTINATION_LIMIT),
-      QUERY_TIMEOUT_MS,
-      { data: [] } as any,
-    );
-    for (const d of (activeDests || []) as Array<{ destination: string }>) {
-      if (d.destination) {
-        routes.push({
-          url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(d.destination)}`,
-          lastModified: new Date(),
-          changeFrequency: 'daily' as const,
-          priority: 0.9,
-        });
-      }
-    }
-  } catch {
-    // noop
-  }
-
-  // 4. 블로그
-  try {
-    const { data: posts } = await withTimeout(
+        .limit(DESTINATION_LIMIT)
+        .abortSignal(signal),
+    ),
+    runSitemapQuery<{
+      slug: string;
+      destination: string | null;
+      angle_type: string | null;
+      published_at: string | null;
+      updated_at: string | null;
+    }>('blog', (signal) =>
       supabaseAdmin
         .from('content_creatives')
         .select('slug, destination, angle_type, published_at, updated_at')
@@ -118,66 +107,71 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
         .eq('channel', 'naver_blog')
         .not('slug', 'is', null)
         .order('published_at', { ascending: false })
-        .limit(BLOG_LIMIT),
-      QUERY_TIMEOUT_MS,
-      { data: [] } as any,
-    );
+        .limit(BLOG_LIMIT)
+        .abortSignal(signal),
+    ),
+  ]);
 
-    const postList = (posts || []) as Array<{
-      slug: string;
-      destination: string | null;
-      angle_type: string | null;
-      published_at: string | null;
-      updated_at: string | null;
-    }>;
-
-    const ANGLES = ['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food'];
-    const destinations = new Set<string>();
-    const anglesWithPosts = new Set<string>();
-    for (const post of postList) {
-      const destination = post.destination?.trim();
-      if (destination) destinations.add(destination);
-      if (post.angle_type && ANGLES.includes(post.angle_type)) {
-        anglesWithPosts.add(post.angle_type);
-      }
-    }
-
-    for (const dest of destinations) {
-      routes.push({
-        url: `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(dest)}`,
-        lastModified: new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.75,
-      });
-    }
-
-    for (const angle of anglesWithPosts) {
-      routes.push({
-        url: `${BASE_URL}/blog/angle/${angle}`,
-        lastModified: new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.75,
-      });
-    }
-
-    for (const post of postList) {
-      if (isSafeSitemapBlogSlug(post.slug)) {
-        const last = post.updated_at || post.published_at;
-        routes.push({
-          url: `${BASE_URL}/blog/${encodeURIComponent(post.slug)}`,
-          lastModified: safeLastModified(last),
-          changeFrequency: 'weekly' as const,
-          priority: 0.7,
-        });
-      }
-    }
-  } catch (err) {
-    console.warn('[sitemap] blog error:', err);
+  for (const pkg of pkgs) {
+    routes.push({
+      url: `${BASE_URL}/packages/${pkg.id}`,
+      lastModified: safeLastModified(pkg.updated_at),
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    });
   }
 
-  // 검색/필터/공유성 URL은 canonical이 대표 페이지로 수렴하므로 sitemap에 넣지 않는다.
-  // - /rfq/* 는 robots.txt에서 차단되는 비공개성 견적 URL이다.
-  // - /packages?destination=* 는 canonical이 /packages인 필터 URL이라 대체 페이지 진단을 만든다.
+  for (const d of activeDests) {
+    if (d.destination) {
+      routes.push({
+        url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(d.destination)}`,
+        lastModified: new Date(),
+        changeFrequency: 'daily',
+        priority: 0.9,
+      });
+    }
+  }
+
+  const angles = new Set(['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food']);
+  const destinations = new Set<string>();
+  const anglesWithPosts = new Set<string>();
+
+  for (const post of posts) {
+    const destination = post.destination?.trim();
+    if (destination) destinations.add(destination);
+    if (post.angle_type && angles.has(post.angle_type)) {
+      anglesWithPosts.add(post.angle_type);
+    }
+  }
+
+  for (const dest of destinations) {
+    routes.push({
+      url: `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(dest)}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    });
+  }
+
+  for (const angle of anglesWithPosts) {
+    routes.push({
+      url: `${BASE_URL}/blog/angle/${angle}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    });
+  }
+
+  for (const post of posts) {
+    if (isSafeSitemapBlogSlug(post.slug)) {
+      routes.push({
+        url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,
+        lastModified: safeLastModified(post.updated_at || post.published_at),
+        changeFrequency: 'weekly',
+        priority: 0.7,
+      });
+    }
+  }
 
   return routes;
 }
