@@ -66,7 +66,7 @@ const checks = [
     owner: 'naver',
     required: true,
     script: 'audit:blog-seo',
-    args: withLimit([`--base=${baseUrl}`, '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'editorial_intent',
@@ -74,7 +74,7 @@ const checks = [
     owner: 'naver',
     required: true,
     script: 'audit:blog-editorial',
-    args: withLimit([`--base=${baseUrl}`, `--source=${editorialSource}`, '--strict', '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, `--source=${editorialSource}`, '--strict', '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'revenue_funnel',
@@ -90,7 +90,7 @@ const checks = [
     owner: 'google',
     required: true,
     script: 'audit:blog-gsc-domain',
-    args: [`--preferred-origin=${preferredOrigin}`, '--strict', '--json'],
+    args: [`--preferred-origin=${preferredOrigin}`, '--strict', '--json', timeoutArg, hardTimeoutArg],
   },
   {
     id: 'site_indexability',

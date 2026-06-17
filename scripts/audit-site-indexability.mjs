@@ -128,10 +128,27 @@ async function auditUrl(url, disallows) {
 async function main() {
   const sitemapUrl = `${baseUrl}/sitemap.xml`;
   const robotsUrl = `${baseUrl}/robots.txt`;
-  const [{ text: sitemapXml }, { text: robotsText }] = await Promise.all([
+  const [sitemapResult, robotsResult] = await Promise.allSettled([
     fetchText(sitemapUrl),
     fetchText(robotsUrl),
   ]);
+  const bootstrapIssues = [];
+  const sitemapXml = sitemapResult.status === 'fulfilled' ? sitemapResult.value.text : '';
+  const robotsText = robotsResult.status === 'fulfilled' ? robotsResult.value.text : '';
+  if (sitemapResult.status === 'rejected') {
+    bootstrapIssues.push({
+      issue: 'sitemap_unavailable',
+      url: sitemapUrl,
+      error: sitemapResult.reason instanceof Error ? sitemapResult.reason.message : String(sitemapResult.reason),
+    });
+  }
+  if (robotsResult.status === 'rejected') {
+    bootstrapIssues.push({
+      issue: 'robots_unavailable',
+      url: robotsUrl,
+      error: robotsResult.reason instanceof Error ? robotsResult.reason.message : String(robotsResult.reason),
+    });
+  }
 
   const disallows = parseRobotsDisallows(robotsText);
   const urls = extractLocs(sitemapXml).slice(0, limit > 0 ? limit : undefined);
@@ -162,28 +179,35 @@ async function main() {
     for (const issue of row.issues) acc[issue] = (acc[issue] || 0) + 1;
     return acc;
   }, {});
+  for (const issue of bootstrapIssues) {
+    issueCounts[issue.issue] = (issueCounts[issue.issue] || 0) + 1;
+  }
   const failedRows = rows.filter((row) => row.issues.length > 0);
+  const totalFailures = failedRows.length + bootstrapIssues.length;
   const summary = {
     baseUrl,
     sitemapUrl,
     scanned: rows.length,
     passed: rows.length - failedRows.length,
-    failed: failedRows.length,
-    score: rows.length === 0 ? 0 : Math.round(((rows.length - failedRows.length) / rows.length) * 100),
+    failed: totalFailures,
+    score: rows.length === 0 ? (bootstrapIssues.length > 0 ? 0 : 100) : Math.round(((rows.length - failedRows.length) / rows.length) * 100),
     issueCounts,
   };
 
   if (outputJson) {
-    console.log(JSON.stringify({ summary, failedExamples: failedRows.slice(0, 50), rows }, null, 2));
+    console.log(JSON.stringify({ summary, bootstrapIssues, failedExamples: failedRows.slice(0, 50), rows }, null, 2));
   } else {
     console.log(`Site indexability: ${summary.score}/100 (${summary.passed}/${summary.scanned} passed)`);
     console.log(`Issues=${JSON.stringify(issueCounts)}`);
+    for (const issue of bootstrapIssues) {
+      console.log(`- ${issue.issue} ${issue.url} ${issue.error}`);
+    }
     for (const row of failedRows.slice(0, 20)) {
       console.log(`- ${row.issues.join(',')} ${row.status} ${row.url}`);
     }
   }
 
-  if (strict && failedRows.length > 0) process.exitCode = 1;
+  if (strict && totalFailures > 0) process.exitCode = 1;
 }
 
 main()
