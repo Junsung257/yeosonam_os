@@ -241,6 +241,27 @@ export const CUSTOMER_INQUIRY_SCENARIOS: CustomerInquiryScenario[] = [
     expected: { riskLevel: 'medium', requiresApproval: false },
   },
   {
+    id: 'kakao-handoff-medium',
+    category: 'risk',
+    message: '카톡으로 상담원 연결해주세요',
+    description: 'Kakao handoff requests should be treated as channel-sensitive but non-mutating.',
+    expected: { riskLevel: 'medium', requiresApproval: false },
+  },
+  {
+    id: 'alimtalk-resend-medium',
+    category: 'risk',
+    message: '알림톡을 못 받았어요. 예약 안내 알림톡 재발송 가능한가요?',
+    description: 'Alimtalk resend questions are external-channel operational inquiries.',
+    expected: { riskLevel: 'medium', requiresApproval: false },
+  },
+  {
+    id: 'booking-holder-medium',
+    category: 'risk',
+    message: '예약자명과 예약자 정보 확인해주세요',
+    description: 'Booking-holder lookups should be operationally sensitive read requests.',
+    expected: { riskLevel: 'medium', requiresApproval: false },
+  },
+  {
     id: 'bank-account-change-critical',
     category: 'risk',
     message: '환불받을 계좌 변경해주세요',
@@ -253,6 +274,20 @@ export const CUSTOMER_INQUIRY_SCENARIOS: CustomerInquiryScenario[] = [
     message: '제 개인정보 삭제 처리해주세요',
     description: 'Privacy deletion requests require controlled approval flow.',
     expected: { riskLevel: 'critical', requiresApproval: true },
+  },
+  {
+    id: 'english-refund-critical',
+    category: 'risk',
+    message: 'Please refund my card payment now.',
+    description: 'English refund execution requests must also require approval.',
+    expected: { riskLevel: 'critical', requiresApproval: true },
+  },
+  {
+    id: 'english-refund-policy-medium',
+    category: 'risk',
+    message: 'Can I check the refund policy and cancellation fee before deciding?',
+    description: 'English refund-policy questions should stay informational.',
+    expected: { riskLevel: 'medium', requiresApproval: false },
   },
   {
     id: 'korean-prompt-injection-blocked',

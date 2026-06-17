@@ -1,6 +1,7 @@
 #!/usr/bin/env tsx
 
 import dotenv from 'dotenv';
+import { evaluateCustomerInquiryContracts } from '../src/lib/jarvis/eval/customer-inquiry-contracts';
 import { evaluateCustomerInquiryReadiness } from '../src/lib/jarvis/eval/customer-inquiry-readiness';
 
 dotenv.config({ path: '.env.local' });
@@ -85,18 +86,28 @@ function printText(payload: ReturnType<typeof buildPayload>) {
   for (const check of payload.envChecks) {
     console.log(`- ${check.status.toUpperCase()} ${check.id}: ${check.message}`);
   }
+
+  console.log(`Contracts: ${payload.contracts.score}/100 (${payload.contracts.passed}/${payload.contracts.total})`);
+  for (const check of payload.contracts.checks) {
+    console.log(`- ${check.passed ? 'PASS' : 'FAIL'} ${check.id} [${check.area}] ${check.description}`);
+    if (check.missing.length > 0) {
+      console.log(`  - missing: ${check.missing.join(', ')}`);
+    }
+  }
 }
 
 function buildPayload(options: CliOptions) {
   const scenarios = evaluateCustomerInquiryReadiness();
+  const contracts = evaluateCustomerInquiryContracts();
   const envChecks = buildEnvChecks(options);
   const envOk = envChecks.every((check) => check.status !== 'fail');
-  const ok = scenarios.status === 'pass' && envOk;
+  const ok = scenarios.status === 'pass' && contracts.status === 'pass' && envOk;
 
   return {
     ok,
     options,
     scenarios,
+    contracts,
     envChecks,
   };
 }

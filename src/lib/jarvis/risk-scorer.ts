@@ -106,6 +106,13 @@ const MEDIUM_TERMS = [
   '\ucd9c\ubc1c \ud655\uc815',
   '\uc0c1\ub2f4\uc6d0',
   '\uc0c1\ub2f4 \uc5f0\uacb0',
+  '\uce74\uce74\uc624',
+  '\uce74\ud1a1',
+  '\uc54c\ub9bc\ud1a1',
+  '\ubb38\uc790',
+  '\uc7ac\ubc1c\uc1a1',
+  '\uc608\uc57d\uc790\uba85',
+  '\uc608\uc57d\uc790 \uc815\ubcf4',
   '\ube44\uc790',
   '\uc5ec\uad8c',
   'booking status',
@@ -113,6 +120,10 @@ const MEDIUM_TERMS = [
   'unmatched payment',
   'escalation',
   'complaint',
+  'kakao',
+  'alimtalk',
+  'resend notification',
+  'booking holder',
 ];
 
 const CRITICAL_TOOLS = new Set([

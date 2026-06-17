@@ -9,6 +9,7 @@ describe('customer inquiry readiness', () => {
   it('passes the customer inquiry scenario set', () => {
     const summary = evaluateCustomerInquiryReadiness();
 
+    expect(CUSTOMER_INQUIRY_SCENARIOS.length).toBeGreaterThanOrEqual(35);
     expect(summary.status).toBe('pass');
     expect(summary.score).toBe(100);
     expect(summary.passed).toBe(CUSTOMER_INQUIRY_SCENARIOS.length);
