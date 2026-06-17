@@ -21,3 +21,15 @@ test('ERR-BLOG-list-streaming-shell: /blog list renders BlogData without Suspens
   assert.match(source, /export const dynamic = ['"]force-dynamic['"]/);
   assert.match(source, /return <BlogData searchParams=\{searchParams\} \/>;/);
 });
+
+test('ERR-BLOG-list-streaming-shell: blog detail resolves side sections before returning HTML', () => {
+  const source = read('src', 'app', 'blog', '[slug]', 'page.tsx');
+
+  assert.doesNotMatch(source, /import React, \{ Suspense \} from ['"]react['"]/);
+  assert.doesNotMatch(source, /<Suspense\b/);
+  assert.match(source, /const \[curationSection, sidebarRelatedPosts, relatedPostsSection, prevNextSection\] = await Promise\.all/);
+  assert.match(source, /\{curationSection\}/);
+  assert.match(source, /\{sidebarRelatedPosts\}/);
+  assert.match(source, /\{relatedPostsSection\}/);
+  assert.match(source, /\{prevNextSection\}/);
+});

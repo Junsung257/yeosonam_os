@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
-import React, { Suspense } from 'react';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import BlogTracker from '@/components/BlogTracker';
@@ -724,6 +723,26 @@ async function renderBlogDetail({
     readingMinutes = estimateReadingMinutes(sanitized);
   }
 
+  const [curationSection, sidebarRelatedPosts, relatedPostsSection, prevNextSection] = await Promise.all([
+    CurationSection({
+      destination: effectiveDestination ?? null,
+      isInfoBlog,
+      contentCreativeId: post.id,
+      intent: blogRecommendationIntent,
+    }),
+    SidebarRelatedPosts({
+      currentSlug: slug,
+      destination: effectiveDestination,
+      angleType: post.angle_type,
+    }),
+    RelatedPostsSection({
+      currentSlug: slug,
+      destination: effectiveDestination,
+      angleType: post.angle_type,
+    }),
+    PrevNextSection({ slug, publishedAt: post.published_at }),
+  ]);
+
   const productDurationDays =
     pkg?.duration != null && !Number.isNaN(Number(pkg.duration)) ? Number(pkg.duration) : null;
 
@@ -1065,14 +1084,7 @@ async function renderBlogDetail({
             <ShareButtons url={pageUrl} title={abTestTitle} utmCampaign={slug} />
 
             {/* 정보성 블로그: destination 기반 큐레이션 상품 3개 (PPR Suspense) */}
-            <Suspense fallback={<div className="animate-pulse h-32 bg-gray-100 rounded my-8" />}>
-              <CurationSection
-                destination={effectiveDestination ?? null}
-                isInfoBlog={isInfoBlog}
-                contentCreativeId={post.id}
-                intent={blogRecommendationIntent}
-              />
-            </Suspense>
+            {curationSection}
 
             {/* 참고 · 출처 */}
             <BlogCitations destination={effectiveDestination} airline={pkg?.airline ?? undefined} />
@@ -1082,22 +1094,16 @@ async function renderBlogDetail({
           <aside className="hidden w-64 shrink-0 lg:block">
             <div className="sticky top-24 space-y-10">
               {showToc && <TableOfContents items={toc} variant="desktop" />}
-              <Suspense fallback={<div className="animate-pulse h-24 bg-gray-100 rounded" />}>
-                <SidebarRelatedPosts currentSlug={slug} destination={effectiveDestination} angleType={post.angle_type} />
-              </Suspense>
+              {sidebarRelatedPosts}
             </div>
           </aside>
         </div>
 
         {/* 관련 글 섹션 — PPR: 동적 데이터는 Suspense로 분리 */}
-        <Suspense fallback={<div className="animate-pulse h-48 bg-gray-100 rounded mx-auto max-w-6xl my-8" />}>
-          <RelatedPostsSection currentSlug={slug} destination={effectiveDestination} angleType={post.angle_type} />
-        </Suspense>
+        {relatedPostsSection}
 
         {/* 하단 네비 — 이전/다음 글 — PPR: Suspense로 분리 */}
-        <Suspense fallback={<div className="animate-pulse h-24 bg-gray-100 rounded mx-auto max-w-6xl my-8" />}>
-          <PrevNextSection slug={slug} publishedAt={post.published_at} />
-        </Suspense>
+        {prevNextSection}
       </main>
 
       {/* 상품 블로그 랜딩: 모바일 하단 고정 CTA (+15~25% 전환) */}
