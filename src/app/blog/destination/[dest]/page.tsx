@@ -66,17 +66,28 @@ async function runBlogDestinationQuery<T>(
   timeoutMs = 6000,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await query.abortSignal(controller.signal);
-  } catch (err) {
-    console.warn(`[blog/destination] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const unavailableFallback = () => {
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogDestinationQueryResult<T>;
     }
     return fallback as T;
+  };
+  const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
+    console.warn(`[blog/destination] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    return unavailableFallback();
+  });
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      console.warn(`[blog/destination] ${label} query timed out after ${timeoutMs}ms`);
+      resolve(unavailableFallback());
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([queryPromise, timeoutPromise]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -208,7 +219,7 @@ const getCachedDestinationPageData = unstable_cache(
 );
 
 async function getDestinationPageData(dest: string): Promise<DestinationPageData> {
-  const fallbackDestination = await resolveDestinationRouteParam(dest);
+  const fallbackDestination = safeDecodePathSegment(dest).trim();
   try {
     return await getCachedDestinationPageData(dest);
   } catch (err) {
@@ -247,14 +258,12 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ dest?: string | string[] }> }): Promise<Metadata> {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const { destination, posts, packages, unavailable } = await getDestinationPageData(dest);
+  const destination = safeDecodePathSegment(dest).trim();
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
-  const hasIndexableContent = !unavailable && (posts.length > 0 || packages.length > 0);
   return {
     title: `${destination} 여행 가이드`,
     description: `${destination} 여행의 모든 것. 가성비 패키지부터 럭셔리까지, 여소남이 엄선한 ${destination} 여행 정보를 만나보세요.`,
     alternates: { canonical },
-    robots: hasIndexableContent ? undefined : { index: false, follow: true },
     openGraph: {
       title: `${destination} 여행 가이드 | 여소남`,
       description: `${destination} 여행 패키지 추천, 관광지 정보, 꿀팁 가이드`,

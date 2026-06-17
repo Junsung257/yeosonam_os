@@ -45,6 +45,7 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /BLOG_LIST_CACHE_TAG/);
   assert.match(source, /throw createBlogDatabaseUnavailableError\(\)/);
   assert.match(source, /__blogQueryUnavailable/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /isBlogQueryUnavailable/);
   assert.match(source, /isBlogQueryUnavailable\(destRes\)/);
   assert.match(source, /isBlogQueryUnavailable\(angleRes\)/);
@@ -70,6 +71,7 @@ test('/blog detail does not convert DB timeouts into notFound', () => {
   assert.match(source, /headlineExperiment/);
   assert.match(source, /isBlogDetailQueryUnavailable/);
   assert.match(source, /BlogDatabaseUnavailableView/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답이 지연/);
   assert.match(source, /const postResult = await runBlogDetailQuery/);
@@ -81,6 +83,7 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
 
   assert.match(source, /runApiBlogQuery/);
   assert.match(source, /abortSignal\(controller\.signal\)/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
   assert.match(source, /stale-if-error=86400/);
@@ -124,6 +127,7 @@ test('blog destination and angle tabs do not cache unavailable empty states', ()
   assert.match(destination, /getCachedDestinationPageData/);
   assert.match(destination, /BLOG_DESTINATION_CACHE_TAG/);
   assert.match(destination, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(destination, /Promise\.race/);
   assert.match(destination, /\.eq\('destination', destination\)/);
   assert.doesNotMatch(destination, /\.limit\(1000\)/);
   assert.match(destination, /runBlogDestinationQuery\('posts'/);
@@ -132,12 +136,27 @@ test('blog destination and angle tabs do not cache unavailable empty states', ()
   assert.match(angle, /getCachedAnglePageData/);
   assert.match(angle, /BLOG_ANGLE_CACHE_TAG/);
   assert.match(angle, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(angle, /Promise\.race/);
   assert.match(angle, /runBlogAngleQuery/);
   assert.match(angle, /블로그 데이터를 잠시 불러오지 못했습니다/);
 
   assert.match(matcher, /runAnglePackageQuery/);
   assert.match(matcher, /abortSignal\(controller\.signal\)/);
+  assert.match(matcher, /Promise\.race/);
   assert.match(matcher, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
+
+  const destinationMetadata = destination.slice(
+    destination.indexOf('export async function generateMetadata'),
+    destination.indexOf('export default async function DestinationBlogPage'),
+  );
+  const angleMetadata = angle.slice(
+    angle.indexOf('export async function generateMetadata'),
+    angle.indexOf('export default async function AngleBlogPage'),
+  );
+  assert.doesNotMatch(destinationMetadata, /getDestinationPageData/);
+  assert.doesNotMatch(destinationMetadata, /hasIndexableContent/);
+  assert.doesNotMatch(angleMetadata, /getAnglePageData/);
+  assert.doesNotMatch(angleMetadata, /hasIndexableContent/);
 });
 
 test('public sitemap is cached and does not fan out long DB reads during outages', () => {

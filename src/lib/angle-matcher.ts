@@ -49,13 +49,22 @@ async function runAnglePackageQuery<T>(
   timeoutMs = 4000,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(fallback as T);
+    }, timeoutMs);
+  });
   try {
-    return await query.abortSignal(controller.signal);
+    return await Promise.race([
+      Promise.resolve(query.abortSignal(controller.signal)).catch(() => fallback as T),
+      timeoutPromise,
+    ]);
   } catch {
     return fallback as T;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

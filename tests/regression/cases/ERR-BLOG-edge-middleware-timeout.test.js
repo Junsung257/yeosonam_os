@@ -41,7 +41,8 @@ test('ERR-BLOG-edge-middleware-timeout: blog list queries are abortable', () => 
 
   assert.match(source, /function runBlogQuery|async function runBlogQuery/);
   assert.match(source, /abortSignal\(controller\.signal\)/);
-  assert.match(source, /setTimeout\(\(\) => controller\.abort\(\), timeoutMs\)/);
+  assert.match(source, /controller\.abort\(\)/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /runBlogQuery\('posts'/);
 });
 

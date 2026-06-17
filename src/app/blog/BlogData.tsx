@@ -125,17 +125,28 @@ function isBlogQueryUnavailable(result: unknown): boolean {
 
 async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: unknown, timeoutMs = 6000): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await query.abortSignal(controller.signal);
-  } catch (err) {
-    console.warn(`[blog/list] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const unavailableFallback = () => {
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogQueryResult<T>;
     }
     return fallback as T;
+  };
+  const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
+    console.warn(`[blog/list] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    return unavailableFallback();
+  });
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      console.warn(`[blog/list] ${label} query timed out after ${timeoutMs}ms`);
+      resolve(unavailableFallback());
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([queryPromise, timeoutPromise]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

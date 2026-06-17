@@ -323,6 +323,7 @@ curl https://yeosonam.com/api/cron/blog-publisher
 - `blog-publisher`는 `blog_topic_queue.meta.keywords`를 `secondaryKeywords`로 넘겨 롱테일/보조 키워드 커버리지를 채점한다.
 - 새 글 발행, 수동 발행/재발행, 강제 재검증, 크론 발행은 `notifyIndexing()` 또는 batch indexing 경로로 sitemap 제출과 IndexNow를 요청한다.
 - `/sitemap.xml` is a public crawler entry point. It must stay cached with `revalidate = 3600`, must not use `dynamic = 'force-dynamic'`, and must abort package/destination/blog Supabase reads quickly. If Supabase REST is degraded, sitemap should return the static public routes instead of holding three long DB reads open.
+- Public blog list/detail/destination/angle render paths must use a real response timer (`Promise.race`) in addition to `AbortController`. A stuck Supabase REST request can ignore abort long enough to hold the whole page open.
 - `revalidatePublicBlogCache()` must invalidate `/sitemap.xml` whenever a public blog post is published, archived, regenerated, reindexed, or feature-state changed, so caching does not hide fresh public URLs after recovery.
 - 기존 글의 렌더러/SEO 시스템 수정 후에는 배포 직후 `/api/blog/bulk-reindex`를 실행해 전체 블로그를 재검증/재색인한다.
 

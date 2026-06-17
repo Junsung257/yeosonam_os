@@ -64,17 +64,28 @@ async function runBlogAngleQuery<T>(
   timeoutMs = 6000,
 ): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await query.abortSignal(controller.signal);
-  } catch (err) {
-    console.warn(`[blog/angle] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const unavailableFallback = () => {
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogAngleQueryResult<T>;
     }
     return fallback as T;
+  };
+  const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
+    console.warn(`[blog/angle] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    return unavailableFallback();
+  });
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      console.warn(`[blog/angle] ${label} query timed out after ${timeoutMs}ms`);
+      resolve(unavailableFallback());
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([queryPromise, timeoutPromise]);
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 
@@ -151,17 +162,11 @@ export async function generateMetadata({ params }: { params: Promise<{ angle?: s
   const angle = getRouteParam(rawAngle);
   const canonical = `${BASE_URL}/blog/angle/${encodeURIComponent(angle)}`;
   const meta = ANGLE_META[angle];
-  const angleData: AnglePageData = meta
-    ? await getAnglePageData(angle)
-    : { posts: [], recommendedPackages: [], unavailable: false };
-  const { posts, unavailable } = angleData;
-  const hasIndexableContent = !unavailable && posts.length > 0;
   if (!meta) return { title: '블로그' };
   return {
     title: `${meta.label} 여행 가이드 | 여소남`,
     description: `${meta.tagline}. 여소남이 엄선한 ${meta.label} 여행 콘텐츠 모음.`,
     alternates: { canonical },
-    robots: hasIndexableContent ? undefined : { index: false, follow: true },
     openGraph: {
       title: `${meta.label} 여행 가이드 | 여소남`,
       description: meta.tagline,
