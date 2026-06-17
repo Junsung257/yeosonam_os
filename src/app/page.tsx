@@ -12,6 +12,7 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import { withPublicQueryFallback } from '@/lib/public-query-timeout';
 import { getDestinationUrl } from '@/lib/regions';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
@@ -157,30 +158,45 @@ export default async function HomePage() {
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
   const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
-    sb.from('travel_packages')
-      .select('destination, price, price_tiers, price_dates, country')
-      .in('status', ['active', 'approved'])
-      .order('updated_at', { ascending: false })
-      .limit(HOME_AGG_PACKAGE_LIMIT),
-    sb.from('attractions')
-      .select('name, photos, country, region, mention_count')
-      .not('photos', 'is', null)
-      .limit(300),
-    sb.from('travel_packages')
-      .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
-      .in('status', ['active', 'approved'])
-      .order('created_at', { ascending: false })
-      .limit(30),
-    sb.from('active_destinations')
-      .select('destination, package_count, country')
-      .order('package_count', { ascending: false })
-      .limit(20),
-    sb.from('travel_packages')
-      .select('avg_rating, review_count')
-      .not('avg_rating', 'is', null)
-      .gte('review_count', 1)
-      .order('updated_at', { ascending: false })
-      .limit(HOME_RATING_LIMIT),
+    withPublicQueryFallback(
+      sb.from('travel_packages')
+        .select('destination, price, price_tiers, price_dates, country')
+        .in('status', ['active', 'approved'])
+        .order('updated_at', { ascending: false })
+        .limit(HOME_AGG_PACKAGE_LIMIT),
+      emptyResult,
+    ),
+    withPublicQueryFallback(
+      sb.from('attractions')
+        .select('name, photos, country, region, mention_count')
+        .not('photos', 'is', null)
+        .limit(300),
+      emptyResult,
+    ),
+    withPublicQueryFallback(
+      sb.from('travel_packages')
+        .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
+        .in('status', ['active', 'approved'])
+        .order('created_at', { ascending: false })
+        .limit(30),
+      emptyResult,
+    ),
+    withPublicQueryFallback(
+      sb.from('active_destinations')
+        .select('destination, package_count, country')
+        .order('package_count', { ascending: false })
+        .limit(20),
+      emptyResult,
+    ),
+    withPublicQueryFallback(
+      sb.from('travel_packages')
+        .select('avg_rating, review_count')
+        .not('avg_rating', 'is', null)
+        .gte('review_count', 1)
+        .order('updated_at', { ascending: false })
+        .limit(HOME_RATING_LIMIT),
+      emptyResult,
+    ),
   ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
   const allPkgs = pkgResult.data ?? [];
@@ -298,7 +314,10 @@ export default async function HomePage() {
   const topDestNames = topDestsRaw.map(d => d.destination);
   const [{ data: pillarExists }] = topDestNames.length > 0
     ? await Promise.all([
-        sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
+        withPublicQueryFallback(
+          sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
+          emptyResult,
+        ),
       ])
     : [{ data: null }];
 
@@ -449,17 +468,23 @@ export default async function HomePage() {
   if (isSupabaseConfigured && rankingIds.length > 0) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
     const [bkRes, sgRes] = await Promise.all([
-      sb
-        .from('bookings')
-        .select('package_id')
-        .eq('status', 'confirmed')
-        .gte('created_at', since)
-        .in('package_id', rankingIds),
-      sb
-        .from('package_score_signals')
-        .select('package_id')
-        .gte('created_at', since)
-        .in('package_id', rankingIds),
+      withPublicQueryFallback(
+        sb
+          .from('bookings')
+          .select('package_id')
+          .eq('status', 'confirmed')
+          .gte('created_at', since)
+          .in('package_id', rankingIds),
+        emptyResult,
+      ),
+      withPublicQueryFallback(
+        sb
+          .from('package_score_signals')
+          .select('package_id')
+          .gte('created_at', since)
+          .in('package_id', rankingIds),
+        emptyResult,
+      ),
     ]);
     for (const row of bkRes.data ?? []) {
       const pid = (row as { package_id: string | null }).package_id;

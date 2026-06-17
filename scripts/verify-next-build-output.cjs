@@ -9,13 +9,24 @@ const requiredPaths = [
   'BUILD_ID',
   'app-build-manifest.json',
   'build-manifest.json',
+  'prerender-manifest.json',
+  'routes-manifest.json',
   'server',
+  'server/app-paths-manifest.json',
+  'server/pages-manifest.json',
   'static',
 ];
 
 const missing = requiredPaths.filter((entry) => !fs.existsSync(path.join(distDir, entry)));
 
-for (const manifest of ['app-build-manifest.json', 'build-manifest.json']) {
+for (const manifest of [
+  'app-build-manifest.json',
+  'build-manifest.json',
+  'prerender-manifest.json',
+  'routes-manifest.json',
+  'server/app-paths-manifest.json',
+  'server/pages-manifest.json',
+]) {
   const manifestPath = path.join(distDir, manifest);
   if (!fs.existsSync(manifestPath)) continue;
   try {

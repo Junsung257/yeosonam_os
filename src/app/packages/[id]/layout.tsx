@@ -2,12 +2,17 @@ import type { Metadata } from 'next';
 import { getPackageById } from '@/lib/supabase';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { isUuid } from '@/lib/uuid';
+import { withPublicQueryFallback } from '@/lib/public-query-timeout';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
   process.env.NEXT_PUBLIC_SITE_URL ||
   'https://www.yeosonam.com'
 ).replace(/\/+$/, '');
+const PACKAGE_METADATA_QUERY_TIMEOUT_MS = Math.max(
+  1000,
+  Number(process.env.PACKAGE_DETAIL_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '3500') || 3500,
+);
 
 // 2026-05-18 박제 (ERR-layout-page-source-drift):
 //   기존 fetch('/api/packages?id=...') 는 page.tsx 의 supabaseAdmin 직접 쿼리 와
@@ -19,7 +24,7 @@ async function getPackage(id: string) {
 
 async function safeGetPackage(id: string) {
   try {
-    return await getPackage(id);
+    return await withPublicQueryFallback(getPackage(id), null, PACKAGE_METADATA_QUERY_TIMEOUT_MS);
   } catch (error) {
     console.error('[packages/layout] generateMetadata failed', { id, error });
     return null;

@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase';
+import { withPublicQueryFallback } from '@/lib/public-query-timeout';
 
 /**
  * destination 텍스트 정규화 — 모바일 상세 climate 조인용 폴백.
@@ -33,6 +34,10 @@ export type DestinationClimateRow = {
 
 const CLIMATE_COLS =
   'destination, primary_city, country, lat, lon, timezone, utc_offset_minutes, monthly_normals, fitness_scores, seasonal_signals';
+const CLIMATE_QUERY_TIMEOUT_MS = Math.max(
+  1000,
+  Number(process.env.CLIMATE_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '3500') || 3500,
+);
 
 /** destination 정규화 후 가능한 lookup 키 목록을 우선순위대로 반환 (중복 제거). */
 export function destinationLookupKeys(raw: string): string[] {
@@ -77,10 +82,14 @@ export async function resolveDestinationClimate(
   const keys = destinationLookupKeys(rawDestination);
   if (keys.length === 0) return null;
 
-  const { data, error } = await supabaseAdmin
-    .from('destination_climate')
-    .select(CLIMATE_COLS)
-    .in('destination', keys);
+  const { data, error } = await withPublicQueryFallback(
+    supabaseAdmin
+      .from('destination_climate')
+      .select(CLIMATE_COLS)
+      .in('destination', keys),
+    { data: null, error: null },
+    CLIMATE_QUERY_TIMEOUT_MS,
+  );
   if (error || !data || data.length === 0) return null;
 
   // 우선순위 보존: keys 순서대로 첫 매치 반환

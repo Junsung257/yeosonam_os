@@ -101,6 +101,32 @@ function ensureNotFoundTraceManifest() {
   console.log('[next-shim] created missing _not-found trace manifest');
 }
 
+function ensureMissingAppTraceManifests() {
+  if (process.platform !== 'win32') return;
+  const distDir = process.env.NEXT_DIST_DIR || '.next';
+  const serverAppDir = path.join(process.cwd(), distDir, 'server', 'app');
+  if (!fs.existsSync(serverAppDir)) return;
+
+  let added = 0;
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && (entry.name === 'page.js' || entry.name === 'route.js')) {
+        const tracePath = `${full}.nft.json`;
+        if (!fs.existsSync(tracePath)) {
+          fs.writeFileSync(tracePath, JSON.stringify({ version: 1, files: [] }, null, 2));
+          added += 1;
+        }
+      }
+    }
+  }
+
+  walk(serverAppDir);
+  if (added > 0) console.log(`[next-shim] created ${added} missing app trace manifest(s)`);
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
@@ -149,6 +175,7 @@ const nextConfig = {
             ensureSpecialPagesManifest();
             ensureAppPathsManifest();
             ensureNotFoundTraceManifest();
+            ensureMissingAppTraceManifests();
           });
         },
       });

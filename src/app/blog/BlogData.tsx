@@ -7,6 +7,7 @@ import { BackToTop } from '@/components/blog/BackToTop';
 import { getDestinationUrl } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import { withPublicQueryFallback } from '@/lib/public-query-timeout';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -99,6 +100,8 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   if (!isSupabaseConfigured) return { featured: [], posts: [], total: 0, destinations: [] };
 
   const offset = (page - 1) * PER_PAGE;
+  const emptyData = { data: [] };
+  const emptyList = { data: [], count: 0 };
 
   let listQuery = supabaseAdmin
     .from('content_creatives')
@@ -116,24 +119,30 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   if (filter.destination) listQuery = listQuery.eq('destination', filter.destination);
 
   const [destRes, featuredRes, listRes] = await Promise.all([
-    supabaseAdmin
-      .from('active_destinations')
-      .select('destination, package_count, country')
-      .order('package_count', { ascending: false })
-      .limit(16),
-    supabaseAdmin
-      .from('content_creatives')
-      .select(
-        'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
-      )
-      .eq('status', 'published')
-      .eq('channel', 'naver_blog')
-      .eq('featured', true)
-      .not('slug', 'is', null)
-      .order('featured_order', { ascending: true, nullsFirst: false })
-      .order('published_at', { ascending: false })
-      .limit(3),
-    listQuery,
+    withPublicQueryFallback(
+      supabaseAdmin
+        .from('active_destinations')
+        .select('destination, package_count, country')
+        .order('package_count', { ascending: false })
+        .limit(16),
+      emptyData,
+    ),
+    withPublicQueryFallback(
+      supabaseAdmin
+        .from('content_creatives')
+        .select(
+          'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
+        )
+        .eq('status', 'published')
+        .eq('channel', 'naver_blog')
+        .eq('featured', true)
+        .not('slug', 'is', null)
+        .order('featured_order', { ascending: true, nullsFirst: false })
+        .order('published_at', { ascending: false })
+        .limit(3),
+      emptyData,
+    ),
+    withPublicQueryFallback(listQuery, emptyList),
   ]);
 
   const posts = (listRes.data as unknown as BlogPost[]) || [];

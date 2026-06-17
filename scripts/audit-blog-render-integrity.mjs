@@ -71,6 +71,39 @@ function absolutize(path) {
   return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+function addBlogLink(links, href) {
+  if (!href || !/^\/blog\//.test(href)) return;
+  if (/\/blog\/(angle|destination)\//.test(href)) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
+  links.add(href.split('#')[0]);
+}
+
+async function collectBlogLinksFromSitemap(links, errors) {
+  const sitemapUrl = `${baseUrl}/sitemap.xml`;
+  try {
+    const xml = await fetchText(sitemapUrl);
+    const matches = xml.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi);
+    let added = 0;
+    for (const match of matches) {
+      try {
+        const url = new URL(match[1]);
+        const before = links.size;
+        addBlogLink(links, url.pathname);
+        if (links.size > before) added += 1;
+        if (limit > 0 && links.size >= limit) break;
+      } catch {
+        // Ignore malformed sitemap URLs and continue auditing usable entries.
+      }
+    }
+    if (added > 0) logProgress(`Collected ${added} blog link(s) from sitemap fallback`);
+  } catch (error) {
+    errors.push({
+      url: sitemapUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function collectBlogLinks() {
   const links = new Set();
   const errors = [];
@@ -90,9 +123,7 @@ async function collectBlogLinks() {
     const $ = cheerio.load(html);
     const before = links.size;
     $('a[href^="/blog/"]').each((_index, element) => {
-      const href = $(element).attr('href') || '';
-      if (!href || /\/blog\/(angle|destination)\//.test(href)) return;
-      links.add(href.split('#')[0]);
+      addBlogLink(links, $(element).attr('href') || '');
     });
     if (limit > 0 && links.size >= limit) {
       const limited = [...links].slice(0, limit);
@@ -100,6 +131,10 @@ async function collectBlogLinks() {
       return limited;
     }
     if (page > 1 && links.size === before) break;
+  }
+  if (links.size === 0) {
+    logProgress('No blog links found on listing pages; trying sitemap fallback');
+    await collectBlogLinksFromSitemap(links, errors);
   }
   const all = [...links];
   const limited = limit > 0 ? all.slice(0, limit) : all;
@@ -281,6 +316,14 @@ async function main() {
       };
     }
   });
+  if (links.length === 0) {
+    rows.push({
+      path: `${baseUrl}/blog`,
+      error: 'no blog links found from listing pages or sitemap',
+      failed: true,
+      collectionError: true,
+    });
+  }
   for (const issue of collectionErrors) {
     rows.push({
       path: issue.url,
