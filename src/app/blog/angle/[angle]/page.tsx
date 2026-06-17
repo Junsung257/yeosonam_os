@@ -9,6 +9,7 @@ import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 
 export const revalidate = 300;
+export const dynamicParams = true;
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 
@@ -51,7 +52,7 @@ async function getPostsByAngle(angle: string): Promise<BlogPost[]> {
 }
 
 export function generateStaticParams() {
-  return Object.keys(ANGLE_META).map(angle => ({ angle }));
+  return [];
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ angle?: string | string[] }> }): Promise<Metadata> {

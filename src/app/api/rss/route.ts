@@ -3,8 +3,9 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
 
-// ISR 10분 — Edge CDN + 프레임워크 캐시 둘 다 활용. force-dynamic 보다 cold start 빠름.
+// Build-safe RSS: avoid deploy-time DB reads; response keeps CDN cache headers below.
 export const revalidate = 600;
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   const headers = {

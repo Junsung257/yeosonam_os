@@ -11,6 +11,7 @@ import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 
 export const revalidate = 86400; // 1d
+export const dynamic = 'force-dynamic';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');

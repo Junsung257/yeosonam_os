@@ -5,7 +5,7 @@
  * 매트릭스를 기반으로 ISR 정적 페이지를 자동 생성. SaaS 추가 비용 0원.
  *
  * 동작:
- *   - generateStaticParams: 활성 region 전부를 빌드 시점에 생성
+ *   - generateStaticParams: build returns [] so region pages are generated on demand
  *   - revalidate: 1일 (콘텐츠 갱신은 /api/revalidate 로 즉시 무효화 가능)
  *   - 카테고리(자연·문화·먹거리·쇼핑)별 그룹핑 + 관련 패키지 + Pillar 글 링크
  *
@@ -172,21 +172,7 @@ function toAttractionListItem(a: AttractionRow, index: number) {
 }
 
 export async function generateStaticParams() {
-  if (!isSupabaseConfigured) return [];
-  try {
-    const { data } = await supabaseAdmin
-      .from('attractions')
-      .select('region')
-      .not('region', 'is', null);
-    if (!data) return [];
-    const set = new Set<string>();
-    for (const r of data) {
-      if (typeof r.region === 'string' && r.region.trim()) set.add(r.region.trim());
-    }
-    return Array.from(set).map((region) => ({ region }));
-  } catch {
-    return [];
-  }
+  return [];
 }
 
 async function getPageData(regionRaw: string): Promise<PageData | null> {

@@ -12,6 +12,7 @@ import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemot
 
 export const revalidate = 600;
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
+export const dynamicParams = true;
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
@@ -93,7 +94,7 @@ function normalizeAttractionImageSample(row: unknown): AttractionImageSample | n
 }
 
 export async function generateStaticParams() {
-  return REGIONS.map(r => ({ region: r.slug }));
+  return [];
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ region?: string | string[] }> }): Promise<Metadata> {
