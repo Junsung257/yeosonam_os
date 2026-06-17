@@ -11,6 +11,7 @@ const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const read = (...parts) => fs.readFileSync(path.join(ROOT, ...parts), 'utf8');
+const exists = (...parts) => fs.existsSync(path.join(ROOT, ...parts));
 
 test('ERR-BLOG-edge-middleware-timeout: public paths bypass dynamic DB not-found checks', () => {
   const source = read('src', 'middleware.ts');
@@ -42,4 +43,9 @@ test('ERR-BLOG-edge-middleware-timeout: blog list queries are abortable', () => 
   assert.match(source, /abortSignal\(controller\.signal\)/);
   assert.match(source, /setTimeout\(\(\) => controller\.abort\(\), timeoutMs\)/);
   assert.match(source, /runBlogQuery\('posts'/);
+});
+
+test('ERR-BLOG-edge-middleware-timeout: blog routes do not stream skeleton-only loading HTML', () => {
+  assert.equal(exists('src', 'app', 'blog', 'loading.tsx'), false);
+  assert.equal(exists('src', 'app', 'blog', '[slug]', 'loading.tsx'), false);
 });
