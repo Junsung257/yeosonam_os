@@ -131,6 +131,28 @@ interface RelatedPost {
   } | null;
 }
 
+type AbortableQuery<T> = {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+};
+
+async function runBlogDetailQuery<T>(
+  label: string,
+  query: AbortableQuery<T>,
+  fallback: T,
+  timeoutMs = 8000,
+): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await query.abortSignal(controller.signal);
+  } catch (err) {
+    console.warn(`[blog/detail] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    return fallback;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const ANGLE_LABELS: Record<string, string> = {
   value: '💰 가성비',
   emotional: '🌸 감성',
@@ -308,6 +330,51 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   }
   if (!data || data.length === 0) return null;
   return data[0] as unknown as BlogPost;
+}
+
+async function getPostFast(slug: string): Promise<BlogPost | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const dbSlug = safeDecodeSlug(slug);
+  const { data, error } = await runBlogDetailQuery(
+    'postFast',
+    supabaseAdmin
+      .from('content_creatives')
+      .select(
+        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, published_at, created_at, updated_at, product_id, tracking_id, destination, landing_enabled, landing_headline, landing_subtitle',
+      )
+      .eq('slug', dbSlug)
+      .eq('status', 'published')
+      .eq('channel', 'naver_blog')
+      .not('slug', 'is', null)
+      .limit(1),
+    { data: null, error: null },
+  );
+
+  if (error) {
+    logError('[blog/getPostFast] supabase error', error, { slug: dbSlug, rawParam: slug });
+    return null;
+  }
+  if (!data || data.length === 0) return null;
+
+  const post = data[0] as unknown as BlogPost;
+  post.travel_packages = null;
+
+  if (post.product_id) {
+    const { data: packageRows } = await runBlogDetailQuery(
+      'postFastPackage',
+      supabaseAdmin
+        .from('travel_packages')
+        .select('id, title, destination, price, duration, nights, category, airline, departure_airport, product_highlights, inclusions, status')
+        .eq('id', post.product_id)
+        .limit(1),
+      { data: null, error: null },
+      4000,
+    );
+    post.travel_packages = ((packageRows || [])[0] as BlogPost['travel_packages']) ?? null;
+  }
+
+  return post;
 }
 
 async function getRelatedProducts(
@@ -532,7 +599,7 @@ export async function generateMetadata({
   if (/^\d+$/.test(slug)) {
     return { title: '글을 찾을 수 없습니다', robots: { index: false, follow: false } };
   }
-  const post = await getPost(slug);
+  const post = await getPostFast(slug);
   // 404 캐시가 색인되지 않도록 명시적 noindex.
   if (!post) {
     notFound();
@@ -642,7 +709,7 @@ async function renderBlogDetail({
     redirect('/blog');
   }
 
-  const post = await getPost(slug);
+  const post = await getPostFast(slug);
   if (!post) notFound();
 
   const pkg = post.travel_packages;

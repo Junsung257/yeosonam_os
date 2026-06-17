@@ -30,6 +30,9 @@ test('ERR-BLOG-edge-middleware-timeout: blog routes are pinned to node runtime',
   assert.match(listPage, /export const runtime = ['"]nodejs['"]/);
   assert.match(detailPage, /export const runtime = ['"]nodejs['"]/);
   assert.match(detailPage, /withBlogRenderTimeout/);
+  assert.match(detailPage, /async function getPostFast/);
+  assert.match(detailPage, /const post = await getPostFast\(slug\);/);
+  assert.match(detailPage, /postFastPackage/);
 });
 
 test('ERR-BLOG-edge-middleware-timeout: blog list queries are abortable', () => {
