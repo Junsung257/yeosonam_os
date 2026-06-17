@@ -47,7 +47,7 @@ export interface MarketingDashboardData {
 
 export type MarketingDashboardStatus = 'ready' | 'empty' | 'degraded' | 'disabled';
 
-export const EMPTY_MARKETING_DASHBOARD_DATA: MarketingDashboardData = {
+const EMPTY_MARKETING_DASHBOARD_DATA: MarketingDashboardData = {
   channels: [],
   funnel: [],
   trends: [],

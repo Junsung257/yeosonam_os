@@ -49,8 +49,10 @@ export default function CampaignsPage() {
     setLoading(true);
     setWarning('');
     setIntegrationBlocked(false);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const res = await fetch('/api/meta/campaigns');
+      const res = await fetch('/api/meta/campaigns', { signal: controller.signal });
       const contentType = res.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
         setCampaigns([]);
@@ -75,6 +77,7 @@ export default function CampaignsPage() {
       setIntegrationBlocked(true);
       setWarning('캠페인 목록을 불러오지 못했습니다.');
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
   }, []);
