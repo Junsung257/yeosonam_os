@@ -53,7 +53,8 @@ const AUTHORITY_HOST_HINTS = [
 ];
 
 async function fetchText(path) {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
+  const res = await fetch(url, {
     signal: AbortSignal.timeout(timeoutMs),
     headers: {
       'user-agent': 'yeosonam-blog-seo-audit/1.0',
@@ -62,6 +63,26 @@ async function fetchText(path) {
   });
   if (!res.ok) throw new Error(`${path} returned ${res.status}`);
   return res.text();
+}
+
+function addBlogLink(links, href) {
+  if (!href || !/^\/blog\//.test(href)) return;
+  if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
+  links.add(href.split('#')[0]);
+}
+
+async function collectBlogLinksFromSitemap(links) {
+  const xml = await fetchText(`${baseUrl}/sitemap.xml`);
+  for (const match of xml.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi)) {
+    try {
+      const url = new URL(match[1]);
+      addBlogLink(links, url.pathname);
+      if (limit > 0 && links.size >= limit) break;
+    } catch {
+      // Ignore malformed sitemap URLs.
+    }
+  }
 }
 
 async function collectBlogLinks() {
@@ -77,15 +98,16 @@ async function collectBlogLinks() {
     const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
     const before = links.size;
     for (const match of matches) {
-      const href = match[1];
-      if (!href) continue;
-      if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) continue;
-      links.add(href);
+      addBlogLink(links, match[1]);
     }
     if (limit > 0 && links.size >= limit) break;
     if (links.size === before && page > 1) break;
     if (!html.includes(`page=${page + 1}`) && !html.includes(`>${page + 1}<`)) break;
     page += 1;
+  }
+
+  if (links.size === 0) {
+    await collectBlogLinksFromSitemap(links);
   }
 
   const result = [...links];
@@ -378,6 +400,36 @@ async function main() {
       console.log(JSON.stringify(payload, null, 2));
     } else {
       console.log(`Blog SEO quality: 0/100 (collect failed: ${message})`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+  if (links.length === 0) {
+    const payload = {
+      summary: {
+        baseUrl,
+        totalLinks: 0,
+        fetched: 0,
+        errors: 1,
+        failed: 1,
+        passed: 0,
+        score: 0,
+        strictWarnings,
+        warningCount: 0,
+        avgTitleLength: 0,
+        avgDescriptionLength: 0,
+        avgTextLength: 0,
+        avgH2: 0,
+        avgImages: 0,
+      },
+      failedExamples: [{ path: '/blog', error: 'no blog links found from listing pages, API, or sitemap', failed: true }],
+      warningExamples: [],
+      rows: [{ path: '/blog', error: 'no blog links found from listing pages, API, or sitemap', failed: true }],
+    };
+    if (outputJson) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      console.log('Blog SEO quality: 0/100 (no blog links found from listing pages, API, or sitemap)');
     }
     process.exitCode = 1;
     return;

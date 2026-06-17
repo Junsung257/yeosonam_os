@@ -105,7 +105,8 @@ function titleTokens(title) {
 
 async function fetchText(path) {
   try {
-    const res = await fetch(`${baseUrl}${path}`, {
+    const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(timeoutMs),
       headers: {
         'user-agent': 'yeosonam-blog-image-audit/1.0',
@@ -119,6 +120,34 @@ async function fetchText(path) {
       throw new Error(`${path} timed out after ${timeoutMs}ms`);
     }
     throw error;
+  }
+}
+
+function addBlogLink(links, href) {
+  if (!href || !/^\/blog\//.test(href)) return;
+  if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
+  links.add(href.split('#')[0]);
+}
+
+async function collectBlogLinksFromSitemap(links, errors) {
+  const sitemapUrl = `${baseUrl}/sitemap.xml`;
+  try {
+    const xml = await fetchText(sitemapUrl);
+    for (const match of xml.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi)) {
+      try {
+        const url = new URL(match[1]);
+        addBlogLink(links, url.pathname);
+        if (limit > 0 && links.size >= limit) break;
+      } catch {
+        // Ignore malformed sitemap URLs.
+      }
+    }
+  } catch (error) {
+    errors.push({
+      path: sitemapUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -166,10 +195,7 @@ async function collectBlogLinks() {
     const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
     let before = links.size;
     for (const match of matches) {
-      const href = match[1];
-      if (!href) continue;
-      if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) continue;
-      links.add(href);
+      addBlogLink(links, match[1]);
     }
     if (limit > 0 && links.size >= limit) {
       const limited = [...links].slice(0, limit);
@@ -179,6 +205,10 @@ async function collectBlogLinks() {
     if (links.size === before && page > 1) break;
     if (!html.includes(`page=${page + 1}`) && !html.includes(`>${page + 1}<`)) break;
     page += 1;
+  }
+
+  if (links.size === 0) {
+    await collectBlogLinksFromSitemap(links, errors);
   }
 
   const result = [...links];
@@ -374,6 +404,14 @@ async function main() {
     rows.push({
       path: issue.path,
       error: issue.error,
+      failed: true,
+      collectionError: true,
+    });
+  }
+  if (links.length === 0) {
+    rows.push({
+      path: `${baseUrl}/blog`,
+      error: 'no blog links found from listing pages or sitemap',
       failed: true,
       collectionError: true,
     });
