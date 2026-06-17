@@ -206,8 +206,9 @@ function stableFallbackSlug(item: any): string {
     .replace(/[^a-z0-9]/gi, '')
     .slice(-8)
     .toLowerCase();
-  const fallback = [destination || 'travel', categorySlugSuffix(item), idPart].filter(Boolean).join('-');
-  return isUsableBlogSlug(fallback) ? fallback : `travel-guide-${idPart || 'auto'}`;
+  const stableId = idPart ? `q${idPart}` : 'qauto';
+  const fallback = [destination || 'travel', categorySlugSuffix(item), stableId].filter(Boolean).join('-');
+  return isUsableBlogSlug(fallback) ? fallback : `travel-guide-${stableId}`;
 }
 
 function buildQueueSlug(item: any): string {
@@ -1271,7 +1272,7 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
     ? 'skipped'
     : shouldForceFailure || attempts >= MAX_ATTEMPTS ? 'failed' : 'queued';
 
-  await supabaseAdmin.from('blog_topic_queue')
+  const { error: queueUpdateError } = await supabaseAdmin.from('blog_topic_queue')
     .update({
       status: finalStatus,
       attempts,
@@ -1292,6 +1293,13 @@ async function handleFailure(item: any, reason: string, qa: any, forceFailure = 
       },
     })
     .eq('id', item.id);
+  if (queueUpdateError) {
+    logWarning('[cron/blog-publisher] queue failure status update failed', {
+      id: item.id,
+      targetStatus: finalStatus,
+      error: queueUpdateError.message,
+    });
+  }
 
   // 자기학습: 실패 원인을 error_patterns 에 누적 (있는 경우만)
   try {
