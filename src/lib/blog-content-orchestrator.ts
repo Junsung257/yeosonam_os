@@ -47,15 +47,15 @@ type CronName = (typeof CRON_NAMES)[number];
 
 // 각 크론의 정상 실행 주기 (ms)
 const EXPECTED_INTERVALS: Record<CronName, number> = {
-  'blog-scheduler': 7 * 86400_000,       // 주 1회
-  'blog-publisher': 86400_000,            // 일 1회
-  'blog-lifecycle': 86400_000,            // 일 1회
-  'blog-learn': 7 * 86400_000,            // 주 1회
-  'blog-daily-summary': 86400_000,        // 일 1회
-  'blog-regenerate-zero-click': 7 * 86400_000,  // 주 1회
-  'topical-rebuild': 7 * 86400_000,       // 주 1회
-  'programmatic-seo-generator': 86400_000, // 일 1회
-  'content-drift-detect': 3600_000,       // 시간당
+  'blog-scheduler': 7 * 86400_000,
+  'blog-publisher': 86400_000,
+  'blog-lifecycle': 86400_000,
+  'blog-learn': 7 * 86400_000,
+  'blog-daily-summary': 86400_000,
+  'blog-regenerate-zero-click': 7 * 86400_000,
+  'topical-rebuild': 7 * 86400_000,
+  'programmatic-seo-generator': 7 * 86400_000,
+  'content-drift-detect': 86400_000,
 };
 
 /**
@@ -345,7 +345,7 @@ export async function autoHealQueue(): Promise<{
       const meta = typeof item.meta === 'object' && item.meta !== null && !Array.isArray(item.meta)
         ? { ...(item.meta as Record<string, unknown>) }
         : {};
-      const exactDuplicateSlug = item.last_error?.match(/동일 slug 이미 존재:\s*([a-z0-9-]+)/i)?.[1] ?? null;
+      const exactDuplicateSlug = item.last_error?.match(/slug[^:]*:\s*([a-z0-9-]+)/i)?.[1] ?? null;
       if (!shouldSelfHealBlogQueueItem({ lastError: item.last_error, meta })) {
         const decision = classifyBlogQueueFailure(item.last_error ?? '');
         stillFailed++;
@@ -434,7 +434,7 @@ export async function autoHealQueue(): Promise<{
       .from('blog_topic_queue')
       .update({ status: 'archived', last_error: `auto_archived_package — self-heal ${now}` })
       .in('id', skipIds);
-    details.push(`아카이브 정리: ${skipIds.length}건 skipped→archived 변환`);
+    details.push(`archive cleanup: ${skipIds.length} skipped rows archived`);
   }
 
   return {
