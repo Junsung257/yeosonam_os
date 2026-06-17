@@ -84,21 +84,36 @@ export default function MarketingDashboardPage() {
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeResult, setOptimizeResult] = useState<string | null>(null);
   const [campaignLoading, setCampaignLoading] = useState(true);
+  const [campaignWarning, setCampaignWarning] = useState<string | null>(null);
   const [adOsSummary, setAdOsSummary] = useState<AdOsMainSummary | null>(null);
   const [adOsError, setAdOsError] = useState<string | null>(null);
 
   // 통합 대시보드 데이터 — useMarketingGap 훅이 mock/real 모두 커버
-  const { dashboardData, loading: dashLoading, refresh: refreshDash } = useMarketingGap(true);
+  const {
+    dashboardData,
+    loading: dashLoading,
+    status: dashboardStatus,
+    message: dashboardMessage,
+    refresh: refreshDash,
+  } = useMarketingGap(true);
 
   const fetchCampaigns = useCallback(async () => {
     setCampaignLoading(true);
+    setCampaignWarning(null);
     try {
       const res = await fetch('/api/meta/campaigns');
+      const payload = await res.json().catch(() => ({}));
       if (res.ok) {
-        const { campaigns: list } = await res.json();
-        setCampaigns(list ?? []);
+        setCampaigns(payload.campaigns ?? []);
+        if (payload.degraded || payload.mock) {
+          setCampaignWarning(payload.message ?? 'Meta campaigns are unavailable in this environment.');
+        }
+      } else {
+        setCampaignWarning(payload.error ?? `Meta campaigns HTTP ${res.status}`);
       }
-    } catch { /* noop */ }
+    } catch (err) {
+      setCampaignWarning(err instanceof Error ? err.message : 'Meta campaigns are unavailable.');
+    }
     finally { setCampaignLoading(false); }
   }, []);
 
@@ -134,8 +149,14 @@ export default function MarketingDashboardPage() {
     try {
       const res = await fetch('/api/meta/optimize', { method: 'POST' });
       const data = await res.json();
+      if (!res.ok) {
+        setOptimizeResult(`Optimization unavailable: ${data.error ?? `HTTP ${res.status}`}`);
+        return;
+      }
       setOptimizeResult(`처리: ${data.processed}개 | 일시정지: ${data.paused?.length ?? 0}개 | 예산증액: ${data.scaled?.length ?? 0}개`);
       fetchCampaigns();
+    } catch (err) {
+      setOptimizeResult(`Optimization failed: ${err instanceof Error ? err.message : 'network error'}`);
     } finally { setOptimizing(false); }
   };
 
@@ -322,6 +343,18 @@ export default function MarketingDashboardPage() {
             )}
           </section>
           {/* Executive Summary Strip (상단 KPI 바) */}
+          {dashboardStatus !== 'ready' && !dashLoading && (
+            <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4 text-admin-sm text-amber-800">
+              Marketing performance is showing an empty or degraded state: {dashboardMessage ?? dashboardStatus}.
+              <button
+                type="button"
+                onClick={refreshDash}
+                className="ml-3 rounded-md border border-amber-300 bg-white px-3 py-1 text-admin-xs font-semibold text-amber-800 hover:bg-amber-100"
+              >
+                Refresh
+              </button>
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <MetricsCard
               label="Total Ad Spend"
@@ -398,6 +431,11 @@ export default function MarketingDashboardPage() {
           )}
 
           {/* KPI 카드 4종 */}
+          {campaignWarning && (
+            <div className="rounded-admin-md border border-amber-200 bg-amber-50 p-4 text-admin-sm text-amber-800">
+              Meta campaign data is degraded: {campaignWarning}
+            </div>
+          )}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {([
               { label: '총 광고비 지출', value: `${(totalSpend / 10000).toFixed(0)}만원`, color: 'text-red-600', iconBg: 'bg-red-50', sub: '캠페인 합계',

@@ -13,7 +13,13 @@ const PostBodySchema = z.object({
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({
+      creatives: [],
+      grouped: { thread: [], instagram: [], blog: [] },
+      degraded: true,
+      access_state: 'supabase_unconfigured',
+      message: 'Supabase 연동이 설정되지 않아 빈 소재 목록을 표시합니다.',
+    });
   }
 
   const { searchParams } = request.nextUrl;
@@ -42,7 +48,7 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ error: 'Supabase 연동이 설정되지 않아 소재를 저장할 수 없습니다.' }, { status: 503 });
   }
 
   try {

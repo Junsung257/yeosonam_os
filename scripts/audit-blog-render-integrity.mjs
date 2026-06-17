@@ -16,7 +16,10 @@ function hasFlag(name) {
 const baseUrl = (argValue('--base', DEFAULT_BASE_URL) || DEFAULT_BASE_URL).replace(/\/$/, '');
 const maxPages = Number(argValue('--pages', '12'));
 const limit = Number(argValue('--limit', '0')) || 0;
+const concurrency = Math.max(1, Math.min(10, Number(argValue('--concurrency', '4')) || 4));
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', '15000')) || 15000);
 const json = hasFlag('--json');
+const quiet = json || hasFlag('--quiet');
 const browserFallback = hasFlag('--browser-fallback') || hasFlag('--browser');
 const strict = hasFlag('--strict');
 const TABLE_EXPECTED_RE =
@@ -25,19 +28,36 @@ const RELATED_HEADING_RE =
   /\uAD00\uB828\s*(?:\uAE00|\uC0C1\uD488)|\uCD94\uCC9C\s*\uC0C1\uD488|\uAC19\uC774\s*\uBCF4\uBA74|\uD568\uAED8\s*\uBCF4\uBA74/i;
 
 async function fetchText(url) {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: {
-      'user-agent': 'yeosonam-blog-render-audit/1.0',
-      accept: 'text/html,application/xhtml+xml',
-      'cache-control': 'no-cache',
-      pragma: 'no-cache',
-    },
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response;
+  try {
+    response = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        'user-agent': 'yeosonam-blog-render-audit/1.0',
+        accept: 'text/html,application/xhtml+xml',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`timeout ${timeoutMs}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.text();
+}
+
+function logProgress(message) {
+  if (!quiet) console.log(message);
 }
 
 function absolutize(path) {
@@ -47,6 +67,7 @@ function absolutize(path) {
 
 async function collectBlogLinks() {
   const links = new Set();
+  logProgress(`Collecting blog links from ${baseUrl} (pages=${maxPages}, limit=${limit || 'all'})`);
   for (let page = 1; page <= maxPages; page += 1) {
     const url = page === 1 ? `${baseUrl}/blog` : `${baseUrl}/blog?page=${page}`;
     let html = '';
@@ -191,6 +212,20 @@ async function inspectArticleInBrowser(browser, path) {
   }
 }
 
+async function mapWithConcurrency(items, workerCount, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(workerCount, Math.max(1, items.length)) }, runWorker));
+  return results;
+}
+
 function summarize(rows) {
   const fetched = rows.filter((row) => !row.error);
   const failed = fetched.filter((row) => row.failed);
@@ -210,18 +245,23 @@ function summarize(rows) {
 
 async function main() {
   const links = await collectBlogLinks();
-  const rows = [];
-  for (const path of links) {
+  if (links.length === 0) {
+    logProgress(`No blog links found. Try --base=http://localhost:3001 after starting the app, or pass --limit for a smaller remote audit.`);
+  } else {
+    logProgress(`Auditing ${links.length} blog page(s) with concurrency=${concurrency}, timeout=${timeoutMs}ms`);
+  }
+  const rows = await mapWithConcurrency(links, concurrency, async (path, index) => {
+    logProgress(`[${index + 1}/${links.length}] ${path}`);
     try {
-      rows.push(await inspectArticleWithRetry(path));
+      return await inspectArticleWithRetry(path);
     } catch (error) {
-      rows.push({
+      return {
         path,
         error: error instanceof Error ? error.message : String(error),
         failed: true,
-      });
+      };
     }
-  }
+  });
   if (browserFallback && rows.some((row) => row.failed || row.error)) {
     const { chromium } = await import('playwright');
     const browser = await chromium.launch({ headless: true });

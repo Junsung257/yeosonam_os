@@ -54,4 +54,20 @@ describe('Ad OS EnterpriseRuntimePanel', () => {
     expect(html).toContain('Operations queue');
     expect(html).toContain('Runtime dry-run');
   });
+
+  it('renders degraded summaries without enterprise queue evidence', () => {
+    const html = renderToStaticMarkup(
+      <EnterpriseRuntimePanel
+        summary={{ enterprise_layer: {}, samples: {} } as unknown as Summary}
+        actions={{} as EnterpriseRuntimeActionHandlers}
+        loading={{} as EnterpriseRuntimeActionLoading}
+        opsQueueActionId={null}
+        onOpsQueueAction={vi.fn()}
+      />,
+    );
+
+    expect(html).toContain('Enterprise runtime');
+    expect(html).toContain('external write 0');
+    expect(html).not.toContain('Operations queue');
+  });
 });

@@ -5,6 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { hasSecrets } from '@/lib/secret-registry';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,13 @@ export async function POST(request: NextRequest) {
 
     if (!creative_ids?.length) {
       return NextResponse.json({ error: 'creative_ids 필수' }, { status: 400 });
+    }
+
+    if (!isSupabaseConfigured) {
+      return NextResponse.json(
+        { error: 'Supabase 연동이 설정되지 않아 캠페인 소재를 배포할 수 없습니다.' },
+        { status: 503 },
+      );
     }
 
     const { supabaseAdmin } = await import('@/lib/supabase');

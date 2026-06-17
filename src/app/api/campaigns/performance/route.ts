@@ -8,7 +8,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export async function GET(request: NextRequest) {
-  if (!isSupabaseConfigured) return NextResponse.json({ performance: [], patterns: [] });
+  if (!isSupabaseConfigured) {
+    return NextResponse.json({
+      performance: [],
+      patterns: [],
+      degraded: true,
+      access_state: 'supabase_unconfigured',
+      message: 'Supabase 연동이 설정되지 않아 빈 소재 성과를 표시합니다.',
+    });
+  }
 
   const { supabaseAdmin } = await import('@/lib/supabase');
   const { searchParams } = request.nextUrl;

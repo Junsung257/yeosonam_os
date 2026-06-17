@@ -17,7 +17,7 @@ type KeywordRow = {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase 연동이 설정되지 않았습니다.' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));

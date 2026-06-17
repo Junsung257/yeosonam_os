@@ -9,6 +9,7 @@ import { parseProduct } from '@/lib/creative-engine/parse-product';
 import { generateCarouselVariants } from '@/lib/creative-engine/carousel-generator';
 import { generateSingleImageVariants } from '@/lib/creative-engine/single-image-generator';
 import { generateTextAdVariants } from '@/lib/creative-engine/text-ad-generator';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 const PostBodySchema = z.object({
   productId: z.string().uuid('productId는 UUID 형식이어야 합니다.'),
@@ -28,6 +29,13 @@ export async function POST(request: NextRequest) {
       );
     }
     const { productId, channels, carouselCount, singleImageCount, textAdChannels } = parsed.data;
+
+    if (!isSupabaseConfigured) {
+      return NextResponse.json(
+        { error: 'Supabase 연동이 설정되지 않아 캠페인 소재를 생성할 수 없습니다.' },
+        { status: 503 },
+      );
+    }
 
     // Step 1: 상품 파싱
     const parsedData = await parseProduct(productId);
