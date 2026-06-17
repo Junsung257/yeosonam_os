@@ -18,6 +18,15 @@ export const dynamic = 'force-dynamic';
 
 const MIN_DAILY_BLOG_POSTS = 3;
 
+function isGoogleIndexedReport(report: any): boolean {
+  if (report?.google_status === 'indexed') return true;
+  if (report?.google_index_verdict === 'PASS') return true;
+  const coverage = String(report?.google_coverage_state || '').toLowerCase();
+  return coverage.includes('indexed')
+    || coverage.includes('색인이 생성')
+    || coverage.includes('색인 생성');
+}
+
 async function runDailySummary(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -68,8 +77,8 @@ async function runDailySummary(request: NextRequest) {
   const googleInspectionReports = indexReports.filter((r: any) =>
     ['indexed', 'not_indexed'].includes(String(r.google_status || '')) || r.google_index_verdict,
   );
-  const googleIndexed = googleInspectionReports.filter((r: any) => r.google_status === 'indexed').length;
-  const googleNotIndexed = googleInspectionReports.filter((r: any) => r.google_status === 'not_indexed').length;
+  const googleIndexed = googleInspectionReports.filter(isGoogleIndexedReport).length;
+  const googleNotIndexed = googleInspectionReports.filter((r: any) => !isGoogleIndexedReport(r)).length;
   const googleIndexedRate = googleInspectionReports.length > 0
     ? +((googleIndexed / googleInspectionReports.length) * 100).toFixed(1)
     : null;

@@ -172,6 +172,14 @@ function buildRankHistoryRows(
   }));
 }
 
+function isGoogleIndexed(verdict: string | null, coverageState: string | null): boolean {
+  if (verdict === 'PASS') return true;
+  const coverage = String(coverageState || '').toLowerCase();
+  return coverage.includes('indexed')
+    || coverage.includes('색인이 생성')
+    || coverage.includes('색인 생성');
+}
+
 async function runGscIndexRank(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -287,7 +295,7 @@ async function runGscIndexRank(request: NextRequest) {
       errors.push(`URL Inspection 실패 (${slug}): ${r.error}`);
       continue;
     }
-    const isIndexed = r.verdict === 'PASS' && r.coverageState?.toLowerCase().includes('index');
+    const isIndexed = isGoogleIndexed(r.verdict, r.coverageState);
     if (!isIndexed) notIndexed += 1;
     inspectionReportRows.push({
       url,
