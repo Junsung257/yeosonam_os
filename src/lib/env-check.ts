@@ -13,7 +13,7 @@ export function checkMissingEnvVars(options: { log?: boolean } = {}): { missing:
   const shouldLog = options.log !== false && !hasLoggedEnvCheck;
 
   if (shouldLog && missing.length > 0) {
-    console.warn(
+    console.info(
       [
         `[env-check] Missing ${missing.length} important environment variable(s).`,
         ...missing.map((key) => `- ${key}`),
@@ -23,7 +23,7 @@ export function checkMissingEnvVars(options: { log?: boolean } = {}): { missing:
   }
 
   if (shouldLog && warnings.length > 0) {
-    console.warn(
+    console.info(
       [
         `[env-check] ${warnings.length} environment variable(s) are using defaults.`,
         ...warnings.map((key) => `- ${key}`),

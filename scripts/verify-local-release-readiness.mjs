@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { closeSync, mkdirSync, openSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const rawArgs = process.argv.slice(2);
+const runId = `${process.pid}-${Date.now()}`;
 
 function argValue(name, fallback = '') {
   const prefix = `${name}=`;
@@ -69,6 +72,28 @@ function tailLines(value, lineCount = 80) {
     .split('\n')
     .filter(Boolean);
   return lines.slice(-lineCount).join('\n');
+}
+
+function readText(path) {
+  try {
+    return readFileSync(path, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+function tailFile(path, lineCount = 80) {
+  return tailLines(readText(path), lineCount);
+}
+
+function outputPath(id, streamName) {
+  mkdirSync('.tmp', { recursive: true });
+  const safeId = id.replace(/[^A-Za-z0-9_.-]+/g, '-');
+  return resolve('.tmp', `local-release-${runId}-${safeId}.${streamName}.log`);
+}
+
+function combinedOutput(result) {
+  return `${readText(result.stdoutPath)}\n${readText(result.stderrPath)}`;
 }
 
 function parseJsonObjects(output) {
@@ -151,24 +176,32 @@ function runNpmScript(id, script, args = []) {
     env.NEXT_BUILD_RECOVERY_WAIT_MS = '60000';
   }
 
-  const result = spawnSync(invocation.command, invocation.args, {
-    cwd: process.cwd(),
-    env,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-    windowsHide: true,
-    maxBuffer: 256 * 1024 * 1024,
-  });
+  const stdoutPath = outputPath(id, 'out');
+  const stderrPath = outputPath(id, 'err');
+  const stdoutFd = openSync(stdoutPath, 'w');
+  const stderrFd = openSync(stderrPath, 'w');
+  let result;
+  try {
+    result = spawnSync(invocation.command, invocation.args, {
+      cwd: process.cwd(),
+      env,
+      stdio: ['ignore', stdoutFd, stderrFd],
+      windowsHide: true,
+    });
+  } finally {
+    closeSync(stdoutFd);
+    closeSync(stderrFd);
+  }
 
   return {
     id,
     script,
     command: `npm run ${script}${args.length ? ` ${args.join(' ')}` : ''}`,
-    exitCode: result.status ?? 1,
-    signal: result.signal,
-    stdout: result.stdout || '',
-    stderr: result.stderr || '',
-    error: result.error ? result.error.message : undefined,
+    exitCode: result?.status ?? 1,
+    signal: result?.signal,
+    stdoutPath,
+    stderrPath,
+    error: result?.error ? result.error.message : undefined,
     durationMs: elapsedMs(startedAt),
   };
 }
@@ -183,13 +216,13 @@ function summarizeSimple(result) {
     exitCode: result.exitCode,
     error: result.error,
     durationMs: result.durationMs,
-    stdoutTail: passed ? undefined : tailLines(result.stdout),
-    stderrTail: passed ? undefined : tailLines(result.stderr),
+    stdoutTail: passed ? undefined : tailFile(result.stdoutPath),
+    stderrTail: passed ? undefined : tailFile(result.stderrPath),
   };
 }
 
 function summarizeOpenReadiness(result) {
-  const report = parseJsonFromOutput(`${result.stdout}\n${result.stderr}`);
+  const report = parseJsonFromOutput(combinedOutput(result));
   const failed = numericField(report, 'failed');
   const blocked = numericField(report, 'blocked');
   const passed = numericField(report, 'passed');
@@ -220,8 +253,8 @@ function summarizeOpenReadiness(result) {
     blocked,
     failed,
     strictOpenReadiness,
-    stdoutTail: status === 'fail' ? tailLines(result.stdout) : undefined,
-    stderrTail: status === 'fail' ? tailLines(result.stderr) : undefined,
+    stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
+    stderrTail: status === 'fail' ? tailFile(result.stderrPath) : undefined,
   };
 }
 

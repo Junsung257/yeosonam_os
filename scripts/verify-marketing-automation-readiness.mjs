@@ -240,7 +240,8 @@ function staticChecks() {
     'check:bundle',
     'parseJsonFromOutput',
     'strictOpenReadiness',
-    'maxBuffer',
+    'outputPath',
+    'tailFile',
     'NEXT_BUILD_RECOVERY_WAIT_MS',
   ]);
 }
