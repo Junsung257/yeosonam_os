@@ -64,8 +64,10 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
     supabaseAdmin.from('indexing_reports').select('google_status, google_error, indexnow_status, indexnow_error, sitemap_pings, google_index_verdict, google_coverage_state')
-      .gte('reported_at', recentSearchStart.toISOString()),
-    supabaseAdmin.from('blog_visibility_snapshots').select('id, platform, index_status, visibility_status', { count: 'exact' })
+      .gte('reported_at', recentSearchStart.toISOString())
+      .order('reported_at', { ascending: false })
+      .limit(200),
+    supabaseAdmin.from('blog_visibility_snapshots').select('id', { count: 'exact', head: true })
       .gte('checked_at', recentSearchStart.toISOString()),
     supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),

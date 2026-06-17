@@ -140,7 +140,8 @@ export async function collectSystemHealth(): Promise<SystemHealth> {
     .from('cron_run_logs')
     .select('cron_name, started_at, status, error_messages')
     .gte('started_at', sevenDaysAgo)
-    .order('started_at', { ascending: false });
+    .order('started_at', { ascending: false })
+    .limit(200);
 
   // 2) 각 크론별 상태 집계
   const cronStatuses: SystemHealth['cronStatuses'] = [];
@@ -195,16 +196,21 @@ export async function collectSystemHealth(): Promise<SystemHealth> {
   }
 
   // 3) 큐 상태
-  const { data: queueCounts } = await supabaseAdmin
-    .from('blog_topic_queue')
-    .select('status');
-
-  const queueHealth = { queued: 0, failed: 0, skipped: 0, published: 0 };
-  for (const row of (queueCounts || []) as Array<{ status: string }>) {
-    if (row.status in queueHealth) {
-      queueHealth[row.status as keyof typeof queueHealth]++;
-    }
-  }
+  const [queuedCount, failedCount, skippedCount, publishedCount] = await Promise.all(
+    (['queued', 'failed', 'skipped', 'published'] as const).map(async (status) => {
+      const { count } = await supabaseAdmin
+        .from('blog_topic_queue')
+        .select('id', { count: 'exact', head: true })
+        .eq('status', status);
+      return count || 0;
+    }),
+  );
+  const queueHealth = {
+    queued: queuedCount,
+    failed: failedCount,
+    skipped: skippedCount,
+    published: publishedCount,
+  };
 
   // 4) 최근 에러
   const healthErrors = ((cronHealthRows || []) as Array<{
@@ -279,7 +285,8 @@ export async function autoHealQueue(): Promise<{
     .from('blog_topic_queue')
     .select('id, topic, attempts, last_error, meta')
     .eq('status', 'generating')
-    .lt('updated_at', staleGeneratingCutoff);
+    .lt('updated_at', staleGeneratingCutoff)
+    .limit(25);
 
   if (staleGeneratingItems && staleGeneratingItems.length > 0) {
     for (const item of (staleGeneratingItems as Array<{ id: string; topic: string; attempts: number; last_error: string | null; meta?: unknown }>)) {
@@ -325,7 +332,8 @@ export async function autoHealQueue(): Promise<{
     .from('blog_topic_queue')
     .select('id, topic, attempts, last_error, meta')
     .eq('status', 'failed')
-    .lt('attempts', 3);
+    .lt('attempts', 3)
+    .limit(50);
 
   const duplicateSlugSet = new Set<string>();
   if (failedItems && failedItems.length > 0) {
@@ -333,7 +341,8 @@ export async function autoHealQueue(): Promise<{
       .from('content_creatives')
       .select('slug')
       .eq('channel', 'naver_blog')
-      .in('status', ['published', 'scheduled', 'draft']);
+      .in('status', ['published', 'scheduled', 'draft'])
+      .limit(1000);
     for (const row of existingBlogs || []) {
       const slug = (row as { slug?: string | null }).slug;
       if (slug) duplicateSlugSet.add(slug);
@@ -426,7 +435,8 @@ export async function autoHealQueue(): Promise<{
     .from('blog_topic_queue')
     .select('id, topic')
     .eq('status', 'skipped')
-    .like('last_error', '%bulk_archive_package%');
+    .like('last_error', '%bulk_archive_package%')
+    .limit(200);
 
   if (autoArchiveItems && autoArchiveItems.length > 0) {
     const skipIds = (autoArchiveItems as Array<{ id: string }>).map(i => i.id);
