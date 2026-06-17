@@ -58,6 +58,37 @@ const EXPECTED_INTERVALS: Record<CronName, number> = {
   'content-drift-detect': 86400_000,
 };
 
+function fallbackSystemHealth(reason: string): SystemHealth {
+  return {
+    healthy: false,
+    cronStatuses: CRON_NAMES.map((name) => ({
+      name,
+      lastRun: null,
+      lastSuccess: null,
+      status: 'overdue',
+      consecutiveFailures: 0,
+      since: 'unknown',
+    })),
+    queueHealth: { queued: 0, failed: 0, skipped: 0, published: 0 },
+    recentErrors: [{ cron: 'blog-orchestrator', error: reason, time: new Date().toISOString() }],
+    strategicAdvice: [reason],
+  };
+}
+
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * 시스템 건강 상태
  */
@@ -462,8 +493,16 @@ export async function runOrchestrator(): Promise<{
   health: SystemHealth;
   healed: Awaited<ReturnType<typeof autoHealQueue>>;
 }> {
-  const health = await collectSystemHealth();
-  const healed = await autoHealQueue();
+  const health = await withTimeout(
+    collectSystemHealth(),
+    15_000,
+    fallbackSystemHealth('collectSystemHealth timed out; using guarded fallback'),
+  );
+  const healed = await withTimeout(
+    autoHealQueue(),
+    15_000,
+    { recovered: 0, stillFailed: 0, details: ['autoHealQueue timed out; skipped guarded run'] },
+  );
 
   // 심각한 문제 발견 시 알림 로그
   if (!health.healthy) {

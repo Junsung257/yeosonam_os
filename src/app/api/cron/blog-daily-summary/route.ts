@@ -18,6 +18,20 @@ export const dynamic = 'force-dynamic';
 
 const MIN_DAILY_BLOG_POSTS = 3;
 
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function isGoogleIndexedReport(report: any): boolean {
   if (report?.google_status === 'indexed') return true;
   if (report?.google_index_verdict === 'PASS') return true;
@@ -39,11 +53,15 @@ async function runDailySummary(request: NextRequest) {
   const errors: string[] = [];
 
   // 정책 조회
-  const { data: policyRow } = await supabaseAdmin
-    .from('publishing_policies')
-    .select('*')
-    .eq('scope', 'global')
-    .limit(1);
+  const { data: policyRow } = await withTimeout(
+    supabaseAdmin
+      .from('publishing_policies')
+      .select('*')
+      .eq('scope', 'global')
+      .limit(1),
+    8_000,
+    { data: null } as any,
+  );
   const policy = policyRow?.[0];
 
   // 어제 통계 (24h)
@@ -55,7 +73,15 @@ async function runDailySummary(request: NextRequest) {
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes] = await Promise.all([
+  const summaryFallback = [
+    { data: [], count: 0 },
+    { data: [], count: 0 },
+    { data: [], count: 0 },
+    { data: [], count: 0 },
+    { data: null, count: 0 },
+    { data: null, count: 0 },
+  ] as any;
+  const summaryResults = await withTimeout(Promise.all([
     supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'exact' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', yStart.toISOString()).lte('published_at', yEnd.toISOString()),
@@ -71,7 +97,11 @@ async function runDailySummary(request: NextRequest) {
       .gte('checked_at', recentSearchStart.toISOString()),
     supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
-  ]);
+  ]), 18_000, summaryFallback);
+  if (summaryResults === summaryFallback) {
+    errors.push('daily_summary_source_queries_timed_out');
+  }
+  const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes] = summaryResults;
 
   const published = pubRes.data || [];
   const indexReports = indexRes.data || [];
@@ -218,7 +248,7 @@ async function runDailySummary(request: NextRequest) {
   let regenInfo: { count: number } | null = null;
   if (policy?.auto_regenerate_underperformers) {
     try {
-      regenInfo = await regenerateUnderperformers();
+      regenInfo = await withTimeout(regenerateUnderperformers(), 12_000, { count: 0 });
     } catch (e) {
       errors.push(`regen 실패: ${e instanceof Error ? e.message : String(e)}`);
     }
