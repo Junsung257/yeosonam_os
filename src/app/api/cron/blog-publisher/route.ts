@@ -45,7 +45,7 @@ import {
   repairKeywordDensityToTarget,
 } from '@/lib/blog-editorial-repair';
 import { getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-scheduler';
-import { classifyBlogQueueFailure } from '@/lib/blog-queue-failure-policy';
+import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
 
@@ -82,6 +82,7 @@ const MAX_CANDIDATE_POOL = 20;
 const MAX_QUALITY_REPAIR_ROUNDS = 3;
 const MAX_ATTEMPTS = 2;
 const MAX_EXEC_MS = 240_000; // 240s — Vercel 300s 제한보다 여유 있게
+const STALE_GENERATING_RECOVERY_MS = 60 * 60 * 1000;
 
 function getKstDayRangeUtc(now = new Date()): { startIso: string; endIso: string; dayKey: string } {
   const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -471,6 +472,71 @@ async function getActiveBlogStyleGuide(): Promise<{ content: string; version: st
   return blogStyleGuideCache;
 }
 
+async function recoverStaleGeneratingQueueItems(): Promise<{ recovered: number; failed: number }> {
+  const now = new Date().toISOString();
+  const cutoff = new Date(Date.now() - STALE_GENERATING_RECOVERY_MS).toISOString();
+  const { data: staleItems, error } = await supabaseAdmin
+    .from('blog_topic_queue')
+    .select('id, attempts, last_error, meta')
+    .eq('status', 'generating')
+    .lt('updated_at', cutoff)
+    .limit(MAX_CANDIDATE_POOL);
+
+  if (error || !staleItems || staleItems.length === 0) {
+    if (error) logWarning('[cron/blog-publisher] stale generating recovery scan failed', error);
+    return { recovered: 0, failed: 0 };
+  }
+
+  let recovered = 0;
+  let failed = 0;
+  for (const item of staleItems as Array<{ id: string; attempts: number | null; last_error: string | null; meta?: unknown }>) {
+    const meta = item.meta && typeof item.meta === 'object' && !Array.isArray(item.meta)
+      ? { ...(item.meta as Record<string, unknown>) }
+      : {};
+    const attempts = item.attempts ?? 0;
+    const canRequeue = attempts < MAX_ATTEMPTS && shouldSelfHealBlogQueueItem({ lastError: item.last_error, meta });
+    const updatePayload = canRequeue
+      ? {
+          status: 'queued',
+          target_publish_at: now,
+          last_error: `publisher recovered stale generating ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+          updated_at: now,
+          meta: {
+            ...meta,
+            recovered_by: 'blog-publisher',
+            stale_generating_recovered_at: now,
+            stale_generating_attempts: attempts,
+          },
+        }
+      : {
+          status: 'failed',
+          attempts: Math.max(MAX_ATTEMPTS, attempts),
+          last_error: `publisher quarantined stale generating ${now}: ${item.last_error ?? ''}`.slice(0, 500),
+          updated_at: now,
+          meta: {
+            ...meta,
+            self_heal_blocked: true,
+            quarantine_reason: 'stale_generating_or_non_retryable_failure',
+            stale_generating_closed_at: now,
+            stale_generating_attempts: attempts,
+          },
+        };
+
+    const { error: updateError } = await supabaseAdmin
+      .from('blog_topic_queue')
+      .update(updatePayload as never)
+      .eq('id', item.id)
+      .eq('status', 'generating');
+
+    if (!updateError) {
+      if (canRequeue) recovered += 1;
+      else failed += 1;
+    }
+  }
+
+  return { recovered, failed };
+}
+
 async function runBlogPublisher(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
@@ -486,6 +552,7 @@ async function runBlogPublisher(request: NextRequest) {
 
   try {
     blogStyleGuideCache = null;
+    const staleRecovery = await recoverStaleGeneratingQueueItems();
     const publishPolicy = await getBlogPublishingPolicy('global').catch(() => null);
     const targetPostsToday = normalizeDailyPostTarget(publishPolicy?.posts_per_day ?? process.env.BLOG_DAILY_PUBLISH_TARGET);
     const todayQuota = await getTodayBlogPublishCount();
@@ -502,6 +569,7 @@ async function runBlogPublisher(request: NextRequest) {
           alreadyPublished: todayQuota.count,
           remaining: remainingToday,
         },
+        staleRecovery,
         errors,
       };
     }
@@ -525,6 +593,7 @@ async function runBlogPublisher(request: NextRequest) {
           alreadyPublished: todayQuota.count,
           remaining: remainingToday,
         },
+        staleRecovery,
         errors,
       };
     }
@@ -654,6 +723,7 @@ async function runBlogPublisher(request: NextRequest) {
         alreadyPublishedBeforeRun: todayQuota.count,
         remainingBeforeRun: remainingToday,
       },
+      staleRecovery,
       results,
       errors,
       ranAt: new Date().toISOString(),
@@ -664,7 +734,10 @@ async function runBlogPublisher(request: NextRequest) {
   }
 }
 
-export const GET = withCronLogging('blog-publisher', runBlogPublisher);
+export const GET = withCronLogging('blog-publisher', runBlogPublisher, {
+  handlerTimeoutMs: 285_000,
+  sideEffectTimeoutMs: 5_000,
+});
 
 async function processQueueItem(
   item: any,

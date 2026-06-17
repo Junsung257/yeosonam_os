@@ -270,4 +270,7 @@ const handleBlogLearn = async (request: NextRequest) => {
   return { ...result, errors };
 };
 
-export const GET = withCronLogging('blog-learn', handleBlogLearn);
+export const GET = withCronLogging('blog-learn', handleBlogLearn, {
+  handlerTimeoutMs: 285_000,
+  sideEffectTimeoutMs: 5_000,
+});

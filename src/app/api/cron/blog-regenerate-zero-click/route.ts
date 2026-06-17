@@ -305,4 +305,7 @@ async function runRegenerator(request: NextRequest) {
   }
 }
 
-export const GET = withCronLogging('blog-regenerate-zero-click', runRegenerator);
+export const GET = withCronLogging('blog-regenerate-zero-click', runRegenerator, {
+  handlerTimeoutMs: 285_000,
+  sideEffectTimeoutMs: 5_000,
+});

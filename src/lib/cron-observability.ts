@@ -14,6 +14,11 @@ type CronHandler = (request: NextRequest) => Promise<CronSummary | Response>;
 const CRON_HANDLER_TIMEOUT_MS = 45_000;
 const CRON_SIDE_EFFECT_TIMEOUT_MS = 3_000;
 
+export interface CronLoggingOptions {
+  handlerTimeoutMs?: number;
+  sideEffectTimeoutMs?: number;
+}
+
 async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
@@ -28,8 +33,10 @@ async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallba
   }
 }
 
-export function withCronLogging(cronName: string, handler: CronHandler) {
+export function withCronLogging(cronName: string, handler: CronHandler, options: CronLoggingOptions = {}) {
   return async (request: NextRequest): Promise<Response> => {
+    const handlerTimeoutMs = options.handlerTimeoutMs ?? CRON_HANDLER_TIMEOUT_MS;
+    const sideEffectTimeoutMs = options.sideEffectTimeoutMs ?? CRON_SIDE_EFFECT_TIMEOUT_MS;
     const startedAt = new Date();
     let status: 'success' | 'partial_failure' | 'error' = 'success';
     let summary: CronSummary = {};
@@ -41,11 +48,11 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
     try {
       const result = await withTimeout<CronSummary | Response>(
         handler(request),
-        CRON_HANDLER_TIMEOUT_MS,
+        handlerTimeoutMs,
         {
           ok: false,
           timed_out: true,
-          timeout_ms: CRON_HANDLER_TIMEOUT_MS,
+          timeout_ms: handlerTimeoutMs,
           errors: [`${cronName} timed out before completion guard`],
         },
       );
@@ -93,7 +100,7 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
               .eq('cron_name', cronName)
               .order('started_at', { ascending: false })
               .limit(1),
-            CRON_SIDE_EFFECT_TIMEOUT_MS,
+            sideEffectTimeoutMs,
             { data: null } as any,
           );
           const prevStatus = (prev?.[0] as { status?: string } | undefined)?.status;
@@ -110,7 +117,7 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
               elapsed_ms: elapsedMs,
               first_errors: errorMessages,
             }).then(() => true),
-            CRON_SIDE_EFFECT_TIMEOUT_MS,
+            sideEffectTimeoutMs,
             false,
           );
         }
@@ -127,7 +134,7 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
             error_messages: errorMessages,
             alerted,
           } as never),
-          CRON_SIDE_EFFECT_TIMEOUT_MS,
+          sideEffectTimeoutMs,
           null as any,
         );
       } catch (dbErr) {

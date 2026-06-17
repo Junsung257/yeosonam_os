@@ -36,4 +36,7 @@ const handleSchedule = async (request: NextRequest) => {
   }
 };
 
-export const GET = withCronLogging('blog-scheduler', handleSchedule);
+export const GET = withCronLogging('blog-scheduler', handleSchedule, {
+  handlerTimeoutMs: 285_000,
+  sideEffectTimeoutMs: 5_000,
+});
