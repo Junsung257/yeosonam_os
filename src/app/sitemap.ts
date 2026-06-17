@@ -9,7 +9,7 @@ const SITEMAP_BLOG_LIMIT = 1000;
 const SITEMAP_DESTINATION_LIMIT = 250;
 
 export const revalidate = 21600;
-export const dynamic = 'force-static';
+export const dynamic = 'force-dynamic';
 
 function safeLastModified(iso: string | null | undefined): Date {
   if (!iso) return new Date();
