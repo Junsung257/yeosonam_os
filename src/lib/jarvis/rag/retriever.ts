@@ -29,6 +29,7 @@ export interface RetrievalQuery {
   sourceTypes?: SourceType[]
   limit?: number
   rerank?: boolean
+  graphExpand?: boolean
 }
 
 export interface RetrievalHit {
@@ -147,11 +148,104 @@ export async function retrieve(q: RetrievalQuery): Promise<RetrievalHit[]> {
     bm25Score: r.bm25_score,
   }))
 
-  const evidenceHits = selectEvidenceHits(q.query, hits, queryLimit)
+  const graphHits = q.graphExpand
+    ? await expandWithGraphLite(hits, {
+        tenantId: q.tenantId ?? null,
+        sourceTypes: q.sourceTypes ?? null,
+        maxHits: Math.max(8, limit * 2),
+      })
+    : []
+  const evidenceHits = selectEvidenceHits(q.query, mergeHits(hits, graphHits), queryLimit)
 
   if (!q.rerank || evidenceHits.length <= limit) return evidenceHits.slice(0, limit)
 
   return rerankWithFlash(q.query, evidenceHits, limit)
+}
+
+function mergeHits(primary: RetrievalHit[], secondary: RetrievalHit[]): RetrievalHit[] {
+  const seen = new Set(primary.map((hit) => hit.id))
+  const merged = [...primary]
+  for (const hit of secondary) {
+    if (seen.has(hit.id)) continue
+    seen.add(hit.id)
+    merged.push(hit)
+  }
+  return merged
+}
+
+async function expandWithGraphLite(
+  hits: RetrievalHit[],
+  options: { tenantId: string | null; sourceTypes: SourceType[] | null; maxHits: number },
+): Promise<RetrievalHit[]> {
+  const seedIds = hits.slice(0, 5).map((hit) => hit.id)
+  if (seedIds.length === 0) return []
+
+  try {
+    const { data: seedLinks, error: seedError } = await supabaseAdmin
+      .from('jarvis_knowledge_entity_links')
+      .select('entity_id')
+      .in('chunk_id', seedIds)
+      .gte('confidence', 0.75)
+      .limit(20)
+    if (seedError || !seedLinks?.length) return []
+
+    const entityIds = [...new Set(seedLinks.map((row: any) => row.entity_id).filter(Boolean))]
+    if (entityIds.length === 0) return []
+
+    const { data: links, error: linkError } = await supabaseAdmin
+      .from('jarvis_knowledge_entity_links')
+      .select('chunk_id, confidence')
+      .in('entity_id', entityIds)
+      .gte('confidence', 0.75)
+      .order('confidence', { ascending: false })
+      .limit(options.maxHits * 3)
+    if (linkError || !links?.length) return []
+
+    const existing = new Set(seedIds)
+    const chunkScores = new Map<string, number>()
+    for (const row of links as Array<{ chunk_id: string; confidence: number }>) {
+      if (!row.chunk_id || existing.has(row.chunk_id)) continue
+      chunkScores.set(row.chunk_id, Math.max(chunkScores.get(row.chunk_id) ?? 0, Number(row.confidence) || 0))
+    }
+    const chunkIds = [...chunkScores.keys()].slice(0, options.maxHits * 2)
+    if (chunkIds.length === 0) return []
+
+    let chunkQuery = supabaseAdmin
+      .from('jarvis_knowledge_chunks')
+      .select('id, tenant_id, source_type, source_id, source_url, source_title, chunk_text, contextual_text, metadata')
+      .in('id', chunkIds)
+      .limit(options.maxHits * 2)
+
+    if (options.tenantId) {
+      chunkQuery = chunkQuery.or(`tenant_id.eq.${options.tenantId},tenant_id.is.null`)
+    } else {
+      chunkQuery = chunkQuery.is('tenant_id', null)
+    }
+    if (options.sourceTypes?.length) chunkQuery = chunkQuery.in('source_type', options.sourceTypes)
+
+    const { data: chunks, error: chunkError } = await chunkQuery
+    if (chunkError || !chunks?.length) return []
+
+    return (chunks as any[]).map((chunk) => {
+      const graphScore = Math.max(0.1, Math.min(0.65, (chunkScores.get(chunk.id) ?? 0.75) * 0.65))
+      return {
+        id: chunk.id,
+        tenantId: chunk.tenant_id,
+        sourceType: chunk.source_type,
+        sourceId: chunk.source_id,
+        sourceUrl: chunk.source_url,
+        sourceTitle: chunk.source_title,
+        chunkText: chunk.chunk_text,
+        contextualText: chunk.contextual_text,
+        metadata: { ...(chunk.metadata ?? {}), graphExpanded: true },
+        score: graphScore,
+        vectorScore: graphScore,
+        bm25Score: 0,
+      }
+    })
+  } catch {
+    return []
+  }
 }
 
 /**

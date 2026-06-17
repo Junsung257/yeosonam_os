@@ -33,6 +33,14 @@ function parseArgs() {
   }
 }
 
+function batch<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = []
+  for (let i = 0; i < items.length; i += size) {
+    batches.push(items.slice(i, i + size))
+  }
+  return batches
+}
+
 async function loadChunks(
   supabase: any,
   options: { limit: number; sourceType: string | null },
@@ -78,6 +86,23 @@ async function main() {
   let entitiesUpserted = 0
   let linksUpserted = 0
   const byType = new Map<string, number>()
+  const now = new Date().toISOString()
+  const entityRows = new Map<string, {
+    tenant_id: string | null
+    entity_type: string
+    canonical_name: string
+    normalized_name: string
+    aliases: string[]
+    metadata: Record<string, unknown>
+    updated_at: string
+  }>()
+  const linkCandidates: Array<{
+    entityKey: string
+    chunk_id: string
+    relation: 'mentions'
+    confidence: number
+    evidence_text: string | null
+  }> = []
 
   for (const chunk of chunks) {
     const entities = extractGraphLiteEntities(chunk)
@@ -86,33 +111,82 @@ async function main() {
       byType.set(entity.entityType, (byType.get(entity.entityType) ?? 0) + 1)
       if (options.dryRun) continue
 
-      const { data: entityRow, error: entityError } = await supabase
-        .from('jarvis_knowledge_entities')
-        .upsert({
+      const normalizedName = normalizeGraphEntityName(entity.canonicalName)
+      const entityKey = `${chunk.tenant_id ?? 'null'}:${entity.entityType}:${normalizedName}`
+      const existing = entityRows.get(entityKey)
+      if (existing) {
+        existing.aliases = [...new Set([...existing.aliases, ...entity.aliases])]
+        existing.metadata = { ...existing.metadata, ...entity.metadata }
+      } else {
+        entityRows.set(entityKey, {
           tenant_id: chunk.tenant_id,
           entity_type: entity.entityType,
           canonical_name: entity.canonicalName,
-          normalized_name: normalizeGraphEntityName(entity.canonicalName),
+          normalized_name: normalizedName,
           aliases: entity.aliases,
           metadata: entity.metadata,
-          updated_at: new Date().toISOString(),
-        }, { onConflict: 'tenant_id,entity_type,normalized_name' })
-        .select('id')
-        .single()
-      if (entityError) throw entityError
-      entitiesUpserted++
+          updated_at: now,
+        })
+      }
 
-      const { error: linkError } = await supabase
+      linkCandidates.push({
+        entityKey,
+        chunk_id: chunk.id,
+        relation: 'mentions',
+        confidence: entity.confidence,
+        evidence_text: entity.evidenceText,
+      })
+    }
+  }
+
+  if (!options.dryRun && entityRows.size > 0) {
+    const entityIdByKey = new Map<string, string>()
+    const rows = [...entityRows.entries()]
+
+    for (const rowsBatch of batch(rows, 200)) {
+      const { data, error } = await supabase
+        .from('jarvis_knowledge_entities')
+        .upsert(rowsBatch.map(([, row]) => row), { onConflict: 'tenant_id,entity_type,normalized_name' })
+        .select('id, tenant_id, entity_type, normalized_name')
+      if (error) throw error
+
+      for (const row of data ?? []) {
+        const key = `${row.tenant_id ?? 'null'}:${row.entity_type}:${row.normalized_name}`
+        entityIdByKey.set(key, row.id)
+      }
+      entitiesUpserted += rowsBatch.length
+    }
+
+    const linkRowsByKey = new Map<string, {
+      entity_id: string
+      chunk_id: string
+      relation: 'mentions'
+      confidence: number
+      evidence_text: string | null
+    }>()
+
+    for (const candidate of linkCandidates) {
+      const entityId = entityIdByKey.get(candidate.entityKey)
+      if (!entityId) continue
+      const linkKey = `${entityId}:${candidate.chunk_id}:${candidate.relation}`
+      const existing = linkRowsByKey.get(linkKey)
+      if (!existing || candidate.confidence > existing.confidence) {
+        linkRowsByKey.set(linkKey, {
+          entity_id: entityId,
+          chunk_id: candidate.chunk_id,
+          relation: candidate.relation,
+          confidence: candidate.confidence,
+          evidence_text: candidate.evidence_text,
+        })
+      }
+    }
+
+    for (const linksBatch of batch([...linkRowsByKey.values()], 500)) {
+      const { error } = await supabase
         .from('jarvis_knowledge_entity_links')
-        .upsert({
-          entity_id: entityRow.id,
-          chunk_id: chunk.id,
-          relation: 'mentions',
-          confidence: entity.confidence,
-          evidence_text: entity.evidenceText,
-        }, { onConflict: 'entity_id,chunk_id,relation' })
-      if (linkError) throw linkError
-      linksUpserted++
+        .upsert(linksBatch, { onConflict: 'entity_id,chunk_id,relation' })
+      if (error) throw error
+      linksUpserted += linksBatch.length
     }
   }
 

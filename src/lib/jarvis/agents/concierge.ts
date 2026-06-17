@@ -154,6 +154,7 @@ function buildExecutor(ctx: JarvisContext) {
           sourceTypes: sourceTypes,
           limit: Math.min(args.limit ?? 5, 10),
           rerank: true,
+          graphExpand: true,
         })
         // LLM 이 소비하기 쉽게 slim 형태로 — package 는 source_id 추가 (recommend 도구로 chain 가능)
         const retrievalConfidence = assessRetrievalConfidence(args.query, hits)

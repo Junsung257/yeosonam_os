@@ -19,6 +19,7 @@ interface Hit {
   source_url: string | null;
   chunk_text: string;
   contextual_text: string;
+  confidence: number;
   rrf_score: number;
   vector_score: number;
   bm25_score: number;
@@ -121,7 +122,7 @@ export default function JarvisRagSearchPage() {
                   {h.source_title}
                 </h3>
                 <span className="text-admin-2xs text-admin-muted-2 admin-num font-mono">
-                  RRF {h.rrf_score?.toFixed(3)} · vec {h.vector_score?.toFixed(2)} · bm25 {h.bm25_score?.toFixed(2)}
+                  confidence {Math.round((h.confidence ?? 0) * 100)}% · RRF {h.rrf_score?.toFixed(3)} · vec {h.vector_score?.toFixed(2)} · bm25 {h.bm25_score?.toFixed(2)}
                 </span>
               </div>
               <p className="text-admin-xs text-admin-text-2 leading-relaxed line-clamp-3 break-keep">

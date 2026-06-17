@@ -73,7 +73,12 @@ function parseArgs() {
     json: args.includes('--json'),
     strict: args.includes('--strict'),
     requireDb: args.includes('--require-db'),
+    retries: Math.max(0, Number(args.find((arg) => arg.startsWith('--retries='))?.slice('--retries='.length) ?? 2)),
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
 function hasLiveEnv(): boolean {
@@ -88,13 +93,19 @@ async function evaluateCase(
   testCase: LiveRagCase,
   retrieve: (query: { query: string; sourceTypes: SourceType[]; limit: number; rerank: boolean }) => Promise<RetrievalHit[]>,
   assessRetrievalConfidence: (query: string, hits: RetrievalHit[]) => RetrievalConfidenceDecision,
+  retries: number,
 ): Promise<LiveRagCaseResult> {
-  const hits = await retrieve({
-    query: testCase.query,
-    sourceTypes: testCase.sourceTypes,
-    limit: 3,
-    rerank: true,
-  })
+  let hits: RetrievalHit[] = []
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    hits = await retrieve({
+      query: testCase.query,
+      sourceTypes: testCase.sourceTypes,
+      limit: 3,
+      rerank: true,
+    })
+    if (hits.length > 0) break
+    if (attempt < retries) await sleep(750 * (attempt + 1))
+  }
   const decision = assessRetrievalConfidence(testCase.query, hits)
   const top = hits[0] ?? null
   const topSourceType = top?.sourceType ?? null
@@ -141,11 +152,16 @@ async function main() {
     import('@/lib/jarvis/rag/retriever'),
     import('@/lib/jarvis/rag/retrieval-confidence'),
   ])
-  const results = await Promise.all(CASES.map((testCase) => evaluateCase(
-    testCase,
-    retrieve,
-    assessRetrievalConfidence,
-  )))
+  const results: LiveRagCaseResult[] = []
+  for (const testCase of CASES) {
+    results.push(await evaluateCase(
+      testCase,
+      retrieve,
+      assessRetrievalConfidence,
+      options.retries,
+    ))
+    await sleep(250)
+  }
   const passed = results.filter((result) => result.passed).length
   const passRate = results.length === 0 ? 1 : passed / results.length
   const ok = options.strict ? passRate === 1 : passRate >= 0.9

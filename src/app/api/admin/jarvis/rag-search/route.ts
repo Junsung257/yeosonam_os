@@ -40,6 +40,7 @@ const getHandler = async (req: NextRequest): Promise<NextResponse> => {
         source_url: h.sourceUrl,
         chunk_text: h.chunkText,
         contextual_text: h.contextualText,
+        confidence: Math.max(0, Math.min(1, Number(h.score) || 0)),
         rrf_score: h.score,
         vector_score: h.vectorScore,
         bm25_score: h.bm25Score,

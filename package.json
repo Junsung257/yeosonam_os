@@ -75,6 +75,7 @@
     "audit:jarvis-rag": "npx tsx scripts/audit-jarvis-rag.ts",
     "audit:jarvis-rag:ci": "npx tsx scripts/audit-jarvis-rag.ts --strict --require-db",
     "audit:jarvis-rag:vercel": "node scripts/run-with-vercel-env.mjs --environment=production -- node node_modules/tsx/dist/cli.mjs scripts/audit-jarvis-rag.ts --json --require-db",
+    "check:jarvis-rag-db-health": "npx tsx scripts/check-jarvis-rag-db-health.ts",
     "audit:jarvis-long-run": "node scripts/run-with-vercel-env.mjs --environment=production -- node node_modules/tsx/dist/cli.mjs scripts/jarvis-long-run-scenarios.ts",
     "verify:jarvis-readiness": "npx tsx scripts/verify-jarvis-readiness.ts",
     "verify:jarvis-readiness:ci": "npx tsx scripts/verify-jarvis-readiness.ts --strict --require-db",
