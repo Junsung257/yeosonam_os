@@ -137,6 +137,18 @@ type AbortableQuery<T> = {
 
 type BlogDetailQueryResult<T> = T & { __blogQueryUnavailable?: true };
 
+function isBlogDetailQueryUnavailable(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
+  if (maybeResult.__blogQueryUnavailable) return true;
+  const error = maybeResult.error;
+  if (!error) return false;
+  const message = typeof error === 'object'
+    ? JSON.stringify(error)
+    : String(error);
+  return /abort|timeout|timed out|connection timeout/i.test(message);
+}
+
 async function runBlogDetailQuery<T>(
   label: string,
   query: AbortableQuery<T>,
@@ -359,7 +371,7 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   );
   const { data, error } = postResult;
 
-  if ((postResult as { __blogQueryUnavailable?: true }).__blogQueryUnavailable) {
+  if (isBlogDetailQueryUnavailable(postResult)) {
     throw new Error('BLOG_DATABASE_UNAVAILABLE');
   }
 

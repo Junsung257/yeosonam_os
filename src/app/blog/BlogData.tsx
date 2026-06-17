@@ -105,6 +105,18 @@ type AbortableQuery<T> = {
 
 type BlogQueryResult<T> = T & { __blogQueryUnavailable?: true };
 
+function isBlogQueryUnavailable(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
+  if (maybeResult.__blogQueryUnavailable) return true;
+  const error = maybeResult.error;
+  if (!error) return false;
+  const message = typeof error === 'object'
+    ? JSON.stringify(error)
+    : String(error);
+  return /abort|timeout|timed out|connection timeout/i.test(message);
+}
+
 async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: T, timeoutMs = 6000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -184,7 +196,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     runBlogQuery('angleCounts', angleQuery, { data: [] }),
   ]);
 
-  const unavailable = Boolean((listRes as { __blogQueryUnavailable?: true }).__blogQueryUnavailable);
+  const unavailable = isBlogQueryUnavailable(listRes);
   const posts = (listRes.data as unknown as BlogPost[]) || [];
   const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
     const angle = row.angle_type?.trim();

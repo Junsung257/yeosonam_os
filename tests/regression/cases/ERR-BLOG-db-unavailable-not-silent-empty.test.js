@@ -41,6 +41,8 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
 
   assert.match(source, /unavailable: boolean/);
   assert.match(source, /__blogQueryUnavailable/);
+  assert.match(source, /isBlogQueryUnavailable/);
+  assert.match(source, /connection timeout/i);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
   assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
@@ -50,8 +52,8 @@ test('/blog detail does not convert DB timeouts into notFound', () => {
   const source = read('src', 'app', 'blog', '[slug]', 'page.tsx');
 
   assert.match(source, /BLOG_DATABASE_UNAVAILABLE/);
+  assert.match(source, /isBlogDetailQueryUnavailable/);
   assert.match(source, /const postResult = await runBlogDetailQuery/);
-  assert.match(source, /postResult as \{ __blogQueryUnavailable\?: true \}/);
   assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });
 
@@ -60,6 +62,7 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
 
   assert.match(source, /runApiBlogQuery/);
   assert.match(source, /abortSignal\(controller\.signal\)/);
+  assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
   assert.match(source, /status: 503/);
 });

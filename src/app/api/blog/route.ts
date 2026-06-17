@@ -15,6 +15,15 @@ type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
 };
 
+function isAbortLikeError(error: unknown): boolean {
+  if (!error) return false;
+  if (error instanceof Error) {
+    return error.name === 'AbortError' || /abort|timeout|timed out|connection timeout/i.test(error.message);
+  }
+  const message = typeof error === 'object' ? JSON.stringify(error) : String(error);
+  return /abort|timeout|timed out|connection timeout/i.test(message);
+}
+
 async function runApiBlogQuery<T>(label: string, query: AbortableQuery<T>, timeoutMs = 8000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -141,7 +150,7 @@ export async function GET(request: NextRequest) {
       headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120' },
     });
   } catch (err) {
-    if (err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'))) {
+    if (isAbortLikeError(err)) {
       return apiResponse(
         { error: 'Blog database request timed out' },
         { status: 503, headers: { 'Cache-Control': 'no-store' } },
