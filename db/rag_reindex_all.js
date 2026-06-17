@@ -32,14 +32,54 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY)
 
 function parseArgs() {
   const args = process.argv.slice(2)
-  const opt = { source: 'all', tenant: null, dryRun: false, limit: null }
-  for (const a of args) {
+  const opt = { source: 'all', tenant: null, dryRun: false, skipLlm: false, limit: null, sourceIds: null }
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i]
     if (a.startsWith('--source=')) opt.source = a.slice(9)
     else if (a.startsWith('--tenant=')) opt.tenant = a.slice(9)
     else if (a === '--dry-run') opt.dryRun = true
+    else if (a === '--skip-llm') opt.skipLlm = true
     else if (a.startsWith('--limit=')) opt.limit = parseInt(a.slice(8), 10)
+    else if (a.startsWith('--source-id=')) addSourceIds(opt, a.slice(12))
+    else if (a.startsWith('--source-ids=')) addSourceIds(opt, a.slice(13))
+    else if (a.startsWith('--ids=')) addSourceIds(opt, a.slice(6))
+    else if (a === '--source-id' || a === '--source-ids' || a === '--ids') {
+      addSourceIds(opt, args[i + 1])
+      i += 1
+    }
+  }
+  if (!opt.sourceIds && process.env.JARVIS_RAG_SOURCE_IDS) {
+    addSourceIds(opt, process.env.JARVIS_RAG_SOURCE_IDS)
   }
   return opt
+}
+
+function addSourceIds(opt, value) {
+  const ids = parseIdList(value)
+  if (!ids.length) return
+  opt.sourceIds = [...(opt.sourceIds || []), ...ids]
+}
+
+function parseIdList(value) {
+  return String(value || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+function applySourceIdFilter(query, opt) {
+  if (!opt.sourceIds || opt.sourceIds.length === 0) return query
+  if (opt.sourceIds.length === 1) return query.eq('id', opt.sourceIds[0])
+  return query.in('id', opt.sourceIds)
+}
+
+function applyChunkIdentityFilter(query, doc) {
+  query = query
+    .eq('source_type', doc.sourceType)
+    .eq('source_id', doc.sourceId)
+  return doc.tenantId
+    ? query.eq('tenant_id', doc.tenantId)
+    : query.is('tenant_id', null)
 }
 
 // ─── 소스별 어댑터 ────────────────────────────────────────────────────
@@ -49,6 +89,7 @@ const adapters = {
       .select('id, tenant_id, title, destination, product_summary, highlights_md, itinerary_data, created_at')
       .order('updated_at', { ascending: false })
     if (opt.tenant) q = q.eq('tenant_id', opt.tenant)
+    q = applySourceIdFilter(q, opt)
     if (opt.limit) q = q.limit(opt.limit)
     const { data, error } = await q
     if (error) throw error
@@ -76,6 +117,7 @@ const adapters = {
       .not('slug', 'is', null)
       .order('created_at', { ascending: false })
     if (opt.tenant) q = q.eq('tenant_id', opt.tenant)
+    q = applySourceIdFilter(q, opt)
     if (opt.limit) q = q.limit(opt.limit)
     const { data, error } = await q
     if (error) throw error
@@ -99,6 +141,7 @@ const adapters = {
     let q = sb.from('attractions')
       .select('id, name, country, region, long_desc, short_desc, created_at')
       .or('long_desc.not.is.null,short_desc.not.is.null')
+    q = applySourceIdFilter(q, opt)
     if (opt.limit) q = q.limit(opt.limit)
     const { data, error } = await q
     if (error) throw error
@@ -129,12 +172,30 @@ function flattenItinerary(itin) {
 }
 
 // ─── 메인 파이프라인 ──────────────────────────────────────────────────
+async function deleteStaleChunks(doc, keepChunkCount, opt) {
+  if (opt.dryRun) return 0
+  let query = sb
+    .from('jarvis_knowledge_chunks')
+    .delete()
+  query = applyChunkIdentityFilter(query, doc)
+  const { data, error } = await query
+    .gte('chunk_index', keepChunkCount)
+    .select('id')
+
+  if (error) {
+    console.error(`  - stale chunk delete failed ${doc.sourceType}/${doc.sourceId}:`, error.message)
+    return 0
+  }
+  return data?.length ?? 0
+}
+
 async function indexDocument(doc, opt) {
   const chunks = chunkText(doc.body, 1200)
   if (chunks.length === 0) return { inserted: 0, skipped: 1 }
 
   let inserted = 0
   let skipped = 0
+  let deleted = 0
 
   for (let idx = 0; idx < chunks.length; idx++) {
     const rawChunk = chunks[idx]
@@ -142,11 +203,11 @@ async function indexDocument(doc, opt) {
 
     // dedupe — 같은 source+chunk_index+hash 이미 있으면 스킵
     if (!opt.dryRun) {
-      const { data: existing } = await sb
+      let query = sb
         .from('jarvis_knowledge_chunks')
         .select('id, content_hash')
-        .eq('source_type', doc.sourceType)
-        .eq('source_id', doc.sourceId)
+      query = applyChunkIdentityFilter(query, doc)
+      const { data: existing } = await query
         .eq('chunk_index', idx)
         .maybeSingle()
       if (existing && existing.content_hash === contentHash) {
@@ -155,22 +216,24 @@ async function indexDocument(doc, opt) {
       }
     }
 
-    const contextualText = await contextualizeChunk({
-      docTitle: doc.sourceTitle,
-      docSummary: doc.docSummary,
-      chunk: rawChunk,
-      apiKey: GOOGLE_AI_API_KEY,
-    })
-
-    const embedding = await embedDocument(contextualText, GOOGLE_AI_API_KEY)
-    if (!embedding) {
-      console.warn(`  - embedding 실패: ${doc.sourceType}/${doc.sourceId}#${idx}`)
-      continue
-    }
+    const contextualText = opt.skipLlm
+      ? rawChunk
+      : await contextualizeChunk({
+          docTitle: doc.sourceTitle,
+          docSummary: doc.docSummary,
+          chunk: rawChunk,
+          apiKey: GOOGLE_AI_API_KEY,
+        })
 
     if (opt.dryRun) {
       console.log(`  [dry] ${doc.sourceType}/${doc.sourceId}#${idx} (${contextualText.length} chars)`)
       inserted++
+      continue
+    }
+
+    const embedding = await embedDocument(contextualText, GOOGLE_AI_API_KEY)
+    if (!embedding) {
+      console.warn(`  - embedding 실패: ${doc.sourceType}/${doc.sourceId}#${idx}`)
       continue
     }
 
@@ -202,7 +265,9 @@ async function indexDocument(doc, opt) {
     await new Promise(r => setTimeout(r, 300))
   }
 
-  return { inserted, skipped }
+  deleted = await deleteStaleChunks(doc, chunks.length, opt)
+
+  return { inserted, skipped, deleted }
 }
 
 async function main() {
@@ -216,6 +281,7 @@ async function main() {
 
   let totalInserted = 0
   let totalSkipped = 0
+  let totalDeleted = 0
   let totalDocs = 0
 
   for (const source of sources) {
@@ -231,17 +297,18 @@ async function main() {
     totalDocs += docs.length
 
     for (const doc of docs) {
-      const { inserted, skipped } = await indexDocument(doc, opt)
+      const { inserted, skipped, deleted } = await indexDocument(doc, opt)
       totalInserted += inserted
       totalSkipped += skipped
-      if (inserted > 0) {
-        console.log(`  ✓ ${doc.sourceType}/${doc.sourceId} — +${inserted} chunks (${skipped} skipped)`)
+      totalDeleted += deleted || 0
+      if (inserted > 0 || deleted > 0) {
+        console.log(`  ✓ ${doc.sourceType}/${doc.sourceId} — +${inserted} chunks, -${deleted || 0} stale (${skipped} skipped)`)
       }
     }
   }
 
   console.log('\n─── 완료 ───')
-  console.log(`문서: ${totalDocs} · 청크 삽입: ${totalInserted} · 스킵: ${totalSkipped}`)
+  console.log(`문서: ${totalDocs} · 청크 삽입: ${totalInserted} · stale 제거: ${totalDeleted} · 스킵: ${totalSkipped}`)
 }
 
 main().catch(err => {

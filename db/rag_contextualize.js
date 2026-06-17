@@ -11,6 +11,9 @@
 
 const fetch = globalThis.fetch
 const FLASH_MODEL = 'gemini-2.5-flash'
+const MIN_TRAILING_CHUNK_CHARS = 80
+const MIN_CONTEXTUAL_PREFIX_CHARS = 80
+const RAG_FETCH_TIMEOUT_MS = 30000
 
 const PROMPT = `문서 내에서 아래 청크가 어떤 맥락·역할을 하는지 한국어 한 문장으로 설명.
 검색 최적화 관점 — 고객이 질문했을 때 이 청크가 매칭되려면 어떤 문맥 정보가 필요한지 명시.
@@ -31,23 +34,46 @@ async function contextualizeChunk({ docTitle, docSummary, chunk, apiKey }) {
   }
 
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     })
     if (!res.ok) {
       console.warn(`[rag-ctx] HTTP ${res.status} — 원본 청크 사용`)
-      return chunk
+      return buildFallbackContext({ docTitle, docSummary, chunk })
     }
     const json = await res.json()
     const ctx = json.candidates?.[0]?.content?.parts?.[0]?.text?.trim()
-    if (!ctx) return chunk
+    if (!ctx || ctx.length < MIN_CONTEXTUAL_PREFIX_CHARS) {
+      return buildFallbackContext({ docTitle, docSummary, chunk })
+    }
     return `${ctx}\n\n${chunk}`
   } catch (err) {
     console.warn('[rag-ctx] 실패 — 원본 청크 사용:', err.message)
-    return chunk
+    return buildFallbackContext({ docTitle, docSummary, chunk })
   }
+}
+
+async function fetchWithTimeout(url, options) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), RAG_FETCH_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...options, signal: controller.signal })
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function buildFallbackContext({ docTitle, docSummary, chunk }) {
+  const title = (docTitle || 'Untitled source').trim()
+  const summary = (docSummary || '').trim()
+  const prefix = [
+    `Source: ${title}.`,
+    summary ? `Summary: ${summary.slice(0, 260)}.` : '',
+    'Use this chunk as factual retrieval evidence for customer travel questions.',
+  ].filter(Boolean).join(' ')
+  return `${prefix}\n\n${chunk}`
 }
 
 /**
@@ -73,12 +99,20 @@ function chunkText(text, maxChars = 1200) {
   if (current.trim().length > 0) chunks.push(current.trim())
 
   // 극단 긴 문단은 강제 분할
-  return chunks.flatMap(c => {
+  const splitChunks = chunks.flatMap(c => {
     if (c.length <= maxChars * 1.5) return [c]
     const out = []
     for (let i = 0; i < c.length; i += maxChars) out.push(c.slice(i, i + maxChars))
     return out
   })
+
+  const last = splitChunks[splitChunks.length - 1]
+  if (splitChunks.length > 1 && last && last.trim().length < MIN_TRAILING_CHUNK_CHARS) {
+    splitChunks[splitChunks.length - 2] = `${splitChunks[splitChunks.length - 2]}\n\n${last}`.trim()
+    splitChunks.pop()
+  }
+
+  return splitChunks
 }
 
 /**
@@ -88,7 +122,7 @@ function chunkText(text, maxChars = 1200) {
 async function embedDocument(text, apiKey) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${apiKey}`
   try {
-    const res = await fetch(url, {
+    const res = await fetchWithTimeout(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
