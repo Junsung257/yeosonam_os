@@ -104,8 +104,9 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   posts: BlogPost[];
   total: number;
   destinations: DestinationStat[];
+  angleCounts: Record<string, number>;
 }> {
-  if (!isSupabaseConfigured) return { featured: [], posts: [], total: 0, destinations: [] };
+  if (!isSupabaseConfigured) return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {} };
 
   const offset = (page - 1) * PER_PAGE;
 
@@ -124,7 +125,18 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
   if (filter.angle) listQuery = listQuery.eq('angle_type', filter.angle);
   if (filter.destination) listQuery = listQuery.eq('destination', filter.destination);
 
-  const [destRes, featuredRes, listRes] = await Promise.all([
+  let angleQuery = supabaseAdmin
+    .from('content_creatives')
+    .select('angle_type')
+    .eq('status', 'published')
+    .eq('channel', 'naver_blog')
+    .not('slug', 'is', null)
+    .not('angle_type', 'is', null)
+    .limit(2000);
+
+  if (filter.destination) angleQuery = angleQuery.eq('destination', filter.destination);
+
+  const [destRes, featuredRes, listRes, angleRes] = await Promise.all([
     supabaseAdmin
       .from('active_destinations')
       .select('destination, package_count, country')
@@ -143,9 +155,15 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
       .order('published_at', { ascending: false })
       .limit(3),
     listQuery,
+    angleQuery,
   ]);
 
   const posts = (listRes.data as unknown as BlogPost[]) || [];
+  const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
+    const angle = row.angle_type?.trim();
+    if (angle) acc[angle] = (acc[angle] ?? 0) + 1;
+    return acc;
+  }, {});
   const featuredBase = ((featuredRes.data as unknown as BlogPost[]) || []).filter((post) => Boolean(getDisplayImageUrl(post)));
   const featuredIds = new Set(featuredBase.map((f) => f.id));
   const featuredFallback = posts
@@ -161,6 +179,7 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     posts: filteredPosts,
     total: listRes.count ?? 0,
     destinations: (destRes.data as unknown as DestinationStat[]) || [],
+    angleCounts,
   };
 }
 
@@ -374,8 +393,9 @@ export default async function BlogData({ searchParams }: Props) {
   const page = Math.max(1, parseInt(params.page || '1'));
   const destination = params.destination || undefined;
   const angle = params.angle || undefined;
-  const { featured, posts, total, destinations } = await getBlogData(page, { destination, angle });
+  const { featured, posts, total, destinations, angleCounts } = await getBlogData(page, { destination, angle });
   const totalPages = Math.ceil(total / PER_PAGE);
+  const visibleAngleChips = ANGLE_CHIPS.filter(c => (angleCounts[c.v] ?? 0) > 0 || c.v === angle);
 
   const buildHref = (override: Partial<{ page: number; destination: string | null; angle: string }>) => {
     const next = new URLSearchParams();
@@ -465,7 +485,7 @@ export default async function BlogData({ searchParams }: Props) {
               <Link href="/blog" className={`${chipBase} ${!destination && !angle ? chipActive : chipIdle}`}>
                 전체
               </Link>
-              {ANGLE_CHIPS.map(c => (
+              {visibleAngleChips.map(c => (
                 <Link
                   key={c.v}
                   href={buildHref({ angle: c.v, page: 1 })}
