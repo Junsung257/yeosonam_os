@@ -199,6 +199,49 @@ Post-fix verification:
 - `npm run verify:jarvis-readiness -- --json`: local default env WARN score `93/100`; with Vercel production env loaded, WARN score `100/100`.
 - Vercel production env live RAG audit: PASS for access, score `97/100`, status `watch`.
 
+## Long-Run Customer Scenario Update (2026-06-17)
+
+Night run status:
+
+- Started: `2026-06-17 00:21:49 KST`
+- Last heartbeat: `2026-06-17 05:15:16 KST`
+- Planned duration: `300` minutes
+- Actual recorded duration: `293.3` minutes
+- Completion marker: missing; the background process was no longer running when checked. Treat this as a near-complete long run rather than a cleanly completed run.
+- Log files:
+  - `logs/jarvis-long-run/2026-06-16T15-21-58-394Z.jsonl`
+  - `logs/jarvis-long-run/2026-06-16T15-21-58-394Z.summary.json`
+  - `logs/jarvis-long-run/background-20260617-002149.err.log`
+
+Observed totals:
+
+- Iterations: `134`
+- Customer scenario runs: `1,072`
+- Passed: `767`
+- Failed: `305`
+- Retrieval-empty failures: `305`
+- Prompt-injection blocks: `67`
+- Approval-required detections: `169`
+- Customer inquiry deterministic readiness stayed `100/100` throughout.
+- Live RAG quality stayed `97/100 watch`.
+
+Important findings:
+
+1. `jarvis_hybrid_search` is broken in production for the current call path. Every hybrid probe returned `operator does not exist: extensions.vector <=> extensions.vector`. This means live RAG table access works, but the actual hybrid vector RPC needs a DB function/operator fix before Jarvis can rely on it for production-quality retrieval.
+2. Fallback DB text retrieval worked, but it over-retrieved the same blog-like results for unrelated or nonsensical queries. This can make Jarvis cite irrelevant evidence when hybrid search is unavailable.
+3. Booking/payment/escalation operational questions repeatedly had no supporting RAG/policy retrieval hits: booking status, booking date change, deposit check, complaint, Kakao handoff, refund execution, payment cancellation, privacy deletion, and passport-change scenarios were the dominant failures.
+4. Risk controls were partially strong: refund execution/payment cancellation/privacy deletion were consistently critical or approval-gated; booking date change was high-risk and approval-gated.
+5. Passport-change was under-classified in the long-run input set as `medium` instead of expected high-risk behavior. This should be tightened in risk scoring and regression fixtures.
+6. Prompt-injection handling blocked direct "ignore previous instructions/system prompt/RLS bypass" style inputs, but one approval-bypass style input still fell through to retrieval while being marked critical. It should be blocked earlier or explicitly routed to a refusal/escalation response.
+
+Immediate tickets from long run:
+
+- P0: Fix production `jarvis_hybrid_search` vector operator/type mismatch.
+- P0: Add or index policy/ops knowledge for booking status, deposit confirmation, refund/payment execution handoff, Kakao handoff, privacy deletion, and passport/name corrections.
+- P0: Make customer-facing high-risk requests produce a safe answer/escalation even when retrieval returns no hits.
+- P1: Tighten passport/name correction risk classification to high risk in all Korean variants.
+- P1: Replace broad fallback text retrieval with safer no-answer behavior when query confidence is low.
+
 ## Final Verdict
 
 Jarvis is substantially implemented as an internal/admin copilot and customer inquiry assistant skeleton. The strongest parts are routing, risk classification, guest read-only guardrails, readiness tests, and V2 streaming structure. Vercel has the real Supabase/LLM keys, and live RAG data is reachable with a 97/100 audit score. The biggest remaining gap is live operational proof: scripted customer-answer scenarios, external channel delivery, and authenticated admin E2E. Treat it as "code-ready, RAG-reachable, ops-partial" until the P0 gates pass.
