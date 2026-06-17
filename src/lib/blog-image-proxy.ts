@@ -3,7 +3,7 @@ const PROXYABLE_BLOG_IMAGE_HOSTS = new Set([
 ]);
 
 export const BLOG_IMAGE_PROXY_PATH = '/api/blog/image';
-export const DEFAULT_BLOG_IMAGE_PROXY_WIDTH = 960;
+const DEFAULT_BLOG_IMAGE_PROXY_WIDTH = 960;
 
 function trimUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;

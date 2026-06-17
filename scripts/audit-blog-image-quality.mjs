@@ -104,11 +104,9 @@ function titleTokens(title) {
 }
 
 async function fetchText(path) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(`${baseUrl}${path}`, {
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         'user-agent': 'yeosonam-blog-image-audit/1.0',
         accept: 'text/html,application/xhtml+xml',
@@ -117,12 +115,10 @@ async function fetchText(path) {
     if (!res.ok) throw new Error(`${path} returned ${res.status}`);
     return res.text();
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
       throw new Error(`${path} timed out after ${timeoutMs}ms`);
     }
     throw error;
-  } finally {
-    clearTimeout(timer);
   }
 }
 
@@ -152,11 +148,21 @@ async function probeImageUrl(url) {
 
 async function collectBlogLinks() {
   const links = new Set();
+  const errors = [];
   let page = 1;
 
   while (page <= 20) {
     const path = page === 1 ? '/blog' : `/blog?page=${page}`;
-    const html = await fetchText(path);
+    let html = '';
+    try {
+      html = await fetchText(path);
+    } catch (error) {
+      errors.push({
+        path,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      break;
+    }
     const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
     let before = links.size;
     for (const match of matches) {
@@ -165,14 +171,20 @@ async function collectBlogLinks() {
       if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) continue;
       links.add(href);
     }
-    if (limit > 0 && links.size >= limit) return [...links].slice(0, limit);
+    if (limit > 0 && links.size >= limit) {
+      const limited = [...links].slice(0, limit);
+      limited.collectionErrors = errors;
+      return limited;
+    }
     if (links.size === before && page > 1) break;
     if (!html.includes(`page=${page + 1}`) && !html.includes(`>${page + 1}<`)) break;
     page += 1;
   }
 
   const result = [...links];
-  return limit > 0 ? result.slice(0, limit) : result;
+  const limited = limit > 0 ? result.slice(0, limit) : result;
+  limited.collectionErrors = errors;
+  return limited;
 }
 
 function summarize(rows) {
@@ -331,29 +343,41 @@ async function main() {
   if (!baseUrl) throw new Error('--base is required');
 
   const links = await collectBlogLinks();
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 1600 } });
+  const collectionErrors = links.collectionErrors || [];
   const rows = [];
   let cursor = 0;
 
-  async function worker() {
-    const page = await context.newPage();
-    while (cursor < links.length) {
-      const path = links[cursor];
-      cursor += 1;
-      try {
-        const row = await auditPageWithRetry(page, path);
-        rows.push(judge(row));
-      } catch (error) {
-        rows.push({ path, error: error instanceof Error ? error.message : String(error), failed: true });
-      }
-    }
-    await page.close();
-  }
+  if (links.length > 0) {
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ viewport: { width: 1280, height: 1600 } });
 
-  await Promise.all(Array.from({ length: Math.min(concurrency, links.length) }, () => worker()));
-  await context.close();
-  await browser.close();
+    async function worker() {
+      const page = await context.newPage();
+      while (cursor < links.length) {
+        const path = links[cursor];
+        cursor += 1;
+        try {
+          const row = await auditPageWithRetry(page, path);
+          rows.push(judge(row));
+        } catch (error) {
+          rows.push({ path, error: error instanceof Error ? error.message : String(error), failed: true });
+        }
+      }
+      await page.close();
+    }
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, links.length) }, () => worker()));
+    await context.close();
+    await browser.close();
+  }
+  for (const issue of collectionErrors) {
+    rows.push({
+      path: issue.path,
+      error: issue.error,
+      failed: true,
+      collectionError: true,
+    });
+  }
 
   const summary = summarize(rows);
   const payload = {

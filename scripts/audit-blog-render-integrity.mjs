@@ -38,13 +38,11 @@ if (hardTimeoutMs > 0) {
 }
 
 async function fetchText(url) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   let response;
   try {
     response = await fetch(url, {
       cache: 'no-store',
-      signal: controller.signal,
+      signal: AbortSignal.timeout(timeoutMs),
       headers: {
         'user-agent': 'yeosonam-blog-render-audit/1.0',
         accept: 'text/html,application/xhtml+xml',
@@ -53,12 +51,10 @@ async function fetchText(url) {
       },
     });
   } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
       throw new Error(`timeout ${timeoutMs}ms`);
     }
     throw error;
-  } finally {
-    clearTimeout(timeout);
   }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
@@ -77,13 +73,18 @@ function absolutize(path) {
 
 async function collectBlogLinks() {
   const links = new Set();
+  const errors = [];
   logProgress(`Collecting blog links from ${baseUrl} (pages=${maxPages}, limit=${limit || 'all'})`);
   for (let page = 1; page <= maxPages; page += 1) {
     const url = page === 1 ? `${baseUrl}/blog` : `${baseUrl}/blog?page=${page}`;
     let html = '';
     try {
       html = await fetchText(url);
-    } catch {
+    } catch (error) {
+      errors.push({
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      });
       break;
     }
     const $ = cheerio.load(html);
@@ -93,11 +94,17 @@ async function collectBlogLinks() {
       if (!href || /\/blog\/(angle|destination)\//.test(href)) return;
       links.add(href.split('#')[0]);
     });
-    if (limit > 0 && links.size >= limit) return [...links].slice(0, limit);
+    if (limit > 0 && links.size >= limit) {
+      const limited = [...links].slice(0, limit);
+      limited.collectionErrors = errors;
+      return limited;
+    }
     if (page > 1 && links.size === before) break;
   }
   const all = [...links];
-  return limit > 0 ? all.slice(0, limit) : all;
+  const limited = limit > 0 ? all.slice(0, limit) : all;
+  limited.collectionErrors = errors;
+  return limited;
 }
 
 function count(text, pattern) {
@@ -256,6 +263,7 @@ function summarize(rows) {
 
 async function main() {
   const links = await collectBlogLinks();
+  const collectionErrors = links.collectionErrors || [];
   if (links.length === 0) {
     logProgress(`No blog links found. Try --base=http://localhost:3001 after starting the app, or pass --limit for a smaller remote audit.`);
   } else {
@@ -273,12 +281,20 @@ async function main() {
       };
     }
   });
-  if (browserFallback && rows.some((row) => row.failed || row.error)) {
+  for (const issue of collectionErrors) {
+    rows.push({
+      path: issue.url,
+      error: issue.error,
+      failed: true,
+      collectionError: true,
+    });
+  }
+  if (browserFallback && rows.some((row) => !row.collectionError && (row.failed || row.error))) {
     const { chromium } = await import('playwright');
     const browser = await chromium.launch({ headless: true });
     try {
       for (let index = 0; index < rows.length; index += 1) {
-        if (!rows[index].failed && !rows[index].error) continue;
+        if (rows[index].collectionError || (!rows[index].failed && !rows[index].error)) continue;
         try {
           rows[index] = await inspectArticleInBrowser(browser, rows[index].path);
         } catch (error) {
@@ -300,7 +316,7 @@ async function main() {
   };
   if (json) {
     console.log(JSON.stringify(output, null, 2));
-    if (strict && (summary.failed > 0 || summary.errors > 0)) process.exitCode = 1;
+    if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
     return;
   }
   console.log(`Blog render integrity: ${summary.score}/100 (${summary.passed}/${summary.fetched} passed, errors=${summary.errors})`);

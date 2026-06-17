@@ -61,7 +61,6 @@ interface BlogPost {
   seo_title: string | null;
   seo_description: string | null;
   og_image_url: string | null;
-  blog_html: string | null;
   angle_type: string;
   published_at: string;
   product_id: string | null;
@@ -92,17 +91,9 @@ function isGenericBlogImageUrl(url: string | null | undefined): boolean {
   }
 }
 
-function extractFirstBlogImageUrl(source: string | null | undefined): string | null {
-  if (!source) return null;
-  const markdownImage = source.match(/!\[[^\]]*]\((https?:\/\/[^)\s]+|\/[^)\s]+)\)/i)?.[1];
-  if (markdownImage) return markdownImage;
-  const htmlImage = source.match(/<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/i)?.[1];
-  return htmlImage || null;
-}
-
 function getDisplayImageUrl(post: BlogPost): string | null {
   if (!isGenericBlogImageUrl(post.og_image_url)) return toBlogImageDisplaySrc(post.og_image_url);
-  return toBlogImageDisplaySrc(extractFirstBlogImageUrl(post.blog_html));
+  return null;
 }
 
 type AbortableQuery<T> = {
@@ -160,7 +151,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   let listQuery = supabaseAdmin
     .from('content_creatives')
     .select(
-      'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
+      'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
       { count: 'exact' },
     )
     .eq('status', 'published')
@@ -191,7 +182,7 @@ async function getBlogDataUncached(page: number, filter: { destination?: string;
   const featuredQuery = supabaseAdmin
       .from('content_creatives')
       .select(
-        'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
+        'id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, product_id, destination, content_type, featured, featured_order, view_count, travel_packages(id, title, destination, price, duration, category, avg_rating, review_count)',
       )
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
