@@ -13,6 +13,10 @@ import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 
 export const revalidate = 300;
 export const dynamicParams = true;
+const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
+  0,
+  Number(process.env.DESTINATION_STATIC_PRERENDER_LIMIT ?? '0') || 0,
+);
 
 /**
  * 2026-05-19 박제 (PR #153 패턴 적용): Next.js 15 dynamic route 의 ISR 활성화를 위해
@@ -20,6 +24,7 @@ export const dynamicParams = true;
  * 활성 상품이 있는 destination 만 빌드 시 prerender (sitemap 노출 도시 우선).
  */
 export async function generateStaticParams(): Promise<Array<{ city: string }>> {
+  if (DESTINATION_STATIC_PRERENDER_LIMIT <= 0) return [];
   if (!isSupabaseConfigured) return [];
   try {
     const { data } = await supabaseAdmin
@@ -27,9 +32,9 @@ export async function generateStaticParams(): Promise<Array<{ city: string }>> {
       .select('destination')
       .in('status', ['active', 'approved'])
       .not('destination', 'is', null)
-      .limit(2000);
+      .limit(DESTINATION_STATIC_PRERENDER_LIMIT);
     const unique: string[] = [...new Set(((data ?? []) as Array<{ destination: string | null }>).map((r) => r.destination ?? '').filter((d): d is string => d.length > 0))];
-    return unique.slice(0, 50).map((city) => ({ city: destinationToSlug(city) }));
+    return unique.slice(0, DESTINATION_STATIC_PRERENDER_LIMIT).map((city) => ({ city: destinationToSlug(city) }));
   } catch {
     return [];
   }
