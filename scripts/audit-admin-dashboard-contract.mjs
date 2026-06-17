@@ -10,8 +10,33 @@
  * Local dev automatically enables the non-production ys-dev-admin bypass.
  */
 
-const baseUrl = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const args = process.argv.slice(2);
+function argValue(name, fallback = '') {
+  const inline = args.find((arg) => arg.startsWith(`${name}=`));
+  if (inline) return inline.slice(name.length + 1);
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] ?? fallback : fallback;
+}
+function hasFlag(name) {
+  return args.includes(name);
+}
+
+const baseUrl = (argValue('--base', process.env.BASE_URL || 'http://localhost:3000') || '').replace(/\/$/, '');
 const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
+const strict = hasFlag('--strict');
+const providedCookie = argValue('--cookie', process.env.ADMIN_AUDIT_COOKIE || '');
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.ADMIN_DASHBOARD_AUDIT_TIMEOUT_MS || '10000')) || 10000);
+const outputJson = hasFlag('--json');
+const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.ADMIN_DASHBOARD_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0
+  ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs)
+  : Math.min(120000, timeoutMs * 10 + 15000);
+
+const hardTimer = setTimeout(() => {
+  console.error(`[admin-dashboard-contract] hard timeout after ${hardTimeoutMs}ms`);
+  process.exit(124);
+}, hardTimeoutMs);
+hardTimer.unref?.();
 
 const endpoints = [
   {
@@ -67,41 +92,91 @@ async function localDevCookie() {
 }
 
 async function checkOne(endpoint, cookie) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const started = Date.now();
-  const res = await fetch(`${baseUrl}${endpoint.path}`, {
-    redirect: 'manual',
-    headers: {
-      Accept: 'application/json',
-      ...(cookie ? { Cookie: cookie } : {}),
-    },
-  });
-  const ms = Date.now() - started;
-  const text = await res.text();
-  let json = null;
   try {
-    json = JSON.parse(text);
-  } catch {
-    // keep null
+    const res = await fetch(`${baseUrl}${endpoint.path}`, {
+      redirect: 'manual',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/json',
+        ...(cookie ? { Cookie: cookie } : {}),
+      },
+    });
+    const ms = Date.now() - started;
+    const text = await res.text();
+    let json = null;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      // keep null
+    }
+
+    const missingKeys = json
+      ? endpoint.keys.filter((key) => !(key in json))
+      : endpoint.keys;
+
+    return {
+      path: endpoint.path,
+      status: res.status,
+      ok: res.ok,
+      ms,
+      budgetMs: endpoint.budgetMs,
+      overBudget: ms > endpoint.budgetMs,
+      missingKeys,
+      json: Boolean(json),
+      sample: json ? JSON.stringify(json).slice(0, 220) : text.slice(0, 220),
+    };
+  } finally {
+    clearTimeout(timer);
   }
-
-  const missingKeys = json
-    ? endpoint.keys.filter((key) => !(key in json))
-    : endpoint.keys;
-
-  return {
-    path: endpoint.path,
-    status: res.status,
-    ok: res.ok,
-    ms,
-    budgetMs: endpoint.budgetMs,
-    overBudget: ms > endpoint.budgetMs,
-    missingKeys,
-    json: Boolean(json),
-    sample: json ? JSON.stringify(json).slice(0, 220) : text.slice(0, 220),
-  };
 }
 
 const cookie = await localDevCookie();
+const authCookie = providedCookie || cookie;
+
+if (!authCookie) {
+  const authHelp = isLocal
+    ? 'auth-required: pass --cookie or ADMIN_AUDIT_COOKIE, or run a dev server with the dev admin bypass enabled'
+    : 'auth-required: pass --cookie or ADMIN_AUDIT_COOKIE to verify production admin API JSON contracts';
+  const blockedResults = endpoints.map((endpoint) => ({
+    path: endpoint.path,
+    status: null,
+    ok: false,
+    ms: null,
+    budgetMs: endpoint.budgetMs,
+    overBudget: false,
+    missingKeys: endpoint.keys,
+    json: false,
+    blocked: true,
+    sample: authHelp,
+  }));
+  const blockedPayload = {
+    summary: {
+      baseUrl,
+      total: blockedResults.length,
+      passed: 0,
+      failed: 0,
+      blocked: blockedResults.length,
+      score: 0,
+      timeoutMs,
+      devCookieIssued: false,
+      status: 'blocked',
+    },
+    results: blockedResults,
+  };
+
+  if (outputJson) {
+    console.log(JSON.stringify(blockedPayload, null, 2));
+  } else {
+    for (const endpoint of endpoints) {
+      console.log(`BLOCKED  ${endpoint.path}  ${authHelp}`);
+    }
+    console.log(`\n[admin-dashboard-contract] blocked: admin APIs require an authenticated cookie.`);
+  }
+  process.exit(strict ? 2 : 0);
+}
 
 if (isLocal) {
   for (const endpoint of endpoints) {
@@ -109,7 +184,7 @@ if (isLocal) {
       redirect: 'manual',
       headers: {
         Accept: 'application/json',
-        ...(cookie ? { Cookie: cookie } : {}),
+        ...(authCookie ? { Cookie: authCookie } : {}),
       },
     }).catch(() => null);
   }
@@ -119,7 +194,7 @@ const results = [];
 
 for (const endpoint of endpoints) {
   try {
-    results.push(await checkOne(endpoint, cookie));
+    results.push(await checkOne(endpoint, authCookie));
   } catch (err) {
     results.push({
       path: endpoint.path,
@@ -140,24 +215,40 @@ if (cookie) {
 }
 
 const failed = results.filter((r) => !r.ok || !r.json || r.missingKeys.length > 0 || r.overBudget);
+const payload = {
+  summary: {
+    baseUrl,
+    total: results.length,
+    passed: results.length - failed.length,
+    failed: failed.length,
+    score: results.length === 0 ? 0 : Math.round(((results.length - failed.length) / results.length) * 100),
+    timeoutMs,
+    devCookieIssued: Boolean(cookie),
+  },
+  results,
+};
 
-for (const r of results) {
-  const mark = failed.includes(r) ? 'FAIL' : 'PASS';
-  const bits = [
-    `${mark}`,
-    r.path,
-    `status=${r.status}`,
-    `ms=${r.ms}`,
-    `budget=${r.budgetMs}`,
-  ];
-  if (r.missingKeys.length > 0) bits.push(`missing=${r.missingKeys.join(',')}`);
-  if (r.overBudget) bits.push('over-budget');
-  console.log(bits.join('  '));
+if (outputJson) {
+  console.log(JSON.stringify(payload, null, 2));
+} else {
+  for (const r of results) {
+    const mark = failed.includes(r) ? 'FAIL' : 'PASS';
+    const bits = [
+      `${mark}`,
+      r.path,
+      `status=${r.status}`,
+      `ms=${r.ms}`,
+      `budget=${r.budgetMs}`,
+    ];
+    if (r.missingKeys.length > 0) bits.push(`missing=${r.missingKeys.join(',')}`);
+    if (r.overBudget) bits.push('over-budget');
+    console.log(bits.join('  '));
+  }
 }
 
 if (failed.length > 0) {
-  console.error(`\n[admin-dashboard-contract] ${failed.length}/${results.length} checks failed.`);
+  if (!outputJson) console.error(`\n[admin-dashboard-contract] ${failed.length}/${results.length} checks failed.`);
   process.exit(1);
 }
 
-console.log(`\n[admin-dashboard-contract] ${results.length}/${results.length} checks passed.`);
+if (!outputJson) console.log(`\n[admin-dashboard-contract] ${results.length}/${results.length} checks passed.`);

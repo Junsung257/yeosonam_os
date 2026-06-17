@@ -24,7 +24,7 @@ function ensureSpecialPagesManifest() {
   const serverDir = path.join(process.cwd(), distDir, 'server');
   const pagesDir = path.join(serverDir, 'pages');
   const manifestPath = path.join(serverDir, 'pages-manifest.json');
-  if (!fs.existsSync(pagesDir)) return;
+  fs.mkdirSync(pagesDir, { recursive: true });
 
   let current = null;
   if (fs.existsSync(manifestPath)) {
@@ -88,6 +88,19 @@ function ensureAppPathsManifest() {
   }
 }
 
+function ensureNotFoundTraceManifest() {
+  const distDir = process.env.NEXT_DIST_DIR || '.next';
+  const appNotFound = path.join(process.cwd(), 'src', 'app', 'not-found.tsx');
+  if (!fs.existsSync(appNotFound)) return;
+
+  const tracePath = path.join(process.cwd(), distDir, 'server', 'app', '_not-found', 'page.js.nft.json');
+  if (fs.existsSync(tracePath)) return;
+
+  fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+  fs.writeFileSync(tracePath, JSON.stringify({ version: 1, files: [] }, null, 2));
+  console.log('[next-shim] created missing _not-found trace manifest');
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   distDir: process.env.NEXT_DIST_DIR || '.next',
@@ -135,6 +148,7 @@ const nextConfig = {
           compiler.hooks.afterEmit.tap('EnsureNextManifestsPlugin', () => {
             ensureSpecialPagesManifest();
             ensureAppPathsManifest();
+            ensureNotFoundTraceManifest();
           });
         },
       });

@@ -12,7 +12,6 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
-import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
@@ -26,6 +25,7 @@ export const dynamic = 'force-static';
 
 const HOME_AGG_PACKAGE_LIMIT = 500;
 const HOME_RATING_LIMIT = 500;
+const ENABLE_HOME_SERVER_PEXELS_FALLBACK = process.env.HOME_ENABLE_SERVER_PEXELS_FALLBACK === '1';
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
@@ -332,7 +332,8 @@ export default async function HomePage() {
   // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
   //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
   let pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
-  if (process.env.PEXELS_API_KEY?.trim()) {
+  if (ENABLE_HOME_SERVER_PEXELS_FALLBACK && process.env.PEXELS_API_KEY?.trim()) {
+    const { getDeterministicPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
       ...topDests.filter(d => !d.image).map(d => d.destination),
@@ -405,7 +406,8 @@ export default async function HomePage() {
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
 
   // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백 (기존 pexelsByDest 우선, 없으면 직접 조회)
-  if (process.env.PEXELS_API_KEY?.trim()) {
+  if (ENABLE_HOME_SERVER_PEXELS_FALLBACK && process.env.PEXELS_API_KEY?.trim()) {
+    const { getDeterministicPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
     const noImgRankingDests = [...new Set([
       ...overseas.filter(i => !i.image && i.destination).map(i => i.destination!),
       ...domestic.filter(i => !i.image && i.destination).map(i => i.destination!),

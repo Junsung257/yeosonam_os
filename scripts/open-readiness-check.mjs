@@ -121,6 +121,40 @@ async function checkPublicUrls() {
   });
 }
 
+function checkPublicCriticalAudit() {
+  const result = run(
+    'npm',
+    ['run', '--silent', 'audit:public-critical', '--', `--base=${BASE_URL}`, `--package-id=${PACKAGE_ID}`, '--json', '--timeout-ms=15000'],
+    { timeout: 120000 },
+  );
+
+  try {
+    const audit = parseJsonFromOutput(result.stdout);
+    const failedRows = Array.isArray(audit?.results)
+      ? audit.results.filter((row) => Array.isArray(row.missing) && row.missing.length > 0)
+      : [];
+    const auditPassed = result.ok && Number(audit?.summary?.failed ?? failedRows.length) === 0;
+    addCheck('public:critical-pages', auditPassed ? 'pass' : 'fail', {
+      ms: result.ms,
+      passed: audit?.summary?.passed ?? null,
+      failed: audit?.summary?.failed ?? failedRows.length,
+      score: audit?.summary?.score ?? null,
+      notes: `score=${audit?.summary?.score ?? 'n/a'}, failed=${audit?.summary?.failed ?? failedRows.length}`,
+      error: auditPassed
+        ? ''
+        : failedRows
+          .slice(0, 4)
+          .map((row) => `${row.name}:${row.missing.join('|')}`)
+          .join(', ') || (result.stderr || result.message || '').trim().slice(0, 1000),
+    });
+  } catch (err) {
+    addCheck('public:critical-pages', 'fail', {
+      ms: result.ms,
+      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1000),
+    });
+  }
+}
+
 function checkSupabaseAuthGate() {
   const result = run('node', ['scripts/supabase-auth-open-gate.mjs', '--json'], { timeout: 120000 });
   if (!result.ok) {
@@ -215,6 +249,7 @@ function checkMarketingAutomationReadiness() {
 
 async function main() {
   await checkPublicUrls();
+  checkPublicCriticalAudit();
   checkSupabaseAuthGate();
   checkMarketingAutomationReadiness();
   checkVercelLogs('error');
