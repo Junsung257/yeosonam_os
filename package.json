@@ -68,6 +68,7 @@
     "test:jarvis-v2": "node --test db/smoke_jarvis_v2.js",
     "eval:jarvis": "npx tsx scripts/eval-jarvis-golden.ts",
     "eval:jarvis:ci": "npx tsx scripts/eval-jarvis-golden.ts --strict",
+    "eval:jarvis-rag-live": "npx tsx scripts/eval-jarvis-rag-live.ts",
     "verify:customer-inquiry": "npx tsx scripts/verify-customer-inquiry-readiness.ts",
     "verify:customer-inquiry:ci": "npx tsx scripts/verify-customer-inquiry-readiness.ts --strict --require-db --require-external",
     "audit:jarvis-rag": "npx tsx scripts/audit-jarvis-rag.ts",

@@ -62,6 +62,30 @@ export function serializePgVector(values: number[] | null): string | null {
   return `[${values.join(',')}]`
 }
 
+export function parseRerankScores(raw: string): Array<{ i: number; s: number }> {
+  const trimmed = raw
+    .trim()
+    .replace(/^```(?:json)?/i, '')
+    .replace(/```$/i, '')
+    .trim()
+  const start = trimmed.indexOf('[')
+  const end = trimmed.lastIndexOf(']')
+  if (start < 0 || end <= start) return []
+
+  try {
+    const parsed = JSON.parse(trimmed.slice(start, end + 1))
+    if (!Array.isArray(parsed)) return []
+    return parsed
+      .filter((item): item is { i: number; s: number } => (
+        Number.isInteger(item?.i) &&
+        Number.isFinite(item?.s)
+      ))
+      .map((item) => ({ i: item.i, s: Math.max(0, Math.min(1, item.s)) }))
+  } catch (err) {
+    return []
+  }
+}
+
 /** 쿼리 → 임베딩 벡터. 실패 시 null (retrieval 은 BM25 only 로 폴백). */
 async function embedQuery(query: string): Promise<number[] | null> {
   const apiKey = getSecret('GOOGLE_AI_API_KEY')
@@ -161,7 +185,8 @@ ${hits.map((h, i) => `[${i}] ${h.sourceTitle ?? '(제목 없음)'} — ${h.chunk
     if (!res.ok) return hits.slice(0, limit)
     const json = await res.json()
     const raw = json.candidates?.[0]?.content?.parts?.[0]?.text ?? '[]'
-    const scores: Array<{ i: number; s: number }> = JSON.parse(raw)
+    const scores = parseRerankScores(raw)
+    if (scores.length === 0) return hits.slice(0, limit)
 
     // rerank score 적용
     const scored = scores

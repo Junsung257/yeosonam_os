@@ -61,6 +61,7 @@ const getHandler = async (): Promise<NextResponse> => {
       traceAverageScore: trace.averageScore,
       liveRagScore: liveRag.audit?.qualityScore ?? null,
       liveRagReadiness: liveRag.audit?.readinessLevel ?? 'skipped',
+      liveRagSearchPassed: 'skipped',
       smokePassed: 'skipped',
       typecheckPassed: 'skipped',
       componentTestsPassed: 'skipped',

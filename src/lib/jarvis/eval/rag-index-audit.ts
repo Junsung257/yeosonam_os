@@ -84,7 +84,7 @@ const DEFAULT_OPTIONS: Required<Omit<RagIndexAuditOptions, 'now'>> = {
   staleAfterDays: 30,
   minChunkChars: 80,
   minContextualChars: 120,
-  expectedSourceTypes: ['package', 'blog', 'attraction'],
+  expectedSourceTypes: ['package', 'blog', 'attraction', 'policy'],
   sampleIssueLimit: 12,
 };
 
@@ -152,6 +152,7 @@ function sourceAdapterName(sourceType: string): string {
   if (sourceType === 'package') return 'packages';
   if (sourceType === 'blog') return 'blogs';
   if (sourceType === 'attraction') return 'attractions';
+  if (sourceType === 'policy') return 'policies';
   return sourceType;
 }
 
@@ -178,7 +179,11 @@ function sampleIdsForIssues(
 
 function reindexCommands(sourceTypes: string[]): string[] {
   if (sourceTypes.length === 0) return ['node db/rag_reindex_all.js'];
-  return sourceTypes.map((sourceType) => `node db/rag_reindex_all.js --source=${sourceAdapterName(sourceType)}`);
+  return sourceTypes.map((sourceType) => (
+    sourceType === 'policy'
+      ? 'npx tsx scripts/seed-jarvis-policy-knowledge.ts'
+      : `node db/rag_reindex_all.js --source=${sourceAdapterName(sourceType)}`
+  ));
 }
 
 function buildRemediationActions(

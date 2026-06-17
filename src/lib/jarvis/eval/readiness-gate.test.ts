@@ -9,6 +9,7 @@ const PASSING_INPUT: JarvisReadinessInput = {
   traceAverageScore: 98,
   liveRagScore: 99,
   liveRagReadiness: 'ready',
+  liveRagSearchPassed: true,
   typecheckPassed: true,
   componentTestsPassed: true,
   smokePassed: true,
@@ -19,8 +20,8 @@ describe('Jarvis readiness gate', () => {
     const summary = evaluateJarvisReadiness(PASSING_INPUT);
 
     expect(summary.status).toBe('pass');
-    expect(summary.maxScore).toBe(100);
-    expect(summary.score).toBeGreaterThanOrEqual(99);
+    expect(summary.maxScore).toBe(110);
+    expect(summary.score).toBeGreaterThanOrEqual(109);
     expect(summary.blockingChecks).toEqual([]);
     expect(summary.warningChecks).toEqual([]);
   });
@@ -43,10 +44,11 @@ describe('Jarvis readiness gate', () => {
       typecheckPassed: 'skipped',
       componentTestsPassed: 'skipped',
       smokePassed: 'skipped',
+      liveRagSearchPassed: 'skipped',
     });
 
     expect(summary.status).toBe('warn');
-    expect(summary.warningChecks).toEqual(['jarvis-v2-smoke', 'typecheck', 'ui-regression']);
+    expect(summary.warningChecks).toEqual(['live-rag-retrieval', 'jarvis-v2-smoke', 'typecheck', 'ui-regression']);
     expect(summary.blockingChecks).toEqual([]);
   });
 
@@ -55,10 +57,11 @@ describe('Jarvis readiness gate', () => {
       ...PASSING_INPUT,
       liveRagScore: 70,
       liveRagReadiness: 'blocked',
+      liveRagSearchPassed: false,
       smokePassed: false,
     });
 
     expect(summary.status).toBe('fail');
-    expect(summary.blockingChecks).toEqual(['live-rag-index', 'jarvis-v2-smoke']);
+    expect(summary.blockingChecks).toEqual(['live-rag-index', 'live-rag-retrieval', 'jarvis-v2-smoke']);
   });
 });

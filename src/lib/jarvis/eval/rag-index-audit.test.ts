@@ -27,6 +27,7 @@ describe('Jarvis live RAG index audit', () => {
       row({ source_type: 'package' }),
       row({ source_type: 'blog', source_url: '/blog/sample', source_title: 'Sample Blog' }),
       row({ source_type: 'attraction', source_url: null, source_title: 'Sample Attraction' }),
+      row({ source_type: 'policy', source_url: null, source_title: 'Sample Policy' }),
     ], { now: NOW });
 
     expect(summary.readinessLevel).toBe('ready');
@@ -37,6 +38,7 @@ describe('Jarvis live RAG index audit', () => {
       'attraction',
       'blog',
       'package',
+      'policy',
     ]);
   });
 
@@ -86,22 +88,24 @@ describe('Jarvis live RAG index audit', () => {
       row({ source_type: 'package' }),
     ], {
       now: NOW,
-      expectedSourceTypes: ['package', 'blog', 'attraction'],
+      expectedSourceTypes: ['package', 'blog', 'attraction', 'policy'],
     });
 
-    expect(summary.coverage.missingSourceTypes).toEqual(['blog', 'attraction']);
-    expect(summary.issueCounts.missing_expected_source).toBe(2);
+    expect(summary.coverage.missingSourceTypes).toEqual(['blog', 'attraction', 'policy']);
+    expect(summary.issueCounts.missing_expected_source).toBe(3);
     expect(summary.qualityScore).toBeLessThan(100);
     expect(getRagIndexIssueSeverity('missing_expected_source')).toBe('warning');
     expect(summary.remediationActions).toEqual([
       expect.objectContaining({
         id: 'restore-source-coverage',
-        affectedSourceTypes: ['blog', 'attraction'],
+        affectedSourceTypes: ['blog', 'attraction', 'policy'],
         commands: [
           'npm run audit:jarvis-rag -- --source=blog',
           'npm run audit:jarvis-rag -- --source=attraction',
+          'npm run audit:jarvis-rag -- --source=policy',
           'node db/rag_reindex_all.js --source=blogs',
           'node db/rag_reindex_all.js --source=attractions',
+          'npx tsx scripts/seed-jarvis-policy-knowledge.ts',
         ],
       }),
     ]);

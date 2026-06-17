@@ -16,6 +16,7 @@ export interface JarvisReadinessInput {
   traceAverageScore: number;
   liveRagScore: number | null;
   liveRagReadiness: 'ready' | 'watch' | 'blocked' | 'skipped';
+  liveRagSearchPassed: boolean | 'skipped';
   typecheckPassed: boolean | 'skipped';
   componentTestsPassed: boolean | 'skipped';
   smokePassed: boolean | 'skipped';
@@ -134,6 +135,7 @@ export function evaluateJarvisReadiness(input: JarvisReadinessInput): JarvisRead
       message: `${Math.round(traceRate * 100)}% pass rate, avg ${input.traceAverageScore.toFixed(1)}/100`,
     },
     liveRagCheck(input),
+    booleanCheck('live-rag-retrieval', 'Live RAG retrieval eval', input.liveRagSearchPassed, 10),
     booleanCheck('jarvis-v2-smoke', 'Jarvis V2 smoke tests', input.smokePassed, 10),
     booleanCheck('typecheck', 'TypeScript typecheck', input.typecheckPassed, 15),
     booleanCheck('ui-regression', 'Jarvis UI/audit regression tests', input.componentTestsPassed, 10),

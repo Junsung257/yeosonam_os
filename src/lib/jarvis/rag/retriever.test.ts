@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/lib/supabase', () => ({ supabaseAdmin: {} }))
 vi.mock('@/lib/secret-registry', () => ({ getSecret: () => null }))
 
-import { serializePgVector } from './retriever'
+import { parseRerankScores, serializePgVector } from './retriever'
 
 describe('serializePgVector', () => {
   it('returns null when embeddings are unavailable', () => {
@@ -23,5 +23,20 @@ describe('serializePgVector', () => {
     embedding[9] = Number.POSITIVE_INFINITY
 
     expect(() => serializePgVector(embedding)).toThrow('non-finite')
+  })
+})
+
+describe('parseRerankScores', () => {
+  it('extracts rerank JSON from fenced or wrapped model output', () => {
+    expect(parseRerankScores('```json\n[{"i":1,"s":0.9},{"i":0,"s":1.2}]\n```')).toEqual([
+      { i: 1, s: 0.9 },
+      { i: 0, s: 1 },
+    ])
+    expect(parseRerankScores('결과: [{"i":2,"s":0.4}] 입니다')).toEqual([{ i: 2, s: 0.4 }])
+  })
+
+  it('returns an empty list for malformed model output', () => {
+    expect(parseRerankScores('[{"i":0,"s":')).toEqual([])
+    expect(parseRerankScores('not-json')).toEqual([])
   })
 })

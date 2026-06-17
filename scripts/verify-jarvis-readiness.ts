@@ -174,11 +174,21 @@ async function buildReadinessPayload(options: CliOptions) {
       'src/components/admin/JarvisRagStatusCard.test.tsx',
     ]));
     commands.push(runCommand('node', ['--test', 'db/smoke_jarvis_v2.js']));
+    if (options.requireDb) {
+      commands.push(runCommand(commandName('npx'), [
+        'tsx',
+        'scripts/eval-jarvis-rag-live.ts',
+        '--require-db',
+        '--strict',
+        '--json',
+      ]));
+    }
   }
 
   const typecheck = commands.find((command) => command.command.includes('tsc --noEmit'));
   const componentTests = commands.find((command) => command.command.includes('vitest run'));
   const smoke = commands.find((command) => command.command.includes('smoke_jarvis_v2.js'));
+  const liveRagSearch = commands.find((command) => command.command.includes('eval-jarvis-rag-live.ts'));
   const summary = evaluateJarvisReadiness({
     deterministicPassRate: deterministic.passRate,
     ragPassRate: rag.passRate,
@@ -186,6 +196,7 @@ async function buildReadinessPayload(options: CliOptions) {
     traceAverageScore: trace.averageScore,
     liveRagScore: liveRag.audit?.qualityScore ?? null,
     liveRagReadiness: liveRag.audit?.readinessLevel ?? 'skipped',
+    liveRagSearchPassed: options.skipHeavy || !options.requireDb ? 'skipped' : liveRagSearch?.ok === true,
     typecheckPassed: options.skipHeavy ? 'skipped' : typecheck?.ok === true,
     componentTestsPassed: options.skipHeavy ? 'skipped' : componentTests?.ok === true,
     smokePassed: options.skipHeavy ? 'skipped' : smoke?.ok === true,
