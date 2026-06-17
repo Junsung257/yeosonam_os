@@ -51,6 +51,7 @@ async function runDailySummary(request: NextRequest) {
   yesterday.setDate(yesterday.getDate() - 1);
   const yStart = new Date(yesterday); yStart.setHours(0, 0, 0, 0);
   const yEnd = new Date(yesterday); yEnd.setHours(23, 59, 59, 999);
+  const recentSearchStart = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -63,9 +64,9 @@ async function runDailySummary(request: NextRequest) {
     supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
       .is('resolved_at', null),
     supabaseAdmin.from('indexing_reports').select('google_status, google_error, indexnow_status, indexnow_error, sitemap_pings, google_index_verdict, google_coverage_state')
-      .gte('reported_at', yStart.toISOString()).lte('reported_at', yEnd.toISOString()),
+      .gte('reported_at', recentSearchStart.toISOString()),
     supabaseAdmin.from('blog_visibility_snapshots').select('id, platform, index_status, visibility_status', { count: 'exact' })
-      .gte('checked_at', yStart.toISOString()).lte('checked_at', yEnd.toISOString()),
+      .gte('checked_at', recentSearchStart.toISOString()),
     supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
   ]);
