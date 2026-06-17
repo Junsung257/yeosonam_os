@@ -16,6 +16,7 @@ function hasFlag(name) {
 }
 
 const preferredOrigin = (argValue('--preferred-origin', 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const isLocalPreferredOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(preferredOrigin);
 const samplePath = argValue('--path', '/blog/zhangjiajie-weather') || '/blog/zhangjiajie-weather';
 const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
 const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
@@ -31,7 +32,7 @@ if (hardTimeoutMs > 0) {
   }, hardTimeoutMs);
 }
 
-const ORIGIN_VARIANTS = [
+const ORIGIN_VARIANTS = isLocalPreferredOrigin ? [preferredOrigin] : [
   'http://yeosonam.com',
   'http://www.yeosonam.com',
   'https://yeosonam.com',
@@ -82,6 +83,20 @@ function expectedUrl(path) {
   return normalizeUrl(`${preferredOrigin}${path.startsWith('/') ? '' : '/'}${path}`);
 }
 
+function normalizeToPreferredOrigin(url) {
+  try {
+    const parsed = new URL(url, preferredOrigin);
+    if (isLocalPreferredOrigin) {
+      const preferred = new URL(preferredOrigin);
+      parsed.protocol = preferred.protocol;
+      parsed.host = preferred.host;
+    }
+    return normalizeUrl(parsed.toString());
+  } catch {
+    return normalizeUrl(url);
+  }
+}
+
 async function auditRedirects() {
   const expected = expectedUrl(samplePath);
   return Promise.all(ORIGIN_VARIANTS.map(async (origin) => {
@@ -109,18 +124,20 @@ async function auditCanonical() {
     canonical,
     ogUrl,
     expected,
-    passed: result.ok && normalizeUrl(canonical) === expected && normalizeUrl(ogUrl) === expected,
+    passed: result.ok && normalizeToPreferredOrigin(canonical) === expected && normalizeToPreferredOrigin(ogUrl) === expected,
   };
 }
 
 async function auditSitemap() {
   const result = await fetchWithRedirects(`${preferredOrigin}/sitemap.xml`);
   const sitemapText = result.text || '';
-  const hasPreferredOriginOnly = sitemapText.includes(preferredOrigin)
+  const sitemapLocs = [...sitemapText.matchAll(/<loc>([^<]+)<\/loc>/g)]
+    .map((match) => normalizeToPreferredOrigin(match[1].trim()));
+  const hasPreferredOriginOnly = isLocalPreferredOrigin || (sitemapText.includes(preferredOrigin)
     && !sitemapText.includes('https://yeosonam.com/')
     && !sitemapText.includes('http://yeosonam.com/')
-    && !sitemapText.includes('http://www.yeosonam.com/');
-  const hasSampleUrl = sitemapText.includes(expectedUrl(samplePath));
+    && !sitemapText.includes('http://www.yeosonam.com/'));
+  const hasSampleUrl = sitemapLocs.includes(expectedUrl(samplePath));
   return {
     url: `${preferredOrigin}/sitemap.xml`,
     finalUrl: result.finalUrl,

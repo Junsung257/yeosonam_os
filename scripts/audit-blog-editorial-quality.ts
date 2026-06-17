@@ -332,6 +332,46 @@ async function main() {
     if (strict) process.exitCode = 1;
     return;
   }
+  if (posts.length === 0) {
+    const payload = {
+      summary: {
+        baseUrl,
+        source,
+        repairPreview,
+        total: 0,
+        skipped: 0,
+        passed: 0,
+        failed: 1,
+        score100: 0,
+        fleetScore: 0,
+        averageScore: 0,
+        issueCounts: { no_posts_found: 1 },
+        intentCounts: {},
+        best: [],
+        worst: [],
+      },
+      rows: [{
+        id: null,
+        slug: null,
+        title: null,
+        passed: false,
+        score: 0,
+        intent: null,
+        issues: [{
+          code: 'no_posts_found',
+          severity: 'critical',
+          message: 'no blog posts found from the selected source',
+        }],
+      }],
+    };
+    if (outputJson) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      console.log('Blog editorial quality: 0/100 (no posts found)');
+    }
+    if (strict) process.exitCode = 1;
+    return;
+  }
   const rows = await mapLimit(posts, inspectPost);
   const summary = summarize(rows);
 

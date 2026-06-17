@@ -1,27 +1,65 @@
 #!/usr/bin/env node
 
 import { execFileSync, execSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 
-const BASE_URL = (process.env.OPEN_CHECK_BASE_URL || 'https://www.yeosonam.com').replace(/\/$/, '');
+const argv = process.argv.slice(2);
+
+function argValue(name, fallback = '') {
+  const prefix = `${name}=`;
+  const inline = argv.filter((arg) => arg.startsWith(prefix)).pop();
+  if (inline) return inline.slice(prefix.length);
+  const index = argv.lastIndexOf(name);
+  return index >= 0 ? argv[index + 1] ?? fallback : fallback;
+}
+
+function hasFlag(name) {
+  return argv.includes(name);
+}
+
+const BASE_URL = (argValue('--base', process.env.OPEN_CHECK_BASE_URL || 'https://www.yeosonam.com')).replace(/\/$/, '');
 const DEFAULT_PACKAGE_ID = '17945abe-026e-4696-96d0-2d8b14393fe6';
 const DEFAULT_REF = 'YSINF202606051602318291';
-const PACKAGE_ID = process.env.OPEN_CHECK_PACKAGE_ID || DEFAULT_PACKAGE_ID;
-const REF_CODE = process.env.OPEN_CHECK_REF_CODE || DEFAULT_REF;
-const VERCEL_SCOPE = process.env.VERCEL_SCOPE || 'zzbaa0317-4596s-projects';
-const VERCEL_LOG_TARGET = process.env.VERCEL_LOG_TARGET || BASE_URL;
-const TIMEOUT_MS = Number(process.env.OPEN_CHECK_TIMEOUT_MS || 30000);
-const BLOG_AUDIT_LIMIT = Number(process.env.OPEN_CHECK_BLOG_AUDIT_LIMIT || 10);
-const BLOG_AUDIT_SITE_LIMIT = Number(process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || 50);
-const BLOG_AUDIT_TIMEOUT_MS = Number(process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || 15000);
-const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || 180000);
+const PACKAGE_ID_ARG = argValue('--package-id', '');
+const REF_CODE_ARG = argValue('--ref-code', '');
+const PACKAGE_ID = PACKAGE_ID_ARG || process.env.OPEN_CHECK_PACKAGE_ID || DEFAULT_PACKAGE_ID;
+const REF_CODE = REF_CODE_ARG || process.env.OPEN_CHECK_REF_CODE || DEFAULT_REF;
+const HAS_EXPLICIT_PACKAGE_ID = Boolean(PACKAGE_ID_ARG || process.env.OPEN_CHECK_PACKAGE_ID);
+const HAS_EXPLICIT_REF_CODE = Boolean(REF_CODE_ARG || process.env.OPEN_CHECK_REF_CODE);
+const VERCEL_SCOPE = argValue('--vercel-scope', process.env.VERCEL_SCOPE || 'zzbaa0317-4596s-projects');
+const VERCEL_LOG_TARGET = argValue('--vercel-log-target', process.env.VERCEL_LOG_TARGET || BASE_URL);
+const TIMEOUT_MS = Number(argValue('--timeout-ms', process.env.OPEN_CHECK_TIMEOUT_MS || '30000'));
+const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_CHECK_BLOG_AUDIT_LIMIT || '10'));
+const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
+const BLOG_AUDIT_TIMEOUT_MS = Number(argValue('--blog-audit-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || '15000'));
+const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(argValue('--blog-audit-hard-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || '180000'));
+const IS_LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(BASE_URL);
+const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' || IS_LOCAL_BASE;
+const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
+const ALLOW_LOCAL_MISSING_DATA = hasFlag('--allow-local-missing-data') || process.env.OPEN_CHECK_ALLOW_LOCAL_MISSING_DATA === '1' || LOCAL_MODE;
+const INCLUDE_MARKETING_RUNTIME = hasFlag('--include-marketing-runtime') || process.env.OPEN_CHECK_INCLUDE_MARKETING_RUNTIME === '1';
+const MARKETING_RUNTIME_ISOLATED = hasFlag('--marketing-runtime-isolated') || process.env.OPEN_CHECK_MARKETING_RUNTIME_ISOLATED === '1';
+const MARKETING_RUNTIME_PORT = Number(argValue('--marketing-runtime-port', process.env.MARKETING_RUNTIME_PORT || '3036'));
+const MARKETING_RUNTIME_MODE = argValue('--marketing-runtime-mode', process.env.MARKETING_RUNTIME_MODE || 'dev');
+const MARKETING_RUNTIME_TIMEOUT_MS = Number(argValue('--marketing-runtime-timeout-ms', process.env.MARKETING_RUNTIME_TIMEOUT_MS || '60000'));
+const MARKETING_RUNTIME_READY_TIMEOUT_MS = Number(argValue('--marketing-runtime-ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '120000'));
+const RUNTIME_ENV_CONTRACT = JSON.parse(
+  readFileSync(new URL('../src/config/runtime-env-readiness.json', import.meta.url), 'utf8'),
+);
+const IMPORTANT_ENV = Array.isArray(RUNTIME_ENV_CONTRACT.critical) ? RUNTIME_ENV_CONTRACT.critical : [];
+const DEFAULTED_ENV = Array.isArray(RUNTIME_ENV_CONTRACT.warnDefaults) ? RUNTIME_ENV_CONTRACT.warnDefaults : [];
 
-const strict = process.argv.includes('--strict');
-const json = process.argv.includes('--json');
+const strict = hasFlag('--strict');
+const json = hasFlag('--json');
 
 const checks = [];
 
 function addCheck(name, status, detail = {}) {
   checks.push({ name, status, ...detail });
+}
+
+function addBlockedCheck(name, detail = {}) {
+  addCheck(name, 'blocked', detail);
 }
 
 function quoteCmdArg(value) {
@@ -116,19 +154,46 @@ function parseJsonFromOutput(output) {
 
 async function checkPublicUrls() {
   await fetchUrl('public:home', '/', { readBody: false });
-  await fetchUrl('public:package-detail', `/packages/${PACKAGE_ID}`, { readBody: false });
+  if (LOCAL_MODE && !HAS_EXPLICIT_PACKAGE_ID) {
+    addBlockedCheck('public:package-detail', {
+      url: `${BASE_URL}/packages/${PACKAGE_ID}`,
+      notes: 'OPEN_CHECK_PACKAGE_ID not provided; local target may not have production package data',
+    });
+  } else {
+    await fetchUrl('public:package-detail', `/packages/${PACKAGE_ID}`, { readBody: false });
+  }
   await fetchUrl('public:blog-runtime', '/blog/nagasaki-best', { readBody: false });
-  await fetchUrl('public:referral-link', `/r/${REF_CODE}/${PACKAGE_ID}`, {
-    readBody: false,
-    ok: (res, _body, setCookie) => res.status === 200 && /ys_session_id=/.test(setCookie),
-    notes: (_res, _body, setCookie) => (setCookie.includes('ys_session_id=') ? 'session cookie issued' : 'missing session cookie'),
-  });
+  if (LOCAL_MODE && (!HAS_EXPLICIT_REF_CODE || !HAS_EXPLICIT_PACKAGE_ID)) {
+    addBlockedCheck('public:referral-link', {
+      url: `${BASE_URL}/r/${REF_CODE}/${PACKAGE_ID}`,
+      notes: 'OPEN_CHECK_REF_CODE and OPEN_CHECK_PACKAGE_ID are required for local referral-link verification',
+    });
+  } else {
+    await fetchUrl('public:referral-link', `/r/${REF_CODE}/${PACKAGE_ID}`, {
+      readBody: false,
+      ok: (res, _body, setCookie) => res.status === 200 && /ys_session_id=/.test(setCookie),
+      notes: (_res, _body, setCookie) => (setCookie.includes('ys_session_id=') ? 'session cookie issued' : 'missing session cookie'),
+    });
+  }
 }
 
 function checkPublicCriticalAudit() {
+  const args = [
+    'run',
+    '--silent',
+    'audit:public-critical',
+    '--',
+    `--base=${BASE_URL}`,
+    '--json',
+    '--timeout-ms=15000',
+  ];
+  if (!LOCAL_MODE || HAS_EXPLICIT_PACKAGE_ID) {
+    args.splice(7, 0, `--package-id=${PACKAGE_ID}`);
+  }
+
   const result = run(
     'npm',
-    ['run', '--silent', 'audit:public-critical', '--', `--base=${BASE_URL}`, `--package-id=${PACKAGE_ID}`, '--json', '--timeout-ms=15000'],
+    args,
     { timeout: 120000 },
   );
 
@@ -160,6 +225,13 @@ function checkPublicCriticalAudit() {
 }
 
 function checkSupabaseAuthGate() {
+  if (SKIP_EXTERNAL) {
+    addBlockedCheck('supabase:auth-open-gate', {
+      notes: 'external Supabase management check skipped for local/open-check isolated mode',
+    });
+    return null;
+  }
+
   const result = run('node', ['scripts/supabase-auth-open-gate.mjs', '--json'], { timeout: 120000 });
   if (!result.ok) {
     const output = (result.stderr || result.stdout || result.message || '').trim();
@@ -193,6 +265,14 @@ function checkSupabaseAuthGate() {
 }
 
 function checkVercelLogs(level) {
+  if (SKIP_EXTERNAL) {
+    addBlockedCheck(`vercel:${level}-logs`, {
+      target: VERCEL_LOG_TARGET,
+      notes: 'Vercel log verification skipped for local/open-check isolated mode',
+    });
+    return;
+  }
+
   const args = ['--yes', 'vercel', 'logs', VERCEL_LOG_TARGET, '--scope', VERCEL_SCOPE, '--since', '30m', '--no-follow', '--level', level, '--limit', '50', '--json'];
   if (process.env.VERCEL_TOKEN) {
     args.push('--token', process.env.VERCEL_TOKEN);
@@ -251,6 +331,66 @@ function checkMarketingAutomationReadiness() {
   }
 }
 
+function checkMarketingRuntimeLocal() {
+  if (!INCLUDE_MARKETING_RUNTIME) return;
+  if (!LOCAL_MODE) {
+    addBlockedCheck('local:marketing-runtime', {
+      notes: 'marketing runtime verification starts a local dev server; rerun with --local or a localhost --base',
+    });
+    return;
+  }
+
+  const args = [
+    'run',
+    '--silent',
+    'verify:marketing-runtime:local',
+    '--',
+    `--timeout-ms=${MARKETING_RUNTIME_TIMEOUT_MS}`,
+    `--ready-timeout-ms=${MARKETING_RUNTIME_READY_TIMEOUT_MS}`,
+  ];
+  if (IS_LOCAL_BASE && !MARKETING_RUNTIME_ISOLATED) {
+    args.push(`--base=${BASE_URL}`);
+  } else {
+    args.push(`--port=${MARKETING_RUNTIME_PORT}`, `--mode=${MARKETING_RUNTIME_MODE}`);
+  }
+  if (strict) args.push('--strict');
+
+  const timeout = Math.max(MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000, 240000);
+  const result = run('npm', args, { timeout });
+
+  try {
+    const runtime = parseJsonFromOutput(result.stdout);
+    addCheck('local:marketing-runtime', result.ok && runtime.status === 'pass' ? 'pass' : runtime.status === 'blocked' ? 'blocked' : 'fail', {
+      ms: result.ms,
+      passed: runtime.passed,
+      blocked: runtime.blocked,
+      failed: runtime.failed,
+      notes: `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed`,
+      error: result.ok ? '' : (result.stderr || result.message || '').trim().slice(0, 1200),
+    });
+  } catch (err) {
+    addCheck('local:marketing-runtime', 'fail', {
+      ms: result.ms,
+      command: `npm ${args.join(' ')}`,
+      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+    });
+  }
+}
+
+function checkRuntimeEnvReadiness() {
+  const missing = IMPORTANT_ENV.filter((key) => !process.env[key]);
+  const usingDefaults = DEFAULTED_ENV.filter((key) => !process.env[key]);
+  addCheck('runtime:env-readiness', missing.length === 0 ? 'pass' : 'blocked', {
+    missing,
+    usingDefaults,
+    notes: missing.length === 0
+      ? usingDefaults.length > 0
+        ? `ready; defaults in use for ${usingDefaults.join(', ')}`
+        : 'all important env vars present'
+      : `${missing.length} important env var(s) missing; affected integrations will stay degraded/skipped`,
+  });
+}
+
 function checkBlogSearchQualityReadiness() {
   const args = [
     'run',
@@ -277,8 +417,11 @@ function checkBlogSearchQualityReadiness() {
       ? summary.issueCounts
       : {};
     const passed = result.ok && summary.ok === true;
+    const missingLocalData = ALLOW_LOCAL_MISSING_DATA && !passed && /no_posts_found|no blog links found|collectionError|Blog database is not configured/i.test(
+      JSON.stringify({ summary, checks: report?.checks || [], stderr: result.stderr, stdout: result.stdout }),
+    );
 
-    addCheck('public:blog-search-quality', passed ? 'pass' : 'fail', {
+    addCheck('public:blog-search-quality', passed ? 'pass' : missingLocalData ? 'blocked' : 'fail', {
       ms: result.ms,
       strictScore: summary.strictScore ?? null,
       fleetScore: summary.fleetScore ?? null,
@@ -287,9 +430,13 @@ function checkBlogSearchQualityReadiness() {
       reportPath: report?.reportPath || '',
       notes: passed
         ? `strict=${summary.strictScore ?? 'n/a'}, fleet=${summary.fleetScore ?? 'n/a'}`
+        : missingLocalData
+          ? 'local blog data unavailable; production/staging data is required for full blog quality verification'
         : `failed=${failedRequiredChecks.join(', ') || 'unknown'}, strict=${summary.strictScore ?? 'n/a'}`,
       error: passed
         ? ''
+        : missingLocalData
+          ? ''
         : (
             failedRequiredChecks.join(', ') ||
             Object.keys(issueCounts).join(', ') ||
@@ -312,6 +459,8 @@ async function main() {
   checkPublicCriticalAudit();
   checkSupabaseAuthGate();
   checkMarketingAutomationReadiness();
+  checkMarketingRuntimeLocal();
+  checkRuntimeEnvReadiness();
   checkBlogSearchQualityReadiness();
   checkVercelLogs('error');
   checkVercelLogs('fatal');

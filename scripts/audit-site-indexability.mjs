@@ -10,6 +10,8 @@ const getArg = (name, fallback = '') => {
 const hasFlag = (name) => args.includes(name);
 
 const baseUrl = (getArg('--base', process.env.SITE_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const base = new URL(baseUrl);
+const isLocalBase = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(12, Number(getArg('--concurrency', '8')) || 8));
 const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', process.env.SITE_AUDIT_TIMEOUT_MS || '10000')) || 10000);
@@ -48,9 +50,26 @@ function isBlockedByRobots(url, disallows) {
 function normalizeForCompare(url) {
   try {
     const parsed = new URL(url, baseUrl);
+    if (isLocalBase) {
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
+    }
     parsed.hash = '';
     if (parsed.pathname !== '/' && parsed.pathname.endsWith('/')) {
       parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function normalizeSitemapUrlForAudit(url) {
+  try {
+    const parsed = new URL(url, baseUrl);
+    if (isLocalBase) {
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
     }
     return parsed.toString();
   } catch {
@@ -151,7 +170,8 @@ async function main() {
   }
 
   const disallows = parseRobotsDisallows(robotsText);
-  const urls = extractLocs(sitemapXml).slice(0, limit > 0 ? limit : undefined);
+  const urls = [...new Set(extractLocs(sitemapXml).map(normalizeSitemapUrlForAudit))]
+    .slice(0, limit > 0 ? limit : undefined);
   const rows = [];
   let cursor = 0;
 

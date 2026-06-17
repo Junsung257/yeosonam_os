@@ -19,7 +19,13 @@ function hasFlag(name) {
 }
 
 const baseUrl = (argValue('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
-const preferredOrigin = (argValue('--preferred-origin', process.env.BLOG_CANONICAL_ORIGIN || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const isLocalBase = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
+const explicitPreferredOrigin = argValue('--preferred-origin', null);
+const preferredOrigin = (
+  explicitPreferredOrigin ||
+  process.env.BLOG_CANONICAL_ORIGIN ||
+  (isLocalBase ? baseUrl : 'https://www.yeosonam.com')
+).replace(/\/$/, '');
 const full = hasFlag('--full');
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');

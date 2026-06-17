@@ -15,6 +15,7 @@ function argValue(name, fallback = '') {
 const baseUrl = argValue('--base', process.env.MARKETING_READINESS_BASE_URL || '').replace(/\/$/, '');
 const timeoutMs = Number(argValue('--timeout-ms', process.env.MARKETING_READINESS_TIMEOUT_MS || '10000'));
 const providedCookie = argValue('--cookie', process.env.MARKETING_READINESS_COOKIE || '');
+const DEV_ADMIN_SESSION_PATH = '/api/dev/admin-session';
 
 const checks = [];
 
@@ -133,6 +134,11 @@ function staticChecks() {
     'degraded: true',
     'supabase_unconfigured',
   ]);
+  requireIncludes('api:marketing-system-health-runtime-env', 'src/app/api/admin/marketing/system-health/route.ts', [
+    'checkMissingEnvVars',
+    'env.runtime_readiness',
+    'Runtime integration env',
+  ]);
 
   requireJsonCron('/api/cron/sync-creative-performance');
   requireJsonCron('/api/cron/meta-optimize');
@@ -153,6 +159,11 @@ function staticChecks() {
     '"verify:marketing-automation"',
     '"verify:marketing-automation:ci"',
     '"verify:marketing-automation:live"',
+    '"verify:marketing-runtime:local"',
+    '"verify:local-release"',
+    '"open:readiness:local"',
+    '"open:readiness:local:runtime"',
+    '"open:readiness:local:full"',
     '"audit:blog-search-daily"',
     '"audit:site-indexability"',
   ]);
@@ -160,6 +171,15 @@ function staticChecks() {
   requireIncludes('open-readiness:blog-search-quality-gate', 'scripts/open-readiness-check.mjs', [
     'checkBlogSearchQualityReadiness',
     'public:blog-search-quality',
+    'LOCAL_MODE',
+    'SKIP_EXTERNAL',
+    'ALLOW_LOCAL_MISSING_DATA',
+    'INCLUDE_MARKETING_RUNTIME',
+    'MARKETING_RUNTIME_ISOLATED',
+    'checkMarketingRuntimeLocal',
+    '--base=${BASE_URL}',
+    'runtime:env-readiness',
+    'runtime-env-readiness.json',
     'audit:blog-search-daily',
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
@@ -179,6 +199,49 @@ function staticChecks() {
     'npm run open:readiness -- --json',
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
+  ]);
+
+  requireIncludes('live:marketing-runtime-contract-wired', 'scripts/verify-marketing-automation-readiness.mjs', [
+    'DEV_ADMIN_SESSION_PATH',
+    'checkRefreshWithoutToken',
+    'checkApiContract',
+    'allowDegraded',
+    '/api/admin/marketing/system-health',
+  ]);
+  requireIncludes('script:marketing-runtime-local-start-stop', 'scripts/verify-marketing-runtime-local.mjs', [
+    'startNextServer',
+    'waitForReady',
+    'stopProcessTree',
+    'verify-marketing-automation-readiness.mjs',
+    'MARKETING_RUNTIME_PORT',
+    '--strict',
+  ]);
+  requireIncludes('script:open-readiness-local-full-start-stop', 'scripts/verify-open-readiness-local.mjs', [
+    'startNextServer',
+    'waitForReady',
+    'stopProcessTree',
+    'open-readiness-check.mjs',
+    '--include-marketing-runtime',
+    '--base=${baseUrl}',
+  ]);
+  requireIncludes('script:local-next-server-helper', 'scripts/lib/local-next-server.mjs', [
+    'startNextServer',
+    'stopProcessTree',
+    'waitForReady',
+    'validatePort',
+    'validateMode',
+  ]);
+  requireIncludes('script:local-release-readiness', 'scripts/verify-local-release-readiness.mjs', [
+    'type-check',
+    'lint',
+    'test',
+    'verify:marketing-automation:ci',
+    'open:readiness:local:full',
+    'check:bundle',
+    'parseJsonFromOutput',
+    'strictOpenReadiness',
+    'maxBuffer',
+    'NEXT_BUILD_RECOVERY_WAIT_MS',
   ]);
 }
 
@@ -228,13 +291,53 @@ function cookieHeaderFromSetCookie(setCookie) {
     .join('; ');
 }
 
+function parseJsonBody(res) {
+  if (!res.body) return null;
+  try {
+    return JSON.parse(res.body);
+  } catch {
+    return null;
+  }
+}
+
+function isLoginHtml(res) {
+  if (!res.contentType.includes('text/html')) return false;
+  return /login|sign in|로그인|관리자/i.test(res.body);
+}
+
+function isDegradedPayload(payload) {
+  if (!payload || typeof payload !== 'object') return false;
+  return Boolean(
+    payload.degraded === true ||
+      payload.access_state === 'supabase_unconfigured' ||
+      payload.reason === 'supabase_unconfigured' ||
+      payload.reason === 'summary_degraded',
+  );
+}
+
+function missingTopLevelKeys(payload, keys) {
+  if (!payload || typeof payload !== 'object') return keys;
+  return keys.filter((key) => !(key in payload));
+}
+
+function statusAllowed(endpoint, status, payload) {
+  if ((endpoint.allowedStatuses || [200]).includes(status)) return true;
+  return Boolean(endpoint.allowDegraded && [200, 503].includes(status) && isDegradedPayload(payload));
+}
+
 const LIVE_API_ENDPOINTS = [
-  '/api/meta/campaigns',
-  '/api/meta/creatives',
-  '/api/meta/performance',
-  '/api/campaigns/creatives?limit=10',
-  '/api/admin/marketing/dashboard',
-  '/api/admin/ad-os/summary',
+  { path: '/api/meta/campaigns', keys: ['campaigns'], allowDegraded: true },
+  { path: '/api/meta/creatives', keys: ['creatives', 'grouped'], allowDegraded: true },
+  { path: '/api/meta/performance', keys: ['campaigns', 'snapshots'], allowDegraded: true },
+  { path: '/api/campaigns/creatives?limit=10', keys: ['creatives'], allowDegraded: true },
+  { path: '/api/admin/marketing/dashboard', keys: ['data'], allowDegraded: true },
+  { path: '/api/admin/marketing/system-health', keys: ['ok', 'score', 'checks'] },
+  {
+    path: '/api/admin/ad-os/summary',
+    keys: ['ok', 'kpis', 'launch_action_queue'],
+    allowDegraded: true,
+    allowedStatuses: [200, 503],
+  },
 ];
 
 const LIVE_PAGE_PATHS = [
@@ -244,24 +347,66 @@ const LIVE_PAGE_PATHS = [
   '/admin/ad-os',
 ];
 
+async function checkRefreshWithoutToken() {
+  const res = await fetchWithTimeout(`${baseUrl}/api/auth/refresh`, { method: 'POST' });
+  const payload = parseJsonBody(res);
+  const ok =
+    res.status === 401 &&
+    res.contentType.includes('application/json') &&
+    payload &&
+    payload.error === 'refresh_token missing';
+  addCheck('live:auth-refresh-no-token', ok ? 'pass' : 'fail', {
+    statusCode: res.status,
+    contentType: res.contentType,
+    ms: res.ms,
+    error: ok ? '' : (res.error || res.body.slice(0, 300)),
+  });
+}
+
+async function checkApiContract(endpoint, headers) {
+  const res = await fetchWithTimeout(`${baseUrl}${endpoint.path}`, { headers });
+  const payload = parseJsonBody(res);
+  const missingKeys = missingTopLevelKeys(payload, endpoint.keys);
+  const allowed = statusAllowed(endpoint, res.status, payload);
+  const ok =
+    allowed &&
+    res.contentType.includes('application/json') &&
+    payload &&
+    typeof payload === 'object' &&
+    missingKeys.length === 0;
+
+  addCheck(`live:api:${endpoint.path}`, ok ? 'pass' : 'fail', {
+    statusCode: res.status,
+    contentType: res.contentType,
+    ms: res.ms,
+    degraded: isDegradedPayload(payload),
+    missingKeys,
+    error: ok ? '' : isLoginHtml(res) ? 'received login HTML instead of JSON' : (res.error || res.body.slice(0, 300)),
+  });
+}
+
 async function liveChecks() {
   if (!baseUrl) return;
 
+  await checkRefreshWithoutToken();
+
   let cookie = providedCookie;
   if (!cookie) {
-    const login = await fetchWithTimeout(`${baseUrl}/api/debug/dev-admin-login`);
-    cookie = cookieHeaderFromSetCookie(login.setCookie);
+    const login = await fetchWithTimeout(`${baseUrl}${DEV_ADMIN_SESSION_PATH}`);
+    const issuedCookie = cookieHeaderFromSetCookie(login.setCookie);
     const loginOk = login.status === 200 && /ys-dev-admin=/.test(login.setCookie);
+    cookie = loginOk ? issuedCookie : '';
     addCheck('live:dev-admin-cookie', loginOk ? 'pass' : 'blocked', {
       statusCode: login.status,
       ms: login.ms,
+      path: DEV_ADMIN_SESSION_PATH,
       notes: loginOk ? 'dev admin cookie issued' : 'provide --cookie for non-local or production targets',
     });
   }
 
   if (!cookie) {
     for (const endpoint of LIVE_API_ENDPOINTS) {
-      addCheck(`live:api:${endpoint}`, 'blocked', {
+      addCheck(`live:api:${endpoint.path}`, 'blocked', {
         notes: 'admin cookie unavailable; pass --cookie to verify protected marketing API routes',
       });
     }
@@ -273,25 +418,10 @@ async function liveChecks() {
     return;
   }
 
-  const headers = cookie ? { Cookie: cookie } : {};
+  const headers = { Cookie: cookie };
 
   for (const endpoint of LIVE_API_ENDPOINTS) {
-    const res = await fetchWithTimeout(`${baseUrl}${endpoint}`, { headers });
-    let parsed = null;
-    try {
-      parsed = JSON.parse(res.body);
-    } catch {
-      /* checked below */
-    }
-    const jsonOk = res.status === 200 && res.contentType.includes('application/json') && parsed && typeof parsed === 'object';
-    const authHtml = res.contentType.includes('text/html') && /로그인|여행사 관리 시스템/.test(res.body);
-    addCheck(`live:api:${endpoint}`, jsonOk ? 'pass' : 'fail', {
-      statusCode: res.status,
-      contentType: res.contentType,
-      ms: res.ms,
-      degraded: Boolean(parsed?.degraded || parsed?.access_state === 'supabase_unconfigured' || parsed?.reason === 'supabase_unconfigured'),
-      error: jsonOk ? '' : authHtml ? 'received login HTML instead of JSON' : (res.error || res.body.slice(0, 300)),
-    });
+    await checkApiContract(endpoint, headers);
   }
 
   for (const pagePath of LIVE_PAGE_PATHS) {
@@ -300,7 +430,7 @@ async function liveChecks() {
       res.status === 200 &&
       res.contentType.includes('text/html') &&
       !/Application error|Internal Server Error|Unhandled Runtime Error/.test(res.body) &&
-      !/여행사 관리 시스템/.test(res.body);
+      !isLoginHtml(res);
     addCheck(`live:page:${pagePath}`, ok ? 'pass' : 'fail', {
       statusCode: res.status,
       contentType: res.contentType,
