@@ -15,6 +15,8 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
  */
 
 export const dynamic = 'force-dynamic';
+const DESTINATION_SETUP_LOOKUP_LIMIT = 200;
+const DESTINATION_SETUP_RUN_LIMIT = 50;
 export async function POST(req: NextRequest) {
   if (!isCronAuthorized(req)) {
     return cronUnauthorizedResponse();
@@ -26,7 +28,7 @@ export async function POST(req: NextRequest) {
 
   // 1. active_destinations에서 메타데이터 없는 도시 조회
   const [{ data: allDests }, { data: existingMeta }] = await Promise.all([
-    supabaseAdmin.from('active_destinations').select('destination').order('package_count', { ascending: false }),
+    supabaseAdmin.from('active_destinations').select('destination').order('package_count', { ascending: false }).limit(DESTINATION_SETUP_LOOKUP_LIMIT),
     supabaseAdmin.from('destination_metadata').select('destination'),
   ]);
 
@@ -35,7 +37,8 @@ export async function POST(req: NextRequest) {
   const existingSet = new Set((existingMeta || []).map((m: { destination: string }) => m.destination));
   const newDests = allDests
     .map((d: { destination: string }) => d.destination)
-    .filter((d: string) => !existingSet.has(d));
+    .filter((d: string) => !existingSet.has(d))
+    .slice(0, DESTINATION_SETUP_RUN_LIMIT);
 
   if (newDests.length === 0) {
     return apiResponse({ message: '신규 여행지 없음', processed: 0 });

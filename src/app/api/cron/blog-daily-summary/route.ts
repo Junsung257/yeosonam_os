@@ -46,18 +46,18 @@ async function runDailySummary(request: NextRequest) {
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
   const [pubRes, queueRes, alertRes, indexRes, visibilityRes, rankRes] = await Promise.all([
-    supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'exact' })
+    supabaseAdmin.from('content_creatives').select('id, slug, content_type, destination, readability_score', { count: 'estimated' })
       .eq('channel', 'naver_blog').eq('status', 'published')
       .gte('published_at', yStart.toISOString()).lte('published_at', yEnd.toISOString()),
-    supabaseAdmin.from('blog_topic_queue').select('status', { count: 'exact' })
+    supabaseAdmin.from('blog_topic_queue').select('status', { count: 'estimated' })
       .in('status', ['queued', 'failed']),
-    supabaseAdmin.from('rank_alerts').select('id', { count: 'exact' })
+    supabaseAdmin.from('rank_alerts').select('id', { count: 'estimated' })
       .is('resolved_at', null),
     supabaseAdmin.from('indexing_reports').select('google_status, google_error, indexnow_status, indexnow_error, sitemap_pings, google_index_verdict, google_coverage_state')
       .gte('reported_at', yStart.toISOString()).lte('reported_at', yEnd.toISOString()),
-    supabaseAdmin.from('blog_visibility_snapshots').select('id, platform, index_status, visibility_status', { count: 'exact' })
+    supabaseAdmin.from('blog_visibility_snapshots').select('id, platform, index_status, visibility_status', { count: 'estimated' })
       .gte('checked_at', yStart.toISOString()).lte('checked_at', yEnd.toISOString()),
-    supabaseAdmin.from('rank_history').select('slug', { count: 'exact', head: true })
+    supabaseAdmin.from('rank_history').select('slug', { count: 'estimated', head: true })
       .gte('date', thirtyDaysAgo.toISOString().split('T')[0]),
   ]);
 

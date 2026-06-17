@@ -24,6 +24,9 @@ const PKG_COUNT_DISCLOSE_MIN = 6;
 export const revalidate = 300;
 export const dynamic = 'force-static';
 
+const HOME_AGG_PACKAGE_LIMIT = 1000;
+const HOME_RATING_LIMIT = 1000;
+
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
   if (/장가계|청도|서안|상해|연길|백두산|구채구/.test(dest)) return '중국';
@@ -156,7 +159,9 @@ export default async function HomePage() {
   const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
     sb.from('travel_packages')
       .select('destination, price, price_tiers, price_dates, country')
-      .in('status', ['active', 'approved']),
+      .in('status', ['active', 'approved'])
+      .order('updated_at', { ascending: false })
+      .limit(HOME_AGG_PACKAGE_LIMIT),
     sb.from('attractions')
       .select('name, photos, country, region, mention_count')
       .not('photos', 'is', null)
@@ -173,7 +178,9 @@ export default async function HomePage() {
     sb.from('travel_packages')
       .select('avg_rating, review_count')
       .not('avg_rating', 'is', null)
-      .gte('review_count', 1),
+      .gte('review_count', 1)
+      .order('updated_at', { ascending: false })
+      .limit(HOME_RATING_LIMIT),
   ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
   const allPkgs = pkgResult.data ?? [];

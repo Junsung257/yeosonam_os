@@ -4,9 +4,11 @@ import { encodeDestinationPathSegment } from '@/lib/regions';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const HARD_LIMIT = 45000;
+const SITEMAP_PACKAGE_LIMIT = 5000;
+const SITEMAP_BLOG_LIMIT = 5000;
+const SITEMAP_DESTINATION_LIMIT = 500;
 
-export const revalidate = 60;
+export const revalidate = 3600;
 export const dynamic = 'force-static';
 
 function safeLastModified(iso: string | null | undefined): Date {
@@ -49,7 +51,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .select('id, updated_at')
       .in('status', ['active', 'approved'])
       .order('updated_at', { ascending: false })
-      .limit(HARD_LIMIT);
+      .limit(SITEMAP_PACKAGE_LIMIT);
 
     for (const pkg of pkgs || []) {
       routes.push({
@@ -67,7 +69,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   try {
     const { data: activeDests } = await supabaseAdmin
       .from('active_destinations')
-      .select('destination');
+      .select('destination')
+      .limit(SITEMAP_DESTINATION_LIMIT);
     for (const d of (activeDests || []) as Array<{ destination: string }>) {
       if (d.destination) {
         routes.push({
@@ -91,7 +94,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .eq('channel', 'naver_blog')
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(HARD_LIMIT);
+      .limit(SITEMAP_BLOG_LIMIT);
 
     const postList = (posts || []) as Array<{
       slug: string;

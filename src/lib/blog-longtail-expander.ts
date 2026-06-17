@@ -389,7 +389,7 @@ async function loadExistingKeywordSurface(recentDedupDays: number): Promise<stri
     .select('seo_title, slug, destination')
     .eq('channel', 'naver_blog')
     .in('status', ['draft', 'scheduled', 'published'])
-    .limit(2000);
+    .limit(500);
 
   for (const row of (posts || []) as Array<{ seo_title: string | null; slug: string | null; destination: string | null }>) {
     if (row.seo_title) values.push(row.seo_title);
@@ -405,7 +405,7 @@ async function loadExistingFamilyKeys(): Promise<Set<string>> {
     .from('blog_keyword_families')
     .select('family_key')
     .in('status', ['active', 'watch'])
-    .limit(5000);
+    .limit(1000);
 
   return new Set(((data || []) as Array<{ family_key: string | null }>)
     .map((row) => row.family_key)
