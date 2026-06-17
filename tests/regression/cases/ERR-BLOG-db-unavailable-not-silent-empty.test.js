@@ -40,8 +40,14 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   const source = read('src', 'app', 'blog', 'BlogData.tsx');
 
   assert.match(source, /unavailable: boolean/);
+  assert.match(source, /unstable_cache/);
+  assert.match(source, /getCachedBlogData/);
+  assert.match(source, /BLOG_LIST_CACHE_TAG/);
+  assert.match(source, /throw createBlogDatabaseUnavailableError\(\)/);
   assert.match(source, /__blogQueryUnavailable/);
   assert.match(source, /isBlogQueryUnavailable/);
+  assert.match(source, /isBlogQueryUnavailable\(destRes\)/);
+  assert.match(source, /isBlogQueryUnavailable\(angleRes\)/);
   assert.match(source, /connection timeout/i);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답 지연/);
@@ -52,8 +58,16 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
 
 test('/blog detail does not convert DB timeouts into notFound', () => {
   const source = read('src', 'app', 'blog', '[slug]', 'page.tsx');
+  const cache = read('src', 'lib', 'blog-cache.ts');
 
-  assert.match(source, /BLOG_DATABASE_UNAVAILABLE/);
+  assert.match(cache, /BLOG_DATABASE_UNAVAILABLE/);
+  assert.match(source, /createBlogDatabaseUnavailableError/);
+  assert.match(source, /unstable_cache/);
+  assert.match(source, /getPostFastUncached/);
+  assert.match(source, /getCachedPostFast/);
+  assert.match(source, /BLOG_DETAIL_CACHE_TAG/);
+  assert.match(source, /duplicateTitleSuffix/);
+  assert.match(source, /headlineExperiment/);
   assert.match(source, /isBlogDetailQueryUnavailable/);
   assert.match(source, /BlogDatabaseUnavailableView/);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
@@ -70,4 +84,28 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
   assert.match(source, /status: 503/);
+});
+
+test('public blog publish paths invalidate list and detail data caches', () => {
+  const cache = read('src', 'lib', 'blog-cache.ts');
+  const revalidate = read('src', 'lib', 'revalidate-blog-cache.ts');
+
+  assert.match(cache, /BLOG_LIST_CACHE_TAG = ['"]blog-list['"]/);
+  assert.match(cache, /BLOG_DETAIL_CACHE_TAG = ['"]blog-detail['"]/);
+  assert.match(revalidate, /safeRevalidateTag\(BLOG_LIST_CACHE_TAG\)/);
+  assert.match(revalidate, /safeRevalidateTag\(BLOG_DETAIL_CACHE_TAG\)/);
+  assert.match(revalidate, /safeRevalidatePath\('\/blog'\)/);
+  assert.match(revalidate, /safeRevalidatePath\(`\/blog\/\$\{slug\}`\)/);
+
+  for (const file of [
+    ['src', 'app', 'api', 'blog', 'route.ts'],
+    ['src', 'app', 'api', 'blog', 'from-card-news', 'route.ts'],
+    ['src', 'app', 'api', 'blog', 'mrt-hotel-ranking', 'route.ts'],
+    ['src', 'app', 'api', 'content-queue', 'route.ts'],
+    ['src', 'app', 'api', 'content-hub', 'publish', 'route.ts'],
+    ['src', 'app', 'api', 'cron', 'blog-publisher', 'route.ts'],
+    ['src', 'app', 'api', 'cron', 'blog-regenerate-zero-click', 'route.ts'],
+  ]) {
+    assert.match(read(...file), /revalidatePublicBlogCache/);
+  }
 });

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheHeader } from '@/lib/api-response';
-import { revalidatePath } from 'next/cache';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import {
@@ -10,6 +9,7 @@ import {
   resolveBlogDestination,
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 const BLOG_SELECT = 'id, slug, seo_title, seo_description, og_image_url, blog_html, angle_type, channel, status, tracking_id, tone, created_at, updated_at, published_at, product_id, destination, travel_packages(id, title, destination)';
 
@@ -140,9 +140,7 @@ const postHandler = async (request: NextRequest) => {
 
       if (error) throw error;
 
-      revalidatePath('/blog');
-      revalidatePath(`/blog/${slug}`);
-      if (destination) revalidatePath(`/blog/destination/${encodeURIComponent(destination)}`);
+      revalidatePublicBlogCache(slug, destination);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       void enqueueBlogIndexingJob({

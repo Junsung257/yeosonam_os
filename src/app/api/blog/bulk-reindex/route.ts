@@ -1,9 +1,9 @@
 import { NextRequest } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { isAdminRequest } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { notifyIndexingBatch } from '@/lib/indexing';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 type BulkReindexBody = {
   batchSize?: number;
@@ -80,9 +80,8 @@ export async function POST(request: NextRequest) {
     }
 
     for (const post of posts) {
-      revalidatePath(`/blog/${post.slug}`);
+      revalidatePublicBlogCache(post.slug);
     }
-    revalidatePath('/blog');
 
     const urls = posts.map((post) => `${baseUrl}/blog/${post.slug}`);
     const reports = await notifyIndexingBatch(urls, baseUrl);

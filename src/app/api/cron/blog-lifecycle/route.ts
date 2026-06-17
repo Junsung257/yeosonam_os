@@ -1,10 +1,10 @@
 import { NextRequest } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { logError } from '@/lib/sentry-logger';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 export const dynamic = 'force-dynamic';
 
@@ -65,9 +65,8 @@ const getHandler = async (request: NextRequest) => {
 
       if (upErr) throw upErr;
 
-      try { revalidatePath('/blog'); } catch { /* noop */ }
       for (const post of toArchive) {
-        try { revalidatePath(`/blog/${post.slug}`); } catch { /* noop */ }
+        revalidatePublicBlogCache(post.slug);
         archived.push({ slug: post.slug, reason: post.reason });
       }
       archivedCount = toArchive.length;

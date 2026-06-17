@@ -1,4 +1,3 @@
-import { revalidatePath } from 'next/cache';
 import { type NextRequest } from 'next/server';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
@@ -10,6 +9,7 @@ import {
   resolveBlogDestination,
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 const BLOG_SELECT = 'slug, blog_html, seo_title, seo_description, destination, angle_type, product_id, travel_packages(destination)';
 
@@ -96,14 +96,9 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     if (status === 'published' || status === 'manually_published') {
-      revalidatePath('/blog');
-
       const slug = row?.slug;
       const destination = row ? resolveBlogDestination(row) : null;
-      if (slug) revalidatePath(`/blog/${slug}`);
-      if (destination) {
-        revalidatePath(`/blog/destination/${encodeURIComponent(destination)}`);
-      }
+      revalidatePublicBlogCache(slug ?? null, destination);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       if (slug) {

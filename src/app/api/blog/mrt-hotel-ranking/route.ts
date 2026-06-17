@@ -6,7 +6,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { llmCall } from '@/lib/llm-gateway';
 import { mrtProvider, buildMylinkUrl } from '@/lib/travel-providers/mrt';
@@ -18,6 +17,7 @@ import {
   prepareBlogForPublish,
 } from '@/lib/blog-publish-quality';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 export const maxDuration = 60;
 
@@ -234,8 +234,7 @@ ${filtered.map((hotel, i) => {
     if (error) throw error;
 
     if (publish) {
-      revalidatePath('/blog');
-      revalidatePath(`/blog/${finalSlug}`);
+      revalidatePublicBlogCache(finalSlug, city);
       await enqueueBlogIndexingJob({
         slug: finalSlug,
         baseUrl,

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { updateFactoryJobStep } from '@/lib/content-factory-step';
 import { generateBlogJSON, generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
@@ -16,6 +15,7 @@ import { fetchApprovedReviewSnippets, formatReviewQuotesForPrompt } from '@/lib/
 import { finalizeBlogPost } from '@/lib/blog-post-finalizer';
 import { safeEqualString } from '@/lib/timing-safe';
 import { filterReachableImageUrls } from '@/lib/card-news-slide-urls';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 /** blog-publisher가 내부 fetch로 호출할 때 Brief+본문 생성이 60초를 넘기면 잘리므로, 상위 크론(300s) 안에서 여유 있게 실행 */
 export const maxDuration = 240;
@@ -311,7 +311,7 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', card_news_id);
 
-    revalidatePath('/blog');
+    revalidatePublicBlogCache(finalSlug);
 
     // blog_generate 스텝 완료 마킹 (fire-and-forget)
     updateFactoryJobStep(card_news_id, 'blog_generate', 'done');

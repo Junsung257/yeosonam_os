@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
@@ -7,6 +8,11 @@ import { BackToTop } from '@/components/blog/BackToTop';
 import { getDestinationUrl } from '@/lib/regions';
 import { fmtDateISO } from '@/lib/admin-utils';
 import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
+import {
+  BLOG_LIST_CACHE_TAG,
+  createBlogDatabaseUnavailableError,
+  isBlogDatabaseUnavailableError,
+} from '@/lib/blog-cache';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -117,7 +123,7 @@ function isBlogQueryUnavailable(result: unknown): boolean {
   return /abort|timeout|timed out|connection timeout/i.test(message);
 }
 
-async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: T, timeoutMs = 6000): Promise<T> {
+async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback: unknown, timeoutMs = 6000): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -127,21 +133,27 @@ async function runBlogQuery<T>(label: string, query: AbortableQuery<T>, fallback
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogQueryResult<T>;
     }
-    return fallback;
+    return fallback as T;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<{
+type BlogListData = {
   featured: BlogPost[];
   posts: BlogPost[];
   total: number;
   destinations: DestinationStat[];
   angleCounts: Record<string, number>;
   unavailable: boolean;
-}> {
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {}, unavailable: true };
+};
+
+function unavailableBlogData(): BlogListData {
+  return { featured: [], posts: [], total: 0, destinations: [], angleCounts: {}, unavailable: true };
+}
+
+async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return unavailableBlogData();
 
   const offset = (page - 1) * PER_PAGE;
 
@@ -196,7 +208,10 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     runBlogQuery('angleCounts', angleQuery, { data: [] }),
   ]);
 
-  const unavailable = isBlogQueryUnavailable(listRes);
+  const unavailable =
+    isBlogQueryUnavailable(listRes) ||
+    isBlogQueryUnavailable(destRes) ||
+    isBlogQueryUnavailable(angleRes);
   const posts = (listRes.data as unknown as BlogPost[]) || [];
   const angleCounts = ((angleRes.data as Array<{ angle_type: string | null }> | null) || []).reduce<Record<string, number>>((acc, row) => {
     const angle = row.angle_type?.trim();
@@ -221,6 +236,30 @@ async function getBlogData(page: number, filter: { destination?: string; angle?:
     angleCounts,
     unavailable,
   };
+}
+
+const getCachedBlogData = unstable_cache(
+  async (page: number, destination: string, angle: string) => {
+    const data = await getBlogDataUncached(page, {
+      destination: destination || undefined,
+      angle: angle || undefined,
+    });
+    if (data.unavailable) {
+      throw createBlogDatabaseUnavailableError();
+    }
+    return data;
+  },
+  ['blog-list-v2'],
+  { revalidate: 300, tags: [BLOG_LIST_CACHE_TAG] },
+);
+
+async function getBlogData(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
+  try {
+    return await getCachedBlogData(page, filter.destination ?? '', filter.angle ?? '');
+  } catch (err) {
+    if (isBlogDatabaseUnavailableError(err)) return unavailableBlogData();
+    throw err;
+  }
 }
 
 // ── 히어로 카드 (Featured 1번 슬롯 — 이미지 오버레이 타입) ──

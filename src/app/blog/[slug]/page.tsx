@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { unstable_cache } from 'next/cache';
 import { notFound, permanentRedirect, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
@@ -32,6 +33,11 @@ import { toBlogImageDisplaySrc } from '@/lib/blog-image-proxy';
 import { classifyBlogIntent } from '@/lib/blog-content-intent';
 import { recommendBestPackages } from '@/lib/scoring/recommend';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+import {
+  BLOG_DETAIL_CACHE_TAG,
+  createBlogDatabaseUnavailableError,
+  isBlogDatabaseUnavailableError,
+} from '@/lib/blog-cache';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -149,14 +155,10 @@ function isBlogDetailQueryUnavailable(result: unknown): boolean {
   return /abort|timeout|timed out|connection timeout/i.test(message);
 }
 
-function isBlogDatabaseUnavailableError(err: unknown): boolean {
-  return err instanceof Error && err.message === 'BLOG_DATABASE_UNAVAILABLE';
-}
-
 async function runBlogDetailQuery<T>(
   label: string,
   query: AbortableQuery<T>,
-  fallback: T,
+  fallback: unknown,
   timeoutMs = 8000,
 ): Promise<T> {
   const controller = new AbortController();
@@ -168,7 +170,7 @@ async function runBlogDetailQuery<T>(
     if (fallback && typeof fallback === 'object') {
       return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogDetailQueryResult<T>;
     }
-    return fallback;
+    return fallback as T;
   } finally {
     clearTimeout(timer);
   }
@@ -228,16 +230,22 @@ function buildSeoDescription(post: BlogPost): string {
 async function getDuplicateTitleSuffix(post: BlogPost): Promise<string> {
   if (!isSupabaseConfigured || !post.seo_title) return '';
   try {
-    const { data } = await supabaseAdmin
-      .from('content_creatives')
-      .select('slug, published_at, created_at')
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
-      .eq('seo_title', post.seo_title)
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: true });
+    const result = await runBlogDetailQuery(
+      'duplicateTitleSuffix',
+      supabaseAdmin
+        .from('content_creatives')
+        .select('slug, published_at, created_at')
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .eq('seo_title', post.seo_title)
+        .not('slug', 'is', null)
+        .order('published_at', { ascending: true }),
+      { data: [] as Array<{ slug: string | null; published_at: string | null; created_at: string | null }>, error: null },
+      2500,
+    );
+    if (isBlogDetailQueryUnavailable(result) || result.error) return '';
 
-    const duplicates = ((data || []) as Array<{ slug: string | null; published_at: string | null; created_at: string | null }>)
+    const duplicates = ((result.data || []) as Array<{ slug: string | null; published_at: string | null; created_at: string | null }>)
       .filter((row) => row.slug)
       .sort((a, b) => {
         const ad = a.published_at || a.created_at || '';
@@ -353,9 +361,9 @@ async function getPost(slug: string): Promise<BlogPost | null> {
   return data[0] as unknown as BlogPost;
 }
 
-async function getPostFast(slug: string): Promise<BlogPost | null> {
+async function getPostFastUncached(slug: string): Promise<BlogPost | null> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
-    throw new Error('BLOG_DATABASE_UNAVAILABLE');
+    throw createBlogDatabaseUnavailableError();
   }
 
   const dbSlug = safeDecodeSlug(slug);
@@ -376,7 +384,7 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   const { data, error } = postResult;
 
   if (isBlogDetailQueryUnavailable(postResult)) {
-    throw new Error('BLOG_DATABASE_UNAVAILABLE');
+    throw createBlogDatabaseUnavailableError();
   }
 
   if (error) {
@@ -403,6 +411,16 @@ async function getPostFast(slug: string): Promise<BlogPost | null> {
   }
 
   return post;
+}
+
+const getCachedPostFast = unstable_cache(
+  async (slug: string) => getPostFastUncached(slug),
+  ['blog-detail-v2'],
+  { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
+);
+
+async function getPostFast(slug: string): Promise<BlogPost | null> {
+  return getCachedPostFast(slug);
 }
 
 async function getRelatedProducts(
@@ -827,17 +845,25 @@ async function renderBlogDetail({
     // 실험 찾기 또는 생성 (없으면 무시 — 실험은 어드민에서 생성됨)
     // assignVariant는 experimentId를 받으므로, 실험이 존재해야 함.
     // 여기서는 기존 실험 ID를 조회하거나, 없으면 조용히 넘어감.
-    const { data: existingExps } = await supabaseAdmin
-      .from('ab_experiments')
-      .select('id')
-      .eq('creative_id', post.id)
-      .eq('variant_type', 'headline')
-      .in('status', ['running', 'paused'])
-      .limit(1);
+    const experimentResult = await runBlogDetailQuery(
+      'headlineExperiment',
+      supabaseAdmin
+        .from('ab_experiments')
+        .select('id')
+        .eq('creative_id', post.id)
+        .eq('variant_type', 'headline')
+        .in('status', ['running', 'paused'])
+        .limit(1),
+      { data: [] as Array<{ id: string }>, error: null },
+      1500,
+    );
+    const existingExps = isBlogDetailQueryUnavailable(experimentResult) || experimentResult.error
+      ? []
+      : experimentResult.data;
 
     if (existingExps && existingExps.length > 0) {
       const expId = (existingExps[0] as { id: string }).id;
-      const result = await assignVariant(expId, abTestVisitorId);
+      const result = await withBlogRenderTimeout('headlineAssign', assignVariant(expId, abTestVisitorId), null, 1500);
 
       if (result) {
         abTestExperimentId = expId;

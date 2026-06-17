@@ -20,13 +20,13 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
-import { revalidatePath } from 'next/cache';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { prepareBlogForPublish } from '@/lib/blog-publish-quality';
 import { llmCall } from '@/lib/llm-gateway';
 import { withCronLogging } from '@/lib/cron-observability';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 export const runtime = 'nodejs';
 export const maxDuration = 60;
@@ -274,8 +274,7 @@ async function runRegenerator(request: NextRequest) {
           gate_summary: qa.summary.slice(0, 1000),
         });
 
-        try { revalidatePath('/blog'); } catch { /* noop */ }
-        try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
+        revalidatePublicBlogCache(slug, dest);
         await enqueueBlogIndexingJob({
           slug,
           contentCreativeId: post.id,

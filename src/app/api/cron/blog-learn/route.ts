@@ -1,6 +1,5 @@
 import { NextRequest } from 'next/server';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
-import { revalidatePath } from 'next/cache';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { logError, logWarning } from '@/lib/sentry-logger';
@@ -10,6 +9,7 @@ import { collectSystemHealth } from '@/lib/blog-content-orchestrator';
 import { autoFinalizeExperiments } from '@/lib/ab-test-engine';
 import { getSecret } from '@/lib/secret-registry';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 // 빌드 시 정적 분석 회피 (내부 self-fetch 가 빌드타임에 실패).
 export const dynamic = 'force-dynamic';
@@ -70,7 +70,7 @@ const handleBlogLearn = async (request: NextRequest) => {
           .eq('id', topIds[i]);
       }
 
-      try { revalidatePath('/blog'); } catch { /* noop */ }
+      revalidatePublicBlogCache();
 
       result.featured_rotated = {
         count: topIds.length,

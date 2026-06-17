@@ -1,5 +1,4 @@
 import { NextRequest } from 'next/server';
-import { revalidatePath } from 'next/cache';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import {
@@ -10,6 +9,7 @@ import {
   type BlogPublishQualityReport,
 } from '@/lib/blog-publish-quality';
 import { apiResponse } from '@/lib/api-response';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 
 type AbortableQuery<T> = {
   abortSignal: (signal: AbortSignal) => PromiseLike<T>;
@@ -242,8 +242,7 @@ export async function POST(request: NextRequest) {
     if (error) throw error;
 
     if (status === 'published') {
-      revalidatePath('/blog');
-      revalidatePath(`/blog/${cleanSlug}`);
+      revalidatePublicBlogCache(cleanSlug);
 
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const contentCreativeId = (data?.[0] as { id?: string } | undefined)?.id ?? null;
@@ -283,8 +282,7 @@ export async function PATCH(request: NextRequest) {
       if (!target?.slug) {
         return apiResponse({ error: 'Post not found or slug missing' }, { status: 404 });
       }
-      revalidatePath('/blog');
-      revalidatePath(`/blog/${target.slug}`);
+      revalidatePublicBlogCache(target.slug);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
       const queued = await enqueueBlogIndexingJob({
         slug: target.slug,
@@ -374,8 +372,7 @@ export async function PATCH(request: NextRequest) {
 
     if (reqStatus === 'published') {
       const finalSlug = (updateData.slug as string) || (data?.[0] as Record<string, unknown>)?.slug as string;
-      revalidatePath('/blog');
-      if (finalSlug) revalidatePath(`/blog/${finalSlug}`);
+      revalidatePublicBlogCache(finalSlug || null);
 
       if (finalSlug) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';

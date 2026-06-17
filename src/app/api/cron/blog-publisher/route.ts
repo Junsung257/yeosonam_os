@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
 import { logWarning } from '@/lib/sentry-logger';
-import { revalidatePath, revalidateTag } from 'next/cache';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
 import { generateBlogPost, generateBlogSeo, type AngleType } from '@/lib/content-generator';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
+import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
 import { withCronLogging } from '@/lib/cron-observability';
 import { analyzeSerp, buildSerpPromptBlock, buildOptimalTitle } from '@/lib/serp-analyzer';
 import { researchKeyword, enrichWithGscData } from '@/lib/keyword-research';
@@ -666,7 +666,7 @@ async function runBlogPublisher(request: NextRequest) {
               .catch(() => { /* noop — 색인 실패는 발행을 막지 않음 */ }),
           ),
         );
-        try { revalidatePath(`/blog/${slug}`); } catch { /* noop */ }
+        revalidatePublicBlogCache(slug);
       }
     }
     const indexingResults = await Promise.allSettled(indexingPromises);
@@ -702,8 +702,7 @@ async function runBlogPublisher(request: NextRequest) {
         logWarning('[cron/blog-publisher] RAG batch fetch failed', e);
       }
     }
-    try { revalidatePath('/blog'); } catch { /* noop */ }
-    try { revalidateTag('blog-list'); } catch { /* noop */ }
+    revalidatePublicBlogCache();
 
     const indexingWorker = await processDueBlogIndexingJobs({
       workerName: 'blog-publisher-inline-indexing',
@@ -1248,7 +1247,7 @@ async function processQueueItem(
       logWarning('[cron/blog-publisher] marketing_logs record failed (non-blocking)', e);
     }
 
-    try { revalidatePath(`/blog/${generated.slug}`); } catch { /* noop */ }
+    revalidatePublicBlogCache(generated.slug);
 
     return { id: item.id, topic: item.topic, status: 'published', reason: generated.slug };
   } catch (err) {
