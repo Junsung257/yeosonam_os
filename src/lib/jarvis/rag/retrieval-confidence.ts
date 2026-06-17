@@ -1,6 +1,6 @@
 import type { RetrievalHit } from './retriever'
 
-export type RetrievalConfidenceLevel = 'none' | 'low' | 'medium' | 'high'
+type RetrievalConfidenceLevel = 'none' | 'low' | 'medium' | 'high'
 
 export interface RetrievalConfidenceDecision {
   confidence: number

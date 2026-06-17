@@ -1,4 +1,4 @@
-export type GraphEntityType = 'destination' | 'policy_intent' | 'channel' | 'product' | 'source_type'
+type GraphEntityType = 'destination' | 'policy_intent' | 'channel' | 'product' | 'source_type'
 
 export interface GraphLiteChunk {
   id: string

@@ -3,7 +3,7 @@ import path from 'node:path';
 
 type ContractArea = 'external-channel' | 'admin-surface';
 
-export interface CustomerInquiryContractCheck {
+interface CustomerInquiryContractCheck {
   id: string;
   area: ContractArea;
   file: string;

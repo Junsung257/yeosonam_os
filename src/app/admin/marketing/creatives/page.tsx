@@ -110,8 +110,10 @@ export default function CreativesPage() {
     if (filterProduct) params.set('product_id', filterProduct);
     params.set('limit', '100');
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const res = await fetch(`/api/campaigns/creatives?${params}`);
+      const res = await fetch(`/api/campaigns/creatives?${params}`, { signal: controller.signal });
       const contentType = res.headers.get('content-type') ?? '';
       if (!contentType.includes('application/json')) {
         setCreatives([]);
@@ -137,7 +139,10 @@ export default function CreativesPage() {
       setIntegrationBlocked(true);
       setWarning('소재 목록을 불러오지 못했습니다.');
     }
-    finally { setLoading(false); }
+    finally {
+      window.clearTimeout(timeoutId);
+      setLoading(false);
+    }
   }, [filterType, filterChannel, filterStatus, filterProduct]);
 
   useEffect(() => { fetchCreatives(); }, [fetchCreatives]);

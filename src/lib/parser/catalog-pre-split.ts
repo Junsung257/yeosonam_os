@@ -53,7 +53,7 @@ export function collectVariantCatalogBlockStarts(raw: string): number[] {
   return deduped;
 }
 
-export function collectSpecialPriceBlockStarts(raw: string): number[] {
+function collectSpecialPriceBlockStarts(raw: string): number[] {
   const text = raw.replace(/\r\n/g, '\n');
   const starts: number[] = [];
   const lines = text.split('\n');
