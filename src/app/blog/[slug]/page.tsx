@@ -149,6 +149,10 @@ function isBlogDetailQueryUnavailable(result: unknown): boolean {
   return /abort|timeout|timed out|connection timeout/i.test(message);
 }
 
+function isBlogDatabaseUnavailableError(err: unknown): boolean {
+  return err instanceof Error && err.message === 'BLOG_DATABASE_UNAVAILABLE';
+}
+
 async function runBlogDetailQuery<T>(
   label: string,
   query: AbortableQuery<T>,
@@ -623,7 +627,18 @@ export async function generateMetadata({
   if (/^\d+$/.test(slug)) {
     return { title: '글을 찾을 수 없습니다', robots: { index: false, follow: false } };
   }
-  const post = await getPostFast(slug);
+  let post: BlogPost | null = null;
+  try {
+    post = await getPostFast(slug);
+  } catch (err) {
+    if (isBlogDatabaseUnavailableError(err)) {
+      return {
+        title: { absolute: '블로그 데이터를 불러올 수 없습니다 | 여소남' },
+        robots: { index: false, follow: true },
+      };
+    }
+    throw err;
+  }
   // 404 캐시가 색인되지 않도록 명시적 noindex.
   if (!post) {
     notFound();
@@ -677,6 +692,39 @@ export async function generateMetadata({
       ...(dbOgImage ? { images: [dbOgImage] } : {}),
     },
   };
+}
+
+function BlogDatabaseUnavailableView({ slug }: { slug: string }) {
+  return (
+    <>
+      <GlobalNav />
+      <main className="min-h-screen bg-white">
+        <section className="mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center px-4 py-20 text-center">
+          <p className="mb-3 text-[32px]">!</p>
+          <h1 className="text-[28px] font-extrabold text-text-primary tracking-[-0.02em]">
+            블로그 데이터를 잠시 불러오지 못했습니다.
+          </h1>
+          <p className="mt-3 text-[15px] leading-7 text-text-secondary">
+            이 글이 삭제되었거나 발행되지 않은 상태가 아니라, 현재 DB 응답이 지연되고 있습니다.
+          </p>
+          <div className="mt-7 flex flex-wrap justify-center gap-3">
+            <Link
+              href="/blog"
+              className="rounded-full bg-text-primary px-5 py-2.5 text-[13px] font-semibold text-white transition hover:bg-black"
+            >
+              매거진으로 돌아가기
+            </Link>
+            <a
+              href={`/blog/${slug}`}
+              className="rounded-full border border-admin-border px-5 py-2.5 text-[13px] font-semibold text-text-body transition hover:bg-bg-section"
+            >
+              다시 시도
+            </a>
+          </div>
+        </section>
+      </main>
+    </>
+  );
 }
 
 // ── 페이지 컴포넌트 ──────────────────────────────────────────
@@ -733,7 +781,15 @@ async function renderBlogDetail({
     redirect('/blog');
   }
 
-  const post = await getPostFast(slug);
+  let post: BlogPost | null = null;
+  try {
+    post = await getPostFast(slug);
+  } catch (err) {
+    if (isBlogDatabaseUnavailableError(err)) {
+      return <BlogDatabaseUnavailableView slug={slug} />;
+    }
+    throw err;
+  }
   if (!post) notFound();
 
   const pkg = post.travel_packages;

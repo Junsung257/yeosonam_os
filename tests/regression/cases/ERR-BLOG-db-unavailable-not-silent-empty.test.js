@@ -53,6 +53,9 @@ test('/blog detail does not convert DB timeouts into notFound', () => {
 
   assert.match(source, /BLOG_DATABASE_UNAVAILABLE/);
   assert.match(source, /isBlogDetailQueryUnavailable/);
+  assert.match(source, /BlogDatabaseUnavailableView/);
+  assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
+  assert.match(source, /DB 응답이 지연/);
   assert.match(source, /const postResult = await runBlogDetailQuery/);
   assert.match(source, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
 });

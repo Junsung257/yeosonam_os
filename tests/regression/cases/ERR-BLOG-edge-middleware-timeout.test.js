@@ -32,7 +32,7 @@ test('ERR-BLOG-edge-middleware-timeout: blog routes are pinned to node runtime',
   assert.match(detailPage, /export const runtime = ['"]nodejs['"]/);
   assert.match(detailPage, /withBlogRenderTimeout/);
   assert.match(detailPage, /async function getPostFast/);
-  assert.match(detailPage, /const post = await getPostFast\(slug\);/);
+  assert.match(detailPage, /post = await getPostFast\(slug\);/);
   assert.match(detailPage, /postFastPackage/);
 });
 
