@@ -6,6 +6,7 @@ import { runOrchestrator } from '@/lib/blog-content-orchestrator';
 import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 export const maxDuration = 120;
 
 const handleOrchestrator = async (request: NextRequest) => {

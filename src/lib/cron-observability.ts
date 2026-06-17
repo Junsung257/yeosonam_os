@@ -11,6 +11,23 @@ export interface CronSummary {
 
 type CronHandler = (request: NextRequest) => Promise<CronSummary | Response>;
 
+const CRON_HANDLER_TIMEOUT_MS = 45_000;
+const CRON_SIDE_EFFECT_TIMEOUT_MS = 3_000;
+
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => resolve(fallback), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export function withCronLogging(cronName: string, handler: CronHandler) {
   return async (request: NextRequest): Promise<Response> => {
     const startedAt = new Date();
@@ -22,7 +39,16 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
     let responseBody: unknown = null;
 
     try {
-      const result = await handler(request);
+      const result = await withTimeout<CronSummary | Response>(
+        handler(request),
+        CRON_HANDLER_TIMEOUT_MS,
+        {
+          ok: false,
+          timed_out: true,
+          timeout_ms: CRON_HANDLER_TIMEOUT_MS,
+          errors: [`${cronName} timed out before completion guard`],
+        },
+      );
       if (result instanceof Response) {
         return result;
       }
@@ -60,12 +86,16 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
     if (isSupabaseConfigured) {
       try {
         if (!shouldAlert && status === 'partial_failure') {
-          const { data: prev } = await supabaseAdmin
-            .from('cron_run_logs')
-            .select('status')
-            .eq('cron_name', cronName)
-            .order('started_at', { ascending: false })
-            .limit(1);
+          const { data: prev } = await withTimeout(
+            supabaseAdmin
+              .from('cron_run_logs')
+              .select('status')
+              .eq('cron_name', cronName)
+              .order('started_at', { ascending: false })
+              .limit(1),
+            CRON_SIDE_EFFECT_TIMEOUT_MS,
+            { data: null } as any,
+          );
           const prevStatus = (prev?.[0] as { status?: string } | undefined)?.status;
           if (prevStatus === 'partial_failure' || prevStatus === 'error') {
             shouldAlert = true;
@@ -74,25 +104,32 @@ export function withCronLogging(cronName: string, handler: CronHandler) {
         }
 
         if (shouldAlert) {
-          await sendSlackAlert(alertMessage, {
-            cron: cronName,
-            elapsed_ms: elapsedMs,
-            first_errors: errorMessages,
-          });
-          alerted = true;
+          alerted = await withTimeout(
+            sendSlackAlert(alertMessage, {
+              cron: cronName,
+              elapsed_ms: elapsedMs,
+              first_errors: errorMessages,
+            }).then(() => true),
+            CRON_SIDE_EFFECT_TIMEOUT_MS,
+            false,
+          );
         }
 
-        await supabaseAdmin.from('cron_run_logs').insert({
-          cron_name: cronName,
-          status,
-          started_at: startedAt.toISOString(),
-          finished_at: finishedAt.toISOString(),
-          elapsed_ms: elapsedMs,
-          summary: summary as never,
-          error_count: errorMessages.length,
-          error_messages: errorMessages,
-          alerted,
-        } as never);
+        await withTimeout(
+          supabaseAdmin.from('cron_run_logs').insert({
+            cron_name: cronName,
+            status,
+            started_at: startedAt.toISOString(),
+            finished_at: finishedAt.toISOString(),
+            elapsed_ms: elapsedMs,
+            summary: summary as never,
+            error_count: errorMessages.length,
+            error_messages: errorMessages,
+            alerted,
+          } as never),
+          CRON_SIDE_EFFECT_TIMEOUT_MS,
+          null as any,
+        );
       } catch (dbErr) {
         console.warn(`[${cronName}] cron_run_logs insert failed (ignored):`, sanitizeDbError(dbErr));
       }
