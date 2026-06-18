@@ -206,6 +206,10 @@ function staticChecks() {
     'issueCounts',
     'strictScore',
     'fleetScore',
+    'attentionChecksFromReport',
+    'attentionCheckCount',
+    "missing: ['OPEN_CHECK_PACKAGE_ID']",
+    "'OPEN_CHECK_REF_CODE'",
     'surfaceFailures',
     'surfaceWarnings',
     'LOCAL_MODE',
@@ -520,6 +524,7 @@ function staticChecks() {
     'issueCounts',
     'strictScore',
     'fleetScore',
+    'attention checks: ${item.attentionChecks.join',
     'authMode',
     'surfaceFailures',
     'surfaceWarnings',
@@ -606,6 +611,9 @@ function staticChecks() {
     'checkApiContract',
     'allowDegraded',
     '/api/admin/marketing/system-health',
+    "setCookie: ''",
+    "if (!setCookie) return '';",
+    'live:unexpected-error',
   ]);
   requireIncludes('script:marketing-runtime-local-start-stop', 'scripts/verify-marketing-runtime-local.mjs', [
     'startNextServer',
@@ -685,6 +693,8 @@ function staticChecks() {
     'issueCounts',
     'strictScore',
     'fleetScore',
+    'attentionChecks',
+    'attentionCheckCount',
     'authMode',
     'surfaceFailures',
     'surfaceWarnings',
@@ -724,6 +734,8 @@ async function fetchWithTimeout(url, options = {}) {
       ok: false,
       status: null,
       contentType: '',
+      setCookie: '',
+      location: '',
       body: '',
       ms: Date.now() - started,
       error: err instanceof Error ? err.message : String(err),
@@ -734,6 +746,7 @@ async function fetchWithTimeout(url, options = {}) {
 }
 
 function cookieHeaderFromSetCookie(setCookie) {
+  if (!setCookie) return '';
   return setCookie
     .split(/,(?=[^;,]+=)/)
     .map((cookie) => cookie.split(';')[0].trim())
@@ -892,7 +905,13 @@ async function liveChecks() {
 
 async function main() {
   staticChecks();
-  await liveChecks();
+  try {
+    await liveChecks();
+  } catch (err) {
+    addCheck('live:unexpected-error', 'fail', {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   const failed = checks.filter((check) => check.status === 'fail');
   const blocked = checks.filter((check) => check.status === 'blocked');

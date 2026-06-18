@@ -222,6 +222,10 @@ function summarizeOpenReadinessBlockers(report) {
       fleetScore: Number.isFinite(Number(check.fleetScore)) ? Number(check.fleetScore) : undefined,
       failedIssues: Array.isArray(check.failedIssues) ? check.failedIssues : undefined,
       authMode: check.authMode || undefined,
+      attentionChecks: Array.isArray(check.attentionChecks) ? check.attentionChecks : undefined,
+      attentionCheckCount: Number.isFinite(Number(check.attentionCheckCount))
+        ? Number(check.attentionCheckCount)
+        : undefined,
       checked: Number.isFinite(Number(check.checked)) ? Number(check.checked) : undefined,
       surfaceFailures: Number.isFinite(Number(check.failed)) ? Number(check.failed) : undefined,
       surfaceWarnings: Number.isFinite(Number(check.warn)) ? Number(check.warn) : undefined,

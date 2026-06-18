@@ -99,6 +99,16 @@ function sampleReportFor(value) {
         surfaceFailures: 2,
         surfaceWarnings: 1,
         failedIssues: ['blog-list:db_unavailable_page', 'api-blog:blog_api_db_timeout'],
+      }, {
+        source: 'open-readiness-local-full',
+        name: 'local:marketing-runtime',
+        status: 'blocked',
+        notes: 'sample runtime blocker',
+        attentionChecks: [
+          'live:dev-admin-cookie(blocked)',
+          'live:api:/api/meta/campaigns(blocked)',
+        ],
+        attentionCheckCount: 3,
       }],
       releaseWarnings: [{
         source: 'operational-inputs',
@@ -158,6 +168,15 @@ function sampleReportFor(value) {
       surfaceFailures: 2,
       surfaceWarnings: 1,
       failedIssues: ['blog-list:db_unavailable_page', 'api-blog:blog_api_db_timeout'],
+    }, {
+      name: 'local:marketing-runtime',
+      status: 'blocked',
+      notes: 'sample runtime blocker',
+      attentionChecks: [
+        'live:dev-admin-cookie(blocked)',
+        'live:api:/api/meta/campaigns(blocked)',
+      ],
+      attentionCheckCount: 3,
     }],
     releaseWarnings: [{
       source: 'operational-inputs',
@@ -301,6 +320,13 @@ function noteFor(item) {
   if (item.authMode) {
     notes.push(`auth: ${item.authMode}`);
   }
+  if (Array.isArray(item.attentionChecks) && item.attentionChecks.length > 0) {
+    const count = Number(item.attentionCheckCount);
+    const suffix = Number.isFinite(count) && count > item.attentionChecks.length
+      ? ` (+${count - item.attentionChecks.length} more)`
+      : '';
+    notes.push(`attention checks: ${item.attentionChecks.join(', ')}${suffix}`);
+  }
   const checked = Number(item.checked);
   const surfaceFailures = Number(item.surfaceFailures ?? item.surfaceFailed ?? (Number.isFinite(checked) && checked > 0 ? item.failed : undefined));
   const surfaceWarnings = Number(item.surfaceWarnings ?? item.surfaceWarn ?? (Number.isFinite(checked) && checked > 0 ? item.warn : undefined));
@@ -338,6 +364,8 @@ function reportBlockers(report) {
       fleetScore: check.fleetScore,
       failedIssues: check.failedIssues,
       authMode: check.authMode,
+      attentionChecks: check.attentionChecks,
+      attentionCheckCount: check.attentionCheckCount,
       checked: check.checked,
       surfaceFailures: check.surfaceFailures ?? (Number.isFinite(Number(check.checked)) ? check.failed : undefined),
       surfaceWarnings: check.surfaceWarnings ?? (Number.isFinite(Number(check.checked)) ? check.warn : undefined),

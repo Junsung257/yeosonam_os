@@ -264,6 +264,10 @@ function verifyOutput(run) {
       assertIncludes(issue, 'blog-list:db_unavailable_page', 'open issue');
       assertIncludes(summary, 'surfaces: checked=11, failed=2, warn=1', 'open summary');
       assertIncludes(issue, 'surfaces: checked=11, failed=2, warn=1', 'open issue');
+      assertIncludes(summary, 'local:marketing-runtime', 'open summary');
+      assertIncludes(issue, 'local:marketing-runtime', 'open issue');
+      assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'open summary');
+      assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'open issue');
     } else if (run.kind === 'local-release') {
       assertIncludes(summary, 'public:blog-surface-monitor', 'local-release summary');
       assertIncludes(issue, 'public:blog-surface-monitor', 'local-release issue');
@@ -279,6 +283,10 @@ function verifyOutput(run) {
       assertIncludes(issue, 'blog-list:db_unavailable_page', 'local-release issue');
       assertIncludes(summary, 'surfaces: checked=11, failed=2, warn=1', 'local-release summary');
       assertIncludes(issue, 'surfaces: checked=11, failed=2, warn=1', 'local-release issue');
+      assertIncludes(summary, 'local:marketing-runtime', 'local-release summary');
+      assertIncludes(issue, 'local:marketing-runtime', 'local-release issue');
+      assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'local-release summary');
+      assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'local-release issue');
     }
   }
   if (!run.missingReport && !run.inconsistentBlocker) {

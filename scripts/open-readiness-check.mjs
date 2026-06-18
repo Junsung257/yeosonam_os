@@ -92,6 +92,10 @@ function releaseBlockers() {
       fleetScore: Number.isFinite(Number(check.fleetScore)) ? Number(check.fleetScore) : undefined,
       failedIssues: Array.isArray(check.failedIssues) ? check.failedIssues : undefined,
       authMode: check.authMode || undefined,
+      attentionChecks: Array.isArray(check.attentionChecks) ? check.attentionChecks : undefined,
+      attentionCheckCount: Number.isFinite(Number(check.attentionCheckCount))
+        ? Number(check.attentionCheckCount)
+        : undefined,
       checked: Number.isFinite(Number(check.checked)) ? Number(check.checked) : undefined,
       surfaceFailures: Number.isFinite(Number(check.failed)) ? Number(check.failed) : undefined,
       surfaceWarnings: Number.isFinite(Number(check.warn)) ? Number(check.warn) : undefined,
@@ -251,11 +255,33 @@ function parseJsonFromOutput(output) {
   }
 }
 
+function attentionChecksFromReport(report, limit = 12) {
+  const checks = Array.isArray(report?.checks) ? report.checks : [];
+  return checks
+    .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
+    .slice(0, limit)
+    .map((check) => {
+      const name = String(check.name || check.id || 'unknown');
+      const status = String(check.status || 'unknown');
+      const missing = Array.isArray(check.missing) && check.missing.length > 0
+        ? ` missing=${check.missing.join('|')}`
+        : '';
+      return `${name}(${status}${missing})`;
+    });
+}
+
+function attentionCheckCount(report) {
+  return Array.isArray(report?.checks)
+    ? report.checks.filter((check) => check?.status === 'blocked' || check?.status === 'fail').length
+    : 0;
+}
+
 async function checkPublicUrls() {
   await fetchUrl('public:home', '/', { readBody: false });
   if (LOCAL_MODE && !HAS_EXPLICIT_PACKAGE_ID) {
     addBlockedCheck('public:package-detail', {
       url: `${BASE_URL}/packages/${PACKAGE_ID}`,
+      missing: ['OPEN_CHECK_PACKAGE_ID'],
       notes: 'OPEN_CHECK_PACKAGE_ID not provided; local target may not have production package data',
     });
   } else {
@@ -265,6 +291,10 @@ async function checkPublicUrls() {
   if (LOCAL_MODE && (!HAS_EXPLICIT_REF_CODE || !HAS_EXPLICIT_PACKAGE_ID)) {
     addBlockedCheck('public:referral-link', {
       url: `${BASE_URL}/r/${REF_CODE}/${PACKAGE_ID}`,
+      missing: [
+        ...(!HAS_EXPLICIT_REF_CODE ? ['OPEN_CHECK_REF_CODE'] : []),
+        ...(!HAS_EXPLICIT_PACKAGE_ID ? ['OPEN_CHECK_PACKAGE_ID'] : []),
+      ],
       notes: 'OPEN_CHECK_REF_CODE and OPEN_CHECK_PACKAGE_ID are required for local referral-link verification',
     });
   } else {
@@ -466,11 +496,15 @@ function checkMarketingRuntimeLocal() {
 
   try {
     const runtime = parseJsonFromOutput(result.stdout);
+    const attentionChecks = attentionChecksFromReport(runtime);
+    const attentionCount = attentionCheckCount(runtime);
     addCheck('local:marketing-runtime', result.ok && runtime.status === 'pass' ? 'pass' : runtime.status === 'blocked' ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: runtime.passed,
       blocked: runtime.blocked,
       failed: runtime.failed,
+      attentionChecks,
+      attentionCheckCount: attentionCount,
       notes: `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed`,
       error: result.ok ? '' : (result.stderr || result.message || '').trim().slice(0, 1200),
     });
