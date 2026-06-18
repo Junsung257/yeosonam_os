@@ -4,6 +4,7 @@ import { after as nextAfter, NextRequest, NextResponse } from 'next/server';
 
 import { postAlert } from '@/lib/admin-alerts';
 import { cronUnauthorizedResponse, isCronAuthorized } from '@/lib/cron-auth';
+import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
 import type { UploadReviewQueueFixtureRow } from '@/lib/product-registration/review-queue-fixture-candidates';
 import { buildUploadReviewRegressionReport } from '@/lib/product-registration/upload-review-regression-verifier';
@@ -161,6 +162,9 @@ async function replayRow(row: UploadReviewQueueFixtureRow, request: NextRequest)
 
 export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) return cronUnauthorizedResponse();
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'upload-review-auto-replay');
+  if (resourceSaver) return resourceSaver;
+
   if (!isSupabaseConfigured) {
     return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
   }
