@@ -73,6 +73,21 @@ const INTENT_OPTIONS = [
 
 type IntentId = typeof INTENT_OPTIONS[number]['id'];
 
+const MONTH_FILTER_OPTIONS = Array.from({ length: 6 }, (_, index) => {
+  const date = new Date();
+  date.setMonth(date.getMonth() + index);
+  const value = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+  return { value, label: `${date.getMonth() + 1}월` };
+});
+
+const BUDGET_FILTER_OPTIONS = [
+  { value: '', label: '예산 전체', min: '', max: '' },
+  { value: 'under_100', label: '100만원 이하', min: '', max: '1000000' },
+  { value: '100_150', label: '100~150만원', min: '1000000', max: '1500000' },
+  { value: '150_200', label: '150~200만원', min: '1500000', max: '2000000' },
+  { value: 'over_200', label: '200만원 이상', min: '2000000', max: '' },
+] as const;
+
 const HUB_SUMMARY_LABELS: Record<DepartureHubId, string> = {
   busan: '부산 출발',
   incheon: '인천 출발',
@@ -188,6 +203,7 @@ export default function PackagesClient() {
   const searchParams = useMemo(() => new URLSearchParams(searchParamsString), [searchParamsString]);
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
   const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(null);
+  const [showMoreFilters, setShowMoreFilters] = useState(false);
   const trackedRecommendViewsRef = useRef<Set<string>>(new Set());
 
   const destination = searchParams.get('destination') || '';
@@ -409,6 +425,45 @@ export default function PackagesClient() {
     });
   }, [hub, selectedIntent]);
 
+  const currentBudgetValue = useMemo(() => {
+    const matched = BUDGET_FILTER_OPTIONS.find(opt => opt.min === priceMin && opt.max === priceMax);
+    if (matched) return matched.value;
+    return priceMin || priceMax ? 'custom' : '';
+  }, [priceMax, priceMin]);
+
+  const updatePackageQuery = useCallback((updates: Record<string, string | null>) => {
+    const p = new URLSearchParams(searchParams.toString());
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value) p.set(key, value);
+      else p.delete(key);
+    });
+    const qs = p.toString();
+    router.push(qs ? `/packages?${qs}` : '/packages');
+  }, [router, searchParams]);
+
+  const handleMonthFilterChange = useCallback((value: string) => {
+    updatePackageQuery({ month: value || null });
+    trackPackageFilter('departure_month', value || 'all');
+  }, [trackPackageFilter, updatePackageQuery]);
+
+  const handleBudgetFilterChange = useCallback((value: string) => {
+    const selected = BUDGET_FILTER_OPTIONS.find(opt => opt.value === value) ?? BUDGET_FILTER_OPTIONS[0];
+    updatePackageQuery({
+      priceMin: selected.min || null,
+      priceMax: selected.max || null,
+    });
+    trackPackageFilter('budget', selected.value || 'all');
+  }, [trackPackageFilter, updatePackageQuery]);
+
+  const handlePurposeFilterChange = useCallback((value: string) => {
+    if (!value) {
+      setSelectedIntent(null);
+      trackPackageFilter('intent', 'all');
+      return;
+    }
+    if (value !== selectedIntent) handleIntentSelect(value as IntentId);
+  }, [handleIntentSelect, selectedIntent, trackPackageFilter]);
+
   const listTopRef = useRef<HTMLDivElement>(null);
   if (isLoading) return <Loading />;
 
@@ -460,7 +515,67 @@ export default function PackagesClient() {
 
       <div className="sticky top-14 md:top-16 z-20 border-b border-[#EEF2F6] bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
         <div className="max-w-7xl mx-auto px-4 py-2.5 md:px-8 w-full max-w-full min-w-0">
-          <div className="flex items-center gap-2.5 overflow-x-auto no-scrollbar">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <select
+              aria-label="출발월"
+              className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
+              value={month}
+              onChange={e => handleMonthFilterChange(e.target.value)}
+            >
+              <option value="">출발월 전체</option>
+              {MONTH_FILTER_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="출발지"
+              className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
+              value={hub}
+              onChange={e => {
+                const nextHub = e.target.value as DepartureHubId;
+                navigateWithHub(nextHub);
+                trackPackageFilter('departure_hub', nextHub);
+              }}
+            >
+              {DEPARTURE_HUB_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="여행 목적"
+              className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
+              value={selectedIntent ?? ''}
+              onChange={e => handlePurposeFilterChange(e.target.value)}
+            >
+              <option value="">여행 목적 전체</option>
+              {INTENT_OPTIONS.map(opt => (
+                <option key={opt.id} value={opt.id}>{opt.label}</option>
+              ))}
+            </select>
+            <select
+              aria-label="예산"
+              className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
+              value={currentBudgetValue === 'custom' ? '' : currentBudgetValue}
+              onChange={e => handleBudgetFilterChange(e.target.value)}
+            >
+              {BUDGET_FILTER_OPTIONS.map(opt => (
+                <option key={opt.value || 'all'} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setShowMoreFilters(v => !v)}
+              aria-expanded={showMoreFilters}
+              className={`h-[36px] shrink-0 rounded-full border px-3.5 text-[13px] font-bold transition ${
+                showMoreFilters
+                  ? 'border-brand bg-brand text-white'
+                  : 'border-[#E5E7EB] bg-white text-text-body hover:border-brand/50 hover:text-brand'
+              }`}
+            >
+              더 많은 필터
+            </button>
+          </div>
+          <div className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}>
             <div className="relative shrink-0">
               <select
                 aria-label="정렬 순서"
