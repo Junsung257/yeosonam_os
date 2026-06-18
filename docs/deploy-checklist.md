@@ -288,6 +288,7 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] Run `node .tmp/operational-readiness-vercel-env.mjs --env-file=.tmp/operational-readiness-inputs.env.example` when using Vercel CLI to apply Production/Preview runtime variables.
 - [ ] Bash alternatives also accept the same `--env-file` when running from a Bash-based shell.
 - [ ] Fill any missing public data probes: `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`.
+- [ ] Fill marketing dynamic page probes: `MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID`.
 - [ ] Confirm protected ops probes can authenticate with `CRON_SECRET` or `OPEN_CHECK_AUTH_COOKIE`.
 - [ ] Fill external management credentials: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN`.
 - [ ] Fill runtime integration keys listed in `src/config/runtime-env-readiness.json`.

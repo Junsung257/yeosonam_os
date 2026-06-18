@@ -418,6 +418,7 @@ The audit covers:
 | Group | Keys |
 |---|---|
 | Public data probes | `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE` |
+| Marketing dynamic page probes | `MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID` |
 | Protected ops probes | `CRON_SECRET`, or `OPEN_CHECK_AUTH_COOKIE` for cookie-authenticated staging checks |
 | External management APIs | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN` |
 | Runtime integrations | The critical keys listed in `src/config/runtime-env-readiness.json` |

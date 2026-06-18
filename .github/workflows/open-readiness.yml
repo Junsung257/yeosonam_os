@@ -27,6 +27,8 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
       OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
       OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
+      MARKETING_CHECK_CARD_NEWS_ID: ${{ vars.MARKETING_CHECK_CARD_NEWS_ID || secrets.MARKETING_CHECK_CARD_NEWS_ID }}
+      MARKETING_CHECK_VARIANT_GROUP_ID: ${{ vars.MARKETING_CHECK_VARIANT_GROUP_ID || secrets.MARKETING_CHECK_VARIANT_GROUP_ID }}
       SERPAPI_KEY: ${{ secrets.SERPAPI_KEY || vars.SERPAPI_KEY }}
       BAND_RSS_URL: ${{ secrets.BAND_RSS_URL || vars.BAND_RSS_URL }}
       TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN || vars.TWITTER_BEARER_TOKEN }}
@@ -75,7 +77,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
-          npm run open:readiness -- --json --report=.tmp/open-readiness-report.json | tee .tmp/open-readiness-summary.json
+          npm run open:readiness -- --json --include-marketing-runtime --report=.tmp/open-readiness-report.json | tee .tmp/open-readiness-summary.json
 
       - name: Summarize open readiness
         if: always()

@@ -488,12 +488,6 @@ function checkMarketingAutomationReadiness() {
 
 function checkMarketingRuntimeLocal() {
   if (!INCLUDE_MARKETING_RUNTIME) return;
-  if (!LOCAL_MODE) {
-    addBlockedCheck('local:marketing-runtime', {
-      notes: 'marketing runtime verification starts a local dev server; rerun with --local or a localhost --base',
-    });
-    return;
-  }
 
   const args = [
     'run',
@@ -504,6 +498,8 @@ function checkMarketingRuntimeLocal() {
     `--ready-timeout-ms=${MARKETING_RUNTIME_READY_TIMEOUT_MS}`,
   ];
   if (IS_LOCAL_BASE && !MARKETING_RUNTIME_ISOLATED) {
+    args.push(`--base=${BASE_URL}`);
+  } else if (!LOCAL_MODE) {
     args.push(`--base=${BASE_URL}`);
   } else {
     args.push(`--port=${MARKETING_RUNTIME_PORT}`, `--mode=${MARKETING_RUNTIME_MODE}`);

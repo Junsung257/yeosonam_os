@@ -228,6 +228,7 @@ function staticChecks() {
     'INCLUDE_MARKETING_RUNTIME',
     'MARKETING_RUNTIME_ISOLATED',
     'checkMarketingRuntimeLocal',
+    '} else if (!LOCAL_MODE) {',
     '--base=${BASE_URL}',
     'runtime:env-readiness',
     'runtime-env-readiness.json',
@@ -264,8 +265,11 @@ function staticChecks() {
     'operational-readiness-apply-inputs.mjs',
     'operational-readiness-vercel-env.mjs',
     'npm run open:readiness -- --json',
+    '--include-marketing-runtime',
     'OPEN_CHECK_PACKAGE_ID',
     'OPEN_CHECK_REF_CODE',
+    'MARKETING_CHECK_CARD_NEWS_ID',
+    'MARKETING_CHECK_VARIANT_GROUP_ID',
     'SERPAPI_KEY',
     'GOOGLE_ADS_DEVELOPER_TOKEN',
     'SLACK_WEBHOOK_URL',
@@ -360,6 +364,8 @@ function staticChecks() {
     '.github/workflows/local-release-readiness.yml',
     'OPEN_CHECK_PACKAGE_ID',
     'OPEN_CHECK_REF_CODE',
+    'MARKETING_CHECK_CARD_NEWS_ID',
+    'MARKETING_CHECK_VARIANT_GROUP_ID',
     'hasRuntimeSource',
   ]);
   requireCommandPass('script:runtime-env-workflow-wiring-pass', process.execPath, [
