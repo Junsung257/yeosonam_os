@@ -301,6 +301,47 @@ function cleanupLingeringNextBuildProcesses() {
   });
 }
 
+function activeNextDevServerProcesses() {
+  if (process.env.NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER === '1') return [];
+
+  if (process.platform === 'win32') {
+    const escapedRoot = root.replace(/'/g, "''");
+    const script = [
+      'Get-CimInstance Win32_Process -Filter "name = \'node.exe\'"',
+      `Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -like '*${escapedRoot}*' -and ($_.CommandLine -like '*next* dev*' -or $_.CommandLine -like '*next/dist/bin/next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\bin\\\\next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\server\\\\lib\\\\start-server.js*') }`,
+      'Select-Object -First 5 -ExpandProperty ProcessId',
+    ].join(' | ');
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    return String(result.stdout || '')
+      .split(/\r?\n/)
+      .map((line) => Number(line.trim()))
+      .filter((pid) => Number.isInteger(pid) && pid > 0);
+  }
+
+  const result = spawnSync('ps', ['-eo', 'pid=,args='], {
+    encoding: 'utf8',
+  });
+  return String(result.stdout || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.includes(root) && /\bnext\b.*\bdev\b/.test(line))
+    .map((line) => Number(line.split(/\s+/, 1)[0]))
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid)
+    .slice(0, 5);
+}
+
+function assertNoActiveNextDevServer() {
+  const pids = activeNextDevServerProcesses();
+  if (pids.length === 0) return;
+  throw new Error(
+    `Refusing to run production build while next dev is active in this workspace (pid${pids.length > 1 ? 's' : ''} ${pids.join(', ')}). `
+    + 'Stop the dev server first so it cannot rewrite .next during bundle verification.',
+  );
+}
+
 function getRecoveryWaitMs() {
   const raw = Number(process.env.NEXT_BUILD_RECOVERY_WAIT_MS || 900000);
   if (!Number.isFinite(raw) || raw <= 0) return 900000;
@@ -377,7 +418,12 @@ process.on('SIGTERM', () => {
 });
 
 async function main() {
+  if (process.env.NEXT_BUILD_PRECHECK_ONLY === '1') {
+    assertNoActiveNextDevServer();
+    return;
+  }
   acquireLock();
+  assertNoActiveNextDevServer();
   cleanDistDir();
   require('./ensure-next-routes-js-shim.cjs');
   buildStartedAt = Date.now();
