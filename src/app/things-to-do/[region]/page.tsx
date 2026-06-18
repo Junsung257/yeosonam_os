@@ -17,6 +17,7 @@ import { notFound } from 'next/navigation';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 86400; // 1d
 export const dynamicParams = true;
@@ -179,6 +180,14 @@ async function getPageData(regionRaw: string): Promise<PageData | null> {
   if (!isSupabaseConfigured) return null;
   const region = safeDecodePathSegment(regionRaw).trim();
   if (!region) return null;
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return {
+      region,
+      attractionsByCategory: {},
+      packages: [],
+      totalAttractions: 0,
+    };
+  }
 
   const [{ data: attractions }, { data: packages }] = await Promise.all([
     supabaseAdmin

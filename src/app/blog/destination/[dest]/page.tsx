@@ -13,6 +13,7 @@ import {
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -106,6 +107,7 @@ function safeDecodePathSegment(value: string): string {
 async function resolveDestinationRouteParamUncached(value: string): Promise<string> {
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
 
   try {
     const result = await runBlogDestinationQuery(
@@ -152,6 +154,9 @@ const resolveDestinationRouteParam = cache(async (value: string): Promise<string
 async function getDestinationPageDataUncached(dest: string): Promise<DestinationPageData> {
   const decoded = safeDecodePathSegment(dest).trim();
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    return { destination: decoded, posts: [], packages: [], unavailable: true };
+  }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
     return { destination: decoded, posts: [], packages: [], unavailable: true };
   }
 
@@ -233,6 +238,7 @@ async function getDestinationPageData(dest: string): Promise<DestinationPageData
 export async function generateStaticParams() {
   if (BLOG_DESTINATION_STATIC_PRERENDER_LIMIT <= 0) return [];
   if (!isSupabaseConfigured) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
 
   try {
     const { data } = await supabaseAdmin

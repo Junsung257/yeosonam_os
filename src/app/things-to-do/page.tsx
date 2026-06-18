@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 86400; // 1d
 export const dynamic = 'force-dynamic';
@@ -38,6 +39,7 @@ function isAttractionPhotoArray(value: unknown): value is AttractionPhoto[] {
 
 async function getRegions(): Promise<RegionEntry[]> {
   if (!isSupabaseConfigured) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
   try {
     const { data: regionRows } = await supabaseAdmin
       .from('attractions')

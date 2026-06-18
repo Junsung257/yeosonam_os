@@ -6,6 +6,7 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 600;
 export const dynamic = 'force-dynamic';
@@ -91,6 +92,7 @@ function normalizeAttractionSample(row: unknown): AttractionSample | null {
 
 async function getDestinations() {
   if (!isSupabaseConfigured) return { stats: [], attractionsByDest: {} };
+  if (shouldSkipPublicDbReadsForResourceSaver()) return { stats: [], attractionsByDest: {} };
 
   try {
     const { data: stats } = await supabaseAdmin
