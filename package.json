@@ -77,6 +77,7 @@
     "verify:marketing-automation:ci": "node scripts/verify-marketing-automation-readiness.mjs --strict --json",
     "verify:marketing-automation:live": "node scripts/verify-marketing-automation-readiness.mjs --base=http://localhost:3000 --timeout-ms=30000",
     "verify:marketing-runtime:local": "node scripts/verify-marketing-runtime-local.mjs --mode=dev --strict",
+    "verify:marketing-release": "node scripts/verify-marketing-release-readiness.mjs",
     "verify:local-release": "node scripts/verify-local-release-readiness.mjs",
     "discover:operational-inputs": "node scripts/discover-operational-readiness-inputs.mjs",
     "verify:operational-inputs": "node scripts/verify-operational-readiness-inputs.mjs",

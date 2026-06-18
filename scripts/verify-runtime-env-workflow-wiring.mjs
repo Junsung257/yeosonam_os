@@ -9,6 +9,7 @@ const readiness = JSON.parse(readFileSync('src/config/runtime-env-readiness.json
 const workflowPaths = [
   '.github/workflows/open-readiness.yml',
   '.github/workflows/local-release-readiness.yml',
+  '.github/workflows/marketing-release-readiness.yml',
 ];
 const dataProbeKeys = [
   'OPEN_CHECK_PACKAGE_ID',

@@ -54,6 +54,17 @@ const KIND_CONFIG = {
     checkColumns: ['Check', 'Status', 'Duration ms', 'Failed', 'Blocked'],
     blockerColumns: ['Source', 'Name', 'Status', 'Notes'],
   },
+  'marketing-release': {
+    title: 'Marketing Release Readiness',
+    issueTitle: '[readiness] Marketing release readiness attention items',
+    legacyIssueTitles: ['[readiness] Marketing release readiness blockers'],
+    issueHeading: 'Marketing Release Readiness Attention Items',
+    marker: '<!-- readiness-marketing-release-blockers -->',
+    recoveryText: 'Marketing release readiness is passing again.',
+    countSuffix: ' / Total: ${total}',
+    checkColumns: ['Check', 'Status', 'Duration ms', 'Failed', 'Blocked'],
+    blockerColumns: ['Source', 'Name', 'Status', 'Notes'],
+  },
 };
 
 function configFor(value) {
@@ -62,6 +73,10 @@ function configFor(value) {
     throw new Error(`Unknown --kind "${value}". Use one of: ${Object.keys(KIND_CONFIG).join(', ')}`);
   }
   return config;
+}
+
+function isReleaseKind(value) {
+  return value === 'local-release' || value === 'marketing-release';
 }
 
 function sampleReportFor(value) {
@@ -152,6 +167,100 @@ function sampleReportFor(value) {
     };
   }
 
+  if (value === 'marketing-release') {
+    return {
+      kind: 'marketing-release',
+      status: 'blocked',
+      strict: false,
+      passed: 3,
+      blocked: 2,
+      warnings: 1,
+      failed: 0,
+      total: 5,
+      artifacts: {
+        operationalEnvFile: '.tmp/marketing-release-operational-inputs-discovered.env',
+        operationalTemplate: '.tmp/marketing-release-operational-inputs.env.example',
+        operationalPlan: '.tmp/marketing-release-operational-inputs-action-plan.md',
+        operationalApplyScript: '.tmp/marketing-release-operational-inputs-apply.sh',
+        operationalVercelScript: '.tmp/marketing-release-operational-inputs-vercel-env.sh',
+        operationalNodeApplyScript: '.tmp/marketing-release-operational-inputs-apply.mjs',
+        operationalNodeVercelScript: '.tmp/marketing-release-operational-inputs-vercel-env.mjs',
+      },
+      releaseBlockers: [{
+        source: 'operational-input-discovery',
+        name: 'operational-input-discovery',
+        status: 'blocked',
+        notes: 'sample missing probe ids',
+        missing: ['OPEN_CHECK_PACKAGE_ID', 'MARKETING_CHECK_CARD_NEWS_ID'],
+      }, {
+        source: 'operational-inputs',
+        name: 'runtime:env-readiness',
+        status: 'blocked',
+        notes: 'sample missing env',
+        missing: ['SERPAPI_KEY'],
+      }, {
+        source: 'marketing-runtime-local',
+        name: 'local:marketing-runtime',
+        status: 'blocked',
+        notes: 'sample runtime blocker',
+        attentionChecks: [
+          'live:dev-admin-cookie(blocked)',
+          'live:api:/api/meta/campaigns(blocked)',
+        ],
+        attentionCheckCount: 3,
+      }],
+      releaseWarnings: [{
+        source: 'operational-inputs',
+        name: 'runtime-defaults',
+        status: 'warn',
+        notes: 'sample default env',
+        missing: ['AD_FLAG_UP_BID_FACTOR'],
+        alternatives: ['AD_OFFPEAK_BID_FACTOR'],
+      }],
+      checks: [
+        { id: 'type-check', status: 'pass', durationMs: 111 },
+        { id: 'lint', status: 'pass', durationMs: 222 },
+        { id: 'marketing-automation', status: 'pass', durationMs: 333, passed: 54, blocked: 0, failed: 0 },
+        {
+          id: 'operational-input-discovery',
+          status: 'blocked',
+          durationMs: 44,
+          blocked: 1,
+          failed: 0,
+          missing: ['OPEN_CHECK_PACKAGE_ID', 'MARKETING_CHECK_CARD_NEWS_ID'],
+          envFilePath: '.tmp/marketing-release-operational-inputs-discovered.env',
+        },
+        {
+          id: 'operational-inputs',
+          status: 'blocked',
+          durationMs: 555,
+          blocked: 1,
+          failed: 0,
+          missing: ['SERPAPI_KEY'],
+          templatePath: '.tmp/marketing-release-operational-inputs.env.example',
+          actionPlanPath: '.tmp/marketing-release-operational-inputs-action-plan.md',
+          applyScriptPath: '.tmp/marketing-release-operational-inputs-apply.sh',
+          vercelScriptPath: '.tmp/marketing-release-operational-inputs-vercel-env.sh',
+          nodeApplyScriptPath: '.tmp/marketing-release-operational-inputs-apply.mjs',
+          nodeVercelScriptPath: '.tmp/marketing-release-operational-inputs-vercel-env.mjs',
+          envFilePath: '.tmp/marketing-release-operational-inputs-discovered.env',
+        },
+        {
+          id: 'marketing-runtime-local',
+          status: 'blocked',
+          durationMs: 666,
+          blocked: 1,
+          failed: 0,
+          attentionChecks: [
+            'live:dev-admin-cookie(blocked)',
+            'live:api:/api/meta/campaigns(blocked)',
+          ],
+          attentionCheckCount: 3,
+        },
+      ],
+    };
+  }
+
   return {
     status: 'blocked',
     passed: 2,
@@ -229,7 +338,9 @@ function readReport(path) {
 function missingReportFor(value, path) {
   const name = value === 'local-release'
     ? 'local-release:report'
-    : 'open-readiness:report';
+    : value === 'marketing-release'
+      ? 'marketing-release:report'
+      : 'open-readiness:report';
   const notes = path
     ? `Readiness report was not created at ${path}; inspect workflow logs before trusting this run.`
     : 'Readiness report path was not provided; inspect workflow logs before trusting this run.';
@@ -437,7 +548,7 @@ function checkRows(report, value) {
   return reportChecks(report).map((check) => {
     const name = firstText(check.name, check.id, 'unknown');
     const duration = firstText(check.ms, check.durationMs, '');
-    if (value === 'local-release') {
+    if (isReleaseKind(value)) {
       return [name, check.status || '', duration, check.failed ?? '', check.blocked ?? ''];
     }
     return [name, check.status || '', duration, noteFor(check)];
@@ -446,7 +557,7 @@ function checkRows(report, value) {
 
 function blockerRows(blockers, value) {
   return blockers.map((blocker) => {
-    if (value === 'local-release') {
+    if (isReleaseKind(value)) {
       return [
         blocker.source || '',
         blocker.name || '',
@@ -497,10 +608,32 @@ function preferredLocationsForKeys(keys) {
 function operationalArtifactRows(report) {
   const rows = [];
   const seen = new Set();
-  if (report?.operationalEnvFile?.path) {
-    const key = `local-release:Operational env file:${report.operationalEnvFile.path}`;
+  function addRow(source, type, path) {
+    if (!path) return;
+    const key = `${source}:${type}:${path}`;
+    if (seen.has(key)) return;
     seen.add(key);
-    rows.push(['local-release', 'Operational env file', report.operationalEnvFile.path]);
+    rows.push([source, type, path]);
+  }
+
+  if (report?.operationalEnvFile?.path) {
+    addRow('local-release', 'Operational env file', report.operationalEnvFile.path);
+  }
+  if (report?.artifacts && typeof report.artifacts === 'object') {
+    const artifactSource = Object.values(report.artifacts).some((path) => String(path || '').includes('marketing-release'))
+      ? 'marketing-release'
+      : firstText(report.kind, 'release-readiness');
+    for (const [type, path] of [
+      ['Operational env file', report.artifacts.operationalEnvFile],
+      ['Action plan', report.artifacts.operationalPlan],
+      ['Fill-in template', report.artifacts.operationalTemplate],
+      ['Apply script', report.artifacts.operationalApplyScript],
+      ['Vercel env script', report.artifacts.operationalVercelScript],
+      ['Node apply script', report.artifacts.operationalNodeApplyScript],
+      ['Node Vercel env script', report.artifacts.operationalNodeVercelScript],
+    ]) {
+      addRow(artifactSource, type, path);
+    }
   }
   for (const [type, path] of [
     ['Operational env file', operationalEnvFilePath],
@@ -511,11 +644,7 @@ function operationalArtifactRows(report) {
     ['Node apply script', operationalNodeApplyScriptPath],
     ['Node Vercel env script', operationalNodeVercelScriptPath],
   ]) {
-    if (!path) continue;
-    const key = `operational-inputs:${type}:${path}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    rows.push(['operational-inputs', type, path]);
+    addRow('operational-inputs', type, path);
   }
   for (const check of reportChecks(report)) {
     const source = firstText(check.source, check.id, check.name, 'unknown');
@@ -528,11 +657,7 @@ function operationalArtifactRows(report) {
       ['Node Vercel env script', check.nodeVercelScriptPath],
       ['Env file', check.envFilePath],
     ]) {
-      if (!path) continue;
-      const key = `${source}:${type}:${path}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      rows.push([source, type, path]);
+      addRow(source, type, path);
     }
   }
   return rows;

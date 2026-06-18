@@ -417,6 +417,13 @@ remaining readiness steps. Disable that behavior with
 `--skip-operational-discovery` for narrow smoke checks. When validating a
 filled template through the local release gate, pass
 `--operational-env-file=.tmp/operational-readiness-inputs.env.example`.
+`npm run verify:marketing-release -- --json` provides the marketing-only release
+gate. It attempts operational discovery by default, writes
+`.tmp/marketing-release-operational-inputs-discovered.env`, and then runs the
+marketing automation contracts, operational input audit, local marketing runtime
+probe, build, and bundle checks unless the matching `--skip-*` flags are used.
+The `Marketing Release Readiness` GitHub workflow runs the same gate and renders
+the summary, attention-item issue body, and generated operational input artifacts.
 When Supabase service-role credentials are available, prefer
 `npm run discover:operational-inputs -- --out=.tmp/operational-readiness-discovered.env`
 first and pass that file to `verify:operational-inputs` or `verify:local-release`.

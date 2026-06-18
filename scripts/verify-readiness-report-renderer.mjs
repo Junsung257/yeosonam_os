@@ -170,6 +170,16 @@ function assertIncludes(text, needle, label) {
   if (!text.includes(needle)) throw new Error(`${label} missing "${needle}"`);
 }
 
+function isReleaseKind(kind) {
+  return kind === 'local-release' || kind === 'marketing-release';
+}
+
+function expectedHeadingFor(kind) {
+  if (kind === 'local-release') return 'Local Release Readiness Attention Items';
+  if (kind === 'marketing-release') return 'Marketing Release Readiness Attention Items';
+  return 'Open Readiness Attention Items';
+}
+
 function verifyOutput(run) {
   if (run.status !== 'pass') {
     throw new Error((run.stderr || run.stdout || `${run.kind} renderer failed`).trim());
@@ -182,10 +192,7 @@ function verifyOutput(run) {
   assertIncludes(summary, 'Warnings:', `${run.kind} summary`);
   assertIncludes(issue, 'Warnings:', `${run.kind} issue`);
   assertIncludes(issue, meta.marker, `${run.kind} issue`);
-  const expectedHeading = run.kind === 'local-release'
-    ? 'Local Release Readiness Attention Items'
-    : 'Open Readiness Attention Items';
-  assertIncludes(issue, expectedHeading, `${run.kind} issue`);
+  assertIncludes(issue, expectedHeadingFor(run.kind), `${run.kind} issue`);
 
   if (meta.kind !== run.kind) throw new Error(`${run.kind} meta kind mismatch`);
   if (!Array.isArray(meta.legacyIssueTitles) || meta.legacyIssueTitles.length < 1) {
@@ -214,10 +221,10 @@ function verifyOutput(run) {
   if (!run.missingReport && !run.inconsistentBlocker && Number(meta.warningCount) < 1) {
     throw new Error(`${run.kind} warningCount missing`);
   }
-  if (run.kind === 'local-release') {
-    assertIncludes(summary, '| Check | Status | Duration ms | Failed | Blocked |', 'local-release summary');
+  if (isReleaseKind(run.kind)) {
+    assertIncludes(summary, '| Check | Status | Duration ms | Failed | Blocked |', `${run.kind} summary`);
     if (!run.warningOnly) {
-      assertIncludes(issue, '| Source | Name | Status | Notes |', 'local-release issue');
+      assertIncludes(issue, '| Source | Name | Status | Notes |', `${run.kind} issue`);
     }
   } else {
     assertIncludes(summary, '| Check | Status | Duration ms | Notes |', 'open summary');
@@ -293,6 +300,22 @@ function verifyOutput(run) {
       assertIncludes(issue, 'local:marketing-runtime', 'local-release issue');
       assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'local-release summary');
       assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'local-release issue');
+    } else if (run.kind === 'marketing-release') {
+      assertIncludes(summary, 'Operational env file', 'marketing-release summary');
+      assertIncludes(issue, 'Operational env file', 'marketing-release issue');
+      assertIncludes(summary, '.tmp/marketing-release-operational-inputs-discovered.env', 'marketing-release summary');
+      assertIncludes(issue, '.tmp/marketing-release-operational-inputs-discovered.env', 'marketing-release issue');
+      assertIncludes(summary, 'marketing-automation', 'marketing-release summary');
+      assertIncludes(summary, 'operational-input-discovery', 'marketing-release summary');
+      assertIncludes(issue, 'operational-input-discovery', 'marketing-release issue');
+      assertIncludes(summary, 'MARKETING_CHECK_CARD_NEWS_ID', 'marketing-release summary');
+      assertIncludes(issue, 'MARKETING_CHECK_CARD_NEWS_ID', 'marketing-release issue');
+      assertIncludes(summary, 'marketing-runtime-local', 'marketing-release summary');
+      assertIncludes(issue, 'marketing-runtime-local', 'marketing-release issue');
+      assertIncludes(summary, 'local:marketing-runtime', 'marketing-release summary');
+      assertIncludes(issue, 'local:marketing-runtime', 'marketing-release issue');
+      assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'marketing-release summary');
+      assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'marketing-release issue');
     }
   }
   if (!run.missingReport && !run.inconsistentBlocker) {
@@ -325,7 +348,7 @@ function verifyOutput(run) {
 
 const checks = [];
 
-for (const kind of ['open', 'local-release']) {
+for (const kind of ['open', 'local-release', 'marketing-release']) {
   for (const run of [
     runRenderer(kind),
     runMissingReportRenderer(kind),

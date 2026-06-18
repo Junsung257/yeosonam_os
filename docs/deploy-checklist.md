@@ -49,6 +49,20 @@ npm run open:readiness
 npm run open:readiness:strict
 ```
 
+For marketing-only release readiness, run the single gate:
+
+```bash
+npm run verify:marketing-release -- --json --report=.tmp/marketing-release-readiness-report.json
+```
+
+The same gate is wired to the `Marketing Release Readiness` GitHub workflow,
+which renders the readiness summary, opens or updates the attention-item issue,
+and uploads the generated operational input artifacts.
+
+It runs static marketing automation contracts, operational input discovery/audit,
+local marketing runtime probes, build, and bundle checks unless the corresponding
+`--skip-*` flag is passed for a narrow smoke check.
+
 Exit code meanings:
 
 - `0`: all checked gates pass.
@@ -275,6 +289,8 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 
 ### Operational input audit
 
+- [ ] Run `npm run verify:marketing-release -- --json --report=.tmp/marketing-release-readiness-report.json` before marketing-only releases.
+- [ ] Confirm the `Marketing Release Readiness` GitHub workflow is green or has only expected `blocked` operational-input items before promoting.
 - [ ] Confirm `npm run verify:local-release -- --json --report=.tmp/local-release-readiness-report.json` includes the `operational-inputs` check.
 - [ ] Review `Missing Inputs` and `Release Warnings` in the rendered readiness summary before promoting.
 - [ ] Run `npm run verify:operational-inputs -- --json --template-out=.tmp/operational-readiness-inputs.env.example --plan-out=.tmp/operational-readiness-action-plan.md --apply-script-out=.tmp/operational-readiness-apply-inputs.sh --vercel-script-out=.tmp/operational-readiness-vercel-env.sh --node-apply-script-out=.tmp/operational-readiness-apply-inputs.mjs --node-vercel-script-out=.tmp/operational-readiness-vercel-env.mjs`.

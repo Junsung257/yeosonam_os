@@ -1,0 +1,205 @@
+name: Marketing Release Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: Treat blocked marketing release checks as failures
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_runtime:
+        description: Skip the local browser/runtime marketing smoke checks
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  schedule:
+    - cron: '30 19 * * *'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: marketing-release-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  marketing-release-readiness:
+    name: Marketing Release Readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key-for-ci' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-key-for-ci' }}
+      NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3033'
+      MARKETING_RELEASE_RUNTIME_PORT: '3033'
+      MARKETING_RELEASE_RUNTIME_MODE: 'dev'
+      MARKETING_RELEASE_RUNTIME_READY_TIMEOUT_MS: '180000'
+      MARKETING_RELEASE_RUNTIME_TIMEOUT_MS: '300000'
+      MARKETING_AUTOMATION_TIMEOUT_MS: '120000'
+      OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
+      OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
+      MARKETING_CHECK_CARD_NEWS_ID: ${{ vars.MARKETING_CHECK_CARD_NEWS_ID || secrets.MARKETING_CHECK_CARD_NEWS_ID }}
+      MARKETING_CHECK_VARIANT_GROUP_ID: ${{ vars.MARKETING_CHECK_VARIANT_GROUP_ID || secrets.MARKETING_CHECK_VARIANT_GROUP_ID }}
+      SERPAPI_KEY: ${{ secrets.SERPAPI_KEY || vars.SERPAPI_KEY }}
+      BAND_RSS_URL: ${{ secrets.BAND_RSS_URL || vars.BAND_RSS_URL }}
+      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN || vars.TWITTER_BEARER_TOKEN }}
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID || vars.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET || vars.NAVER_CLIENT_SECRET }}
+      NAVER_CAFE_ID: ${{ secrets.NAVER_CAFE_ID || vars.NAVER_CAFE_ID }}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN || vars.GOOGLE_ADS_DEVELOPER_TOKEN }}
+      GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID || vars.GOOGLE_ADS_CUSTOMER_ID }}
+      GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID || vars.GOOGLE_ADS_CLIENT_ID }}
+      GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET || vars.GOOGLE_ADS_CLIENT_SECRET }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK || vars.SLACK_WEBHOOK_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET || vars.CRON_SECRET }}
+      AD_FLAG_UP_BID_FACTOR: ${{ vars.AD_FLAG_UP_BID_FACTOR }}
+      AD_OFFPEAK_BID_FACTOR: ${{ vars.AD_OFFPEAK_BID_FACTOR }}
+      AD_MIN_BID_KRW: ${{ vars.AD_MIN_BID_KRW }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Run marketing release readiness
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          args=(--json --report=.tmp/marketing-release-readiness-report.json)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict }}" == "true" ]]; then
+            args+=(--strict)
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.skip_runtime }}" == "true" ]]; then
+            args+=(--skip-runtime)
+          fi
+          npm run verify:marketing-release -- "${args[@]}" | tee .tmp/marketing-release-readiness-summary.json
+
+      - name: Summarize marketing release readiness
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/render-readiness-report.mjs \
+            --kind=marketing-release \
+            --report=.tmp/marketing-release-readiness-report.json \
+            --summary-out=.tmp/marketing-release-readiness-step-summary.md \
+            --issue-body-out=.tmp/marketing-release-readiness-issue-body.md \
+            --meta-out=.tmp/marketing-release-readiness-issue-meta.json \
+            --operational-template=.tmp/marketing-release-operational-inputs.env.example \
+            --operational-plan=.tmp/marketing-release-operational-inputs-action-plan.md \
+            --operational-apply-script=.tmp/marketing-release-operational-inputs-apply.sh \
+            --operational-vercel-script=.tmp/marketing-release-operational-inputs-vercel-env.sh \
+            --operational-node-apply-script=.tmp/marketing-release-operational-inputs-apply.mjs \
+            --operational-node-vercel-script=.tmp/marketing-release-operational-inputs-vercel-env.mjs \
+            --operational-env-file=.tmp/marketing-release-operational-inputs-discovered.env
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/marketing-release-readiness-step-summary.md ]]; then
+            cat .tmp/marketing-release-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/marketing-release-operational-inputs-action-plan.md ]]; then
+            printf '\n' >> "$GITHUB_STEP_SUMMARY"
+            cat .tmp/marketing-release-operational-inputs-action-plan.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Track marketing release readiness attention items
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const metaPath = '.tmp/marketing-release-readiness-issue-meta.json';
+            if (!fs.existsSync(metaPath)) return;
+
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+
+            const marker = meta.marker;
+            const title = meta.issueTitle;
+            const legacyTitles = Array.isArray(meta.legacyIssueTitles) ? meta.legacyIssueTitles : [];
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = issues.data.find((issue) =>
+              issue.title === title ||
+              legacyTitles.includes(issue.title) ||
+              issue.body?.includes(marker)
+            );
+
+            if (meta.shouldCloseIssue) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: meta.recoveryComment,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                });
+              }
+              return;
+            }
+
+            if (!(meta.hasAttentionItems || meta.hasBlockers || meta.hasWarnings)) return;
+
+            const bodyPath = meta.issueBodyPath || '.tmp/marketing-release-readiness-issue-body.md';
+            if (!fs.existsSync(bodyPath)) return;
+            const body = fs.readFileSync(bodyPath, 'utf8');
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Upload marketing release readiness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketing-release-readiness-${{ github.run_id }}
+          path: |
+            .tmp/marketing-release-*.log
+            .tmp/marketing-release-readiness-report.json
+            .tmp/marketing-release-readiness-summary.json
+            .tmp/marketing-release-readiness-step-summary.md
+            .tmp/marketing-release-readiness-issue-body.md
+            .tmp/marketing-release-readiness-issue-meta.json
+            .tmp/marketing-release-operational-inputs-discovered.env
+            .tmp/marketing-release-operational-inputs.env.example
+            .tmp/marketing-release-operational-inputs-action-plan.md
+            .tmp/marketing-release-operational-inputs-apply.sh
+            .tmp/marketing-release-operational-inputs-vercel-env.sh
+            .tmp/marketing-release-operational-inputs-apply.mjs
+            .tmp/marketing-release-operational-inputs-vercel-env.mjs
+            .tmp/marketing-runtime-*.log
+          if-no-files-found: ignore
