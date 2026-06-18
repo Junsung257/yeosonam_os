@@ -410,7 +410,12 @@ Cross-platform Node variants are also written to
 `.tmp/local-release-operational-inputs-vercel-env.mjs` by default. Use
 `--skip-operational-inputs` only for narrow development smoke checks where
 external readiness is intentionally out of scope.
-When validating a filled template through the local release gate, pass
+`verify:local-release` also attempts
+`discover:operational-inputs` first when no `--operational-env-file` is passed,
+then loads `.tmp/local-release-operational-inputs-discovered.env` into the
+remaining readiness steps. Disable that behavior with
+`--skip-operational-discovery` for narrow smoke checks. When validating a
+filled template through the local release gate, pass
 `--operational-env-file=.tmp/operational-readiness-inputs.env.example`.
 When Supabase service-role credentials are available, prefer
 `npm run discover:operational-inputs -- --out=.tmp/operational-readiness-discovered.env`

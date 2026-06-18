@@ -24,6 +24,9 @@ const skipTests = hasFlag('--skip-tests');
 const skipBuild = hasFlag('--skip-build');
 const skipOpenReadiness = hasFlag('--skip-open-readiness');
 const skipOperationalInputs = hasFlag('--skip-operational-inputs');
+const skipOperationalDiscovery = skipOperationalInputs ||
+  hasFlag('--skip-operational-discovery') ||
+  process.env.LOCAL_RELEASE_SKIP_OPERATIONAL_DISCOVERY === '1';
 const strictOpenReadiness = hasFlag('--strict-open');
 const reportPath = argValue('--report', process.env.LOCAL_RELEASE_REPORT_PATH || '');
 const operationalInputsTemplatePath = argValue(
@@ -50,10 +53,16 @@ const operationalInputsNodeVercelScriptPath = argValue(
   '--operational-node-vercel-script-out',
   process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_NODE_VERCEL_SCRIPT_OUT || '.tmp/local-release-operational-inputs-vercel-env.mjs',
 );
-const operationalInputsEnvFilePath = argValue(
+const explicitOperationalInputsEnvFilePath = argValue(
   '--operational-env-file',
   process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_ENV_FILE || '',
 );
+const operationalDiscoveryOutPath = argValue(
+  '--operational-discovery-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_DISCOVERY_OUT || '.tmp/local-release-operational-inputs-discovered.env',
+);
+const autoOperationalDiscovery = !skipOperationalDiscovery && !explicitOperationalInputsEnvFilePath;
+let operationalInputsEnvFilePath = explicitOperationalInputsEnvFilePath || (autoOperationalDiscovery ? operationalDiscoveryOutPath : '');
 
 const openPort = Number(argValue('--open-port', process.env.LOCAL_RELEASE_OPEN_PORT || '3044'));
 const openMode = argValue('--open-mode', process.env.LOCAL_RELEASE_OPEN_MODE || 'dev');
@@ -116,7 +125,9 @@ function loadOperationalEnvFile(path) {
   }
 }
 
-const operationalEnvFileLoad = loadOperationalEnvFile(operationalInputsEnvFilePath);
+let operationalEnvFileLoad = explicitOperationalInputsEnvFilePath
+  ? loadOperationalEnvFile(explicitOperationalInputsEnvFilePath)
+  : { path: '', loadedKeys: [], error: '' };
 
 function npmRunInvocation(script, args) {
   if (process.platform !== 'win32') {
@@ -462,6 +473,44 @@ function summarizeReadinessContracts(result) {
   };
 }
 
+function summarizeOperationalDiscovery(result) {
+  const report = parseJsonFromOutput(combinedOutput(result));
+  const readinessStatus = statusField(report);
+  const missing = Array.isArray(report?.missing) ? report.missing : [];
+  const blocked = readinessStatus === 'blocked' || missing.length > 0;
+  const ok = Boolean(report) && (result.exitCode === 0 || blocked);
+  const status = ok ? (blocked ? 'blocked' : 'pass') : 'fail';
+  const blockers = blocked
+    ? [{
+      name: 'operational-input-discovery',
+      status: 'blocked',
+      notes: 'Non-secret readiness probe identifiers could not be fully auto-discovered; provide values or Supabase service-role credentials.',
+      missing,
+      missingConnection: Array.isArray(report?.missingConnection) ? report.missingConnection : undefined,
+    }]
+    : [];
+
+  return {
+    id: result.id,
+    script: result.script,
+    command: result.command,
+    status,
+    exitCode: result.exitCode,
+    error: result.error,
+    durationMs: result.durationMs,
+    readinessStatus: readinessStatus || 'unknown',
+    passed: status === 'pass' ? 1 : 0,
+    blocked: status === 'blocked' ? 1 : 0,
+    failed: status === 'fail' ? 1 : 0,
+    envFilePath: report?.outPath || operationalDiscoveryOutPath,
+    loadedEnvFileKeys: Array.isArray(report?.loadedEnvFileKeys) ? report.loadedEnvFileKeys : [],
+    missing,
+    blockers,
+    stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
+    stderrTail: status === 'fail' ? tailFile(result.stderrPath) : undefined,
+  };
+}
+
 function summarizeOperationalInputs(result) {
   const report = parseJsonFromOutput(combinedOutput(result));
   const blocked = numericField(report, 'blocked');
@@ -522,6 +571,19 @@ checks.push({
   interpret: summarizeReadinessContracts,
 });
 
+if (autoOperationalDiscovery) {
+  checks.push({
+    id: 'operational-input-discovery',
+    script: 'discover:operational-inputs',
+    args: [
+      '--',
+      '--json',
+      `--out=${operationalDiscoveryOutPath}`,
+    ],
+    interpret: summarizeOperationalDiscovery,
+  });
+}
+
 if (!skipOperationalInputs) {
   checks.push({
     id: 'operational-inputs',
@@ -574,6 +636,10 @@ for (const check of checks) {
   const result = runNpmScript(check.id, check.script, check.args || []);
   const summary = check.interpret ? check.interpret(result) : summarizeSimple(result);
   summaries.push(summary);
+
+  if (summary.id === 'operational-input-discovery' && operationalInputsEnvFilePath) {
+    operationalEnvFileLoad = loadOperationalEnvFile(operationalInputsEnvFilePath);
+  }
 
   if (!jsonOutput) {
     const suffix =
@@ -653,6 +719,7 @@ const report = {
     build: skipBuild,
     openReadiness: skipOpenReadiness,
     operationalInputs: skipOperationalInputs,
+    operationalDiscovery: !autoOperationalDiscovery,
   },
   operationalEnvFile: operationalEnvFileLoad.path
     ? {

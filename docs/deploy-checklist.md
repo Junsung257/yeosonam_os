@@ -284,6 +284,7 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] Verify discovered probe identifiers with `npm run verify:operational-inputs -- --json --env-file=.tmp/operational-readiness-discovered.env`.
 - [ ] Fill `.tmp/operational-readiness-inputs.env.example`, then run `npm run verify:operational-inputs -- --json --env-file=.tmp/operational-readiness-inputs.env.example`.
 - [ ] Confirm the env-file audit has no unknown-key, duplicate-key, empty-value, or invalid-line warnings.
+- [ ] Confirm plain `npm run verify:local-release -- --json` attempts discovery and reports `operational-input-discovery` unless `--skip-operational-discovery` is intentionally used.
 - [ ] Re-run local release with the discovered file, or replace the path with the filled template if discovery is unavailable: `npm run verify:local-release -- --json --operational-env-file=.tmp/operational-readiness-discovered.env`.
 - [ ] Fill `.tmp/operational-readiness-inputs.env.example`, then run `OPERATIONAL_APPLY_DRY_RUN=1 node .tmp/operational-readiness-apply-inputs.mjs --env-file=.tmp/operational-readiness-inputs.env.example` and `OPERATIONAL_APPLY_DRY_RUN=1 node .tmp/operational-readiness-vercel-env.mjs --env-file=.tmp/operational-readiness-inputs.env.example` first.
 - [ ] Run `node .tmp/operational-readiness-apply-inputs.mjs --env-file=.tmp/operational-readiness-inputs.env.example` when using GitHub CLI to apply repository secrets/variables.
