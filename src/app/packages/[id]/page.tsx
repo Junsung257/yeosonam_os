@@ -20,6 +20,8 @@ import { sanitizeCustomerPackageForClient } from '@/lib/customer-package-payload
 import { isUuid } from '@/lib/uuid';
 import { resolveLpHeroPhotoUrl } from '@/lib/lp-hero-resolver';
 import { formatProductTypeLabel } from '@/lib/product-type-label';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 
 const BASE_URL = (
   process.env.NEXT_PUBLIC_BASE_URL ||
@@ -166,6 +168,9 @@ export async function generateMetadata({
   if (!isSupabaseConfigured) {
     return buildPackageNoindexMetadata(id, canonical);
   }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return buildPackageNoindexMetadata(id, canonical);
+  }
   const sb = getPackageReadClient();
   if (!sb) {
     return { title: '?곹뭹 ?곸꽭', alternates: { canonical }, robots: { index: false, follow: true } };
@@ -180,11 +185,14 @@ export async function generateMetadata({
     audit_status?: string | null;
   } | null = null;
   try {
-    const result = await sb
-      .from('travel_packages')
-      .select('title, destination, price, product_type, product_summary, status, audit_status')
-      .eq('id', id)
-      .maybeSingle();
+    const result = await runSupabaseQueryWithTimeout(
+      sb
+        .from('travel_packages')
+        .select('title, destination, price, product_type, product_summary, status, audit_status')
+        .eq('id', id)
+        .maybeSingle(),
+      { label: 'package.metadata.primary', timeoutMs: 1800 },
+    );
     if (result.error) {
       return buildPackageNoindexMetadata(id, canonical);
     }
@@ -233,13 +241,17 @@ export default async function PackageDetailPage({
   const sbOrNull = getPackageReadClient();
   if (!sbOrNull) notFound();
   const sb = sbOrNull;
+  const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
-  const pkgResult = await sb.from('travel_packages')
-    .select(DETAIL_FIELDS)
-    .eq('id', id)
-    .single();
+  const pkgResult = await runSupabaseQueryWithTimeout(
+    sb.from('travel_packages')
+      .select(DETAIL_FIELDS)
+      .eq('id', id)
+      .single(),
+    { label: 'package.detail.primary', timeoutMs: 2500 },
+  ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
 
   const pkg = pkgResult.data;
 
@@ -285,7 +297,13 @@ export default async function PackageDetailPage({
 
   // C6 박제 (2026-05-15): JP=793 + TW=160 + 인접 region 매칭이 1200 한계에 근접 → 2000 으로 확장.
   //   light SELECT (id 제외 9컬럼) 이라 payload 부담 작음. Step B 의 relevantAttractions 가 진짜 페이로드.
-  const matchResult = await matchQuery.limit(600);
+  const matchResult = skipNonCriticalDbReads
+    ? { data: [] }
+    : await runOptionalSupabaseQuery(
+        matchQuery.limit(600),
+        { data: [] },
+        { label: 'package.attractions.match-light', timeoutMs: 1200 },
+      );
   const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
@@ -332,12 +350,20 @@ export default async function PackageDetailPage({
     // 2026-05-16 박제: .or() 합성으로 id + name 동시 매칭 시 한글 name 의 PostgREST OR 절
     //   파싱 실패 (공백/따옴표 escape 비표준) → 0건 반환되어 모든 attraction 카드 미표출.
     //   두 번 fetch + 합집합으로 단순화.
-    if (idsFromItinerary.size > 0) {
-      const { data } = await sb.from('attractions').select(SELECT).in('id', Array.from(idsFromItinerary));
+    if (idsFromItinerary.size > 0 && !skipNonCriticalDbReads) {
+      const { data } = await runOptionalSupabaseQuery(
+        sb.from('attractions').select(SELECT).in('id', Array.from(idsFromItinerary)),
+        { data: [] },
+        { label: 'package.attractions.detail-by-id', timeoutMs: 1200 },
+      );
       for (const a of ((data ?? []) as DetailRow[])) merged.set(a.id, a);
     }
-    if (false && matchedNames.size > 0) {
-      const { data } = await sb.from('attractions').select(SELECT).in('name', Array.from(matchedNames));
+    if (false && matchedNames.size > 0 && !skipNonCriticalDbReads) {
+      const { data } = await runOptionalSupabaseQuery(
+        sb.from('attractions').select(SELECT).in('name', Array.from(matchedNames)),
+        { data: [] },
+        { label: 'package.attractions.detail-by-name', timeoutMs: 1200 },
+      );
       for (const a of ((data ?? []) as DetailRow[])) if (!merged.has(a.id)) merged.set(a.id, a);
     }
     relevantAttractions = (Array.from(merged.values()) as unknown) as AttractionData[];
@@ -375,7 +401,7 @@ export default async function PackageDetailPage({
   let relatedBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string }[] = [];
   // 관련 블로그 글 조회 (2) — 같은 destination의 정보성 글 (여행 준비물/날씨/가이드 등)
   let destinationBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string; seo_description: string | null }[] = [];
-  if (pkg?.destination) {
+  if (pkg?.destination && !skipNonCriticalDbReads) {
     const [productScoped, destinationScoped] = await Promise.all([
       sb.from('content_creatives')
         .select('slug, seo_title, og_image_url, angle_type')
@@ -552,9 +578,17 @@ export default async function PackageDetailPage({
     const destTokens = extractDestinationTokens(pkg.destination);
     const mainDestToken = destTokens[0] ?? null;
     const destLookups = await Promise.all([
-      sb.from('travel_packages').select('id').eq('destination', pkg.destination),
+      runOptionalSupabaseQuery(
+        sb.from('travel_packages').select('id').eq('destination', pkg.destination),
+        { data: [] as Array<{ id: string }> },
+        { label: 'package.social.same-destination-exact', timeoutMs: 1000 },
+      ),
       mainDestToken
-        ? sb.from('travel_packages').select('id').ilike('destination', `%${mainDestToken}%`)
+        ? runOptionalSupabaseQuery(
+            sb.from('travel_packages').select('id').ilike('destination', `%${mainDestToken}%`),
+            { data: [] as Array<{ id: string }> },
+            { label: 'package.social.same-destination-token', timeoutMs: 1000 },
+          )
         : Promise.resolve({ data: [] as Array<{ id: string }> }),
     ]);
     for (const q of destLookups) {
@@ -574,24 +608,40 @@ export default async function PackageDetailPage({
 
     const [bk, sg, tv, nb] = await Promise.all([
       // 30일 예약 (destination 단위)
-      sb.from('bookings').select('id', { count: 'exact', head: true })
-        .in('status', ['confirmed', 'waiting_balance', 'fully_paid'])
-        .gte('created_at', since30d)
-        .in('package_id', destPkgIds),
+      runOptionalSupabaseQuery(
+        sb.from('bookings').select('id', { count: 'exact', head: true })
+          .in('status', ['confirmed', 'waiting_balance', 'fully_paid'])
+          .gte('created_at', since30d)
+          .in('package_id', destPkgIds),
+        { count: 0 },
+        { label: 'package.social.bookings', timeoutMs: 1000 },
+      ),
       // 30일 조회 신호
-      sb.from('package_score_signals').select('id', { count: 'exact', head: true })
-        .gte('created_at', since30d)
-        .in('package_id', destPkgIds),
+      runOptionalSupabaseQuery(
+        sb.from('package_score_signals').select('id', { count: 'exact', head: true })
+          .gte('created_at', since30d)
+          .in('package_id', destPkgIds),
+        { count: 0 },
+        { label: 'package.social.signals-30d', timeoutMs: 1000 },
+      ),
       // 오늘 이 상품 조회수 (24h)
-      sb.from('package_score_signals').select('id', { count: 'exact', head: true })
-        .gte('created_at', since24h)
-        .eq('package_id', id),
+      runOptionalSupabaseQuery(
+        sb.from('package_score_signals').select('id', { count: 'exact', head: true })
+          .gte('created_at', since24h)
+          .eq('package_id', id),
+        { count: 0 },
+        { label: 'package.social.signals-24h', timeoutMs: 1000 },
+      ),
       // 다음 출발일 현재 예약자 수
       nextDate
-        ? sb.from('bookings').select('id', { count: 'exact', head: true })
-            .eq('package_id', id)
-            .eq('departure_date', nextDate)
-            .in('status', ['confirmed', 'deposit_paid', 'waiting_balance', 'fully_paid'])
+        ? runOptionalSupabaseQuery(
+            sb.from('bookings').select('id', { count: 'exact', head: true })
+              .eq('package_id', id)
+              .eq('departure_date', nextDate)
+              .in('status', ['confirmed', 'deposit_paid', 'waiting_balance', 'fully_paid']),
+            { count: 0 },
+            { label: 'package.social.next-departure-bookings', timeoutMs: 1000 },
+          )
         : Promise.resolve({ count: 0 }),
     ]);
 
@@ -606,7 +656,7 @@ export default async function PackageDetailPage({
 
   // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기
   let initialNotices: NoticeBlock[] = [];
-  if (normalizedPkg) {
+  if (normalizedPkg && !skipNonCriticalDbReads) {
     const rawPriceDates = (normalizedPkg as { price_dates?: { date: string }[] }).price_dates ?? [];
     const earliestDate = rawPriceDates.map(d => d.date).filter(Boolean).sort()[0] ?? null;
     const resolved = await resolveTermsForPackage(
@@ -626,13 +676,17 @@ export default async function PackageDetailPage({
   type CatalogSibling = { id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null };
   let catalogSiblings: CatalogSibling[] = [];
   const currentCatalogId = (pkg as { catalog_id?: string | null }).catalog_id;
-  if (currentCatalogId) {
-    const { data: siblings } = await sb
-      .from('travel_packages')
-      .select('id, title, display_title, destination, product_highlights, status, audit_status')
-      .eq('catalog_id', currentCatalogId)
-      .neq('id', id)
-      .order('created_at', { ascending: true });
+  if (currentCatalogId && !skipNonCriticalDbReads) {
+    const { data: siblings } = await runOptionalSupabaseQuery(
+      sb
+        .from('travel_packages')
+        .select('id, title, display_title, destination, product_highlights, status, audit_status')
+        .eq('catalog_id', currentCatalogId)
+        .neq('id', id)
+        .order('created_at', { ascending: true }),
+      { data: [] },
+      { label: 'package.catalog.siblings', timeoutMs: 1200 },
+    );
     catalogSiblings = ((siblings ?? []) as Array<{ id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null; status?: string; audit_status?: string }>)
       .filter(s => s.audit_status !== 'blocked' && isCustomerVisibleStatus(s.status))
       .map(({ id: sid, title, display_title, destination, product_highlights }) => ({
