@@ -546,8 +546,8 @@ function checkMarketingRuntimeLocal() {
   } catch (err) {
     addCheck('local:marketing-runtime', 'fail', {
       ms: result.ms,
-      command: `npm ${args.join(' ')}`,
-      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+      command: `${process.execPath} ${args.join(' ')}`,
+      error: (result.message || result.stderr || result.stdout || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
     });
   }
 }
