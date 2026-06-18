@@ -67,7 +67,9 @@ jobs:
             --template-out=.tmp/operational-readiness-inputs.env.example \
             --plan-out=.tmp/operational-readiness-action-plan.md \
             --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
-            --vercel-script-out=.tmp/operational-readiness-vercel-env.sh | tee .tmp/operational-readiness-inputs.json
+            --vercel-script-out=.tmp/operational-readiness-vercel-env.sh \
+            --node-apply-script-out=.tmp/operational-readiness-apply-inputs.mjs \
+            --node-vercel-script-out=.tmp/operational-readiness-vercel-env.mjs | tee .tmp/operational-readiness-inputs.json
 
       - name: Public open readiness
         run: |
@@ -88,7 +90,9 @@ jobs:
             --operational-template=.tmp/operational-readiness-inputs.env.example \
             --operational-plan=.tmp/operational-readiness-action-plan.md \
             --operational-apply-script=.tmp/operational-readiness-apply-inputs.sh \
-            --operational-vercel-script=.tmp/operational-readiness-vercel-env.sh
+            --operational-vercel-script=.tmp/operational-readiness-vercel-env.sh \
+            --operational-node-apply-script=.tmp/operational-readiness-apply-inputs.mjs \
+            --operational-node-vercel-script=.tmp/operational-readiness-vercel-env.mjs
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/open-readiness-step-summary.md ]]; then
             cat .tmp/open-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -181,5 +185,7 @@ jobs:
             .tmp/operational-readiness-action-plan.md
             .tmp/operational-readiness-apply-inputs.sh
             .tmp/operational-readiness-vercel-env.sh
+            .tmp/operational-readiness-apply-inputs.mjs
+            .tmp/operational-readiness-vercel-env.mjs
             .tmp/blog-search-quality-daily-*.json
           if-no-files-found: ignore

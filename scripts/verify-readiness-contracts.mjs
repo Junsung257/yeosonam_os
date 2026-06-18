@@ -42,7 +42,14 @@ const checksToRun = [
       '--plan-out=.tmp/operational-readiness-inputs-contract-action-plan.md',
       '--apply-script-out=.tmp/operational-readiness-inputs-contract-apply.sh',
       '--vercel-script-out=.tmp/operational-readiness-inputs-contract-vercel-env.sh',
+      '--node-apply-script-out=.tmp/operational-readiness-inputs-contract-apply.mjs',
+      '--node-vercel-script-out=.tmp/operational-readiness-inputs-contract-vercel-env.mjs',
     ],
+  },
+  {
+    id: 'operational-apply-scripts-dry-run',
+    command: process.execPath,
+    args: ['scripts/verify-operational-apply-scripts.mjs', '--json'],
   },
 ];
 

@@ -387,7 +387,9 @@ npm run verify:operational-inputs -- --json \
   --template-out=.tmp/operational-readiness-inputs.env.example \
   --plan-out=.tmp/operational-readiness-action-plan.md \
   --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
-  --vercel-script-out=.tmp/operational-readiness-vercel-env.sh
+  --vercel-script-out=.tmp/operational-readiness-vercel-env.sh \
+  --node-apply-script-out=.tmp/operational-readiness-apply-inputs.mjs \
+  --node-vercel-script-out=.tmp/operational-readiness-vercel-env.mjs
 ```
 
 `npm run verify:local-release -- --json` also runs this audit and writes the
@@ -395,9 +397,14 @@ fill-in template to `.tmp/local-release-operational-inputs.env.example` and
 the action plan to `.tmp/local-release-operational-inputs-action-plan.md`.
 It also writes a GitHub CLI apply script to
 `.tmp/local-release-operational-inputs-apply.sh` and a Vercel CLI runtime-env
-apply script to `.tmp/local-release-operational-inputs-vercel-env.sh` by
-default. Use `--skip-operational-inputs` only for narrow development smoke
-checks where external readiness is intentionally out of scope.
+apply script to `.tmp/local-release-operational-inputs-vercel-env.sh`.
+Cross-platform Node variants are also written to
+`.tmp/local-release-operational-inputs-apply.mjs` and
+`.tmp/local-release-operational-inputs-vercel-env.mjs` by default. Use
+`--skip-operational-inputs` only for narrow development smoke checks where
+external readiness is intentionally out of scope.
+When validating a filled template through the local release gate, pass
+`--operational-env-file=.tmp/operational-readiness-inputs.env.example`.
 
 Rendered readiness summaries and tracked attention-item issues include
 `Missing Inputs` for blockers and `Release Warnings` for values that are safe
@@ -415,8 +422,19 @@ The audit covers:
 
 Use the generated `.tmp/operational-readiness-inputs.env.example` as the fill-in
 template for GitHub Actions variables/secrets or local staging smoke runs.
-After exporting the missing values locally, run
-`bash .tmp/operational-readiness-apply-inputs.sh` to apply repository
-variables/secrets with GitHub CLI and
-`bash .tmp/operational-readiness-vercel-env.sh` to apply runtime integration
-keys and explicit bid defaults to Vercel Production/Preview environments.
+After filling the generated template, run
+`npm run verify:operational-inputs -- --json --env-file=.tmp/operational-readiness-inputs.env.example`
+to confirm the file satisfies the readiness audit. Then run
+`node .tmp/operational-readiness-apply-inputs.mjs --env-file=.tmp/operational-readiness-inputs.env.example`
+to apply repository variables/secrets with GitHub CLI and
+`node .tmp/operational-readiness-vercel-env.mjs --env-file=.tmp/operational-readiness-inputs.env.example`
+to apply runtime integration keys and explicit bid defaults to Vercel
+Production/Preview environments. Exported shell values still work and take
+precedence over the file. The generated `.sh` files provide the same flow for
+Bash-based shells, for example
+`bash .tmp/operational-readiness-apply-inputs.sh --env-file=.tmp/operational-readiness-inputs.env.example`.
+Use `OPERATIONAL_APPLY_DRY_RUN=1` first to print redacted GitHub/Vercel
+commands without changing external settings. The dry-run path is checked by
+`npm run verify:operational-apply-scripts -- --json`. The env-file audit also
+warns on unknown keys, duplicate keys, empty values, and invalid lines so typos
+are visible before applying external configuration.

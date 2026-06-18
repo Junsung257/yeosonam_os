@@ -72,7 +72,9 @@ jobs:
             --template-out=.tmp/operational-readiness-inputs.env.example \
             --plan-out=.tmp/operational-readiness-action-plan.md \
             --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
-            --vercel-script-out=.tmp/operational-readiness-vercel-env.sh | tee .tmp/operational-readiness-inputs.json
+            --vercel-script-out=.tmp/operational-readiness-vercel-env.sh \
+            --node-apply-script-out=.tmp/operational-readiness-apply-inputs.mjs \
+            --node-vercel-script-out=.tmp/operational-readiness-vercel-env.mjs | tee .tmp/operational-readiness-inputs.json
 
       - name: Run full local release readiness
         run: |
@@ -97,7 +99,9 @@ jobs:
             --operational-template=.tmp/local-release-operational-inputs.env.example \
             --operational-plan=.tmp/local-release-operational-inputs-action-plan.md \
             --operational-apply-script=.tmp/local-release-operational-inputs-apply.sh \
-            --operational-vercel-script=.tmp/local-release-operational-inputs-vercel-env.sh
+            --operational-vercel-script=.tmp/local-release-operational-inputs-vercel-env.sh \
+            --operational-node-apply-script=.tmp/local-release-operational-inputs-apply.mjs \
+            --operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/local-release-readiness-step-summary.md ]]; then
             cat .tmp/local-release-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -190,11 +194,15 @@ jobs:
             .tmp/local-release-operational-inputs-action-plan.md
             .tmp/local-release-operational-inputs-apply.sh
             .tmp/local-release-operational-inputs-vercel-env.sh
+            .tmp/local-release-operational-inputs-apply.mjs
+            .tmp/local-release-operational-inputs-vercel-env.mjs
             .tmp/operational-readiness-inputs.json
             .tmp/operational-readiness-inputs.env.example
             .tmp/operational-readiness-action-plan.md
             .tmp/operational-readiness-apply-inputs.sh
             .tmp/operational-readiness-vercel-env.sh
+            .tmp/operational-readiness-apply-inputs.mjs
+            .tmp/operational-readiness-vercel-env.mjs
             .tmp/open-readiness-local-*.log
             .tmp/marketing-runtime-*.log
             .tmp/blog-search-quality-daily-*.json

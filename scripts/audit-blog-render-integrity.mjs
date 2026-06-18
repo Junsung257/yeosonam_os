@@ -280,14 +280,23 @@ async function mapWithConcurrency(items, workerCount, worker) {
 }
 
 function summarize(rows) {
-  const fetched = rows.filter((row) => !row.error);
+  const blockedRows = rows.filter((row) => row.blocked);
+  const fetched = rows.filter((row) => !row.error && !row.blocked);
   const failed = fetched.filter((row) => row.failed);
+  const errorRows = rows.filter((row) => row.error && !row.blocked);
   const score = fetched.length === 0 ? 0 : Math.round(((fetched.length - failed.length) / fetched.length) * 100);
+  const status = failed.length > 0 || errorRows.length > 0
+    ? 'fail'
+    : blockedRows.length > 0
+      ? 'blocked'
+      : 'pass';
   return {
+    status,
     baseUrl,
     totalLinks: rows.length,
     fetched: fetched.length,
-    errors: rows.length - fetched.length,
+    errors: errorRows.length,
+    blocked: blockedRows.length,
     failed: failed.length,
     passed: fetched.length - failed.length,
     score,
@@ -300,7 +309,7 @@ async function main() {
   const links = await collectBlogLinks();
   const collectionErrors = links.collectionErrors || [];
   if (links.length === 0) {
-    logProgress(`No blog links found. Try --base=http://localhost:3001 after starting the app, or pass --limit for a smaller remote audit.`);
+    logProgress(`No blog links found. Seed or connect blog source data for ${baseUrl}, or run against a base URL with published posts.`);
   } else {
     logProgress(`Auditing ${links.length} blog page(s) with concurrency=${concurrency}, timeout=${timeoutMs}ms`);
   }
@@ -320,7 +329,8 @@ async function main() {
     rows.push({
       path: `${baseUrl}/blog`,
       error: 'no blog links found from listing pages or sitemap',
-      failed: true,
+      blocked: true,
+      failed: false,
       collectionError: true,
     });
   }
@@ -353,21 +363,23 @@ async function main() {
   }
   const summary = summarize(rows);
   const output = {
+    status: summary.status,
     summary,
-    failedExamples: rows.filter((row) => row.failed || row.error).slice(0, 20),
+    failedExamples: rows.filter((row) => row.failed || row.error || row.blocked).slice(0, 20),
     rows,
   };
+  const shouldFail = summary.failed > 0 || summary.errors > 0 || (strict && summary.blocked > 0);
   if (json) {
     console.log(JSON.stringify(output, null, 2));
-    if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
+    if (shouldFail) process.exitCode = 1;
     return;
   }
-  console.log(`Blog render integrity: ${summary.score}/100 (${summary.passed}/${summary.fetched} passed, errors=${summary.errors})`);
+  console.log(`Blog render integrity: ${summary.status} ${summary.score}/100 (${summary.passed}/${summary.fetched} passed, errors=${summary.errors}, blocked=${summary.blocked})`);
   console.log(`Average artifacts=${summary.avgArtifacts}, average images=${summary.avgImages}`);
   for (const row of output.failedExamples.slice(0, 10)) {
     console.log(`- ${row.path}: artifacts=${row.artifactTotal ?? 'n/a'}, images=${row.imgCount ?? 'n/a'}, h2=${row.h2Count ?? 'n/a'}, error=${row.error ?? ''}`);
   }
-  if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
+  if (shouldFail) process.exitCode = 1;
 }
 
 main()

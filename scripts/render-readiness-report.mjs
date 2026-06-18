@@ -26,6 +26,8 @@ const operationalTemplatePath = argValue('--operational-template', '');
 const operationalPlanPath = argValue('--operational-plan', '');
 const operationalApplyScriptPath = argValue('--operational-apply-script', '');
 const operationalVercelScriptPath = argValue('--operational-vercel-script', '');
+const operationalNodeApplyScriptPath = argValue('--operational-node-apply-script', '');
+const operationalNodeVercelScriptPath = argValue('--operational-node-vercel-script', '');
 const selfTest = hasFlag('--self-test');
 
 const KIND_CONFIG = {
@@ -95,6 +97,8 @@ function sampleReportFor(value) {
           actionPlanPath: '.tmp/local-release-operational-inputs-action-plan.md',
           applyScriptPath: '.tmp/local-release-operational-inputs-apply.sh',
           vercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.sh',
+          nodeApplyScriptPath: '.tmp/local-release-operational-inputs-apply.mjs',
+          nodeVercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.mjs',
         },
         { id: 'open-readiness-local-full', status: 'blocked', durationMs: 222, blocked: 1, failed: 0 },
       ],
@@ -130,6 +134,8 @@ function sampleReportFor(value) {
         actionPlanPath: '.tmp/operational-readiness-action-plan.md',
         applyScriptPath: '.tmp/operational-readiness-apply-inputs.sh',
         vercelScriptPath: '.tmp/operational-readiness-vercel-env.sh',
+        nodeApplyScriptPath: '.tmp/operational-readiness-apply-inputs.mjs',
+        nodeVercelScriptPath: '.tmp/operational-readiness-vercel-env.mjs',
       },
       { name: 'runtime:env-readiness', status: 'blocked', ms: 1, notes: 'sample missing env' },
     ],
@@ -363,6 +369,8 @@ function operationalArtifactRows(report) {
     ['Fill-in template', operationalTemplatePath],
     ['Apply script', operationalApplyScriptPath],
     ['Vercel env script', operationalVercelScriptPath],
+    ['Node apply script', operationalNodeApplyScriptPath],
+    ['Node Vercel env script', operationalNodeVercelScriptPath],
   ]) {
     if (!path) continue;
     const key = `operational-inputs:${type}:${path}`;
@@ -377,6 +385,8 @@ function operationalArtifactRows(report) {
       ['Fill-in template', check.templatePath],
       ['Apply script', check.applyScriptPath],
       ['Vercel env script', check.vercelScriptPath],
+      ['Node apply script', check.nodeApplyScriptPath],
+      ['Node Vercel env script', check.nodeVercelScriptPath],
     ]) {
       if (!path) continue;
       const key = `${source}:${type}:${path}`;

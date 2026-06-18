@@ -42,6 +42,18 @@ const operationalInputsVercelScriptPath = argValue(
   '--operational-vercel-script-out',
   process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_VERCEL_SCRIPT_OUT || '.tmp/local-release-operational-inputs-vercel-env.sh',
 );
+const operationalInputsNodeApplyScriptPath = argValue(
+  '--operational-node-apply-script-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_NODE_APPLY_SCRIPT_OUT || '.tmp/local-release-operational-inputs-apply.mjs',
+);
+const operationalInputsNodeVercelScriptPath = argValue(
+  '--operational-node-vercel-script-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_NODE_VERCEL_SCRIPT_OUT || '.tmp/local-release-operational-inputs-vercel-env.mjs',
+);
+const operationalInputsEnvFilePath = argValue(
+  '--operational-env-file',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_ENV_FILE || '',
+);
 
 const openPort = Number(argValue('--open-port', process.env.LOCAL_RELEASE_OPEN_PORT || '3044'));
 const openMode = argValue('--open-mode', process.env.LOCAL_RELEASE_OPEN_MODE || 'dev');
@@ -399,7 +411,13 @@ function summarizeOperationalInputs(result) {
   const failed = numericField(report, 'failed');
   const readinessStatus = statusField(report);
   const ok = Boolean(report) && result.exitCode === 0;
-  const status = ok ? (blocked > 0 || readinessStatus === 'blocked' ? 'blocked' : 'pass') : 'fail';
+  const status = ok
+    ? blocked > 0 || readinessStatus === 'blocked'
+      ? 'blocked'
+      : warnings > 0 || readinessStatus === 'warn'
+        ? 'warn'
+        : 'pass'
+    : 'fail';
 
   return {
     id: result.id,
@@ -419,6 +437,9 @@ function summarizeOperationalInputs(result) {
     actionPlanPath: operationalInputsPlanPath,
     applyScriptPath: operationalInputsApplyScriptPath,
     vercelScriptPath: operationalInputsVercelScriptPath,
+    nodeApplyScriptPath: operationalInputsNodeApplyScriptPath,
+    nodeVercelScriptPath: operationalInputsNodeVercelScriptPath,
+    envFilePath: operationalInputsEnvFilePath || undefined,
     blockers: summarizeOperationalInputBlockers(report),
     warningItems: summarizeOperationalInputWarnings(report),
     stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
@@ -453,6 +474,9 @@ if (!skipOperationalInputs) {
       `--plan-out=${operationalInputsPlanPath}`,
       `--apply-script-out=${operationalInputsApplyScriptPath}`,
       `--vercel-script-out=${operationalInputsVercelScriptPath}`,
+      `--node-apply-script-out=${operationalInputsNodeApplyScriptPath}`,
+      `--node-vercel-script-out=${operationalInputsNodeVercelScriptPath}`,
+      ...(operationalInputsEnvFilePath ? [`--env-file=${operationalInputsEnvFilePath}`] : []),
     ],
     interpret: summarizeOperationalInputs,
   });
@@ -509,8 +533,8 @@ for (const check of checks) {
 
 const failed = summaries.filter((check) => check.status === 'fail').length;
 const blocked = summaries.filter((check) => check.status === 'blocked').length;
+const warned = summaries.filter((check) => check.status === 'warn').length;
 const passed = summaries.filter((check) => check.status === 'pass').length;
-const status = failed > 0 ? 'fail' : blocked > 0 ? 'blocked' : 'pass';
 const releaseBlockers = summaries.flatMap((check) => {
   if (Array.isArray(check.blockers) && check.blockers.length > 0) {
     return check.blockers.map((blocker) => ({
@@ -546,11 +570,19 @@ const releaseWarnings = summaries.flatMap((check) => {
   }
   return [];
 });
+const status = failed > 0
+  ? 'fail'
+  : blocked > 0
+    ? 'blocked'
+    : warned > 0 || releaseWarnings.length > 0
+      ? 'warn'
+      : 'pass';
 
 const report = {
   status,
   passed,
   blocked,
+  warned,
   failed,
   warnings: releaseWarnings.length,
   total: summaries.length,

@@ -161,16 +161,32 @@ function errorsFromPayload(payload) {
   return 0;
 }
 
+function blockedFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return 0;
+  if (typeof payload.blocked === 'number') return payload.blocked;
+  if (typeof payload.summary?.blocked === 'number') return payload.summary.blocked;
+  if (payload.status === 'blocked' || payload.summary?.status === 'blocked') return 1;
+  return 0;
+}
+
 function strictIssues(row) {
   const issues = [];
   const failed = typeof row.failed === 'number' ? row.failed : 0;
   const errors = errorsFromPayload(row.payload);
+  const blocked = blockedFromPayload(row.payload);
 
   if (!row.ok) {
     issues.push({
       code: `${row.id}.command_failed`,
       severity: 'major',
       message: `${row.id} command exited with ${row.exitCode ?? 'unknown status'}`,
+    });
+  }
+  if (blocked > 0) {
+    issues.push({
+      code: `${row.id}.blocked_items`,
+      severity: 'major',
+      message: `${row.id} reported ${blocked} blocked item(s)`,
     });
   }
   if (errors > 0) {

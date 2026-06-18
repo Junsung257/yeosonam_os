@@ -236,6 +236,10 @@ function verifyOutput(run) {
     assertIncludes(issue, 'Apply script', `${run.kind} issue`);
     assertIncludes(summary, 'Vercel env script', `${run.kind} summary`);
     assertIncludes(issue, 'Vercel env script', `${run.kind} issue`);
+    assertIncludes(summary, 'Node apply script', `${run.kind} summary`);
+    assertIncludes(issue, 'Node apply script', `${run.kind} issue`);
+    assertIncludes(summary, 'Node Vercel env script', `${run.kind} summary`);
+    assertIncludes(issue, 'Node Vercel env script', `${run.kind} issue`);
     assertIncludes(summary, '## Missing Inputs', `${run.kind} summary`);
     assertIncludes(issue, '## Missing Inputs', `${run.kind} issue`);
     assertIncludes(summary, 'Preferred Location', `${run.kind} summary`);
