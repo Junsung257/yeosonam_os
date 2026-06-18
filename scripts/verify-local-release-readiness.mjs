@@ -63,6 +63,7 @@ const operationalDiscoveryOutPath = argValue(
 );
 const autoOperationalDiscovery = !skipOperationalDiscovery && !explicitOperationalInputsEnvFilePath;
 let operationalInputsEnvFilePath = explicitOperationalInputsEnvFilePath || (autoOperationalDiscovery ? operationalDiscoveryOutPath : '');
+const operationalEnvFilePath = operationalInputsEnvFilePath;
 
 const openPort = Number(argValue('--open-port', process.env.LOCAL_RELEASE_OPEN_PORT || '3044'));
 const openMode = argValue('--open-mode', process.env.LOCAL_RELEASE_OPEN_MODE || 'dev');
@@ -547,7 +548,7 @@ function summarizeOperationalInputs(result) {
     vercelScriptPath: operationalInputsVercelScriptPath,
     nodeApplyScriptPath: operationalInputsNodeApplyScriptPath,
     nodeVercelScriptPath: operationalInputsNodeVercelScriptPath,
-    envFilePath: operationalInputsEnvFilePath || undefined,
+    envFilePath: operationalEnvFilePath || undefined,
     blockers: summarizeOperationalInputBlockers(report),
     warningItems: summarizeOperationalInputWarnings(report),
     stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
@@ -637,8 +638,8 @@ for (const check of checks) {
   const summary = check.interpret ? check.interpret(result) : summarizeSimple(result);
   summaries.push(summary);
 
-  if (summary.id === 'operational-input-discovery' && operationalInputsEnvFilePath) {
-    operationalEnvFileLoad = loadOperationalEnvFile(operationalInputsEnvFilePath);
+  if (summary.id === 'operational-input-discovery' && operationalEnvFilePath) {
+    operationalEnvFileLoad = loadOperationalEnvFile(operationalEnvFilePath);
   }
 
   if (!jsonOutput) {
