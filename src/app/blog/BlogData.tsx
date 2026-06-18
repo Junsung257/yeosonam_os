@@ -13,6 +13,7 @@ import {
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://www.yeosonam.com';
 const PER_PAGE = 12;
@@ -165,6 +166,7 @@ function unavailableBlogData(): BlogListData {
 
 async function getBlogDataUncached(page: number, filter: { destination?: string; angle?: string }): Promise<BlogListData> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return unavailableBlogData();
+  if (shouldSkipPublicDbReadsForResourceSaver()) return unavailableBlogData();
 
   const offset = (page - 1) * PER_PAGE;
 

@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
@@ -43,6 +44,7 @@ async function runSitemapQuery<T>(
   queryFactory: (signal: AbortSignal) => PromiseLike<SitemapQueryResponse<T>>,
 ): Promise<T[]> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
