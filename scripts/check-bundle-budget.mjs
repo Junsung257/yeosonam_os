@@ -14,6 +14,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 
 // 주의: app-build-manifest.json 의 chunk 사이즈는 gzip 전 raw 바이트.
 // Next.js build 출력의 "First Load JS" 는 gzip 후라 약 1/3 수준.
@@ -31,7 +32,57 @@ const FAIL_FLAG = process.argv.includes('--fail');
 const MIN_ROUTE_COUNT = Number(process.env.BUNDLE_BUDGET_MIN_ROUTES || 100);
 
 const distDir = process.env.NEXT_DIST_DIR || '.next';
+const root = process.cwd();
 const buildManifestPath = path.join(distDir, 'app-build-manifest.json');
+
+function activeNextDevServerProcesses() {
+  if (
+    process.env.NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER === '1'
+    || process.env.BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER === '1'
+  ) {
+    return [];
+  }
+
+  if (process.platform === 'win32') {
+    const escapedRoot = root.replace(/'/g, "''");
+    const script = [
+      'Get-CimInstance Win32_Process -Filter "name = \'node.exe\'"',
+      `Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -like '*${escapedRoot}*' -and ($_.CommandLine -like '*next* dev*' -or $_.CommandLine -like '*next/dist/bin/next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\bin\\\\next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\server\\\\lib\\\\start-server.js*') }`,
+      'Select-Object -First 5 -ExpandProperty ProcessId',
+    ].join(' | ');
+    const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+    return String(result.stdout || '')
+      .split(/\r?\n/)
+      .map((line) => Number(line.trim()))
+      .filter((pid) => Number.isInteger(pid) && pid > 0);
+  }
+
+  const result = spawnSync('ps', ['-eo', 'pid=,args='], {
+    encoding: 'utf8',
+  });
+  return String(result.stdout || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.includes(root) && (/\bnext\b.*\bdev\b/.test(line) || line.includes('next/dist/server/lib/start-server.js')))
+    .map((line) => Number(line.split(/\s+/, 1)[0]))
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid)
+    .slice(0, 5);
+}
+
+function assertNoActiveNextDevServer() {
+  const pids = activeNextDevServerProcesses();
+  if (pids.length === 0) return;
+  console.error(
+    `[budget] Refusing to check bundle budget while next dev is active in this workspace (pid${pids.length > 1 ? 's' : ''} ${pids.join(', ')}). `
+    + 'Stop the dev server first so it cannot rewrite .next during bundle verification.',
+  );
+  process.exit(1);
+}
+
+assertNoActiveNextDevServer();
 if (!fs.existsSync(buildManifestPath)) {
   console.error('[budget] .next/app-build-manifest.json 이 없습니다. npm run build 먼저 실행하세요.');
   process.exit(1);

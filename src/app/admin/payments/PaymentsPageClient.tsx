@@ -12,6 +12,8 @@ import SettlementBundleModal from './_components/SettlementBundleModal';
 import AutoSuggestChip from './_components/AutoSuggestChip';
 import LedgerStatusChip from './_components/LedgerStatusChip';
 import { calcSettlementAccounting } from '@/lib/settlement-accounting';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -378,12 +380,68 @@ interface PaymentsClientProps {
   initialErp?: ErpStats;
 }
 
+type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow';
+type OutflowSubTab = 'unmatched' | 'matched' | 'all';
+type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
+
+function PaymentOpsQueue({
+  counts,
+  onSelect,
+}: {
+  counts: Record<PaymentQueueKey, number>;
+  onSelect: (key: PaymentQueueKey) => void;
+}) {
+  const items: {
+    key: PaymentQueueKey;
+    label: string;
+    helper: string;
+    count: number;
+    tone: string;
+  }[] = [
+    { key: 'review', label: '검토 필요', helper: '자동 후보 확인', count: counts.review, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', count: counts.unmatched, tone: 'border-red-200 bg-red-50 text-red-700' },
+    { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', count: counts.stale, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', count: counts.outflow, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'trash', label: '제외 보관함', helper: '복구/영구삭제', count: counts.trash, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+  ];
+
+  return (
+    <section className="mb-5 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-admin-base font-bold text-admin-text-2">오늘 먼저 처리할 결제</h2>
+          <p className="text-admin-xs text-admin-muted-2">입금 확인, 수동 매칭, 출금 묶기를 우선순위별로 바로 엽니다.</p>
+        </div>
+        <span className="hidden rounded-full bg-admin-bg px-3 py-1 text-admin-xs font-semibold text-admin-muted md:inline-flex">
+          Command queue
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
+        {items.map(item => (
+          <button
+            key={item.key}
+            type="button"
+            disabled={item.count === 0}
+            onClick={() => onSelect(item.key)}
+            aria-label={`${item.label} ${item.count}건 보기`}
+            className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-admin-sm disabled:cursor-not-allowed disabled:opacity-45 ${item.tone}`}
+          >
+            <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
+            <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
+            <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function PaymentsPageClient({ initialTransactions, initialTrashTxs, initialBookings, initialErp }: PaymentsClientProps = {}) {
   // 대시보드 KPI 카드 drilldown 진입점:
   //   ?filter=outstanding → unmatched 탭 (미매칭 입금 대사 = 미수금 운영 뷰)
   //   ?tab=outflow|matched|unmatched|review → 명시적 탭 진입
   const searchParams = useSearchParams();
-  const initialTab: 'review' | 'matched' | 'unmatched' | 'outflow' = (() => {
+  const initialTab: PaymentTab = (() => {
     const filter = searchParams?.get('filter');
     const tabParam = searchParams?.get('tab');
     if (filter === 'outstanding') return 'unmatched';
@@ -395,9 +453,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
-  const [tab, setTab] = useState<'review' | 'matched' | 'unmatched' | 'outflow'>(initialTab);
+  const [tab, setTab] = useState<PaymentTab>(initialTab);
   // 출금·환불 탭 내 sub-필터: 기본 '미매칭만' (사장님이 처리해야 할 것 우선)
-  const [outflowSubTab, setOutflowSubTab] = useState<'unmatched' | 'matched' | 'all'>('unmatched');
+  const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>('unmatched');
   const [dateFilter, setDateFilter] = useState<string>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
   const DATE_FILTERS = ['이번 달', '지난 달', '3개월', '전체'] as const;
@@ -572,6 +630,33 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       .reduce((s, t) => s + t.amount, 0),
     [transactions]
   );
+  const staleCount = useMemo(() =>
+    transactions.filter(t =>
+      (t.match_status === 'review' || t.match_status === 'unmatched' || t.match_status === 'error') &&
+      hoursSince(t.created_at) >= 24
+    ).length,
+    [transactions]
+  );
+
+  const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
+    if (queue === 'review') {
+      setTab('review');
+      setOutflowSubTab('unmatched');
+    } else if (queue === 'unmatched' || queue === 'stale') {
+      setTab('unmatched');
+      setOutflowSubTab('unmatched');
+    } else if (queue === 'outflow') {
+      setTab('outflow');
+      setOutflowSubTab('unmatched');
+    } else if (queue === 'trash') {
+      setTrashOpen(true);
+    }
+
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'payments_work_queue', action: 'select_queue', queue },
+    });
+  }, []);
 
   // ── 입금액 재동기화 ─────────────────────────────────────────────────────────
 
@@ -586,6 +671,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       const data = await res.json();
       if (!res.ok) { showToast(data.error || '처리 실패', 'err'); return; }
       showToast(`${data.updated}개 예약 입금액 재동기화 완료`, 'ok');
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: { surface: 'payments_resync', action: 'resync', count: data.updated },
+      });
       load(); loadErp();
     } catch { showToast('처리 중 오류', 'err'); }
     finally { setBulkProcessing(false); }
@@ -898,6 +987,17 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       </div>
 
       {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
+      <PaymentOpsQueue
+        counts={{
+          review: reviewCount,
+          unmatched: unmatchedCount,
+          stale: staleCount,
+          outflow: outflowUnmatchedCount,
+          trash: trashTxs.length,
+        }}
+        onSelect={handlePaymentQueueSelect}
+      />
+
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-4 mb-5">
         <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 mb-4">
