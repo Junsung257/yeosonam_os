@@ -307,8 +307,8 @@ function activeNextDevServerProcesses() {
   if (process.platform === 'win32') {
     const escapedRoot = root.replace(/'/g, "''");
     const script = [
-      'Get-CimInstance Win32_Process -Filter "name = \'node.exe\'"',
-      `Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -like '*${escapedRoot}*' -and ($_.CommandLine -like '*next* dev*' -or $_.CommandLine -like '*next/dist/bin/next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\bin\\\\next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\server\\\\lib\\\\start-server.js*') }`,
+      'Get-CimInstance Win32_Process',
+      `Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -like '*${escapedRoot}*' -and $_.CommandLine -notlike '*Get-CimInstance Win32_Process*' -and ($_.CommandLine -like '*npm*run*dev*' -or $_.CommandLine -like '*Start-Process*npm.cmd*run*dev*' -or $_.CommandLine -like '*next* dev*' -or $_.CommandLine -like '*next/dist/bin/next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\bin\\\\next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\server\\\\lib\\\\start-server.js*' -or $_.CommandLine -like '*start-server.js*') }`,
       'Select-Object -First 5 -ExpandProperty ProcessId',
     ].join(' | ');
     const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
@@ -327,7 +327,7 @@ function activeNextDevServerProcesses() {
   return String(result.stdout || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.includes(root) && /\bnext\b.*\bdev\b/.test(line))
+    .filter((line) => line.includes(root) && (/\bnpm\b.*\brun\b.*\bdev\b/.test(line) || /\bnext\b.*\bdev\b/.test(line) || line.includes('start-server.js')))
     .map((line) => Number(line.split(/\s+/, 1)[0]))
     .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid)
     .slice(0, 5);
@@ -340,6 +340,33 @@ function assertNoActiveNextDevServer() {
     `Refusing to run production build while next dev is active in this workspace (pid${pids.length > 1 ? 's' : ''} ${pids.join(', ')}). `
     + 'Stop the dev server first so it cannot rewrite .next during bundle verification.',
   );
+}
+
+function startActiveNextDevServerMonitor() {
+  if (process.env.NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER === '1') return null;
+
+  let detectedError = null;
+  const timer = setInterval(() => {
+    if (detectedError) return;
+    const pids = activeNextDevServerProcesses();
+    if (pids.length === 0) return;
+
+    detectedError = new Error(
+      `Refusing to finish production build because next dev became active in this workspace (pid${pids.length > 1 ? 's' : ''} ${pids.join(', ')}). `
+      + 'Stop the dev server first so it cannot rewrite .next during bundle verification.',
+    );
+    activeChild?.kill('SIGTERM');
+  }, 2000);
+  timer.unref?.();
+
+  return {
+    clear() {
+      clearInterval(timer);
+    },
+    error() {
+      return detectedError;
+    },
+  };
 }
 
 function getRecoveryWaitMs() {
@@ -428,8 +455,11 @@ async function main() {
   require('./ensure-next-routes-js-shim.cjs');
   buildStartedAt = Date.now();
   const traceMonitor = startBuildShimMonitor();
+  const devServerMonitor = startActiveNextDevServerMonitor();
   try {
     const result = await runBuild();
+    const devServerError = devServerMonitor?.error();
+    if (devServerError) throw devServerError;
     if (result.status !== 0) {
       await assertVerifiedBuildAfterNonZeroExit(result);
       return;
@@ -439,6 +469,7 @@ async function main() {
     verifyBuildCompleted();
   } finally {
     clearInterval(traceMonitor);
+    devServerMonitor?.clear();
   }
 }
 

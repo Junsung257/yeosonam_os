@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { trackEngagement } from '@/lib/tracker';
 import { getMinPriceFromDates, getNextDepartureFromDates } from '@/lib/price-dates';
+import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
 interface Package {
   id: string;
@@ -49,7 +50,7 @@ export default function ProductCard({ pkg }: { pkg: Package }) {
     >
       {/* 이미지 */}
       <div className="relative h-48 bg-gradient-to-br from-violet-100 to-purple-200">
-        <div className="w-full h-full flex items-center justify-center text-4xl">🌍</div>
+        <DestinationImageFallback title={pkg.title} destination={pkg.destination} />
 
         {/* 뱃지 */}
         {(pkg.nights || pkg.duration) && (

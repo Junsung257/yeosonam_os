@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { REGIONS, getDestinationUrl, getRegionUrl } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
   const next = e.relatedTarget as Node | null;
   if (!next) return true;
@@ -74,6 +76,14 @@ export default function GlobalNav() {
   function handleMenuLeave() {
     if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
     closeTimerRef.current = setTimeout(() => setOpenMenu(null), 120);
+  }
+
+  function trackKakaoClick(source: string) {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      page_url: pathname ?? '/',
+      metadata: { source },
+    });
   }
 
   const isOverseasActive = pathname?.includes('/destinations') || pathname?.includes('/packages');
@@ -269,6 +279,7 @@ export default function GlobalNav() {
             target="_blank"
             rel="noopener"
             referrerPolicy="no-referrer-when-downgrade"
+            onClick={() => trackKakaoClick('global_nav_desktop')}
             className="bg-[#FEE500] text-[#3C1E1E] font-bold px-4 py-2 rounded-full hover:shadow-md transition flex-shrink-0"
           >
             💬 카톡 상담
@@ -401,6 +412,7 @@ export default function GlobalNav() {
                 target="_blank"
                 rel="noopener"
                 referrerPolicy="no-referrer-when-downgrade"
+                onClick={() => trackKakaoClick('global_nav_mobile_drawer')}
                 className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold text-sm py-3 rounded-full text-center"
               >
                 💬 카카오톡 상담

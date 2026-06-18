@@ -7,6 +7,7 @@ import { getMinPriceFromDates } from '@/lib/price-dates';
 import { getAirlineName } from '@/lib/render-contract';
 import { isSafeImageSrc } from '@/lib/image-url';
 import { getSessionId } from '@/lib/tracker';
+import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
 export interface PackageCardData {
   id: string;
@@ -236,6 +237,7 @@ export default function PackageCard({
             img={img}
             packageId={pkg.id}
             title={title}
+            destination={pkg.destination}
             airlineName={airlineName}
             isRecommended={isRecommended}
             isReasonOpen={isReasonOpen}
@@ -273,6 +275,7 @@ export default function PackageCard({
         img={img}
         packageId={pkg.id}
         title={title}
+        destination={pkg.destination}
         airlineName={airlineName}
         isRecommended={isRecommended}
         isReasonOpen={isReasonOpen}
@@ -302,10 +305,10 @@ export default function PackageCard({
 // ── 내부 ────────────────────────────────────────────────────────────────────
 
 function CardImage({
-  img, packageId, title, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
+  img, packageId, title, destination, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
   trackingIntent, isYeosonamPick, rankNumber,
 }: {
-  img: string | null; packageId: string; title: string; airlineName: string | null;
+  img: string | null; packageId: string; title: string; destination?: string | null; airlineName: string | null;
   isRecommended: boolean; isReasonOpen: boolean; recommendedReasons: string[];
   trackingIntent?: string | null;
   onToggleReason?: () => void;
@@ -339,7 +342,7 @@ function CardImage({
           onError={() => setImgBroken(true)}
         />
       ) : (
-        <div className="w-full h-full bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center text-2xl md:text-5xl">🌍</div>
+        <DestinationImageFallback title={title} destination={destination} compact={sizeClass.includes('128px')} />
       )}
 
       {/* 랭킹 번호 오버레이 */}
