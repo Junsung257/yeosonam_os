@@ -157,6 +157,25 @@ function staticChecks() {
     'env.runtime_readiness',
     'Runtime integration env',
   ]);
+  requireIncludes('api:search-ads-mutation-live-guard', 'src/app/api/admin/search-ads/mutate/route.ts', [
+    'mutationGuard',
+    'naver_ads_unconfigured',
+    'google_ads_unconfigured',
+    'invalid_external_keyword_id',
+    'blocked: true',
+    'getNaverAdsConfigStatus',
+    'getGoogleAdsConfigStatus',
+    'isNaverAdsMutableKeywordId',
+    'isGoogleAdsMutableKeywordId',
+  ]);
+  requireIncludes('lib:search-ads-mutation-no-mock-success', 'src/lib/search-ads-api.ts', [
+    'isGoogleAdsMutableKeywordId',
+    'Naver bid update blocked: account is not configured',
+    'Naver keyword pause blocked: account is not configured',
+    'Naver keyword lock update blocked: account is not configured',
+    'Google bid update blocked: account is not configured',
+    'Google keyword pause blocked: account is not configured',
+  ]);
 
   requireJsonCron('/api/cron/sync-creative-performance');
   requireJsonCron('/api/cron/meta-optimize');
