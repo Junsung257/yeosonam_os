@@ -193,43 +193,62 @@ function run(command, args, options = {}) {
   }
 }
 
+async function sleep(ms) {
+  await new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
+
 async function fetchUrl(name, path, options = {}) {
   const url = path.startsWith('http') ? path : `${BASE_URL}${path}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const started = Date.now();
-  try {
-    const res = await fetch(url, {
-      method: options.method || 'GET',
-      redirect: options.redirect || 'manual',
-      signal: controller.signal,
-      headers: { Accept: 'text/html,application/json;q=0.9,*/*;q=0.5', ...(options.headers || {}) },
-    });
-    const shouldReadBody = options.readBody !== false || res.status === 401;
-    const body = shouldReadBody ? await res.text() : '';
-    const setCookie = res.headers.get('set-cookie') || '';
-    const ok = options.ok ? options.ok(res, body, setCookie) : res.status >= 200 && res.status < 400;
-    const protectedDeployment = isProtectedDeploymentResponse(res.status, body);
-    if (protectedDeployment) markProtectedDeployment();
-    addCheck(name, ok ? 'pass' : protectedDeployment ? 'blocked' : 'fail', {
-      statusCode: res.status,
-      ms: Date.now() - started,
-      url,
-      location: res.headers.get('location') || '',
-      notes: protectedDeployment
-        ? 'Vercel protected deployment requires an authenticated preview bypass'
-        : options.notes?.(res, body, setCookie) || '',
-      error: ok || protectedDeployment ? '' : body.slice(0, 1200),
-    });
-  } catch (err) {
-    addCheck(name, 'fail', {
-      statusCode: null,
-      ms: Date.now() - started,
-      url,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  } finally {
-    clearTimeout(timer);
+  const attempts = Number(options.attempts ?? (LOCAL_MODE ? 2 : 1));
+  const retryDelayMs = Number(options.retryDelayMs ?? 1000);
+  let lastError = '';
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (attempt > 1 && retryDelayMs > 0) {
+      await sleep(retryDelayMs);
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: options.method || 'GET',
+        redirect: options.redirect || 'manual',
+        signal: controller.signal,
+        headers: { Accept: 'text/html,application/json;q=0.9,*/*;q=0.5', ...(options.headers || {}) },
+      });
+      const shouldReadBody = options.readBody !== false || res.status === 401;
+      const body = shouldReadBody ? await res.text() : '';
+      const setCookie = res.headers.get('set-cookie') || '';
+      const ok = options.ok ? options.ok(res, body, setCookie) : res.status >= 200 && res.status < 400;
+      const protectedDeployment = isProtectedDeploymentResponse(res.status, body);
+      if (protectedDeployment) markProtectedDeployment();
+      addCheck(name, ok ? 'pass' : protectedDeployment ? 'blocked' : 'fail', {
+        statusCode: res.status,
+        ms: Date.now() - started,
+        url,
+        location: res.headers.get('location') || '',
+        attempts: attempt,
+        notes: protectedDeployment
+          ? 'Vercel protected deployment requires an authenticated preview bypass'
+          : options.notes?.(res, body, setCookie) || '',
+        error: ok || protectedDeployment ? '' : body.slice(0, 1200),
+      });
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      if (attempt === attempts) {
+        addCheck(name, 'fail', {
+          statusCode: null,
+          ms: Date.now() - started,
+          url,
+          attempts: attempt,
+          error: lastError,
+        });
+      }
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
