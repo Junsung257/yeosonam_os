@@ -280,10 +280,20 @@ function summarizeNestedReport(report) {
     ...nestedChecks.flatMap((item) => (Array.isArray(item?.missing) ? item.missing : [])),
     ...nestedBlockers.flatMap((item) => (Array.isArray(item?.missing) ? item.missing : [])),
   ]);
+  const attentionChecks = uniqueStrings(
+    nestedChecks
+      .filter((item) => item?.status === 'blocked' || item?.status === 'fail' || item?.status === 'warn')
+      .map((item) => `${item.name || item.id || 'unknown'}(${item.status})`),
+  );
+  const releaseBlockers = uniqueStrings(
+    nestedBlockers
+      .filter((item) => item?.status === 'blocked' || item?.status === 'fail' || item?.status === 'warn')
+      .map((item) => `${item.name || item.id || 'unknown'}(${item.status})`),
+  );
   const notes = uniqueStrings([
     report.status ? `nested status: ${report.status}` : '',
-    ...nestedChecks.map((item) => item?.notes || item?.error || ''),
-    ...nestedBlockers.map((item) => item?.notes || item?.error || ''),
+    attentionChecks.length > 0 ? `attention checks: ${attentionChecks.join(', ')}` : '',
+    releaseBlockers.length > 0 ? `release blockers: ${releaseBlockers.join(', ')}` : '',
   ]);
   return {
     missing: missing.length > 0 ? missing : undefined,

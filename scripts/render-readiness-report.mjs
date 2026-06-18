@@ -481,7 +481,7 @@ function reportBlockers(report) {
       source: check.source || check.id || check.name,
       name: check.name || check.id || 'unknown',
       status: check.status || 'unknown',
-      notes: noteFor(check),
+      notes: firstText(check.notes, check.error),
       missing: check.missing,
       usingDefaults: check.usingDefaults,
       failedRequiredChecks: check.failedRequiredChecks,
@@ -610,7 +610,7 @@ function operationalArtifactRows(report) {
   const seen = new Set();
   function addRow(source, type, path) {
     if (!path) return;
-    const key = `${source}:${type}:${path}`;
+    const key = `${type}:${path}`;
     if (seen.has(key)) return;
     seen.add(key);
     rows.push([source, type, path]);
