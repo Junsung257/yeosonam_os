@@ -14,6 +14,7 @@ import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
@@ -150,9 +151,10 @@ export default async function HomePage() {
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
   const emptyResult = { data: [] };
+  const skipPublicDbReads = shouldSkipPublicDbReadsForResourceSaver();
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
-  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
+  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
     runOptionalSupabaseQuery(
       sb.from('travel_packages')
         .select('destination, price, price_tiers, price_dates, country')

@@ -2,8 +2,10 @@ import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isDbResourceSaverEnabled,
+  isDbResourceSaverProductCronAllowlistEnabled,
   maybeSkipCronForResourceSaver,
   maybeSkipNonCriticalCron,
+  shouldSkipPublicDbReadsForResourceSaver,
 } from './cron-resource-saver';
 
 function cronRequest(url = 'https://www.yeosonam.com/api/cron/example') {
@@ -37,10 +39,23 @@ describe('cron resource saver', () => {
     });
   });
 
-  it('allows forced or product-readiness crons', () => {
+  it('allows forced crons and keeps product-readiness crons closed unless explicitly enabled', () => {
     vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
 
     expect(maybeSkipNonCriticalCron(cronRequest('https://www.yeosonam.com/api/cron/example?force=true'), 'blog-daily-summary')).toBeNull();
+    expect(maybeSkipCronForResourceSaver(cronRequest(), 'entity-resolution')).toBeInstanceOf(Response);
+
+    vi.stubEnv('DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS', '1');
+    expect(isDbResourceSaverProductCronAllowlistEnabled()).toBe(true);
     expect(maybeSkipCronForResourceSaver(cronRequest(), 'entity-resolution')).toBeNull();
+  });
+
+  it('skips public db reads in production resource saver unless explicitly allowed', () => {
+    vi.stubEnv('DB_RESOURCE_SAVER_MODE', '1');
+
+    expect(shouldSkipPublicDbReadsForResourceSaver()).toBe(true);
+
+    vi.stubEnv('DB_RESOURCE_SAVER_PUBLIC_READS', '1');
+    expect(shouldSkipPublicDbReadsForResourceSaver()).toBe(false);
   });
 });
