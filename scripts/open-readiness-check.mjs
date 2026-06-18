@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync, execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 
 const argv = process.argv.slice(2);
 
@@ -43,6 +44,7 @@ const MARKETING_RUNTIME_PORT = Number(argValue('--marketing-runtime-port', proce
 const MARKETING_RUNTIME_MODE = argValue('--marketing-runtime-mode', process.env.MARKETING_RUNTIME_MODE || 'dev');
 const MARKETING_RUNTIME_TIMEOUT_MS = Number(argValue('--marketing-runtime-timeout-ms', process.env.MARKETING_RUNTIME_TIMEOUT_MS || '60000'));
 const MARKETING_RUNTIME_READY_TIMEOUT_MS = Number(argValue('--marketing-runtime-ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '120000'));
+const REPORT_PATH = argValue('--report', process.env.OPEN_READINESS_REPORT_PATH || '');
 const RUNTIME_ENV_CONTRACT = JSON.parse(
   readFileSync(new URL('../src/config/runtime-env-readiness.json', import.meta.url), 'utf8'),
 );
@@ -60,6 +62,78 @@ function addCheck(name, status, detail = {}) {
 
 function addBlockedCheck(name, detail = {}) {
   addCheck(name, 'blocked', detail);
+}
+
+function writeReport(path, report) {
+  if (!path) return;
+  const target = resolve(path);
+  mkdirSync(dirname(target), { recursive: true });
+  writeFileSync(target, `${JSON.stringify(report, null, 2)}\n`);
+}
+
+function releaseBlockers() {
+  return checks
+    .filter((check) => check.status === 'blocked' || check.status === 'fail')
+    .map((check) => ({
+      name: check.name,
+      status: check.status,
+      notes: check.notes || check.error || '',
+      url: check.url || undefined,
+      target: check.target || undefined,
+      missing: Array.isArray(check.missing) ? check.missing : undefined,
+      usingDefaults: Array.isArray(check.usingDefaults) ? check.usingDefaults : undefined,
+      failedRequiredChecks: Array.isArray(check.failedRequiredChecks)
+        ? check.failedRequiredChecks
+        : undefined,
+      reportPath: check.reportPath || undefined,
+    }));
+}
+
+function releaseWarnings() {
+  return checks.flatMap((check) => {
+    const warnings = [];
+    if (check.status === 'warn') {
+      warnings.push({
+        source: 'open-readiness',
+        name: check.name,
+        status: 'warn',
+        notes: check.notes || check.error || '',
+        missing: Array.isArray(check.missing) ? check.missing : undefined,
+        usingDefaults: Array.isArray(check.usingDefaults) ? check.usingDefaults : undefined,
+        reportPath: check.reportPath || undefined,
+      });
+    }
+
+    if (Array.isArray(check.usingDefaults) && check.usingDefaults.length > 0) {
+      warnings.push({
+        source: 'open-readiness',
+        name: `${check.name}:defaults`,
+        status: 'warn',
+        notes: 'Defaults are safe locally but should be explicit in staging/production.',
+        usingDefaults: check.usingDefaults,
+      });
+    }
+
+    return warnings;
+  });
+}
+
+function warningLabel(warning) {
+  const name = warning.name || warning.source || 'warning';
+  const details = [];
+  if (Array.isArray(warning.usingDefaults) && warning.usingDefaults.length > 0) {
+    details.push(`defaults: ${warning.usingDefaults.join(', ')}`);
+  }
+  if (Array.isArray(warning.missing) && warning.missing.length > 0) {
+    details.push(`missing: ${warning.missing.join(', ')}`);
+  }
+  return details.length > 0 ? `${name} (${details.join('; ')})` : name;
+}
+
+function warningPreview(warnings, limit = 5) {
+  const visible = warnings.slice(0, limit).map(warningLabel);
+  const remaining = warnings.length - visible.length;
+  return remaining > 0 ? `${visible.join(' | ')} | +${remaining} more` : visible.join(' | ');
 }
 
 function quoteCmdArg(value) {
@@ -473,13 +547,19 @@ async function main() {
   const failed = checks.filter((check) => check.status === 'fail');
   const blocked = checks.filter((check) => check.status === 'blocked');
   const passed = checks.filter((check) => check.status === 'pass');
+  const warnings = releaseWarnings();
   const summary = {
     status: failed.length > 0 ? 'fail' : blocked.length > 0 ? 'blocked' : 'pass',
     passed: passed.length,
     blocked: blocked.length,
     failed: failed.length,
+    warnings: warnings.length,
+    releaseBlockers: releaseBlockers(),
+    releaseWarnings: warnings,
     checks,
   };
+
+  writeReport(REPORT_PATH, summary);
 
   if (json) {
     console.log(JSON.stringify(summary, null, 2));
@@ -488,7 +568,12 @@ async function main() {
       const suffix = check.notes ? ` - ${check.notes}` : check.error ? ` - ${check.error}` : '';
       console.log(`${check.status.toUpperCase().padEnd(7)} ${check.name}${suffix}`);
     }
-    console.log(`\n[open-readiness] ${summary.status}: ${passed.length} passed, ${blocked.length} blocked, ${failed.length} failed`);
+    console.log(
+      `\n[open-readiness] ${summary.status}: ${passed.length} passed, ${blocked.length} blocked, ${failed.length} failed, ${warnings.length} warnings`,
+    );
+    if (warnings.length > 0) {
+      console.log(`[open-readiness] warnings: ${warningPreview(warnings)}`);
+    }
   }
 
   if (failed.length > 0) process.exit(1);

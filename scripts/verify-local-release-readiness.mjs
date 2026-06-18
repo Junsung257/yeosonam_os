@@ -23,8 +23,25 @@ const jsonOutput = hasFlag('--json');
 const skipTests = hasFlag('--skip-tests');
 const skipBuild = hasFlag('--skip-build');
 const skipOpenReadiness = hasFlag('--skip-open-readiness');
+const skipOperationalInputs = hasFlag('--skip-operational-inputs');
 const strictOpenReadiness = hasFlag('--strict-open');
 const reportPath = argValue('--report', process.env.LOCAL_RELEASE_REPORT_PATH || '');
+const operationalInputsTemplatePath = argValue(
+  '--operational-template-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_TEMPLATE_OUT || '.tmp/local-release-operational-inputs.env.example',
+);
+const operationalInputsPlanPath = argValue(
+  '--operational-plan-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_PLAN_OUT || '.tmp/local-release-operational-inputs-action-plan.md',
+);
+const operationalInputsApplyScriptPath = argValue(
+  '--operational-apply-script-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_APPLY_SCRIPT_OUT || '.tmp/local-release-operational-inputs-apply.sh',
+);
+const operationalInputsVercelScriptPath = argValue(
+  '--operational-vercel-script-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_VERCEL_SCRIPT_OUT || '.tmp/local-release-operational-inputs-vercel-env.sh',
+);
 
 const openPort = Number(argValue('--open-port', process.env.LOCAL_RELEASE_OPEN_PORT || '3044'));
 const openMode = argValue('--open-mode', process.env.LOCAL_RELEASE_OPEN_MODE || 'dev');
@@ -175,6 +192,80 @@ function statusField(report) {
   return String(report?.status ?? report?.summary?.status ?? '').toLowerCase();
 }
 
+function summarizeOpenReadinessBlockers(report) {
+  if (!report || !Array.isArray(report.checks)) return [];
+  return report.checks
+    .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
+    .map((check) => ({
+      name: String(check.name || check.id || 'unknown'),
+      status: String(check.status || 'unknown'),
+      notes: check.notes || check.error || '',
+      missing: Array.isArray(check.missing) ? check.missing : undefined,
+      usingDefaults: Array.isArray(check.usingDefaults) ? check.usingDefaults : undefined,
+      failedRequiredChecks: Array.isArray(check.failedRequiredChecks)
+        ? check.failedRequiredChecks
+        : undefined,
+      reportPath: check.reportPath || undefined,
+    }));
+}
+
+function summarizeOperationalInputBlockers(report) {
+  if (!report || !Array.isArray(report.checks)) return [];
+  return report.checks
+    .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
+    .map((check) => ({
+      name: String(check.id || check.name || 'unknown'),
+      status: String(check.status || 'unknown'),
+      notes: check.notes || check.error || '',
+      missing: Array.isArray(check.missing) ? check.missing : undefined,
+      alternatives: Array.isArray(check.alternatives) ? check.alternatives : undefined,
+    }));
+}
+
+function summarizeOperationalInputWarnings(report) {
+  if (!report || !Array.isArray(report.checks)) return [];
+  return report.checks
+    .filter((check) => check?.status === 'warn')
+    .map((check) => ({
+      name: String(check.id || check.name || 'unknown'),
+      status: String(check.status || 'warn'),
+      notes: check.notes || check.error || '',
+      missing: Array.isArray(check.missing) ? check.missing : undefined,
+      alternatives: Array.isArray(check.alternatives) ? check.alternatives : undefined,
+    }));
+}
+
+function warningLabel(warning) {
+  const name = warning.name || warning.source || 'warning';
+  const details = [];
+  if (Array.isArray(warning.usingDefaults) && warning.usingDefaults.length > 0) {
+    details.push(`defaults: ${warning.usingDefaults.join(', ')}`);
+  }
+  if (Array.isArray(warning.missing) && warning.missing.length > 0) {
+    details.push(`missing: ${warning.missing.join(', ')}`);
+  }
+  return details.length > 0 ? `${name} (${details.join('; ')})` : name;
+}
+
+function warningPreview(warnings, limit = 5) {
+  const visible = warnings.slice(0, limit).map(warningLabel);
+  const remaining = warnings.length - visible.length;
+  return remaining > 0 ? `${visible.join(' | ')} | +${remaining} more` : visible.join(' | ');
+}
+
+function warningCountForCheck(summary) {
+  if (Array.isArray(summary.warningItems) && summary.warningItems.length > 0) {
+    return summary.warningItems.length;
+  }
+  const warningCount = Number(summary.warnings);
+  return Number.isFinite(warningCount) && warningCount > 0 ? warningCount : 0;
+}
+
+function summaryCount(summary, key) {
+  const count = Number(summary?.[key]);
+  return Number.isFinite(count) ? count : 0;
+}
+
 function runNpmScript(id, script, args = []) {
   const startedAt = process.hrtime.bigint();
   if (!jsonOutput) console.error(`[local-release] ${id} running`);
@@ -260,7 +351,76 @@ function summarizeOpenReadiness(result) {
     passed,
     blocked,
     failed,
+    blockers: summarizeOpenReadinessBlockers(report),
     strictOpenReadiness,
+    stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
+    stderrTail: status === 'fail' ? tailFile(result.stderrPath) : undefined,
+  };
+}
+
+function summarizeReadinessContracts(result) {
+  const report = parseJsonFromOutput(combinedOutput(result));
+  const failed = numericField(report, 'failed');
+  const passed = numericField(report, 'passed');
+  const readinessStatus = statusField(report);
+  const ok = Boolean(report) && result.exitCode === 0 && readinessStatus === 'pass' && failed === 0;
+  const blockers = Array.isArray(report?.checks)
+    ? report.checks
+      .filter((check) => check?.status === 'fail' || check?.status === 'blocked')
+      .map((check) => ({
+        name: String(check.id || check.name || 'unknown'),
+        status: String(check.status || 'unknown'),
+        notes: check.error || check.reportStatus || '',
+      }))
+    : [];
+
+  return {
+    id: result.id,
+    script: result.script,
+    command: result.command,
+    status: ok ? 'pass' : 'fail',
+    exitCode: result.exitCode,
+    error: result.error,
+    durationMs: result.durationMs,
+    readinessStatus: readinessStatus || 'unknown',
+    passed,
+    failed,
+    blockers,
+    stdoutTail: ok ? undefined : tailFile(result.stdoutPath),
+    stderrTail: ok ? undefined : tailFile(result.stderrPath),
+  };
+}
+
+function summarizeOperationalInputs(result) {
+  const report = parseJsonFromOutput(combinedOutput(result));
+  const blocked = numericField(report, 'blocked');
+  const warnings = numericField(report, 'warnings');
+  const passed = numericField(report, 'passed');
+  const failed = numericField(report, 'failed');
+  const readinessStatus = statusField(report);
+  const ok = Boolean(report) && result.exitCode === 0;
+  const status = ok ? (blocked > 0 || readinessStatus === 'blocked' ? 'blocked' : 'pass') : 'fail';
+
+  return {
+    id: result.id,
+    script: result.script,
+    command: result.command,
+    status,
+    exitCode: result.exitCode,
+    error: result.error,
+    durationMs: result.durationMs,
+    readinessStatus: readinessStatus || 'unknown',
+    passed,
+    blocked,
+    failed,
+    warnings,
+    selfTest: Boolean(report?.selfTest),
+    templatePath: operationalInputsTemplatePath,
+    actionPlanPath: operationalInputsPlanPath,
+    applyScriptPath: operationalInputsApplyScriptPath,
+    vercelScriptPath: operationalInputsVercelScriptPath,
+    blockers: summarizeOperationalInputBlockers(report),
+    warningItems: summarizeOperationalInputWarnings(report),
     stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
     stderrTail: status === 'fail' ? tailFile(result.stderrPath) : undefined,
   };
@@ -273,6 +433,29 @@ const checks = [
 
 if (!skipTests) {
   checks.push({ id: 'unit-tests', script: 'test', args: ['--', '--run'] });
+}
+
+checks.push({
+  id: 'readiness-contracts',
+  script: 'verify:readiness-contracts',
+  args: ['--', '--json'],
+  interpret: summarizeReadinessContracts,
+});
+
+if (!skipOperationalInputs) {
+  checks.push({
+    id: 'operational-inputs',
+    script: 'verify:operational-inputs',
+    args: [
+      '--',
+      '--json',
+      `--template-out=${operationalInputsTemplatePath}`,
+      `--plan-out=${operationalInputsPlanPath}`,
+      `--apply-script-out=${operationalInputsApplyScriptPath}`,
+      `--vercel-script-out=${operationalInputsVercelScriptPath}`,
+    ],
+    interpret: summarizeOperationalInputs,
+  });
 }
 
 checks.push({ id: 'marketing-automation-readiness', script: 'verify:marketing-automation:ci' });
@@ -309,9 +492,11 @@ for (const check of checks) {
   if (!jsonOutput) {
     const suffix =
       summary.status === 'blocked'
-        ? `blocked ${summary.blocked}, failed ${summary.failed}`
+        ? `blocked ${summaryCount(summary, 'blocked')}, failed ${summaryCount(summary, 'failed')}`
         : `exit ${summary.exitCode}`;
-    console.error(`[local-release] ${summary.id} ${summary.status} (${suffix}, ${summary.durationMs}ms)`);
+    const warningCount = warningCountForCheck(summary);
+    const warningSuffix = warningCount > 0 ? `, warnings ${warningCount}` : '';
+    console.error(`[local-release] ${summary.id} ${summary.status} (${suffix}${warningSuffix}, ${summary.durationMs}ms)`);
     if (summary.status === 'fail') {
       if (summary.stdoutTail) console.error(summary.stdoutTail);
       if (summary.stderrTail) console.error(summary.stderrTail);
@@ -326,18 +511,57 @@ const failed = summaries.filter((check) => check.status === 'fail').length;
 const blocked = summaries.filter((check) => check.status === 'blocked').length;
 const passed = summaries.filter((check) => check.status === 'pass').length;
 const status = failed > 0 ? 'fail' : blocked > 0 ? 'blocked' : 'pass';
+const releaseBlockers = summaries.flatMap((check) => {
+  if (Array.isArray(check.blockers) && check.blockers.length > 0) {
+    return check.blockers.map((blocker) => ({
+      source: check.id,
+      ...blocker,
+    }));
+  }
+  if (check.status === 'blocked' || check.status === 'fail') {
+    return [{
+      source: check.id,
+      name: check.id,
+      status: check.status,
+      notes: check.error || check.stderrTail || check.stdoutTail || '',
+    }];
+  }
+  return [];
+});
+const releaseWarnings = summaries.flatMap((check) => {
+  if (Array.isArray(check.warningItems) && check.warningItems.length > 0) {
+    return check.warningItems.map((warning) => ({
+      source: check.id,
+      ...warning,
+    }));
+  }
+  const warningCount = Number(check.warnings);
+  if (Number.isFinite(warningCount) && warningCount > 0) {
+    return [{
+      source: check.id,
+      name: check.id,
+      status: 'warn',
+      notes: `${warningCount} warning(s) reported; inspect the check output for details.`,
+    }];
+  }
+  return [];
+});
 
 const report = {
   status,
   passed,
   blocked,
   failed,
+  warnings: releaseWarnings.length,
   total: summaries.length,
   skipped: {
     tests: skipTests,
     build: skipBuild,
     openReadiness: skipOpenReadiness,
+    operationalInputs: skipOperationalInputs,
   },
+  releaseBlockers,
+  releaseWarnings,
   checks: summaries,
 };
 
@@ -347,8 +571,11 @@ if (jsonOutput) {
   console.log(JSON.stringify(report, null, 2));
 } else {
   console.error(
-    `[local-release] summary status=${status} passed=${passed} blocked=${blocked} failed=${failed} total=${summaries.length}`,
+    `[local-release] summary status=${status} passed=${passed} blocked=${blocked} failed=${failed} warnings=${releaseWarnings.length} total=${summaries.length}`,
   );
+  if (releaseWarnings.length > 0) {
+    console.error(`[local-release] warnings: ${warningPreview(releaseWarnings)}`);
+  }
 }
 
 process.exitCode = failed > 0 ? 1 : 0;

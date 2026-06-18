@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  issues: write
 
 concurrency:
   group: open-readiness-${{ github.event.deployment_status.target_url || github.ref }}
@@ -24,6 +25,23 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
+      OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
+      SERPAPI_KEY: ${{ secrets.SERPAPI_KEY || vars.SERPAPI_KEY }}
+      BAND_RSS_URL: ${{ secrets.BAND_RSS_URL || vars.BAND_RSS_URL }}
+      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN || vars.TWITTER_BEARER_TOKEN }}
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID || vars.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET || vars.NAVER_CLIENT_SECRET }}
+      NAVER_CAFE_ID: ${{ secrets.NAVER_CAFE_ID || vars.NAVER_CAFE_ID }}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN || vars.GOOGLE_ADS_DEVELOPER_TOKEN }}
+      GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID || vars.GOOGLE_ADS_CUSTOMER_ID }}
+      GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID || vars.GOOGLE_ADS_CLIENT_ID }}
+      GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET || vars.GOOGLE_ADS_CLIENT_SECRET }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK || vars.SLACK_WEBHOOK_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET || vars.CRON_SECRET }}
+      AD_FLAG_UP_BID_FACTOR: ${{ vars.AD_FLAG_UP_BID_FACTOR }}
+      AD_OFFPEAK_BID_FACTOR: ${{ vars.AD_OFFPEAK_BID_FACTOR }}
+      AD_MIN_BID_KRW: ${{ vars.AD_MIN_BID_KRW }}
       OPEN_CHECK_BLOG_AUDIT_LIMIT: '10'
       OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT: '50'
       OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS: '15000'
@@ -41,5 +59,127 @@ jobs:
       - name: Marketing automation readiness
         run: npm run verify:marketing-automation:ci
 
+      - name: Operational readiness inputs
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          npm run verify:operational-inputs -- --json \
+            --template-out=.tmp/operational-readiness-inputs.env.example \
+            --plan-out=.tmp/operational-readiness-action-plan.md \
+            --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
+            --vercel-script-out=.tmp/operational-readiness-vercel-env.sh | tee .tmp/operational-readiness-inputs.json
+
       - name: Public open readiness
-        run: npm run open:readiness -- --json
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          npm run open:readiness -- --json --report=.tmp/open-readiness-report.json | tee .tmp/open-readiness-summary.json
+
+      - name: Summarize open readiness
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/render-readiness-report.mjs \
+            --kind=open \
+            --report=.tmp/open-readiness-report.json \
+            --summary-out=.tmp/open-readiness-step-summary.md \
+            --issue-body-out=.tmp/open-readiness-issue-body.md \
+            --meta-out=.tmp/open-readiness-issue-meta.json \
+            --operational-template=.tmp/operational-readiness-inputs.env.example \
+            --operational-plan=.tmp/operational-readiness-action-plan.md \
+            --operational-apply-script=.tmp/operational-readiness-apply-inputs.sh \
+            --operational-vercel-script=.tmp/operational-readiness-vercel-env.sh
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/open-readiness-step-summary.md ]]; then
+            cat .tmp/open-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/operational-readiness-action-plan.md ]]; then
+            printf '\n' >> "$GITHUB_STEP_SUMMARY"
+            cat .tmp/operational-readiness-action-plan.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Track open readiness attention items
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const metaPath = '.tmp/open-readiness-issue-meta.json';
+            if (!fs.existsSync(metaPath)) return;
+
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+
+            const marker = meta.marker;
+            const title = meta.issueTitle;
+            const legacyTitles = Array.isArray(meta.legacyIssueTitles) ? meta.legacyIssueTitles : [];
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = issues.data.find((issue) =>
+              issue.title === title ||
+              legacyTitles.includes(issue.title) ||
+              issue.body?.includes(marker)
+            );
+
+            if (meta.shouldCloseIssue) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: meta.recoveryComment,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                });
+              }
+              return;
+            }
+
+            if (!(meta.hasAttentionItems || meta.hasBlockers || meta.hasWarnings)) return;
+
+            const bodyPath = meta.issueBodyPath || '.tmp/open-readiness-issue-body.md';
+            if (!fs.existsSync(bodyPath)) return;
+            const body = fs.readFileSync(bodyPath, 'utf8');
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Upload open readiness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: open-readiness-${{ github.run_id }}
+          path: |
+            .tmp/open-readiness-report.json
+            .tmp/open-readiness-summary.json
+            .tmp/open-readiness-step-summary.md
+            .tmp/open-readiness-issue-body.md
+            .tmp/open-readiness-issue-meta.json
+            .tmp/operational-readiness-inputs.json
+            .tmp/operational-readiness-inputs.env.example
+            .tmp/operational-readiness-action-plan.md
+            .tmp/operational-readiness-apply-inputs.sh
+            .tmp/operational-readiness-vercel-env.sh
+            .tmp/blog-search-quality-daily-*.json
+          if-no-files-found: ignore

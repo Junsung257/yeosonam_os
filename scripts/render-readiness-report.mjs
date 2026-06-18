@@ -1,0 +1,561 @@
+#!/usr/bin/env node
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+
+const argv = process.argv.slice(2);
+
+function argValue(name, fallback = '') {
+  const prefix = `${name}=`;
+  const inline = argv.find((arg) => arg.startsWith(prefix));
+  if (inline) return inline.slice(prefix.length);
+  const index = argv.indexOf(name);
+  return index >= 0 ? argv[index + 1] ?? fallback : fallback;
+}
+
+function hasFlag(name) {
+  return argv.includes(name);
+}
+
+const kind = argValue('--kind', 'open');
+const reportPath = argValue('--report', '');
+const summaryOut = argValue('--summary-out', '');
+const issueBodyOut = argValue('--issue-body-out', '');
+const metaOut = argValue('--meta-out', '');
+const operationalTemplatePath = argValue('--operational-template', '');
+const operationalPlanPath = argValue('--operational-plan', '');
+const operationalApplyScriptPath = argValue('--operational-apply-script', '');
+const operationalVercelScriptPath = argValue('--operational-vercel-script', '');
+const selfTest = hasFlag('--self-test');
+
+const KIND_CONFIG = {
+  open: {
+    title: 'Open Readiness',
+    issueTitle: '[readiness] Open readiness attention items',
+    legacyIssueTitles: ['[readiness] Open readiness blockers'],
+    issueHeading: 'Open Readiness Attention Items',
+    marker: '<!-- readiness-open-blockers -->',
+    recoveryText: 'Open readiness is passing again.',
+    countSuffix: '',
+    checkColumns: ['Check', 'Status', 'Duration ms', 'Notes'],
+    blockerColumns: ['Name', 'Status', 'Notes'],
+  },
+  'local-release': {
+    title: 'Local Release Readiness',
+    issueTitle: '[readiness] Local release readiness attention items',
+    legacyIssueTitles: ['[readiness] Local release readiness blockers'],
+    issueHeading: 'Local Release Readiness Attention Items',
+    marker: '<!-- readiness-local-release-blockers -->',
+    recoveryText: 'Local release readiness is passing again.',
+    countSuffix: ' / Total: ${total}',
+    checkColumns: ['Check', 'Status', 'Duration ms', 'Failed', 'Blocked'],
+    blockerColumns: ['Source', 'Name', 'Status', 'Notes'],
+  },
+};
+
+function configFor(value) {
+  const config = KIND_CONFIG[value];
+  if (!config) {
+    throw new Error(`Unknown --kind "${value}". Use one of: ${Object.keys(KIND_CONFIG).join(', ')}`);
+  }
+  return config;
+}
+
+function sampleReportFor(value) {
+  if (value === 'local-release') {
+    return {
+      status: 'blocked',
+      passed: 2,
+      blocked: 1,
+      failed: 0,
+      total: 3,
+      releaseBlockers: [{
+        source: 'open-readiness-local-full',
+        name: 'runtime:env-readiness',
+        status: 'blocked',
+        notes: 'sample missing env',
+        missing: ['SERPAPI_KEY'],
+      }],
+      releaseWarnings: [{
+        source: 'operational-inputs',
+        name: 'runtime-defaults',
+        status: 'warn',
+        notes: 'sample default env',
+        missing: ['AD_FLAG_UP_BID_FACTOR'],
+      }],
+      checks: [
+        { id: 'type-check', status: 'pass', durationMs: 111 },
+        {
+          id: 'operational-inputs',
+          status: 'blocked',
+          durationMs: 111,
+          blocked: 1,
+          failed: 0,
+          templatePath: '.tmp/local-release-operational-inputs.env.example',
+          actionPlanPath: '.tmp/local-release-operational-inputs-action-plan.md',
+          applyScriptPath: '.tmp/local-release-operational-inputs-apply.sh',
+          vercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.sh',
+        },
+        { id: 'open-readiness-local-full', status: 'blocked', durationMs: 222, blocked: 1, failed: 0 },
+      ],
+    };
+  }
+
+  return {
+    status: 'blocked',
+    passed: 2,
+    blocked: 1,
+    failed: 0,
+    releaseBlockers: [{
+      name: 'runtime:env-readiness',
+      status: 'blocked',
+      notes: 'sample missing env',
+      missing: ['SERPAPI_KEY'],
+    }],
+    releaseWarnings: [{
+      source: 'operational-inputs',
+      name: 'runtime-defaults',
+      status: 'warn',
+      notes: 'sample default env',
+      missing: ['AD_FLAG_UP_BID_FACTOR'],
+    }],
+    checks: [
+      { name: 'public:home', status: 'pass', ms: 99, notes: 'ok' },
+      {
+        name: 'operational-inputs',
+        status: 'blocked',
+        ms: 1,
+        notes: 'sample missing env',
+        templatePath: '.tmp/operational-readiness-inputs.env.example',
+        actionPlanPath: '.tmp/operational-readiness-action-plan.md',
+        applyScriptPath: '.tmp/operational-readiness-apply-inputs.sh',
+        vercelScriptPath: '.tmp/operational-readiness-vercel-env.sh',
+      },
+      { name: 'runtime:env-readiness', status: 'blocked', ms: 1, notes: 'sample missing env' },
+    ],
+  };
+}
+
+function readReport(path) {
+  if (selfTest) return sampleReportFor(kind);
+  if (!path || !existsSync(path)) return null;
+  return JSON.parse(readFileSync(path, 'utf8'));
+}
+
+function missingReportFor(value, path) {
+  const name = value === 'local-release'
+    ? 'local-release:report'
+    : 'open-readiness:report';
+  const notes = path
+    ? `Readiness report was not created at ${path}; inspect workflow logs before trusting this run.`
+    : 'Readiness report path was not provided; inspect workflow logs before trusting this run.';
+  return {
+    status: 'missing',
+    passed: 0,
+    blocked: 1,
+    failed: 0,
+    total: 1,
+    releaseBlockers: [{
+      source: name,
+      name,
+      status: 'blocked',
+      notes,
+      reportPath: path || undefined,
+    }],
+    checks: [{
+      id: name,
+      name,
+      status: 'blocked',
+      notes,
+      reportPath: path || undefined,
+    }],
+  };
+}
+
+function ensureParent(path) {
+  if (!path) return;
+  mkdirSync(dirname(resolve(path)), { recursive: true });
+}
+
+function writeText(path, value) {
+  if (!path) return;
+  ensureParent(path);
+  writeFileSync(path, `${value.replace(/\s+$/, '')}\n`);
+}
+
+function writeJson(path, value) {
+  if (!path) return;
+  ensureParent(path);
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+}
+
+function markdownCell(value) {
+  return String(value ?? '')
+    .replace(/\r?\n/g, ' ')
+    .replace(/\|/g, '\\|')
+    .trim();
+}
+
+function firstText(...values) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '') ?? '';
+}
+
+function statusOf(report) {
+  return String(report?.status ?? report?.summary?.status ?? 'unknown').toLowerCase();
+}
+
+function countOf(report, key) {
+  const direct = Number(report?.[key]);
+  if (Number.isFinite(direct)) return direct;
+  const nested = Number(report?.summary?.[key]);
+  return Number.isFinite(nested) ? nested : 0;
+}
+
+function noteFor(item) {
+  const notes = [firstText(item.notes, item.error)];
+  if (Array.isArray(item.missing) && item.missing.length > 0) {
+    notes.push(`missing: ${item.missing.join(', ')}`);
+  }
+  if (Array.isArray(item.usingDefaults) && item.usingDefaults.length > 0) {
+    notes.push(`defaults: ${item.usingDefaults.join(', ')}`);
+  }
+  if (Array.isArray(item.failedRequiredChecks) && item.failedRequiredChecks.length > 0) {
+    notes.push(`failed required: ${item.failedRequiredChecks.join(', ')}`);
+  }
+  if (item.reportPath) {
+    notes.push(`report: ${item.reportPath}`);
+  }
+  return notes.filter(Boolean).join('; ');
+}
+
+function reportChecks(report) {
+  return Array.isArray(report?.checks) ? report.checks : [];
+}
+
+function reportBlockers(report) {
+  const direct = Array.isArray(report?.releaseBlockers) ? report.releaseBlockers : [];
+  if (direct.length > 0) return direct;
+  return reportChecks(report)
+    .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
+    .map((check) => ({
+      source: check.source || check.id || check.name,
+      name: check.name || check.id || 'unknown',
+      status: check.status || 'unknown',
+      notes: noteFor(check),
+      missing: check.missing,
+      usingDefaults: check.usingDefaults,
+      failedRequiredChecks: check.failedRequiredChecks,
+      reportPath: check.reportPath,
+    }));
+}
+
+function reportWarnings(report) {
+  const direct = Array.isArray(report?.releaseWarnings) ? report.releaseWarnings : [];
+  if (direct.length > 0) return direct;
+  return reportChecks(report)
+    .filter((check) => check?.status === 'warn')
+    .map((check) => ({
+      source: check.source || check.id || check.name,
+      name: check.name || check.id || 'unknown',
+      status: check.status || 'warn',
+      notes: noteFor(check),
+      missing: check.missing,
+      alternatives: check.alternatives,
+      reportPath: check.reportPath,
+    }));
+}
+
+function runUrl() {
+  if (process.env.READINESS_RUN_URL) return process.env.READINESS_RUN_URL;
+  const server = process.env.GITHUB_SERVER_URL;
+  const repository = process.env.GITHUB_REPOSITORY;
+  const runId = process.env.GITHUB_RUN_ID;
+  return server && repository && runId ? `${server}/${repository}/actions/runs/${runId}` : '';
+}
+
+function countLine(report, config) {
+  const passed = countOf(report, 'passed');
+  const blocked = countOf(report, 'blocked');
+  const failed = countOf(report, 'failed');
+  const warnings = countOf(report, 'warnings')
+    || (Array.isArray(report?.releaseWarnings) ? report.releaseWarnings.length : 0)
+    || reportChecks(report).filter((check) => check?.status === 'warn').length;
+  const total = countOf(report, 'total');
+  const suffix = config.countSuffix.replace('${total}', String(total));
+  return `Passed: ${passed} / Blocked: ${blocked} / Failed: ${failed} / Warnings: ${warnings}${suffix}`;
+}
+
+function table(columns, rows) {
+  const alignment = columns.map((column) => (/(ms|failed|blocked|total)$/i.test(column) ? '---:' : '---'));
+  return [
+    `| ${columns.join(' | ')} |`,
+    `| ${alignment.join(' | ')} |`,
+    ...rows.map((row) => `| ${row.map(markdownCell).join(' | ')} |`),
+  ].join('\n');
+}
+
+function checkRows(report, value) {
+  return reportChecks(report).map((check) => {
+    const name = firstText(check.name, check.id, 'unknown');
+    const duration = firstText(check.ms, check.durationMs, '');
+    if (value === 'local-release') {
+      return [name, check.status || '', duration, check.failed ?? '', check.blocked ?? ''];
+    }
+    return [name, check.status || '', duration, noteFor(check)];
+  });
+}
+
+function blockerRows(blockers, value) {
+  return blockers.map((blocker) => {
+    if (value === 'local-release') {
+      return [
+        blocker.source || '',
+        blocker.name || '',
+        blocker.status || '',
+        noteFor(blocker),
+      ];
+    }
+    return [blocker.name || '', blocker.status || '', noteFor(blocker)];
+  });
+}
+
+function warningRows(warnings) {
+  return warnings.map((warning) => [
+    warning.source || '',
+    warning.name || '',
+    warning.status || 'warn',
+    preferredLocationsForKeys(warning.missing),
+    noteFor(warning),
+  ]);
+}
+
+function preferredLocationForKey(key) {
+  const value = String(key || '');
+  if (
+    /(_TOKEN|_SECRET|_KEY|WEBHOOK|CRON_SECRET|SERVICE_ROLE)/.test(value) ||
+    value === 'VERCEL_TOKEN'
+  ) {
+    return 'GitHub Actions secret';
+  }
+  if (
+    value.startsWith('OPEN_CHECK_') ||
+    value.startsWith('AD_') ||
+    value === 'BLOG_QUALITY_SOURCE_READY' ||
+    value === 'SUPABASE_PROJECT_REF' ||
+    value.endsWith('_ID') ||
+    value.endsWith('_URL')
+  ) {
+    return 'GitHub Actions variable';
+  }
+  return 'GitHub Actions secret or variable';
+}
+
+function preferredLocationsForKeys(keys) {
+  if (!Array.isArray(keys) || keys.length === 0) return '';
+  return [...new Set(keys.map(preferredLocationForKey))].sort().join(', ');
+}
+
+function operationalArtifactRows(report) {
+  const rows = [];
+  const seen = new Set();
+  for (const [type, path] of [
+    ['Action plan', operationalPlanPath],
+    ['Fill-in template', operationalTemplatePath],
+    ['Apply script', operationalApplyScriptPath],
+    ['Vercel env script', operationalVercelScriptPath],
+  ]) {
+    if (!path) continue;
+    const key = `operational-inputs:${type}:${path}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(['operational-inputs', type, path]);
+  }
+  for (const check of reportChecks(report)) {
+    const source = firstText(check.source, check.id, check.name, 'unknown');
+    for (const [type, path] of [
+      ['Action plan', check.actionPlanPath],
+      ['Fill-in template', check.templatePath],
+      ['Apply script', check.applyScriptPath],
+      ['Vercel env script', check.vercelScriptPath],
+    ]) {
+      if (!path) continue;
+      const key = `${source}:${type}:${path}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      rows.push([source, type, path]);
+    }
+  }
+  return rows;
+}
+
+function renderOperationalArtifactsSection(report) {
+  const rows = operationalArtifactRows(report);
+  if (rows.length === 0) return '';
+  return [
+    '## Operational Artifacts',
+    '',
+    table(['Source', 'Artifact', 'Path'], rows),
+  ].join('\n');
+}
+
+function missingInputRows(blockers) {
+  const byKey = new Map();
+  for (const blocker of blockers) {
+    if (!Array.isArray(blocker.missing)) continue;
+    for (const key of blocker.missing) {
+      const normalizedKey = String(key || '').trim();
+      if (!normalizedKey) continue;
+      const current = byKey.get(normalizedKey) || {
+        key: normalizedKey,
+        sources: new Set(),
+        alternatives: new Set(),
+        notes: new Set(),
+      };
+      current.sources.add(firstText(blocker.source, blocker.name, 'unknown'));
+      const note = firstText(blocker.notes, blocker.error);
+      if (note) current.notes.add(note);
+      if (Array.isArray(blocker.alternatives)) {
+        for (const alternative of blocker.alternatives) {
+          if (alternative) current.alternatives.add(String(alternative));
+        }
+      }
+      byKey.set(normalizedKey, current);
+    }
+  }
+
+  return [...byKey.values()]
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((item) => [
+      item.key,
+      preferredLocationForKey(item.key),
+      [...item.sources].sort().join(', '),
+      [...item.alternatives].sort().join(', '),
+      [...item.notes].sort().join(' / '),
+    ]);
+}
+
+function renderMissingInputsSection(blockers) {
+  const rows = missingInputRows(blockers);
+  if (rows.length === 0) return '';
+  return [
+    '## Missing Inputs',
+    '',
+    table(['Key', 'Preferred Location', 'Sources', 'Alternatives', 'Notes'], rows),
+  ].join('\n');
+}
+
+function renderWarningsSection(warnings) {
+  if (warnings.length === 0) return '';
+  return [
+    '## Release Warnings',
+    '',
+    table(['Source', 'Name', 'Status', 'Preferred Location', 'Notes'], warningRows(warnings)),
+  ].join('\n');
+}
+
+function renderBlockersSection(config, blockers, value) {
+  if (blockers.length === 0) {
+    return '## Release Blockers\n\nNo release blockers reported.';
+  }
+  return [
+    '## Release Blockers',
+    '',
+    table(config.blockerColumns, blockerRows(blockers, value)),
+  ].join('\n');
+}
+
+function renderSummary(report, config, blockers, warnings, value, url) {
+  const rows = checkRows(report, value);
+  const sections = [
+    `# ${config.title}`,
+    '',
+    `Status: **${statusOf(report)}**`,
+    '',
+    countLine(report, config),
+  ];
+  if (url) sections.push('', `Run: ${url}`);
+  sections.push(
+    '',
+    rows.length > 0 ? table(config.checkColumns, rows) : 'No checks reported.',
+    '',
+    renderOperationalArtifactsSection(report),
+    '',
+    renderMissingInputsSection(blockers),
+    '',
+    renderWarningsSection(warnings),
+    '',
+    renderBlockersSection(config, blockers, value),
+    '',
+  );
+  return sections.join('\n');
+}
+
+function renderIssueBody(report, config, blockers, warnings, value, url) {
+  const sections = [
+    config.marker,
+    `# ${config.issueHeading}`,
+    '',
+    `Status: **${statusOf(report)}**`,
+    '',
+    countLine(report, config),
+  ];
+  if (url) sections.push('', `Run: ${url}`);
+  sections.push(
+    '',
+    renderOperationalArtifactsSection(report),
+    '',
+    renderMissingInputsSection(blockers),
+    '',
+    renderWarningsSection(warnings),
+    '',
+    renderBlockersSection(config, blockers, value),
+    '',
+  );
+  return sections.join('\n');
+}
+
+function main() {
+  const config = configFor(kind);
+  const loadedReport = readReport(reportPath);
+  const report = loadedReport || missingReportFor(kind, reportPath);
+  const url = runUrl();
+  const blockers = reportBlockers(report);
+  const warnings = reportWarnings(report);
+  const status = statusOf(report);
+  const hasBlockers = blockers.length > 0;
+  const hasWarnings = warnings.length > 0;
+  const hasAttentionItems = hasBlockers || hasWarnings;
+  const shouldCloseIssue = Boolean(loadedReport) && status === 'pass' && !hasBlockers && !hasWarnings;
+
+  writeText(summaryOut, renderSummary(report, config, blockers, warnings, kind, url));
+  if (hasAttentionItems) {
+    writeText(issueBodyOut, renderIssueBody(report, config, blockers, warnings, kind, url));
+  }
+
+  const meta = {
+    kind,
+    status,
+    hasReport: Boolean(loadedReport),
+    hasBlockers,
+    hasWarnings,
+    hasAttentionItems,
+    shouldCloseIssue,
+    blockerCount: blockers.length,
+    warningCount: warnings.length,
+    issueTitle: config.issueTitle,
+    legacyIssueTitles: config.legacyIssueTitles || [],
+    marker: config.marker,
+    issueBodyPath: issueBodyOut,
+    summaryPath: summaryOut,
+    recoveryComment: [config.marker, config.recoveryText, url ? `Run: ${url}` : ''].filter(Boolean).join('\n\n'),
+  };
+  writeJson(metaOut, meta);
+  console.log(JSON.stringify(meta, null, 2));
+}
+
+try {
+  main();
+} catch (err) {
+  console.error(err instanceof Error ? err.message : String(err));
+  process.exit(1);
+}

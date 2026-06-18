@@ -338,3 +338,85 @@ REVALIDATE_SECRET=your_random_secret
 | `GET /api/admin/keyword-stats` | 키워드 성과 요약 | `Bearer $CRON_SECRET` |
 | `GET /api/admin/keyword-stats/top` | 성과 상위/하위 키워드 | `Bearer $CRON_SECRET` |
 | `GET /api/admin/keyword-stats/search-terms` | 검색어 현황 + negative 추천 | `Bearer $CRON_SECRET` |
+
+---
+
+## Runtime Env Readiness Contract
+
+This section is checked by `npm run verify:runtime-env-docs`. Keep it in sync with
+`src/config/runtime-env-readiness.json`.
+
+### Critical keys
+
+These keys are required for the open-readiness gate to prove connected marketing,
+search, social, ads, Slack, and cron integrations. If they are missing, local
+checks can still run, but the readiness result stays `blocked`.
+
+| Key | Purpose |
+|---|---|
+| `SERPAPI_KEY` | SerpAPI fallback/provider key for search rank checks. |
+| `BAND_RSS_URL` | Band RSS source URL for marketing/social ingestion. |
+| `TWITTER_BEARER_TOKEN` | Twitter/X API bearer token for social publishing and reads. |
+| `NAVER_CLIENT_ID` | Naver API client ID for search, seasonal, OAuth, and rank flows. |
+| `NAVER_CLIENT_SECRET` | Naver API client secret paired with `NAVER_CLIENT_ID`. |
+| `NAVER_CAFE_ID` | Naver Cafe ID for cafe/community marketing checks. |
+| `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads developer token. |
+| `GOOGLE_ADS_CUSTOMER_ID` | Google Ads customer account ID. |
+| `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth client ID. |
+| `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth client secret. |
+| `SLACK_WEBHOOK_URL` | Slack operations webhook for marketing/readiness alerts. |
+| `CRON_SECRET` | Bearer secret used by cron and server-to-server jobs. |
+
+### Warn-default keys
+
+These keys have safe defaults but should still be set explicitly in staging and
+production so bid behavior is intentional.
+
+| Key | Default |
+|---|---|
+| `AD_FLAG_UP_BID_FACTOR` | `1.1` |
+| `AD_OFFPEAK_BID_FACTOR` | `0.85` |
+| `AD_MIN_BID_KRW` | `70` |
+
+## Operational Readiness Input Audit
+
+Run this before staging/production open-readiness checks:
+
+```bash
+npm run verify:operational-inputs -- --json \
+  --template-out=.tmp/operational-readiness-inputs.env.example \
+  --plan-out=.tmp/operational-readiness-action-plan.md \
+  --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
+  --vercel-script-out=.tmp/operational-readiness-vercel-env.sh
+```
+
+`npm run verify:local-release -- --json` also runs this audit and writes the
+fill-in template to `.tmp/local-release-operational-inputs.env.example` and
+the action plan to `.tmp/local-release-operational-inputs-action-plan.md`.
+It also writes a GitHub CLI apply script to
+`.tmp/local-release-operational-inputs-apply.sh` and a Vercel CLI runtime-env
+apply script to `.tmp/local-release-operational-inputs-vercel-env.sh` by
+default. Use `--skip-operational-inputs` only for narrow development smoke
+checks where external readiness is intentionally out of scope.
+
+Rendered readiness summaries and tracked attention-item issues include
+`Missing Inputs` for blockers and `Release Warnings` for values that are safe
+locally but should be explicit in staging/production.
+
+The audit covers:
+
+| Group | Keys |
+|---|---|
+| Public data probes | `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE` |
+| External management APIs | `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN` |
+| Runtime integrations | The critical keys listed in `src/config/runtime-env-readiness.json` |
+| Runtime tunable defaults | The warn-default keys listed in `src/config/runtime-env-readiness.json` |
+| Blog quality data | `BLOG_QUALITY_SOURCE_READY` or a usable `SUPABASE_SERVICE_ROLE_KEY` |
+
+Use the generated `.tmp/operational-readiness-inputs.env.example` as the fill-in
+template for GitHub Actions variables/secrets or local staging smoke runs.
+After exporting the missing values locally, run
+`bash .tmp/operational-readiness-apply-inputs.sh` to apply repository
+variables/secrets with GitHub CLI and
+`bash .tmp/operational-readiness-vercel-env.sh` to apply runtime integration
+keys and explicit bid defaults to Vercel Production/Preview environments.

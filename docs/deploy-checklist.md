@@ -244,3 +244,44 @@ UPDATE blog_topic_queue SET status='skipped' WHERE status='queued';
 - [ ] `/admin/blog/queue` → 실시간 상태 변화 관찰
 
 문제 발견 시 → 위 "롤백 준비" 섹션대로 대응 + 해당 섹션 TODO 로 기록.
+
+---
+
+## Runtime Env Readiness Contract
+
+This section is checked by `npm run verify:runtime-env-docs`. It mirrors
+`src/config/runtime-env-readiness.json` and must be updated with that contract.
+
+### Critical staging/production keys
+
+- [ ] `SERPAPI_KEY`
+- [ ] `BAND_RSS_URL`
+- [ ] `TWITTER_BEARER_TOKEN`
+- [ ] `NAVER_CLIENT_ID`
+- [ ] `NAVER_CLIENT_SECRET`
+- [ ] `NAVER_CAFE_ID`
+- [ ] `GOOGLE_ADS_DEVELOPER_TOKEN`
+- [ ] `GOOGLE_ADS_CUSTOMER_ID`
+- [ ] `GOOGLE_ADS_CLIENT_ID`
+- [ ] `GOOGLE_ADS_CLIENT_SECRET`
+- [ ] `SLACK_WEBHOOK_URL`
+- [ ] `CRON_SECRET`
+
+### Explicit bid defaults
+
+- [ ] `AD_FLAG_UP_BID_FACTOR=1.1`
+- [ ] `AD_OFFPEAK_BID_FACTOR=0.85`
+- [ ] `AD_MIN_BID_KRW=70`
+
+### Operational input audit
+
+- [ ] Confirm `npm run verify:local-release -- --json --report=.tmp/local-release-readiness-report.json` includes the `operational-inputs` check.
+- [ ] Review `Missing Inputs` and `Release Warnings` in the rendered readiness summary before promoting.
+- [ ] Run `npm run verify:operational-inputs -- --json --template-out=.tmp/operational-readiness-inputs.env.example --plan-out=.tmp/operational-readiness-action-plan.md --apply-script-out=.tmp/operational-readiness-apply-inputs.sh --vercel-script-out=.tmp/operational-readiness-vercel-env.sh`.
+- [ ] Follow `.tmp/operational-readiness-action-plan.md` before promoting.
+- [ ] Export the missing values locally and run `bash .tmp/operational-readiness-apply-inputs.sh` when using GitHub CLI to apply repository secrets/variables.
+- [ ] Export the missing runtime values locally and run `bash .tmp/operational-readiness-vercel-env.sh` when using Vercel CLI to apply Production/Preview runtime variables.
+- [ ] Fill any missing public data probes: `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`.
+- [ ] Fill external management credentials: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN`.
+- [ ] Fill runtime integration keys listed in `src/config/runtime-env-readiness.json`.
+- [ ] Confirm blog quality data is available through staging/production Supabase or set `BLOG_QUALITY_SOURCE_READY`.
