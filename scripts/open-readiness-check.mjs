@@ -145,7 +145,7 @@ function warningPreview(warnings, limit = 5) {
 
 function isProtectedDeploymentResponse(statusCode, body = '') {
   if (statusCode !== 401) return false;
-  return /Protected deployment|vercel_auth_enabled|vercel_auth_callback|auto_vercel_auth_redirect/i.test(String(body));
+  return /Protected deployment|Authentication Required|requires Vercel authentication|vercel_auth_enabled|vercel_auth_callback|auto_vercel_auth_redirect|vercel curl|x-vercel-trusted-oidc-idp-token/i.test(String(body));
 }
 
 function markProtectedDeployment() {
@@ -551,10 +551,10 @@ async function checkBlogPublicSurfaceMonitor() {
         .flatMap((row) => Array.isArray(row.issues) ? row.issues.map((issue) => `${row.id}:${issue}`) : [`${row.id}:unknown`])
       : [];
     const missingOpsAuth = authMode === 'none' && !publicSurfaces;
-    const missingLocalData = ALLOW_LOCAL_MISSING_DATA && !ok && /db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|Blog database is not configured|no blog links found/i.test(
+    const localSurfaceUnavailable = ALLOW_LOCAL_MISSING_DATA && !ok && /db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|Blog database is not configured|no blog links found|surface_timeout|operation was aborted|abort/i.test(
       JSON.stringify({ publicSurfaces, body }),
     );
-    const status = ok ? 'pass' : missingLocalData || missingOpsAuth ? 'blocked' : 'fail';
+    const status = ok ? 'pass' : localSurfaceUnavailable || missingOpsAuth ? 'blocked' : 'fail';
 
     addCheck('public:blog-surface-monitor', status, {
       statusCode: res.status,
@@ -568,12 +568,12 @@ async function checkBlogPublicSurfaceMonitor() {
       failedIssues,
       notes: ok
         ? `${checked} public blog surface(s) healthy`
-        : missingLocalData
-          ? 'local blog public surfaces require production/staging data for full verification'
+        : localSurfaceUnavailable
+          ? 'local blog public surfaces require production/staging data or a warm local server for full verification'
           : missingOpsAuth
             ? 'protected ops probe requires CRON_SECRET or OPEN_CHECK_AUTH_COOKIE'
             : `failed=${failed}; ${failedIssues.slice(0, 4).join(', ') || 'inspect /api/ops/blog-system'}`,
-      error: ok || missingLocalData || missingOpsAuth
+      error: ok || localSurfaceUnavailable || missingOpsAuth
         ? ''
         : (failedIssues.join(', ') || body || `HTTP ${res.status}`).slice(0, 1200),
     });

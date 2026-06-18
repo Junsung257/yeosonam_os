@@ -248,6 +248,25 @@ function verifyOutput(run) {
     assertIncludes(issue, 'GitHub Actions secret', `${run.kind} issue`);
     assertIncludes(summary, 'SERPAPI_KEY', `${run.kind} summary`);
     assertIncludes(issue, 'SERPAPI_KEY', `${run.kind} issue`);
+    if (run.kind === 'open') {
+      assertIncludes(summary, 'public:blog-surface-monitor', 'open summary');
+      assertIncludes(issue, 'public:blog-surface-monitor', 'open issue');
+      assertIncludes(summary, 'auth: dev-admin-cookie', 'open summary');
+      assertIncludes(issue, 'auth: dev-admin-cookie', 'open issue');
+      assertIncludes(summary, 'blog-list:db_unavailable_page', 'open summary');
+      assertIncludes(issue, 'blog-list:db_unavailable_page', 'open issue');
+      assertIncludes(summary, 'surfaces: checked=11, failed=2, warn=1', 'open summary');
+      assertIncludes(issue, 'surfaces: checked=11, failed=2, warn=1', 'open issue');
+    } else if (run.kind === 'local-release') {
+      assertIncludes(summary, 'public:blog-surface-monitor', 'local-release summary');
+      assertIncludes(issue, 'public:blog-surface-monitor', 'local-release issue');
+      assertIncludes(summary, 'auth: dev-admin-cookie', 'local-release summary');
+      assertIncludes(issue, 'auth: dev-admin-cookie', 'local-release issue');
+      assertIncludes(summary, 'blog-list:db_unavailable_page', 'local-release summary');
+      assertIncludes(issue, 'blog-list:db_unavailable_page', 'local-release issue');
+      assertIncludes(summary, 'surfaces: checked=11, failed=2, warn=1', 'local-release summary');
+      assertIncludes(issue, 'surfaces: checked=11, failed=2, warn=1', 'local-release issue');
+    }
   }
   if (!run.missingReport && !run.inconsistentBlocker) {
     assertIncludes(summary, '## Release Warnings', `${run.kind} summary`);

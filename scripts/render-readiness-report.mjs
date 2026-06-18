@@ -77,6 +77,16 @@ function sampleReportFor(value) {
         status: 'blocked',
         notes: 'sample missing env',
         missing: ['SERPAPI_KEY'],
+      }, {
+        source: 'open-readiness-local-full',
+        name: 'public:blog-surface-monitor',
+        status: 'blocked',
+        notes: 'sample public surface blocker',
+        authMode: 'dev-admin-cookie',
+        checked: 11,
+        surfaceFailures: 2,
+        surfaceWarnings: 1,
+        failedIssues: ['blog-list:db_unavailable_page', 'api-blog:blog_api_db_timeout'],
       }],
       releaseWarnings: [{
         source: 'operational-inputs',

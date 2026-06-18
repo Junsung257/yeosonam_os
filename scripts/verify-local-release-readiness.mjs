@@ -217,6 +217,11 @@ function summarizeOpenReadinessBlockers(report) {
       failedRequiredChecks: Array.isArray(check.failedRequiredChecks)
         ? check.failedRequiredChecks
         : undefined,
+      failedIssues: Array.isArray(check.failedIssues) ? check.failedIssues : undefined,
+      authMode: check.authMode || undefined,
+      checked: Number.isFinite(Number(check.checked)) ? Number(check.checked) : undefined,
+      surfaceFailures: Number.isFinite(Number(check.failed)) ? Number(check.failed) : undefined,
+      surfaceWarnings: Number.isFinite(Number(check.warn)) ? Number(check.warn) : undefined,
       reportPath: check.reportPath || undefined,
     }));
 }
