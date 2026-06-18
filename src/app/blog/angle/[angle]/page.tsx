@@ -13,6 +13,7 @@ import {
   createBlogDatabaseUnavailableError,
   isBlogDatabaseUnavailableError,
 } from '@/lib/blog-cache';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -95,6 +96,9 @@ function getRouteParam(value: string | string[] | undefined): string {
 
 async function getAnglePageDataUncached(angle: string): Promise<AnglePageData> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    return { posts: [], recommendedPackages: [], unavailable: true };
+  }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
     return { posts: [], recommendedPackages: [], unavailable: true };
   }
 
