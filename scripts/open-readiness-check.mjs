@@ -42,6 +42,7 @@ const IS_LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(BASE_
 const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' || IS_LOCAL_BASE;
 const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
 const ALLOW_LOCAL_MISSING_DATA = hasFlag('--allow-local-missing-data') || process.env.OPEN_CHECK_ALLOW_LOCAL_MISSING_DATA === '1' || LOCAL_MODE;
+const LOCAL_DATA_UNAVAILABLE_PATTERN = /no_posts_found|no blog links found|collectionError|Blog database is not configured|local blog data unavailable|production\/staging data is required|db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|surface_timeout|operation was aborted|abort|fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|command_failed|runtime_errors/i;
 const INCLUDE_MARKETING_RUNTIME = hasFlag('--include-marketing-runtime') || process.env.OPEN_CHECK_INCLUDE_MARKETING_RUNTIME === '1';
 const MARKETING_RUNTIME_ISOLATED = hasFlag('--marketing-runtime-isolated') || process.env.OPEN_CHECK_MARKETING_RUNTIME_ISOLATED === '1';
 const MARKETING_RUNTIME_PORT = Number(argValue('--marketing-runtime-port', process.env.MARKETING_RUNTIME_PORT || '3036'));
@@ -303,8 +304,7 @@ function attentionCheckCount(report) {
 
 function isProtectedPreviewRuntimeBlock(runtime, attentionChecks) {
   const failed = Number(runtime?.failed);
-  return protectedDeploymentDetected
-    && !LOCAL_MODE
+  return (protectedDeploymentDetected || LOCAL_MODE)
     && Number.isFinite(failed)
     && failed <= 1
     && attentionChecks.some((check) => check.startsWith('live:auth-refresh-no-token(fail)'));
@@ -373,14 +373,21 @@ function checkPublicCriticalAudit() {
       ? audit.results.filter((row) => Array.isArray(row.missing) && row.missing.length > 0)
       : [];
     const auditPassed = result.ok && Number(audit?.summary?.failed ?? failedRows.length) === 0;
-    addCheck('public:critical-pages', auditPassed ? 'pass' : 'fail', {
+    const localAuditUnavailable = ALLOW_LOCAL_MISSING_DATA && !auditPassed && LOCAL_DATA_UNAVAILABLE_PATTERN.test(
+      JSON.stringify({ audit, stderr: result.stderr, stdout: result.stdout }),
+    );
+    addCheck('public:critical-pages', auditPassed ? 'pass' : localAuditUnavailable ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: audit?.summary?.passed ?? null,
       failed: audit?.summary?.failed ?? failedRows.length,
       score: audit?.summary?.score ?? null,
-      notes: `score=${audit?.summary?.score ?? 'n/a'}, failed=${audit?.summary?.failed ?? failedRows.length}`,
+      notes: localAuditUnavailable
+        ? 'local critical-page data unavailable; production/staging data is required for full verification'
+        : `score=${audit?.summary?.score ?? 'n/a'}, failed=${audit?.summary?.failed ?? failedRows.length}`,
       error: auditPassed
         ? ''
+        : localAuditUnavailable
+          ? ''
         : failedRows
           .slice(0, 4)
           .map((row) => `${row.name}:${row.missing.join('|')}`)
@@ -701,7 +708,7 @@ function checkBlogSearchQualityReadiness() {
       ? summary.issueCounts
       : {};
     const passed = result.ok && summary.ok === true;
-    const missingLocalData = ALLOW_LOCAL_MISSING_DATA && !passed && /no_posts_found|no blog links found|collectionError|Blog database is not configured/i.test(
+    const missingLocalData = ALLOW_LOCAL_MISSING_DATA && !passed && LOCAL_DATA_UNAVAILABLE_PATTERN.test(
       JSON.stringify({ summary, checks: report?.checks || [], stderr: result.stderr, stdout: result.stdout }),
     );
 

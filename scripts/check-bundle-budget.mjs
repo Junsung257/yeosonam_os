@@ -28,6 +28,7 @@ const ROUTE_BUDGET_OVERRIDES = new Map([
   ['/packages/[id]/page', 850],
 ]);
 const FAIL_FLAG = process.argv.includes('--fail');
+const MIN_ROUTE_COUNT = Number(process.env.BUNDLE_BUDGET_MIN_ROUTES || 100);
 
 const distDir = process.env.NEXT_DIST_DIR || '.next';
 const buildManifestPath = path.join(distDir, 'app-build-manifest.json');
@@ -68,6 +69,14 @@ for (const [route, chunks] of Object.entries(pages)) {
   if (totalKb > budget) {
     violations.push({ route, totalKb, budget, over: totalKb - budget });
   }
+}
+
+if (Number.isFinite(MIN_ROUTE_COUNT) && stats.length < MIN_ROUTE_COUNT) {
+  console.error(
+    `[budget] only ${stats.length} non-API route(s) found in app-build-manifest.json; `
+    + `expected at least ${MIN_ROUTE_COUNT}. Re-run npm run build and make sure no next dev server is rewriting .next.`,
+  );
+  process.exit(1);
 }
 
 stats.sort((a, b) => b.totalKb - a.totalKb);

@@ -290,6 +290,12 @@ export type EngagementEventType =
   | 'cart_added'
   | 'cart_abandon_exit'
   | 'checkout_start'
+  | 'package_filter_applied'
+  | 'sticky_cta_clicked'
+  | 'kakao_clicked'
+  | 'ai_prompt_started'
+  | 'ai_recommendation_clicked'
+  | 'admin_action_completed'
   | 'page_exit'
   | 'scroll_25'
   | 'scroll_50'
@@ -305,6 +311,12 @@ export function trackEngagement(params: {
   time_on_page_ms?: number;
   max_scroll_pct?: number;
   interaction_count?: number;
+  intent?: string | null;
+  budget?: string | null;
+  destination?: string | null;
+  party_type?: string | null;
+  selected_products?: string[] | null;
+  metadata?: Record<string, unknown>;
 }): void {
   const { uid: visitor_uid } = getVisitorUid();
   post({

@@ -216,6 +216,13 @@ function staticChecks() {
     '"audit:site-indexability"',
   ]);
 
+  requireIncludes('script:bundle-budget-route-floor', 'scripts/check-bundle-budget.mjs', [
+    'BUNDLE_BUDGET_MIN_ROUTES',
+    'MIN_ROUTE_COUNT',
+    'only ${stats.length} non-API route(s) found',
+    'next dev server is rewriting .next',
+  ]);
+
   requireIncludes('open-readiness:blog-search-quality-gate', 'scripts/open-readiness-check.mjs', [
     'checkBlogSearchQualityReadiness',
     'public:blog-search-quality',
@@ -711,6 +718,10 @@ function staticChecks() {
     'verify-project-automation-wiring.mjs',
     'verify-operational-readiness-inputs.mjs',
     'verify-operational-apply-scripts.mjs',
+    'verify-marketing-release-readiness.mjs',
+    'marketing-release-smoke',
+    '--skip-marketing-automation',
+    "expectedStatus: 'blocked'",
     'checksToRun',
   ]);
   requireCommandPass('script:readiness-contracts-suite-pass', process.execPath, [
@@ -774,6 +785,8 @@ function staticChecks() {
     'check:bundle',
     'MARKETING_RELEASE_SKIP_RUNTIME',
     'MARKETING_RELEASE_SKIP_BUILD',
+    'MARKETING_RELEASE_SKIP_MARKETING_AUTOMATION',
+    '--skip-marketing-automation',
     '--operational-env-file',
     'marketing-release-operational-inputs-discovered.env',
     'nested status:',

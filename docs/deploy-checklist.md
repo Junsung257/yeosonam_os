@@ -62,6 +62,9 @@ and uploads the generated operational input artifacts.
 It runs static marketing automation contracts, operational input discovery/audit,
 local marketing runtime probes, build, and bundle checks unless the corresponding
 `--skip-*` flag is passed for a narrow smoke check.
+The top-level readiness contract suite also runs a recursion-safe marketing
+release smoke check with `--skip-marketing-automation` so the release gate itself
+cannot silently drift out of the project automation chain.
 
 Exit code meanings:
 
