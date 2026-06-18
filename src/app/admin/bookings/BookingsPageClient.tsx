@@ -1167,7 +1167,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     await commitCell(id, field, val);
     const colIdx = Number(Object.entries(COL_FIELD).find(([, f]) => f === field)?.[0]);
     if (!isNaN(colIdx)) setTimeout(() => navigateTo(row + 1, colIdx), 60);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- mount/id-trigger-only intentional
+  // eslint-disable-next-line -- mount/id-trigger-only intentional
   }, [commitCell]); // navigateTo는 아래에서 선언
 
   // ── [1][2] AI 자동 정산 — 무한루프 완전 차단 아키텍처 ────────────────────────
@@ -1213,7 +1213,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       setBookings(prev => prev.map(b => b.id === bookingId ? booking : b));
       showToast(e instanceof Error ? e.message : '저장 실패', 'err');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line
   }, [flashCell, showToast]); // bookingsRef는 ref이므로 의존성 불필요
 
   // ── [3] 인원 듀얼 폼 커밋 ────────────────────────────────────────────────────
@@ -1246,7 +1246,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       setBookings(prev => prev.map(b => b.id === bookingId ? booking : b));
       showToast(e instanceof Error ? e.message : '저장 실패', 'err');
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line
   }, [flashCell, showToast]);
 
   // ── 랜드사 인라인 변경 (Optimistic UI + Rollback) ────────────────────────────
@@ -1458,6 +1458,15 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, today]); // eslint-disable-line
 
   const handleWorkQueueSelect = useCallback((queue: BookingWorkQueueKey) => {
+    const queueCounts: Record<BookingWorkQueueKey, number> = {
+      unpaid: unpaidRiskCnt,
+      prep: prepDocsCnt,
+      deposit: depositUnpaidCnt,
+      land: landBombCnt,
+      settlement: settlementPendingCnt,
+      refund: refundPendingCnt,
+    };
+
     setRawSearch('');
     setSearchQuery('');
     setSelected(new Set());
@@ -1485,9 +1494,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'bookings_work_queue', action: 'select_queue', queue },
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_work_queue',
+        action: 'select_queue',
+        queue,
+        count: queueCounts[queue],
+        has_waiting_work: queueCounts[queue] > 0,
+      },
     });
-  }, []);
+  }, [depositUnpaidCnt, landBombCnt, prepDocsCnt, refundPendingCnt, settlementPendingCnt, unpaidRiskCnt]);
 
   // ── 필터 + 정렬 ─────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -1593,7 +1609,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     }
     return list;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line
   }, [bookings, lifecycleTab, doneSubTab, activeTab, dqFilter, searchQuery, parsedDateRange, searchTarget, sortField, sortDir, today]);
 
   const footerStats = useMemo(() => ({

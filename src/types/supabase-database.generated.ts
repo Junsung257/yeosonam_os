@@ -497,9 +497,12 @@ export type Database = {
         Row: {
           cart_added: boolean
           created_at: string
+          destination: string | null
+          event_source: string | null
           event_type: string
           id: string
           lead_time_days: number | null
+          metadata: Json
           page_url: string | null
           product_id: string | null
           product_name: string | null
@@ -509,9 +512,12 @@ export type Database = {
         Insert: {
           cart_added?: boolean
           created_at?: string
+          destination?: string | null
+          event_source?: string | null
           event_type: string
           id?: string
           lead_time_days?: number | null
+          metadata?: Json
           page_url?: string | null
           product_id?: string | null
           product_name?: string | null
@@ -521,9 +527,12 @@ export type Database = {
         Update: {
           cart_added?: boolean
           created_at?: string
+          destination?: string | null
+          event_source?: string | null
           event_type?: string
           id?: string
           lead_time_days?: number | null
+          metadata?: Json
           page_url?: string | null
           product_id?: string | null
           product_name?: string | null

@@ -307,6 +307,7 @@ export function trackEngagement(params: {
   product_id?: string;
   product_name?: string;
   page_url?: string;
+  event_source?: string | null;
   lead_time_days?: number;
   time_on_page_ms?: number;
   max_scroll_pct?: number;

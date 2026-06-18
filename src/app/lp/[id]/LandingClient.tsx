@@ -395,6 +395,10 @@ export function LandingClient({
                 await openKakaoChannel({
                   internalCode: data.internalCode,
                   productTitle: data.customMessage.default.headline,
+                  intent: validSource,
+                  budget: data.priceFrom ? `1인 ${data.priceFrom.toLocaleString()}원~` : null,
+                  destination: data.destination,
+                  selected_products: [data.customMessage.default.headline],
                 });
               }}
             >

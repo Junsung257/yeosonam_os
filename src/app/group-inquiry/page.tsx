@@ -366,6 +366,11 @@ export default function GroupInquiryPage() {
 
     await openKakaoChannel({
       productTitle: '단체 맞춤 견적',
+      intent: selectedIntent?.intent ?? null,
+      budget: getSummaryValue(extractedSummary, 'budget'),
+      destination: extractedSummary.destination ?? null,
+      party_type: selectedIntent?.partyType ?? null,
+      selected_products: ['단체 맞춤 견적'],
       escalationSummary: buildEscalationSummary(extractedSummary, messages),
       leadForm: {
         name: contactName.trim() || undefined,

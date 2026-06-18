@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect } from 'react';
-import { getSessionId, trackContentView } from '@/lib/tracker';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { getSessionId, trackContentView, trackEngagement } from '@/lib/tracker';
 
 const LAST_CONTENT_KEY = 'ys_last_content_creative_id';
 const LAST_CONTENT_TS_KEY = 'ys_last_content_creative_ts';
@@ -21,6 +22,7 @@ type CtaMeta = {
   href: string;
   placement: string | null;
   packageId: string | null;
+  isKakao: boolean;
 };
 
 export function readLastContentCreativeId(): string | null {
@@ -56,6 +58,7 @@ function getCtaMeta(link: HTMLAnchorElement): CtaMeta | null {
     href,
     placement: link.dataset.recommendationPlacement || link.dataset.blogCtaPlacement || null,
     packageId: link.dataset.blogProductId || null,
+    isKakao: isKakaoCta,
   };
 }
 
@@ -185,6 +188,20 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
           text: link.textContent?.trim().slice(0, 80) || null,
         },
       }, true);
+
+      if (cta.isKakao) {
+        trackEngagement({
+          event_type: ANALYTICS_EVENTS.kakaoClicked,
+          page_url: window.location.pathname,
+          metadata: {
+            source: 'blog_cta',
+            contentCreativeId,
+            placement: cta.placement,
+            href: cta.href,
+            text: link.textContent?.trim().slice(0, 80) || null,
+          },
+        });
+      }
 
       if (!cta.packageId) return;
 

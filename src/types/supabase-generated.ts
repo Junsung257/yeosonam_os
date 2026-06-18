@@ -667,10 +667,13 @@ export type Database = {
         Row: {
           cart_added: boolean
           created_at: string
+          destination: string | null
+          event_source: string | null
           event_type: string
           id: string
           interaction_count: number | null
           lead_time_days: number | null
+          metadata: Json
           max_scroll_pct: number | null
           page_url: string | null
           product_id: string | null
@@ -683,10 +686,13 @@ export type Database = {
         Insert: {
           cart_added?: boolean
           created_at?: string
+          destination?: string | null
+          event_source?: string | null
           event_type: string
           id?: string
           interaction_count?: number | null
           lead_time_days?: number | null
+          metadata?: Json
           max_scroll_pct?: number | null
           page_url?: string | null
           product_id?: string | null
@@ -699,10 +705,13 @@ export type Database = {
         Update: {
           cart_added?: boolean
           created_at?: string
+          destination?: string | null
+          event_source?: string | null
           event_type?: string
           id?: string
           interaction_count?: number | null
           lead_time_days?: number | null
+          metadata?: Json
           max_scroll_pct?: number | null
           page_url?: string | null
           product_id?: string | null

@@ -290,6 +290,42 @@ function staticChecks() {
     "request.cookies.get('ys-dev-admin')?.value === '1'",
   ]);
 
+  requireIncludes('component:tracked-kakao-link-context', 'src/components/customer/TrackedKakaoLink.tsx', [
+    'ANALYTICS_EVENTS.kakaoClicked',
+    'event_source: source',
+    'destination',
+    'metadata: { ...metadata, source }',
+    'trackEngagement',
+    "rel = 'noopener noreferrer'",
+  ]);
+  requireIncludes('lib:tracker-engagement-context-payload', 'src/lib/tracker.ts', [
+    'event_source?: string | null',
+    'destination?: string | null',
+    'metadata?: Record<string, unknown>',
+  ]);
+  requireIncludes('api:tracking-engagement-context', 'src/app/api/tracking/route.ts', [
+    'event_source?: string',
+    'destination?: string',
+    'metadata?: Record<string, unknown>',
+    'normalizeMetadata',
+    'nonEmptyString',
+    'event_source: eventSource',
+    'destination: nonEmptyString(body.destination)',
+    'metadata,',
+  ]);
+  requireIncludes('db:ad-engagement-context-columns', 'src/lib/db/ads.ts', [
+    'event_source?: string | null',
+    'destination?: string | null',
+    'metadata?: Record<string, unknown>',
+    'missingExtendedColumn',
+  ]);
+  requireIncludes('migration:ad-engagement-context', 'supabase/migrations/20260619090000_ad_engagement_context_metadata.sql', [
+    'ADD COLUMN IF NOT EXISTS event_source',
+    'ADD COLUMN IF NOT EXISTS destination',
+    'ADD COLUMN IF NOT EXISTS metadata',
+    'idx_ad_engagement_logs_kakao_context',
+  ]);
+
   requireIncludes('api:marketing-dashboard-degraded', 'src/app/api/admin/marketing/dashboard/route.ts', [
     'degraded: true',
     'Supabase 연동이 설정되지 않아 빈 마케팅 대시보드를 표시합니다.',

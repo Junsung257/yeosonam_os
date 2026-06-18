@@ -251,6 +251,9 @@ export interface AdEngagementLog {
     | string;
   product_id?: string | null;
   product_name?: string | null;
+  event_source?: string | null;
+  destination?: string | null;
+  metadata?: Record<string, unknown>;
   cart_added: boolean;
   page_url?: string | null;
   lead_time_days?: number | null;
@@ -310,7 +313,27 @@ export async function insertSearchLog(data: Omit<AdSearchLog, 'id' | 'created_at
 export async function insertEngagementLog(data: Omit<AdEngagementLog, 'id' | 'created_at'>): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
-  await sb.from('ad_engagement_logs').insert(data as never);
+  const { error } = await sb.from('ad_engagement_logs').insert(data as never);
+  if (!error) return;
+
+  const message = error.message || '';
+  const missingExtendedColumn =
+    message.includes('event_source') ||
+    message.includes('destination') ||
+    message.includes('metadata');
+  if (!missingExtendedColumn) {
+    console.warn('[tracking] engagement insert failed:', message);
+    return;
+  }
+
+  const baseData = { ...data } as Record<string, unknown>;
+  delete baseData.event_source;
+  delete baseData.destination;
+  delete baseData.metadata;
+  const fallback = await sb.from('ad_engagement_logs').insert(baseData as never);
+  if (fallback.error) {
+    console.warn('[tracking] engagement fallback insert failed:', fallback.error.message);
+  }
 }
 
 export async function insertConversionLog(

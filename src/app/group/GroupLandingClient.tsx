@@ -206,6 +206,11 @@ export default function GroupLandingClient() {
 
     await openKakaoChannel({
       productTitle: '단체 맞춤 견적',
+      intent: form.purpose || null,
+      budget: form.budget_label || null,
+      destination: form.destination || null,
+      party_type: 'group_landing',
+      selected_products: ['단체 맞춤 견적'],
       escalationSummary: [
         `단체명: ${form.group_name || '미입력'}`,
         `단체 성격: ${form.purpose || '미입력'}`,
