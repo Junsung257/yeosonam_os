@@ -296,6 +296,85 @@ function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; 
   );
 }
 
+function createDecisionGuide({
+  pkg,
+  days,
+  airlineName,
+  durationLabel,
+  departureLabel,
+  minPrice,
+  productTypeLabel,
+}: {
+  pkg: Package;
+  days: DaySchedule[];
+  airlineName: string | null;
+  durationLabel: string | null;
+  departureLabel: string;
+  minPrice: number;
+  productTypeLabel: string | null;
+}) {
+  const text = [
+    pkg.title,
+    pkg.display_title,
+    pkg.hero_tagline,
+    pkg.product_summary,
+    pkg.product_type,
+    ...(pkg.product_highlights ?? []),
+    ...(pkg.inclusions ?? []),
+    ...(pkg.excludes ?? []),
+    ...days.flatMap(day => day.schedule?.map(item => item.activity) ?? []),
+  ].filter(Boolean).join(' ');
+
+  const goodFor: string[] = [];
+  const cautions: string[] = [];
+  const proofs: string[] = [];
+
+  if (/노쇼핑|쇼핑\s*없|쇼핑\s*0|NO\s*SHOPPING/i.test(text)) {
+    goodFor.push('쇼핑 부담을 줄이고 일정에 집중하고 싶은 분');
+  }
+  if (/가족|부모|효도|시니어|온천|휴양/i.test(text)) {
+    goodFor.push('부모님이나 가족과 함께 편하게 다녀오려는 분');
+  }
+  if (/골프|라운드|컨트리클럽|CC/i.test(text)) {
+    goodFor.push('항공, 숙소, 라운드를 한 번에 비교하려는 골프 여행객');
+  }
+  if (productTypeLabel) goodFor.push(`${productTypeLabel} 조건을 먼저 확인하고 싶은 분`);
+  if (goodFor.length === 0) {
+    goodFor.push('출발일과 가격을 먼저 보고 빠르게 상담받고 싶은 분');
+  }
+
+  if (pkg.excludes?.length) {
+    cautions.push('불포함 항목과 개인 경비를 상담 전에 확인하세요');
+  }
+  if (pkg.optional_tours?.length) {
+    cautions.push('선택 관광이나 현지 옵션 비용이 추가될 수 있어요');
+  }
+  if (pkg.surcharges?.length) {
+    cautions.push('성수기, 특정 기간에는 추가 요금이 붙을 수 있어요');
+  }
+  if (pkg.min_participants || pkg.min_people) {
+    cautions.push(`최소 출발 인원 ${pkg.min_participants ?? pkg.min_people}명 조건을 확인하세요`);
+  }
+  if (!departureLabel || departureLabel.includes('확인')) {
+    cautions.push('출발 가능일은 상담으로 확정하는 편이 안전해요');
+  }
+  if (cautions.length === 0) {
+    cautions.push('항공, 호텔 확정 여부와 취소 규정은 예약 전 다시 확인하세요');
+  }
+
+  if (Number.isFinite(minPrice) && minPrice > 0) proofs.push(`최저 ${minPrice.toLocaleString()}원대부터 확인`);
+  if (departureLabel) proofs.push(departureLabel);
+  if (durationLabel) proofs.push(durationLabel);
+  if (airlineName) proofs.push(airlineName);
+  if (pkg.inclusions?.length) proofs.push(`포함 ${pkg.inclusions.length}개 항목`);
+
+  return {
+    goodFor: Array.from(new Set(goodFor)).slice(0, 3),
+    cautions: Array.from(new Set(cautions)).slice(0, 3),
+    proofs: Array.from(new Set(proofs)).slice(0, 4),
+  };
+}
+
 export default function DetailClient({ initialPackage, initialAttractions, packageId, relatedBlogPosts = [], destinationBlogPosts = [], initialNotices = [], climateData = null, representativeMonth = new Date().getMonth() + 1, departureDistribution = {}, scoreRows = [], rivalsByDate = {}, socialProof, catalogSiblings = [] }: DetailClientProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -677,6 +756,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const firstScreenBadges = [productTypeLabel, durationLabel, airlineName]
     .filter((item): item is string => Boolean(item))
     .slice(0, 3);
+  const decisionGuide = createDecisionGuide({
+    pkg,
+    days,
+    airlineName,
+    durationLabel,
+    departureLabel: firstScreenDepartureLabel,
+    minPrice,
+    productTypeLabel,
+  });
 
   // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
   // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
@@ -1403,6 +1491,60 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 포함/불포함/써차지/쇼핑 — CRC + terms-catalog ═══ */}
       {view && <PackageTermsSection view={view} />}
+
+      <section className="px-4 py-6" aria-label="추천 대상과 확인할 점">
+        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
+          <div className="mb-4 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] font-extrabold uppercase tracking-wide text-brand">Decision guide</p>
+              <h2 className="mt-1 text-lg font-extrabold text-slate-950">이 상품, 이런 분께 잘 맞아요</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => openInquiryForm('detail_decision_guide')}
+              className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-extrabold text-slate-800 active:scale-[0.98] transition"
+            >
+              조건 확인
+            </button>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl bg-brand-light/40 p-4">
+              <p className="mb-2 text-[12px] font-extrabold text-brand">추천 대상</p>
+              <ul className="space-y-2">
+                {decisionGuide.goodFor.map(item => (
+                  <li key={item} className="flex gap-2 text-sm font-semibold leading-relaxed text-slate-800">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-2xl bg-amber-50 p-4">
+              <p className="mb-2 text-[12px] font-extrabold text-amber-700">확인 필요</p>
+              <ul className="space-y-2">
+                {decisionGuide.cautions.map(item => (
+                  <li key={item} className="flex gap-2 text-sm font-semibold leading-relaxed text-slate-800">
+                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          {decisionGuide.proofs.length > 0 && (
+            <div className="mt-4 flex gap-2 overflow-x-auto no-scrollbar">
+              {decisionGuide.proofs.map(item => (
+                <span key={item} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[12px] font-bold text-slate-700">
+                  {item}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* ═══ 일정표 ═══ */}
       {days.length > 0 && (
