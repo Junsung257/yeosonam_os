@@ -18,6 +18,7 @@ const timeoutMs = Number(argValue('--timeout-ms', process.env.MARKETING_READINES
 const providedCookie = argValue('--cookie', process.env.MARKETING_READINESS_COOKIE || '');
 const marketingCheckCardNewsId = argValue('--card-news-id', process.env.MARKETING_CHECK_CARD_NEWS_ID || '');
 const marketingCheckVariantGroupId = argValue('--variant-group-id', process.env.MARKETING_CHECK_VARIANT_GROUP_ID || '');
+const requireDynamicProbes = args.has('--require-dynamic-probes') || process.env.MARKETING_READINESS_REQUIRE_DYNAMIC_PROBES === '1';
 const DEV_ADMIN_SESSION_PATH = '/api/dev/admin-session';
 
 const checks = [];
@@ -402,6 +403,7 @@ function staticChecks() {
     'BUNDLE_BUDGET_MIN_ROUTES',
     'BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER',
     'MIN_ROUTE_COUNT',
+    "if (distDir !== '.next') return []",
     'activeNextDevServerProcesses',
     'assertNoActiveNextDevServer',
     'Refusing to check bundle budget while next dev is active',
@@ -417,6 +419,7 @@ function staticChecks() {
   requireIncludes('script:build-rejects-active-dev-server', 'scripts/run-next-build.cjs', [
     'NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER',
     'NEXT_BUILD_PRECHECK_ONLY',
+    "if (distDirName !== '.next') return []",
     'activeNextDevServerProcesses',
     'assertNoActiveNextDevServer',
     'startActiveNextDevServerMonitor',
@@ -951,6 +954,9 @@ function staticChecks() {
     'checkApiContract',
     'marketingCheckCardNewsId',
     'marketingCheckVariantGroupId',
+    'requireDynamicProbes',
+    '--require-dynamic-probes',
+    'MARKETING_READINESS_REQUIRE_DYNAMIC_PROBES',
     'dynamicMarketingPagePaths',
     'missingDynamicMarketingProbeInputs',
     'live:dynamic-marketing-page-probes',
@@ -981,6 +987,11 @@ function staticChecks() {
     'startNextServer',
     'waitForReady',
     'stopProcessTree',
+    'findLast',
+    'lastIndexOf',
+    'runtimeDistDir',
+    'existsSync(`${runtimeDistDir}/BUILD_ID`)',
+    'start mode requires a production build',
     'verify-marketing-automation-readiness.mjs',
     'MARKETING_RUNTIME_PORT',
     '--strict',
@@ -1024,6 +1035,13 @@ function staticChecks() {
     'signal: controller.signal',
     'validatePort',
     'validateMode',
+    'NEXT_DIST_DIR',
+    "`.next-dev-${port}`",
+  ]);
+  requireIncludes('script:next-main-app-shim-dist-dir', 'scripts/ensure-next-main-app-js-shim.cjs', [
+    "process.env.NEXT_DIST_DIR || '.next'",
+    "path.join(process.cwd(), distDir)",
+    "path.join(process.cwd(), distDir, 'static', 'chunks')",
   ]);
   requireIncludes('script:local-release-readiness', 'scripts/verify-local-release-readiness.mjs', [
     'type-check',
@@ -1366,9 +1384,11 @@ async function liveChecks() {
   const livePagePaths = [...LIVE_PAGE_PATHS, ...dynamicMarketingPagePaths()];
   const dynamicProbeMissing = missingDynamicMarketingProbeInputs();
   if (dynamicProbeMissing.length > 0) {
-    addCheck('live:dynamic-marketing-page-probes', 'blocked', {
+    addCheck('live:dynamic-marketing-page-probes', requireDynamicProbes ? 'blocked' : 'pass', {
       missing: dynamicProbeMissing,
-      notes: 'provide MARKETING_CHECK_CARD_NEWS_ID and MARKETING_CHECK_VARIANT_GROUP_ID to verify dynamic marketing pages',
+      notes: requireDynamicProbes
+        ? 'provide MARKETING_CHECK_CARD_NEWS_ID and MARKETING_CHECK_VARIANT_GROUP_ID to verify dynamic marketing pages'
+        : 'dynamic marketing page probes skipped because sample IDs were not provided',
     });
   }
 

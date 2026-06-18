@@ -302,6 +302,7 @@ function cleanupLingeringNextBuildProcesses() {
 }
 
 function activeNextDevServerProcesses() {
+  if (distDirName !== '.next') return [];
   if (process.env.NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER === '1') return [];
 
   if (process.platform === 'win32') {

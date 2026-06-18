@@ -97,10 +97,15 @@ export function startNextServer({
   const script = mode === 'dev' ? 'dev' : 'start';
   const { command, args } = serverCommand(script, port);
   let expectedStop = false;
+  const env = { ...process.env, FORCE_COLOR: '0' };
+  if (mode === 'dev' && !env.NEXT_DIST_DIR) {
+    env.NEXT_DIST_DIR = `.next-dev-${port}`;
+  }
+
   const child = spawn(command, args, {
     cwd: process.cwd(),
     detached: process.platform !== 'win32',
-    env: { ...process.env, FORCE_COLOR: '0' },
+    env,
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   child.stdout.pipe(out);

@@ -205,10 +205,10 @@ const NumInputCell = React.memo(function NumInputCell({
 
   return (
     <input
-      autoFocus
       type="number"
       min={0}
       defaultValue={initialValue}
+      aria-label={field === 'adult_price' ? '1인 판매가 입력' : '인원 입력'}
       onKeyDown={e => {
         e.stopPropagation();
         if (e.key === 'Enter')  { e.preventDefault(); handleCommit((e.target as HTMLInputElement).value); }
@@ -256,10 +256,10 @@ const DateInputCell = React.memo(function DateInputCell({
 
   return (
     <input
-      autoFocus
       type="text"
       defaultValue={defaultVal}
       placeholder="260317"
+      aria-label="출발일 입력"
       maxLength={10}
       onKeyDown={e => {
         e.stopPropagation();
@@ -333,14 +333,14 @@ const HeadcountCell = React.memo(function HeadcountCell({
   const inputCls = 'w-14 border border-blue-500 rounded px-2 py-1 text-admin-sm font-bold text-center focus:outline-none bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none';
 
   return (
-    <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+    <div className="flex items-center gap-1.5">
       <span className="text-[11px] text-admin-muted font-medium shrink-0">성인</span>
       <input
         ref={adultRef}
-        autoFocus
         type="number"
         min={1}
         defaultValue={initialAdult}
+        aria-label="성인 인원 입력"
         className={inputCls}
         onKeyDown={e => {
           e.stopPropagation();
@@ -358,6 +358,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
         type="number"
         min={0}
         defaultValue={initialChild}
+        aria-label="아동 인원 입력"
         className={inputCls}
         onKeyDown={e => {
           e.stopPropagation();
@@ -413,7 +414,8 @@ function LocationSelectCell({ initialId, locations, onCommit, onCancel }: {
   onCancel: () => void;
 }) {
   return (
-    <select autoFocus defaultValue={initialId ?? ''}
+    <select defaultValue={initialId ?? ''}
+      aria-label="출발지역 선택"
       onClick={e => { e.stopPropagation(); e.preventDefault(); }}
       onChange={e => { e.stopPropagation(); onCommit(e.target.value); }}
       onBlur={onCancel}
@@ -436,7 +438,8 @@ function VendorSelectCell({ initialId, vendors, onCommit, onCancel }: {
   onCancel: () => void;
 }) {
   return (
-    <select autoFocus defaultValue={initialId ?? ''}
+    <select defaultValue={initialId ?? ''}
+      aria-label="랜드사 선택"
       onClick={e => { e.stopPropagation(); e.preventDefault(); }}
       onChange={e => { e.stopPropagation(); onCommit(e.target.value); }}
       onBlur={onCancel}
@@ -520,12 +523,13 @@ function SmartProductSelect({
   }).slice(0, 12);
 
   return (
-    <div ref={containerRef} className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+    <div ref={containerRef} className="flex items-center gap-1">
       <input
         ref={inputRef}
         value={q}
         onChange={e => setQ(e.target.value)}
         placeholder="상품 검색..."
+        aria-label="상품 검색"
         onKeyDown={e => {
           e.stopPropagation();
           if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
@@ -539,7 +543,6 @@ function SmartProductSelect({
         <div
           style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
           className="bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] max-h-[360px] overflow-y-auto py-1"
-          onMouseDown={e => e.stopPropagation()}
         >
           {loading && (
             <p className="px-4 py-3 text-admin-sm text-admin-muted text-center">상품 불러오는 중...</p>
@@ -628,7 +631,6 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
   if (editing) {
     return (
       <input
-        autoFocus
         value={input}
         onChange={e => setInput(e.target.value)}
         onClick={e => e.stopPropagation()}
@@ -638,6 +640,7 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
         }}
         onBlur={commit}
         placeholder="SKU 붙여넣기..."
+        aria-label="상품 SKU 입력"
         disabled={saving}
         className="w-full border border-blue-400 rounded px-2 py-1 text-admin-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
       />
@@ -645,9 +648,11 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
   }
 
   return (
-    <div
+    <button
+      type="button"
       onClick={(e) => { e.stopPropagation(); setEditing(true); setInput(''); }}
-      className="flex flex-col cursor-pointer hover:text-blue-600 group min-w-0"
+      className="flex min-w-0 flex-col text-left hover:text-blue-600 group"
+      aria-label={`${booking.customers?.name || booking.booking_no || '예약'} 상품 연결 수정`}
     >
       {booking.product_id ? (
         <>
@@ -663,7 +668,7 @@ function ProductSkuCell({ booking, onCommit, onError }: ProductSkuCellProps) {
           {booking.package_title || <span className="text-admin-muted-2">(미지정)</span>}
         </span>
       )}
-    </div>
+    </button>
   );
 }
 
@@ -687,10 +692,11 @@ function StatusBadge({ booking, onClick }: { booking: Booking; onClick: () => vo
   return (
     <div className="flex flex-col items-center gap-1.5">
       <div className="relative inline-flex">
-        <span onClick={onClick}
-          className={`text-[11px] px-3 py-1 rounded-full cursor-pointer hover:opacity-80 font-semibold transition-opacity ${STATUS_COLORS[booking.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
+        <button type="button" onClick={onClick}
+          className={`text-[11px] px-3 py-1 rounded-full hover:opacity-80 font-semibold transition-opacity ${STATUS_COLORS[booking.status] || 'bg-admin-surface-2 text-admin-muted'}`}
+          aria-label={`${booking.customers?.name || booking.booking_no || '예약'} 상태 수정`}>
           {STATUS_LABELS[booking.status] || booking.status}
-        </span>
+        </button>
         {isStale && (
           <span className="absolute -top-1 -right-1 flex h-3 w-3">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
@@ -1890,11 +1896,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       {/* 테이블 */}
       {isLoading ? (
         <div className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-hidden">
-          <table className="w-full"><tbody>
+          <table className="w-full" aria-hidden="true"><tbody>
             {[...Array(10)].map((_, i) => (
               <tr key={i} style={{ height: ROW_H }} className="border-b border-admin-border-mid">
                 {[...Array(12)].map((__, j) => (
-                  <td key={j} className="px-3"><div className="h-4 w-full bg-admin-surface-2 rounded animate-pulse" /></td>
+                  <td key={j} className="px-3" aria-hidden="true"><div className="h-4 w-full bg-admin-surface-2 rounded animate-pulse" /></td>
                 ))}
               </tr>
             ))}
@@ -2014,6 +2020,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
         <div ref={tableContainerRef}
           className="hidden flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-x-auto overflow-y-auto relative md:block"
+          role="grid"
+          aria-label="예약 목록 표"
+          tabIndex={0}
           onKeyDown={handleTableKeyDown}
           onScroll={e => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}>
 
@@ -2021,7 +2030,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             <thead className="sticky top-0 z-20 bg-white border-b border-admin-border-mid">
               <tr>
                 <th className="sticky left-0 z-30 bg-white px-3 py-2 w-12 min-w-[52px]">
-                  <input type="checkbox" checked={allSel} onChange={toggleAll} className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer" />
+                  <input type="checkbox" checked={allSel} onChange={toggleAll} aria-label="현재 예약 목록 전체 선택" className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer" />
                 </th>
                 <SortTh label="예약일"     field="booking_date"   sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[52px] z-30 bg-white min-w-[130px]" />
                 <SortTh label="출발일"     field="departure_date" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky left-[182px] z-30 bg-white min-w-[150px]" />
@@ -2040,12 +2049,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
                 <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
-                <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]" />
+                <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]"><span className="sr-only">예약 작업</span></th>
               </tr>
             </thead>
 
             <tbody>
-              {vPadTop > 0 && <tr style={{ height: vPadTop }}><td colSpan={19} /></tr>}
+              {vPadTop > 0 && <tr style={{ height: vPadTop }} aria-hidden="true"><td colSpan={19} aria-hidden="true" /></tr>}
               {filtered.slice(vStartIdx, vEndIdx + 1).map((b, i) => {
                 const ri              = vStartIdx + i;
                 const balance         = (b.total_price||0) - (b.paid_amount||0);
@@ -2098,6 +2107,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     {/* 체크박스 */}
                     <td className="sticky left-0 z-10 bg-inherit px-3 min-w-[52px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <input type="checkbox" checked={isSel} onChange={() => toggleOne(b.id)} onClick={e => e.stopPropagation()}
+                        aria-label={`${b.customers?.name || b.booking_no || '예약'} 선택`}
                         className="w-4 h-4 rounded border-admin-border-strong text-blue-600 cursor-pointer" />
                     </td>
 
@@ -2120,15 +2130,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           />
                         </div>
                       ) : (
-                        <div onClick={() => { setEditingCell({ id: b.id, field: 'departure_date' }); setCellValue(b.departure_date || ''); }}
-                          className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-1.5">
+                        <button type="button" onClick={() => { setEditingCell({ id: b.id, field: 'departure_date' }); setCellValue(b.departure_date || ''); }}
+                          className="w-full h-[88px] flex items-center px-3 text-left hover:bg-blue-50 transition-colors gap-1.5"
+                          aria-label={`${b.customers?.name || b.booking_no || '예약'} 출발일 수정`}>
                           <span className={`font-mono tabular-nums ${isRisk ? 'text-admin-sm font-bold text-red-700' : 'text-admin-sm font-semibold text-admin-text-2'} ${!b.departure_date ? 'text-admin-muted-2 font-normal' : ''}`}>
                             {fmtDateKo(b.departure_date)}
                           </span>
                           {dDiff !== null && dDiff >= 0 && dDiff <= 14 && (
                             <span className={`text-[11px] font-bold ${dDiff <= 7 ? 'text-red-500' : 'text-amber-500'}`}>D-{dDiff}</span>
                           )}
-                        </div>
+                        </button>
                       )}
                     </td>
 
@@ -2162,15 +2173,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         const op = allVendors.find(v => v.id === b.land_operator_id);
                         const displayName = op?.name ?? b.land_operator;
                         return (
-                          <div onClick={() => setEditingCell({ id: b.id, field: 'land_operator_id' })}
-                            className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors gap-2">
+                          <button type="button" onClick={() => setEditingCell({ id: b.id, field: 'land_operator_id' })}
+                            className="w-full h-[88px] flex items-center px-3 text-left hover:bg-blue-50 transition-colors gap-2"
+                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 랜드사 수정`}>
                             <span className={`text-admin-sm font-semibold ${displayName ? 'text-admin-text-2' : 'text-admin-muted-2 font-medium'}`}>
                               {displayName || '+ 선택'}
                             </span>
                             {op && !op.is_active && (
                               <span className="text-[11px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
                             )}
-                          </div>
+                          </button>
                         );
                       })()}
                     </td>
@@ -2195,9 +2207,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         <Link href={`/admin/bookings/${b.id}`} className="font-mono text-admin-sm text-blue-600 hover:underline font-bold">
                           {b.booking_no || b.id.slice(0, 8)}
                         </Link>
-                        <button onClick={e => { e.stopPropagation(); copyText(b.booking_no || b.id.slice(0, 8)); }}
+                        <button type="button" onClick={e => { e.stopPropagation(); copyText(b.booking_no || b.id.slice(0, 8)); }}
+                          aria-label={`${b.booking_no || b.id.slice(0, 8)} 예약번호 복사`}
                           className="text-admin-muted-2 hover:text-admin-muted transition-colors p-0.5 rounded">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2} aria-hidden="true">
                             <rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
                           </svg>
                         </button>
@@ -2239,15 +2252,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         const displayName = loc?.name ?? b.departure_region;
                         return (
                           <div className="flex flex-col gap-0.5">
-                            <div onClick={() => setEditingCell({ id: b.id, field: 'departing_location_id' })}
-                              className="cursor-pointer hover:bg-blue-50 px-2 py-1 rounded flex items-center gap-1">
+                            <button type="button" onClick={() => setEditingCell({ id: b.id, field: 'departing_location_id' })}
+                              className="flex items-center gap-1 rounded px-2 py-1 text-left hover:bg-blue-50"
+                              aria-label={`${b.customers?.name || b.booking_no || '예약'} 출발지역 수정`}>
                               <span className="text-admin-sm font-semibold text-admin-text-2">
                                 {displayName || <span className="text-admin-muted-2 font-medium">+ 출발지</span>}
                               </span>
                               {loc && !loc.is_active && (
                                 <span className="text-[11px] px-1 py-0.5 bg-red-50 text-red-600 rounded font-medium">비활성</span>
                               )}
-                            </div>
+                            </button>
                           </div>
                         );
                       })()}
@@ -2260,18 +2274,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       onClick={e => e.stopPropagation()}>
                       {isEditing('manager_name') ? (
                         <div className="w-full h-[88px] flex items-center px-3">
-                          <input autoFocus value={cellValue} onChange={e => setCellValue(e.target.value)}
+                          <input value={cellValue} onChange={e => setCellValue(e.target.value)}
+                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 담당자 입력`}
                             onBlur={() => commitCell(b.id, 'manager_name')}
                             onKeyDown={e => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitAndDown(b.id, 'manager_name', cellValue, ri); } if (e.key === 'Escape') { e.preventDefault(); cancelEdit(); } }}
                             className="w-32 border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-medium focus:outline-none bg-white" />
                         </div>
                       ) : (
-                        <div onClick={() => { setEditingCell({ id: b.id, field: 'manager_name' }); setCellValue(b.manager_name || ''); }}
-                          className="w-full h-[88px] flex items-center px-3 cursor-pointer hover:bg-blue-50 transition-colors">
+                        <button type="button" onClick={() => { setEditingCell({ id: b.id, field: 'manager_name' }); setCellValue(b.manager_name || ''); }}
+                          className="w-full h-[88px] flex items-center px-3 text-left hover:bg-blue-50 transition-colors"
+                          aria-label={`${b.customers?.name || b.booking_no || '예약'} 담당자 수정`}>
                           <span className={`text-admin-sm font-semibold ${b.manager_name ? 'text-admin-text-2' : 'text-admin-muted-2 font-medium'}`}>
                             {b.manager_name || '+ 입력'}
                           </span>
-                        </div>
+                        </button>
                       )}
                     </td>
 
@@ -2291,12 +2307,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           />
                         </div>
                       ) : (
-                        <div onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_count' }); }}
-                          className={`w-full h-[88px] flex items-center px-3 transition-colors ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''}`}>
+                        <button type="button" onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_count' }); }}
+                          disabled={isTrash}
+                          className={`w-full h-[88px] flex items-center px-3 text-left transition-colors disabled:cursor-default ${!isTrash ? 'hover:bg-blue-50' : ''}`}
+                          aria-label={`${b.customers?.name || b.booking_no || '예약'} 인원 수정`}>
                           <span className="text-admin-sm font-bold text-admin-text-2">
                             성인 {b.adult_count ?? 0}{(b.child_count ?? 0) > 0 ? ` / 아동 ${b.child_count}` : ''}
                           </span>
-                        </div>
+                        </button>
                       )}
                     </td>
 
@@ -2317,10 +2335,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           />
                         </div>
                       ) : (
-                        <div onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_price' }); }}
-                          className={`w-full h-[88px] flex items-center justify-end px-3 transition-colors tabular-nums ${!isTrash ? 'cursor-pointer hover:bg-blue-50' : ''} ${!b.adult_price ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-admin-text-2'}`}>
+                        <button type="button" onClick={() => { if (isTrash) return; setEditingCell({ id: b.id, field: 'adult_price' }); }}
+                          disabled={isTrash}
+                          className={`w-full h-[88px] flex items-center justify-end px-3 transition-colors tabular-nums disabled:cursor-default ${!isTrash ? 'hover:bg-blue-50' : ''} ${!b.adult_price ? 'text-admin-muted-2 font-normal text-admin-sm' : 'font-bold text-admin-base text-admin-text-2'}`}
+                          aria-label={`${b.customers?.name || b.booking_no || '예약'} 1인 판매가 수정`}>
                           {fmt(b.adult_price)}
-                        </div>
+                        </button>
                       )}
                     </td>
 
@@ -2435,7 +2455,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                       className={`sticky right-[140px] z-10 bg-inherit px-3 min-w-[140px] text-center whitespace-nowrap outline-none ${focusCls(15)}`}
                       onClick={e => e.stopPropagation()}>
                       {isEditing('status') ? (
-                        <select autoFocus value={cellValue}
+                        <select value={cellValue}
+                          aria-label={`${b.customers?.name || b.booking_no || '예약'} 상태 선택`}
                           onChange={e => { setCellValue(e.target.value); commitCell(b.id, 'status', e.target.value); }}
                           onBlur={cancelEdit}
                           onKeyDown={e => { e.stopPropagation(); if (e.key === 'Escape') cancelEdit(); }}
@@ -2451,32 +2472,39 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
                       <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150">
                         {!isTrash && b.status === 'pending' && (
-                          <button onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
+                          <button type="button" onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
+                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 예약 확정`}
                             className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap font-semibold">확정</button>
                         )}
                         {!isTrash && b.status === 'confirmed' && (
-                          <button onClick={() => patchStatus(b.id, 'completed')} disabled={processing === b.id}
+                          <button type="button" onClick={() => patchStatus(b.id, 'completed')} disabled={processing === b.id}
+                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 결제 완료 처리`}
                             className="text-[11px] bg-brand text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1B64DA] disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
                         )}
                         {!isTrash ? (
                           <>
-                            <button onClick={() => window.open(`/admin/bookings/${b.id}`, '_blank')}
+                            <button type="button" onClick={() => window.open(`/admin/bookings/${b.id}`, '_blank')}
+                              aria-label={`${b.customers?.name || b.booking_no || '예약'} 수정 화면 열기`}
                               className="text-[11px] text-admin-text-2 border border-admin-border-strong px-2.5 py-1.5 rounded-lg hover:bg-admin-bg whitespace-nowrap">수정</button>
                             {!isCancelled && (
-                              <button onClick={() => openCancelModal(b)} disabled={processing === b.id}
+                              <button type="button" onClick={() => openCancelModal(b)} disabled={processing === b.id}
+                                aria-label={`${b.customers?.name || b.booking_no || '예약'} 취소 처리`}
                                 title="예약 취소 — 환불/위약금/사유를 입력하고 정식 취소 처리"
                                 className="text-[11px] text-amber-700 border border-amber-200 bg-amber-50 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap font-semibold">취소</button>
                             )}
                             {isCancelled && (
-                              <button onClick={() => handleRestoreBooking(b)} disabled={processing === b.id}
+                              <button type="button" onClick={() => handleRestoreBooking(b)} disabled={processing === b.id}
+                                aria-label={`${b.customers?.name || b.booking_no || '예약'} 복구`}
                                 title="예약 복구 — 취소 이력은 보존하고 활성 상태로 되돌림"
                                 className="text-[11px] text-emerald-700 border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap font-semibold">↺ 복구</button>
                             )}
-                            <button onClick={() => triggerUndoDelete([b])} disabled={processing === b.id}
+                            <button type="button" onClick={() => triggerUndoDelete([b])} disabled={processing === b.id}
+                              aria-label={`${b.customers?.name || b.booking_no || '예약'} 삭제`}
                               className="text-[11px] text-red-400 border border-red-100 px-2.5 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 whitespace-nowrap">삭제</button>
                           </>
                         ) : (
-                          <button onClick={() => restore(b.id)} disabled={processing === b.id}
+                          <button type="button" onClick={() => restore(b.id)} disabled={processing === b.id}
+                            aria-label={`${b.customers?.name || b.booking_no || '예약'} 휴지통에서 복구`}
                             className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap">복구</button>
                         )}
                       </div>
@@ -2485,13 +2513,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   </BookingRowBoundary>
                 );
               })}
-              {vPadBottom > 0 && <tr style={{ height: vPadBottom }}><td colSpan={19} /></tr>}
+              {vPadBottom > 0 && <tr style={{ height: vPadBottom }} aria-hidden="true"><td colSpan={19} aria-hidden="true" /></tr>}
             </tbody>
 
             <tfoot className="sticky bottom-0 z-10">
               <tr className="bg-brand text-white text-admin-sm font-semibold border-t border-admin-border">
                 <td className="sticky left-0 bg-brand px-3 py-2" colSpan={2}>{filtered.length}건 합계</td>
-                <td colSpan={9} />
+                <td colSpan={9} aria-hidden="true" />
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap tabular-nums font-bold">{footerStats.totalSales.toLocaleString()}원</td>
                 {/* 예상마진 합계 (입금 − 출금) */}
                 <td className="px-3 py-2 text-right text-admin-sm whitespace-nowrap tabular-nums font-bold"
@@ -2500,11 +2528,11 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     {footerStats.totalNetMargin >= 0 ? '+' : ''}{Math.round(footerStats.totalNetMargin / 10000)}만원
                   </span>
                 </td>
-                <td /> {/* 마진율 */}
+                <td aria-hidden="true" /> {/* 마진율 */}
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-blue-200 tabular-nums font-bold">{footerStats.totalPaid.toLocaleString()}원</td>
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-orange-200 tabular-nums font-bold">{footerStats.totalPaidOut > 0 ? footerStats.totalPaidOut.toLocaleString() + '원' : '—'}</td>
                 <td className="px-3 py-2 text-right text-admin-base whitespace-nowrap text-red-200 tabular-nums font-bold">{footerStats.totalBalance > 0 ? footerStats.totalBalance.toLocaleString() + '원' : '—'}</td>
-                <td colSpan={2} />
+                <td colSpan={2} aria-hidden="true" />
               </tr>
             </tfoot>
           </table>
@@ -2520,26 +2548,28 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           {bulkField === 'departing_location_id' ? (
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">출발지역:</span>
-              <select autoFocus defaultValue=""
+              <select defaultValue=""
+                aria-label="일괄 출발지역 선택"
                 onChange={e => { handleBulkCommit('departing_location_id', e.target.value); }}
                 onBlur={() => setBulkField(null)}
                 className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1 text-[11px] focus:outline-none">
                 <option value="">-- 선택 안 함 --</option>
                 {activeLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
-              <button onClick={() => setBulkField(null)} className="text-white/50 hover:text-white">×</button>
+              <button type="button" onClick={() => setBulkField(null)} className="text-white/50 hover:text-white" aria-label="일괄 출발지역 선택 닫기">×</button>
             </div>
           ) : bulkField === 'land_operator_id' ? (
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">랜드사:</span>
-              <select autoFocus defaultValue=""
+              <select defaultValue=""
+                aria-label="일괄 랜드사 선택"
                 onChange={e => { handleBulkCommit('land_operator_id', e.target.value); }}
                 onBlur={() => setBulkField(null)}
                 className="bg-slate-700 text-white border border-slate-600 rounded px-2 py-1 text-[11px] focus:outline-none">
                 <option value="">-- 선택 안 함 --</option>
                 {activeVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
               </select>
-              <button onClick={() => setBulkField(null)} className="text-white/50 hover:text-white">×</button>
+              <button type="button" onClick={() => setBulkField(null)} className="text-white/50 hover:text-white" aria-label="일괄 랜드사 선택 닫기">×</button>
             </div>
           ) : (() => {
             const selectedBookings = bookings.filter(b => selected.has(b.id));
@@ -2547,51 +2577,51 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             const restorableCnt = selectedBookings.filter(b => b.status === 'cancelled').length;
             return (
             <>
-              <button onClick={() => setBulkField('departing_location_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">출발지역</button>
-              <button onClick={() => setBulkField('land_operator_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">랜드사</button>
+              <button type="button" onClick={() => setBulkField('departing_location_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">출발지역</button>
+              <button type="button" onClick={() => setBulkField('land_operator_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">랜드사</button>
               <div className="w-px h-4 bg-white/20 mx-1" />
               {cancelableCnt > 0 && (
-                <button onClick={handleBulkCancel} disabled={processing === 'bulk-cancel'}
+                <button type="button" onClick={handleBulkCancel} disabled={processing === 'bulk-cancel'}
                   title="환불액·위약금·사유를 입력하고 정식 취소 처리 (status=cancelled, 데이터 보존)"
                   className="text-[11px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold disabled:opacity-50">
                   취소 {cancelableCnt > 1 && `(${cancelableCnt})`}
                 </button>
               )}
               {restorableCnt > 0 && (
-                <button onClick={handleBulkRestore} disabled={processing === 'bulk-restore'}
+                <button type="button" onClick={handleBulkRestore} disabled={processing === 'bulk-restore'}
                   title="취소된 예약을 활성으로 복구 (취소 이력 보존, status 자동 결정)"
                   className="text-[11px] bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold disabled:opacity-50">
                   ↺ 복구 {restorableCnt > 1 && `(${restorableCnt})`}
                 </button>
               )}
               <div className="w-px h-4 bg-white/20 mx-1" />
-              <button onClick={() => { const targets = bookings.filter(b => selected.has(b.id)); if (targets.length) { triggerUndoDelete(targets); setSelected(new Set()); setBulkField(null); } }}
+              <button type="button" onClick={() => { const targets = bookings.filter(b => selected.has(b.id)); if (targets.length) { triggerUndoDelete(targets); setSelected(new Set()); setBulkField(null); } }}
                 title="휴지통으로 이동 (soft delete) — 취소와 다름. 30일 후 영구 삭제 정책 적용"
                 className="text-[11px] bg-red-500/20 hover:bg-red-500/40 text-red-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold">삭제</button>
             </>
             );
           })()}
           <div className="w-px h-4 bg-white/20 mx-1" />
-          <button onClick={() => { setSelected(new Set()); setBulkField(null); }} className="text-[11px] text-white/50 hover:text-white transition">× 해제</button>
+          <button type="button" onClick={() => { setSelected(new Set()); setBulkField(null); }} className="text-[11px] text-white/50 hover:text-white transition" aria-label="선택 해제">× 해제</button>
         </div>
       )}
 
       {/* 컨텍스트 메뉴 */}
       {ctxMenu && (
         <div className="fixed z-[100] bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] py-1 w-48"
-          style={{ left: ctxMenu.x, top: ctxMenu.y }} onClick={e => e.stopPropagation()}>
-          <button onClick={() => { copyText(ctxMenu.b.booking_no || ctxMenu.b.id.slice(0, 8)); setCtxMenu(null); }}
+          style={{ left: ctxMenu.x, top: ctxMenu.y }}>
+          <button type="button" onClick={() => { copyText(ctxMenu.b.booking_no || ctxMenu.b.id.slice(0, 8)); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">예약번호 복사</button>
-          <button onClick={() => { sendAlimtalk(ctxMenu.b); setCtxMenu(null); }}
+          <button type="button" onClick={() => { sendAlimtalk(ctxMenu.b); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">알림톡 발송</button>
-          <button onClick={() => { window.open(`/admin/bookings/${ctxMenu.b.id}`, '_blank'); setCtxMenu(null); }}
+          <button type="button" onClick={() => { window.open(`/admin/bookings/${ctxMenu.b.id}`, '_blank'); setCtxMenu(null); }}
             className="w-full text-left px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-bg flex items-center gap-2.5">새 탭에서 열기</button>
           <div className="border-t border-admin-border-mid my-1" />
           {ctxMenu.b.status !== 'cancelled' ? (
-            <button onClick={() => { openCancelModal(ctxMenu.b); setCtxMenu(null); }}
+            <button type="button" onClick={() => { openCancelModal(ctxMenu.b); setCtxMenu(null); }}
               className="w-full text-left px-4 py-2 text-admin-sm text-red-600 hover:bg-red-50 flex items-center gap-2.5">예약 취소…</button>
           ) : (
-            <button onClick={() => { handleRestoreBooking(ctxMenu.b); setCtxMenu(null); }}
+            <button type="button" onClick={() => { handleRestoreBooking(ctxMenu.b); setCtxMenu(null); }}
               className="w-full text-left px-4 py-2 text-admin-sm text-emerald-700 hover:bg-emerald-50 flex items-center gap-2.5">↺ 예약 복구</button>
           )}
         </div>
@@ -2605,13 +2635,21 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         const paidOut  = cancelTarget.total_paid_out ?? 0;
         const netCash  = paid - paidOut - refundN;
         return (
-          <div className="fixed inset-0 z-[120] bg-black/40 flex items-center justify-center p-4"
-            onClick={() => !cancelling && setCancelTarget(null)}>
-            <div className="bg-white rounded-admin-lg shadow-2xl w-full max-w-lg p-6 space-y-4"
-              onClick={e => e.stopPropagation()}>
+          <>
+            <button
+              type="button"
+              aria-label="예약 취소 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !cancelling && setCancelTarget(null)}
+              disabled={cancelling}
+            />
+            <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
+            <div className="pointer-events-auto bg-white rounded-admin-lg shadow-2xl w-full max-w-lg p-6 space-y-4">
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-admin-lg font-bold text-admin-text">예약 취소 처리</h2>
-                <button onClick={() => !cancelling && setCancelTarget(null)}
+                <button type="button" onClick={() => !cancelling && setCancelTarget(null)}
+                  aria-label="예약 취소 모달 닫기"
+                  disabled={cancelling}
                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-admin-surface-2 text-admin-muted text-admin-lg">✕</button>
               </div>
 
@@ -2644,6 +2682,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   <input type="number" min={0}
                     value={cancelForm.refund}
                     onChange={e => setCancelForm(f => ({ ...f, refund: e.target.value }))}
+                    aria-label="환불액"
                     className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </label>
                 <label className="block">
@@ -2651,6 +2690,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   <input type="number" min={0}
                     value={cancelForm.penalty}
                     onChange={e => setCancelForm(f => ({ ...f, penalty: e.target.value }))}
+                    aria-label="위약금"
                     className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-admin-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-amber-500" />
                 </label>
               </div>
@@ -2671,20 +2711,22 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   value={cancelForm.reason}
                   onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="예: 고객 일정 변경 / 항공편 결항 / 단순 변심"
+                  aria-label="취소 사유"
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
               </label>
 
               {/* 액션 */}
               <div className="flex gap-2 justify-end pt-2 border-t border-admin-border">
-                <button onClick={() => !cancelling && setCancelTarget(null)}
+                <button type="button" onClick={() => !cancelling && setCancelTarget(null)}
                   className="px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 rounded-lg">닫기</button>
-                <button onClick={handleCancelBooking} disabled={cancelling}
+                <button type="button" onClick={handleCancelBooking} disabled={cancelling}
                   className="px-4 py-2 text-admin-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
                   {cancelling ? '처리 중...' : '취소 처리 확정'}
                 </button>
               </div>
             </div>
-          </div>
+            </div>
+          </>
         );
       })()}
 
@@ -2699,7 +2741,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       {undoToast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm">
           <span className="text-admin-muted-2">{undoToast.count}건의 예약이 삭제되었습니다.</span>
-          <button onClick={handleUndoDelete} className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition whitespace-nowrap">실행 취소</button>
+          <button type="button" onClick={handleUndoDelete} className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition whitespace-nowrap">실행 취소</button>
         </div>
       )}
 

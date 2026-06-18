@@ -36,6 +36,7 @@ const root = process.cwd();
 const buildManifestPath = path.join(distDir, 'app-build-manifest.json');
 
 function activeNextDevServerProcesses() {
+  if (distDir !== '.next') return [];
   if (
     process.env.NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER === '1'
     || process.env.BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER === '1'

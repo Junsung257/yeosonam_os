@@ -820,6 +820,7 @@ function ResultCard({
           <button
             type="button"
             onClick={onAdd}
+            aria-label={`${item.product_name} 담기`}
             className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark"
           >
             <Plus size={17} />

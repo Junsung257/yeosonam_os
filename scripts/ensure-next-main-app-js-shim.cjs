@@ -2,8 +2,9 @@
 const fs = require('fs');
 const path = require('path');
 
-const nextDir = path.join(process.cwd(), '.next');
-const chunksDir = path.join(process.cwd(), '.next', 'static', 'chunks');
+const distDir = process.env.NEXT_DIST_DIR || '.next';
+const nextDir = path.join(process.cwd(), distDir);
+const chunksDir = path.join(process.cwd(), distDir, 'static', 'chunks');
 const target = path.join(chunksDir, 'main-app.js');
 
 function ensureMainAppChunk() {
