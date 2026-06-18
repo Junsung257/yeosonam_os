@@ -61,7 +61,8 @@
     "@reduxjs/toolkit",
     "binary",
     "bluebird",
-    "@vitejs/plugin-react"
+    "@vitejs/plugin-react",
+    "@tanstack/react-table"
   ],
   "ignoreBinaries": [
     "powershell"

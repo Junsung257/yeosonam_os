@@ -4,6 +4,7 @@ import { withCronLogging } from '@/lib/cron-observability';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { runOrchestrator } from '@/lib/blog-content-orchestrator';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -13,6 +14,8 @@ const handleOrchestrator = async (request: NextRequest) => {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'blog-orchestrator');
+  if (resourceSaver) return resourceSaver;
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase not configured', errors: [] as string[] };
   }

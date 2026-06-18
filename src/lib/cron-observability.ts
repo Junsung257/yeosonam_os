@@ -3,6 +3,8 @@ import { apiResponse } from './api-response';
 import { sanitizeDbError } from './error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
 import { sendSlackAlert } from './slack-alert';
+import { maybeSkipCronForResourceSaver, shouldSkipCronDbLogging } from './cron-resource-saver';
+import { isCronAuthorized } from './cron-auth';
 
 export interface CronSummary {
   errors?: string[] | readonly string[];
@@ -37,6 +39,11 @@ export function withCronLogging(cronName: string, handler: CronHandler, options:
   return async (request: NextRequest): Promise<Response> => {
     const handlerTimeoutMs = options.handlerTimeoutMs ?? CRON_HANDLER_TIMEOUT_MS;
     const sideEffectTimeoutMs = options.sideEffectTimeoutMs ?? CRON_SIDE_EFFECT_TIMEOUT_MS;
+
+    if (isCronAuthorized(request)) {
+      const resourceSaver = maybeSkipCronForResourceSaver(request, cronName);
+      if (resourceSaver) return resourceSaver;
+    }
     const startedAt = new Date();
     let status: 'success' | 'partial_failure' | 'error' = 'success';
     let summary: CronSummary = {};
@@ -90,7 +97,7 @@ export function withCronLogging(cronName: string, handler: CronHandler, options:
     const elapsedMs = finishedAt.getTime() - startedAt.getTime();
 
     let alerted = false;
-    if (isSupabaseConfigured) {
+    if (isSupabaseConfigured && !shouldSkipCronDbLogging()) {
       try {
         if (!shouldAlert && status === 'partial_failure') {
           const { data: prev } = await withTimeout(

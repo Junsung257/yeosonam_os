@@ -3,7 +3,7 @@
  * 블로그의 /blog/angle/[angle] 카테고리 페이지에서 사용.
  */
 
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 
 export interface AnglePackage {
   id: string;
@@ -39,22 +39,54 @@ function matchesKeyword(pkg: AnglePackage, regex: RegExp): boolean {
   return regex.test(haystack);
 }
 
+type AbortableQuery<T> = {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+};
+
+async function runAnglePackageQuery<T>(
+  query: AbortableQuery<T>,
+  fallback: unknown,
+  timeoutMs = 4000,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(fallback as T);
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([
+      Promise.resolve(query.abortSignal(controller.signal)).catch(() => fallback as T),
+      timeoutPromise,
+    ]);
+  } catch {
+    return fallback as T;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 /**
  * 앵글에 맞는 추천 상품 6개 반환.
  * 각 앵글마다 다른 정렬/필터 룰 적용.
  */
 export async function getPackagesByAngle(angle: string, limit = 6): Promise<AnglePackage[]> {
-  if (!isSupabaseConfigured) return [];
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return [];
 
   try {
     // 일단 충분히 가져와서 클라이언트 사이드에서 매칭/정렬 (DB JSONB 검색은 비용 큼)
-    const { data } = await supabaseAdmin
-      .from('travel_packages')
-      .select(SELECT_FIELDS)
-      .in('status', ['active', 'approved'])
-      .not('price', 'is', null)
-      .order('created_at', { ascending: false })
-      .limit(120);
+    const { data } = await runAnglePackageQuery(
+      supabaseAdmin
+        .from('travel_packages')
+        .select(SELECT_FIELDS)
+        .in('status', ['active', 'approved'])
+        .not('price', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(120),
+      { data: [] as AnglePackage[], error: null },
+    );
 
     const all = (data || []) as AnglePackage[];
 

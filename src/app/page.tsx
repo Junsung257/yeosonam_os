@@ -1,4 +1,3 @@
-import type { Metadata } from 'next';
 import Link from 'next/link';
 import Image from 'next/image';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
@@ -13,41 +12,17 @@ import type { HeroSlide } from '@/components/customer/HeroBanner';
 import RankingSection from '@/components/customer/RankingSection';
 import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
-import { withPublicQueryFallback } from '@/lib/public-query-timeout';
+import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
-const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
-  .replace(/\/+$/, '');
-const SOCIAL_IMAGE_URL = `${BASE_URL}/og-image.png`;
 
 // Build-safe: home data depends on live Supabase rows, so render on demand instead of blocking deploy prerender.
 export const revalidate = 300;
 export const dynamic = 'force-dynamic';
-
-export const metadata: Metadata = {
-  title: '여소남 | 프리미엄 패키지 여행',
-  description: '부산 출발 프리미엄 패키지 여행과 단독 맞춤여행을 비교하고 상담할 수 있는 여소남 공식 사이트입니다.',
-  alternates: { canonical: BASE_URL },
-  openGraph: {
-    title: '여소남 | 프리미엄 패키지 여행',
-    description: '검증된 해외 패키지와 단독 맞춤여행 상담을 한 곳에서 확인하세요.',
-    url: BASE_URL,
-    type: 'website',
-    images: [{ url: SOCIAL_IMAGE_URL, width: 1200, height: 630 }],
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: '여소남 | 프리미엄 패키지 여행',
-    description: '검증된 해외 패키지와 단독 맞춤여행 상담을 한 곳에서 확인하세요.',
-    images: [SOCIAL_IMAGE_URL],
-  },
-};
-
-const HOME_AGG_PACKAGE_LIMIT = 500;
-const HOME_RATING_LIMIT = 500;
-const ENABLE_HOME_SERVER_PEXELS_FALLBACK = process.env.HOME_ENABLE_SERVER_PEXELS_FALLBACK === '1';
 
 function guessCountry(dest: string): string {
   if (/나트랑|다낭|하노이|푸꾸옥|호치민|달랏/.test(dest)) return '베트남';
@@ -176,53 +151,59 @@ export default async function HomePage() {
   const sb = supabaseAdmin;
   const today = new Date().toISOString().slice(0, 10);
   const emptyResult = { data: [] };
+  const skipPublicDbReads = shouldSkipPublicDbReadsForResourceSaver();
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
-  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
-    withPublicQueryFallback(
+  const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured && !skipPublicDbReads ? await Promise.all([
+    runOptionalSupabaseQuery(
       sb.from('travel_packages')
         .select('destination, price, price_tiers, price_dates, country')
         .in('status', ['active', 'approved'])
         .order('updated_at', { ascending: false })
-        .limit(HOME_AGG_PACKAGE_LIMIT),
+        .limit(200),
       emptyResult,
+      { label: 'home.packages.aggregate', timeoutMs: 2000 },
     ),
-    withPublicQueryFallback(
+    runOptionalSupabaseQuery(
       sb.from('attractions')
         .select('name, photos, country, region, mention_count')
         .not('photos', 'is', null)
-        .limit(300),
+        .limit(60),
       emptyResult,
+      { label: 'home.attraction.photos', timeoutMs: 1500 },
     ),
-    withPublicQueryFallback(
+    runOptionalSupabaseQuery(
       sb.from('travel_packages')
         .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
         .in('status', ['active', 'approved'])
         .order('created_at', { ascending: false })
         .limit(30),
       emptyResult,
+      { label: 'home.ranking.packages', timeoutMs: 2000 },
     ),
-    withPublicQueryFallback(
+    runOptionalSupabaseQuery(
       sb.from('active_destinations')
         .select('destination, package_count, country')
         .order('package_count', { ascending: false })
         .limit(20),
       emptyResult,
+      { label: 'home.active.destinations', timeoutMs: 1500 },
     ),
-    withPublicQueryFallback(
+    runOptionalSupabaseQuery(
       sb.from('travel_packages')
         .select('avg_rating, review_count')
         .not('avg_rating', 'is', null)
         .gte('review_count', 1)
         .order('updated_at', { ascending: false })
-        .limit(HOME_RATING_LIMIT),
+        .limit(200),
       emptyResult,
+      { label: 'home.rating.aggregate', timeoutMs: 1500 },
     ),
   ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
-  const allPkgs = pkgResult.data ?? [];
-  const attractions = attrResult.data ?? [];
-  const rankingPkgs = rankingResult.data ?? [];
+  const allPkgs = (pkgResult.data ?? []) as AggPkgRow[];
+  const attractions = (attrResult.data ?? []) as AttractionRow[];
+  const rankingPkgs = (rankingResult.data ?? []) as RankingPkg[];
 
   /** 홈 검색 시트 하단 — 마감 임박·특가 상품 최대 3개(랭킹 풀에서 추림) */
   const cutoffTeaser = new Date();
@@ -246,8 +227,8 @@ export default async function HomePage() {
     seenUrgent.add(p.id);
     homeUrgencyTop3.push({
       id: p.id,
-      title: p.display_title || p.title,
-      destination: p.destination,
+      title: p.display_title || p.title || '',
+      destination: p.destination ?? undefined,
       minPrice: computeRankingMinPrice(p, today),
     });
     if (homeUrgencyTop3.length >= 3) break;
@@ -333,14 +314,13 @@ export default async function HomePage() {
     .slice(0, 4);
 
   const topDestNames = topDestsRaw.map(d => d.destination);
-  const [{ data: pillarExists }] = topDestNames.length > 0
-    ? await Promise.all([
-        withPublicQueryFallback(
-          sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
-          emptyResult,
-        ),
-      ])
-    : [{ data: null }];
+  const { data: pillarExists } = topDestNames.length > 0
+    ? await runOptionalSupabaseQuery(
+        sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
+        { data: null },
+        { label: 'home.pillar.exists', timeoutMs: 1200 },
+      )
+    : { data: null };
 
   const attrImageByDest: Record<string, string> = {};
   (attractions as AttractionRow[]).forEach((a) => {
@@ -372,8 +352,7 @@ export default async function HomePage() {
   // 비교 근거: /destinations(○), /packages/[id](●), /things-to-do/[region](●) 모두
   //   getSecret() 호출 0건이며 Static/SSG. /(ƒ Dynamic) 에만 호출 1건이었음.
   let pexelsByDest: Record<string, { large2x: string | null; large: string | null }> = {};
-  if (ENABLE_HOME_SERVER_PEXELS_FALLBACK && process.env.PEXELS_API_KEY?.trim()) {
-    const { getDeterministicPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
+  if (process.env.PEXELS_API_KEY?.trim()) {
     // 추천여행지 + 인기여행지 중 이미지 없는 목적지만 수집
     const missingDests = [...new Set([
       ...topDests.filter(d => !d.image).map(d => d.destination),
@@ -406,7 +385,7 @@ export default async function HomePage() {
       // 인기여행지 그리드 — large (카드 크기에 충분)
       destsWithImages.forEach(d => {
         if (!d.image && pexelsByDest[d.destination]) {
-          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x;
+          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x ?? undefined;
         }
       });
     }
@@ -446,8 +425,7 @@ export default async function HomePage() {
   const domestic: RankingItem[] = buildRankingItemsUnique(rankingPkgs, attractions, today, false, new Set());
 
   // 랭킹 카드 — 이미지 없는 항목 Pexels 폴백 (기존 pexelsByDest 우선, 없으면 직접 조회)
-  if (ENABLE_HOME_SERVER_PEXELS_FALLBACK && process.env.PEXELS_API_KEY?.trim()) {
-    const { getDeterministicPexelsPhoto, destToEnKeyword } = await import('@/lib/pexels');
+  if (process.env.PEXELS_API_KEY?.trim()) {
     const noImgRankingDests = [...new Set([
       ...overseas.filter(i => !i.image && i.destination).map(i => i.destination!),
       ...domestic.filter(i => !i.image && i.destination).map(i => i.destination!),
@@ -489,7 +467,7 @@ export default async function HomePage() {
   if (isSupabaseConfigured && rankingIds.length > 0) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
     const [bkRes, sgRes] = await Promise.all([
-      withPublicQueryFallback(
+      runOptionalSupabaseQuery(
         sb
           .from('bookings')
           .select('package_id')
@@ -497,14 +475,16 @@ export default async function HomePage() {
           .gte('created_at', since)
           .in('package_id', rankingIds),
         emptyResult,
+        { label: 'home.social.bookings', timeoutMs: 1200 },
       ),
-      withPublicQueryFallback(
+      runOptionalSupabaseQuery(
         sb
           .from('package_score_signals')
           .select('package_id')
           .gte('created_at', since)
           .in('package_id', rankingIds),
         emptyResult,
+        { label: 'home.social.signals', timeoutMs: 1200 },
       ),
     ]);
     for (const row of bkRes.data ?? []) {
@@ -546,6 +526,7 @@ export default async function HomePage() {
   const weightedSum = ((ratingAgg as Array<{ avg_rating: number; review_count: number }>) || [])
     .reduce((s, r) => s + (r.avg_rating * r.review_count), 0);
   const aggregateRating = totalReviews > 0 ? (weightedSum / totalReviews) : null;
+  const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com';
   const consultTelHref = getConsultTelHref();
   const consultPhoneLabel = process.env.NEXT_PUBLIC_CONSULT_PHONE?.trim() || null;
 

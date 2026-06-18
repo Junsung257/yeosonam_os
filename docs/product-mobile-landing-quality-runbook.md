@@ -99,6 +99,99 @@ node scripts/audit-product-mobile-landing-readiness.mjs --public-only --strict -
 npx tsx scripts/audit-mobile-attraction-photo-coverage.ts --status=active --limit=500 --json
 ```
 
+Folder registration must pass `scripts/check-upload-db-health.ts` before HWP extraction, parser/LLM work, or mobile proof. If the preflight report says `DB_HEALTHCHECK_TIMEOUT`, the correct result is "not started because storage is unavailable"; it is not a parser failure and not a partial mobile verification.
+
+When the healthcheck times out, run `scripts/diagnose-upload-db-health.ts`. `REST_TIMEOUT_OR_522` means the Supabase project host is reachable but `/rest/v1` table/API calls are timing out or returning gateway 522. In that state, do not retry bulk registration; keep producing extraction/offline audit artifacts only and retry persistence after REST health recovers.
+
+If live `/packages/{id}` or `/lp/{id}` navigation times out while the Supabase project status is `ACTIVE_HEALTHY`, treat it as a live Data API pressure incident, not as a mobile UI pass/fail. Check Supabase API logs for repeated 503/504/522 on these patterns:
+
+```text
+travel_packages?select=*
+travel_packages?select=...large JSON fields...
+content_creatives ... limit=10000
+active_destinations ... select=*
+upload_review_queue ... long OR filters
+cron_run_logs reads/writes during cron failure handling
+```
+
+Required mitigation before claiming recovery:
+
+- Customer routes must not use `select('*')` for product detail or LP data.
+- `/packages/{id}` must avoid duplicate same-package reads between metadata and page render when possible.
+- Optional customer-detail sections such as blog recommendations, social proof, score comparisons, catalog siblings, and hero-photo fallback must fail fast and must not block core price/flight/itinerary rendering.
+- Sitemap/home/background surfaces must use bounded limits and longer cache windows so they cannot starve product-detail reads.
+- Cron retry loops must fail fast when DB reads time out; automatic replay jobs must not run every few minutes during an outage.
+- Production runs with DB resource-saver behavior unless `DB_RESOURCE_SAVER_MODE=0` is explicitly set. In that mode, non-critical blog/marketing/ad/agent crons are skipped before they scan Supabase, and cron DB logging is suppressed so failure handling does not amplify the outage.
+- Public customer/discovery routes must also honor resource-saver mode. Homepage, `/packages/{id}`, `/destinations`, `/destinations/{city}`, `/destinations/region/{region}`, `/blog/destination/{dest}`, `/things-to-do`, and `/things-to-do/{region}` should skip non-critical Supabase reads while `shouldSkipPublicDbReadsForResourceSaver()` is true. Do not add a new public Supabase-heavy route without the same guard or an explicit short timeout/fallback.
+- Allowed resource-saver exceptions are only product-registration/customer-readiness maintenance jobs such as registration MV refresh, unmatched/entity resolution, attraction photo fill, and registration learning reports. One-off manual execution of a skipped cron requires an authorized `force=true` call after confirming DB health.
+- When Supabase SQL execution or the performance advisor itself times out, do not keep retrying expensive SQL from the app. First deploy the traffic-shedding/code fix, then re-run advisors and apply hot-path indexes once `/rest/v1` health returns.
+- Actual browser proof remains blocked until `/rest/v1` healthcheck succeeds and the mobile route reaches `domcontentloaded`.
+
+During a DB outage, extraction-only reports may be produced with `scripts/register-upload-inbox.ts` without `--register`. These reports are useful source queues only when they include per-file hashes and extracted text paths. They do not prove saved products, customer pages, A4 readiness, attraction cards, or media quality.
+
+After an extraction-only report exists, run the offline source audit before retrying registration:
+
+```bash
+npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --limit=2000 --no-parser
+```
+
+This audit checks the extracted source queue against deterministic catalog splitting, source-backed price/date recovery, itinerary normalization, and the standard registration deliverability gate. It is still not mobile proof. The summary must keep `mobileLandingVerified=false` until the products are saved and the actual `/packages/{id}` mobile page plus A4 contract are checked.
+
+The offline source audit must also write `learning-events.json`, `offline-master-candidates.json`, and `macro-learning-report.json`. These files feed the same micro/macro learning loop with source hashes, blocker signatures, compared fields, offline master-candidate decisions, and offline audit status while REST persistence is unavailable. They are read-only learning artifacts: they must not store raw supplier text, must not mutate production parser rules, and must not be treated as customer mobile proof.
+
+The same audit also runs `offlineMobilePreview` from the standard registration render input through `renderPackage()` and `mapTravelPackageToLandingData()`. This preview must remain labeled as offline evidence, but it is required to catch customer-render problems before persistence: empty customer prices, empty landing days, leaked internal fields, and food/hotel/massage labels rendered as sightseeing.
+
+Offline source readiness and customer readiness are different. `publishableOffline` only means the standard registration object has enough source-backed structure to attempt persistence later. `customerReadyOffline` must remain separate and can be `0` when active attraction masters, photos/descriptions, shopping/option review, or high-risk notices cannot be verified. Any `v3:gate:*`, `v3:needs_review`, customer-visible unmatched attraction, or missing attraction description warning must become `customerReviewNeededOffline`, not a silent PASS.
+
+When Supabase is healthy, export a reusable active-attraction cache for outage-safe audits:
+
+```bash
+npx tsx scripts/export-active-attractions-cache.ts --output=scratch/attractions/active-attractions-latest.json
+npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --limit=2000 --no-parser --active-attractions-json=scratch/attractions/active-attractions-latest.json
+```
+
+This cache is not a substitute for live DB/mobile proof. It only makes offline attraction matching, customer description checks, and media-readiness warnings more precise while REST is unavailable.
+
+When REST is unavailable but archived attraction exports exist, build an outage-only cache from the archive before running the offline audit:
+
+```bash
+npx tsx scripts/build-active-attractions-cache-from-archive.ts --out=scratch/active-attractions-cache/from-archive.json
+npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --limit=2000 --no-parser --active-attractions-json=scratch/active-attractions-cache/from-archive.json
+```
+
+The archive cache must merge description-bearing archive CSV rows and filter out hotel, meal, restaurant, and wellness rows so they cannot become attraction cards. It may reduce offline unmatched/media warnings, but it still cannot mark `mobileLandingVerified=true`; only saved package ids plus live `/packages/{id}` and A4 proof can do that.
+
+`offline-master-candidates.json` groups customer-visible unmatched attraction labels into automatic action buckets such as `create_internal_master`, `needs_review`, and `reject_noise`. Descriptive fragments, minimum-person conditions, generic cable-car text, and transfer phrases must not be promoted as attraction masters. Repeated probable attraction labels may become internal, non-customer-publishable master candidates, but customer-publishable masters still require external evidence and final mobile proof.
+
+The offline summary must report both candidate counts and occurrence counts by action. `offlineMasterCandidateActions` tells how many normalized candidate groups exist, while `offlineMasterCandidateOccurrenceActions` tells how many raw unmatched occurrences those groups cover. This prevents repeated attraction candidates from being mistaken for unclassified errors after the micro/macro engine has already grouped them.
+
+Every offline master candidate must include `photoSearchPlan` and `descriptionSeed`. `photoSearchPlan` is the media backfill plan only: it should use the normalized attraction name, known English/local aliases, and destination context. Do not use long supplier description sentences as photo aliases. `descriptionSeed` may keep source labels and hashes for review/evidence, but the final mobile description still needs external verification or an approved internal master before customer publication.
+
+When REST recovers, resume from the extracted text queue instead of reopening HWP/HWPX files:
+
+```bash
+npx tsx scripts/register-upload-inbox-from-extract-report.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --register --fill-attraction-photos --audit-mobile --limit=2000
+```
+
+This resume command must run DB preflight first. If the preflight returns `DB_HEALTHCHECK_TIMEOUT`, no product registration or mobile proof has started. If it saves products successfully, `--fill-attraction-photos` should backfill media for referenced attractions first, and the `--audit-mobile` step must pass for the saved package ids before anything is marked customer-ready.
+
+For unattended recovery, add `--wait-db --wait-db-timeout-ms=900000 --wait-db-interval-ms=30000`. This keeps retrying the DB preflight and starts registration only after the preflight is OK. If the wait expires, the output summary remains non-customer-ready with the failed preflight attempts recorded.
+
+If `--report` is omitted, the resume command must select the valid extraction report with the most file rows, not a summary-only or small smoke-test JSON that happened to be written later. The final `summary.json` is authoritative for resume status: `mobileLandingVerified=true` is allowed only when saved package ids exist and the targeted mobile/A4 audit passes. Otherwise `mobileLandingVerificationReason` must explain whether there were no saved ids, the audit was not requested, or the audit failed.
+
+For targeted saved-package proof, the mobile readiness audit accepts saved ids directly:
+
+```bash
+node scripts/audit-product-mobile-landing-readiness.mjs --package-ids={packageId1},{packageId2} --strict --json
+```
+
+Attraction card quality is part of mobile proof. A matched attraction with missing customer description is a blocker because the mobile page cannot explain the schedule professionally. A matched attraction with no photo is a warning and a fill-target, not a reason to drop the attraction card; the card must still keep the attraction name and source-backed description visible.
+
+```bash
+npx tsx scripts/audit-mobile-attraction-photo-coverage.ts --package-ids={packageId1},{packageId2} --json
+npx tsx scripts/fill-attraction-photos.ts --package-ids={packageId1},{packageId2} --limit=200 --json
+```
+
 Full attraction/media quality engine:
 
 ```bash

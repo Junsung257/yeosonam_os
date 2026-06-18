@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 /**
  * llms.txt — AI 모델(GPTBot, ClaudeBot, PerplexityBot, Gemini)을 위한
@@ -40,7 +41,7 @@ export async function GET() {
   lines.push('');
 
   // 최근 발행된 블로그 글 20개 (동적)
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && !shouldSkipPublicDbReadsForResourceSaver()) {
     try {
       const { data: recentPosts } = await supabaseAdmin
         .from('content_creatives')

@@ -22,6 +22,7 @@ import { NextRequest } from 'next/server'
 import { withApiKey } from '@/lib/api-key-middleware'
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase'
 import { apiResponse, ApiErrors } from '@/lib/api-response'
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
 
 export const maxDuration = 30
 
@@ -38,6 +39,16 @@ export async function GET(request: NextRequest) {
   const limit = Math.min(Number(searchParams.get('limit') ?? 20), 100)
   const offset = Number(searchParams.get('offset') ?? 0)
   const keyword = searchParams.get('keyword')
+
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return apiResponse({
+      ok: true,
+      data: [],
+      pagination: { total: 0, limit, offset },
+      degraded: true,
+      reason: 'db_resource_saver_mode',
+    })
+  }
 
   try {
     let query = supabaseAdmin
@@ -72,6 +83,16 @@ export async function POST(request: NextRequest) {
   const auth = await withApiKey(request, { requiredScopes: ['packages:read', 'qa:*'] })
   if (!auth.valid) return auth.response
   if (!isSupabaseConfigured) return ApiErrors.internalError('DB 미설정')
+
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return apiResponse({
+      ok: true,
+      data: [],
+      pagination: { total: 0, limit: 0, offset: 0 },
+      degraded: true,
+      reason: 'db_resource_saver_mode',
+    })
+  }
 
   let body: { destination?: string; date_from?: string; pax?: number }
   try {

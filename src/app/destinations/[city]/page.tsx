@@ -10,6 +10,7 @@ import DestinationPackagesSection from '@/components/customer/DestinationPackage
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment, destinationToSlug, destinationSlugMatches } from '@/lib/regions';
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -26,6 +27,7 @@ const DESTINATION_STATIC_PRERENDER_LIMIT = Math.max(
 export async function generateStaticParams(): Promise<Array<{ city: string }>> {
   if (DESTINATION_STATIC_PRERENDER_LIMIT <= 0) return [];
   if (!isSupabaseConfigured) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
   try {
     const { data } = await supabaseAdmin
       .from('travel_packages')
@@ -70,6 +72,7 @@ function getPositiveNumber(value: unknown): number | null {
 
 async function getDestinationSocialImage(city: string): Promise<string> {
   if (!isSupabaseConfigured) return SOCIAL_IMAGE_URL;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return SOCIAL_IMAGE_URL;
 
   try {
     const { data, error } = await supabaseAdmin
@@ -89,6 +92,7 @@ async function getDestinationSocialImage(city: string): Promise<string> {
 
 async function destinationExistsForMetadata(city: string): Promise<boolean | null> {
   if (!isSupabaseConfigured) return null;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return null;
 
   try {
     const { data, error } = await supabaseAdmin
@@ -108,6 +112,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
   if (!isSupabaseConfigured) return decoded;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
 
   const exact = await destinationExistsForMetadata(decoded);
   if (exact === true) return decoded;
@@ -279,6 +284,23 @@ function normalizePackageRow(row: unknown): PillarData['packages'][number] | nul
 
 async function getPillarData(city: string): Promise<PillarData | null> {
   if (!isSupabaseConfigured) return null;
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return {
+      destination: city,
+      packageCount: 0,
+      avgRating: null,
+      reviewCount: 0,
+      minPrice: null,
+      attractions: [],
+      packages: [],
+      relatedPosts: [],
+      pillarPost: null,
+      siblingCities: [],
+      metadata: null,
+      climateData: null,
+      departureCities: [],
+    };
+  }
 
   const today = new Date().toISOString().split('T')[0];
   const region = getRegionForCity(city);

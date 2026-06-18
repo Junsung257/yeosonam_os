@@ -1,12 +1,19 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
+import { unstable_cache } from 'next/cache';
 import { cache } from 'react';
 
-import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment, destinationSlugMatches, destinationToSlug } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
+import {
+  BLOG_DESTINATION_CACHE_TAG,
+  createBlogDatabaseUnavailableError,
+  isBlogDatabaseUnavailableError,
+} from '@/lib/blog-cache';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 300;
 export const dynamicParams = true;
@@ -28,6 +35,63 @@ interface BlogPost {
   travel_packages: { id: string; title: string; destination: string; price: number | null; duration: string | null } | null;
 }
 
+type DestinationPackage = { id: string; title: string; price: number | null };
+
+type DestinationPageData = {
+  destination: string;
+  posts: BlogPost[];
+  packages: DestinationPackage[];
+  unavailable: boolean;
+};
+
+type AbortableQuery<T> = {
+  abortSignal: (signal: AbortSignal) => PromiseLike<T>;
+};
+
+type BlogDestinationQueryResult<T> = T & { __blogQueryUnavailable?: true };
+
+function isBlogDestinationQueryUnavailable(result: unknown): boolean {
+  if (!result || typeof result !== 'object') return false;
+  const maybeResult = result as { __blogQueryUnavailable?: true; error?: unknown };
+  if (maybeResult.__blogQueryUnavailable) return true;
+  const error = maybeResult.error;
+  if (!error) return false;
+  const message = typeof error === 'object' ? JSON.stringify(error) : String(error);
+  return /abort|timeout|timed out|connection timeout/i.test(message);
+}
+
+async function runBlogDestinationQuery<T>(
+  label: string,
+  query: AbortableQuery<T>,
+  fallback: unknown,
+  timeoutMs = 6000,
+): Promise<T> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const unavailableFallback = () => {
+    if (fallback && typeof fallback === 'object') {
+      return { ...(fallback as Record<string, unknown>), __blogQueryUnavailable: true } as BlogDestinationQueryResult<T>;
+    }
+    return fallback as T;
+  };
+  const queryPromise = Promise.resolve(query.abortSignal(controller.signal)).catch((err) => {
+    console.warn(`[blog/destination] ${label} query timed out or failed`, err instanceof Error ? err.message : err);
+    return unavailableFallback();
+  });
+  const timeoutPromise = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      console.warn(`[blog/destination] ${label} query timed out after ${timeoutMs}ms`);
+      resolve(unavailableFallback());
+    }, timeoutMs);
+  });
+  try {
+    return await Promise.race([queryPromise, timeoutPromise]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 function getRouteParam(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value ?? '').trim();
 }
@@ -40,44 +104,82 @@ function safeDecodePathSegment(value: string): string {
   }
 }
 
-const resolveDestinationRouteParam = cache(async (value: string): Promise<string> => {
+async function resolveDestinationRouteParamUncached(value: string): Promise<string> {
   const decoded = safeDecodePathSegment(value).trim();
-  if (!decoded || !isSupabaseConfigured) return decoded;
+  if (!decoded || !isSupabaseConfigured || !isSupabaseAdminConfigured) return decoded;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
 
   try {
-    const { data, error } = await supabaseAdmin
-      .from('active_destinations')
-      .select('destination')
-      .limit(2000);
-    if (error) return decoded;
+    const result = await runBlogDestinationQuery(
+      'resolveDestination',
+      supabaseAdmin
+        .from('active_destinations')
+        .select('destination')
+        .limit(500),
+      { data: [] as Array<{ destination: string | null }>, error: null },
+      3000,
+    );
+    if (isBlogDestinationQueryUnavailable(result)) {
+      throw createBlogDatabaseUnavailableError();
+    }
+    if (result.error) return decoded;
 
-    const match = ((data ?? []) as Array<{ destination: string | null }>)
+    const match = ((result.data ?? []) as Array<{ destination: string | null }>)
       .map(row => row.destination?.trim() ?? '')
       .find(destination => destination && destinationSlugMatches(destination, decoded));
 
     return match || decoded;
   } catch {
+    if (decoded) throw createBlogDatabaseUnavailableError();
     return decoded;
+  }
+}
+
+const getCachedResolvedDestination = unstable_cache(
+  async (value: string) => resolveDestinationRouteParamUncached(value),
+  ['blog-destination-resolve-v1'],
+  { revalidate: 3600, tags: [BLOG_DESTINATION_CACHE_TAG] },
+);
+
+const resolveDestinationRouteParam = cache(async (value: string): Promise<string> => {
+  const decoded = safeDecodePathSegment(value).trim();
+  try {
+    return await getCachedResolvedDestination(value);
+  } catch (err) {
+    if (isBlogDatabaseUnavailableError(err)) return decoded;
+    throw err;
   }
 });
 
-const getPostsByDestination = cache(async (dest: string): Promise<{ posts: BlogPost[]; packages: { id: string; title: string; price: number | null }[] }> => {
-  if (!isSupabaseConfigured) return { posts: [], packages: [] };
+async function getDestinationPageDataUncached(dest: string): Promise<DestinationPageData> {
+  const decoded = safeDecodePathSegment(dest).trim();
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
+    return { destination: decoded, posts: [], packages: [], unavailable: true };
+  }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
+    return { destination: decoded, posts: [], packages: [], unavailable: true };
+  }
 
   const destination = await resolveDestinationRouteParam(dest);
 
   try {
     // 블로그 글 (해당 목적지)
-    const { data: allPosts } = await supabaseAdmin
+    const postsQuery = supabaseAdmin
       .from('content_creatives')
       .select('id, slug, seo_title, seo_description, og_image_url, angle_type, published_at, destination, travel_packages(id, title, destination, price, duration)')
       .eq('status', 'published')
       .eq('channel', 'naver_blog')
+      .eq('destination', destination)
       .not('slug', 'is', null)
       .order('published_at', { ascending: false })
-      .limit(1000);
+      .limit(60);
 
-    const posts = ((allPosts || []) as unknown as BlogPost[]).filter(
+    const postsResult = await runBlogDestinationQuery('posts', postsQuery, { data: [] as BlogPost[], error: null }, 6000);
+    if (isBlogDestinationQueryUnavailable(postsResult) || postsResult.error) {
+      return { destination, posts: [], packages: [], unavailable: true };
+    }
+
+    const posts = ((postsResult.data || []) as unknown as BlogPost[]).filter(
       p => {
         const postDestination = (p.destination || p.travel_packages?.destination || '').trim();
         return (
@@ -88,7 +190,7 @@ const getPostsByDestination = cache(async (dest: string): Promise<{ posts: BlogP
     );
 
     // 관련 상품
-    const { data: pkgData } = await supabaseAdmin
+    const packagesQuery = supabaseAdmin
       .from('travel_packages')
       .select('id, title, price')
       .ilike('destination', `%${destination}%`)
@@ -96,15 +198,47 @@ const getPostsByDestination = cache(async (dest: string): Promise<{ posts: BlogP
       .order('price', { ascending: true })
       .limit(6);
 
-    return { posts, packages: (pkgData || []) as { id: string; title: string; price: number | null }[] };
+    const packagesResult = await runBlogDestinationQuery('packages', packagesQuery, { data: [] as DestinationPackage[], error: null }, 4000);
+
+    return {
+      destination,
+      posts,
+      packages: (packagesResult.data || []) as unknown as DestinationPackage[],
+      unavailable: false,
+    };
   } catch {
-    return { posts: [], packages: [] };
+    return { destination, posts: [], packages: [], unavailable: true };
   }
-});
+}
+
+const getCachedDestinationPageData = unstable_cache(
+  async (dest: string) => {
+    const data = await getDestinationPageDataUncached(dest);
+    if (data.unavailable) {
+      throw createBlogDatabaseUnavailableError();
+    }
+    return data;
+  },
+  ['blog-destination-page-v1'],
+  { revalidate: 300, tags: [BLOG_DESTINATION_CACHE_TAG] },
+);
+
+async function getDestinationPageData(dest: string): Promise<DestinationPageData> {
+  const fallbackDestination = safeDecodePathSegment(dest).trim();
+  try {
+    return await getCachedDestinationPageData(dest);
+  } catch (err) {
+    if (isBlogDatabaseUnavailableError(err)) {
+      return { destination: fallbackDestination, posts: [], packages: [], unavailable: true };
+    }
+    throw err;
+  }
+}
 
 export async function generateStaticParams() {
   if (BLOG_DESTINATION_STATIC_PRERENDER_LIMIT <= 0) return [];
   if (!isSupabaseConfigured) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
 
   try {
     const { data } = await supabaseAdmin
@@ -130,15 +264,12 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: { params: Promise<{ dest?: string | string[] }> }): Promise<Metadata> {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const destination = await resolveDestinationRouteParam(dest);
+  const destination = safeDecodePathSegment(dest).trim();
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
-  const { posts, packages } = await getPostsByDestination(dest);
-  const hasIndexableContent = posts.length > 0 || packages.length > 0;
   return {
     title: `${destination} 여행 가이드`,
     description: `${destination} 여행의 모든 것. 가성비 패키지부터 럭셔리까지, 여소남이 엄선한 ${destination} 여행 정보를 만나보세요.`,
     alternates: { canonical },
-    robots: hasIndexableContent ? undefined : { index: false, follow: true },
     openGraph: {
       title: `${destination} 여행 가이드 | 여소남`,
       description: `${destination} 여행 패키지 추천, 관광지 정보, 꿀팁 가이드`,
@@ -150,9 +281,8 @@ export async function generateMetadata({ params }: { params: Promise<{ dest?: st
 export default async function DestinationBlogPage({ params }: { params: Promise<{ dest?: string | string[] }> }) {
   const { dest: rawDest } = await params;
   const dest = getRouteParam(rawDest);
-  const destination = await resolveDestinationRouteParam(dest);
+  const { destination, posts, packages, unavailable } = await getDestinationPageData(dest);
   const canonical = `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`;
-  const { posts, packages } = await getPostsByDestination(dest);
 
   return (
     <>
@@ -198,7 +328,7 @@ export default async function DestinationBlogPage({ params }: { params: Promise<
         </header>
 
         <div className="mx-auto max-w-6xl px-4 md:px-6 py-12 md:py-16 space-y-12 md:space-y-16">
-          <DestinationContent destination={destination} posts={posts} packages={packages} />
+          <DestinationContent destination={destination} posts={posts} packages={packages} unavailable={unavailable} />
         </div>
       </main>
     </>
@@ -209,10 +339,12 @@ function DestinationContent({
   destination,
   posts,
   packages,
+  unavailable,
 }: {
   destination: string;
   posts: BlogPost[];
-  packages: { id: string; title: string; price: number | null }[];
+  packages: DestinationPackage[];
+  unavailable: boolean;
 }) {
   return (
     <>
@@ -235,7 +367,13 @@ function DestinationContent({
           {/* 블로그 글 목록 */}
           <section>
             <SectionHeader title={`${destination} 가이드`} subtitle="운영팀이 직접 작성한 여행 매거진" />
-            {posts.length === 0 ? (
+            {unavailable ? (
+              <div className="py-20 text-center">
+                <p className="text-[32px] mb-3">!</p>
+                <p className="text-slate-500 text-base">블로그 데이터를 잠시 불러오지 못했습니다.</p>
+                <p className="mt-2 text-sm text-slate-400">발행 글이 없는 상태가 아니라 DB 응답 지연입니다.</p>
+              </div>
+            ) : posts.length === 0 ? (
               <p className="py-20 text-center text-slate-400 text-base">{destination} 관련 가이드가 준비 중입니다.</p>
             ) : (
               <div className="grid gap-4 md:gap-6 sm:grid-cols-2 lg:grid-cols-3">

@@ -21,11 +21,13 @@
 import { NextRequest } from 'next/server'
 import { isSupabaseAdminConfigured, isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase'
 import { apiResponse } from '@/lib/api-response'
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver'
 
 const START_TIME = Date.now()
 
-async function checkDatabase(timeoutMs = 2500): Promise<'connected' | 'timeout' | 'not_configured'> {
+async function checkDatabase(timeoutMs = 2500): Promise<'connected' | 'timeout' | 'not_configured' | 'resource_saver'> {
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return 'not_configured'
+  if (shouldSkipPublicDbReadsForResourceSaver()) return 'resource_saver'
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)

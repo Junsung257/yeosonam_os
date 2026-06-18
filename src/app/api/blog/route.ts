@@ -29,14 +29,23 @@ function isAbortLikeError(error: unknown): boolean {
 
 async function runApiBlogQuery<T>(label: string, query: AbortableQuery<T>, timeoutMs = 8000): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timeoutError = new Error(`${label} query timed out after ${timeoutMs}ms`);
+  let timer: ReturnType<typeof setTimeout> | null = null;
   try {
-    return await query.abortSignal(controller.signal);
+    return await Promise.race([
+      query.abortSignal(controller.signal),
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort(timeoutError);
+          reject(timeoutError);
+        }, timeoutMs);
+      }),
+    ]);
   } catch (error) {
     console.warn(`[api/blog] ${label} query timed out or failed`, error instanceof Error ? error.message : error);
     throw error;
   } finally {
-    clearTimeout(timer);
+    if (timer) clearTimeout(timer);
   }
 }
 

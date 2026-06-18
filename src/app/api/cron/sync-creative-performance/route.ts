@@ -10,6 +10,7 @@ import { apiResponse } from '@/lib/api-response';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
 import { logAndSanitize } from '@/lib/error-sanitizer';
 import { dailySync } from '@/lib/creative-engine/sync-performance';
+import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,6 +18,9 @@ export async function GET(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
+
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'sync-creative-performance');
+  if (resourceSaver) return resourceSaver;
 
   try {
     console.log('[CRON] sync-creative-performance start');

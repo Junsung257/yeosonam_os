@@ -45,6 +45,7 @@ test('/blog list renders DB unavailable state instead of silent empty posts', ()
   assert.match(source, /BLOG_LIST_CACHE_TAG/);
   assert.match(source, /throw createBlogDatabaseUnavailableError\(\)/);
   assert.match(source, /__blogQueryUnavailable/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /isBlogQueryUnavailable/);
   assert.match(source, /isBlogQueryUnavailable\(destRes\)/);
   assert.match(source, /isBlogQueryUnavailable\(angleRes\)/);
@@ -70,6 +71,7 @@ test('/blog detail does not convert DB timeouts into notFound', () => {
   assert.match(source, /headlineExperiment/);
   assert.match(source, /isBlogDetailQueryUnavailable/);
   assert.match(source, /BlogDatabaseUnavailableView/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /블로그 데이터를 잠시 불러오지 못했습니다/);
   assert.match(source, /DB 응답이 지연/);
   assert.match(source, /const postResult = await runBlogDetailQuery/);
@@ -81,6 +83,7 @@ test('/api/blog returns 503 for DB timeout instead of hanging silently', () => {
 
   assert.match(source, /runApiBlogQuery/);
   assert.match(source, /abortSignal\(controller\.signal\)/);
+  assert.match(source, /Promise\.race/);
   assert.match(source, /isAbortLikeError/);
   assert.match(source, /Blog database request timed out/);
   assert.match(source, /stale-if-error=86400/);
@@ -93,9 +96,14 @@ test('public blog publish paths invalidate list and detail data caches', () => {
 
   assert.match(cache, /BLOG_LIST_CACHE_TAG = ['"]blog-list['"]/);
   assert.match(cache, /BLOG_DETAIL_CACHE_TAG = ['"]blog-detail['"]/);
+  assert.match(cache, /BLOG_DESTINATION_CACHE_TAG = ['"]blog-destination['"]/);
+  assert.match(cache, /BLOG_ANGLE_CACHE_TAG = ['"]blog-angle['"]/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_LIST_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidateTag\(BLOG_DETAIL_CACHE_TAG\)/);
+  assert.match(revalidate, /safeRevalidateTag\(BLOG_DESTINATION_CACHE_TAG\)/);
+  assert.match(revalidate, /safeRevalidateTag\(BLOG_ANGLE_CACHE_TAG\)/);
   assert.match(revalidate, /safeRevalidatePath\('\/blog'\)/);
+  assert.match(revalidate, /safeRevalidatePath\('\/sitemap\.xml'\)/);
   assert.match(revalidate, /safeRevalidatePath\(`\/blog\/\$\{slug\}`\)/);
 
   for (const file of [
@@ -109,4 +117,96 @@ test('public blog publish paths invalidate list and detail data caches', () => {
   ]) {
     assert.match(read(...file), /revalidatePublicBlogCache/);
   }
+});
+
+test('blog destination and angle tabs do not cache unavailable empty states', () => {
+  const destination = read('src', 'app', 'blog', 'destination', '[dest]', 'page.tsx');
+  const angle = read('src', 'app', 'blog', 'angle', '[angle]', 'page.tsx');
+  const matcher = read('src', 'lib', 'angle-matcher.ts');
+
+  assert.match(destination, /getCachedDestinationPageData/);
+  assert.match(destination, /BLOG_DESTINATION_CACHE_TAG/);
+  assert.match(destination, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(destination, /Promise\.race/);
+  assert.match(destination, /\.eq\('destination', destination\)/);
+  assert.doesNotMatch(destination, /\.limit\(1000\)/);
+  assert.match(destination, /runBlogDestinationQuery\('posts'/);
+  assert.match(destination, /블로그 데이터를 잠시 불러오지 못했습니다/);
+
+  assert.match(angle, /getCachedAnglePageData/);
+  assert.match(angle, /BLOG_ANGLE_CACHE_TAG/);
+  assert.match(angle, /throw createBlogDatabaseUnavailableError\(\)/);
+  assert.match(angle, /Promise\.race/);
+  assert.match(angle, /runBlogAngleQuery/);
+  assert.match(angle, /블로그 데이터를 잠시 불러오지 못했습니다/);
+
+  assert.match(matcher, /runAnglePackageQuery/);
+  assert.match(matcher, /abortSignal\(controller\.signal\)/);
+  assert.match(matcher, /Promise\.race/);
+  assert.match(matcher, /!isSupabaseConfigured \|\| !isSupabaseAdminConfigured/);
+
+  const destinationMetadata = destination.slice(
+    destination.indexOf('export async function generateMetadata'),
+    destination.indexOf('export default async function DestinationBlogPage'),
+  );
+  const angleMetadata = angle.slice(
+    angle.indexOf('export async function generateMetadata'),
+    angle.indexOf('export default async function AngleBlogPage'),
+  );
+  assert.doesNotMatch(destinationMetadata, /getDestinationPageData/);
+  assert.doesNotMatch(destinationMetadata, /hasIndexableContent/);
+  assert.doesNotMatch(angleMetadata, /getAnglePageData/);
+  assert.doesNotMatch(angleMetadata, /hasIndexableContent/);
+});
+
+test('public sitemap is cached and does not fan out long DB reads during outages', () => {
+  const source = read('src', 'app', 'sitemap.ts');
+
+  assert.match(source, /export const revalidate = 3600/);
+  assert.doesNotMatch(source, /export const dynamic = ['"]force-dynamic['"]/);
+  assert.match(source, /const PACKAGE_LIMIT = 1000/);
+  assert.match(source, /const BLOG_LIMIT = 2000/);
+  assert.match(source, /const DESTINATION_LIMIT = 500/);
+  assert.match(source, /const QUERY_TIMEOUT_MS = 2500/);
+  assert.match(source, /Promise\.all/);
+  assert.match(source, /abortSignal\(signal\)/);
+  assert.match(source, /isSupabaseAdminConfigured/);
+  assert.doesNotMatch(source, /withTimeout/);
+  assert.doesNotMatch(source, /limit\(5000\)/);
+  assert.doesNotMatch(source, /limit\(10000\)/);
+});
+
+test('public blog surface monitor covers all angle tabs and survives DB outages', () => {
+  const surfaces = read('src', 'lib', 'blog-public-surfaces.ts');
+  const checker = read('src', 'lib', 'blog-public-surface-check.ts');
+  const revalidate = read('src', 'lib', 'revalidate-blog-cache.ts');
+  const opsRoute = read('src', 'app', 'api', 'ops', 'blog-system', 'route.ts');
+
+  for (const angle of ['value', 'luxury', 'filial', 'emotional', 'activity', 'food', 'urgency']) {
+    assert.match(surfaces, new RegExp(`['"]${angle}['"]`));
+    assert.match(surfaces, new RegExp(`/blog/angle/\\$\\{angle\\}`));
+  }
+
+  assert.match(surfaces, /\/blog\/destination\/\$\{encodePathSegment\(destination\)\}/);
+  assert.match(surfaces, /\/sitemap\.xml/);
+  assert.match(surfaces, /\/api\/blog\?limit=3/);
+  assert.match(surfaces, /\/api\/v1\/health/);
+
+  assert.match(checker, /checkPublicBlogSurfaces/);
+  assert.match(checker, /Promise\.race/);
+  assert.match(checker, /silent_zero_posts/);
+  assert.match(checker, /blog_api_db_timeout/);
+  assert.match(checker, /db_timeout/);
+  assert.match(checker, /warmPublicBlogSurfacesBestEffort/);
+
+  assert.match(revalidate, /warmPublicBlogSurfacesBestEffort\(\{ slug, destination \}\)/);
+
+  assert.match(opsRoute, /public_surfaces/);
+  assert.match(opsRoute, /emptyBlogSystemPayload/);
+  assert.match(opsRoute, /BLOG_SYSTEM_DB_TIMEOUT_MS/);
+  assert.match(opsRoute, /withBlogSystemDbTimeout/);
+  assert.match(opsRoute, /Promise\.all/);
+  assert.match(opsRoute, /status:\s*200/);
+  assert.match(opsRoute, /checkPublicBlogSurfaces/);
+  assert.doesNotMatch(opsRoute, /status:\s*500/);
 });

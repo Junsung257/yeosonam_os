@@ -5,6 +5,7 @@ import { verifySupabaseAccessToken } from '@/lib/supabase-jwt-verify';
 import { getSecret } from '@/lib/secret-registry';
 import { isUuid } from '@/lib/uuid';
 import { resolveBlogSlugRedirect } from '@/lib/blog-slug-redirects';
+import { safeEqualString } from '@/lib/timing-safe';
 
 function safeDecodeRouteValue(value: string): string {
   let decoded = value;
@@ -521,6 +522,12 @@ async function accessTokenAllowsRequest(token: string): Promise<boolean> {
   return v.ok;
 }
 
+function cronSecretAllowsRequest(request: NextRequest): boolean {
+  const cronSecret = getSecret('CRON_SECRET');
+  if (!cronSecret) return false;
+  return safeEqualString(request.headers.get('authorization'), `Bearer ${cronSecret}`);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const isSecure = process.env.NODE_ENV === 'production';
@@ -638,7 +645,16 @@ export async function middleware(request: NextRequest) {
   const dynamicNotFound = await getPublicDynamicNotFoundResponse(pathname);
   if (dynamicNotFound) return dynamicNotFound;
 
-  // ── 3-0. 서버-to-서버 API 호출은 아래 x-admin-token 검증만 허용 ──
+  // ── 3-0. /api/ops/* server-to-server calls may use CRON_SECRET bearer auth. ──
+  if (pathname.startsWith('/api/ops/') && request.headers.get('authorization')) {
+    if (cronSecretAllowsRequest(request)) {
+      return response || NextResponse.next();
+    }
+    return NextResponse.json(
+      { code: 'FORBIDDEN', error: 'invalid ops token' },
+      { status: 403 },
+    );
+  }
 
   // ── 3-1. /api/admin/* — x-admin-token 헤더 검증 (서버-to-서버 호출용) ──────
   // 크론 작업 등이 Supabase 세션 없이 ADMIN_API_TOKEN으로 인증할 수 있게 함.

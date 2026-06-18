@@ -1,6 +1,7 @@
 import { ImageResponse } from 'next/og';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { safeDecodeSlug } from '@/lib/decode-slug';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const runtime = 'nodejs';
 export const alt = '여소남 여행 블로그';
@@ -22,7 +23,7 @@ export default async function OgImage({ params }: { params: { slug: string } }) 
   let destination = '';
   let angleLabel = '';
 
-  if (isSupabaseConfigured) {
+  if (isSupabaseConfigured && !shouldSkipPublicDbReadsForResourceSaver()) {
     const { data } = await supabaseAdmin
       .from('content_creatives')
       .select('seo_title, angle_type, og_image_url, travel_packages(destination)')

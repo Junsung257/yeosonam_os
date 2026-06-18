@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment, destinationSlugMatches } from '@/lib/regions';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 /**
  * 목적지별 RSS 피드 — /destinations/[city]/rss.xml
@@ -46,6 +47,7 @@ async function resolveDestinationRouteParam(value: string): Promise<string | nul
   const decoded = safeDecodePathSegment(value).trim();
   if (!decoded) return null;
   if (!isSupabaseConfigured) return decoded;
+  if (shouldSkipPublicDbReadsForResourceSaver()) return decoded;
 
   try {
     const { data, error } = await supabaseAdmin
@@ -76,20 +78,24 @@ export async function GET(_request: NextRequest, props: { params: Promise<{ city
     return new NextResponse('<error>db not configured</error>', { status: 503 });
   }
 
+  const skipDbReads = shouldSkipPublicDbReadsForResourceSaver();
+
   // destination 매칭 글 (destination 컬럼 또는 travel_packages.destination)
   let posts: unknown[] = [];
-  try {
-    const result = await supabaseAdmin
-      .from('content_creatives')
-      .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, travel_packages(destination)')
-      .eq('channel', 'naver_blog')
-      .eq('status', 'published')
-      .not('slug', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(50);
-    posts = result.data ?? [];
-  } catch {
-    posts = [];
+  if (!skipDbReads) {
+    try {
+      const result = await supabaseAdmin
+        .from('content_creatives')
+        .select('id, slug, seo_title, seo_description, og_image_url, published_at, updated_at, content_type, destination, travel_packages(destination)')
+        .eq('channel', 'naver_blog')
+        .eq('status', 'published')
+        .not('slug', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(50);
+      posts = result.data ?? [];
+    } catch {
+      posts = [];
+    }
   }
 
   const filtered = ((posts || []) as Array<any>).filter(p =>

@@ -1,69 +1,21 @@
 import type { MetadataRoute } from 'next';
 import { supabaseAdmin, isSupabaseAdminConfigured, isSupabaseConfigured } from '@/lib/supabase';
 import { encodeDestinationPathSegment } from '@/lib/regions';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
-const PACKAGE_LIMIT = 5000;
-const BLOG_LIMIT = 10000;
-const DESTINATION_LIMIT = 1000;
-const QUERY_TIMEOUT_MS = Math.max(
-  1000,
-  Number(process.env.SITEMAP_QUERY_TIMEOUT_MS || process.env.PUBLIC_PAGE_QUERY_TIMEOUT_MS || '9000') || 9000,
-);
+const PACKAGE_LIMIT = 1000;
+const BLOG_LIMIT = 2000;
+const DESTINATION_LIMIT = 500;
+const QUERY_TIMEOUT_MS = 2500;
+
+type SitemapQueryResponse<T> = {
+  data: T[] | null;
+  error: { message?: string } | null;
+};
 
 export const revalidate = 3600;
-export const dynamic = 'force-dynamic';
-
-type AbortablePromiseLike<T> = PromiseLike<T> & {
-  abortSignal?: (signal: AbortSignal) => PromiseLike<T>;
-};
-
-type SitemapEntry = MetadataRoute.Sitemap[number];
-
-type PackageRow = {
-  id: string;
-  updated_at: string | null;
-};
-
-type DestinationRow = {
-  destination: string | null;
-};
-
-type BlogRow = {
-  slug: string;
-  destination: string | null;
-  angle_type: string | null;
-  published_at: string | null;
-  updated_at: string | null;
-};
-
-function emptyQueryResult<T>(data: T) {
-  return { data, error: null, count: null, status: 200, statusText: 'fallback', success: true as const };
-}
-
-async function withTimeout<T>(promise: AbortablePromiseLike<T>, timeoutMs: number, fallback: T): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const abortSignal = promise.abortSignal;
-  const controller = typeof abortSignal === 'function' ? new AbortController() : null;
-  const source = controller && typeof abortSignal === 'function'
-    ? abortSignal.call(promise, controller.signal)
-    : Promise.resolve(promise);
-
-  try {
-    return await Promise.race([
-      source,
-      new Promise<T>((resolve) => {
-        timer = setTimeout(() => {
-          controller?.abort();
-          resolve(fallback);
-        }, timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer) clearTimeout(timer);
-  }
-}
 
 function safeLastModified(iso: string | null | undefined): Date {
   if (!iso) return new Date();
@@ -72,85 +24,84 @@ function safeLastModified(iso: string | null | undefined): Date {
 }
 
 function isSafeSitemapBlogSlug(slug: string | null | undefined): slug is string {
-  if (typeof slug !== 'string') return false;
+  if (slug == null || typeof slug !== 'string') return false;
   const s = slug.trim();
   if (s.length === 0 || s.length > 512) return false;
-  if (s.startsWith('/') || s.includes('//') || s.includes('?') || s.includes('#')) return false;
-  return /[\p{Letter}\p{Number}]/u.test(s);
+  if (s.startsWith('/') || s.includes('/') || s.includes('\\')) return false;
+  if (s.includes('//') || s.includes('?') || s.includes('#')) return false;
+  return encodeURIComponent(s).length <= 1024;
 }
 
-function staticRoutes(): MetadataRoute.Sitemap {
-  const now = new Date();
-  return [
-    { url: BASE_URL, lastModified: now, changeFrequency: 'daily', priority: 1.0 },
-    { url: `${BASE_URL}/private-tour`, lastModified: now, changeFrequency: 'weekly', priority: 0.85 },
-    { url: `${BASE_URL}/packages`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
-    { url: `${BASE_URL}/destinations`, lastModified: now, changeFrequency: 'daily', priority: 0.9 },
-    { url: `${BASE_URL}/concierge`, lastModified: now, changeFrequency: 'weekly', priority: 0.8 },
-    { url: `${BASE_URL}/group-inquiry`, lastModified: now, changeFrequency: 'weekly', priority: 0.8 },
-    { url: `${BASE_URL}/blog`, lastModified: now, changeFrequency: 'daily', priority: 0.8 },
-    { url: `${BASE_URL}/privacy`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
-    { url: `${BASE_URL}/terms`, lastModified: now, changeFrequency: 'yearly', priority: 0.2 },
-  ];
+function isAbortLikeError(err: unknown): boolean {
+  if (err instanceof Error) {
+    return err.name === 'AbortError' || /abort|timeout|timed out/i.test(err.message);
+  }
+  return false;
 }
 
-async function collectPackageRoutes(): Promise<SitemapEntry[]> {
+async function runSitemapQuery<T>(
+  label: string,
+  queryFactory: (signal: AbortSignal) => PromiseLike<SitemapQueryResponse<T>>,
+): Promise<T[]> {
+  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return [];
+  if (shouldSkipPublicDbReadsForResourceSaver()) return [];
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), QUERY_TIMEOUT_MS);
+
   try {
-    const result = await withTimeout(
+    const result = await queryFactory(controller.signal);
+    if (result.error) {
+      console.warn(`[sitemap] ${label} query failed:`, result.error.message || result.error);
+      return [];
+    }
+    return Array.isArray(result.data) ? result.data : [];
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`[sitemap] ${label} query ${isAbortLikeError(err) ? 'timed out' : 'failed'}:`, reason);
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
+  const routes: MetadataRoute.Sitemap = [
+    { url: BASE_URL, lastModified: new Date(), changeFrequency: 'daily', priority: 1.0 },
+    { url: `${BASE_URL}/private-tour`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.85 },
+    { url: `${BASE_URL}/packages`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
+    { url: `${BASE_URL}/destinations`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.9 },
+    { url: `${BASE_URL}/concierge`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/group-inquiry`, lastModified: new Date(), changeFrequency: 'weekly', priority: 0.8 },
+    { url: `${BASE_URL}/blog`, lastModified: new Date(), changeFrequency: 'daily', priority: 0.8 },
+    { url: `${BASE_URL}/privacy`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
+    { url: `${BASE_URL}/terms`, lastModified: new Date(), changeFrequency: 'yearly', priority: 0.2 },
+  ];
+
+  const [pkgs, activeDests, posts] = await Promise.all([
+    runSitemapQuery<{ id: string; updated_at: string | null }>('packages', (signal) =>
       supabaseAdmin
         .from('travel_packages')
         .select('id, updated_at')
         .in('status', ['active', 'approved'])
         .order('updated_at', { ascending: false })
-        .limit(PACKAGE_LIMIT),
-      QUERY_TIMEOUT_MS,
-      emptyQueryResult<PackageRow[]>([]),
-    );
-
-    if (result.error) throw result.error;
-    return (result.data || [])
-      .filter((pkg) => typeof pkg.id === 'string' && pkg.id.trim().length > 0)
-      .map((pkg) => ({
-        url: `${BASE_URL}/packages/${encodeURIComponent(pkg.id.trim())}`,
-        lastModified: safeLastModified(pkg.updated_at),
-        changeFrequency: 'weekly' as const,
-        priority: 0.85,
-      }));
-  } catch (err) {
-    console.warn('[sitemap] packages error:', err);
-    return [];
-  }
-}
-
-async function collectDestinationRoutes(): Promise<SitemapEntry[]> {
-  try {
-    const result = await withTimeout(
+        .limit(PACKAGE_LIMIT)
+        .abortSignal(signal),
+    ),
+    runSitemapQuery<{ destination: string }>('destinations', (signal) =>
       supabaseAdmin
         .from('active_destinations')
         .select('destination')
-        .limit(DESTINATION_LIMIT),
-      QUERY_TIMEOUT_MS,
-      emptyQueryResult<DestinationRow[]>([]),
-    );
-
-    if (result.error) throw result.error;
-    return (result.data || [])
-      .filter((row) => typeof row.destination === 'string' && row.destination.trim().length > 0)
-      .map((row) => ({
-        url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(row.destination!.trim())}`,
-        lastModified: new Date(),
-        changeFrequency: 'daily' as const,
-        priority: 0.9,
-      }));
-  } catch (err) {
-    console.warn('[sitemap] destinations error:', err);
-    return [];
-  }
-}
-
-async function collectBlogRoutes(): Promise<SitemapEntry[]> {
-  try {
-    const result = await withTimeout(
+        .limit(DESTINATION_LIMIT)
+        .abortSignal(signal),
+    ),
+    runSitemapQuery<{
+      slug: string;
+      destination: string | null;
+      angle_type: string | null;
+      published_at: string | null;
+      updated_at: string | null;
+    }>('blog', (signal) =>
       supabaseAdmin
         .from('content_creatives')
         .select('slug, destination, angle_type, published_at, updated_at')
@@ -158,68 +109,71 @@ async function collectBlogRoutes(): Promise<SitemapEntry[]> {
         .eq('channel', 'naver_blog')
         .not('slug', 'is', null)
         .order('published_at', { ascending: false })
-        .limit(BLOG_LIMIT),
-      QUERY_TIMEOUT_MS,
-      emptyQueryResult<BlogRow[]>([]),
-    );
+        .limit(BLOG_LIMIT)
+        .abortSignal(signal),
+    ),
+  ]);
 
-    if (result.error) throw result.error;
-    const posts = result.data || [];
-    const routes: SitemapEntry[] = [];
-    const angles = new Set(['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food']);
-    const destinations = new Set<string>();
-    const anglesWithPosts = new Set<string>();
+  for (const pkg of pkgs) {
+    routes.push({
+      url: `${BASE_URL}/packages/${pkg.id}`,
+      lastModified: safeLastModified(pkg.updated_at),
+      changeFrequency: 'weekly',
+      priority: 0.85,
+    });
+  }
 
-    for (const post of posts) {
-      const destination = post.destination?.trim();
-      if (destination) destinations.add(destination);
-      if (post.angle_type && angles.has(post.angle_type)) anglesWithPosts.add(post.angle_type);
-    }
-
-    for (const destination of destinations) {
+  for (const d of activeDests) {
+    if (d.destination) {
       routes.push({
-        url: `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(destination)}`,
+        url: `${BASE_URL}/destinations/${encodeDestinationPathSegment(d.destination)}`,
         lastModified: new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.75,
+        changeFrequency: 'daily',
+        priority: 0.9,
       });
     }
+  }
 
-    for (const angle of anglesWithPosts) {
-      routes.push({
-        url: `${BASE_URL}/blog/angle/${angle}`,
-        lastModified: new Date(),
-        changeFrequency: 'weekly' as const,
-        priority: 0.75,
-      });
+  const angles = new Set(['value', 'emotional', 'filial', 'luxury', 'urgency', 'activity', 'food']);
+  const destinations = new Set<string>();
+  const anglesWithPosts = new Set<string>();
+
+  for (const post of posts) {
+    const destination = post.destination?.trim();
+    if (destination) destinations.add(destination);
+    if (post.angle_type && angles.has(post.angle_type)) {
+      anglesWithPosts.add(post.angle_type);
     }
+  }
 
-    for (const post of posts) {
-      if (!isSafeSitemapBlogSlug(post.slug)) continue;
+  for (const dest of destinations) {
+    routes.push({
+      url: `${BASE_URL}/blog/destination/${encodeDestinationPathSegment(dest)}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    });
+  }
+
+  for (const angle of anglesWithPosts) {
+    routes.push({
+      url: `${BASE_URL}/blog/angle/${angle}`,
+      lastModified: new Date(),
+      changeFrequency: 'weekly',
+      priority: 0.75,
+    });
+  }
+
+  for (const post of posts) {
+    if (isSafeSitemapBlogSlug(post.slug)) {
       routes.push({
         url: `${BASE_URL}/blog/${encodeURIComponent(post.slug.trim())}`,
         lastModified: safeLastModified(post.updated_at || post.published_at),
-        changeFrequency: 'weekly' as const,
+        changeFrequency: 'weekly',
         priority: 0.7,
       });
     }
-
-    return routes;
-  } catch (err) {
-    console.warn('[sitemap] blog error:', err);
-    return [];
   }
-}
 
-export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const routes = staticRoutes();
-  if (!isSupabaseConfigured || !isSupabaseAdminConfigured) return routes;
-
-  const [packageRoutes, destinationRoutes, blogRoutes] = await Promise.all([
-    collectPackageRoutes(),
-    collectDestinationRoutes(),
-    collectBlogRoutes(),
-  ]);
-
-  return [...routes, ...packageRoutes, ...destinationRoutes, ...blogRoutes];
+  return routes;
 }
