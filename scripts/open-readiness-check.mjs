@@ -29,6 +29,7 @@ const HAS_EXPLICIT_PACKAGE_ID = Boolean(PACKAGE_ID_ARG || process.env.OPEN_CHECK
 const HAS_EXPLICIT_REF_CODE = Boolean(REF_CODE_ARG || process.env.OPEN_CHECK_REF_CODE);
 const VERCEL_SCOPE = argValue('--vercel-scope', process.env.VERCEL_SCOPE || 'zzbaa0317-4596s-projects');
 const VERCEL_LOG_TARGET = argValue('--vercel-log-target', process.env.VERCEL_LOG_TARGET || BASE_URL);
+const OPEN_CHECK_AUTH_COOKIE = argValue('--auth-cookie', process.env.OPEN_CHECK_AUTH_COOKIE || '');
 const TIMEOUT_MS = Number(argValue('--timeout-ms', process.env.OPEN_CHECK_TIMEOUT_MS || '30000'));
 const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_CHECK_BLOG_AUDIT_LIMIT || '10'));
 const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
@@ -55,6 +56,7 @@ const strict = hasFlag('--strict');
 const json = hasFlag('--json');
 
 const checks = [];
+let protectedDeploymentDetected = false;
 
 function addCheck(name, status, detail = {}) {
   checks.push({ name, status, ...detail });
@@ -85,6 +87,11 @@ function releaseBlockers() {
       failedRequiredChecks: Array.isArray(check.failedRequiredChecks)
         ? check.failedRequiredChecks
         : undefined,
+      failedIssues: Array.isArray(check.failedIssues) ? check.failedIssues : undefined,
+      authMode: check.authMode || undefined,
+      checked: Number.isFinite(Number(check.checked)) ? Number(check.checked) : undefined,
+      surfaceFailures: Number.isFinite(Number(check.failed)) ? Number(check.failed) : undefined,
+      surfaceWarnings: Number.isFinite(Number(check.warn)) ? Number(check.warn) : undefined,
       reportPath: check.reportPath || undefined,
     }));
 }
@@ -136,6 +143,15 @@ function warningPreview(warnings, limit = 5) {
   return remaining > 0 ? `${visible.join(' | ')} | +${remaining} more` : visible.join(' | ');
 }
 
+function isProtectedDeploymentResponse(statusCode, body = '') {
+  if (statusCode !== 401) return false;
+  return /Protected deployment|vercel_auth_enabled|vercel_auth_callback|auto_vercel_auth_redirect/i.test(String(body));
+}
+
+function markProtectedDeployment() {
+  protectedDeploymentDetected = true;
+}
+
 function quoteCmdArg(value) {
   const s = String(value);
   if (!/[()\s^&|<>"]/.test(s)) return s;
@@ -182,15 +198,21 @@ async function fetchUrl(name, path, options = {}) {
       signal: controller.signal,
       headers: { Accept: 'text/html,application/json;q=0.9,*/*;q=0.5', ...(options.headers || {}) },
     });
-    const body = options.readBody === false ? '' : await res.text();
+    const shouldReadBody = options.readBody !== false || res.status === 401;
+    const body = shouldReadBody ? await res.text() : '';
     const setCookie = res.headers.get('set-cookie') || '';
     const ok = options.ok ? options.ok(res, body, setCookie) : res.status >= 200 && res.status < 400;
-    addCheck(name, ok ? 'pass' : 'fail', {
+    const protectedDeployment = isProtectedDeploymentResponse(res.status, body);
+    if (protectedDeployment) markProtectedDeployment();
+    addCheck(name, ok ? 'pass' : protectedDeployment ? 'blocked' : 'fail', {
       statusCode: res.status,
       ms: Date.now() - started,
       url,
       location: res.headers.get('location') || '',
-      notes: options.notes?.(res, body, setCookie) || '',
+      notes: protectedDeployment
+        ? 'Vercel protected deployment requires an authenticated preview bypass'
+        : options.notes?.(res, body, setCookie) || '',
+      error: ok || protectedDeployment ? '' : body.slice(0, 1200),
     });
   } catch (err) {
     addCheck(name, 'fail', {
@@ -252,6 +274,13 @@ async function checkPublicUrls() {
 }
 
 function checkPublicCriticalAudit() {
+  if (protectedDeploymentDetected) {
+    addBlockedCheck('public:critical-pages', {
+      notes: 'Vercel protected deployment blocks unauthenticated public critical-page audit',
+    });
+    return;
+  }
+
   const args = [
     'run',
     '--silent',
@@ -465,7 +494,109 @@ function checkRuntimeEnvReadiness() {
   });
 }
 
+function opsRequestHeaders() {
+  const headers = { Accept: 'application/json' };
+  if (process.env.CRON_SECRET) {
+    headers.Authorization = `Bearer ${process.env.CRON_SECRET}`;
+    return { headers, authMode: 'cron-secret' };
+  }
+  if (OPEN_CHECK_AUTH_COOKIE) {
+    headers.Cookie = OPEN_CHECK_AUTH_COOKIE;
+    return { headers, authMode: 'auth-cookie' };
+  }
+  if (LOCAL_MODE) {
+    headers.Cookie = 'ys-dev-admin=1';
+    return { headers, authMode: 'dev-admin-cookie' };
+  }
+  return { headers, authMode: 'none' };
+}
+
+async function checkBlogPublicSurfaceMonitor() {
+  if (protectedDeploymentDetected) {
+    addBlockedCheck('public:blog-surface-monitor', {
+      url: `${BASE_URL}/api/ops/blog-system`,
+      notes: 'Vercel protected deployment blocks unauthenticated blog surface monitor',
+    });
+    return;
+  }
+
+  const url = `${BASE_URL}/api/ops/blog-system`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const started = Date.now();
+  const { headers, authMode } = opsRequestHeaders();
+
+  try {
+    const res = await fetch(url, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers,
+    });
+    const body = await res.text();
+    let report = null;
+    try {
+      report = JSON.parse(body);
+    } catch {
+      report = null;
+    }
+
+    const publicSurfaces = report?.public_surfaces;
+    const failed = Number(publicSurfaces?.failed ?? 0);
+    const checked = Number(publicSurfaces?.checked ?? 0);
+    const warn = Number(publicSurfaces?.warn ?? 0);
+    const ok = res.status === 200 && checked > 0 && publicSurfaces?.ok === true;
+    const failedIssues = Array.isArray(publicSurfaces?.results)
+      ? publicSurfaces.results
+        .filter((row) => row && row.ok === false)
+        .flatMap((row) => Array.isArray(row.issues) ? row.issues.map((issue) => `${row.id}:${issue}`) : [`${row.id}:unknown`])
+      : [];
+    const missingOpsAuth = authMode === 'none' && !publicSurfaces;
+    const missingLocalData = ALLOW_LOCAL_MISSING_DATA && !ok && /db_unavailable_page|silent_zero_posts|blog_api_db_timeout|db_timeout|Blog database is not configured|no blog links found/i.test(
+      JSON.stringify({ publicSurfaces, body }),
+    );
+    const status = ok ? 'pass' : missingLocalData || missingOpsAuth ? 'blocked' : 'fail';
+
+    addCheck('public:blog-surface-monitor', status, {
+      statusCode: res.status,
+      ms: Date.now() - started,
+      checked,
+      failed,
+      warn,
+      url,
+      authMode,
+      missing: missingOpsAuth ? ['CRON_SECRET'] : undefined,
+      failedIssues,
+      notes: ok
+        ? `${checked} public blog surface(s) healthy`
+        : missingLocalData
+          ? 'local blog public surfaces require production/staging data for full verification'
+          : missingOpsAuth
+            ? 'protected ops probe requires CRON_SECRET or OPEN_CHECK_AUTH_COOKIE'
+            : `failed=${failed}; ${failedIssues.slice(0, 4).join(', ') || 'inspect /api/ops/blog-system'}`,
+      error: ok || missingLocalData || missingOpsAuth
+        ? ''
+        : (failedIssues.join(', ') || body || `HTTP ${res.status}`).slice(0, 1200),
+    });
+  } catch (err) {
+    addCheck('public:blog-surface-monitor', 'fail', {
+      statusCode: null,
+      ms: Date.now() - started,
+      url,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function checkBlogSearchQualityReadiness() {
+  if (protectedDeploymentDetected) {
+    addBlockedCheck('public:blog-search-quality', {
+      notes: 'Vercel protected deployment blocks unauthenticated blog search quality audit',
+    });
+    return;
+  }
+
   const args = [
     'run',
     '--silent',
@@ -535,6 +666,7 @@ async function main() {
   checkMarketingAutomationReadiness();
   checkMarketingRuntimeLocal();
   checkRuntimeEnvReadiness();
+  await checkBlogPublicSurfaceMonitor();
   checkBlogSearchQualityReadiness();
   checkVercelLogs('error');
   checkVercelLogs('fatal');

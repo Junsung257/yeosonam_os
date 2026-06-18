@@ -108,13 +108,22 @@ function sampleReportFor(value) {
   return {
     status: 'blocked',
     passed: 2,
-    blocked: 1,
+    blocked: 2,
     failed: 0,
     releaseBlockers: [{
       name: 'runtime:env-readiness',
       status: 'blocked',
       notes: 'sample missing env',
       missing: ['SERPAPI_KEY'],
+    }, {
+      name: 'public:blog-surface-monitor',
+      status: 'blocked',
+      notes: 'sample public surface blocker',
+      authMode: 'dev-admin-cookie',
+      checked: 11,
+      surfaceFailures: 2,
+      surfaceWarnings: 1,
+      failedIssues: ['blog-list:db_unavailable_page', 'api-blog:blog_api_db_timeout'],
     }],
     releaseWarnings: [{
       source: 'operational-inputs',
@@ -228,6 +237,21 @@ function noteFor(item) {
   if (Array.isArray(item.failedRequiredChecks) && item.failedRequiredChecks.length > 0) {
     notes.push(`failed required: ${item.failedRequiredChecks.join(', ')}`);
   }
+  if (Array.isArray(item.failedIssues) && item.failedIssues.length > 0) {
+    notes.push(`issues: ${item.failedIssues.join(', ')}`);
+  }
+  if (item.authMode) {
+    notes.push(`auth: ${item.authMode}`);
+  }
+  const checked = Number(item.checked);
+  const surfaceFailures = Number(item.surfaceFailures ?? item.surfaceFailed ?? (Number.isFinite(checked) && checked > 0 ? item.failed : undefined));
+  const surfaceWarnings = Number(item.surfaceWarnings ?? item.surfaceWarn ?? (Number.isFinite(checked) && checked > 0 ? item.warn : undefined));
+  if (Number.isFinite(checked) && checked > 0) {
+    const parts = [`checked=${checked}`];
+    if (Number.isFinite(surfaceFailures)) parts.push(`failed=${surfaceFailures}`);
+    if (Number.isFinite(surfaceWarnings)) parts.push(`warn=${surfaceWarnings}`);
+    notes.push(`surfaces: ${parts.join(', ')}`);
+  }
   if (item.reportPath) {
     notes.push(`report: ${item.reportPath}`);
   }
@@ -251,6 +275,11 @@ function reportBlockers(report) {
       missing: check.missing,
       usingDefaults: check.usingDefaults,
       failedRequiredChecks: check.failedRequiredChecks,
+      failedIssues: check.failedIssues,
+      authMode: check.authMode,
+      checked: check.checked,
+      surfaceFailures: check.surfaceFailures ?? (Number.isFinite(Number(check.checked)) ? check.failed : undefined),
+      surfaceWarnings: check.surfaceWarnings ?? (Number.isFinite(Number(check.checked)) ? check.warn : undefined),
       reportPath: check.reportPath,
     }));
 }

@@ -207,6 +207,9 @@ test('public blog surface monitor covers all angle tabs and survives DB outages'
   assert.match(opsRoute, /withBlogSystemDbTimeout/);
   assert.match(opsRoute, /Promise\.all/);
   assert.match(opsRoute, /status:\s*200/);
-  assert.match(opsRoute, /checkPublicBlogSurfaces/);
+  assert.match(opsRoute, /NextRequest/);
+  assert.match(opsRoute, /publicSurfaceBaseUrl/);
+  assert.match(opsRoute, /request\.nextUrl\.origin/);
+  assert.match(opsRoute, /checkPublicBlogSurfaces\(\{ baseUrl: publicSurfaceBaseUrl\(request\) \}\)/);
   assert.doesNotMatch(opsRoute, /status:\s*500/);
 });

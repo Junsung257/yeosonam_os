@@ -8,6 +8,7 @@ import { checkPublicBlogSurfaces, type BlogPublicSurfaceCheckReport } from '@/li
 import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { getSecret } from '@/lib/secret-registry';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
+import type { NextRequest } from 'next/server';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -101,8 +102,12 @@ function emptyBlogSystemPayload(publicSurfaces: BlogPublicSurfaceCheckReport, db
   };
 }
 
-export async function GET() {
-  const publicSurfacesPromise = checkPublicBlogSurfaces()
+function publicSurfaceBaseUrl(request: NextRequest): string {
+  return request.nextUrl.origin.replace(/\/+$/, '');
+}
+
+export async function GET(request: NextRequest) {
+  const publicSurfacesPromise = checkPublicBlogSurfaces({ baseUrl: publicSurfaceBaseUrl(request) })
     .catch((err) => failedPublicSurfaceReport(err));
 
   if (!isSupabaseConfigured) {
