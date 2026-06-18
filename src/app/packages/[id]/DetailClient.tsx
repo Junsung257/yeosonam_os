@@ -20,7 +20,8 @@ import { hasSpecialTermsBanner, shouldSuppressStandardCancelTable } from '@/lib/
 import { trackViewContent, trackLead } from '@/components/MetaPixel';
 import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
-import { getSessionId } from '@/lib/tracker';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { getSessionId, trackEngagement } from '@/lib/tracker';
 import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -357,6 +358,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const openInquiryForm = useCallback((source: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      product_id: id,
+      product_name: pkg?.title ?? '',
+      page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+      metadata: {
+        source,
+        selectedDate,
+        selectedTier: selectedTier?.period_label ?? null,
+      },
+    });
     fetch('/api/tracking/score-signal', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -377,7 +389,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       }),
     }).catch(() => {});
     setShowForm(true);
-  }, [id]);
+  }, [id, pkg?.title, selectedDate, selectedTier?.period_label]);
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -1959,7 +1971,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약 문의 (Jiwonnote 분석 P3) ═══ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white z-40 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]">
+      <div className="fixed bottom-0 left-0 right-0 bg-white z-50 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]">
         {/* 신뢰 배너 — 특약 상품은 방어형 카피, 일반 상품은 전환형 카피 */}
         {(() => {
           const specialTermsProduct = hasSpecialTermsBanner(initialNotices);
@@ -1978,7 +1990,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             </div>
           );
         })()}
-        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-4 pt-3 flex items-center gap-2.5">
+        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex items-center gap-2.5">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
           <div className="flex-1 min-w-0">
             {selectedTier ? (
@@ -2009,6 +2021,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             aria-label="카카오톡으로 문의"
             data-analytics-id="mobile_kakao_consult"
             onClick={async () => {
+              trackEngagement({
+                event_type: ANALYTICS_EVENTS.kakaoClicked,
+                product_id: id,
+                product_name: pkg.title,
+                page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+                metadata: {
+                  source: 'detail_mobile_sticky_kakao',
+                  selectedDate,
+                  selectedTier: selectedTier?.period_label ?? null,
+                },
+              });
               trackLead({
                 content_name: pkg.title || '',
                 value: displayPrice || 0,

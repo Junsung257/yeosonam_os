@@ -51,6 +51,21 @@ const checksToRun = [
     command: process.execPath,
     args: ['scripts/verify-operational-apply-scripts.mjs', '--json'],
   },
+  {
+    id: 'marketing-release-smoke',
+    command: process.execPath,
+    args: [
+      'scripts/verify-marketing-release-readiness.mjs',
+      '--skip-type-check',
+      '--skip-lint',
+      '--skip-marketing-automation',
+      '--skip-runtime',
+      '--skip-build',
+      '--json',
+      '--report=.tmp/marketing-release-contract-report.json',
+    ],
+    expectedStatus: 'blocked',
+  },
 ];
 
 function parseJson(value) {
@@ -72,15 +87,23 @@ function runCheck(check) {
     windowsHide: true,
   });
   const report = parseJson(result.stdout);
-  const passed = result.status === 0 && report?.status === 'pass';
+  const expectedStatus = check.expectedStatus || 'pass';
+  const allowedExitCodes = check.allowedExitCodes || [0];
+  const failedCount = Number(report?.failed ?? 0);
+  const passed = allowedExitCodes.includes(result.status)
+    && report?.status === expectedStatus
+    && failedCount === 0;
   return {
     id: check.id,
     status: passed ? 'pass' : 'fail',
     command: [check.command, ...check.args].join(' '),
     exitCode: result.status,
     passed: Number(report?.passed ?? 0),
+    blocked: Number(report?.blocked ?? 0),
+    warnings: Number(report?.warnings ?? report?.warned ?? 0),
     failed: Number(report?.failed ?? (passed ? 0 : 1)),
     reportStatus: report?.status || 'unknown',
+    expectedStatus,
     error: passed ? '' : (result.stderr || result.stdout || result.error?.message || '').trim().slice(0, 1200),
   };
 }

@@ -10,7 +10,8 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard from '@/components/customer/PackageCard';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
-import { getSessionId } from '@/lib/tracker';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { getSessionId, trackEngagement } from '@/lib/tracker';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -345,6 +346,14 @@ export default function PackagesClient() {
     }).catch(() => {});
   }, []);
 
+  const trackPackageFilter = useCallback((filterName: string, value: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      page_url: '/packages',
+      metadata: { filterName, value, selectedIntent, hub },
+    });
+  }, [hub, selectedIntent]);
+
   const listTopRef = useRef<HTMLDivElement>(null);
   if (isLoading) return <Loading />;
 
@@ -424,7 +433,10 @@ export default function PackagesClient() {
                     ? 'bg-brand text-white border-brand shadow-sm'
                     : 'bg-white text-text-body border-[#E5E7EB] hover:border-brand/40 hover:text-brand'
                 }`}
-                onClick={() => setActiveFilter(f)}
+                onClick={() => {
+                  setActiveFilter(f);
+                  trackPackageFilter('region', f);
+                }}
               >
                 {f}
               </button>
@@ -571,7 +583,7 @@ export default function PackagesClient() {
 
       {/* 플로팅 CTA — 모바일 전용 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
-        <div className="max-w-lg mx-auto px-4 pb-5 pt-3 flex items-center gap-3">
+        <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex items-center gap-3">
           {consultTelHref ? (
             <a
               href={consultTelHref}
@@ -581,6 +593,13 @@ export default function PackagesClient() {
             </a>
           ) : null}
           <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade"
+            onClick={() => {
+              trackEngagement({
+                event_type: ANALYTICS_EVENTS.kakaoClicked,
+                page_url: '/packages',
+                metadata: { source: 'packages_mobile_bottom_cta', selectedIntent, hub },
+              });
+            }}
             className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
             💬 카카오톡 상담
           </a>

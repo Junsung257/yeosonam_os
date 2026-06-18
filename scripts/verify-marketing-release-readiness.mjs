@@ -25,6 +25,8 @@ const skipTypeCheck = hasFlag('--skip-type-check') || process.env.MARKETING_RELE
 const skipLint = hasFlag('--skip-lint') || process.env.MARKETING_RELEASE_SKIP_LINT === '1';
 const skipRuntime = hasFlag('--skip-runtime') || process.env.MARKETING_RELEASE_SKIP_RUNTIME === '1';
 const skipBuild = hasFlag('--skip-build') || process.env.MARKETING_RELEASE_SKIP_BUILD === '1';
+const skipMarketingAutomation =
+  hasFlag('--skip-marketing-automation') || process.env.MARKETING_RELEASE_SKIP_MARKETING_AUTOMATION === '1';
 const skipOperationalInputs =
   hasFlag('--skip-operational-inputs') || process.env.MARKETING_RELEASE_SKIP_OPERATIONAL_INPUTS === '1';
 const skipOperationalDiscovery =
@@ -180,12 +182,14 @@ if (!skipLint) {
   checks.push(run('lint', command, args));
 }
 
-checks.push(run(
-  'marketing-automation',
-  process.execPath,
-  ['scripts/verify-marketing-automation-readiness.mjs', '--strict', '--json'],
-  { parseJson: true },
-));
+if (!skipMarketingAutomation) {
+  checks.push(run(
+    'marketing-automation',
+    process.execPath,
+    ['scripts/verify-marketing-automation-readiness.mjs', '--strict', '--json'],
+    { parseJson: true },
+  ));
+}
 
 if (autoOperationalDiscovery) {
   checks.push(run(
@@ -312,6 +316,7 @@ const report = {
   skipped: {
     typeCheck: skipTypeCheck,
     lint: skipLint,
+    marketingAutomation: skipMarketingAutomation,
     runtime: skipRuntime,
     build: skipBuild,
     operationalInputs: skipOperationalInputs,
