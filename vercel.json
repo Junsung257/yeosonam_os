@@ -95,11 +95,11 @@
     },
     {
       "path": "/api/cron/publish-scheduled",
-      "schedule": "0 * * * *"
+      "schedule": "30 2 * * *"
     },
     {
       "path": "/api/cron/blog-publisher",
-      "schedule": "5 0,3,6,9 * * *"
+      "schedule": "5 3 * * 0"
     },
     {
       "path": "/api/cron/trend-topic-miner",
@@ -207,7 +207,7 @@
     },
     {
       "path": "/api/cron/marketing-rules",
-      "schedule": "15 16-21 * * *"
+      "schedule": "15 19 * * 1"
     },
     {
       "path": "/api/cron/marketing-asset-snapshot",
@@ -239,7 +239,7 @@
     },
     {
       "path": "/api/cron/hitl-reminder",
-      "schedule": "0 */2 * * *"
+      "schedule": "0 4 * * *"
     },
     {
       "path": "/api/cron/content-drift-detect",
@@ -247,7 +247,7 @@
     },
     {
       "path": "/api/cron/churn-detect",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 4 * * 1"
     },
     {
       "path": "/api/cron/weather-upsell",
@@ -263,7 +263,7 @@
     },
     {
       "path": "/api/cron/fraud-detect",
-      "schedule": "0 */2 * * *"
+      "schedule": "30 4 * * *"
     },
     {
       "path": "/api/cron/daily-marketing",
@@ -271,7 +271,7 @@
     },
     {
       "path": "/api/cron/band-rss",
-      "schedule": "0 */4 * * *"
+      "schedule": "0 5 * * 1"
     },
     {
       "path": "/api/cron/threads-trend-miner",
@@ -351,7 +351,7 @@
     },
     {
       "path": "/api/cron/blog-orchestrator",
-      "schedule": "45 */6 * * *"
+      "schedule": "45 5 * * 1"
     }
   ],
   "functions": {

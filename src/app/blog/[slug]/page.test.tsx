@@ -82,6 +82,7 @@ vi.mock('@/lib/supabase', () => {
       gt: vi.fn(() => query),
       order: vi.fn(() => query),
       limit: vi.fn(() => query),
+      abortSignal: vi.fn(() => Promise.resolve(queryResult(table, selected))),
       then: (resolve: (value: unknown) => unknown, reject?: (reason: unknown) => unknown) =>
         Promise.resolve(queryResult(table, selected)).then(resolve, reject),
     };
@@ -90,6 +91,7 @@ vi.mock('@/lib/supabase', () => {
 
   return {
     isSupabaseConfigured: true,
+    isSupabaseAdminConfigured: true,
     supabaseAdmin: {
       from: vi.fn((table: string) => makeQuery(table)),
     },

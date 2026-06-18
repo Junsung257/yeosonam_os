@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { withCronLogging } from '@/lib/cron-observability';
 import { isCronAuthorized, cronUnauthorizedResponse } from '@/lib/cron-auth';
+import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 
 /**
  * 일일 발행 요약 + 저성과 글 자동 재생성 트리거 — 매일 09:00 KST (00:00 UTC)
@@ -45,6 +46,9 @@ async function runDailySummary(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
+
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'blog-daily-summary');
+  if (resourceSaver) return resourceSaver;
 
   if (!isSupabaseConfigured) {
     return { skipped: true, reason: 'Supabase 미설정', errors: [] as string[] };

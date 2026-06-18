@@ -8,40 +8,47 @@
  */
 
 import { classifyDestinationType, classifyPrice, classifyNights } from './parse-product';
+import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 
 export async function updateWinningPatterns(): Promise<{ updated: number; skipped: number }> {
   const { supabaseAdmin } = await import('@/lib/supabase');
 
   // 성과 데이터가 있는 소재 + 상품 정보 조인
-  const { data: performers, error } = await supabaseAdmin
-    .from('creative_performance')
-    .select(`
-      creative_id,
-      channel,
-      impressions,
-      clicks,
-      ctr,
-      spend,
-      inquiries,
-      revenue,
-      roas,
-      ad_creatives!inner (
-        hook_type,
-        tone,
-        key_selling_point,
-        target_segment,
-        creative_type,
-        headline,
-        body,
-        product_id,
-        travel_packages!inner (
-          country,
-          nights,
-          price
+  const { data: performers, error } = await runOptionalSupabaseQuery(
+    supabaseAdmin
+      .from('creative_performance')
+      .select(`
+        creative_id,
+        channel,
+        impressions,
+        clicks,
+        ctr,
+        spend,
+        inquiries,
+        revenue,
+        roas,
+        ad_creatives!inner (
+          hook_type,
+          tone,
+          key_selling_point,
+          target_segment,
+          creative_type,
+          headline,
+          body,
+          product_id,
+          travel_packages!inner (
+            country,
+            nights,
+            price
+          )
         )
-      )
-    `)
-    .gt('impressions', 100);
+      `)
+      .gt('impressions', 100)
+      .order('date', { ascending: false })
+      .limit(500),
+    { data: [], error: null },
+    { label: 'creative.updateWinningPatterns.performers', timeoutMs: 2500 },
+  );
 
   if (error || !performers?.length) {
     console.warn('[updateWinningPatterns] 데이터 없음:', error?.message);

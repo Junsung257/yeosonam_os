@@ -430,6 +430,9 @@ const getCachedPostFast = unstable_cache(
 );
 
 async function getPostFast(slug: string): Promise<BlogPost | null> {
+  if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
+    return getPostFastUncached(slug);
+  }
   return getCachedPostFast(slug);
 }
 
