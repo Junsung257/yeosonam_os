@@ -49,8 +49,10 @@ export function MobileActionSheet({
       }`}
       aria-hidden={!open}
     >
-      <div
-        className="absolute inset-0 bg-black/40"
+      <button
+        type="button"
+        aria-label="액션 시트 닫기"
+        className="absolute inset-0 bg-black/40 cursor-default"
         onClick={onClose}
       />
       <div

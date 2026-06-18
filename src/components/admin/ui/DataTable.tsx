@@ -51,15 +51,15 @@ function priorityCls(priority?: 1 | 2 | 3) {
 function SkeletonRow({ colCount, hasAlert }: { colCount: number; hasAlert: boolean }) {
   const widths = ['w-24', 'w-32', 'w-20', 'w-28', 'w-16', 'w-24', 'w-20', 'w-28'];
   return (
-    <tr>
+    <tr aria-hidden="true">
       {hasAlert && (
-        <td className="w-10 px-2">
-          <div className="h-3 w-3 bg-admin-border rounded-full mx-auto animate-pulse" />
+        <td className="w-10 px-2" aria-label="로딩 중">
+          <div aria-hidden="true" className="h-3 w-3 bg-admin-border rounded-full mx-auto animate-pulse" />
         </td>
       )}
       {Array.from({ length: colCount }).map((_, i) => (
-        <td key={i} className="px-3">
-          <div className={`h-3.5 bg-admin-border rounded animate-pulse ${widths[i % widths.length]}`} />
+        <td key={i} className="px-3" aria-label="로딩 중">
+          <div aria-hidden="true" className={`h-3.5 bg-admin-border rounded animate-pulse ${widths[i % widths.length]}`} />
         </td>
       ))}
     </tr>
@@ -93,8 +93,10 @@ export function DataTable<T>({
               <th
                 className="w-10 px-2"
                 style={{ top: stickyTop }}
-                aria-label="알림"
-              />
+                scope="col"
+              >
+                <span className="sr-only">알림</span>
+              </th>
             )}
             {columns.map((col) => (
               <th
@@ -161,4 +163,3 @@ export function DataTable<T>({
     </div>
   );
 }
-
