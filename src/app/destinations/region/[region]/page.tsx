@@ -9,6 +9,7 @@ import SearchBar from '@/components/customer/SearchBar';
 import SectionHeader from '@/components/customer/SectionHeader';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
+import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 600;
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
@@ -148,6 +149,9 @@ async function getRegionData(slug: string): Promise<RegionData | null> {
   const region = getRegionBySlug(slug);
   if (!region) return null;
   if (!isSupabaseConfigured) {
+    return getEmptyRegionData();
+  }
+  if (shouldSkipPublicDbReadsForResourceSaver()) {
     return getEmptyRegionData();
   }
 

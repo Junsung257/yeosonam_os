@@ -21,6 +21,8 @@
 | `NEXT_PUBLIC_CONSULT_PHONE` | 고객 QA 채팅 **전화 상담** 버튼용 (`tel:`). 미설정 시 전화 버튼 숨김 | `0511234567` 또는 `+82511234567` |
 | `CRON_SECRET` | 크론 작업 인증 Bearer 토큰 (Vercel Cron Jobs가 `Authorization: Bearer <CRON_SECRET>` 전송) | `랜덤 문자열` |
 | `DB_RESOURCE_SAVER_MODE` | Supabase 압박 시 비필수 블로그/마케팅/광고/에이전트 크론을 스킵하고 cron DB 로깅을 중지합니다. Production 기본값은 보호 모드이며, DB 회복 후 `0`으로 꺼서 재개합니다. | `1` 또는 `0` |
+| `DB_RESOURCE_SAVER_PUBLIC_READS` | Supabase 압박 중 공개 고객/탐색 페이지의 DB 읽기 허용 여부입니다. 장애 중에는 미설정/`0`으로 두어 홈, 상품상세, 여행지, 블로그 목적지, 명소 페이지의 비필수 DB 읽기를 막고, `/rest/v1` 및 SQL 헬스체크가 통과한 뒤에만 `1`로 엽니다. | `0` 또는 `1` |
+| `DB_RESOURCE_SAVER_ALLOW_PRODUCT_CRONS` | Supabase 압박 중 상품등록 유지보수 크론 허용 여부입니다. 장애 중에는 미설정/`0`으로 두고, DB 회복 후 통제된 catch-up 실행이 필요할 때만 `1`로 엽니다. | `0` 또는 `1` |
 | `GOOGLE_AI_API_KEY` | Gemini 2.5 Flash (블로그·카드뉴스·Pillar 생성) | `AIza...` |
 | `SUPABASE_JWT_SECRET` | Supabase **JWT 서명용 시크릿** (대시보드 → Project Settings → API → JWT Secret) | Base64 시크릿 |
 | `ADMIN_EMAILS` | **브라우저 쿠키 JWT**로 `/api` 어드민 호출 시 허용 이메일 (쉼표 구분, 대소문자 무시) | `admin@yeosonam.com` |
