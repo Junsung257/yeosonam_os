@@ -398,6 +398,7 @@ function PackageOpsQueue({
             key={card.id}
             type="button"
             onClick={() => onQueueSelect(card.id)}
+            aria-label={`${card.label} 큐 열기, ${card.count}건`}
             className={`min-h-[86px] rounded-admin-md border p-3 text-left transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${
               card.count > 0 ? toneClass[card.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'
             }`}
@@ -541,6 +542,7 @@ const PackageRow = React.memo(function PackageRow({
           onChange={() => {}}
           onClick={e => onToggleCheck(pkg.id, idx, e as React.MouseEvent)}
           className="rounded cursor-pointer"
+          aria-label={`${pkg.title} 선택`}
         />
       </td>
       <td className="px-3 py-2 cursor-pointer max-w-[280px]" onClick={handleRowClick}>
@@ -609,7 +611,6 @@ const PackageRow = React.memo(function PackageRow({
       <td className="px-3 py-2 min-w-[130px]" onClick={e => e.stopPropagation()}>
         {inlineEditPkgId === pkg.id ? (
           <select
-            autoFocus
             className="w-full border border-blue-400 rounded px-2 py-1 text-admin-sm text-admin-text-2"
             defaultValue={pkg.land_operator_id ?? ''}
             onChange={e => onHandleInlineLandOperator(pkg.id, e.target.value)}
@@ -765,60 +766,79 @@ const PackageRow = React.memo(function PackageRow({
         </div>
       </td>
 
-      <td className="px-3 py-2">
-        <div className="flex gap-1 flex-wrap items-center" onClick={e => e.stopPropagation()}>
+      <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
+        <div className="flex flex-col gap-1.5">
           {/* 포스터 버튼 */}
-          <button
-            onClick={() => onOpenPoster(pkg, 'A4')}
-            className="px-1.5 py-1 border border-admin-border-strong text-admin-muted rounded text-[10px] hover:bg-admin-bg whitespace-nowrap"
-            title="A4 포스터"
-          >A4</button>
-          <button
-            onClick={() => window.open(`/packages/${pkg.id}`, '_blank')}
-            className="px-1.5 py-1 border border-orange-300 text-orange-600 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
-            title="모바일 랜딩페이지 (고객용)"
-          >모바일</button>
-          <button
-            onClick={() => window.open(`/admin/packages/${pkg.id}/reviews`, '_blank')}
-            className="px-1.5 py-1 border border-amber-300 text-amber-600 rounded text-[10px] hover:bg-amber-50 whitespace-nowrap"
-            title="고객 후기 관리 (카카오 피드백 등록)"
-          >⭐후기</button>
-          <button
-            onClick={() => onPromptGen(pkg)}
-            className="px-1.5 py-1 border border-blue-300 text-blue-600 rounded text-[10px] hover:bg-blue-50 whitespace-nowrap"
-            title="마케팅 프롬프트 생성"
-          >AD</button>
-          <button
-            onClick={() => onStudioOpen()}
-            className="px-1.5 py-1 border border-emerald-300 text-emerald-600 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap"
-            title="카드뉴스 스튜디오"
-          >Studio</button>
-          <button
-            onClick={() => onKakaoCopy(pkg)}
-            className="px-1.5 py-1 border border-pink-300 text-pink-600 rounded text-[10px] hover:bg-pink-50 whitespace-nowrap"
-            title="카톡 마케팅 문구 생성"
-          >📝문구</button>
-          <button
-            onClick={() => onBulkContentGen(pkg)}
-            className="px-1.5 py-1 border border-violet-400 text-violet-700 rounded text-[10px] hover:bg-violet-50 whitespace-nowrap font-semibold"
-            title="블로그+카드뉴스+광고카피 일괄 생성"
-          >📦전체</button>
-          {/* 콘텐츠 현황 미니 배지 */}
-          {(() => {
-            const ch = contentStatus.get(pkg.id);
-            if (!ch || ch.size === 0) return <span className="text-[9px] text-red-400" title="콘텐츠 없음">0/3</span>;
-            return (
-              <span className="text-[9px] text-admin-muted-2" title={`${[...ch].join(', ')}`}>
-                {ch.has('naver_blog') ? '📝' : '·'}{ch.has('instagram_card') ? '🖼' : '·'}{ch.has('google_search') ? '📢' : '·'}
-              </span>
-            );
-          })()}
-          {/* 플랫폼별 마케팅 복사 드롭다운 */}
-          <div className="relative">
+          <div role="group" aria-label={`${pkg.title} 발행 자료 작업`} className="flex flex-wrap items-center gap-1">
             <button
+              type="button"
+              onClick={() => onOpenPoster(pkg, 'A4')}
+              className="px-1.5 py-1 border border-admin-border-strong text-admin-muted rounded text-[10px] hover:bg-admin-bg whitespace-nowrap"
+              title="A4 포스터"
+              aria-label={`${pkg.title} A4 포스터 열기`}
+            >A4</button>
+            <button
+              type="button"
+              onClick={() => window.open(`/packages/${pkg.id}`, '_blank')}
+              className="px-1.5 py-1 border border-orange-300 text-orange-600 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
+              title="모바일 랜딩페이지 (고객용)"
+              aria-label={`${pkg.title} 고객용 모바일 페이지 열기`}
+            >모바일</button>
+            <button
+              type="button"
+              onClick={() => window.open(`/admin/packages/${pkg.id}/reviews`, '_blank')}
+              className="px-1.5 py-1 border border-amber-300 text-amber-600 rounded text-[10px] hover:bg-amber-50 whitespace-nowrap"
+              title="고객 후기 관리 (카카오 피드백 등록)"
+              aria-label={`${pkg.title} 고객 후기 관리 열기`}
+            >후기</button>
+            <button
+              type="button"
+              onClick={() => onPromptGen(pkg)}
+              className="px-1.5 py-1 border border-blue-300 text-blue-600 rounded text-[10px] hover:bg-blue-50 whitespace-nowrap"
+              title="마케팅 프롬프트 생성"
+              aria-label={`${pkg.title} 마케팅 프롬프트 생성`}
+            >AD</button>
+            <button
+              type="button"
+              onClick={() => onStudioOpen()}
+              className="px-1.5 py-1 border border-emerald-300 text-emerald-600 rounded text-[10px] hover:bg-emerald-50 whitespace-nowrap"
+              title="카드뉴스 스튜디오"
+              aria-label={`${pkg.title} 카드뉴스 스튜디오 열기`}
+            >Studio</button>
+            <button
+              type="button"
+              onClick={() => onKakaoCopy(pkg)}
+              className="px-1.5 py-1 border border-pink-300 text-pink-600 rounded text-[10px] hover:bg-pink-50 whitespace-nowrap"
+              title="카톡 마케팅 문구 생성"
+              aria-label={`${pkg.title} 카톡 마케팅 문구 생성`}
+            >문구</button>
+            <button
+              type="button"
+              onClick={() => onBulkContentGen(pkg)}
+              className="px-1.5 py-1 border border-violet-400 text-violet-700 rounded text-[10px] hover:bg-violet-50 whitespace-nowrap font-semibold"
+              title="블로그+카드뉴스+광고카피 일괄 생성"
+              aria-label={`${pkg.title} 전체 마케팅 콘텐츠 일괄 생성`}
+            >전체</button>
+            {/* 콘텐츠 현황 미니 배지 */}
+            {(() => {
+              const ch = contentStatus.get(pkg.id);
+              if (!ch || ch.size === 0) return <span className="text-[9px] text-red-400" title="콘텐츠 없음">0/3</span>;
+              return (
+                <span className="text-[9px] text-admin-muted-2" title={`${[...ch].join(', ')}`}>
+                  {ch.has('naver_blog') ? '블' : '·'}{ch.has('instagram_card') ? '카' : '·'}{ch.has('google_search') ? '광' : '·'}
+                </span>
+              );
+            })()}
+          </div>
+          <div role="group" aria-label={`${pkg.title} 운영 처리 작업`} className="flex flex-wrap items-center gap-1">
+            {/* 플랫폼별 마케팅 복사 드롭다운 */}
+            <div className="relative">
+            <button
+              type="button"
               onClick={e => { e.stopPropagation(); onSetCopyDropdownId(copyDropdownId === pkg.id ? null : pkg.id); }}
               className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg whitespace-nowrap"
               title="플랫폼별 AI 프롬프트 복사"
+              aria-label={`${pkg.title} 플랫폼별 복사 메뉴 열기`}
             >복사</button>
             {copyDropdownId === pkg.id && (
               <div className="absolute right-0 top-full mt-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs z-50 py-1 min-w-[120px]">
@@ -849,9 +869,11 @@ const PackageRow = React.memo(function PackageRow({
           </div>
           {/* 기록 남기기 버튼 */}
           <button
+            type="button"
             onClick={e => { e.stopPropagation(); onSetLogModalTarget({ packageId: pkg.id, productId: pkg.products?.internal_code ?? pkg.internal_code }); }}
             className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg whitespace-nowrap"
             title="마케팅 발행 URL 기록"
+            aria-label={`${pkg.title} 마케팅 발행 기록 남기기`}
           >기록</button>
           {/* 일정표 듀얼뷰 바로가기 */}
           <a
@@ -864,45 +886,58 @@ const PackageRow = React.memo(function PackageRow({
           >일정</a>
           {/* 수정 버튼 (항상 표시) */}
           <button
+            type="button"
             onClick={e => onOpenSingleEdit(pkg, e)}
             className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg"
+            aria-label={`${pkg.title} 수정`}
           >수정</button>
           {expired && (
             <button
+              type="button"
               onClick={() => onHandleAction(pkg.id, 'extend')}
               disabled={!!actionLoading}
               className="px-2 py-1 bg-blue-600 text-white rounded text-[11px] hover:bg-blue-700 disabled:opacity-50"
+              aria-label={`${pkg.title} 판매 연장`}
             >연장</button>
           )}
           {pkg.status === 'pending_review' && !expired && (
             <button
+              type="button"
               onClick={() => onSetApprovalTarget(pkg)}
               className="px-2 py-1 bg-amber-500 text-white rounded text-[11px] hover:bg-amber-600"
+              aria-label={`${pkg.title} 검수 시작`}
             >검수</button>
           )}
           {pkg.status === 'pending' && !expired && (
             <>
               <button
+                type="button"
                 onClick={() => onHandleAction(pkg.id, 'approve')}
                 disabled={!!actionLoading}
                 className="px-2 py-1 bg-green-600 text-white rounded text-[11px] hover:bg-green-700 disabled:opacity-50"
+                aria-label={`${pkg.title} 승인`}
               >승인</button>
               <button
+                type="button"
                 onClick={() => onHandleAction(pkg.id, 'reject')}
                 disabled={!!actionLoading}
                 className="px-2 py-1 bg-red-500 text-white rounded text-[11px] hover:bg-red-600 disabled:opacity-50"
+                aria-label={`${pkg.title} 거부`}
               >거부</button>
             </>
           )}
           {pkg.status === 'approved' && !expired && (
             <button
+              type="button"
               onClick={() => onHandleAction(pkg.id, 'reject')}
               disabled={!!actionLoading}
               className="px-2 py-1 border border-admin-border-strong text-admin-muted rounded text-[11px] hover:bg-admin-bg disabled:opacity-50"
+              aria-label={`${pkg.title} 비활성화`}
             >비활성화</button>
           )}
           {/* N5 박제 (2026-05-16 Lemax 표준 — 35% 수익↑): Template 재사용 1-click 복제 */}
           <button
+            type="button"
             onClick={async (e) => {
               e.stopPropagation();
               const suffix = prompt('새 패키지 제목 접미사 (예: 4박6일 변형)', '(복제)');
@@ -921,7 +956,9 @@ const PackageRow = React.memo(function PackageRow({
             }}
             className="px-2 py-1 bg-purple-100 text-purple-700 border border-purple-300 rounded text-[11px] hover:bg-purple-200 font-medium"
             title="Lemax 표준 — 패키지 복제 (3x 빠른 등록)"
-          >📋 복제</button>
+            aria-label={`${pkg.title} 패키지 복제`}
+          >복제</button>
+          </div>
         </div>
       </td>
     </tr>
@@ -1521,6 +1558,24 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     return !p.airline || !Array.isArray(days) || days.length === 0 || !hasPrice;
   }).length;
   const handleQueueSelect = (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => {
+    const queueCounts = {
+      review: pendingCount,
+      copy: reviewCount + gapCount,
+      publish: readyCount,
+      deadline: deadlineCount,
+      gaps: gapCount,
+    };
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/packages',
+      metadata: {
+        surface: 'packages_action_queue',
+        action: 'queue_opened',
+        queue,
+        count: queueCounts[queue],
+        has_waiting_work: queueCounts[queue] > 0,
+      },
+    });
     setSearchQuery('');
     if (queue === 'review' || queue === 'copy') {
       setStatusFilter('pending');
@@ -1728,6 +1783,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     checked={filtered.length > 0 && checkedIds.size === filtered.length}
                     onChange={toggleAll}
                     className="rounded"
+                    aria-label="현재 필터 상품 전체 선택"
                   />
                 </th>
                 <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('title')}>상품명<span className="text-admin-muted-2 text-[11px]">{sortIcon('title')}</span></th>
@@ -1738,7 +1794,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <th className="text-center px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('deadline')}>발권기한<span className="text-admin-muted-2 text-[11px]">{sortIcon('deadline')}</span></th>
                 <th className="text-center px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('status')}>상태<span className="text-admin-muted-2 text-[11px]">{sortIcon('status')}</span></th>
                 <th className="px-3 py-2 text-admin-muted font-medium text-center">마케팅 커버리지</th>
-                <th className="px-3 py-2" />
+                <th className="px-3 py-2"><span className="sr-only">행 작업</span></th>
               </tr>
             </thead>
             <tbody>
@@ -1801,25 +1857,36 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
       {/* 복사 드롭다운 외부 클릭 닫기 */}
       {copyDropdownId && (
-        <div className="fixed inset-0 z-40" onClick={() => setCopyDropdownId(null)} />
+        <button
+          type="button"
+          aria-label="복사 드롭다운 닫기"
+          className="fixed inset-0 z-40 cursor-default"
+          onClick={() => setCopyDropdownId(null)}
+        />
       )}
 
       {/* Bulk Edit 슬라이드 패널 */}
       {bulkEditOpen && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setBulkEditOpen(false)} />
+          <button
+            type="button"
+            aria-label="일괄 수정 패널 닫기"
+            className="fixed inset-0 bg-black/40 z-50 cursor-default"
+            onClick={() => setBulkEditOpen(false)}
+          />
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col">
             <div className="p-6 border-b border-admin-border-mid">
               <div className="flex items-center justify-between">
                 <h3 className="text-admin-lg font-bold text-admin-text-2">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
-                <button onClick={() => setBulkEditOpen(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none">×</button>
+                <button type="button" onClick={() => setBulkEditOpen(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="일괄 수정 패널 닫기">×</button>
               </div>
               <p className="text-admin-sm text-admin-muted mt-1">변경할 항목만 선택하세요. 비워두면 해당 필드는 유지됩니다.</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
+                <label htmlFor="bulk-land-operator" className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
                 <select
+                  id="bulk-land-operator"
                   value={bulkLandOperator}
                   onChange={e => setBulkLandOperator(e.target.value)}
                   className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1829,8 +1896,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 </select>
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">커미션 (%)</label>
+                <label htmlFor="bulk-commission-rate" className="block text-admin-sm font-medium text-admin-text-2 mb-1">커미션 (%)</label>
                 <input
+                  id="bulk-commission-rate"
                   type="number"
                   min="0"
                   max="100"
@@ -1844,10 +1912,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             </div>
             <div className="p-6 border-t border-admin-border-mid flex gap-2 justify-end">
               <button
+                type="button"
                 onClick={() => setBulkEditOpen(false)}
                 className="px-4 py-2 bg-white border border-admin-border-strong rounded-lg text-admin-sm text-admin-text-2 hover:bg-admin-bg"
               >취소</button>
               <button
+                type="button"
                 onClick={handleBulkEdit}
                 disabled={bulkLoading || (!bulkLandOperator && bulkCommission === '')}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
@@ -1860,19 +1930,25 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* Single Edit 슬라이드 패널 */}
       {editPkg && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setEditPkg(null)} />
+          <button
+            type="button"
+            aria-label="상품 수정 패널 닫기"
+            className="fixed inset-0 bg-black/40 z-50 cursor-default"
+            onClick={() => setEditPkg(null)}
+          />
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col">
             <div className="p-6 border-b border-admin-border-mid">
               <div className="flex items-center justify-between">
                 <h3 className="text-admin-lg font-bold text-admin-text-2">상품 수정</h3>
-                <button onClick={() => setEditPkg(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none">×</button>
+                <button type="button" onClick={() => setEditPkg(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="상품 수정 패널 닫기">×</button>
               </div>
               <p className="text-admin-sm text-admin-muted truncate mt-0.5">{editPkg.title}</p>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">상품명</label>
+                <label htmlFor="single-package-title" className="block text-admin-sm font-medium text-admin-text-2 mb-1">상품명</label>
                 <input
+                  id="single-package-title"
                   type="text"
                   value={editForm.title}
                   onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
@@ -1880,8 +1956,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 />
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">목적지</label>
+                <label htmlFor="single-package-destination" className="block text-admin-sm font-medium text-admin-text-2 mb-1">목적지</label>
                 <input
+                  id="single-package-destination"
                   type="text"
                   value={editForm.destination}
                   onChange={e => setEditForm(f => ({ ...f, destination: e.target.value }))}
@@ -1890,8 +1967,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 />
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
+                <label htmlFor="single-land-operator" className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
                 <select
+                  id="single-land-operator"
                   value={editForm.land_operator_id}
                   onChange={e => setEditForm(f => ({ ...f, land_operator_id: e.target.value }))}
                   className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -1903,8 +1981,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 </select>
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">커미션 (%)</label>
+                <label htmlFor="single-commission-rate" className="block text-admin-sm font-medium text-admin-text-2 mb-1">커미션 (%)</label>
                 <input
+                  id="single-commission-rate"
                   type="number"
                   min="0"
                   max="100"
@@ -1916,8 +1995,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 />
               </div>
               <div>
-                <label className="block text-admin-sm font-medium text-admin-text-2 mb-1">발권기한</label>
+                <label htmlFor="single-ticketing-deadline" className="block text-admin-sm font-medium text-admin-text-2 mb-1">발권기한</label>
                 <input
+                  id="single-ticketing-deadline"
                   type="date"
                   value={editForm.ticketing_deadline}
                   onChange={e => setEditForm(f => ({ ...f, ticketing_deadline: e.target.value }))}
@@ -1927,10 +2007,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             </div>
             <div className="p-6 border-t border-admin-border-mid flex gap-2 justify-end">
               <button
+                type="button"
                 onClick={() => setEditPkg(null)}
                 className="px-4 py-2 bg-white border border-admin-border-strong rounded-lg text-admin-sm text-admin-text-2 hover:bg-admin-bg"
               >취소</button>
               <button
+                type="button"
                 onClick={handleSingleEdit}
                 disabled={editSaving}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
@@ -1943,7 +2025,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* 상세 슬라이드 패널 */}
       {selected && (
         <>
-          <div className="fixed inset-0 bg-black/40 z-50" onClick={() => setSelected(null)} />
+          <button
+            type="button"
+            aria-label="상품 상세 패널 닫기"
+            className="fixed inset-0 bg-black/40 z-50 cursor-default"
+            onClick={() => setSelected(null)}
+          />
           <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-admin-border-mid flex flex-col">
             <div className="p-6 border-b border-admin-border-mid flex items-start justify-between">
               <div>
@@ -1968,7 +2055,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   })()}
                 </div>
               </div>
-              <button onClick={() => setSelected(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none">×</button>
+              <button type="button" onClick={() => setSelected(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="상품 상세 패널 닫기">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-admin-sm">
@@ -2226,21 +2313,28 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
       {/* ── 카톡 마케팅 문구 모달 ───────────────────────────────────── */}
       {kakaoCopyTarget && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }}>
-          <div className="bg-white rounded-admin-lg w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <>
+          <button
+            type="button"
+            aria-label="카톡 마케팅 문구 모달 닫기"
+            className="fixed inset-0 bg-black/50 z-50 cursor-default"
+            onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }}
+          />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
+          <div className="pointer-events-auto bg-white rounded-admin-lg w-full max-w-xl max-h-[90vh] overflow-y-auto">
             <div className="p-5 border-b flex justify-between items-start">
               <div>
-                <h3 className="font-bold text-lg">📝 카톡 마케팅 문구</h3>
+                <h3 className="font-bold text-lg">카톡 마케팅 문구</h3>
                 <p className="text-xs text-admin-muted-2 mt-1">{kakaoCopyTarget.title}</p>
               </div>
-              <button onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-admin-muted-2 hover:text-admin-muted text-xl">×</button>
+              <button type="button" onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-admin-muted-2 hover:text-admin-muted text-xl" aria-label="카톡 마케팅 문구 모달 닫기">×</button>
             </div>
 
             {/* 생성 버튼 */}
             {!kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-6 text-center">
                 <p className="text-sm text-admin-muted mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
-                <button onClick={async () => {
+                <button type="button" onClick={async () => {
                   setKakaoCopyLoading(true);
                   try {
                     const pkg = kakaoCopyTarget;
@@ -2267,7 +2361,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                   finally { setKakaoCopyLoading(false); }
                 }} className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-admin-md hover:opacity-90 text-sm">
-                  🔥 문구 생성하기
+                  문구 생성하기
                 </button>
               </div>
             )}
@@ -2284,13 +2378,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             {kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-4">
                 <textarea value={kakaoCopyText} onChange={e => setKakaoCopyText(e.target.value)}
+                  aria-label="카톡 마케팅 문구"
                   rows={18} className="w-full border rounded-admin-md px-4 py-3 text-sm leading-relaxed resize-none focus:ring-2 focus:ring-pink-300 focus:outline-none" />
                 <div className="flex gap-2 mt-3">
-                  <button onClick={() => { navigator.clipboard.writeText(kakaoCopyText); }}
+                  <button type="button" onClick={() => { navigator.clipboard.writeText(kakaoCopyText); }}
                     className="flex-1 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-admin-md hover:bg-blue-700">
-                    📋 문구 복사
+                    문구 복사
                   </button>
-                  <button onClick={async () => {
+                  <button type="button" onClick={async () => {
                     setKakaoCopyLoading(true); setKakaoCopyText('');
                     try {
                       const pkg = kakaoCopyTarget;
@@ -2310,13 +2405,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                     finally { setKakaoCopyLoading(false); }
                   }} className="py-2.5 px-4 bg-admin-surface-2 text-admin-text-2 text-sm rounded-admin-md hover:bg-slate-200">
-                    🔄 재생성
+                    재생성
                   </button>
                 </div>
               </div>
             )}
           </div>
-        </div>
+          </div>
+        </>
       )}
 
       {/* ── CardNewsStudio ───────────────────────────────────────────── */}
