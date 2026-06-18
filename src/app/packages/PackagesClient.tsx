@@ -277,11 +277,11 @@ export default function PackagesClient() {
   }, [searchParams]);
 
   // ── 정렬 + 필터 ─────────────────────────────────────────────
-  const [activeFilter, setActiveFilter] = useState('전체');
+  const [activeFilter, setActiveFilter] = useState<string>(FILTER_OPTIONS[0]);
   const [sortBy, setSortBy] = useState('recommended');
 
   useEffect(() => {
-    setActiveFilter(filter || '전체');
+    setActiveFilter(filter || FILTER_OPTIONS[0]);
   }, [filter]);
 
   const trackScoreSignal = useCallback((input: {
@@ -469,6 +469,28 @@ export default function PackagesClient() {
     if (value !== selectedIntent) handleIntentSelect(value as IntentId);
   }, [handleIntentSelect, selectedIntent, trackPackageFilter]);
 
+  const hasActivePackageFilters = Boolean(
+    destination ||
+      q ||
+      month ||
+      priceMin ||
+      priceMax ||
+      urgency ||
+      category ||
+      selectedIntent ||
+      activeFilter !== FILTER_OPTIONS[0] ||
+      hub !== DEFAULT_DEPARTURE_HUB,
+  );
+
+  const resetPackageFilters = useCallback(() => {
+    setSelectedIntent(null);
+    setActiveFilter(FILTER_OPTIONS[0]);
+    setSortBy('recommended');
+    setShowMoreFilters(false);
+    trackPackageFilter('reset', 'all');
+    router.push('/packages');
+  }, [router, trackPackageFilter]);
+
   const listTopRef = useRef<HTMLDivElement>(null);
   if (isLoading) return <Loading />;
 
@@ -571,6 +593,7 @@ export default function PackagesClient() {
               type="button"
               onClick={() => setShowMoreFilters(v => !v)}
               aria-expanded={showMoreFilters}
+              aria-controls="package-more-filters"
               className={`h-[36px] shrink-0 rounded-full border px-3.5 text-[13px] font-bold transition ${
                 showMoreFilters
                   ? 'border-brand bg-brand text-white'
@@ -580,7 +603,7 @@ export default function PackagesClient() {
               더 많은 필터
             </button>
           </div>
-          <div className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}>
+          <div id="package-more-filters" className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}>
             <div className="relative shrink-0">
               <select
                 aria-label="정렬 순서"
@@ -607,6 +630,7 @@ export default function PackagesClient() {
               <button
                 key={f}
                 type="button"
+                aria-pressed={activeFilter === f}
                 className={`shrink-0 h-[34px] px-3.5 text-[13px] font-medium rounded-full border transition card-touch ${
                   activeFilter === f
                     ? 'bg-brand text-white border-brand shadow-sm'
@@ -641,6 +665,15 @@ export default function PackagesClient() {
                 {item.value}
               </span>
             ))}
+            {hasActivePackageFilters && (
+              <button
+                type="button"
+                onClick={resetPackageFilters}
+                className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-3 py-1.5 text-[12px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
+              >
+                조건 초기화
+              </button>
+            )}
           </div>
         </div>
       </section>
@@ -655,6 +688,7 @@ export default function PackagesClient() {
             <button
               key={opt.id}
               type="button"
+              aria-pressed={selectedIntent === opt.id}
               onClick={() => handleIntentSelect(opt.id)}
               className={`shrink-0 h-10 rounded-full border px-3.5 text-[13px] font-bold transition ${
                 selectedIntent === opt.id
@@ -697,12 +731,13 @@ export default function PackagesClient() {
                 <p className="text-[13px] text-text-secondary">필터를 초기화하거나 직접 문의해 보세요</p>
               </div>
               <div className="flex items-center gap-2 mt-1">
-                {activeFilter !== '전체' && (
+                {hasActivePackageFilters && (
                   <button
-                    onClick={() => setActiveFilter('전체')}
+                    type="button"
+                    onClick={resetPackageFilters}
                     className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
                   >
-                    전체 보기
+                    조건 초기화
                   </button>
                 )}
                 {consultTelHref && (
@@ -735,6 +770,7 @@ export default function PackagesClient() {
                     ? 'bg-brand border-brand text-white shadow-sm'
                     : 'bg-white/90 border-gray-300 text-gray-400 hover:border-brand/60 hover:text-brand'
                 }`}
+                aria-pressed={compareIds.includes(pkg.id)}
                 aria-label={compareIds.includes(pkg.id) ? `비교 해제: ${pkg.display_title || pkg.title}` : `비교 추가: ${pkg.display_title || pkg.title}`}
               >
                 {compareIds.includes(pkg.id) ? (
