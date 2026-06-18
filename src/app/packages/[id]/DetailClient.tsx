@@ -396,6 +396,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [isLoading, setIsLoading] = useState(!initialPackage);
   const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState({ name: '', phone: '', message: '', date: '' });
+  const [reservationConsent, setReservationConsent] = useState(false);
+  const [reservationSubmitAttempted, setReservationSubmitAttempted] = useState(false);
+  const [reservationSubmitError, setReservationSubmitError] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [attractions, setAttractions] = useState<AttractionInfo[]>(initialAttractions);
   const [clipboardToast, setClipboardToast] = useState(false);
@@ -474,6 +477,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         session_id: getSessionId(),
       }),
     }).catch(() => {});
+    setReservationSubmitAttempted(false);
+    setReservationSubmitError('');
+    setReservationConsent(false);
     setShowForm(true);
   }, [id, pkg?.title, selectedDate, selectedTier?.period_label]);
 
@@ -788,7 +794,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const retArrTime = view.flightHeader.inbound?.arrTime ?? undefined;
 
   const handleSubmit = async () => {
-    if (!formData.name || !formData.phone || isSubmitting) return;
+    setReservationSubmitAttempted(true);
+    setReservationSubmitError('');
+
+    if (!formData.name.trim() || !formData.phone.trim() || !reservationConsent || isSubmitting) return;
     setIsSubmitting(true);
     let ok = false;
     let errMsg = '';
@@ -805,7 +814,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             desiredDate: formData.date || selectedTier?.period_label || null,
             adults: 1,
             children: 0,
-            privacyConsent: true,
+            privacyConsent: reservationConsent,
           },
           tracking: {
             landingUrl: window.location.href,
@@ -828,10 +837,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     }
     if (ok) {
       setSubmitted(true);
-      setTimeout(() => { setShowForm(false); setSubmitted(false); setFormData({ name: '', phone: '', message: '', date: '' }); }, 3000);
+      setTimeout(() => {
+        setShowForm(false);
+        setSubmitted(false);
+        setFormData({ name: '', phone: '', message: '', date: '' });
+        setReservationConsent(false);
+        setReservationSubmitAttempted(false);
+        setReservationSubmitError('');
+      }, 3000);
     } else {
-      // silent failure 방지: 사용자에게 실패를 명시 — 카톡 채널 폴백 안내
-      alert(`예약 문의 전송에 실패했습니다.\n${errMsg}\n\n카카오톡 채널로 직접 문의해주시면 빠르게 도와드리겠습니다.`);
+      setReservationSubmitError(`예약 문의 전송에 실패했습니다. ${errMsg} 카카오톡 채널로 직접 문의해주시면 빠르게 도와드리겠습니다.`);
     }
   };
 
@@ -857,12 +872,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   };
   const reservationNameMissing = formData.name.trim().length === 0;
   const reservationPhoneMissing = formData.phone.trim().length === 0;
-  const reservationFormReady = !reservationNameMissing && !reservationPhoneMissing && !isSubmitting;
+  const reservationConsentMissing = !reservationConsent;
+  const showReservationNameError = reservationSubmitAttempted && reservationNameMissing;
+  const showReservationPhoneError = reservationSubmitAttempted && reservationPhoneMissing;
+  const showReservationConsentError = reservationSubmitAttempted && reservationConsentMissing;
+  const reservationFormReady = !reservationNameMissing && !reservationPhoneMissing && !reservationConsentMissing && !isSubmitting;
   const reservationFormHint = reservationNameMissing
     ? '이름을 입력하면 문의 접수 버튼이 준비됩니다.'
     : reservationPhoneMissing
       ? '연락처를 입력하면 바로 문의를 접수할 수 있어요.'
-      : '담당자가 출발 가능일과 인원을 확인해 연락드립니다.';
+      : reservationConsentMissing
+        ? '개인정보 안내에 동의하면 문의를 접수할 수 있어요.'
+        : '담당자가 출발 가능일과 인원을 확인해 연락드립니다.';
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
@@ -2357,13 +2378,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 <div className="space-y-3">
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">이름 <span className="text-brand">*</span></span>
-                    <input name="name" autoComplete="name" aria-describedby="reservation-inquiry-description" placeholder="홍길동" value={formData.name} onChange={e => setFormData(f => ({ ...f, name: e.target.value }))}
+                    <input id="reservation-name" name="name" autoComplete="name" aria-describedby={showReservationNameError ? 'reservation-name-error' : 'reservation-inquiry-description'} aria-invalid={showReservationNameError} placeholder="홍길동" value={formData.name} onChange={e => { setFormData(f => ({ ...f, name: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
+                    {showReservationNameError && (
+                      <p id="reservation-name-error" className="mt-1 text-xs font-semibold text-red-600">이름을 입력해주세요.</p>
+                    )}
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">연락처 <span className="text-brand">*</span></span>
-                    <input name="phone" autoComplete="tel" inputMode="tel" placeholder="010-0000-0000" value={formData.phone} onChange={e => setFormData(f => ({ ...f, phone: e.target.value }))}
+                    <input id="reservation-phone" name="phone" autoComplete="tel" inputMode="tel" aria-describedby={showReservationPhoneError ? 'reservation-phone-error' : undefined} aria-invalid={showReservationPhoneError} placeholder="010-0000-0000" value={formData.phone} onChange={e => { setFormData(f => ({ ...f, phone: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
+                    {showReservationPhoneError && (
+                      <p id="reservation-phone-error" className="mt-1 text-xs font-semibold text-red-600">연락처를 입력해주세요.</p>
+                    )}
                   </label>
                   {!selectedTier && <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">희망 출발일</span>
@@ -2375,14 +2402,41 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     <textarea name="message" placeholder="인원, 객실, 부모님 동행 여부 등" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
                       rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400 resize-none" />
                   </label>
+                  <div>
+                    <label className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
+                      <input
+                        type="checkbox"
+                        checked={reservationConsent}
+                        onChange={(e) => {
+                          setReservationConsent(e.target.checked);
+                          if (reservationSubmitError) setReservationSubmitError('');
+                        }}
+                        aria-invalid={showReservationConsentError}
+                        aria-describedby={showReservationConsentError ? 'reservation-consent-error' : undefined}
+                        className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
+                      />
+                      <span>
+                        예약 문의와 상담 안내를 위해 입력한 정보를 여소남이 확인하는 데 동의합니다.
+                        <Link href="/privacy" className="ml-1 font-bold text-brand underline underline-offset-2">개인정보 안내</Link>
+                      </span>
+                    </label>
+                    {showReservationConsentError && (
+                      <p id="reservation-consent-error" className="mt-1 text-xs font-semibold text-red-600">개인정보 안내에 동의해주세요.</p>
+                    )}
+                  </div>
+                  {reservationSubmitError && (
+                    <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold leading-relaxed text-red-700" role="alert">
+                      {reservationSubmitError}
+                    </p>
+                  )}
                   <p className={`rounded-xl px-3 py-2 text-[11px] font-semibold leading-relaxed ${
                     reservationFormReady ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'
                   }`}>
                     {reservationFormHint}
                   </p>
-                  <button onClick={handleSubmit} disabled={!reservationFormReady}
+                  <button onClick={handleSubmit} disabled={isSubmitting}
                     aria-disabled={!reservationFormReady}
-                    title={!reservationFormReady ? '이름과 연락처를 입력해 주세요' : undefined}
+                    title={!reservationFormReady ? '필수 항목을 확인해 주세요' : undefined}
                     data-analytics-id="reservation_sheet_submit"
                     className="w-full py-3 bg-slate-950 text-white font-bold rounded-xl text-sm disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 shadow-lg disabled:shadow-none flex items-center justify-center gap-2">
                     {isSubmitting ? (

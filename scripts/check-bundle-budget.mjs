@@ -46,8 +46,8 @@ function activeNextDevServerProcesses() {
   if (process.platform === 'win32') {
     const escapedRoot = root.replace(/'/g, "''");
     const script = [
-      'Get-CimInstance Win32_Process -Filter "name = \'node.exe\'"',
-      `Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -like '*${escapedRoot}*' -and ($_.CommandLine -like '*next* dev*' -or $_.CommandLine -like '*next/dist/bin/next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\bin\\\\next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\server\\\\lib\\\\start-server.js*') }`,
+      'Get-CimInstance Win32_Process',
+      `Where-Object { $_.ProcessId -ne ${process.pid} -and $_.CommandLine -like '*${escapedRoot}*' -and $_.CommandLine -notlike '*Get-CimInstance Win32_Process*' -and ($_.CommandLine -like '*npm*run*dev*' -or $_.CommandLine -like '*Start-Process*npm.cmd*run*dev*' -or $_.CommandLine -like '*next* dev*' -or $_.CommandLine -like '*next/dist/bin/next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\bin\\\\next*dev*' -or $_.CommandLine -like '*next\\\\dist\\\\server\\\\lib\\\\start-server.js*' -or $_.CommandLine -like '*start-server.js*') }`,
       'Select-Object -First 5 -ExpandProperty ProcessId',
     ].join(' | ');
     const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
@@ -66,7 +66,7 @@ function activeNextDevServerProcesses() {
   return String(result.stdout || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter((line) => line.includes(root) && (/\bnext\b.*\bdev\b/.test(line) || line.includes('next/dist/server/lib/start-server.js')))
+    .filter((line) => line.includes(root) && (/\bnpm\b.*\brun\b.*\bdev\b/.test(line) || /\bnext\b.*\bdev\b/.test(line) || line.includes('start-server.js')))
     .map((line) => Number(line.split(/\s+/, 1)[0]))
     .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid)
     .slice(0, 5);

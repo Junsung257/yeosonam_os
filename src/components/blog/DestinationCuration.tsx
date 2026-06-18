@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import BlogProductRecommendationTracker from './BlogProductRecommendationTracker';
 
 /**
@@ -111,9 +111,12 @@ export default function DestinationCuration({
                   className="absolute inset-0 h-full w-full object-cover group-hover:scale-105 transition-transform duration-500"
                   loading="lazy"
                   fallback={
-                    <div className="absolute inset-0 flex items-center justify-center text-slate-300 text-4xl">
-                      🌍
-                    </div>
+                    <DestinationImageFallback
+                      title={p.title}
+                      destination={p.destination || destination}
+                      compact
+                      className="absolute inset-0"
+                    />
                   }
                 />
                 <span className="absolute top-2 left-2 px-2 py-0.5 text-[10px] font-bold rounded-full bg-white/90 text-slate-700">

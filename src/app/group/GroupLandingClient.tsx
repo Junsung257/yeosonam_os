@@ -3,6 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trackLead } from '@/components/MetaPixel';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { openKakaoChannel } from '@/lib/kakaoChannel';
+import { trackEngagement } from '@/lib/tracker';
 
 // ─── 폼 선택지 정의 ────────────────────────────────────────
 const PURPOSE_OPTIONS = [
@@ -73,6 +76,18 @@ type FormState = {
   notes: string;
 };
 
+type RequiredField =
+  | 'contact_name'
+  | 'contact_phone'
+  | 'group_name'
+  | 'purpose'
+  | 'destination'
+  | 'departure_date'
+  | 'pax_label'
+  | 'budget_label';
+
+type FieldErrorKey = RequiredField | 'privacy_consent';
+
 const INITIAL_FORM: FormState = {
   contact_name: '',
   contact_phone: '',
@@ -87,6 +102,23 @@ const INITIAL_FORM: FormState = {
   notes: '',
 };
 
+const REQUIRED_FIELD_LABELS: Record<RequiredField, string> = {
+  contact_name: '신청자 성함',
+  contact_phone: '연락처',
+  group_name: '단체명',
+  purpose: '단체 성격',
+  destination: '희망 여행지',
+  departure_date: '희망 출발일',
+  pax_label: '예상 인원',
+  budget_label: '1인 예산',
+};
+
+const REQUIRED_FIELDS = Object.keys(REQUIRED_FIELD_LABELS) as RequiredField[];
+
+function errorId(key: FieldErrorKey) {
+  return `group-${key.replace(/_/g, '-')}-error`;
+}
+
 export default function GroupLandingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -94,6 +126,8 @@ export default function GroupLandingClient() {
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldErrorKey, string>>>({});
+  const [privacyConsent, setPrivacyConsent] = useState(false);
 
   // URL hash 에 preset 쿼리(?preset=...)가 있으면 단체 유형 자동 선택
   useEffect(() => {
@@ -109,33 +143,98 @@ export default function GroupLandingClient() {
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+    setFieldErrors((current) => {
+      const fieldKey = key as FieldErrorKey;
+      if (!current[fieldKey]) return current;
+      const next = { ...current };
+      delete next[fieldKey];
+      return next;
+    });
+  }
+
+  function fieldA11y(key: FieldErrorKey) {
+    return {
+      'aria-invalid': Boolean(fieldErrors[key]),
+      'aria-describedby': fieldErrors[key] ? errorId(key) : undefined,
+    };
+  }
+
+  function renderFieldError(key: FieldErrorKey) {
+    if (!fieldErrors[key]) return null;
+    return (
+      <p id={errorId(key)} className="mt-1 text-xs font-semibold text-red-600">
+        {fieldErrors[key]}
+      </p>
+    );
+  }
+
+  function validateForm() {
+    const nextErrors: Partial<Record<FieldErrorKey, string>> = {};
+
+    for (const key of REQUIRED_FIELDS) {
+      if (!form[key].trim()) {
+        nextErrors[key] = `${REQUIRED_FIELD_LABELS[key]}을(를) 입력해주세요.`;
+      }
+    }
+
+    const adultCount = parsePaxLabel(form.pax_label);
+    if (form.pax_label && adultCount === 0) {
+      nextErrors.pax_label = '예상 인원을 다시 확인해주세요.';
+    }
+
+    if (!privacyConsent) {
+      nextErrors.privacy_consent = '견적 상담을 위해 개인정보 안내에 동의해주세요.';
+    }
+
+    setFieldErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  }
+
+  async function handleKakaoConsult() {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      page_url: window.location.pathname,
+      intent: form.purpose || null,
+      budget: form.budget_label || null,
+      destination: form.destination || null,
+      party_type: 'group_landing',
+      metadata: {
+        source: 'group_landing_form',
+        pax_label: form.pax_label || null,
+      },
+    });
+
+    await openKakaoChannel({
+      productTitle: '단체 맞춤 견적',
+      escalationSummary: [
+        `단체명: ${form.group_name || '미입력'}`,
+        `단체 성격: ${form.purpose || '미입력'}`,
+        `목적지: ${form.destination || '미입력'}`,
+        `출발일: ${form.departure_date || '미입력'}`,
+        `인원: ${form.pax_label || '미입력'}`,
+        `예산: ${form.budget_label || '미입력'}`,
+        `호텔: ${form.hotel_grade || '미정'}`,
+        `쇼핑: ${form.shopping || '미정'}`,
+        form.notes ? `요청사항: ${form.notes}` : null,
+      ].filter(Boolean).join('\n'),
+      leadForm: {
+        name: form.contact_name || undefined,
+        phone: form.contact_phone || undefined,
+        adults: parsePaxLabel(form.pax_label) || undefined,
+      },
+    });
   }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
 
-    // ── 필수 필드 검증 ────────────────────────────────────
-    if (
-      !form.contact_name ||
-      !form.contact_phone ||
-      !form.group_name ||
-      !form.purpose ||
-      !form.destination ||
-      !form.departure_date ||
-      !form.pax_label ||
-      !form.budget_label
-    ) {
-      setError('필수 항목을 모두 입력해주세요.');
+    if (!validateForm()) {
+      setError('필수 항목을 확인해주세요.');
       return;
     }
 
     const adultCount = parsePaxLabel(form.pax_label);
-    if (adultCount === 0) {
-      setError('인원수를 다시 확인해주세요.');
-      return;
-    }
-
     setSubmitting(true);
 
     try {
@@ -167,6 +266,7 @@ export default function GroupLandingClient() {
           shopping_preference: form.shopping || undefined,
           budget_range_label: form.budget_label,
           pax_label: form.pax_label,
+          privacy_consent: privacyConsent,
           utm,
           submitted_at: new Date().toISOString(),
         },
@@ -186,6 +286,19 @@ export default function GroupLandingClient() {
 
       // ── Meta Pixel Lead 이벤트 ───────────────────────────
       trackLead({ content_name: '단체여행 견적', value: 0 });
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+        page_url: window.location.pathname,
+        intent: form.purpose || null,
+        budget: form.budget_label || null,
+        destination: form.destination || null,
+        party_type: 'group_landing',
+        metadata: {
+          source: 'group_landing_submit',
+          rfq_id: data.rfq.id,
+          pax_label: form.pax_label,
+        },
+      });
 
       // ── 성공: 고객 전용 진행 링크로 이동 ──────────────────
       router.push(`/rfq/${data.rfq.id}`);
@@ -217,10 +330,12 @@ export default function GroupLandingClient() {
               type="text"
               value={form.contact_name}
               onChange={(e) => update('contact_name', e.target.value)}
+              {...fieldA11y('contact_name')}
               placeholder="홍길동"
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
+            {renderFieldError('contact_name')}
           </div>
 
           {/* 연락처 */}
@@ -232,10 +347,12 @@ export default function GroupLandingClient() {
               type="tel"
               value={form.contact_phone}
               onChange={(e) => update('contact_phone', e.target.value)}
+              {...fieldA11y('contact_phone')}
               placeholder="010-0000-0000"
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
+            {renderFieldError('contact_phone')}
           </div>
 
           {/* 단체명 */}
@@ -247,10 +364,12 @@ export default function GroupLandingClient() {
               type="text"
               value={form.group_name}
               onChange={(e) => update('group_name', e.target.value)}
+              {...fieldA11y('group_name')}
               placeholder="OO 연수원"
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
+            {renderFieldError('group_name')}
           </div>
 
           {/* 단체 성격 */}
@@ -259,8 +378,10 @@ export default function GroupLandingClient() {
               단체 성격 <span className="text-red-500">*</span>
             </label>
             <select
+              id="group-purpose"
               value={form.purpose}
               onChange={(e) => update('purpose', e.target.value)}
+              {...fieldA11y('purpose')}
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             >
@@ -271,6 +392,7 @@ export default function GroupLandingClient() {
                 </option>
               ))}
             </select>
+            {renderFieldError('purpose')}
           </div>
 
           {/* 희망 여행지 */}
@@ -282,10 +404,12 @@ export default function GroupLandingClient() {
               type="text"
               value={form.destination}
               onChange={(e) => update('destination', e.target.value)}
+              {...fieldA11y('destination')}
               placeholder="다낭, 세부, 장가계 등"
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
+            {renderFieldError('destination')}
           </div>
 
           {/* 희망 출발일 */}
@@ -297,9 +421,11 @@ export default function GroupLandingClient() {
               type="date"
               value={form.departure_date}
               onChange={(e) => update('departure_date', e.target.value)}
+              {...fieldA11y('departure_date')}
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             />
+            {renderFieldError('departure_date')}
           </div>
 
           {/* 예상 인원 */}
@@ -307,9 +433,10 @@ export default function GroupLandingClient() {
             <label htmlFor="group-pax-label" className="block text-sm font-semibold mb-2">
               예상 인원 <span className="text-red-500">*</span>
             </label>
-            <select id="group-budget-label"
+            <select id="group-pax-label"
               value={form.pax_label}
               onChange={(e) => update('pax_label', e.target.value)}
+              {...fieldA11y('pax_label')}
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             >
@@ -320,6 +447,7 @@ export default function GroupLandingClient() {
                 </option>
               ))}
             </select>
+            {renderFieldError('pax_label')}
           </div>
 
           {/* 1인 예산 */}
@@ -328,8 +456,10 @@ export default function GroupLandingClient() {
               1인 예산 <span className="text-red-500">*</span>
             </label>
             <select
+              id="group-budget-label"
               value={form.budget_label}
               onChange={(e) => update('budget_label', e.target.value)}
+              {...fieldA11y('budget_label')}
               className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand focus:border-transparent transition"
               required
             >
@@ -340,6 +470,7 @@ export default function GroupLandingClient() {
                 </option>
               ))}
             </select>
+            {renderFieldError('budget_label')}
           </div>
 
           {/* 구분선: 선택 항목 */}
@@ -355,6 +486,7 @@ export default function GroupLandingClient() {
                 <button
                   key={h}
                   type="button"
+                  aria-pressed={form.hotel_grade === h}
                   onClick={() => update('hotel_grade', form.hotel_grade === h ? '' : h)}
                   className={`py-2.5 rounded-xl text-sm font-semibold transition border ${
                     form.hotel_grade === h
@@ -376,6 +508,7 @@ export default function GroupLandingClient() {
                 <button
                   key={s}
                   type="button"
+                  aria-pressed={form.shopping === s}
                   onClick={() => update('shopping', form.shopping === s ? '' : s)}
                   className={`py-2.5 rounded-xl text-sm font-semibold transition border ${
                     form.shopping === s
@@ -401,21 +534,58 @@ export default function GroupLandingClient() {
             />
           </div>
 
+          <div>
+            <label className="flex items-start gap-2 rounded-xl bg-white p-4 text-sm text-slate-600 border border-gray-200">
+              <input
+                type="checkbox"
+                checked={privacyConsent}
+                onChange={(e) => {
+                  setPrivacyConsent(e.target.checked);
+                  if (fieldErrors.privacy_consent) {
+                    setFieldErrors((current) => {
+                      const next = { ...current };
+                      delete next.privacy_consent;
+                      return next;
+                    });
+                  }
+                }}
+                {...fieldA11y('privacy_consent')}
+                className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
+              />
+              <span>
+                견적 상담과 연락을 위해 입력한 정보를 여소남이 확인하는 데 동의합니다.
+                <a href="/privacy" className="ml-1 font-bold text-brand underline underline-offset-2">
+                  개인정보 안내
+                </a>
+              </span>
+            </label>
+            {renderFieldError('privacy_consent')}
+          </div>
+
           {/* 에러 표시 */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl">
+            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl" role="alert">
               {error}
             </div>
           )}
 
           {/* 제출 버튼 */}
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-brand hover:bg-[#1B64DA] disabled:bg-slate-400 text-white font-bold py-4 rounded-2xl text-lg transition"
-          >
-            {submitting ? '전송 중...' : '견적 요청하기'}
-          </button>
+          <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full bg-brand hover:bg-[#1B64DA] disabled:bg-slate-400 text-white font-bold py-4 px-6 rounded-2xl text-lg transition"
+            >
+              {submitting ? '전송 중...' : '견적 요청하기'}
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleKakaoConsult()}
+              className="w-full sm:w-auto bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold py-4 px-6 rounded-2xl text-base transition"
+            >
+              카톡 상담
+            </button>
+          </div>
 
           <p className="text-center text-xs text-slate-500">
             제출 후 전용 진행 링크로 자동 이동되며, 그곳에서 실시간 진행 상황을 확인하실 수 있습니다.

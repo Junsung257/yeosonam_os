@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useChatStore } from '@/lib/chat-store';
 import { REGIONS } from '@/lib/regions';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 import {
   appendDepartureHubToSearchParams,
   DEFAULT_DEPARTURE_HUB,
@@ -209,6 +211,35 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const chipMutedCls = `${chipBase} bg-white text-text-secondary border-dashed border-[#D1D6DB] hover:border-brand/40 hover:text-brand`;
   const chipHeroCls = `${chipBase} w-full justify-start min-h-[48px] px-4 text-left text-body font-semibold`;
 
+  const pageUrl = typeof window !== 'undefined' ? window.location.pathname : '/';
+
+  function trackPackageSearchClick(source: string) {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      page_url: pageUrl,
+      destination: whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : null,
+      budget: budgetPreset === 'any' ? null : budgetLabel,
+      metadata: {
+        source,
+        href: resultsHref,
+        departure_hub: hub,
+        month: monthParam || null,
+        where_mode: whereMode,
+        price_min: priceMin || null,
+        price_max: priceMax || null,
+      },
+    });
+  }
+
+  function trackGroupInquiryClick(source: string) {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      page_url: pageUrl,
+      party_type: 'group_inquiry',
+      metadata: { source },
+    });
+  }
+
   const stepTitle: Record<PickerStep, string> = {
     hub: '어디서 출발할까요?',
     when: '언제 떠날까요?',
@@ -257,7 +288,11 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           <Link href="/packages?urgency=1" className={`${pillBase} bg-gradient-to-br from-brand to-[#2563EB] text-white shadow-md shadow-brand/20`}>
             <span aria-hidden>🔥</span>마감·특가
           </Link>
-          <Link href="/group-inquiry" className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}>
+          <Link
+            href="/group-inquiry"
+            onClick={() => trackGroupInquiryClick('home_hero_compact')}
+            className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}
+          >
             단체·맞춤 견적
           </Link>
           <button
@@ -311,6 +346,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
         <Link
           href={resultsHref}
+          onClick={() => trackPackageSearchClick('home_hero_sentence_search')}
           className="mt-4 flex w-full items-center justify-center rounded-xl bg-brand text-white text-[15px] font-bold py-3.5 shadow-md shadow-brand/25 hover:bg-brand-dark transition-colors card-touch"
         >
           이 조건으로 패키지 보기
@@ -329,6 +365,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         </Link>
         <Link
           href="/group-inquiry"
+          onClick={() => trackGroupInquiryClick('home_hero_expanded')}
           className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40 hover:bg-[#F8FAFF]`}
         >
           단체·맞춤 견적

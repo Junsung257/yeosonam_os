@@ -3,6 +3,8 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
 
@@ -58,6 +60,14 @@ export default function BottomTabBar() {
 
   if (excluded) return null;
 
+  const trackKakaoClick = () => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      page_url: pathname ?? '/',
+      metadata: { source: 'bottom_tab_bar' },
+    });
+  };
+
   return (
     <nav
       className={`bottom-tab-bar md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] safe-area-bottom transition-transform duration-200 ${
@@ -78,6 +88,7 @@ export default function BottomTabBar() {
                 target="_blank"
                 rel="noopener noreferrer"
                 referrerPolicy="no-referrer-when-downgrade"
+                onClick={trackKakaoClick}
                 className="flex flex-col items-center gap-0.5 -mt-4 card-touch"
                 aria-label="카카오톡 상담"
               >

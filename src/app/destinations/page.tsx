@@ -4,7 +4,7 @@ import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { getDestinationUrl } from '@/lib/regions';
 import GlobalNav from '@/components/customer/GlobalNav';
 import SectionHeader from '@/components/customer/SectionHeader';
-import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
@@ -201,15 +201,21 @@ export default async function DestinationsIndexPage() {
                           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                           loading="lazy"
                           fallback={
-                            <div className="absolute inset-0 bg-gradient-to-br from-brand to-brand-dark flex items-center justify-center text-5xl">
-                              🌍
-                            </div>
+                            <DestinationImageFallback
+                              title={d.destination}
+                              destination={d.destination}
+                              compact
+                              className="absolute inset-0"
+                            />
                           }
                         />
                       ) : (
-                        <div className="absolute inset-0 bg-gradient-to-br from-brand to-brand-dark flex items-center justify-center text-5xl">
-                          🌍
-                        </div>
+                        <DestinationImageFallback
+                          title={d.destination}
+                          destination={d.destination}
+                          compact
+                          className="absolute inset-0"
+                        />
                       )}
                       <div className="absolute inset-0 bg-gradient-to-t from-slate-900/90 via-slate-900/30 to-transparent" />
                       <div className="absolute bottom-0 left-0 right-0 p-4 md:p-5 text-white">

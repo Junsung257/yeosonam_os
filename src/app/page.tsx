@@ -4,7 +4,7 @@ import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
 import HomeHeroSearchCluster from '@/components/customer/HomeHeroSearchCluster';
 import { HomeHeroUrgencyStrip, type HomeUrgencyTeaser } from '@/components/customer/HomeHeroUrgencyStrip';
 import GlobalNav from '@/components/customer/GlobalNav';
-import { SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
+import { DestinationImageFallback, SafeCoverNextImg } from '@/components/customer/SafeRemoteImage';
 import SectionHeader from '@/components/customer/SectionHeader';
 import CategoryIcons from '@/components/customer/CategoryIcons';
 import HeroBanner from '@/components/customer/HeroBanner';
@@ -636,7 +636,12 @@ export default async function HomePage() {
                       sizes="(max-width: 640px) 50vw, (max-width: 1024px) 25vw, 20vw"
                     />
                   ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-brand-light to-brand/20 flex items-center justify-center text-5xl">🌍</div>
+                    <DestinationImageFallback
+                      title={d.destination}
+                      destination={d.destination}
+                      compact
+                      className="absolute inset-0"
+                    />
                   )}
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 p-4 text-white">
@@ -671,8 +676,7 @@ export default async function HomePage() {
             <div className="text-center py-12 text-text-secondary text-[14px]">현재 판매 중인 상품이 없습니다</div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-              {destsWithImages.map((dest, index) => {
-                const initial = (dest.destination || '?').trim().slice(0, 2);
+              {destsWithImages.map(dest => {
                 return (
                   <Link
                     key={dest.destination}
@@ -686,11 +690,12 @@ export default async function HomePage() {
                         className="group-hover:scale-105 transition-transform duration-300"
                         sizes="(max-width: 768px) 50vw, (max-width: 1280px) 33vw, 25vw"
                         fallback={
-                          <div className="absolute inset-0 bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center">
-                            <span className="text-[22px] md:text-[28px] font-extrabold text-brand/35 tracking-tight">
-                              {initial}
-                            </span>
-                          </div>
+                          <DestinationImageFallback
+                            title={dest.destination}
+                            destination={dest.destination}
+                            compact
+                            className="absolute inset-0"
+                          />
                         }
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent pointer-events-none" />

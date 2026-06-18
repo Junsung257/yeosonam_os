@@ -142,6 +142,10 @@ function sleepSync(ms) {
 function killProcess(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return;
   if (process.platform === 'win32') {
+    spawnSync('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
     spawnSync('powershell.exe', [
       '-NoProfile',
       '-Command',
@@ -365,6 +369,10 @@ function staticChecks() {
     'activeNextDevServerProcesses',
     'assertNoActiveNextDevServer',
     'Refusing to check bundle budget while next dev is active',
+    'Get-CimInstance Win32_Process',
+    "CommandLine -notlike '*Get-CimInstance Win32_Process*'",
+    'npm*run*dev',
+    'Start-Process*npm.cmd*run*dev',
     'only ${stats.length} non-API route(s) found',
     'next dev server is rewriting .next',
   ]);
@@ -375,7 +383,13 @@ function staticChecks() {
     'NEXT_BUILD_PRECHECK_ONLY',
     'activeNextDevServerProcesses',
     'assertNoActiveNextDevServer',
+    'startActiveNextDevServerMonitor',
     'Refusing to run production build while next dev is active',
+    'Refusing to finish production build because next dev became active',
+    'Get-CimInstance Win32_Process',
+    "CommandLine -notlike '*Get-CimInstance Win32_Process*'",
+    'npm*run*dev',
+    'Start-Process*npm.cmd*run*dev',
     'Stop the dev server first so it cannot rewrite .next',
   ]);
   requireActiveDevServerBuildPrecheckSmoke();

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { isSafeImageSrc } from '@/lib/image-url';
+import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
 export interface RankingItem {
   id: string;
@@ -106,7 +107,7 @@ function RankCard({ item, rank }: { item: RankingItem; rank: number }) {
             onError={() => setBroken(true)}
           />
         ) : (
-          <div className="absolute inset-0 bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center text-3xl">🌍</div>
+          <DestinationImageFallback title={item.title} destination={item.destination} compact className="pb-12" />
         )}
         {/* 어두운 그라데이션 */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent pointer-events-none" />

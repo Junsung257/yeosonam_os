@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 
 interface Recommendation {
   package_id: string;
@@ -100,8 +101,8 @@ export default function RecommendationSection({ customerId, destination, title =
               onClick={() => handleClick(rec.package_id)}
               className="bg-white rounded-2xl overflow-hidden shadow-sm border border-gray-100 hover:shadow-md transition-all"
             >
-              <div className="h-32 bg-gradient-to-br from-violet-100 to-purple-200 flex items-center justify-center text-2xl">
-                🌍
+              <div className="relative h-32 bg-gradient-to-br from-violet-100 to-purple-200">
+                <DestinationImageFallback title={rec.package_name} destination={rec.destination} compact />
               </div>
               <div className="p-3">
                 <p className="text-[10px] text-violet-600 font-medium mb-0.5">{rec.destination}</p>
