@@ -217,6 +217,9 @@ function summarizeOpenReadinessBlockers(report) {
       failedRequiredChecks: Array.isArray(check.failedRequiredChecks)
         ? check.failedRequiredChecks
         : undefined,
+      issueCounts: check.issueCounts && typeof check.issueCounts === 'object' ? check.issueCounts : undefined,
+      strictScore: Number.isFinite(Number(check.strictScore)) ? Number(check.strictScore) : undefined,
+      fleetScore: Number.isFinite(Number(check.fleetScore)) ? Number(check.fleetScore) : undefined,
       failedIssues: Array.isArray(check.failedIssues) ? check.failedIssues : undefined,
       authMode: check.authMode || undefined,
       checked: Number.isFinite(Number(check.checked)) ? Number(check.checked) : undefined,
