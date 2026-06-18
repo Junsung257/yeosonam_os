@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import {
   startNextServer,
   stopProcessTree,
@@ -13,9 +14,9 @@ const rawArgs = process.argv.slice(2);
 
 function argValue(name, fallback = '') {
   const prefix = `${name}=`;
-  const inline = rawArgs.find((arg) => arg.startsWith(prefix));
+  const inline = rawArgs.findLast((arg) => arg.startsWith(prefix));
   if (inline) return inline.slice(prefix.length);
-  const index = rawArgs.indexOf(name);
+  const index = rawArgs.lastIndexOf(name);
   return index >= 0 ? rawArgs[index + 1] ?? fallback : fallback;
 }
 
@@ -32,9 +33,15 @@ const strict = hasFlag('--strict') || process.env.MARKETING_RUNTIME_STRICT === '
 const explicitBase = argValue('--base', process.env.MARKETING_RUNTIME_BASE_URL || '').replace(/\/$/, '');
 const baseUrl = explicitBase || `http://127.0.0.1:${port}`;
 const shouldStartServer = !explicitBase;
+const runtimeDistDir = process.env.NEXT_DIST_DIR || '.next';
 
 validatePort(port, 'marketing-runtime-local');
 validateMode(mode, 'marketing-runtime-local');
+
+if (shouldStartServer && mode === 'start' && !existsSync(`${runtimeDistDir}/BUILD_ID`)) {
+  console.error(`[marketing-runtime-local] start mode requires a production build in ${runtimeDistDir}. Run npm run build first.`);
+  process.exit(1);
+}
 
 function runReadiness() {
   const args = [
