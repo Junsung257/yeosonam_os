@@ -39,6 +39,7 @@ export function BudgetGuardrailTable({
                     min={0}
                     value={budget.monthly_budget_krw}
                     onChange={(event) => onChange(budget.platform, 'monthly_budget_krw', event.target.value)}
+                    aria-label={`${PLATFORM_LABEL[budget.platform]} monthly cap`}
                   />
                 </td>
                 <td>
@@ -48,6 +49,7 @@ export function BudgetGuardrailTable({
                     min={0}
                     value={budget.daily_budget_cap_krw}
                     onChange={(event) => onChange(budget.platform, 'daily_budget_cap_krw', event.target.value)}
+                    aria-label={`${PLATFORM_LABEL[budget.platform]} daily cap`}
                   />
                 </td>
                 <td>
@@ -57,6 +59,7 @@ export function BudgetGuardrailTable({
                     min={0}
                     value={budget.max_cpc_krw}
                     onChange={(event) => onChange(budget.platform, 'max_cpc_krw', event.target.value)}
+                    aria-label={`${PLATFORM_LABEL[budget.platform]} max CPC`}
                   />
                 </td>
                 <td>
@@ -66,6 +69,7 @@ export function BudgetGuardrailTable({
                     placeholder={budget.platform === 'naver' ? 'nccAdgroupId' : 'optional'}
                     value={budget.external_ad_group_id || ''}
                     onChange={(event) => onChange(budget.platform, 'external_ad_group_id', event.target.value)}
+                    aria-label={`${PLATFORM_LABEL[budget.platform]} external group ID`}
                   />
                 </td>
                 <td>
@@ -73,6 +77,7 @@ export function BudgetGuardrailTable({
                     className="rounded-admin-xs border border-admin-border bg-admin-surface px-2 py-1 text-admin-xs admin-num"
                     value={budget.automation_level}
                     onChange={(event) => onChange(budget.platform, 'automation_level', event.target.value)}
+                    aria-label={`${PLATFORM_LABEL[budget.platform]} automation level`}
                   >
                     {[1, 2, 3, 4, 5].map((level) => (
                       <option key={level} value={level}>L{level}</option>
@@ -84,6 +89,7 @@ export function BudgetGuardrailTable({
                     className="rounded-admin-xs border border-admin-border bg-admin-surface px-2 py-1 text-admin-xs"
                     value={budget.status}
                     onChange={(event) => onChange(budget.platform, 'status', event.target.value)}
+                    aria-label={`${PLATFORM_LABEL[budget.platform]} status`}
                   >
                     <option value="paused">Paused</option>
                     <option value="active">Active</option>

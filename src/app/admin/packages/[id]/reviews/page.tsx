@@ -42,7 +42,7 @@ const RATING_FIELDS = [
   { key: 'food_quality', label: '식사' },
 ];
 
-function StarInput({ value, onChange }: { value: number; onChange: (v: number) => void }) {
+function StarInput({ value, onChange, label }: { value: number; onChange: (v: number) => void; label: string }) {
   return (
     <div className="flex gap-1">
       {[1, 2, 3, 4, 5].map(n => (
@@ -50,6 +50,8 @@ function StarInput({ value, onChange }: { value: number; onChange: (v: number) =
           key={n}
           type="button"
           onClick={() => onChange(n)}
+          aria-label={`${label} ${n}점`}
+          aria-pressed={n <= value}
           className={`text-xl transition-colors ${n <= value ? 'text-amber-400' : 'text-admin-border-mid hover:text-amber-300'}`}
         >
           ★
@@ -224,8 +226,9 @@ export default function PackageReviewsAdminPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-admin-muted mb-1">작성자 이름 (선택 — 성만 입력 시 "김**" 마스킹)</label>
+              <label htmlFor="reviewer-name" className="block text-xs font-bold text-admin-muted mb-1">작성자 이름 (선택 — 성만 입력 시 "김**" 마스킹)</label>
               <input
+                id="reviewer-name"
                 type="text"
                 placeholder="김○○"
                 value={form.reviewer_name}
@@ -234,19 +237,20 @@ export default function PackageReviewsAdminPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-admin-muted mb-1">종합 별점 *</label>
-              <StarInput value={form.overall_rating} onChange={v => setForm(f => ({ ...f, overall_rating: v }))} />
+              <div className="block text-xs font-bold text-admin-muted mb-1">종합 별점 *</div>
+              <StarInput label="종합 별점" value={form.overall_rating} onChange={v => setForm(f => ({ ...f, overall_rating: v }))} />
             </div>
           </div>
 
           {/* 세부 평점 */}
           <div>
-            <label className="block text-xs font-bold text-admin-muted mb-2">세부 평점 (선택 — 0 = 미입력)</label>
+            <div className="block text-xs font-bold text-admin-muted mb-2">세부 평점 (선택 — 0 = 미입력)</div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {RATING_FIELDS.map(f => (
                 <div key={f.key}>
                   <div className="text-[11px] text-admin-muted mb-1">{f.label}</div>
                   <StarInput
+                    label={f.label}
                     value={(form as Record<string, unknown>)[f.key] as number}
                     onChange={v => setForm(prev => ({ ...prev, [f.key]: v }))}
                   />
@@ -256,8 +260,9 @@ export default function PackageReviewsAdminPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-admin-muted mb-1">후기 제목 (선택)</label>
+            <label htmlFor="review-title" className="block text-xs font-bold text-admin-muted mb-1">후기 제목 (선택)</label>
             <input
+              id="review-title"
               type="text"
               placeholder="예: 바나산이 정말 좋았어요!"
               value={form.title}
@@ -267,8 +272,9 @@ export default function PackageReviewsAdminPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-admin-muted mb-1">후기 본문 (카카오 피드백 원문 붙여넣기)</label>
+            <label htmlFor="review-text" className="block text-xs font-bold text-admin-muted mb-1">후기 본문 (카카오 피드백 원문 붙여넣기)</label>
             <textarea
+              id="review-text"
               rows={4}
               placeholder="고객이 카카오톡으로 남긴 피드백을 그대로 붙여넣으세요"
               value={form.review_text}
@@ -278,8 +284,9 @@ export default function PackageReviewsAdminPage() {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-admin-muted mb-1">좋았던 점 배지 (한 줄에 하나씩)</label>
+            <label htmlFor="review-pros" className="block text-xs font-bold text-admin-muted mb-1">좋았던 점 배지 (한 줄에 하나씩)</label>
             <textarea
+              id="review-pros"
               rows={3}
               placeholder={"가이드님이 친절해요\n호텔이 깨끗해요\n일정이 알차요"}
               value={form.pros_raw}

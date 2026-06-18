@@ -256,8 +256,8 @@ export default function BlogWritePage() {
           <div className="space-y-2">
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="block text-[10px] text-admin-muted-2 mb-1">상품 선택</label>
-              <select value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
+              <label htmlFor="blog-product-select" className="block text-[10px] text-admin-muted-2 mb-1">상품 선택</label>
+              <select id="blog-product-select" value={selectedPkgId} onChange={e => setSelectedPkgId(e.target.value)}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm">
                 <option value="">상품 선택...</option>
                 {packages.map(p => (
@@ -268,17 +268,17 @@ export default function BlogWritePage() {
               </select>
             </div>
             <div className="w-28">
-              <label className="block text-[10px] text-admin-muted-2 mb-1">앵글</label>
-              <select value={angle} onChange={e => setAngle(e.target.value as AngleType)}
+              <label htmlFor="blog-angle-select" className="block text-[10px] text-admin-muted-2 mb-1">앵글</label>
+              <select id="blog-angle-select" value={angle} onChange={e => setAngle(e.target.value as AngleType)}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm">
                 {ANGLES.map(a => <option key={a.value} value={a.value}>{a.label}</option>)}
               </select>
             </div>
             <div className="w-28">
-              <label className="block text-[10px] text-admin-muted-2 mb-1" title="같은 상품으로 서로 다른 키워드의 블로그 N개를 동시 생성 (긴꼬리 SEO)">
+              <label htmlFor="blog-bulk-count" className="block text-[10px] text-admin-muted-2 mb-1" title="같은 상품으로 서로 다른 키워드의 블로그 N개를 동시 생성 (긴꼬리 SEO)">
                 생성 개수 <span className="text-admin-muted-2">?</span>
               </label>
-              <select value={bulkCount} onChange={e => setBulkCount(parseInt(e.target.value))}
+              <select id="blog-bulk-count" value={bulkCount} onChange={e => setBulkCount(parseInt(e.target.value))}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm">
                 <option value={1}>1개</option>
                 <option value={3}>3개 (권장)</option>
@@ -299,14 +299,14 @@ export default function BlogWritePage() {
         ) : (
           <div className="flex gap-3 items-end">
             <div className="flex-1">
-              <label className="block text-[10px] text-admin-muted-2 mb-1">주제</label>
-              <input value={topic} onChange={e => setTopic(e.target.value)}
+              <label htmlFor="blog-topic" className="block text-[10px] text-admin-muted-2 mb-1">주제</label>
+              <input id="blog-topic" value={topic} onChange={e => setTopic(e.target.value)}
                 placeholder="예: 베트남 비자 신청 방법, 다낭 맛집 추천 10곳"
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm" />
             </div>
             <div className="w-32">
-              <label className="block text-[10px] text-admin-muted-2 mb-1">카테고리</label>
-              <select value={category} onChange={e => setCategory(e.target.value)}
+              <label htmlFor="blog-category" className="block text-[10px] text-admin-muted-2 mb-1">카테고리</label>
+              <select id="blog-category" value={category} onChange={e => setCategory(e.target.value)}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm">
                 {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
               </select>
@@ -367,18 +367,18 @@ export default function BlogWritePage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
+            <label htmlFor="blog-slug" className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">/blog/</span>
-              <input value={slug}
+              <input id="blog-slug" value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
                 placeholder="danang-hoian-value-trip"
                 className="flex-1 border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지 (선택)</label>
-            <input value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
+            <label htmlFor="blog-og-image" className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지 (선택)</label>
+            <input id="blog-og-image" value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
               placeholder="https://images.pexels.com/..."
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>

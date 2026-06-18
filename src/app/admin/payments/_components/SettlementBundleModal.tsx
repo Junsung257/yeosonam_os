@@ -197,20 +197,22 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
         : 'text-red-600';
 
   return (
-    <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-      role="dialog"
-      aria-modal="true"
-      aria-label="출금 정산 묶기"
-    >
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 cursor-default"
+        onClick={onClose}
+        aria-label="출금 정산 묶기 닫기"
+      />
       <div
-        className="bg-white rounded-admin-md shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
+        className="relative bg-white rounded-admin-md shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settlement-bundle-title"
       >
         <div className="px-5 py-4 border-b border-admin-border-mid flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold text-admin-text-2">출금 정산 묶기</h2>
+            <h2 id="settlement-bundle-title" className="text-base font-semibold text-admin-text-2">출금 정산 묶기</h2>
             <p className="text-xs text-admin-muted mt-0.5">
               {transaction.is_refund ? '환불' : '출금'} {fmtKRW(txAmountAbs)} ·{' '}
               {transaction.counterparty_name ?? '거래처 미상'} ·{' '}
@@ -218,16 +220,19 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             </p>
           </div>
           <button
+            type="button"
             onClick={onClose}
             className="text-admin-muted-2 hover:text-admin-muted text-2xl leading-none"
+            aria-label="출금 정산 묶기 닫기"
           >
             ×
           </button>
         </div>
 
         <div className="px-5 py-3 border-b border-admin-border">
-          <label className="block text-xs font-medium text-admin-muted mb-1">랜드사</label>
+          <label htmlFor="settlement-operator" className="block text-xs font-medium text-admin-muted mb-1">랜드사</label>
           <select
+            id="settlement-operator"
             value={selectedOpId ?? ''}
             onChange={e => setSelectedOpId(e.target.value || null)}
             className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"
@@ -257,7 +262,9 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             <table className="w-full text-sm">
               <thead className="text-[11px] text-admin-muted uppercase">
                 <tr className="border-b border-admin-border-mid">
-                  <th className="w-10 text-left py-2"></th>
+                  <th className="w-10 text-left py-2" scope="col">
+                    <span className="sr-only">선택</span>
+                  </th>
                   <th className="text-left py-2">고객/번호</th>
                   <th className="text-left py-2">출발</th>
                   <th className="text-right py-2">정산 잔액</th>
@@ -274,6 +281,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
                           type="checkbox"
                           checked={isChecked}
                           onChange={() => toggleBooking(b)}
+                          aria-label={`${b.customer_name ?? '이름 없음'} 정산 묶음 선택`}
                         />
                       </td>
                       <td className="py-2">
@@ -292,12 +300,13 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
                         {isChecked && (
                           <input
                             type="number"
-                            value={checked.get(b.id) ?? 0}
-                            onChange={e => updateAmount(b.id, Number(e.target.value))}
-                            className="w-28 text-right text-sm border border-admin-border-strong rounded px-2 py-1 tabular-nums"
-                            min={0}
-                            max={b.unsettled_amount * 2}
-                          />
+                          value={checked.get(b.id) ?? 0}
+                          onChange={e => updateAmount(b.id, Number(e.target.value))}
+                          className="w-28 text-right text-sm border border-admin-border-strong rounded px-2 py-1 tabular-nums"
+                          min={0}
+                          max={b.unsettled_amount * 2}
+                          aria-label={`${b.customer_name ?? '이름 없음'} 묶을 금액`}
+                        />
                         )}
                       </td>
                     </tr>
@@ -332,6 +341,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             onChange={e => setNotes(e.target.value)}
             placeholder="메모 (선택)"
             className="w-full text-xs border border-admin-border-strong rounded px-2 py-1.5 mb-2"
+            aria-label="정산 묶음 메모"
           />
           {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
           <div className="flex justify-between items-center">
@@ -342,12 +352,14 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             </div>
             <div className="flex gap-2">
               <button
+                type="button"
                 onClick={onClose}
                 className="px-3 py-1.5 text-sm text-admin-muted hover:bg-admin-surface-2 rounded"
               >
                 취소
               </button>
               <button
+                type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit}
                 className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
