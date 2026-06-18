@@ -1029,6 +1029,9 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
                 <p className="text-[10px] text-admin-muted-2 mt-0.5">{c.desc}</p>
               </div>
               <Link href={c.href}
+                aria-disabled={isEmpty}
+                tabIndex={isEmpty ? -1 : undefined}
+                aria-label={`${c.label} ${c.count}${c.unit} ${isEmpty ? '처리할 항목 없음' : c.btnLabel}`}
                 className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${isEmpty ? 'bg-admin-surface-2 text-admin-muted-2 pointer-events-none' : s.btn}`}>
                 {isEmpty ? '이상 없음' : c.btnLabel}
               </Link>
@@ -1668,7 +1671,9 @@ export default function AdminPage({
         <div className="order-3 flex flex-1 items-center gap-1 bg-bg-section rounded-[8px] p-0.5 sm:order-none sm:ml-auto sm:flex-none">
           {(['3m', '6m', '12m'] as const).map((p) => (
             <button
+              type="button"
               key={p}
+              aria-pressed={period === p}
               onClick={() => {
                 setPeriod(p);
                 const m = p === '3m' ? 3 : p === '12m' ? 12 : 6;
@@ -1688,6 +1693,8 @@ export default function AdminPage({
         </div>
 
         <button
+          type="button"
+          aria-busy={isRefreshing}
           onClick={() => {
             const m = period === '3m' ? 3 : period === '12m' ? 12 : 6;
             setIsRefreshing(true);
@@ -1769,6 +1776,9 @@ export default function AdminPage({
                 <p className="text-[11px] text-admin-muted-2 mt-0.5">{act.action_type}</p>
                 <div className="mt-2 flex gap-1">
                   <button
+                    type="button"
+                    aria-label={`${act.summary} 승인`}
+                    aria-busy={actionProcessingId === act.id}
                     onClick={async () => {
                       setActionProcessingId(act.id);
                       try {
@@ -1789,6 +1799,9 @@ export default function AdminPage({
                     승인
                   </button>
                   <button
+                    type="button"
+                    aria-label={`${act.summary} 반려`}
+                    aria-busy={actionProcessingId === act.id}
                     onClick={async () => {
                       setActionProcessingId(act.id);
                       try {
@@ -1836,14 +1849,19 @@ export default function AdminPage({
                 </div>
                 <div className="mt-2 flex gap-1">
                   <button type="button" onClick={() => setSelectedPackage(pkg)}
+                    aria-label={`${pkg.title} 상세 보기`}
                     className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-1 rounded text-[11px] hover:bg-admin-bg transition">
                     상세
                   </button>
                   <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
+                    aria-label={`${pkg.title} 승인`}
+                    aria-busy={processingId === pkg.id}
                     className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
                     승인
                   </button>
                   <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
+                    aria-label={`${pkg.title} 반려`}
+                    aria-busy={processingId === pkg.id}
                     className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
                     반려
                   </button>

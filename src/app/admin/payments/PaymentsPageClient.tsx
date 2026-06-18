@@ -389,9 +389,11 @@ type OutflowSubTab = 'unmatched' | 'matched' | 'all';
 type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
 
 function PaymentOpsQueue({
+  activeKey,
   counts,
   onSelect,
 }: {
+  activeKey?: PaymentQueueKey;
   counts: Record<PaymentQueueKey, number>;
   onSelect: (key: PaymentQueueKey) => void;
 }) {
@@ -427,6 +429,7 @@ function PaymentOpsQueue({
             type="button"
             disabled={item.count === 0}
             onClick={() => onSelect(item.key)}
+            aria-pressed={activeKey === item.key}
             aria-label={`${item.label} ${item.count}건 보기`}
             className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-admin-sm disabled:cursor-not-allowed disabled:opacity-45 ${item.tone}`}
           >
@@ -1119,7 +1122,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   return (
     <>
       {toast && (
-        <div className={toast.type === 'err' ? 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-500' : 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-slate-800'}>
+        <div
+          role="status"
+          aria-live="polite"
+          className={toast.type === 'err' ? 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-500' : 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-slate-800'}
+        >
           {toast.msg}
         </div>
       )}
@@ -1134,19 +1141,19 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           <p className="text-admin-sm text-admin-muted mt-0.5">Slack(Clobe.ai) 입출금 자동 파싱 및 예약 매칭</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleResync} disabled={bulkProcessing}
+          <button type="button" onClick={handleResync} disabled={bulkProcessing} aria-busy={bulkProcessing}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '입금 재동기화'}
           </button>
-          <button onClick={handleBulkAuto} disabled={bulkProcessing}
+          <button type="button" onClick={handleBulkAuto} disabled={bulkProcessing} aria-busy={bulkProcessing}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '일괄 자동 매칭'}
           </button>
-          <button onClick={() => setShowImport(true)}
+          <button type="button" onClick={() => setShowImport(true)}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
             과거 내역 가져오기
           </button>
-          <button onClick={() => { load(); loadErp(); }}
+          <button type="button" onClick={() => { load(); loadErp(); }}
             className="px-3 py-2 text-admin-sm text-admin-text-2 border border-admin-border-strong rounded bg-white hover:bg-admin-bg transition">
             새로고침
           </button>
@@ -1155,6 +1162,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
       <PaymentOpsQueue
+        activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
         counts={{
           review: reviewCount,
           unmatched: unmatchedCount,
@@ -1179,8 +1187,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 </span>
               )}
               <button
+                type="button"
                 onClick={() => { if (tab !== 'unmatched') setDateDropdown(o => !o); }}
                 disabled={tab === 'unmatched'}
+                aria-haspopup="menu"
+                aria-expanded={dateDropdown}
                 className={`flex items-center gap-1.5 px-3 py-1.5 bg-white border border-admin-border-mid rounded-admin-sm text-admin-sm transition
                   ${tab === 'unmatched' ? 'opacity-40 cursor-not-allowed text-admin-muted-2' : 'text-admin-text-2 hover:bg-admin-bg'}`}
               >
@@ -1188,9 +1199,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <span className="text-admin-muted-2 text-[11px]">▾</span>
               </button>
               {dateDropdown && tab !== 'unmatched' && (
-                <div className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded-admin-sm z-20 py-1 min-w-[110px]">
+                <div role="menu" className="absolute right-0 top-full mt-1 bg-white border border-admin-border-mid rounded-admin-sm z-20 py-1 min-w-[110px]">
                   {DATE_FILTERS.map(f => (
-                    <button key={f} onClick={() => { setDateFilter(f); setDateDropdown(false); }}
+                    <button key={f} type="button" role="menuitemradio" aria-checked={dateFilter === f} onClick={() => { setDateFilter(f); setDateDropdown(false); }}
                       className={`w-full text-left px-3 py-1.5 text-admin-sm hover:bg-admin-bg transition
                         ${dateFilter === f ? 'text-brand font-medium' : 'text-admin-text-2'}`}>
                       {f}
@@ -1245,7 +1256,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
         <div className="grid gap-3">
           <button
+            type="button"
             onClick={() => setTab('unmatched')}
+            aria-pressed={tab === 'unmatched'}
             className={`text-left border rounded-admin-md p-4 bg-white transition ${unmatchedAmount > 0 ? 'border-amber-300 hover:bg-amber-50' : 'border-admin-border-mid hover:bg-admin-bg'}`}
           >
             <p className={`text-[11px] font-semibold ${unmatchedAmount > 0 ? 'text-amber-700' : 'text-admin-muted'}`}>미매칭 잔액</p>
@@ -1255,7 +1268,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             <p className="mt-2 text-[11px] text-admin-muted-2">통장에는 있는데 예약 주인을 못 찾은 금액</p>
           </button>
           <button
+            type="button"
             onClick={() => { setTab('outflow'); setOutflowSubTab('unmatched'); }}
+            aria-pressed={tab === 'outflow' && outflowSubTab === 'unmatched'}
             className="text-left border border-admin-border-mid rounded-admin-md p-4 bg-white hover:bg-admin-bg transition"
           >
             <p className="text-[11px] font-semibold text-admin-muted">출금 확인 필요</p>
@@ -1273,7 +1288,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           { id: 'unmatched' as const, label: '미매칭',      count: unmatchedCount, active: 'border-red-400 bg-red-50', num: 'text-red-600' },
           { id: 'outflow'   as const, label: '출금·환불',   count: outflowCount,   active: 'border-orange-400 bg-orange-50', num: 'text-orange-600' },
         ] as const).map(card => (
-          <button key={card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab('unmatched'); }}
+          <button key={card.id} type="button" aria-pressed={tab === card.id} onClick={() => { setTab(card.id); if (card.id === 'outflow') setOutflowSubTab('unmatched'); }}
             className={`p-4 rounded-lg border text-left transition-all cursor-pointer
               ${tab === card.id
                 ? card.active
@@ -1296,7 +1311,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             ['matched',   '✅ 매칭완료',  outflowMatchedCount,   'emerald'],
             ['all',       '전체',          outflowCount,          'slate'],
           ] as [typeof outflowSubTab, string, number, string][]).map(([id, label, cnt, color]) => (
-            <button key={id} onClick={() => setOutflowSubTab(id)}
+            <button key={id} type="button" aria-pressed={outflowSubTab === id} onClick={() => setOutflowSubTab(id)}
               className={`px-3 py-1.5 rounded-full text-admin-xs font-medium transition flex items-center gap-1.5 whitespace-nowrap
                 ${outflowSubTab === id
                   ? `bg-${color}-600 text-white`
@@ -1335,7 +1350,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           <div className="flex items-center gap-3 bg-slate-800 text-white px-4 py-2 rounded-lg mb-2">
             <span className="text-admin-sm font-medium">{checkedTxIds.size}건 선택</span>
             <button
+              type="button"
               disabled={bulkDeleting}
+              aria-busy={bulkDeleting}
               onClick={async () => {
                 if (!confirm(checkedTxIds.size + '건을 휴지통으로 이동하시겠습니까?')) return;
                 setBulkDeleting(true);
@@ -1357,7 +1374,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             >
               {bulkDeleting ? '처리 중...' : '일괄 삭제'}
             </button>
-            <button onClick={() => setCheckedTxIds(new Set())}
+            <button type="button" onClick={() => setCheckedTxIds(new Set())}
               className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white text-admin-xs rounded transition">
               선택 해제
             </button>

@@ -53,7 +53,12 @@ function runReadiness() {
   if (strict) args.push('--strict');
   return spawnSync(process.execPath, args, {
     cwd: process.cwd(),
-    env: process.env,
+    env: {
+      ...process.env,
+      ...(mode === 'start' && !process.env.MARKETING_READINESS_ALLOW_MISSING_ADMIN_COOKIE
+        ? { MARKETING_READINESS_ALLOW_MISSING_ADMIN_COOKIE: '1' }
+        : {}),
+    },
     stdio: 'inherit',
   });
 }

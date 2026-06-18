@@ -1397,6 +1397,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     return ' ↕';
   };
 
+  const sortDirection = (field: string): 'ascending' | 'descending' | 'none' => {
+    if (sortBy === `${field}_asc`) return 'ascending';
+    if (sortBy === `${field}_desc`) return 'descending';
+    return 'none';
+  };
+
+  const sortButtonLabel = (field: string, label: string) => {
+    const direction = sortDirection(field);
+    if (direction === 'ascending') return `${label} 오름차순 정렬됨, 내림차순으로 변경`;
+    if (direction === 'descending') return `${label} 내림차순 정렬됨, 오름차순으로 변경`;
+    return `${label} 오름차순 정렬`;
+  };
+
   // Shift+Click 지원 체크박스 토글
   const toggleCheck = (id: string, idx: number, e: React.MouseEvent) => {
     setCheckedIds(prev => {
@@ -1618,6 +1631,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             </span>
           )}
           <button
+            type="button"
             onClick={() => { window.location.href = '/admin/upload'; }}
             className="ml-2 px-4 py-1.5 bg-blue-600 text-white text-admin-sm font-medium rounded-lg hover:bg-blue-700 transition"
           >
@@ -1641,12 +1655,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           type="text"
           value={searchQuery}
           onChange={e => setSearchQuery(e.target.value)}
+          aria-label="상품 검색"
           placeholder="상품명, 목적지, 랜드사 검색..."
           className="flex-1 px-3 py-2 border-2 border-admin-border rounded-lg text-admin-sm text-admin-text focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface transition-colors"
         />
         <select
           value={landOperatorFilter}
           onChange={e => setLandOperatorFilter(e.target.value)}
+          aria-label="랜드사 필터"
           className="px-3 py-2 border border-admin-border-mid rounded-lg text-admin-sm focus:outline-none bg-white text-admin-muted min-w-[110px]"
         >
           <option value="">전체 랜드사</option>
@@ -1655,6 +1671,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <select
           value={sortBy}
           onChange={e => setSortBy(e.target.value)}
+          aria-label="상품 정렬"
           className="px-3 py-2 border border-admin-border-mid rounded-lg text-admin-sm focus:outline-none bg-white text-admin-muted"
         >
           {SORT_OPTIONS.map(o => (
@@ -1662,6 +1679,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           ))}
         </select>
         <button
+          type="button"
+          aria-pressed={showExpired}
           onClick={() => setShowExpired(v => !v)}
           className={`px-3 py-2 rounded-lg text-admin-sm font-medium border transition ${
             showExpired
@@ -1672,12 +1691,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           {showExpired ? `만료 숨김` : `만료 포함 (${expiredCount})`}
         </button>
         <button
+          type="button"
           onClick={() => setBrainOpen(true)}
           className="px-3 py-2 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-admin-sm font-medium hover:bg-emerald-100 transition"
         >
           Ad-Brain
         </button>
         <button
+          type="button"
           onClick={() => setMetaLiveOpen(true)}
           className="px-3 py-2 bg-blue-600 text-white border border-blue-600 rounded-lg text-admin-sm font-medium hover:bg-blue-700 transition"
         >
@@ -1690,28 +1711,37 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <div className="flex items-center gap-2 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
           <span className="text-admin-sm font-medium text-blue-700">{checkedIds.size}개 선택됨</span>
           <button
+            type="button"
             onClick={() => { setBulkLandOperator(''); setBulkCommission(''); setBulkEditOpen(true); }}
             disabled={bulkLoading}
+            aria-busy={bulkLoading}
             className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
           >일괄 수정</button>
           <button
+            type="button"
             onClick={() => handleBulk('bulk_approve')}
             disabled={bulkLoading}
+            aria-busy={bulkLoading}
             className="px-2.5 py-1 bg-green-600 text-white rounded-lg text-[11px] font-medium hover:bg-green-700 disabled:opacity-50"
           >일괄 승인</button>
           <button
+            type="button"
             onClick={() => handleBulk('bulk_archive')}
             disabled={bulkLoading}
+            aria-busy={bulkLoading}
             className="px-2.5 py-1 bg-slate-500 text-white rounded-lg text-[11px] font-medium hover:bg-slate-600 disabled:opacity-50"
           >아카이브</button>
           {statusFilter === 'archived' && (
             <button
+              type="button"
               onClick={() => handleBulk('bulk_restore')}
               disabled={bulkLoading}
+              aria-busy={bulkLoading}
               className="px-2.5 py-1 bg-blue-500 text-white rounded-lg text-[11px] font-medium hover:bg-blue-600 disabled:opacity-50"
             >복원</button>
           )}
           <button
+            type="button"
             onClick={() => { setCheckedIds(new Set()); lastCheckedIndexRef.current = -1; }}
             className="ml-auto text-[11px] text-blue-500 hover:text-blue-700"
           >선택 해제</button>
@@ -1723,6 +1753,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         {STATUS_OPTIONS.map(opt => (
           <button
             key={opt.value}
+            type="button"
+            aria-pressed={statusFilter === opt.value}
             onClick={() => setStatusFilter(opt.value)}
             className={`px-3 py-1.5 rounded-lg text-admin-sm font-medium transition ${
               statusFilter === opt.value
@@ -1738,13 +1770,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <span>총 {totalCount.toLocaleString()}건 · {currentPage}/{totalPages} 페이지</span>
         <div className="flex items-center gap-1.5">
           <button
+            type="button"
             onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
             disabled={currentPage <= 1 || loading}
+            aria-label="이전 페이지"
             className="px-2 py-1 rounded border border-admin-border-mid disabled:opacity-40"
           >이전</button>
           <button
+            type="button"
             onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
             disabled={currentPage >= totalPages || loading}
+            aria-label="다음 페이지"
             className="px-2 py-1 rounded border border-admin-border-mid disabled:opacity-40"
           >다음</button>
         </div>
@@ -1786,13 +1822,27 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     aria-label="현재 필터 상품 전체 선택"
                   />
                 </th>
-                <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('title')}>상품명<span className="text-admin-muted-2 text-[11px]">{sortIcon('title')}</span></th>
-                <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('land_operator')}>랜드사<span className="text-admin-muted-2 text-[11px]">{sortIcon('land_operator')}</span></th>
-                <th className="text-right px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('commission_rate')}>커미션<span className="text-admin-muted-2 text-[11px]">{sortIcon('commission_rate')}</span></th>
-                <th className="text-left px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('destination')}>목적지<span className="text-admin-muted-2 text-[11px]">{sortIcon('destination')}</span></th>
-                <th className="text-right px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('price')}>가격범위<span className="text-admin-muted-2 text-[11px]">{sortIcon('price')}</span></th>
-                <th className="text-center px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('deadline')}>발권기한<span className="text-admin-muted-2 text-[11px]">{sortIcon('deadline')}</span></th>
-                <th className="text-center px-3 py-2 text-admin-muted font-medium cursor-pointer hover:bg-admin-surface-2 select-none" onClick={() => handleHeaderSort('status')}>상태<span className="text-admin-muted-2 text-[11px]">{sortIcon('status')}</span></th>
+                {([
+                  { field: 'title', label: '상품명', align: 'justify-start text-left' },
+                  { field: 'land_operator', label: '랜드사', align: 'justify-start text-left' },
+                  { field: 'commission_rate', label: '커미션', align: 'justify-end text-right' },
+                  { field: 'destination', label: '목적지', align: 'justify-start text-left' },
+                  { field: 'price', label: '가격범위', align: 'justify-end text-right' },
+                  { field: 'deadline', label: '발권기한', align: 'justify-center text-center' },
+                  { field: 'status', label: '상태', align: 'justify-center text-center' },
+                ] as const).map(column => (
+                  <th key={column.field} className={`px-3 py-2 text-admin-muted font-medium ${column.align.includes('text-right') ? 'text-right' : column.align.includes('text-center') ? 'text-center' : 'text-left'}`} aria-sort={sortDirection(column.field)}>
+                    <button
+                      type="button"
+                      onClick={() => handleHeaderSort(column.field)}
+                      aria-label={sortButtonLabel(column.field, column.label)}
+                      className={`inline-flex w-full items-center gap-1 rounded px-1 py-0.5 text-admin-muted transition hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-200 ${column.align}`}
+                    >
+                      <span>{column.label}</span>
+                      <span className="text-admin-muted-2 text-[11px]" aria-hidden="true">{sortIcon(column.field)}</span>
+                    </button>
+                  </th>
+                ))}
                 <th className="px-3 py-2 text-admin-muted font-medium text-center">마케팅 커버리지</th>
                 <th className="px-3 py-2"><span className="sr-only">행 작업</span></th>
               </tr>
