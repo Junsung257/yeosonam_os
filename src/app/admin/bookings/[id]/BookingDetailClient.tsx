@@ -232,6 +232,23 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
     }
   }, [logs]);
 
+  useEffect(() => {
+    if (!showCancelModal) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setShowCancelModal(false);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showCancelModal]);
+
   const handleTransition = async (to: string) => {
     setTransitioning(to);
     try {
@@ -685,7 +702,8 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           <div className="mt-3 pt-3 border-t border-admin-border">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-admin-muted uppercase">일행 ({(booking.passengers || []).length}명)</span>
-              <button onClick={() => setShowAddPassenger(!showAddPassenger)}
+              <button type="button" onClick={() => setShowAddPassenger(!showAddPassenger)}
+                aria-expanded={showAddPassenger}
                 className="text-xs text-blue-600 hover:text-blue-800">
                 {showAddPassenger ? '닫기' : '+ 일행 추가'}
               </button>
@@ -714,25 +732,25 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
               <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg space-y-2">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-admin-muted">이름 *</label>
-                    <input value={passengerForm.name} onChange={e => setPassengerForm(f => ({...f, name: e.target.value}))}
+                    <label htmlFor="passenger-name" className="text-xs text-admin-muted">이름 *</label>
+                    <input id="passenger-name" value={passengerForm.name} onChange={e => setPassengerForm(f => ({...f, name: e.target.value}))}
                       placeholder="홍길동" className="w-full border border-admin-border-mid rounded px-2 py-1 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-admin-muted">전화번호</label>
-                    <input value={passengerForm.phone} onChange={e => setPassengerForm(f => ({...f, phone: e.target.value}))}
+                    <label htmlFor="passenger-phone" className="text-xs text-admin-muted">전화번호</label>
+                    <input id="passenger-phone" value={passengerForm.phone} onChange={e => setPassengerForm(f => ({...f, phone: e.target.value}))}
                       placeholder="010-0000-0000" className="w-full border border-admin-border-mid rounded px-2 py-1 text-sm" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="text-xs text-admin-muted">여권번호</label>
-                    <input value={passengerForm.passport_no} onChange={e => setPassengerForm(f => ({...f, passport_no: e.target.value}))}
+                    <label htmlFor="passenger-passport" className="text-xs text-admin-muted">여권번호</label>
+                    <input id="passenger-passport" value={passengerForm.passport_no} onChange={e => setPassengerForm(f => ({...f, passport_no: e.target.value}))}
                       placeholder="M12345678" className="w-full border border-admin-border-mid rounded px-2 py-1 text-sm" />
                   </div>
                   <div>
-                    <label className="text-xs text-admin-muted">구분</label>
-                    <select value={passengerForm.type} onChange={e => setPassengerForm(f => ({...f, type: e.target.value}))}
+                    <label htmlFor="passenger-type" className="text-xs text-admin-muted">구분</label>
+                    <select id="passenger-type" value={passengerForm.type} onChange={e => setPassengerForm(f => ({...f, type: e.target.value}))}
                       className="w-full border border-admin-border-mid rounded px-2 py-1 text-sm">
                       <option value="adult">성인</option>
                       <option value="child_n">소아</option>
@@ -741,7 +759,9 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                   </div>
                 </div>
                 <button
+                  type="button"
                   disabled={!passengerForm.name.trim() || addingPassenger}
+                  aria-busy={addingPassenger}
                   onClick={async () => {
                     if (!passengerForm.name.trim()) return;
                     setAddingPassenger(true);
@@ -989,7 +1009,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-sm px-5 py-3 rounded-admin-md shadow-admin-md z-50 animate-fade-in">
+        <div role="status" aria-live="polite" className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-sm px-5 py-3 rounded-admin-md shadow-admin-md z-50 animate-fade-in">
           {toast}
         </div>
       )}
@@ -997,16 +1017,23 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
       {/* 취소 모달 */}
       {showCancelModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-admin-lg shadow-admin-lg w-full max-w-md p-6">
-            <h2 className="text-lg font-bold text-admin-text mb-1">예약 취소 및 환불 처리</h2>
+          <button
+            type="button"
+            aria-label="예약 취소 모달 닫기"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setShowCancelModal(false)}
+          />
+          <div className="relative bg-white rounded-admin-lg shadow-admin-lg w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
+            <h2 id="cancel-booking-title" className="text-lg font-bold text-admin-text mb-1">예약 취소 및 환불 처리</h2>
             <p className="text-sm text-admin-muted mb-5">
               취소 후 복구가 불가능합니다. 위약금/환불액을 정확히 입력하세요.
             </p>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-medium text-admin-muted mb-1">환불액 (원)</label>
+                <label htmlFor="cancel-refund-amount" className="block text-xs font-medium text-admin-muted mb-1">환불액 (원)</label>
                 <input
+                  id="cancel-refund-amount"
                   type="number"
                   min={0}
                   value={cancelForm.refund}
@@ -1016,8 +1043,9 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-muted mb-1">위약금 (원)</label>
+                <label htmlFor="cancel-penalty-fee" className="block text-xs font-medium text-admin-muted mb-1">위약금 (원)</label>
                 <input
+                  id="cancel-penalty-fee"
                   type="number"
                   min={0}
                   value={cancelForm.penalty}
@@ -1027,8 +1055,9 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-muted mb-1">취소 사유</label>
+                <label htmlFor="cancel-reason" className="block text-xs font-medium text-admin-muted mb-1">취소 사유</label>
                 <textarea
+                  id="cancel-reason"
                   value={cancelForm.reason}
                   onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="예: 고객 단순 변심, 랜드사 취소, 항공 결항 등"
@@ -1040,14 +1069,17 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
 
             <div className="flex gap-3 mt-6">
               <button
+                type="button"
                 onClick={() => setShowCancelModal(false)}
                 className="flex-1 border border-admin-border-mid text-sm text-admin-muted py-2.5 rounded-admin-md hover:bg-admin-bg"
               >
                 취소
               </button>
               <button
+                type="button"
                 onClick={handleCancel}
                 disabled={cancelling}
+                aria-busy={cancelling}
                 className="flex-1 bg-red-600 text-white text-sm py-2.5 rounded-admin-md hover:bg-red-700 disabled:opacity-50"
               >
                 {cancelling ? '처리 중...' : '예약 취소 확정'}

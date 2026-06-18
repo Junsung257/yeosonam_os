@@ -307,6 +307,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 떠있는 버튼 (모달 닫힌 상태) */}
       {!open && (
         <button
+          type="button"
           onClick={() => setOpen(true)}
           className="fixed bottom-6 right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
           title="입금/출금 매칭 명령 (⌘K)"
@@ -323,6 +324,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
             toast.kind === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
           }`}
           role="status"
+          aria-live="polite"
         >
           {toast.msg}
         </div>
@@ -331,15 +333,19 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 모달 */}
       {open && (
         <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-start justify-center pt-[8vh] px-4"
-          onClick={() => setOpen(false)}
-          role="dialog"
-          aria-modal="true"
-          aria-label="입금/출금 매칭 명령"
+          className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] px-4"
         >
+          <button
+            type="button"
+            aria-label="입금/출금 매칭 명령 닫기"
+            className="absolute inset-0 bg-black/40 cursor-default"
+            onClick={() => setOpen(false)}
+          />
           <div
-            className="bg-white rounded-admin-md shadow-2xl w-full max-w-2xl"
-            onClick={e => e.stopPropagation()}
+            className="relative bg-white rounded-admin-md shadow-2xl w-full max-w-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-label="입금/출금 매칭 명령"
           >
             <Command shouldFilter={false} loop>
               <div className="px-4 pt-4 pb-2">
@@ -352,7 +358,6 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
                   value={input}
                   onValueChange={setInput}
                   placeholder="출발일_고객명_랜드사… 한 줄 입력"
-                  autoFocus
                   className="w-full text-base outline-none border-0 placeholder:text-admin-muted-2 bg-transparent"
                 />
               </div>

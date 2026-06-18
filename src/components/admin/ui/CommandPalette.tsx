@@ -281,12 +281,19 @@ export function CommandPalette({
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-start justify-center pt-[14vh] bg-black/35 backdrop-blur-sm admin-scope"
-      onClick={onClose}
+      className="fixed inset-0 z-[200] flex items-start justify-center pt-[14vh] admin-scope"
     >
+      <button
+        type="button"
+        aria-label="커맨드 팔레트 닫기"
+        className="absolute inset-0 bg-black/35 backdrop-blur-sm cursor-default"
+        onClick={onClose}
+      />
       <div
-        className="w-full max-w-xl bg-white rounded-admin-md shadow-2xl border border-admin-border overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-xl bg-white rounded-admin-md shadow-2xl border border-admin-border overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="커맨드 팔레트"
       >
         {/* 입력창 */}
         <div className="flex items-center gap-2.5 px-4 py-3 border-b border-admin-border">
@@ -345,4 +352,3 @@ export function CommandPalette({
     </div>
   );
 }
-

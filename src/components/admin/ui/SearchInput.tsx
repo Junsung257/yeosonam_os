@@ -9,7 +9,7 @@
  */
 
 import { Search } from 'lucide-react';
-import type { ChangeEvent, KeyboardEvent } from 'react';
+import { useEffect, useRef, type ChangeEvent, type KeyboardEvent } from 'react';
 
 interface SearchInputProps {
   variant?: 'topbar' | 'inline';
@@ -36,6 +36,12 @@ export function SearchInput({
   autoFocus,
   className = '',
 }: SearchInputProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (variant === 'inline' && autoFocus) inputRef.current?.focus();
+  }, [autoFocus, variant]);
+
   if (variant === 'topbar') {
     return (
       <button
@@ -63,16 +69,15 @@ export function SearchInput({
         className="absolute left-3 text-admin-textSubtle pointer-events-none"
       />
       <input
+        ref={inputRef}
         type="search"
         value={value}
         onChange={onChange}
         onKeyDown={onKeyDown}
         placeholder={placeholder}
-        autoFocus={autoFocus}
         className="w-full pl-9 pr-3 py-2 rounded-lg border-2 border-admin-border bg-admin-surface text-admin-sm text-admin-text placeholder:text-admin-textSubtle focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 transition-colors"
         style={width ? { width } : undefined}
       />
     </div>
   );
 }
-

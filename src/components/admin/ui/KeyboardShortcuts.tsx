@@ -215,16 +215,23 @@ export function KeyboardShortcutsHelp() {
 
   return (
     <div
-      className="fixed inset-0 z-[210] flex items-center justify-center bg-black/40 backdrop-blur-sm admin-scope p-4"
-      onClick={() => setHelpOpen(false)}
+      className="fixed inset-0 z-[210] flex items-center justify-center admin-scope p-4"
     >
+      <button
+        type="button"
+        aria-label="키보드 단축키 도움말 닫기"
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm cursor-default"
+        onClick={() => setHelpOpen(false)}
+      />
       <div
-        className="w-full max-w-2xl bg-white rounded-admin-md shadow-2xl border border-admin-border overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
+        className="relative w-full max-w-2xl bg-white rounded-admin-md shadow-2xl border border-admin-border overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="keyboard-shortcuts-title"
       >
         <div className="px-5 py-3.5 border-b border-admin-border flex items-center gap-2">
           <Keyboard size={16} className="text-admin-textMuted" />
-          <h2 className="text-admin-md font-bold text-admin-text">키보드 단축키</h2>
+          <h2 id="keyboard-shortcuts-title" className="text-admin-md font-bold text-admin-text">키보드 단축키</h2>
           <span className="ml-auto text-admin-xs text-admin-textSubtle">
             <kbd className="bg-admin-surface-2 px-1.5 py-0.5 rounded font-mono border border-admin-border-mid">
               ?
@@ -274,4 +281,3 @@ export function KeyboardShortcutsHelp() {
     </div>
   );
 }
-

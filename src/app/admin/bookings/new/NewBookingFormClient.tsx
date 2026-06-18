@@ -95,7 +95,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
         if (d.rate) setExchangeRate(d.rate);
       }).catch(() => {});
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line
   }, []);
 
   const filteredCustomers = customerSearch.length >= 1
@@ -193,8 +193,9 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
             <h2 className="font-semibold text-admin-text mb-3">예약 경로 (어필리에이트)</h2>
             <div className="flex gap-3 items-start">
               <div className="flex-1">
-                <label className="block text-xs text-admin-muted mb-1">인플루언서/파트너 선택</label>
+                <label htmlFor="new-affiliate-id" className="block text-xs text-admin-muted mb-1">인플루언서/파트너 선택</label>
                 <select
+                  id="new-affiliate-id"
                   value={selectedAffiliateId}
                   onChange={e => setSelectedAffiliateId(e.target.value)}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm"
@@ -208,8 +209,9 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                 </select>
               </div>
               <div className="w-40">
-                <label className="block text-xs text-admin-muted mb-1">USD 원가 (자동 환산)</label>
+                <label htmlFor="new-usd-cost" className="block text-xs text-admin-muted mb-1">USD 원가 (자동 환산)</label>
                 <input
+                  id="new-usd-cost"
                   type="number"
                   min={0}
                   step={0.01}
@@ -268,6 +270,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
               type="text"
               value={customerSearch}
               onChange={e => setCustomerSearch(e.target.value)}
+              aria-label="예약자 검색"
               placeholder="이름 또는 전화번호 검색"
               className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
             />
@@ -300,6 +303,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
               type="text"
               value={passengerSearch}
               onChange={e => setPassengerSearch(e.target.value)}
+              aria-label="동행자 검색"
               placeholder="이름 또는 전화번호 검색"
               className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-2"
             />
@@ -345,35 +349,35 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                 </div>
                 <div className="p-4 space-y-3">
                   <div>
-                    <label className="block text-xs font-medium text-admin-text-2 mb-1">이름 *</label>
-                    <input value={newCustomerForm.name} onChange={e => setNewCustomerForm(f => ({...f, name: e.target.value}))}
+                    <label htmlFor="new-customer-name" className="block text-xs font-medium text-admin-text-2 mb-1">이름 *</label>
+                    <input id="new-customer-name" value={newCustomerForm.name} onChange={e => setNewCustomerForm(f => ({...f, name: e.target.value}))}
                       className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-admin-text-2 mb-1">전화번호</label>
-                    <input value={newCustomerForm.phone} onChange={e => setNewCustomerForm(f => ({...f, phone: e.target.value}))}
+                    <label htmlFor="new-customer-phone" className="block text-xs font-medium text-admin-text-2 mb-1">전화번호</label>
+                    <input id="new-customer-phone" value={newCustomerForm.phone} onChange={e => setNewCustomerForm(f => ({...f, phone: e.target.value}))}
                       placeholder="010-0000-0000"
                       className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-xs font-medium text-admin-text-2 mb-1">여권번호</label>
-                      <input value={newCustomerForm.passport_no} onChange={e => setNewCustomerForm(f => ({...f, passport_no: e.target.value}))}
+                      <label htmlFor="new-customer-passport" className="block text-xs font-medium text-admin-text-2 mb-1">여권번호</label>
+                      <input id="new-customer-passport" value={newCustomerForm.passport_no} onChange={e => setNewCustomerForm(f => ({...f, passport_no: e.target.value}))}
                         className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-admin-text-2 mb-1">여권 만료일</label>
-                      <input type="date" value={newCustomerForm.passport_expiry} onChange={e => setNewCustomerForm(f => ({...f, passport_expiry: e.target.value}))}
+                      <label htmlFor="new-customer-passport-expiry" className="block text-xs font-medium text-admin-text-2 mb-1">여권 만료일</label>
+                      <input id="new-customer-passport-expiry" type="date" value={newCustomerForm.passport_expiry} onChange={e => setNewCustomerForm(f => ({...f, passport_expiry: e.target.value}))}
                         className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                     </div>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-admin-text-2 mb-1">생년월일</label>
-                    <input type="date" value={newCustomerForm.birth_date} onChange={e => setNewCustomerForm(f => ({...f, birth_date: e.target.value}))}
+                    <label htmlFor="new-customer-birth-date" className="block text-xs font-medium text-admin-text-2 mb-1">생년월일</label>
+                    <input id="new-customer-birth-date" type="date" value={newCustomerForm.birth_date} onChange={e => setNewCustomerForm(f => ({...f, birth_date: e.target.value}))}
                       className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
                   <div className="flex gap-2 pt-1">
-                    <button type="button" onClick={saveNewCustomer} disabled={savingNewCustomer}
+                    <button type="button" onClick={saveNewCustomer} disabled={savingNewCustomer} aria-busy={savingNewCustomer}
                       className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-300 transition">
                       {savingNewCustomer ? '저장 중...' : '등록 후 동행자 추가'}
                     </button>
@@ -392,43 +396,43 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
             <h2 className="font-semibold text-admin-text mb-4">인원 및 금액</h2>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">성인 수</label>
-                <input type="number" min={1} value={form.adultCount} onChange={e => setForm(f => ({...f, adultCount: +e.target.value}))}
+                <label htmlFor="new-adult-count" className="block text-xs font-medium text-admin-text-2 mb-1">성인 수</label>
+                <input id="new-adult-count" type="number" min={1} value={form.adultCount} onChange={e => setForm(f => ({...f, adultCount: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">소아 수</label>
-                <input type="number" min={0} value={form.childCount} onChange={e => setForm(f => ({...f, childCount: +e.target.value}))}
+                <label htmlFor="new-child-count" className="block text-xs font-medium text-admin-text-2 mb-1">소아 수</label>
+                <input id="new-child-count" type="number" min={0} value={form.childCount} onChange={e => setForm(f => ({...f, childCount: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">성인 원가 (1인)</label>
-                <input type="number" min={0} value={form.adultCost} onChange={e => setForm(f => ({...f, adultCost: +e.target.value}))}
+                <label htmlFor="new-adult-cost" className="block text-xs font-medium text-admin-text-2 mb-1">성인 원가 (1인)</label>
+                <input id="new-adult-cost" type="number" min={0} value={form.adultCost} onChange={e => setForm(f => ({...f, adultCost: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">성인 판매가 (1인)</label>
-                <input type="number" min={0} value={form.adultPrice} onChange={e => setForm(f => ({...f, adultPrice: +e.target.value}))}
+                <label htmlFor="new-adult-price" className="block text-xs font-medium text-admin-text-2 mb-1">성인 판매가 (1인)</label>
+                <input id="new-adult-price" type="number" min={0} value={form.adultPrice} onChange={e => setForm(f => ({...f, adultPrice: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">소아 원가 (1인)</label>
-                <input type="number" min={0} value={form.childCost} onChange={e => setForm(f => ({...f, childCost: +e.target.value}))}
+                <label htmlFor="new-child-cost" className="block text-xs font-medium text-admin-text-2 mb-1">소아 원가 (1인)</label>
+                <input id="new-child-cost" type="number" min={0} value={form.childCost} onChange={e => setForm(f => ({...f, childCost: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">소아 판매가 (1인)</label>
-                <input type="number" min={0} value={form.childPrice} onChange={e => setForm(f => ({...f, childPrice: +e.target.value}))}
+                <label htmlFor="new-child-price" className="block text-xs font-medium text-admin-text-2 mb-1">소아 판매가 (1인)</label>
+                <input id="new-child-price" type="number" min={0} value={form.childPrice} onChange={e => setForm(f => ({...f, childPrice: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">유류할증료</label>
-                <input type="number" min={0} value={form.fuelSurcharge} onChange={e => setForm(f => ({...f, fuelSurcharge: +e.target.value}))}
+                <label htmlFor="new-fuel-surcharge" className="block text-xs font-medium text-admin-text-2 mb-1">유류할증료</label>
+                <input id="new-fuel-surcharge" type="number" min={0} value={form.fuelSurcharge} onChange={e => setForm(f => ({...f, fuelSurcharge: +e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-admin-text-2 mb-1">출발일</label>
-                <input type="date" value={form.departureDate} onChange={e => setForm(f => ({...f, departureDate: e.target.value}))}
+                <label htmlFor="new-departure-date" className="block text-xs font-medium text-admin-text-2 mb-1">출발일</label>
+                <input id="new-departure-date" type="date" value={form.departureDate} onChange={e => setForm(f => ({...f, departureDate: e.target.value}))}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
             </div>
@@ -436,22 +440,24 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
             {/* 추가 비용 항목 (surcharge_breakdown) */}
             <div className="mt-4">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-admin-text-2">추가 비용 항목 (커미션 제외)</label>
+                <span id="new-surcharge-items-label" className="text-xs font-medium text-admin-text-2">추가 비용 항목 (커미션 제외)</span>
                 <button type="button" onClick={addSurchargeItem}
                   className="text-xs text-blue-600 hover:text-blue-800">+ 항목 추가</button>
               </div>
-              {surchargeItems.map((item, idx) => (
-                <div key={idx} className="flex gap-2 mb-2">
-                  <input type="text" placeholder="항목명 (싱글차지, 비자비 등)" value={item.name}
-                    onChange={e => updateSurchargeItem(idx, 'name', e.target.value)}
-                    className="flex-1 border border-admin-border-strong rounded-lg px-3 py-2 text-sm" />
-                  <input type="number" placeholder="금액" value={item.amount || ''}
-                    onChange={e => updateSurchargeItem(idx, 'amount', +e.target.value)}
-                    className="w-32 border border-admin-border-strong rounded-lg px-3 py-2 text-sm" />
-                  <button type="button" onClick={() => removeSurchargeItem(idx)}
-                    className="text-red-400 hover:text-red-600 text-sm px-2">✕</button>
-                </div>
-              ))}
+              <div role="group" aria-labelledby="new-surcharge-items-label">
+                {surchargeItems.map((item, idx) => (
+                  <div key={idx} className="flex gap-2 mb-2">
+                    <input type="text" aria-label={`추가 비용 ${idx + 1} 항목명`} placeholder="항목명 (싱글차지, 비자비 등)" value={item.name}
+                      onChange={e => updateSurchargeItem(idx, 'name', e.target.value)}
+                      className="flex-1 border border-admin-border-strong rounded-lg px-3 py-2 text-sm" />
+                    <input type="number" aria-label={`추가 비용 ${idx + 1} 금액`} placeholder="금액" value={item.amount || ''}
+                      onChange={e => updateSurchargeItem(idx, 'amount', +e.target.value)}
+                      className="w-32 border border-admin-border-strong rounded-lg px-3 py-2 text-sm" />
+                    <button type="button" onClick={() => removeSurchargeItem(idx)}
+                      className="text-red-400 hover:text-red-600 text-sm px-2">✕</button>
+                  </div>
+                ))}
+              </div>
               {surchargeTotal > 0 && (
                 <p className="text-xs text-admin-muted mt-1">추가 비용 합계: {surchargeTotal.toLocaleString()}원</p>
               )}
@@ -477,7 +483,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
           {/* 메모 */}
           <div className="bg-white rounded-admin-md shadow-admin-xs p-5">
             <h2 className="font-semibold text-admin-text mb-3">메모 (선택)</h2>
-            <textarea value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={3}
+            <textarea aria-label="예약 메모" value={form.notes} onChange={e => setForm(f => ({...f, notes: e.target.value}))} rows={3}
               placeholder="특이사항, 요청사항 등"
               className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
           </div>
@@ -485,7 +491,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
           {error && <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>}
 
           <div className="flex gap-3">
-            <button type="submit" disabled={saving}
+            <button type="submit" disabled={saving} aria-busy={saving}
               className="flex-1 bg-blue-600 text-white py-3 rounded-admin-md text-sm font-medium hover:bg-blue-700 disabled:bg-slate-300 transition">
               {saving ? '저장 중...' : '예약 등록'}
             </button>
@@ -498,4 +504,3 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
     </div>
   );
 }
-
