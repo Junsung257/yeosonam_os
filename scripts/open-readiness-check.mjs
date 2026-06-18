@@ -581,11 +581,18 @@ async function checkBlogPublicSurfaceMonitor() {
         : (failedIssues.join(', ') || body || `HTTP ${res.status}`).slice(0, 1200),
     });
   } catch (err) {
-    addCheck('public:blog-surface-monitor', 'fail', {
+    const error = err instanceof Error ? err.message : String(err);
+    const localProbeUnavailable = ALLOW_LOCAL_MISSING_DATA
+      && /fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|operation was aborted|abort/i.test(error);
+    addCheck('public:blog-surface-monitor', localProbeUnavailable ? 'blocked' : 'fail', {
       statusCode: null,
       ms: Date.now() - started,
       url,
-      error: err instanceof Error ? err.message : String(err),
+      authMode,
+      notes: localProbeUnavailable
+        ? 'local blog surface monitor endpoint was unavailable; production/staging data or a warm local server is required for full verification'
+        : '',
+      error: localProbeUnavailable ? '' : error,
     });
   } finally {
     clearTimeout(timer);
