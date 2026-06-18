@@ -947,6 +947,7 @@ function staticChecks() {
   requireIncludes('live:marketing-runtime-contract-wired', 'scripts/verify-marketing-automation-readiness.mjs', [
     'DEV_ADMIN_SESSION_PATH',
     'checkRefreshWithoutToken',
+    'checkTrackingEngagementContext',
     'checkApiContract',
     'marketingCheckCardNewsId',
     'marketingCheckVariantGroupId',
@@ -954,6 +955,9 @@ function staticChecks() {
     'missingDynamicMarketingProbeInputs',
     'live:dynamic-marketing-page-probes',
     'allowDegraded',
+    'MARKETING_READINESS_ALLOW_WRITE_PROBES',
+    '/api/tracking',
+    'live:tracking-engagement-context',
     '/api/admin/marketing/actions?limit=10',
     '/api/admin/marketing/asset-groups?limit=10',
     '/api/admin/marketing/integration-probes',
@@ -1282,6 +1286,56 @@ async function checkRefreshWithoutToken() {
   });
 }
 
+function shouldRunWriteProbe() {
+  if (process.env.MARKETING_READINESS_ALLOW_WRITE_PROBES === '1') return true;
+  try {
+    const url = new URL(baseUrl);
+    return ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function checkTrackingEngagementContext() {
+  if (!shouldRunWriteProbe()) {
+    addCheck('live:tracking-engagement-context', 'pass', {
+      notes: 'write probe skipped for non-local target; set MARKETING_READINESS_ALLOW_WRITE_PROBES=1 to force it',
+    });
+    return;
+  }
+
+  const res = await fetchWithTimeout(`${baseUrl}/api/tracking`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'engagement',
+      session_id: `marketing-readiness-${Date.now()}`,
+      event_type: 'kakao_clicked',
+      event_source: 'marketing_readiness_probe',
+      destination: 'Da Nang',
+      page_url: '/__marketing-readiness__',
+      metadata: {
+        source: 'marketing_readiness_probe',
+        placement: 'runtime_contract',
+      },
+    }),
+  });
+  const payload = parseJsonBody(res);
+  const ok =
+    res.status === 202 &&
+    res.contentType.includes('application/json') &&
+    payload &&
+    payload.ok === true &&
+    !payload.error;
+  addCheck('live:tracking-engagement-context', ok ? 'pass' : 'fail', {
+    statusCode: res.status,
+    contentType: res.contentType,
+    ms: res.ms,
+    mock: Boolean(payload?.mock),
+    error: ok ? '' : (res.error || res.body.slice(0, 300)),
+  });
+}
+
 async function checkApiContract(endpoint, headers) {
   const res = await fetchWithTimeout(`${baseUrl}${endpoint.path}`, { headers });
   const payload = parseJsonBody(res);
@@ -1308,6 +1362,7 @@ async function liveChecks() {
   if (!baseUrl) return;
 
   await checkRefreshWithoutToken();
+  await checkTrackingEngagementContext();
   const livePagePaths = [...LIVE_PAGE_PATHS, ...dynamicMarketingPagePaths()];
   const dynamicProbeMissing = missingDynamicMarketingProbeInputs();
   if (dynamicProbeMissing.length > 0) {
