@@ -409,14 +409,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
 
   useEffect(() => {
-    if (!showForm) return;
+    if (!showForm && !attractionModal) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setShowForm(false);
+        if (attractionModal) setAttractionModal(null);
+        else setShowForm(false);
       }
     };
 
@@ -425,7 +426,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [showForm]);
+  }, [attractionModal, showForm]);
 
   // CSR 네비게이션 시 referrer가 홈으로 고정되는 문제 대응 — 현재 URL을 sessionStorage에 저장
   useEffect(() => {
@@ -2174,13 +2175,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* 클립보드 복사 토스트 */}
       {clipboardToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
+        <div className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in" role="status" aria-live="polite">
           📋 문의 메시지가 복사됐어요 — 채팅창에 붙여넣기 하세요
         </div>
       )}
       {/* 링크 공유 토스트 */}
       {shareToast && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in">
+        <div className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in" role="status" aria-live="polite">
           🔗 링크가 복사되었습니다
         </div>
       )}
@@ -2305,10 +2306,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 관광지 상세 바텀시트 ═══ */}
       {attractionModal && (
-        <div className="fixed inset-0 z-50 flex items-end">
+        <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true" aria-labelledby="attraction-modal-title">
           <button
             type="button"
             aria-label="Close attraction details"
+            tabIndex={-1}
             className="absolute inset-0 bg-black/40"
             onClick={() => setAttractionModal(null)}
           />
@@ -2326,8 +2328,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             )}
             <div className="p-5">
               <div className="flex items-start justify-between mb-2">
-                <h3 className="font-extrabold text-lg text-gray-900">{attractionModal.name}</h3>
-                <button onClick={() => setAttractionModal(null)} className="text-gray-400 text-xl ml-3 shrink-0">✕</button>
+                <h3 id="attraction-modal-title" className="font-extrabold text-lg text-gray-900">{attractionModal.name}</h3>
+                <button type="button" aria-label="Close attraction details" onClick={() => setAttractionModal(null)} className="text-gray-400 text-xl ml-3 shrink-0">✕</button>
               </div>
               {attractionModal.short_desc && (
                 <p className="text-sm font-medium text-gray-700 mb-3">{attractionModal.short_desc}</p>
