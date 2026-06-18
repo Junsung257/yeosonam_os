@@ -780,6 +780,16 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           ? { ...t, match_status: 'manual', booking_id: singleBookingId || undefined }
           : t
       ));
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: {
+          surface: 'payments_manual_match',
+          action: matchMode === 'multi' ? 'multi_match' : 'match',
+          transactionId: selectedTx.id,
+          bookingId: singleBookingId || undefined,
+          count: matchMode === 'multi' ? multiSelected.size : 1,
+        },
+      });
       setSelectedTx(null);
       showToast('매칭 완료');
       loadErp();
@@ -800,6 +810,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setTransactions(prev => prev.map(t =>
         t.id === selectedTx.id ? { ...t, match_status: 'manual', is_fee: true } : t
       ));
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: { surface: 'payments_fee', action: 'fee', transactionId: selectedTx.id },
+      });
       setSelectedTx(null);
       showToast('수수료 처리 완료');
     } catch { showToast('처리 중 오류', 'err'); }
@@ -819,6 +833,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setTransactions(prev => prev.map(t =>
         t.id === txId ? { ...t, match_status: 'unmatched', booking_id: undefined } : t
       ));
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: { surface: 'payments_undo_match', action: 'undo_match', transactionId: txId },
+      });
       showToast('매칭 취소 완료');
       loadErp();
     } catch { showToast('처리 중 오류', 'err'); }
@@ -883,6 +901,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
     let countdown = 5;
     setUndoInfo({ ids: [tx.id], items: [tx], countdown });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'payments_trash', action: 'trash', transactionId: tx.id },
+    });
 
     undoTimerRef.current = setInterval(() => {
       countdown -= 1;
@@ -908,6 +930,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       ),
     );
     setUndoInfo(null);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'payments_trash', action: 'undo_trash', count: undoInfo.items.length },
+    });
     showToast('휴지통 이동이 취소되었습니다.', 'ok');
   }
 
@@ -923,6 +949,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'restore', transactionId: tx.id }),
     });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'payments_trash', action: 'restore', transactionId: tx.id },
+    });
     showToast('복원 완료', 'ok');
   }
 
@@ -933,6 +963,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'hard_delete', transactionId: tx.id }),
+    });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'payments_trash', action: 'hard_delete', transactionId: tx.id },
     });
     showToast('영구 삭제됨', 'err');
   }
@@ -1351,7 +1385,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                         <>
                           <AutoSuggestChip
                             transactionId={tx.id}
-                            onMatched={() => { load(); loadErp(); }}
+                            onMatched={() => {
+                              trackEngagement({
+                                event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                                metadata: { surface: 'payments_auto_suggest', action: 'confirm_suggestion', transactionId: tx.id },
+                              });
+                              load(); loadErp();
+                            }}
                           />
                           {tx.transaction_type === '출금' && !tx.is_refund ? (
                             <>
@@ -1933,14 +1973,26 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           imperative open 시 transactionId prefill → confirm 시 거래까지 atomic 매칭. */}
       <PaymentCommandBar
         ref={paymentBarRef}
-        onMatched={() => { load(); loadErp(); }}
+        onMatched={() => {
+          trackEngagement({
+            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+            metadata: { surface: 'payments_command_bar', action: 'command_match' },
+          });
+          load(); loadErp();
+        }}
       />
 
       {/* 출금 정산 묶기 모달 — 사장님이 ☑ 선택해서 booking N개를 출금 1건에 묶음 */}
       <SettlementBundleModal
         transaction={bundleTx}
         onClose={() => setBundleTx(null)}
-        onSettled={() => { load(); loadErp(); }}
+        onSettled={() => {
+          trackEngagement({
+            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+            metadata: { surface: 'payments_settlement_bundle', action: 'settle_bundle', transactionId: bundleTx?.id },
+          });
+          load(); loadErp();
+        }}
       />
     </>
   );
