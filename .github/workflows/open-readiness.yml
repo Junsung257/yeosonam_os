@@ -111,7 +111,8 @@ jobs:
             --operational-apply-script=.tmp/operational-readiness-apply-inputs.sh \
             --operational-vercel-script=.tmp/operational-readiness-vercel-env.sh \
             --operational-node-apply-script=.tmp/operational-readiness-apply-inputs.mjs \
-            --operational-node-vercel-script=.tmp/operational-readiness-vercel-env.mjs
+            --operational-node-vercel-script=.tmp/operational-readiness-vercel-env.mjs \
+            --operational-env-file=.tmp/operational-readiness-discovered.env
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/open-readiness-step-summary.md ]]; then
             cat .tmp/open-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi

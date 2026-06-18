@@ -116,7 +116,8 @@ jobs:
             --operational-apply-script=.tmp/local-release-operational-inputs-apply.sh \
             --operational-vercel-script=.tmp/local-release-operational-inputs-vercel-env.sh \
             --operational-node-apply-script=.tmp/local-release-operational-inputs-apply.mjs \
-            --operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs
+            --operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs \
+            --operational-env-file=.tmp/operational-readiness-discovered.env
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/local-release-readiness-step-summary.md ]]; then
             cat .tmp/local-release-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi

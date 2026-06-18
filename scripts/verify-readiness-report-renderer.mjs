@@ -241,6 +241,8 @@ function verifyOutput(run) {
     assertIncludes(issue, 'Node apply script', `${run.kind} issue`);
     assertIncludes(summary, 'Node Vercel env script', `${run.kind} summary`);
     assertIncludes(issue, 'Node Vercel env script', `${run.kind} issue`);
+    assertIncludes(summary, 'Env file', `${run.kind} summary`);
+    assertIncludes(issue, 'Env file', `${run.kind} issue`);
     assertIncludes(summary, '## Missing Inputs', `${run.kind} summary`);
     assertIncludes(issue, '## Missing Inputs', `${run.kind} issue`);
     assertIncludes(summary, 'Preferred Location', `${run.kind} summary`);
@@ -269,6 +271,10 @@ function verifyOutput(run) {
       assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'open summary');
       assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'open issue');
     } else if (run.kind === 'local-release') {
+      assertIncludes(summary, 'Operational env file', 'local-release summary');
+      assertIncludes(issue, 'Operational env file', 'local-release issue');
+      assertIncludes(summary, '.tmp/local-release-operational-inputs-discovered.env', 'local-release summary');
+      assertIncludes(issue, '.tmp/local-release-operational-inputs-discovered.env', 'local-release issue');
       assertIncludes(summary, 'public:blog-surface-monitor', 'local-release summary');
       assertIncludes(issue, 'public:blog-surface-monitor', 'local-release issue');
       assertIncludes(summary, 'public:blog-search-quality', 'local-release summary');

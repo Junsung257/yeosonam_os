@@ -28,6 +28,7 @@ const operationalApplyScriptPath = argValue('--operational-apply-script', '');
 const operationalVercelScriptPath = argValue('--operational-vercel-script', '');
 const operationalNodeApplyScriptPath = argValue('--operational-node-apply-script', '');
 const operationalNodeVercelScriptPath = argValue('--operational-node-vercel-script', '');
+const operationalEnvFilePath = argValue('--operational-env-file', '');
 const selfTest = hasFlag('--self-test');
 
 const KIND_CONFIG = {
@@ -71,6 +72,10 @@ function sampleReportFor(value) {
       blocked: 1,
       failed: 0,
       total: 3,
+      operationalEnvFile: {
+        path: '.tmp/local-release-operational-inputs-discovered.env',
+        loadedKeys: ['OPEN_CHECK_PACKAGE_ID', 'MARKETING_CHECK_CARD_NEWS_ID'],
+      },
       releaseBlockers: [{
         source: 'open-readiness-local-full',
         name: 'runtime:env-readiness',
@@ -121,6 +126,14 @@ function sampleReportFor(value) {
       checks: [
         { id: 'type-check', status: 'pass', durationMs: 111 },
         {
+          id: 'operational-input-discovery',
+          status: 'blocked',
+          durationMs: 33,
+          blocked: 1,
+          failed: 0,
+          envFilePath: '.tmp/local-release-operational-inputs-discovered.env',
+        },
+        {
           id: 'operational-inputs',
           status: 'blocked',
           durationMs: 111,
@@ -132,6 +145,7 @@ function sampleReportFor(value) {
           vercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.sh',
           nodeApplyScriptPath: '.tmp/local-release-operational-inputs-apply.mjs',
           nodeVercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.mjs',
+          envFilePath: '.tmp/local-release-operational-inputs-discovered.env',
         },
         { id: 'open-readiness-local-full', status: 'blocked', durationMs: 222, blocked: 1, failed: 0 },
       ],
@@ -199,6 +213,7 @@ function sampleReportFor(value) {
         vercelScriptPath: '.tmp/operational-readiness-vercel-env.sh',
         nodeApplyScriptPath: '.tmp/operational-readiness-apply-inputs.mjs',
         nodeVercelScriptPath: '.tmp/operational-readiness-vercel-env.mjs',
+        envFilePath: '.tmp/operational-readiness-discovered.env',
       },
       { name: 'runtime:env-readiness', status: 'blocked', ms: 1, notes: 'sample missing env' },
     ],
@@ -482,7 +497,13 @@ function preferredLocationsForKeys(keys) {
 function operationalArtifactRows(report) {
   const rows = [];
   const seen = new Set();
+  if (report?.operationalEnvFile?.path) {
+    const key = `local-release:Operational env file:${report.operationalEnvFile.path}`;
+    seen.add(key);
+    rows.push(['local-release', 'Operational env file', report.operationalEnvFile.path]);
+  }
   for (const [type, path] of [
+    ['Operational env file', operationalEnvFilePath],
     ['Action plan', operationalPlanPath],
     ['Fill-in template', operationalTemplatePath],
     ['Apply script', operationalApplyScriptPath],
@@ -505,6 +526,7 @@ function operationalArtifactRows(report) {
       ['Vercel env script', check.vercelScriptPath],
       ['Node apply script', check.nodeApplyScriptPath],
       ['Node Vercel env script', check.nodeVercelScriptPath],
+      ['Env file', check.envFilePath],
     ]) {
       if (!path) continue;
       const key = `${source}:${type}:${path}`;
