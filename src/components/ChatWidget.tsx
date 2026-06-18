@@ -12,7 +12,8 @@ import {
   openKakaoFromChatEscalation,
 } from '@/lib/consult-escalation';
 import { buildQaChatHistory } from '@/lib/qa-chat-history';
-import { getReferrer } from '@/lib/tracker';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { getReferrer, trackEngagement } from '@/lib/tracker';
 import { MessageCircle, X, Send } from 'lucide-react';
 
 export default function ChatWidget() {
@@ -64,6 +65,15 @@ export default function ChatWidget() {
       openConsultPhone();
       return;
     }
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      page_url: pathname || '/',
+      metadata: {
+        source: 'chat_widget_escalation',
+        hasConversationSummary: Boolean(conversationSummary),
+        messageCount: msgs.length,
+      },
+    });
     await openKakaoFromChatEscalation(msgs);
   };
 

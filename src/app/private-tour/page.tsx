@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Suspense } from 'react';
 import PrivateTourLandingClient from './PrivateTourLandingClient';
+import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
 
 export const dynamic = 'force-static';
 export const revalidate = 86400;
@@ -146,8 +147,6 @@ const MOCK_FEED = [
   { dest: '나트랑', pax: 10, type: '기업 워크샵', ago: '3일 전', status: 'confirmed' as const },
 ] as const;
 
-const KAKAO_CHAT_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
-
 export default function PrivateTourPage() {
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -233,14 +232,13 @@ export default function PrivateTourPage() {
             >
               무료 맞춤 견적 의뢰하기
             </a>
-            <a
-              href={KAKAO_CHAT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <TrackedKakaoLink
+              source="private_tour_hero"
+              destination="private-tour"
               className="flex-1 bg-yellow-400 text-slate-900 font-bold py-4 px-6 rounded-2xl text-center hover:bg-yellow-300 transition"
             >
               💬 카카오톡 상담
-            </a>
+            </TrackedKakaoLink>
           </div>
         </div>
       </section>
@@ -403,14 +401,13 @@ export default function PrivateTourPage() {
             >
               무료 맞춤 견적 의뢰하기
             </a>
-            <a
-              href={KAKAO_CHAT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <TrackedKakaoLink
+              source="private_tour_bottom"
+              destination="private-tour"
               className="flex-1 bg-yellow-400 text-slate-900 font-bold py-4 px-6 rounded-2xl text-center hover:bg-yellow-300 transition"
             >
               💬 카카오톡 상담
-            </a>
+            </TrackedKakaoLink>
           </div>
           <div className="mt-8 pt-8 border-t border-white/20 text-sm text-white/60">
             <Link href="/" className="hover:text-white transition">

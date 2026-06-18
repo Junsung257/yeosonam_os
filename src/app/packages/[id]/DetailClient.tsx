@@ -2054,6 +2054,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         kakaoChannel={() => openKakaoChannel({
           internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
           productTitle: pkg.products?.display_name || pkg.title,
+          intent: pkg.product_type ?? null,
+          budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
+          destination: pkg.destination ?? null,
+          selected_products: [pkg.products?.display_name || pkg.title],
           departureDate: selectedDate || selectedTier?.departure_dates?.[0],
         })}
       />
@@ -2268,6 +2272,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               const copied = await openKakaoChannel({
                 internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
                 productTitle: pkg.products?.display_name || pkg.title,
+                intent: pkg.product_type ?? null,
+                budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
+                destination: pkg.destination ?? null,
+                selected_products: [pkg.products?.display_name || pkg.title],
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
               });
               if (copied) {

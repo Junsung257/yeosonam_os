@@ -569,6 +569,21 @@ function TodayWorkQueue({
           <Link
             key={row.href}
             href={row.href}
+            aria-label={`${row.label} ${row.count}건 ${row.count > 0 ? row.action : '확인'}`}
+            onClick={() => {
+              trackEngagement({
+                event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                page_url: '/admin',
+                metadata: {
+                  surface: 'today_work_queue',
+                  action: 'queue_opened',
+                  label: row.label,
+                  href: row.href,
+                  count: row.count,
+                  has_waiting_work: row.count > 0,
+                },
+              });
+            }}
             className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
           >
             <div className="flex items-start justify-between gap-3">
@@ -1557,7 +1572,7 @@ export default function AdminPage({
   };
 
   // 첫 진입 1회만 서버 프리패치 보강 로드. period 변경은 버튼 핸들러가 직접 호출한다.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line
   useEffect(() => { loadAll(6); }, []);
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject') => {
@@ -1809,8 +1824,7 @@ export default function AdminPage({
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingPackages.slice(0, 6).map(pkg => (
-              <div key={pkg.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm cursor-pointer transition-all duration-160"
-                onClick={() => setSelectedPackage(pkg)}>
+              <div key={pkg.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
                 <p className="text-admin-sm font-medium text-admin-text-2 truncate">{pkg.title}</p>
                 <div className="flex items-center gap-2 mt-1">
                   {pkg.destination && <span className="text-[11px] text-admin-muted">{pkg.destination}</span>}
@@ -1820,12 +1834,16 @@ export default function AdminPage({
                     pkg.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
                   }`}>{Math.round(pkg.confidence * 100)}%</span>
                 </div>
-                <div className="mt-2 flex gap-1" onClick={e => e.stopPropagation()}>
-                  <button onClick={() => handleAction(pkg.id, 'approve')} disabled={processingId === pkg.id}
+                <div className="mt-2 flex gap-1">
+                  <button type="button" onClick={() => setSelectedPackage(pkg)}
+                    className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-1 rounded text-[11px] hover:bg-admin-bg transition">
+                    상세
+                  </button>
+                  <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
                     className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
                     승인
                   </button>
-                  <button onClick={() => handleAction(pkg.id, 'reject')} disabled={processingId === pkg.id}
+                  <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
                     className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
                     반려
                   </button>
@@ -1972,10 +1990,14 @@ export default function AdminPage({
 
       {/* 상세 슬라이드 패널 */}
       {selectedPackage && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setSelectedPackage(null)}>
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full overflow-y-auto"
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            aria-label="상품 상세 닫기"
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            onClick={() => setSelectedPackage(null)}
+          />
+          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-admin-border-mid px-5 py-4 flex items-start justify-between">
               <div className="flex-1 pr-4">
                 <h2 className="text-admin-lg font-semibold text-admin-text-2 leading-snug">{selectedPackage.title}</h2>
@@ -1984,8 +2006,13 @@ export default function AdminPage({
                   selectedPackage.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
                 }`}>{Math.round(selectedPackage.confidence * 100)}%</span>
               </div>
-              <button onClick={() => setSelectedPackage(null)} className="text-admin-muted-2 hover:text-admin-muted p-1">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
+              <button
+                type="button"
+                aria-label="상품 상세 닫기"
+                onClick={() => setSelectedPackage(null)}
+                className="text-admin-muted-2 hover:text-admin-muted p-1"
+              >
+                <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
               </button>
             </div>
 

@@ -15,6 +15,13 @@ function getCookie(name: string): string | null {
 interface KakaoChannelParams {
   internalCode?: string;    // 예: PUS-ETC-FUK-03-0007
   productTitle?: string;
+  intent?: string | null;
+  budget?: string | null;
+  destination?: string | null;
+  partyType?: string | null;
+  party_type?: string | null;
+  selectedProducts?: Array<string | null | undefined> | null;
+  selected_products?: Array<string | null | undefined> | null;
   departureDate?: string;   // 예: 2026-05-13
   /** AI 채팅 에스컬레이션 등 — 클립보드 안내에 그대로 붙음 */
   escalationSummary?: string;
@@ -46,6 +53,24 @@ export async function openKakaoChannel(params?: KakaoChannelParams): Promise<str
 
   if (params?.departureDate) {
     message += `출발일: ${params.departureDate}\n`;
+    hasContent = true;
+  }
+
+  const partyType = params?.partyType ?? params?.party_type;
+  const selectedProducts = (params?.selectedProducts ?? params?.selected_products ?? [])
+    .map((item) => item?.trim())
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 5);
+  const conditionLines = [
+    params?.intent ? `상담 의도: ${params.intent}` : null,
+    params?.budget ? `예산: ${params.budget}` : null,
+    params?.destination ? `목적지: ${params.destination}` : null,
+    partyType ? `일행 유형: ${partyType}` : null,
+    selectedProducts.length > 0 ? `선택 상품: ${selectedProducts.join(' / ')}` : null,
+  ].filter(Boolean);
+
+  if (conditionLines.length > 0) {
+    message += `\n[상담 조건]\n${conditionLines.join('\n')}\n`;
     hasContent = true;
   }
 

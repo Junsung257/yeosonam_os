@@ -7,6 +7,7 @@ import GlobalNav from '@/components/customer/GlobalNav';
 import PackageCard, { type PackageCardData } from '@/components/customer/PackageCard';
 import SearchBar from '@/components/customer/SearchBar';
 import SectionHeader from '@/components/customer/SectionHeader';
+import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
@@ -470,9 +471,13 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
             <p className="text-sm md:text-base text-slate-600 mb-6">
               여소남 운영팀이 {region.label} 최적 패키지를 맞춤 추천해드립니다.
             </p>
-            <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade" className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#FEE500] text-[#3C1E1E] font-bold text-base rounded-full hover:opacity-90">
+            <TrackedKakaoLink
+              source="destination_region_bottom"
+              destination={region.label}
+              className="inline-flex items-center gap-2 px-7 py-3.5 bg-[#FEE500] text-[#3C1E1E] font-bold text-base rounded-full hover:opacity-90"
+            >
               💬 카카오톡 상담하기
-            </a>
+            </TrackedKakaoLink>
           </section>
         </div>
       </main>

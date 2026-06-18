@@ -8,6 +8,7 @@ import SectionHeader from '@/components/customer/SectionHeader';
 import TravelFitnessCard from '@/components/customer/TravelFitnessCard';
 import DestinationPackagesSection from '@/components/customer/DestinationPackagesSection';
 import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
 import { getRegionForCity, getDestinationUrl, getRegionUrl, cityInRegion, encodeDestinationPathSegment, destinationToSlug, destinationSlugMatches } from '@/lib/regions';
 import { isSafeImageSrc, pickAttractionPhotoUrl } from '@/lib/image-url';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
@@ -727,14 +728,13 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 >
                   상품 보기
                 </a>
-                <a
-                  href="https://pf.kakao.com/_xcFxkBG/chat"
-                  target="_blank"
-                  rel="noopener"
+                <TrackedKakaoLink
+                  source="destination_city_hero"
+                  destination={decoded}
                   className="inline-flex justify-center items-center gap-2 px-7 py-3.5 bg-[#FEE500] text-[#3C1E1E] font-bold text-base md:text-lg rounded-full hover:bg-[#FEE500]/90 transition shadow-lg"
                 >
                   💬 카카오톡 상담
-                </a>
+                </TrackedKakaoLink>
               </div>
 
               {/* Trust Bar — 동적 출발지 */}
@@ -928,14 +928,13 @@ export default async function DestinationPillarPage({ params }: { params: Promis
                 </div>
               </div>
 
-              <a
-                href="https://pf.kakao.com/_xcFxkBG/chat"
-                target="_blank"
-                rel="noopener"
+              <TrackedKakaoLink
+                source="destination_city_bottom"
+                destination={decoded}
                 className="inline-flex justify-center items-center gap-2 w-full md:w-auto md:px-14 py-4 bg-brand text-white font-bold text-base md:text-lg rounded-2xl hover:bg-brand-dark transition shadow-lg shadow-brand/25"
               >
                 💬 카카오톡으로 무료 상담받기
-              </a>
+              </TrackedKakaoLink>
             </div>
           </section>
         </div>

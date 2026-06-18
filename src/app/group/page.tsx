@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import GroupLandingClient from './GroupLandingClient';
+import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
 
 export const revalidate = 86400;
 
@@ -104,8 +105,6 @@ const MOCK_FEED = [
   { dest: '발리', pax: 20, type: '기업 연수', ago: '3일 전', status: 'confirmed' as const },
 ] as const;
 
-const KAKAO_CHAT_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
-
 export default function GroupLandingPage() {
   return (
     <main className="min-h-screen bg-white text-slate-900">
@@ -150,14 +149,13 @@ export default function GroupLandingPage() {
             >
               견적 요청하기
             </a>
-            <a
-              href={KAKAO_CHAT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <TrackedKakaoLink
+              source="group_hero"
+              destination="group"
               className="flex-1 bg-yellow-400 text-slate-900 font-bold py-4 px-6 rounded-2xl text-center hover:bg-yellow-300 transition"
             >
               💬 카카오톡 상담
-            </a>
+            </TrackedKakaoLink>
           </div>
         </div>
       </section>
@@ -317,14 +315,13 @@ export default function GroupLandingPage() {
             >
               견적 요청하기
             </a>
-            <a
-              href={KAKAO_CHAT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
+            <TrackedKakaoLink
+              source="group_bottom"
+              destination="group"
               className="flex-1 bg-yellow-400 text-slate-900 font-bold py-4 px-6 rounded-2xl text-center hover:bg-yellow-300 transition"
             >
               💬 카카오톡 상담
-            </a>
+            </TrackedKakaoLink>
           </div>
           <div className="mt-8 pt-8 border-t border-white/20 text-sm text-white/60">
             <Link href="/" className="hover:text-white transition">

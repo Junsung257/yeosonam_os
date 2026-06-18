@@ -60,6 +60,13 @@ type TrackingPayload =
       product_id?: string;
       product_name?: string;
       page_url?: string;
+      event_source?: string | null;
+      destination?: string | null;
+      intent?: string | null;
+      budget?: string | null;
+      party_type?: string | null;
+      selected_products?: string[] | null;
+      metadata?: Record<string, unknown>;
       cart_added?: boolean;
       lead_time_days?: number;
       visitor_uid?: string;
@@ -146,6 +153,17 @@ async function incrementMappingMetric(
 
 function normalizeSource(value?: string | null): string {
   return String(value || '').trim().toLowerCase();
+}
+
+function normalizeMetadata(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function nonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed || null;
 }
 
 function isPaidTraffic(traffic?: {
@@ -293,12 +311,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // ── engagement ───────────────────────────────────────────
     case 'engagement': {
+      const baseMetadata = normalizeMetadata(body.metadata);
+      const metadata: Record<string, unknown> = {
+        ...baseMetadata,
+        ...(body.intent ? { intent: body.intent } : {}),
+        ...(body.budget ? { budget: body.budget } : {}),
+        ...(body.party_type ? { party_type: body.party_type } : {}),
+        ...(body.selected_products ? { selected_products: body.selected_products } : {}),
+      };
+      const eventSource = nonEmptyString(body.event_source) ?? nonEmptyString(baseMetadata.source);
+
       void insertEngagementLog({
         session_id: body.session_id,
         user_id: body.user_id ?? null,
         event_type: body.event_type,
         product_id: body.product_id ?? null,
         product_name: body.product_name ?? null,
+        event_source: eventSource,
+        destination: nonEmptyString(body.destination),
+        metadata,
         cart_added: body.cart_added ?? false,
         page_url: body.page_url ?? null,
         lead_time_days: body.lead_time_days ?? null,

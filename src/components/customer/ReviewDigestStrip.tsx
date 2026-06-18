@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 
 interface DigestQuote {
   text: string;
@@ -39,6 +41,16 @@ export default function ReviewDigestStrip({ packageId }: { packageId: string }) 
 
   const quotes = data?.digest_quotes ?? [];
 
+  const handleKakaoClick = () => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      product_id: packageId,
+      page_url: typeof window !== 'undefined' ? window.location.pathname : undefined,
+      metadata: { source: 'review_digest_empty_state' },
+    });
+    void openKakaoChannel();
+  };
+
   // fetch 자체가 실패하면 (네트워크/500) 조용히 숨김 — 빈 데이터인지 장애인지 구분 못함.
   if (!fetched) return null;
 
@@ -48,7 +60,7 @@ export default function ReviewDigestStrip({ packageId }: { packageId: string }) 
       <section className="px-4 py-3 relative z-10">
         <button
           type="button"
-          onClick={() => openKakaoChannel()}
+          onClick={handleKakaoClick}
           className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm text-left active:scale-[0.99] transition-transform"
         >
           <div className="flex items-center justify-between gap-3">

@@ -325,6 +325,11 @@ export default function PackagesClient() {
     if (intent === 'budget') setSortBy('price_asc');
     if (selectedIntent === 'budget' && intent === 'budget') setSortBy('recommended');
     if (intent === 'consult') {
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.kakaoClicked,
+        page_url: '/packages',
+        metadata: { source: 'packages_intent_consult_chip', selectedIntent: nextIntent, hub },
+      });
       window.open('https://pf.kakao.com/_xcFxkBG/chat', '_blank', 'noopener,noreferrer');
     }
   }, [hub, selectedIntent, trackScoreSignal]);
