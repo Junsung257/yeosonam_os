@@ -14,6 +14,8 @@ import {
   AUDIT_BADGE,
 } from '@/lib/package-status';
 import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
 const ApprovalModal = nextDynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
@@ -349,6 +351,72 @@ function getExtendedDeadline(): string {
 }
 
 // ── MarketingToggle (React.memo) ─────────────────────────────────────────────
+function PackageOpsQueue({
+  pendingCount,
+  reviewCount,
+  readyCount,
+  deadlineCount,
+  gapCount,
+  onQueueSelect,
+}: {
+  pendingCount: number;
+  reviewCount: number;
+  readyCount: number;
+  deadlineCount: number;
+  gapCount: number;
+  onQueueSelect: (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => void;
+}) {
+  type QueueTone = 'amber' | 'blue' | 'emerald' | 'red';
+  const cards: Array<{ id: 'review' | 'copy' | 'publish' | 'deadline'; label: string; count: number; detail: string; tone: QueueTone }> = [
+    { id: 'review' as const, label: '검수', count: pendingCount, detail: '신규 등록 확인', tone: 'amber' },
+    { id: 'copy' as const, label: '수정', count: reviewCount + gapCount, detail: '카피/필드 보완', tone: 'blue' },
+    { id: 'publish' as const, label: '발행', count: readyCount, detail: '승인 상품 점검', tone: 'emerald' },
+    { id: 'deadline' as const, label: '마감 대응', count: deadlineCount, detail: 'D-3 이내 상품', tone: 'red' },
+  ] as const;
+  const total = cards.reduce((sum, card) => sum + card.count, 0);
+  const toneClass: Record<QueueTone, string> = {
+    amber: 'border-amber-200 bg-amber-50 text-amber-800',
+    blue: 'border-blue-200 bg-blue-50 text-blue-800',
+    emerald: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+    red: 'border-red-200 bg-red-50 text-red-700',
+  };
+
+  return (
+    <section className="mb-3 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-admin-base font-bold text-admin-text-2">상품 액션 큐</h2>
+          <p className="mt-0.5 text-[11px] text-admin-muted-2">검수, 수정, 발행, 마감 대응을 먼저 처리합니다.</p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black tabular-nums ${total > 0 ? 'bg-slate-950 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+          {total > 0 ? `${total}건 처리` : '대기 없음'}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+        {cards.map(card => (
+          <button
+            key={card.id}
+            type="button"
+            onClick={() => onQueueSelect(card.id)}
+            className={`min-h-[86px] rounded-admin-md border p-3 text-left transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${
+              card.count > 0 ? toneClass[card.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[12px] font-bold">{card.label}</p>
+                <p className="mt-0.5 text-[11px] text-current/60">{card.detail}</p>
+              </div>
+              <span className="text-[24px] font-black leading-none tabular-nums">{card.count}</span>
+            </div>
+            <p className="mt-3 text-[11px] font-semibold text-current/70">{card.count > 0 ? `${card.label} 화면 보기` : '확인'}</p>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 const MarketingToggle = React.memo(function MarketingToggle({
   pkgId,
   platform,
@@ -1205,20 +1273,28 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const handleAction = async (packageId: string, action: 'approve' | 'reject' | 'delete' | 'extend') => {
     setActionLoading(packageId + action);
     try {
+      let res: Response;
       if (action === 'delete') {
-        await fetch(`/api/packages?id=${packageId}`, { method: 'DELETE' });
+        res = await fetch(`/api/packages?id=${packageId}`, { method: 'DELETE' });
         setSelected(null);
       } else if (action === 'extend') {
-        await fetch('/api/packages', {
+        res = await fetch('/api/packages', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ packageId, ticketing_deadline: getExtendedDeadline() }),
         });
       } else {
-        await fetch('/api/packages', {
+        res = await fetch('/api/packages', {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ packageId, action }),
+        });
+      }
+      if (res.ok) {
+        trackEngagement({
+          event_type: ANALYTICS_EVENTS.adminActionCompleted,
+          page_url: '/admin/packages',
+          metadata: { surface: 'packages_row_action', action, packageId },
         });
       }
       if (action !== 'extend') setSelected(null);
@@ -1316,11 +1392,18 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (action === 'bulk_archive' && !confirm(`${checkedIds.size}개 상품을 아카이브하시겠습니까?`)) return;
     setBulkLoading(true);
     try {
-      await fetch('/api/packages', {
+      const res = await fetch('/api/packages', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action, packageIds: Array.from(checkedIds) }),
       });
+      if (res.ok) {
+        trackEngagement({
+          event_type: ANALYTICS_EVENTS.adminActionCompleted,
+          page_url: '/admin/packages',
+          metadata: { surface: 'packages_bulk_action', action, count: checkedIds.size },
+        });
+      }
       setCheckedIds(new Set());
       load();
     } catch (e) {
@@ -1338,11 +1421,18 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (Object.keys(fields).length === 0) return;
     setBulkLoading(true);
     try {
-      await fetch('/api/packages', {
+      const res = await fetch('/api/packages', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'bulk_update', packageIds: Array.from(checkedIds), fields }),
       });
+      if (res.ok) {
+        trackEngagement({
+          event_type: ANALYTICS_EVENTS.adminActionCompleted,
+          page_url: '/admin/packages',
+          metadata: { surface: 'packages_bulk_edit', action: 'bulk_update', count: checkedIds.size, fields: Object.keys(fields) },
+        });
+      }
       setBulkEditOpen(false);
       setBulkLandOperator('');
       setBulkCommission('');
@@ -1387,6 +1477,11 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         showToast('error', `저장 실패: ${(err as { error?: string }).error ?? '서버 오류'}`);
         return;
       }
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        page_url: '/admin/packages',
+        metadata: { surface: 'packages_single_edit', action: 'update', packageId: editPkg.id, fields: Object.keys(updateData) },
+      });
       setEditPkg(null);
       load();
       showToast('success', '수정 사항이 저장되었습니다.');
@@ -1419,6 +1514,29 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const reviewCount = packages.filter(p => p.status === 'pending_review' && !isExpired(p)).length;
   const deadlineCount = packages.filter(isDeadlineSoon).length;
   const expiredCount = packages.filter(isExpired).length;
+  const readyCount = packages.filter(p => p.status === 'approved' && !isExpired(p)).length;
+  const gapCount = packages.filter(p => {
+    const days = (p as { itinerary_data?: { days?: unknown[] } }).itinerary_data?.days;
+    const hasPrice = Boolean(p.price) || Boolean(p.price_tiers?.length);
+    return !p.airline || !Array.isArray(days) || days.length === 0 || !hasPrice;
+  }).length;
+  const handleQueueSelect = (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => {
+    setSearchQuery('');
+    if (queue === 'review' || queue === 'copy') {
+      setStatusFilter('pending');
+      setSortBy('created_desc');
+    } else if (queue === 'publish') {
+      setStatusFilter('selling');
+      setSortBy('created_desc');
+    } else if (queue === 'deadline') {
+      setStatusFilter('all');
+      setSortBy('deadline_asc');
+      setShowExpired(true);
+    } else {
+      setStatusFilter('all');
+      setSortBy('created_desc');
+    }
+  };
 
   return (
     <div>
@@ -1454,7 +1572,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       </div>
 
       {/* 검색 + 정렬 */}
-      <div className="flex gap-2 mb-3">
+      <PackageOpsQueue
+        pendingCount={pendingCount}
+        reviewCount={reviewCount}
+        readyCount={readyCount}
+        deadlineCount={deadlineCount}
+        gapCount={gapCount}
+        onQueueSelect={handleQueueSelect}
+      />
+
+      <div className="flex flex-col gap-2 mb-3 md:flex-row">
         <input
           type="text"
           value={searchQuery}

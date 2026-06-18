@@ -28,7 +28,9 @@ import CommandPalette from '@/components/CommandPalette';
 import { useVendors } from '@/hooks/useVendors';
 import { useLocations } from '@/hooks/useLocations';
 import { isValidTransition } from '@/lib/booking-state-machine';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { maskPhone } from '@/lib/pii-mask';
+import { trackEngagement } from '@/lib/tracker';
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
 interface Booking {
@@ -741,6 +743,64 @@ function SortTh({ label, field, sortField, sortDir, onSort, className = '' }: {
 // ══════════════════════════════════════════════════════════════════════════════
 // 메인 컴포넌트
 // ══════════════════════════════════════════════════════════════════════════════
+type BookingLifecycleTab = 'active' | 'done' | 'cancelled' | 'trash';
+type BookingActiveTab =
+  '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'over_cost' | 'refund_pending' | 'settlement_pending';
+type BookingWorkQueueKey = 'unpaid' | 'prep' | 'deposit' | 'land' | 'settlement' | 'refund';
+
+function BookingWorkQueue({
+  counts,
+  onSelect,
+}: {
+  counts: Record<BookingWorkQueueKey, number>;
+  onSelect: (key: BookingWorkQueueKey) => void;
+}) {
+  const items: {
+    key: BookingWorkQueueKey;
+    label: string;
+    helper: string;
+    count: number;
+    tone: string;
+  }[] = [
+    { key: 'unpaid', label: '잔금 미수', helper: '출발 7일 이내', count: counts.unpaid, tone: 'border-red-200 bg-red-50 text-red-700' },
+    { key: 'prep', label: '확정서 미발송', helper: '준비물 확인 필요', count: counts.prep, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { key: 'deposit', label: '계약금 미입금', helper: '첫 결제 대기', count: counts.deposit, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'land', label: '랜드사 미송금', helper: '출발 전 송금', count: counts.land, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { key: 'settlement', label: '정산 대기', helper: '출발 후 7일+', count: counts.settlement, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { key: 'refund', label: '환불 대기', helper: '취소건 잔액', count: counts.refund, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
+  ];
+
+  return (
+    <section className="mb-3 shrink-0 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-admin-base font-bold text-admin-text-2">오늘 처리할 예약</h2>
+          <p className="text-admin-xs text-admin-muted-2">급한 업무를 선택하면 해당 예약만 바로 모아봅니다.</p>
+        </div>
+        <span className="hidden rounded-full bg-admin-bg px-3 py-1 text-admin-xs font-semibold text-admin-muted md:inline-flex">
+          Action queue
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+        {items.map(item => (
+          <button
+            key={item.key}
+            type="button"
+            disabled={item.count === 0}
+            onClick={() => onSelect(item.key)}
+            aria-label={`${item.label} ${item.count}건 보기`}
+            className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-admin-sm disabled:cursor-not-allowed disabled:opacity-45 ${item.tone}`}
+          >
+            <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
+            <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
+            <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function BookingsPage({ initialBookings }: { initialBookings?: Booking[] } = {}) {
 
   // ── 데이터 ─────────────────────────────────────────────────────────────────
@@ -770,7 +830,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   //                    → 데이터 품질 모니터 drilldown
   const searchParams = useSearchParams();
   const highlightedTaskId = searchParams?.get('task') ?? null;
-  const initialLifecycle: 'active' | 'done' | 'cancelled' | 'trash' = (() => {
+  const initialLifecycle: BookingLifecycleTab = (() => {
     const mode = searchParams?.get('mode');
     if (mode === 'recognized') return 'done';
     if (searchParams?.get('dq')) return 'active'; // 데이터 품질은 진행 중 예약에서 주로 발견
@@ -783,10 +843,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   })();
   const dqFilter = searchParams?.get('dq') ?? null; // 데이터 품질 모니터 진입점
 
-  const [lifecycleTab, setLifecycleTab] = useState<'active' | 'done' | 'cancelled' | 'trash'>(initialLifecycle);
-  const [activeTab, setActiveTab] = useState<
-    '' | 'unpaid_risk' | 'missing_info' | 'land_bomb' | 'prep_docs' | 'deposit_unpaid' | 'over_cost' | 'refund_pending' | 'settlement_pending'
-  >(initialActiveTab);
+  const [lifecycleTab, setLifecycleTab] = useState<BookingLifecycleTab>(initialLifecycle);
+  const [activeTab, setActiveTab] = useState<BookingActiveTab>(initialActiveTab);
   // 완료/지난 행사 탭 내 sub-필터: '' | 'settled' | 'unsettled'
   const [doneSubTab, setDoneSubTab] = useState<'' | 'settled' | 'unsettled'>('');
   const [rawSearch, setRawSearch]       = useState('');
@@ -903,6 +961,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     }
     setProcessing(null);
     setSelected(new Set());
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'bookings_bulk_cancel', action: 'bulk_cancel', count: targets.length, ok, fail },
+    });
     showToast(`일괄 취소 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
   }, [bookings, selected, openCancelModal, showToast]);
 
@@ -936,6 +998,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     setProcessing(null);
     setSelected(new Set());
     showToast(`일괄 복구 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'bookings_bulk_restore', action: 'bulk_restore', count: targets.length, ok, fail },
+    });
   }, [bookings, selected, showToast]);
 
   const handleRestoreBooking = useCallback(async (b: Booking) => {
@@ -953,6 +1019,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         return;
       }
       const newStatus = data.restored_to ?? 'pending';
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: { surface: 'bookings_restore', action: 'restore', bookingId: b.id, status: newStatus },
+      });
       setBookings(prev => prev.map(x => x.id === b.id
         ? { ...x, ...(data.booking || {}), status: newStatus }
         : x));
@@ -986,6 +1056,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       setBookings(prev => prev.map(b => b.id === cancelTarget.id
         ? { ...b, ...(data.booking || {}), status: 'cancelled' as const }
         : b));
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: { surface: 'bookings_cancel', action: 'cancel', bookingId: cancelTarget.id },
+      });
       setCancelTarget(null);
       showToast(`예약 취소 완료 — ${cancelTarget.customers?.name ?? cancelTarget.booking_no ?? ''}`);
     } catch (e) {
@@ -1278,6 +1352,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       });
       if (!res.ok) throw new Error((await res.json()).error || '처리 실패');
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status } : b));
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: { surface: 'bookings_status', action: 'status_change', bookingId: id, status },
+      });
     } catch (e) { showToast(e instanceof Error ? e.message : '처리 실패', 'err'); }
     finally { setProcessing(null); }
   }, [bookings, showToast]);
@@ -1378,6 +1456,38 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const prepDocsCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return !['cancelled','completed'].includes(b.status) && d !== null && d >= 0 && d <= 7 && !b.has_sent_docs; }).length, [bookings, today]); // eslint-disable-line
   const depositUnpaidCnt = useMemo(() => bookings.filter(b => !['cancelled','completed'].includes(b.status) && (b.paid_amount == null || b.paid_amount === 0)).length, [bookings]);
   const landBombCnt      = useMemo(() => bookings.filter(b => { const d = dDiffFn(b.departure_date); return b.status !== 'cancelled' && d !== null && d >= 0 && d <= 7 && (b.total_cost||0)-(b.total_paid_out||0) > 0; }).length, [bookings, today]); // eslint-disable-line
+
+  const handleWorkQueueSelect = useCallback((queue: BookingWorkQueueKey) => {
+    setRawSearch('');
+    setSearchQuery('');
+    setSelected(new Set());
+    setSortField('departure_date');
+    setSortDir('asc');
+
+    if (queue === 'settlement') {
+      setLifecycleTab('done');
+      setDoneSubTab('unsettled');
+      setActiveTab('settlement_pending');
+    } else if (queue === 'refund') {
+      setLifecycleTab('cancelled');
+      setDoneSubTab('');
+      setActiveTab('refund_pending');
+    } else {
+      setLifecycleTab('active');
+      setDoneSubTab('');
+      setActiveTab({
+        unpaid: 'unpaid_risk',
+        prep: 'prep_docs',
+        deposit: 'deposit_unpaid',
+        land: 'land_bomb',
+      }[queue] as BookingActiveTab);
+    }
+
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      metadata: { surface: 'bookings_work_queue', action: 'select_queue', queue },
+    });
+  }, []);
 
   // ── 필터 + 정렬 ─────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -1618,6 +1728,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       )}
 
       {!isTrash && (
+        <BookingWorkQueue
+          counts={{
+            unpaid: unpaidRiskCnt,
+            prep: prepDocsCnt,
+            deposit: depositUnpaidCnt,
+            land: landBombCnt,
+            settlement: settlementPendingCnt,
+            refund: refundPendingCnt,
+          }}
+          onSelect={handleWorkQueueSelect}
+        />
+      )}
+
+      {!isTrash && (
         <BookingOpsPanel
           className="mb-3 shrink-0"
           limit={4}
@@ -1803,8 +1927,77 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           </div>
         </div>
       ) : (
+        <>
+        <div className="flex-1 min-h-0 space-y-2 overflow-y-auto pb-4 md:hidden">
+          {filtered.slice(0, 60).map(b => {
+            const balance = (b.total_price || 0) - (b.paid_amount || 0);
+            const netCashflow = (b.paid_amount || 0) - (b.total_paid_out || 0);
+            const nextAction =
+              !isTrash && b.status === 'pending' ? { label: '예약확정', run: () => patchStatus(b.id, 'confirmed'), primary: true } :
+              !isTrash && b.status === 'confirmed' ? { label: '결제완료', run: () => patchStatus(b.id, 'completed'), primary: true } :
+              !isTrash && b.status === 'cancelled' ? { label: '복구', run: () => handleRestoreBooking(b), primary: false } :
+              { label: '상세', run: () => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }, primary: false };
+
+            return (
+              <article key={b.id} className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <StatusBadge booking={b} onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }} />
+                    <p className="mt-2 truncate text-admin-base font-bold text-admin-text-2">{b.customers?.name ?? b.booking_no ?? '고객명 미입력'}</p>
+                    <p className="mt-1 line-clamp-2 text-admin-sm text-admin-muted">{b.package_title || '상품명 미입력'}</p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-admin-xs text-admin-muted-2">출발</p>
+                    <p className="text-admin-sm font-semibold text-admin-text-2 tabular-nums">{fmtDateKo(b.departure_date)}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 rounded-admin-md bg-admin-bg p-3">
+                  <div>
+                    <p className="text-admin-xs text-admin-muted-2">판매가</p>
+                    <p className="mt-1 text-admin-sm font-bold text-admin-text-2 tabular-nums">{fmtK(b.total_price || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-admin-xs text-admin-muted-2">입금</p>
+                    <p className="mt-1 text-admin-sm font-bold text-blue-700 tabular-nums">{fmtK(b.paid_amount || 0)}</p>
+                  </div>
+                  <div>
+                    <p className="text-admin-xs text-admin-muted-2">{b.status === 'cancelled' ? '환불잔액' : '잔금'}</p>
+                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${(b.status === 'cancelled' ? netCashflow : balance) > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
+                      {fmtK(b.status === 'cancelled' ? netCashflow : Math.max(0, balance))}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    type="button"
+                    disabled={processing === b.id}
+                    onClick={e => { e.stopPropagation(); nextAction.run(); }}
+                    className={`min-h-[42px] flex-1 rounded-admin-md px-3 text-admin-sm font-bold transition disabled:opacity-50 ${nextAction.primary ? 'bg-brand text-white hover:bg-[#1B64DA]' : 'border border-admin-border-strong bg-white text-admin-text-2 hover:bg-admin-bg'}`}
+                  >
+                    {nextAction.label}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }}
+                    className="min-h-[42px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg"
+                  >
+                    상세
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+          {filtered.length > 60 && (
+            <div className="rounded-admin-md border border-admin-border-mid bg-white px-4 py-3 text-center text-admin-sm text-admin-muted">
+              모바일에서는 상위 60건만 먼저 보여줍니다. 검색이나 큐를 선택해 범위를 좁혀주세요.
+            </div>
+          )}
+        </div>
+
         <div ref={tableContainerRef}
-          className="flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-x-auto overflow-y-auto relative"
+          className="hidden flex-1 min-h-0 bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] overflow-x-auto overflow-y-auto relative md:block"
           onKeyDown={handleTableKeyDown}
           onScroll={e => setScrollTop((e.currentTarget as HTMLDivElement).scrollTop)}>
 
@@ -2300,6 +2493,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             </tfoot>
           </table>
         </div>
+        </>
       )}
 
       {/* 다중 선택 툴바 */}

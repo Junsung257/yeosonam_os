@@ -74,6 +74,8 @@ function requireBundleBudgetRouteFloorSmoke() {
       ...process.env,
       NEXT_DIST_DIR: distDir,
       BUNDLE_BUDGET_MIN_ROUTES: '2',
+      NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER: '1',
+      BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER: '1',
     },
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -90,6 +92,43 @@ function requireBundleBudgetRouteFloorSmoke() {
   });
 }
 
+function requireActiveDevServerBundleBudgetSmoke() {
+  const tmpDir = '.tmp/bundle-budget-active-dev-smoke';
+  const fakeDevScript = `${tmpDir}/fake-next-dev-server.cjs`;
+  mkdirSync(tmpDir, { recursive: true });
+  writeFileSync(fakeDevScript, 'setTimeout(() => {}, 60000);\n');
+
+  const fakeDev = spawn(process.execPath, [fakeDevScript, process.cwd(), 'next', 'dev'], {
+    cwd: process.cwd(),
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+
+  try {
+    sleepSync(750);
+    const result = spawnSync(process.execPath, ['scripts/check-bundle-budget.mjs'], {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+    const passed = result.status !== 0
+      && output.includes('Refusing to check bundle budget while next dev is active')
+      && output.includes('Stop the dev server first');
+    addCheck('script:bundle-budget-rejects-active-dev-server-smoke', passed ? 'pass' : 'fail', {
+      command: `${process.execPath} scripts/check-bundle-budget.mjs`,
+      exitCode: result.status,
+      error: passed ? '' : output.trim().slice(0, 1200),
+    });
+  } finally {
+    if (fakeDev.pid) {
+      killProcess(fakeDev.pid);
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+}
+
 function sleepSync(ms) {
   spawnSync(process.execPath, [
     '-e',
@@ -98,6 +137,27 @@ function sleepSync(ms) {
     stdio: 'ignore',
     windowsHide: true,
   });
+}
+
+function killProcess(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return;
+  if (process.platform === 'win32') {
+    spawnSync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `Stop-Process -Id ${pid} -Force -ErrorAction SilentlyContinue`,
+    ], {
+      stdio: 'ignore',
+      windowsHide: true,
+    });
+    return;
+  }
+
+  try {
+    process.kill(pid, 'SIGKILL');
+  } catch {
+    // best effort
+  }
 }
 
 function requireActiveDevServerBuildPrecheckSmoke() {
@@ -135,11 +195,7 @@ function requireActiveDevServerBuildPrecheckSmoke() {
     });
   } finally {
     if (fakeDev.pid) {
-      try {
-        fakeDev.kill();
-      } catch {
-        // best effort
-      }
+      killProcess(fakeDev.pid);
     }
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -304,11 +360,16 @@ function staticChecks() {
 
   requireIncludes('script:bundle-budget-route-floor', 'scripts/check-bundle-budget.mjs', [
     'BUNDLE_BUDGET_MIN_ROUTES',
+    'BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER',
     'MIN_ROUTE_COUNT',
+    'activeNextDevServerProcesses',
+    'assertNoActiveNextDevServer',
+    'Refusing to check bundle budget while next dev is active',
     'only ${stats.length} non-API route(s) found',
     'next dev server is rewriting .next',
   ]);
   requireBundleBudgetRouteFloorSmoke();
+  requireActiveDevServerBundleBudgetSmoke();
   requireIncludes('script:build-rejects-active-dev-server', 'scripts/run-next-build.cjs', [
     'NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER',
     'NEXT_BUILD_PRECHECK_ONLY',
