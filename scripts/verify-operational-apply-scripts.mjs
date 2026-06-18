@@ -136,6 +136,7 @@ function main() {
     nodeVercel: resolve(outDir, 'vercel-env.mjs'),
     envFile: resolve(outDir, 'filled-inputs.env'),
     noisyEnvFile: resolve(outDir, 'filled-inputs-noisy.env'),
+    discoveryEnvFile: resolve(outDir, 'discovered-inputs.env'),
   };
 
   const generate = run(process.execPath, [
@@ -164,6 +165,21 @@ function main() {
   writeFilledEnvFile(paths.envFile);
   writeNoisyEnvFile(paths.noisyEnvFile);
   assertBashEnvFileContract(paths);
+
+  const discovery = run(process.execPath, [
+    'scripts/discover-operational-readiness-inputs.mjs',
+    '--json',
+    `--out=${paths.discoveryEnvFile}`,
+    `--env-file=${paths.envFile}`,
+  ], { env });
+  const discoveryReport = parseJson(discovery.stdout);
+  check(
+    discovery.status === 0 && discoveryReport?.status === 'pass',
+    `operational input discovery env pass failed: ${outputOf(discovery)}`,
+  );
+  const discoveryFile = readFileSync(paths.discoveryEnvFile, 'utf8');
+  assertIncludes(discoveryFile, 'OPEN_CHECK_PACKAGE_ID=', 'operational discovery env');
+  assertIncludes(discoveryFile, 'MARKETING_CHECK_CARD_NEWS_ID=', 'operational discovery env');
 
   const envFileAudit = run(process.execPath, [
     'scripts/verify-operational-readiness-inputs.mjs',
@@ -218,10 +234,11 @@ function main() {
 
   return {
     status: 'pass',
-    passed: 7,
+    passed: 8,
     failed: 0,
     checks: [
       { id: 'generate-apply-scripts', status: 'pass' },
+      { id: 'operational-inputs-discovery-env-pass', status: 'pass' },
       { id: 'operational-inputs-env-file-pass', status: 'pass' },
       { id: 'operational-inputs-env-file-quality-warn', status: 'pass' },
       { id: 'bash-apply-env-file-contract', status: 'pass' },

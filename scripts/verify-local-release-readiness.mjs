@@ -77,6 +77,47 @@ const marketingRuntimeHardTimeoutMs = Number(
   ),
 );
 
+function parseEnvLine(line) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed || trimmed.startsWith('#')) return null;
+  const normalized = trimmed.startsWith('export ') ? trimmed.slice(7).trimStart() : trimmed;
+  const equalIndex = normalized.indexOf('=');
+  if (equalIndex <= 0) return null;
+  const key = normalized.slice(0, equalIndex).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return null;
+  let value = normalized.slice(equalIndex + 1).trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  value = value
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\"/g, '"');
+  return [key, value];
+}
+
+function loadOperationalEnvFile(path) {
+  if (!path) return { path: '', loadedKeys: [], error: '' };
+  try {
+    const loadedKeys = [];
+    for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+      const parsed = parseEnvLine(line);
+      if (!parsed) continue;
+      const [key, value] = parsed;
+      if (!String(process.env[key] || '').trim()) process.env[key] = value;
+      loadedKeys.push(key);
+    }
+    return { path, loadedKeys: [...new Set(loadedKeys)].sort(), error: '' };
+  } catch (err) {
+    return { path, loadedKeys: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+const operationalEnvFileLoad = loadOperationalEnvFile(operationalInputsEnvFilePath);
+
 function npmRunInvocation(script, args) {
   if (process.platform !== 'win32') {
     return {
@@ -613,6 +654,13 @@ const report = {
     openReadiness: skipOpenReadiness,
     operationalInputs: skipOperationalInputs,
   },
+  operationalEnvFile: operationalEnvFileLoad.path
+    ? {
+      path: operationalEnvFileLoad.path,
+      loadedKeys: operationalEnvFileLoad.loadedKeys,
+      error: operationalEnvFileLoad.error || undefined,
+    }
+    : undefined,
   releaseBlockers,
   releaseWarnings,
   checks: summaries,

@@ -295,20 +295,21 @@ function writeActionPlan(path, report) {
   lines.push(
     '## Apply Order',
     '',
-    '1. Add secrets under the target GitHub/Vercel environment secrets.',
-    '2. Add non-secret identifiers and tunables under GitHub Actions variables or Vercel environment variables.',
+    '1. If Supabase service-role credentials are available, run `npm run discover:operational-inputs -- --json --out=.tmp/operational-readiness-discovered.env` to auto-fill non-secret probe identifiers.',
+    '2. Add secrets under the target GitHub/Vercel environment secrets.',
+    '3. Add remaining non-secret identifiers and tunables under GitHub Actions variables or Vercel environment variables.',
     nodeApplyScriptOut
-      ? `3. Fill the generated template and run \`node ${nodeApplyScriptOut}${envFileSuffix}\`, or export the missing values locally.`
+      ? `4. Fill the generated template and run \`node ${nodeApplyScriptOut}${envFileSuffix}\`, or export the missing values locally.`
       : applyScriptOut
-        ? `3. Run \`bash ${applyScriptOut}\` after exporting the missing values locally.`
-        : '3. Apply the generated fill-in template values.',
+        ? `4. Run \`bash ${applyScriptOut}\` after exporting the missing values locally.`
+        : '4. Apply the generated fill-in template values.',
     nodeVercelScriptOut
-      ? `4. Run \`node ${nodeVercelScriptOut}${envFileSuffix}\` to apply missing runtime values to Vercel production/preview environments.`
+      ? `5. Run \`node ${nodeVercelScriptOut}${envFileSuffix}\` to apply missing runtime values to Vercel production/preview environments.`
       : vercelScriptOut
-        ? `4. Run \`bash ${vercelScriptOut}\` to apply missing runtime values to Vercel production/preview environments.`
-      : '4. Apply missing runtime values to Vercel production/preview environments.',
-    '5. Re-run `npm run verify:operational-inputs -- --json`.',
-    '6. Re-run `npm run verify:local-release -- --json` before promotion.',
+        ? `5. Run \`bash ${vercelScriptOut}\` to apply missing runtime values to Vercel production/preview environments.`
+      : '5. Apply missing runtime values to Vercel production/preview environments.',
+    '6. Re-run `npm run verify:operational-inputs -- --json`.',
+    '7. Re-run `npm run verify:local-release -- --json` before promotion.',
     '',
   );
 
