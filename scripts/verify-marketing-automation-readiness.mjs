@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { readFileSync, existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn, spawnSync } from 'node:child_process';
 
 const args = new Set(process.argv.slice(2));
 const json = args.has('--json');
@@ -57,6 +57,92 @@ function requireCommandPass(name, command, args = []) {
       ? ''
       : (result.stderr || result.stdout || result.error?.message || '').trim().slice(0, 1200),
   });
+}
+
+function requireBundleBudgetRouteFloorSmoke() {
+  const distDir = '.tmp/bundle-budget-route-floor-smoke';
+  rmSync(distDir, { recursive: true, force: true });
+  mkdirSync(distDir, { recursive: true });
+  writeFileSync(
+    `${distDir}/app-build-manifest.json`,
+    `${JSON.stringify({ pages: { '/page': [] } }, null, 2)}\n`,
+  );
+
+  const result = spawnSync(process.execPath, ['scripts/check-bundle-budget.mjs'], {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      NEXT_DIST_DIR: distDir,
+      BUNDLE_BUDGET_MIN_ROUTES: '2',
+    },
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    windowsHide: true,
+  });
+  const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+  const passed = result.status !== 0
+    && output.includes('only 1 non-API route(s) found')
+    && output.includes('expected at least 2');
+  addCheck('script:bundle-budget-route-floor-smoke', passed ? 'pass' : 'fail', {
+    command: `${process.execPath} scripts/check-bundle-budget.mjs`,
+    exitCode: result.status,
+    error: passed ? '' : output.trim().slice(0, 1200),
+  });
+}
+
+function sleepSync(ms) {
+  spawnSync(process.execPath, [
+    '-e',
+    `Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ${Number(ms) || 0})`,
+  ], {
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+}
+
+function requireActiveDevServerBuildPrecheckSmoke() {
+  const tmpDir = '.tmp/build-precheck-smoke';
+  const fakeDevScript = `${tmpDir}/fake-next-dev-server.cjs`;
+  mkdirSync(tmpDir, { recursive: true });
+  writeFileSync(fakeDevScript, 'setTimeout(() => {}, 60000);\n');
+
+  const fakeDev = spawn(process.execPath, [fakeDevScript, process.cwd(), 'next', 'dev'], {
+    cwd: process.cwd(),
+    stdio: 'ignore',
+    windowsHide: true,
+  });
+
+  try {
+    sleepSync(750);
+    const result = spawnSync(process.execPath, ['scripts/run-next-build.cjs'], {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NEXT_BUILD_PRECHECK_ONLY: '1',
+      },
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
+    });
+    const output = `${result.stdout || ''}\n${result.stderr || ''}`;
+    const passed = result.status !== 0
+      && output.includes('Refusing to run production build while next dev is active')
+      && output.includes('Stop the dev server first');
+    addCheck('script:build-rejects-active-dev-server-smoke', passed ? 'pass' : 'fail', {
+      command: `${process.execPath} scripts/run-next-build.cjs`,
+      exitCode: result.status,
+      error: passed ? '' : output.trim().slice(0, 1200),
+    });
+  } finally {
+    if (fakeDev.pid) {
+      try {
+        fakeDev.kill();
+      } catch {
+        // best effort
+      }
+    }
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 }
 
 function requireJsonCron(path) {
@@ -222,6 +308,16 @@ function staticChecks() {
     'only ${stats.length} non-API route(s) found',
     'next dev server is rewriting .next',
   ]);
+  requireBundleBudgetRouteFloorSmoke();
+  requireIncludes('script:build-rejects-active-dev-server', 'scripts/run-next-build.cjs', [
+    'NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER',
+    'NEXT_BUILD_PRECHECK_ONLY',
+    'activeNextDevServerProcesses',
+    'assertNoActiveNextDevServer',
+    'Refusing to run production build while next dev is active',
+    'Stop the dev server first so it cannot rewrite .next',
+  ]);
+  requireActiveDevServerBuildPrecheckSmoke();
 
   requireIncludes('open-readiness:blog-search-quality-gate', 'scripts/open-readiness-check.mjs', [
     'checkBlogSearchQualityReadiness',

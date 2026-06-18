@@ -152,6 +152,13 @@ function formatPackageDuration(pkg: Pick<Package, 'trip_style' | 'duration' | 'n
   return null;
 }
 
+function formatCompactDepartureDate(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const date = new Date(`${raw}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getMonth() + 1}/${date.getDate()} 출발`;
+}
+
 interface RelatedBlogPost {
   slug: string;
   seo_title: string | null;
@@ -657,6 +664,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
+  const todayForDeparture = new Date().toISOString().slice(0, 10);
+  const nextAvailableDepartureLabel = formatCompactDepartureDate(
+    allPriceDates
+      .filter(d => d.date >= todayForDeparture)
+      .sort((a, b) => a.date.localeCompare(b.date))[0]?.date,
+  );
+  const firstScreenPriceLabel = Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
+    ? `₩${(displayPrice as number).toLocaleString()}~`
+    : '가격 문의';
+  const firstScreenDepartureLabel = nextConfirmedDate ?? nextAvailableDepartureLabel ?? '출발일 확인';
+  const firstScreenBadges = [productTypeLabel, durationLabel, airlineName]
+    .filter((item): item is string => Boolean(item))
+    .slice(0, 3);
 
   // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
   // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
@@ -876,6 +896,34 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 같은 카탈로그 다른 분기 selector (P2-A / A3, 2026-05-19 박제) ═══ */}
       {/* 같은 catalog_id 패키지가 있으면 "단수이 vs 베이토우 vs 우라이" 같은 즉시 전환 chips. */}
+      <section className="px-4 -mt-6 relative z-20" aria-label="상품 핵심 요약">
+        <div className="rounded-2xl border border-slate-200 bg-white/95 p-4 shadow-[0_16px_40px_rgba(15,23,42,0.12)] backdrop-blur">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">예약 전 확인</p>
+              <p className="mt-1 text-[24px] font-black leading-none text-slate-950 tabular-nums">{firstScreenPriceLabel}</p>
+              <p className="mt-1.5 text-[12px] font-semibold text-slate-600">{firstScreenDepartureLabel}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openInquiryForm('detail_first_screen_summary')}
+              className="shrink-0 rounded-xl bg-slate-950 px-4 py-3 text-[13px] font-extrabold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] active:scale-[0.98] transition"
+            >
+              예약 문의
+            </button>
+          </div>
+          {firstScreenBadges.length > 0 && (
+            <div className="mt-3 flex gap-1.5 overflow-x-auto no-scrollbar">
+              {firstScreenBadges.map((badge) => (
+                <span key={badge} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-700">
+                  {badge}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
       {catalogSiblings.length > 0 && (
         <section className="px-4 -mt-5 relative z-10">
           <div className="bg-white/95 backdrop-blur border border-slate-200 rounded-2xl p-3.5 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">

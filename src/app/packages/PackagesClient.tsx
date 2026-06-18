@@ -73,6 +73,21 @@ const INTENT_OPTIONS = [
 
 type IntentId = typeof INTENT_OPTIONS[number]['id'];
 
+const HUB_SUMMARY_LABELS: Record<DepartureHubId, string> = {
+  busan: '부산 출발',
+  incheon: '인천 출발',
+  daegu: '대구 출발',
+  cheongju: '청주 출발',
+  all: '전국 출발',
+};
+
+const CATEGORY_SUMMARY_LABELS: Record<string, string> = {
+  honeymoon: '허니문',
+  golf: '해외골프',
+  cruise: '크루즈',
+  theme: '테마여행',
+};
+
 function matchesFilter(pkg: Package, filter: string): boolean {
   const resolved = resolveLegacyFilterLabel(filter);
   if (resolved === '전체') return true;
@@ -116,6 +131,26 @@ function packageMinPrice(pkg: Package): number {
   const valid = dates.filter(d => d?.price && d.price > 0);
   if (valid.length > 0) return Math.min(...valid.map(d => d.price));
   return pkg.price && pkg.price > 0 ? pkg.price : Number.POSITIVE_INFINITY;
+}
+
+function formatMonthSummary(month: string): string {
+  const match = month.match(/^(\d{4})-(\d{2})$/);
+  if (!match) return month;
+  return `${Number(match[2])}월`;
+}
+
+function formatWonSummary(value: string): string {
+  const amount = Number(value);
+  if (!Number.isFinite(amount) || amount <= 0) return value;
+  if (amount >= 10_000) return `${Math.round(amount / 10_000)}만원`;
+  return `${amount.toLocaleString()}원`;
+}
+
+function formatBudgetSummary(priceMin: string, priceMax: string): string | null {
+  if (priceMin && priceMax) return `${formatWonSummary(priceMin)}~${formatWonSummary(priceMax)}`;
+  if (priceMin) return `${formatWonSummary(priceMin)} 이상`;
+  if (priceMax) return `${formatWonSummary(priceMax)} 이하`;
+  return null;
 }
 
 function packageIntentScore(pkg: Package, intent: IntentId | null): number {
@@ -266,12 +301,17 @@ export default function PackagesClient() {
       groupKey: `intent:${intent}:${nextIntent ? 'on' : 'off'}`,
       intent: nextIntent ?? intent,
     });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      page_url: '/packages',
+      metadata: { filterName: 'intent', value: intent, state: nextIntent ? 'on' : 'off', selectedIntent: nextIntent, hub },
+    });
     if (intent === 'budget') setSortBy('price_asc');
     if (selectedIntent === 'budget' && intent === 'budget') setSortBy('recommended');
     if (intent === 'consult') {
       window.open('https://pf.kakao.com/_xcFxkBG/chat', '_blank', 'noopener,noreferrer');
     }
-  }, [selectedIntent, trackScoreSignal]);
+  }, [hub, selectedIntent, trackScoreSignal]);
 
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
@@ -297,6 +337,21 @@ export default function PackagesClient() {
     list.sort(sortFn);
     return list;
   }, [initialPackages, activeFilter, sortBy, urgency, category, recommendedSet, selectedIntent]);
+
+  const filterSummaryItems = useMemo(() => {
+    const items: { label: string; value: string }[] = [
+      { label: '출발지', value: HUB_SUMMARY_LABELS[hub] },
+    ];
+    if (month) items.push({ label: '출발월', value: formatMonthSummary(month) });
+    const budget = formatBudgetSummary(priceMin, priceMax);
+    if (budget) items.push({ label: '예산', value: budget });
+    if (activeFilter !== FILTER_OPTIONS[0]) items.push({ label: '지역', value: activeFilter });
+    if (category) items.push({ label: '테마', value: CATEGORY_SUMMARY_LABELS[category] ?? category });
+    if (urgency === '1') items.push({ label: '상태', value: '마감임박' });
+    if (selectedIntentInfo) items.push({ label: '목적', value: selectedIntentInfo.label });
+    items.push({ label: '결과', value: `${filteredPackages.length}개` });
+    return items;
+  }, [activeFilter, category, filteredPackages.length, hub, month, priceMax, priceMin, selectedIntentInfo, urgency]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
@@ -411,7 +466,11 @@ export default function PackagesClient() {
                 aria-label="정렬 순서"
                 className="h-[34px] text-[13px] border border-[#E5E7EB] rounded-full pl-3 pr-7 bg-white text-text-primary appearance-none cursor-pointer font-medium"
                 value={sortBy}
-                onChange={e => setSortBy(e.target.value)}
+                onChange={e => {
+                  const nextSort = e.target.value;
+                  setSortBy(nextSort);
+                  trackPackageFilter('sort', nextSort);
+                }}
                 style={{
                   backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%238B95A1' d='M2 4l4 4 4-4'/%3E%3C/svg%3E")`,
                   backgroundRepeat: 'no-repeat',
@@ -444,6 +503,27 @@ export default function PackagesClient() {
           </div>
         </div>
       </div>
+
+      <section className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8" aria-label="현재 검색 조건">
+        <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3 md:flex md:items-center md:justify-between md:gap-4">
+          <div className="flex items-center justify-between gap-3 md:shrink-0">
+            <p className="text-[13px] font-bold text-text-primary">현재 조건</p>
+            <span className="text-[12px] font-semibold text-brand">{filteredPackages.length}개 상품</span>
+          </div>
+          <div className="mt-2 flex gap-2 overflow-x-auto no-scrollbar md:mt-0 md:justify-end">
+            {filterSummaryItems.map(item => (
+              <span
+                key={`${item.label}:${item.value}`}
+                className="shrink-0 rounded-full border border-[#DCE5F0] bg-white px-3 py-1.5 text-[12px] font-semibold text-text-body"
+              >
+                <span className="text-text-secondary">{item.label}</span>
+                <span className="mx-1 text-[#CBD5E1]">|</span>
+                {item.value}
+              </span>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <div className="px-4 pt-3 pb-1 md:max-w-7xl md:mx-auto md:px-8">
         <p className="mb-2 text-[13px] font-bold text-text-primary">어떤 여행을 찾고 계세요?</p>

@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
 import { fmtNum as fmtComma } from '@/lib/admin-utils';
+import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { trackEngagement } from '@/lib/tracker';
 const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
 
@@ -490,6 +492,96 @@ function OwnerFinanceCommandCenter({
           >
             <span className="font-semibold text-admin-text-2">{item.label}</span>
             <span className="font-black tabular-nums text-text-primary">{item.value}</span>
+          </Link>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function TodayWorkQueue({
+  stats,
+  unmatchedCount,
+  pendingActionsCount,
+  pendingPackagesCount,
+}: {
+  stats: DashboardStats | null;
+  unmatchedCount: number | null;
+  pendingActionsCount: number;
+  pendingPackagesCount: number;
+}) {
+  const rows = [
+    {
+      href: '/admin/bookings?mode=upcoming&filter=unpaid',
+      label: 'D-7 미납 예약',
+      detail: '출발 전 잔금 확인',
+      count: stats?.unpaidD7 ?? 0,
+      action: '알림 발송',
+      tone: 'danger',
+    },
+    {
+      href: '/admin/payments?filter=unmatched',
+      label: '미매칭 입금',
+      detail: '입금자명과 예약 연결',
+      count: unmatchedCount ?? 0,
+      action: '매칭하기',
+      tone: 'warn',
+    },
+    {
+      href: '/admin/jarvis?tab=actions',
+      label: '자비스 승인',
+      detail: '자동화 제안 검수',
+      count: pendingActionsCount,
+      action: '검토하기',
+      tone: 'neutral',
+    },
+    {
+      href: '/admin/packages',
+      label: '상품 검수',
+      detail: '등록 대기 상품 발행',
+      count: pendingPackagesCount,
+      action: '검수하기',
+      tone: 'neutral',
+    },
+  ] as const;
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const activeRows = rows.filter(row => row.count > 0);
+  const visibleRows = activeRows.length > 0 ? activeRows : rows;
+  const toneClass = {
+    danger: 'border-red-200 bg-red-50 text-red-700',
+    warn: 'border-amber-200 bg-amber-50 text-amber-800',
+    neutral: 'border-admin-border-mid bg-admin-surface text-admin-text',
+  };
+
+  return (
+    <section className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-admin-base font-bold text-text-primary">오늘 처리할 일</h2>
+          <p className="mt-0.5 text-[11px] text-admin-muted-2">예약, 입금, 자동화, 상품 검수를 한 번에 훑습니다.</p>
+        </div>
+        <span className={`rounded-full px-2.5 py-1 text-[11px] font-black tabular-nums ${total > 0 ? 'bg-slate-950 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
+          {total > 0 ? `${total}건 대기` : '처리 완료'}
+        </span>
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {visibleRows.map(row => (
+          <Link
+            key={row.href}
+            href={row.href}
+            className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[12px] font-bold">{row.label}</p>
+                <p className="mt-0.5 text-[11px] text-current/60">{row.detail}</p>
+              </div>
+              <span className="text-[22px] font-black leading-none tabular-nums">{row.count}</span>
+            </div>
+            <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold">
+              <span className="text-current/55">{row.count > 0 ? '다음 액션' : '대기 없음'}</span>
+              <span className="text-current group-hover:underline">{row.count > 0 ? row.action : '확인'}</span>
+            </div>
           </Link>
         ))}
       </div>
@@ -1477,6 +1569,11 @@ export default function AdminPage({
         body: JSON.stringify({ packageId, action }),
       });
       if (res.ok) {
+        trackEngagement({
+          event_type: ANALYTICS_EVENTS.adminActionCompleted,
+          page_url: '/admin',
+          metadata: { surface: 'dashboard_pending_package', action, packageId },
+        });
         setSelectedPackage(null);
         await loadAll();
       }
@@ -1603,6 +1700,13 @@ export default function AdminPage({
         pendingPackagesCount={pendingPackages.length}
       />
 
+      <TodayWorkQueue
+        stats={stats}
+        unmatchedCount={unmatchedCount}
+        pendingActionsCount={pendingActions.length}
+        pendingPackagesCount={pendingPackages.length}
+      />
+
       {/* ── Zone 1: 긴급 액션 ────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 mb-1">
         <span className="text-[11px] font-semibold text-admin-muted-2 uppercase tracking-wider whitespace-nowrap">긴급 처리</span>
@@ -1653,8 +1757,15 @@ export default function AdminPage({
                     onClick={async () => {
                       setActionProcessingId(act.id);
                       try {
-                        await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'approve' }) });
-                        setPendingActions(prev => prev.filter(a => a.id !== act.id));
+                        const res = await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'approve' }) });
+                        if (res.ok) {
+                          trackEngagement({
+                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                            page_url: '/admin',
+                            metadata: { surface: 'dashboard_agent_action', action: 'approve', actionId: act.id, actionType: act.action_type },
+                          });
+                          setPendingActions(prev => prev.filter(a => a.id !== act.id));
+                        }
                       } catch {} finally { setActionProcessingId(null); }
                     }}
                     disabled={actionProcessingId === act.id}
@@ -1666,8 +1777,15 @@ export default function AdminPage({
                     onClick={async () => {
                       setActionProcessingId(act.id);
                       try {
-                        await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'reject' }) });
-                        setPendingActions(prev => prev.filter(a => a.id !== act.id));
+                        const res = await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'reject' }) });
+                        if (res.ok) {
+                          trackEngagement({
+                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                            page_url: '/admin',
+                            metadata: { surface: 'dashboard_agent_action', action: 'reject', actionId: act.id, actionType: act.action_type },
+                          });
+                          setPendingActions(prev => prev.filter(a => a.id !== act.id));
+                        }
                       } catch {} finally { setActionProcessingId(null); }
                     }}
                     disabled={actionProcessingId === act.id}
