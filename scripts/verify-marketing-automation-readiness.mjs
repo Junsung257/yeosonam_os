@@ -16,6 +16,8 @@ function argValue(name, fallback = '') {
 const baseUrl = argValue('--base', process.env.MARKETING_READINESS_BASE_URL || '').replace(/\/$/, '');
 const timeoutMs = Number(argValue('--timeout-ms', process.env.MARKETING_READINESS_TIMEOUT_MS || '10000'));
 const providedCookie = argValue('--cookie', process.env.MARKETING_READINESS_COOKIE || '');
+const marketingCheckCardNewsId = argValue('--card-news-id', process.env.MARKETING_CHECK_CARD_NEWS_ID || '');
+const marketingCheckVariantGroupId = argValue('--variant-group-id', process.env.MARKETING_CHECK_VARIANT_GROUP_ID || '');
 const DEV_ADMIN_SESSION_PATH = '/api/dev/admin-session';
 
 const checks = [];
@@ -207,6 +209,7 @@ function staticChecks() {
     'strictScore',
     'fleetScore',
     'attentionChecksFromReport',
+    'limit = 40',
     'attentionCheckCount',
     "missing: ['OPEN_CHECK_PACKAGE_ID']",
     "'OPEN_CHECK_REF_CODE'",
@@ -389,6 +392,8 @@ function staticChecks() {
     'runtime-env-readiness.json',
     'OPEN_CHECK_PACKAGE_ID',
     'OPEN_CHECK_REF_CODE',
+    'MARKETING_CHECK_CARD_NEWS_ID',
+    'MARKETING_CHECK_VARIANT_GROUP_ID',
     'SUPABASE_ACCESS_TOKEN',
     'SUPABASE_PROJECT_REF',
     'VERCEL_TOKEN',
@@ -464,6 +469,7 @@ function staticChecks() {
     'env-file audit',
     'DRY-RUN gh secret set SERPAPI_KEY --body <redacted>',
     'DRY-RUN gh variable set OPEN_CHECK_PACKAGE_ID --body <redacted>',
+    'DRY-RUN gh variable set MARKETING_CHECK_CARD_NEWS_ID --body <redacted>',
     'DRY-RUN vercel env add SERPAPI_KEY production --value <redacted>',
     'nodeApplyScriptPath',
     'nodeVercelScriptPath',
@@ -613,8 +619,27 @@ function staticChecks() {
     'DEV_ADMIN_SESSION_PATH',
     'checkRefreshWithoutToken',
     'checkApiContract',
+    'marketingCheckCardNewsId',
+    'marketingCheckVariantGroupId',
+    'dynamicMarketingPagePaths',
+    'missingDynamicMarketingProbeInputs',
+    'live:dynamic-marketing-page-probes',
     'allowDegraded',
+    '/api/admin/marketing/actions?limit=10',
+    '/api/admin/marketing/asset-groups?limit=10',
+    '/api/admin/marketing/integration-probes',
+    '/api/admin/marketing/snapshots?days=14',
     '/api/admin/marketing/system-health',
+    '/api/admin/ad-os/credential-preflight',
+    '/api/admin/ad-os/runtime-readiness',
+    '/api/admin/ad-os/channel-adapters/health',
+    '/api/admin/ad-os/staging-smoke',
+    '/admin/marketing/card-news',
+    '/admin/marketing/card-news/${encodeURIComponent(marketingCheckCardNewsId)}',
+    '/admin/marketing/content-hub/${encodeURIComponent(marketingCheckCardNewsId)}',
+    '/admin/marketing/card-news/variants/${encodeURIComponent(marketingCheckVariantGroupId)}',
+    '/admin/marketing/command-center',
+    '/admin/marketing/social-configs',
     "setCookie: ''",
     "if (!setCookie) return '';",
     'live:unexpected-error',
@@ -797,7 +822,12 @@ const LIVE_API_ENDPOINTS = [
   { path: '/api/meta/creatives', keys: ['creatives', 'grouped'], allowDegraded: true },
   { path: '/api/meta/performance', keys: ['campaigns', 'snapshots'], allowDegraded: true },
   { path: '/api/campaigns/creatives?limit=10', keys: ['creatives'], allowDegraded: true },
+  { path: '/api/campaigns/performance?type=patterns', keys: ['patterns'], allowDegraded: true },
+  { path: '/api/admin/marketing/actions?limit=10', keys: ['actions'], allowDegraded: true },
+  { path: '/api/admin/marketing/asset-groups?limit=10', keys: ['ok', 'groups', 'actions'], allowDegraded: true },
   { path: '/api/admin/marketing/dashboard', keys: ['data'], allowDegraded: true },
+  { path: '/api/admin/marketing/integration-probes', keys: ['ok', 'probes'] },
+  { path: '/api/admin/marketing/snapshots?days=14', keys: ['trend'], allowDegraded: true },
   { path: '/api/admin/marketing/system-health', keys: ['ok', 'score', 'checks'] },
   {
     path: '/api/admin/ad-os/summary',
@@ -805,14 +835,52 @@ const LIVE_API_ENDPOINTS = [
     allowDegraded: true,
     allowedStatuses: [200, 503],
   },
+  { path: '/api/admin/ad-os/credential-preflight', keys: ['ok', 'readiness', 'summary'] },
+  { path: '/api/admin/ad-os/runtime-readiness', keys: ['ok'], allowedStatuses: [200, 503] },
+  { path: '/api/admin/ad-os/channel-adapters/health', keys: ['ok'], allowedStatuses: [200, 503] },
+  { path: '/api/admin/ad-os/staging-smoke', keys: ['ok', 'smoke', 'safety'] },
 ];
 
 const LIVE_PAGE_PATHS = [
+  '/admin/marketing',
+  '/admin/marketing/auto-publish',
+  '/admin/marketing/blog-export',
+  '/admin/marketing/brand-kits',
   '/admin/marketing/campaigns',
+  '/admin/marketing/card-news',
+  '/admin/marketing/card-news/campaign/new',
+  '/admin/marketing/card-news/new',
+  '/admin/marketing/card-news/new-html',
+  '/admin/marketing/card-news/variants/new',
+  '/admin/marketing/command-center',
   '/admin/marketing/creatives',
+  '/admin/marketing/published',
+  '/admin/marketing/social-configs',
   '/admin/marketing/system-health',
   '/admin/ad-os',
 ];
+
+function dynamicMarketingPagePaths() {
+  const paths = [];
+  if (marketingCheckCardNewsId) {
+    paths.push(
+      `/admin/marketing/card-news/${encodeURIComponent(marketingCheckCardNewsId)}`,
+      `/admin/marketing/card-news/${encodeURIComponent(marketingCheckCardNewsId)}/v2`,
+      `/admin/marketing/content-hub/${encodeURIComponent(marketingCheckCardNewsId)}`,
+    );
+  }
+  if (marketingCheckVariantGroupId) {
+    paths.push(`/admin/marketing/card-news/variants/${encodeURIComponent(marketingCheckVariantGroupId)}`);
+  }
+  return paths;
+}
+
+function missingDynamicMarketingProbeInputs() {
+  const missing = [];
+  if (!marketingCheckCardNewsId) missing.push('MARKETING_CHECK_CARD_NEWS_ID');
+  if (!marketingCheckVariantGroupId) missing.push('MARKETING_CHECK_VARIANT_GROUP_ID');
+  return missing;
+}
 
 async function checkRefreshWithoutToken() {
   const res = await fetchWithTimeout(`${baseUrl}/api/auth/refresh`, { method: 'POST' });
@@ -856,6 +924,14 @@ async function liveChecks() {
   if (!baseUrl) return;
 
   await checkRefreshWithoutToken();
+  const livePagePaths = [...LIVE_PAGE_PATHS, ...dynamicMarketingPagePaths()];
+  const dynamicProbeMissing = missingDynamicMarketingProbeInputs();
+  if (dynamicProbeMissing.length > 0) {
+    addCheck('live:dynamic-marketing-page-probes', 'blocked', {
+      missing: dynamicProbeMissing,
+      notes: 'provide MARKETING_CHECK_CARD_NEWS_ID and MARKETING_CHECK_VARIANT_GROUP_ID to verify dynamic marketing pages',
+    });
+  }
 
   let cookie = providedCookie;
   if (!cookie) {
@@ -877,7 +953,7 @@ async function liveChecks() {
         notes: 'admin cookie unavailable; pass --cookie to verify protected marketing API routes',
       });
     }
-    for (const pagePath of LIVE_PAGE_PATHS) {
+    for (const pagePath of livePagePaths) {
       addCheck(`live:page:${pagePath}`, 'blocked', {
         notes: 'admin cookie unavailable; pass --cookie to verify protected marketing pages',
       });
@@ -891,7 +967,7 @@ async function liveChecks() {
     await checkApiContract(endpoint, headers);
   }
 
-  for (const pagePath of LIVE_PAGE_PATHS) {
+  for (const pagePath of livePagePaths) {
     const res = await fetchWithTimeout(`${baseUrl}${pagePath}`, { headers });
     const ok =
       res.status === 200 &&

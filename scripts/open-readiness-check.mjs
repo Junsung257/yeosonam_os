@@ -274,7 +274,7 @@ function parseJsonFromOutput(output) {
   }
 }
 
-function attentionChecksFromReport(report, limit = 12) {
+function attentionChecksFromReport(report, limit = 40) {
   const checks = Array.isArray(report?.checks) ? report.checks : [];
   return checks
     .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
