@@ -15,8 +15,19 @@ const baseUrl = (getArg('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://ww
 const expectedCanonicalOriginInput = (getArg('--canonical-origin', process.env.BLOG_CANONICAL_ORIGIN || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(10, Number(getArg('--concurrency', '5')) || 5));
+const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
+const requestedHardTimeoutMs = Number(getArg('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const outputJson = hasFlag('--json');
 const strictWarnings = hasFlag('--strict-warnings');
+
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-blog-seo] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
 
 const LONGTAIL_MODIFIERS = /20\d{2}|비용|가격|일정|코스|날씨|월별|준비물|체크|체크리스트|환전|입국|서류|항공권|숙소|맛집|추천|가이드|후기|예약|포함|주의/i;
 const RAW_MARKDOWN_ARTIFACTS = /!\[[^\]]*]\(|\[[^\]]+]\((?:https?:\/\/|\/)|(^|\n)#{1,6}\s|\*\*[^*]+\*\*/m;
@@ -42,7 +53,9 @@ const AUTHORITY_HOST_HINTS = [
 ];
 
 async function fetchText(path) {
-  const res = await fetch(`${baseUrl}${path}`, {
+  const url = /^https?:\/\//i.test(path) ? path : `${baseUrl}${path}`;
+  const res = await fetch(url, {
+    signal: AbortSignal.timeout(timeoutMs),
     headers: {
       'user-agent': 'yeosonam-blog-seo-audit/1.0',
       accept: 'text/html,application/xhtml+xml',
@@ -50,6 +63,26 @@ async function fetchText(path) {
   });
   if (!res.ok) throw new Error(`${path} returned ${res.status}`);
   return res.text();
+}
+
+function addBlogLink(links, href) {
+  if (!href || !/^\/blog\//.test(href)) return;
+  if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
+  links.add(href.split('#')[0]);
+}
+
+async function collectBlogLinksFromSitemap(links) {
+  const xml = await fetchText(`${baseUrl}/sitemap.xml`);
+  for (const match of xml.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi)) {
+    try {
+      const url = new URL(match[1]);
+      addBlogLink(links, url.pathname);
+      if (limit > 0 && links.size >= limit) break;
+    } catch {
+      // Ignore malformed sitemap URLs.
+    }
+  }
 }
 
 async function collectBlogLinks() {
@@ -65,15 +98,16 @@ async function collectBlogLinks() {
     const matches = html.matchAll(/href="(\/blog\/[^"#?]+)"/g);
     const before = links.size;
     for (const match of matches) {
-      const href = match[1];
-      if (!href) continue;
-      if (href.startsWith('/blog/angle/') || href.startsWith('/blog/destination/')) continue;
-      links.add(href);
+      addBlogLink(links, match[1]);
     }
     if (limit > 0 && links.size >= limit) break;
     if (links.size === before && page > 1) break;
     if (!html.includes(`page=${page + 1}`) && !html.includes(`>${page + 1}<`)) break;
     page += 1;
+  }
+
+  if (links.size === 0) {
+    await collectBlogLinksFromSitemap(links);
   }
 
   const result = [...links];
@@ -85,6 +119,7 @@ async function collectBlogLinksFromApi() {
   let page = 1;
   while (page <= 20) {
     const res = await fetch(`${baseUrl}/api/blog?page=${page}&limit=50`, {
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { 'user-agent': 'yeosonam-blog-seo-audit/1.0' },
     });
     if (!res.ok) break;
@@ -201,10 +236,10 @@ function isAllowedCanonicalOrigin(origin, expectedOrigin) {
 }
 
 async function auditPage(page, path) {
-  await page.goto(absolutize(path), { waitUntil: 'domcontentloaded', timeout: 120000 });
-  await page.waitForSelector('article, body', { timeout: 30000 }).catch(() => undefined);
-  await page.waitForSelector('article h1, h1', { timeout: 10000 }).catch(() => undefined);
-  await page.waitForSelector('script[type="application/ld+json"]', { timeout: 10000 }).catch(() => undefined);
+  await page.goto(absolutize(path), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
+  await page.waitForSelector('article, body', { timeout: Math.min(10000, timeoutMs) }).catch(() => undefined);
+  await page.waitForSelector('article h1, h1', { timeout: Math.min(5000, timeoutMs) }).catch(() => undefined);
+  await page.waitForSelector('script[type="application/ld+json"]', { timeout: Math.min(5000, timeoutMs) }).catch(() => undefined);
   await page.waitForTimeout(500);
   return page.evaluate((auditPath) => {
     const meta = (name) =>
@@ -335,7 +370,70 @@ function summarize(rows) {
 
 async function main() {
   if (!baseUrl) throw new Error('--base is required');
-  const links = await collectBlogLinks();
+  let links = [];
+  try {
+    links = await collectBlogLinks();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const payload = {
+      summary: {
+        baseUrl,
+        totalLinks: 0,
+        fetched: 0,
+        errors: 1,
+        failed: 1,
+        passed: 0,
+        score: 0,
+        strictWarnings,
+        warningCount: 0,
+        avgTitleLength: 0,
+        avgDescriptionLength: 0,
+        avgTextLength: 0,
+        avgH2: 0,
+        avgImages: 0,
+      },
+      failedExamples: [{ path: '/blog', error: message, failed: true }],
+      warningExamples: [],
+      rows: [{ path: '/blog', error: message, failed: true }],
+    };
+    if (outputJson) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      console.log(`Blog SEO quality: 0/100 (collect failed: ${message})`);
+    }
+    process.exitCode = 1;
+    return;
+  }
+  if (links.length === 0) {
+    const payload = {
+      summary: {
+        baseUrl,
+        totalLinks: 0,
+        fetched: 0,
+        errors: 1,
+        failed: 1,
+        passed: 0,
+        score: 0,
+        strictWarnings,
+        warningCount: 0,
+        avgTitleLength: 0,
+        avgDescriptionLength: 0,
+        avgTextLength: 0,
+        avgH2: 0,
+        avgImages: 0,
+      },
+      failedExamples: [{ path: '/blog', error: 'no blog links found from listing pages, API, or sitemap', failed: true }],
+      warningExamples: [],
+      rows: [{ path: '/blog', error: 'no blog links found from listing pages, API, or sitemap', failed: true }],
+    };
+    if (outputJson) {
+      console.log(JSON.stringify(payload, null, 2));
+    } else {
+      console.log('Blog SEO quality: 0/100 (no blog links found from listing pages, API, or sitemap)');
+    }
+    process.exitCode = 1;
+    return;
+  }
   const browser = await chromium.launch({ headless: true });
   const context = await browser.newContext({ viewport: { width: 1280, height: 1600 } });
   const rows = [];
@@ -387,7 +485,13 @@ async function main() {
   if (summary.failed > 0 || summary.errors > 0 || (strictWarnings && summary.warningCount > 0)) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

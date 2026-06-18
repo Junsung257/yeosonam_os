@@ -251,7 +251,7 @@ export async function getPackageById(id: string) {
     if (error) throw error;
     return data;
   } catch (error) {
-    console.error('패키지 단건 조회 실패:', error);
+    console.info('[packages] package detail unavailable; returning null fallback:', error);
     return null;
   }
 }

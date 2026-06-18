@@ -1,0 +1,209 @@
+name: Local Release Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict_open:
+        description: Treat local open-readiness blocked checks as failures
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  schedule:
+    - cron: '0 19 * * *'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: local-release-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-release-readiness:
+    name: Full Local Release Readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
+      SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
+      NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3050'
+      LOCAL_RELEASE_OPEN_PORT: '3050'
+      LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS: '180000'
+      LOCAL_RELEASE_MARKETING_RUNTIME_READY_TIMEOUT_MS: '180000'
+      OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
+      OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
+      SERPAPI_KEY: ${{ secrets.SERPAPI_KEY || vars.SERPAPI_KEY }}
+      BAND_RSS_URL: ${{ secrets.BAND_RSS_URL || vars.BAND_RSS_URL }}
+      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN || vars.TWITTER_BEARER_TOKEN }}
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID || vars.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET || vars.NAVER_CLIENT_SECRET }}
+      NAVER_CAFE_ID: ${{ secrets.NAVER_CAFE_ID || vars.NAVER_CAFE_ID }}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN || vars.GOOGLE_ADS_DEVELOPER_TOKEN }}
+      GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID || vars.GOOGLE_ADS_CUSTOMER_ID }}
+      GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID || vars.GOOGLE_ADS_CLIENT_ID }}
+      GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET || vars.GOOGLE_ADS_CLIENT_SECRET }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK || vars.SLACK_WEBHOOK_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET || vars.CRON_SECRET }}
+      AD_FLAG_UP_BID_FACTOR: ${{ vars.AD_FLAG_UP_BID_FACTOR }}
+      AD_OFFPEAK_BID_FACTOR: ${{ vars.AD_OFFPEAK_BID_FACTOR }}
+      AD_MIN_BID_KRW: ${{ vars.AD_MIN_BID_KRW }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Operational readiness inputs
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          npm run verify:operational-inputs -- --json \
+            --template-out=.tmp/operational-readiness-inputs.env.example \
+            --plan-out=.tmp/operational-readiness-action-plan.md \
+            --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
+            --vercel-script-out=.tmp/operational-readiness-vercel-env.sh \
+            --node-apply-script-out=.tmp/operational-readiness-apply-inputs.mjs \
+            --node-vercel-script-out=.tmp/operational-readiness-vercel-env.mjs | tee .tmp/operational-readiness-inputs.json
+
+      - name: Run full local release readiness
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          args=(--json --open-port="${LOCAL_RELEASE_OPEN_PORT}" --report=.tmp/local-release-readiness-report.json)
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict_open }}" == "true" ]]; then
+            args+=(--strict-open)
+          fi
+          npm run verify:local-release -- "${args[@]}" | tee .tmp/local-release-readiness-summary.json
+
+      - name: Summarize local release readiness
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/render-readiness-report.mjs \
+            --kind=local-release \
+            --report=.tmp/local-release-readiness-report.json \
+            --summary-out=.tmp/local-release-readiness-step-summary.md \
+            --issue-body-out=.tmp/local-release-readiness-issue-body.md \
+            --meta-out=.tmp/local-release-readiness-issue-meta.json \
+            --operational-template=.tmp/local-release-operational-inputs.env.example \
+            --operational-plan=.tmp/local-release-operational-inputs-action-plan.md \
+            --operational-apply-script=.tmp/local-release-operational-inputs-apply.sh \
+            --operational-vercel-script=.tmp/local-release-operational-inputs-vercel-env.sh \
+            --operational-node-apply-script=.tmp/local-release-operational-inputs-apply.mjs \
+            --operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/local-release-readiness-step-summary.md ]]; then
+            cat .tmp/local-release-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/operational-readiness-action-plan.md ]]; then
+            printf '\n' >> "$GITHUB_STEP_SUMMARY"
+            cat .tmp/operational-readiness-action-plan.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Track local release readiness attention items
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const metaPath = '.tmp/local-release-readiness-issue-meta.json';
+            if (!fs.existsSync(metaPath)) return;
+
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+
+            const marker = meta.marker;
+            const title = meta.issueTitle;
+            const legacyTitles = Array.isArray(meta.legacyIssueTitles) ? meta.legacyIssueTitles : [];
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = issues.data.find((issue) =>
+              issue.title === title ||
+              legacyTitles.includes(issue.title) ||
+              issue.body?.includes(marker)
+            );
+
+            if (meta.shouldCloseIssue) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: meta.recoveryComment,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                });
+              }
+              return;
+            }
+
+            if (!(meta.hasAttentionItems || meta.hasBlockers || meta.hasWarnings)) return;
+
+            const bodyPath = meta.issueBodyPath || '.tmp/local-release-readiness-issue-body.md';
+            if (!fs.existsSync(bodyPath)) return;
+            const body = fs.readFileSync(bodyPath, 'utf8');
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Upload local release readiness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-release-readiness-${{ github.run_id }}
+          path: |
+            .tmp/local-release-*.log
+            .tmp/local-release-readiness-report.json
+            .tmp/local-release-readiness-summary.json
+            .tmp/local-release-readiness-step-summary.md
+            .tmp/local-release-readiness-issue-body.md
+            .tmp/local-release-readiness-issue-meta.json
+            .tmp/local-release-operational-inputs.env.example
+            .tmp/local-release-operational-inputs-action-plan.md
+            .tmp/local-release-operational-inputs-apply.sh
+            .tmp/local-release-operational-inputs-vercel-env.sh
+            .tmp/local-release-operational-inputs-apply.mjs
+            .tmp/local-release-operational-inputs-vercel-env.mjs
+            .tmp/operational-readiness-inputs.json
+            .tmp/operational-readiness-inputs.env.example
+            .tmp/operational-readiness-action-plan.md
+            .tmp/operational-readiness-apply-inputs.sh
+            .tmp/operational-readiness-vercel-env.sh
+            .tmp/operational-readiness-apply-inputs.mjs
+            .tmp/operational-readiness-vercel-env.mjs
+            .tmp/open-readiness-local-*.log
+            .tmp/marketing-runtime-*.log
+            .tmp/blog-search-quality-daily-*.json
+          if-no-files-found: ignore

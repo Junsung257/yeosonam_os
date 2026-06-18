@@ -63,6 +63,8 @@ export default function CreativesPage() {
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
+  const [integrationBlocked, setIntegrationBlocked] = useState(false);
 
   // 필터
   const [filterType, setFilterType] = useState<string>('all');
@@ -91,12 +93,16 @@ export default function CreativesPage() {
           ['approved', 'active', 'pending', 'pending_review', 'draft'].includes(p.status)
         ));
       })
-      .catch(() => {});
+      .catch(() => {
+        setIntegrationBlocked(true);
+        setWarning(prev => prev || '상품 목록을 불러오지 못했습니다.');
+      });
   }, []);
 
   // 소재 목록 로드
   const fetchCreatives = useCallback(async () => {
     setLoading(true);
+    setIntegrationBlocked(false);
     const params = new URLSearchParams();
     if (filterType !== 'all') params.set('creative_type', filterType);
     if (filterChannel !== 'all') params.set('channel', filterChannel);
@@ -104,12 +110,39 @@ export default function CreativesPage() {
     if (filterProduct) params.set('product_id', filterProduct);
     params.set('limit', '100');
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const res = await fetch(`/api/campaigns/creatives?${params}`);
-      const data = await res.json();
+      const res = await fetch(`/api/campaigns/creatives?${params}`, { signal: controller.signal });
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        setCreatives([]);
+        setIntegrationBlocked(true);
+        setWarning('소재 API가 정상 응답을 반환하지 않았습니다. 관리자 세션 또는 연동 설정을 확인하세요.');
+        return;
+      }
+      const data = await res.json().catch(() => ({}));
       setCreatives(data.creatives ?? []);
-    } catch { setCreatives([]); }
-    finally { setLoading(false); }
+      if (!res.ok) {
+        setIntegrationBlocked(true);
+        setWarning(data.error ?? '소재 목록을 불러오지 못했습니다.');
+        return;
+      }
+      if (data.degraded || data.access_state === 'supabase_unconfigured') {
+        setIntegrationBlocked(true);
+        setWarning(data.message ?? 'Supabase 연동이 설정되지 않아 실시간 소재 데이터를 불러올 수 없습니다.');
+      } else {
+        setWarning('');
+      }
+    } catch {
+      setCreatives([]);
+      setIntegrationBlocked(true);
+      setWarning('소재 목록을 불러오지 못했습니다.');
+    }
+    finally {
+      window.clearTimeout(timeoutId);
+      setLoading(false);
+    }
   }, [filterType, filterChannel, filterStatus, filterProduct]);
 
   useEffect(() => { fetchCreatives(); }, [fetchCreatives]);
@@ -118,6 +151,10 @@ export default function CreativesPage() {
   const handleGenerate = async () => {
     if (!selectedPkg) { setError('상품을 선택하세요'); return; }
     setError('');
+    if (integrationBlocked) {
+      setError('연동 상태를 먼저 확인한 뒤 소재를 생성하세요.');
+      return;
+    }
     setGenerating(true);
     try {
       const textAdChannels = channels.filter(c => c === 'naver' || c === 'google');
@@ -193,12 +230,20 @@ export default function CreativesPage() {
           <p className="text-xs text-admin-muted mt-0.5">상품 → 캐러셀 + 단일이미지 + 텍스트광고 자동 생성</p>
         </div>
         <button onClick={() => setShowGenerator(!showGenerator)}
-          className="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 transition">
+          disabled={integrationBlocked}
+          title={integrationBlocked ? '연동 상태를 먼저 확인하세요' : undefined}
+          className="px-4 py-2 bg-violet-600 text-white text-sm font-medium rounded-lg hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 transition">
           + 소재 생성
         </button>
       </div>
 
       {/* 생성 패널 */}
+      {warning && (
+        <div className="rounded-admin-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {warning}
+        </div>
+      )}
+
       {showGenerator && (
         <div className="bg-white rounded-admin-md border border-admin-border-mid p-5 space-y-4">
           <h2 className="text-sm font-semibold text-admin-text-2">소재 생성 설정</h2>
@@ -246,7 +291,8 @@ export default function CreativesPage() {
             </div>
           )}
           {error && <p className="text-xs text-red-500 bg-red-50 p-2 rounded-lg">{error}</p>}
-          <button onClick={handleGenerate} disabled={generating || !selectedPkg}
+          <button onClick={handleGenerate} disabled={generating || !selectedPkg || integrationBlocked}
+            title={integrationBlocked ? '연동 상태를 먼저 확인하세요' : undefined}
             className="px-5 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 transition">
             {generating ? '생성 중 (최대 60초)...' : '소재 생성'}
           </button>
@@ -296,8 +342,14 @@ export default function CreativesPage() {
         </div>
       ) : creatives.length === 0 ? (
         <div className="text-center py-16 text-admin-muted-2">
-          <p className="text-lg mb-2">소재가 없습니다</p>
-          <p className="text-xs">상단의 "소재 생성" 버튼을 눌러 시작하세요</p>
+          <p className="text-lg mb-2">
+            {integrationBlocked ? '소재 연동을 확인하세요' : '소재가 없습니다'}
+          </p>
+          <p className="text-xs">
+            {integrationBlocked
+              ? '연동 상태를 확인한 뒤 소재 목록을 다시 불러오세요'
+              : '상단의 "소재 생성" 버튼을 눌러 시작하세요'}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">

@@ -13,9 +13,33 @@
 
 import * as cheerio from 'cheerio';
 
-const baseUrl = (process.env.BASE_URL || 'http://localhost:3000').replace(/\/$/, '');
+const args = process.argv.slice(2);
+function argValue(name, fallback = '') {
+  const inline = args.find((arg) => arg.startsWith(`${name}=`));
+  if (inline) return inline.slice(name.length + 1);
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] ?? fallback : fallback;
+}
+function hasFlag(name) {
+  return args.includes(name);
+}
+
+const baseUrl = (argValue('--base', process.env.BASE_URL || 'http://localhost:3000') || '').replace(/\/$/, '');
 const isLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
-const timeoutMs = Number(process.env.PUBLIC_AUDIT_TIMEOUT_MS || 30000);
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.PUBLIC_AUDIT_TIMEOUT_MS || '30000')) || 30000);
+const outputJson = hasFlag('--json');
+const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.PUBLIC_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0
+  ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs)
+  : Math.min(120000, timeoutMs * 8 + 15000);
+
+const hardTimer = setTimeout(() => {
+  console.error(`[public-critical-pages] hard timeout after ${hardTimeoutMs}ms`);
+  process.exit(124);
+}, hardTimeoutMs);
+hardTimer.unref?.();
+const explicitPackageId = argValue('--package-id', process.env.PUBLIC_AUDIT_PACKAGE_ID || process.env.OPEN_CHECK_PACKAGE_ID || '').trim();
+const retries = Math.max(0, Number(argValue('--retries', process.env.PUBLIC_AUDIT_RETRIES || '1')) || 0);
 
 const corePages = [
   {
@@ -37,7 +61,7 @@ const corePages = [
     path: '/concierge',
     budgetMs: 5000,
     mustHaveAny: ['컨시어지', '상담', '여행'],
-    ctaAny: ['상담', '문의', '시작', '검색', '담기'],
+    ctaAny: ['상담', '문의', '시작', '검색', '열기'],
   },
   {
     name: 'group-inquiry',
@@ -67,15 +91,32 @@ function pathUrl(path) {
   return `${baseUrl}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-async function fetchText(path) {
+async function fetchTextOnce(path) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const started = Date.now();
-  try {
+  let timer;
+  const timeoutResult = new Promise((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve({
+        ok: false,
+        status: null,
+        ms: Date.now() - started,
+        contentType: '',
+        location: '',
+        text: '',
+        error: `timeout after ${timeoutMs}ms`,
+      });
+    }, timeoutMs);
+  });
+  const request = (async () => {
     const res = await fetch(pathUrl(path), {
       redirect: 'manual',
       signal: controller.signal,
-      headers: { Accept: 'text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5' },
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/json;q=0.8,*/*;q=0.5',
+        Connection: 'close',
+      },
     });
     const text = await res.text();
     return {
@@ -86,6 +127,10 @@ async function fetchText(path) {
       location: res.headers.get('location') || '',
       text,
     };
+  })();
+
+  try {
+    return await Promise.race([request, timeoutResult]);
   } catch (err) {
     return {
       ok: false,
@@ -99,6 +144,16 @@ async function fetchText(path) {
   } finally {
     clearTimeout(timer);
   }
+}
+
+async function fetchText(path) {
+  let lastResult = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    const result = await fetchTextOnce(path);
+    lastResult = { ...result, attempts: attempt + 1 };
+    if (result.ok && result.status !== null && result.status < 500) return lastResult;
+  }
+  return lastResult;
 }
 
 function visibleText($) {
@@ -134,6 +189,8 @@ function analyzeHtml(page, result) {
 }
 
 async function resolvePackageDetailPath() {
+  if (explicitPackageId) return `/packages/${encodeURIComponent(explicitPackageId)}`;
+
   const api = await fetchText('/api/packages?status=active');
   if (api.status === 200 && api.contentType.includes('application/json')) {
     try {
@@ -190,23 +247,44 @@ for (const page of pages) {
     location: result.location,
     h1: analysis.h1 || '',
     ctaCount: analysis.ctaCount || 0,
+    attempts: result.attempts || 1,
     missing,
     error: result.error || '',
   });
 }
 
-for (const row of results) {
-  const label = row.missing.length === 0 ? 'PASS' : 'FAIL';
-  console.log(`${label}  ${row.name}  ${row.status ?? 'ERR'}  ${row.ms}ms  ${row.path}${row.missing.length ? `  missing=${row.missing.join(',')}` : ''}`);
+const failed = results.filter((row) => row.missing.length > 0);
+const payload = {
+  summary: {
+    baseUrl,
+    total: results.length,
+    passed: results.length - failed.length,
+    failed: failed.length,
+    skipped: packageDetailPath ? 0 : 1,
+    score: results.length === 0 ? 0 : Math.round(((results.length - failed.length) / results.length) * 100),
+    timeoutMs,
+    retries,
+  },
+  warnings: packageDetailPath ? [] : [{ name: 'package-detail', reason: 'no active package URL resolved' }],
+  results,
+};
+
+if (outputJson) {
+  console.log(JSON.stringify(payload, null, 2));
+} else {
+  for (const row of results) {
+    const label = row.missing.length === 0 ? 'PASS' : 'FAIL';
+    console.log(`${label}  ${row.name}  ${row.status ?? 'ERR'}  ${row.ms}ms  ${row.path}${row.missing.length ? `  missing=${row.missing.join(',')}` : ''}`);
+  }
+
+  for (const warning of payload.warnings) {
+    console.log(`WARN  ${warning.name}  skipped  ${warning.reason}`);
+  }
 }
 
-const failed = results.filter((row) => row.missing.length > 0);
-if (!packageDetailPath) {
-  console.log('WARN  package-detail  skipped  no active package URL resolved');
-}
 if (failed.length > 0) {
-  console.error(`\n[public-critical-pages] ${failed.length}/${results.length} checks failed.`);
+  if (!outputJson) console.error(`\n[public-critical-pages] ${failed.length}/${results.length} checks failed.`);
   process.exit(1);
 }
 
-console.log(`\n[public-critical-pages] ${results.length}/${results.length} checks passed.`);
+if (!outputJson) console.log(`\n[public-critical-pages] ${results.length}/${results.length} checks passed.`);

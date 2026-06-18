@@ -5,6 +5,21 @@ import { sanitizeDbError } from '@/lib/error-sanitizer';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ADMIN_CACHE } from '@/lib/admin-cache';
 
+function emptyDashboardData() {
+  return {
+    channels: [],
+    funnel: [],
+    trends: [],
+    totalSpend: 0,
+    totalConversions: 0,
+    attributedRevenue: 0,
+    blendedRoas: 0,
+    avgCpa: 0,
+    prevTotalSpend: 0,
+    prevTotalRevenue: 0,
+  };
+}
+
 /**
  * GET /api/admin/marketing/dashboard
  *
@@ -23,7 +38,13 @@ import { ADMIN_CACHE } from '@/lib/admin-cache';
  */
 async function getHandler(request: NextRequest): Promise<NextResponse> {
   if (!isSupabaseConfigured) {
-    return apiResponse({ data: null, mock: true }, { headers: ADMIN_CACHE.noCache });
+    return apiResponse({
+      data: emptyDashboardData(),
+      degraded: true,
+      mock: false,
+      access_state: 'supabase_unconfigured',
+      message: 'Supabase 연동이 설정되지 않아 빈 마케팅 대시보드를 표시합니다.',
+    }, { headers: ADMIN_CACHE.noCache });
   }
 
   const searchParams = request.nextUrl.searchParams;

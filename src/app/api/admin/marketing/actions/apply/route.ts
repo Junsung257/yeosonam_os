@@ -2,11 +2,22 @@ import { type NextRequest } from 'next/server';
 import { withAdminGuard } from '@/lib/admin-guard';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { applyMarketingAction } from '@/lib/marketing/action-runner';
 
 export const dynamic = 'force-dynamic';
 
 async function postHandler(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return apiResponse(
+      {
+        error: 'Supabase 연동이 설정되지 않아 마케팅 추천 액션을 적용할 수 없습니다.',
+        degraded: true,
+      },
+      { status: 503 },
+    );
+  }
+
   try {
     const body = await request.json();
     const actionId = typeof body?.action_id === 'string' ? body.action_id : '';

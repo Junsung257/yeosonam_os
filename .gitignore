@@ -97,6 +97,7 @@ lint_output.txt
 tmp-*.json
 tmp-*.txt
 tmp-*.html
+tmp-*.log
 .tmp/
 tsconfig.*.tmp.*
 

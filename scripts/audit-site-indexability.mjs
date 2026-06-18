@@ -10,10 +10,23 @@ const getArg = (name, fallback = '') => {
 const hasFlag = (name) => args.includes(name);
 
 const baseUrl = (getArg('--base', process.env.SITE_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const base = new URL(baseUrl);
+const isLocalBase = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
 const limit = Number(getArg('--limit', '0')) || 0;
 const concurrency = Math.max(1, Math.min(12, Number(getArg('--concurrency', '8')) || 8));
+const timeoutMs = Math.max(1000, Number(getArg('--timeout-ms', process.env.SITE_AUDIT_TIMEOUT_MS || '10000')) || 10000);
+const requestedHardTimeoutMs = Number(getArg('--hard-timeout-ms', process.env.SITE_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
+
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-site-indexability] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
 
 function extractLocs(xml) {
   return [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1].trim()).filter(Boolean);
@@ -37,9 +50,26 @@ function isBlockedByRobots(url, disallows) {
 function normalizeForCompare(url) {
   try {
     const parsed = new URL(url, baseUrl);
+    if (isLocalBase) {
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
+    }
     parsed.hash = '';
     if (parsed.pathname !== '/' && parsed.pathname.endsWith('/')) {
       parsed.pathname = parsed.pathname.replace(/\/+$/, '');
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
+
+function normalizeSitemapUrlForAudit(url) {
+  try {
+    const parsed = new URL(url, baseUrl);
+    if (isLocalBase) {
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
     }
     return parsed.toString();
   } catch {
@@ -52,15 +82,24 @@ function textContent(html, pattern) {
 }
 
 async function fetchText(url, init = {}) {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      'user-agent': 'YeosonamIndexabilityAudit/1.0',
-      ...(init.headers || {}),
-    },
-  });
-  const text = await res.text().catch(() => '');
-  return { res, text };
+  const signal = AbortSignal.timeout(timeoutMs);
+  try {
+    const res = await fetch(url, {
+      ...init,
+      signal,
+      headers: {
+        'user-agent': 'YeosonamIndexabilityAudit/1.0',
+        ...(init.headers || {}),
+      },
+    });
+    const text = await res.text().catch(() => '');
+    return { res, text };
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      throw new Error(`${url} timed out after ${timeoutMs}ms`);
+    }
+    throw error;
+  }
 }
 
 async function auditUrl(url, disallows) {
@@ -108,13 +147,31 @@ async function auditUrl(url, disallows) {
 async function main() {
   const sitemapUrl = `${baseUrl}/sitemap.xml`;
   const robotsUrl = `${baseUrl}/robots.txt`;
-  const [{ text: sitemapXml }, { text: robotsText }] = await Promise.all([
+  const [sitemapResult, robotsResult] = await Promise.allSettled([
     fetchText(sitemapUrl),
     fetchText(robotsUrl),
   ]);
+  const bootstrapIssues = [];
+  const sitemapXml = sitemapResult.status === 'fulfilled' ? sitemapResult.value.text : '';
+  const robotsText = robotsResult.status === 'fulfilled' ? robotsResult.value.text : '';
+  if (sitemapResult.status === 'rejected') {
+    bootstrapIssues.push({
+      issue: 'sitemap_unavailable',
+      url: sitemapUrl,
+      error: sitemapResult.reason instanceof Error ? sitemapResult.reason.message : String(sitemapResult.reason),
+    });
+  }
+  if (robotsResult.status === 'rejected') {
+    bootstrapIssues.push({
+      issue: 'robots_unavailable',
+      url: robotsUrl,
+      error: robotsResult.reason instanceof Error ? robotsResult.reason.message : String(robotsResult.reason),
+    });
+  }
 
   const disallows = parseRobotsDisallows(robotsText);
-  const urls = extractLocs(sitemapXml).slice(0, limit > 0 ? limit : undefined);
+  const urls = [...new Set(extractLocs(sitemapXml).map(normalizeSitemapUrlForAudit))]
+    .slice(0, limit > 0 ? limit : undefined);
   const rows = [];
   let cursor = 0;
 
@@ -142,31 +199,44 @@ async function main() {
     for (const issue of row.issues) acc[issue] = (acc[issue] || 0) + 1;
     return acc;
   }, {});
+  for (const issue of bootstrapIssues) {
+    issueCounts[issue.issue] = (issueCounts[issue.issue] || 0) + 1;
+  }
   const failedRows = rows.filter((row) => row.issues.length > 0);
+  const totalFailures = failedRows.length + bootstrapIssues.length;
   const summary = {
     baseUrl,
     sitemapUrl,
     scanned: rows.length,
     passed: rows.length - failedRows.length,
-    failed: failedRows.length,
-    score: rows.length === 0 ? 0 : Math.round(((rows.length - failedRows.length) / rows.length) * 100),
+    failed: totalFailures,
+    score: rows.length === 0 ? (bootstrapIssues.length > 0 ? 0 : 100) : Math.round(((rows.length - failedRows.length) / rows.length) * 100),
     issueCounts,
   };
 
   if (outputJson) {
-    console.log(JSON.stringify({ summary, failedExamples: failedRows.slice(0, 50), rows }, null, 2));
+    console.log(JSON.stringify({ summary, bootstrapIssues, failedExamples: failedRows.slice(0, 50), rows }, null, 2));
   } else {
     console.log(`Site indexability: ${summary.score}/100 (${summary.passed}/${summary.scanned} passed)`);
     console.log(`Issues=${JSON.stringify(issueCounts)}`);
+    for (const issue of bootstrapIssues) {
+      console.log(`- ${issue.issue} ${issue.url} ${issue.error}`);
+    }
     for (const row of failedRows.slice(0, 20)) {
       console.log(`- ${row.issues.join(',')} ${row.status} ${row.url}`);
     }
   }
 
-  if (strict && failedRows.length > 0) process.exitCode = 1;
+  if (strict && totalFailures > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

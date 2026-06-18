@@ -16,11 +16,23 @@ function hasFlag(name) {
 }
 
 const preferredOrigin = (argValue('--preferred-origin', 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const isLocalPreferredOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(preferredOrigin);
 const samplePath = argValue('--path', '/blog/zhangjiajie-weather') || '/blog/zhangjiajie-weather';
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
+const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const outputJson = hasFlag('--json');
 const strict = hasFlag('--strict');
 
-const ORIGIN_VARIANTS = [
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-blog-gsc-domain] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
+
+const ORIGIN_VARIANTS = isLocalPreferredOrigin ? [preferredOrigin] : [
   'http://yeosonam.com',
   'http://www.yeosonam.com',
   'https://yeosonam.com',
@@ -28,21 +40,34 @@ const ORIGIN_VARIANTS = [
 ];
 
 async function fetchWithRedirects(url) {
-  const response = await fetch(url, {
-    redirect: 'follow',
-    headers: {
-      accept: 'text/html,application/xml,text/xml',
-      'user-agent': 'yeosonam-blog-gsc-domain-audit/1.0',
-    },
-  });
-  return {
-    inputUrl: url,
-    finalUrl: response.url,
-    status: response.status,
-    ok: response.ok,
-    contentType: response.headers.get('content-type') || '',
-    text: await response.text().catch(() => ''),
-  };
+  try {
+    const response = await fetch(url, {
+      redirect: 'follow',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        accept: 'text/html,application/xml,text/xml',
+        'user-agent': 'yeosonam-blog-gsc-domain-audit/1.0',
+      },
+    });
+    return {
+      inputUrl: url,
+      finalUrl: response.url,
+      status: response.status,
+      ok: response.ok,
+      contentType: response.headers.get('content-type') || '',
+      text: await response.text().catch(() => ''),
+    };
+  } catch (error) {
+    return {
+      inputUrl: url,
+      finalUrl: '',
+      status: 0,
+      ok: false,
+      contentType: '',
+      text: '',
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 function normalizeUrl(url) {
@@ -56,6 +81,20 @@ function normalizeUrl(url) {
 
 function expectedUrl(path) {
   return normalizeUrl(`${preferredOrigin}${path.startsWith('/') ? '' : '/'}${path}`);
+}
+
+function normalizeToPreferredOrigin(url) {
+  try {
+    const parsed = new URL(url, preferredOrigin);
+    if (isLocalPreferredOrigin) {
+      const preferred = new URL(preferredOrigin);
+      parsed.protocol = preferred.protocol;
+      parsed.host = preferred.host;
+    }
+    return normalizeUrl(parsed.toString());
+  } catch {
+    return normalizeUrl(url);
+  }
 }
 
 async function auditRedirects() {
@@ -77,26 +116,37 @@ async function auditCanonical() {
   const $ = cheerio.load(result.text);
   const canonical = $('link[rel="canonical"]').attr('href') || '';
   const ogUrl = $('meta[property="og:url"]').attr('content') || '';
+  const robots = $('meta[name="robots"]').attr('content') || '';
+  const title = $('title').first().text().replace(/\s+/g, ' ').trim();
   const expected = expectedUrl(samplePath);
+  const indexable = !/noindex/i.test(robots) && !/데이터를 불러올 수 없습니다|temporarily unavailable/i.test(title);
   return {
     url: `${preferredOrigin}${samplePath}`,
     finalUrl: result.finalUrl,
     status: result.status,
     canonical,
     ogUrl,
+    robots,
+    title,
+    indexable,
     expected,
-    passed: result.ok && normalizeUrl(canonical) === expected && normalizeUrl(ogUrl) === expected,
+    passed: result.ok
+      && indexable
+      && normalizeToPreferredOrigin(canonical) === expected
+      && normalizeToPreferredOrigin(ogUrl) === expected,
   };
 }
 
 async function auditSitemap() {
   const result = await fetchWithRedirects(`${preferredOrigin}/sitemap.xml`);
   const sitemapText = result.text || '';
-  const hasPreferredOriginOnly = sitemapText.includes(preferredOrigin)
+  const sitemapLocs = [...sitemapText.matchAll(/<loc>([^<]+)<\/loc>/g)]
+    .map((match) => normalizeToPreferredOrigin(match[1].trim()));
+  const hasPreferredOriginOnly = isLocalPreferredOrigin || (sitemapText.includes(preferredOrigin)
     && !sitemapText.includes('https://yeosonam.com/')
     && !sitemapText.includes('http://yeosonam.com/')
-    && !sitemapText.includes('http://www.yeosonam.com/');
-  const hasSampleUrl = sitemapText.includes(expectedUrl(samplePath));
+    && !sitemapText.includes('http://www.yeosonam.com/'));
+  const hasSampleUrl = sitemapLocs.includes(expectedUrl(samplePath));
   return {
     url: `${preferredOrigin}/sitemap.xml`,
     finalUrl: result.finalUrl,
@@ -131,8 +181,19 @@ async function main() {
   for (const redirect of redirects) {
     if (!redirect.passed) issues.push(`redirect:${redirect.inputUrl}`);
   }
-  if (!canonical.passed) issues.push('canonical_or_og_url');
-  if (!sitemap.passed) issues.push('sitemap_origin_or_sample_url');
+  if (!canonical.passed) {
+    issues.push(canonical.indexable ? 'canonical_or_og_url' : 'sample_noindex_or_unavailable');
+  }
+  const sitemapPassed = sitemap.status >= 200
+    && sitemap.status < 300
+    && sitemap.hasPreferredOriginOnly
+    && (!canonical.indexable || sitemap.hasSampleUrl);
+  sitemap.passed = sitemapPassed;
+  if (!sitemapPassed) {
+    if (!sitemap.hasPreferredOriginOnly) issues.push('sitemap_origin');
+    if (canonical.indexable && !sitemap.hasSampleUrl) issues.push('sitemap_sample_url');
+    if (sitemap.status < 200 || sitemap.status >= 300) issues.push('sitemap_status');
+  }
   if (!env.passed) issues.push('gsc_site_url_env_mismatch');
 
   const output = {
@@ -161,7 +222,13 @@ async function main() {
   if (strict && issues.length > 0) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

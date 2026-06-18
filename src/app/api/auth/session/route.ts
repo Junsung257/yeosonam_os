@@ -19,6 +19,14 @@ const REFRESH_COOKIE = {
   maxAge: 60 * 60 * 24 * 365,
 };
 
+const REFRESH_MARKER_COOKIE = {
+  httpOnly: false,
+  secure: IS_SECURE,
+  sameSite: 'lax' as const,
+  path: '/',
+  maxAge: 60 * 60 * 24 * 365,
+};
+
 function fail(status: number, error: string) {
   const res = apiResponse({ error }, { status });
   res.headers.set('Cache-Control', 'no-store');
@@ -46,6 +54,9 @@ export async function POST(request: NextRequest) {
     res.cookies.set('sb-access-token', access_token, ACCESS_COOKIE);
     if (refresh_token) {
       res.cookies.set('sb-refresh-token', refresh_token, REFRESH_COOKIE);
+      res.cookies.set('sb-refresh-token-present', '1', REFRESH_MARKER_COOKIE);
+    } else {
+      res.cookies.delete('sb-refresh-token-present');
     }
     return res;
   } catch {
@@ -58,5 +69,6 @@ export async function DELETE() {
   res.headers.set('Cache-Control', 'no-store');
   res.cookies.delete('sb-access-token');
   res.cookies.delete('sb-refresh-token');
+  res.cookies.delete('sb-refresh-token-present');
   return res;
 }

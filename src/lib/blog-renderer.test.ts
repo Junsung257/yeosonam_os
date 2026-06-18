@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
-import { inspectRenderedBlogIntegrity, renderBlogContentToHtml } from './blog-renderer';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { inspectRenderedBlogIntegrity, removeUnreachableBlogAssetImages, renderBlogContentToHtml } from './blog-renderer';
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('blog-renderer', () => {
   it('renders stored markdown that includes safe inline figcaption HTML', async () => {
@@ -42,6 +46,24 @@ describe('blog-renderer', () => {
     expect(report.evidence.artifacts).toEqual(
       expect.arrayContaining(['literal_markdown_image', 'literal_markdown_heading', 'missing_rendered_images']),
     );
+  });
+
+  it('keeps Supabase blog asset images without remote checks by default', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
+    const html = '<p><img src="https://example.supabase.co/storage/v1/object/public/blog-assets/post/image.jpg" alt="hero"></p>';
+
+    await expect(removeUnreachableBlogAssetImages(html)).resolves.toBe(html);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('can remove unreachable Supabase blog asset images when remote validation is explicitly enabled', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('', { status: 404 }));
+    const html = '<p><img src="https://example.supabase.co/storage/v1/object/public/blog-assets/post/image.jpg" alt="hero"></p><p>body</p>';
+
+    const cleaned = await removeUnreachableBlogAssetImages(html, { validateRemote: true, timeoutMs: 50 });
+
+    expect(cleaned).not.toContain('<img');
+    expect(cleaned).toContain('<p>body</p>');
   });
 
   it('recovers legacy posts where headings, images, and dividers were collapsed into one line', async () => {

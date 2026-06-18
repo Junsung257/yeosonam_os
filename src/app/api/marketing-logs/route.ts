@@ -33,7 +33,12 @@ function detectPlatform(url: string): Platform {
 // ─── GET ──────────────────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return NextResponse.json({
+      logs: [],
+      degraded: true,
+      access_state: 'supabase_unconfigured',
+      message: 'Supabase is not configured; returning an empty marketing log list.',
+    }, { headers: cacheHeader(0) });
   }
 
   const { searchParams } = new URL(request.url);
@@ -60,7 +65,7 @@ export async function GET(request: NextRequest) {
 // ─── POST ─────────────────────────────────────────────────────────────────────
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return NextResponse.json({ error: 'Supabase is not configured. Marketing logs cannot be saved.' }, { status: 503 });
   }
 
   try {
@@ -114,7 +119,7 @@ export async function POST(request: NextRequest) {
 // ─── DELETE ───────────────────────────────────────────────────────────────────
 export async function DELETE(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase가 설정되지 않았습니다.' }, { status: 500 });
+    return NextResponse.json({ error: 'Supabase is not configured. Marketing logs cannot be deleted.' }, { status: 503 });
   }
 
   const { searchParams } = new URL(request.url);

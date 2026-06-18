@@ -35,6 +35,8 @@ export default function CampaignsPage() {
   const [showModal, setShowModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [warning, setWarning] = useState('');
+  const [integrationBlocked, setIntegrationBlocked] = useState(false);
 
   const [form, setForm] = useState({
     package_id: '',
@@ -45,13 +47,37 @@ export default function CampaignsPage() {
 
   const fetchCampaigns = useCallback(async () => {
     setLoading(true);
+    setWarning('');
+    setIntegrationBlocked(false);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
-      const res = await fetch('/api/meta/campaigns');
-      if (res.ok) {
-        const { campaigns: list } = await res.json();
-        setCampaigns(list ?? []);
+      const res = await fetch('/api/meta/campaigns', { signal: controller.signal });
+      const contentType = res.headers.get('content-type') ?? '';
+      if (!contentType.includes('application/json')) {
+        setCampaigns([]);
+        setIntegrationBlocked(true);
+        setWarning('캠페인 API가 정상 응답을 반환하지 않았습니다. 관리자 세션 또는 연동 설정을 확인하세요.');
+        return;
       }
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCampaigns([]);
+        setIntegrationBlocked(true);
+        setWarning(data.error ?? '캠페인 목록을 불러오지 못했습니다.');
+        return;
+      }
+      setCampaigns(data.campaigns ?? []);
+      if (data.degraded || data.mock || data.access_state === 'supabase_unconfigured') {
+        setIntegrationBlocked(true);
+        setWarning(data.message ?? 'Supabase 연동이 설정되지 않아 실시간 캠페인 데이터를 불러올 수 없습니다.');
+      }
+    } catch {
+      setCampaigns([]);
+      setIntegrationBlocked(true);
+      setWarning('캠페인 목록을 불러오지 못했습니다.');
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
   }, []);
@@ -60,12 +86,21 @@ export default function CampaignsPage() {
     fetchCampaigns();
     fetch('/api/packages?status=approved&limit=100')
       .then(r => r.json())
-      .then(data => setPackages(data.packages ?? []));
+      .then(data => setPackages(data.packages ?? []))
+      .catch(() => {
+        setIntegrationBlocked(true);
+        setWarning(prev => prev || '상품 목록을 불러오지 못했습니다.');
+      });
   }, [fetchCampaigns]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (integrationBlocked) {
+      setError('연동 상태를 먼저 확인한 뒤 캠페인을 생성하세요.');
+      return;
+    }
 
     if (!form.package_id || !form.name || !form.daily_budget_krw) {
       setError('모든 필드를 입력해주세요.');
@@ -114,7 +149,9 @@ export default function CampaignsPage() {
           </button>
           <button
             onClick={() => setShowModal(true)}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+            disabled={integrationBlocked}
+            title={integrationBlocked ? '연동 상태를 먼저 확인하세요' : undefined}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
             + 새 캠페인
           </button>
@@ -122,6 +159,12 @@ export default function CampaignsPage() {
       </div>
 
       {/* 캠페인 테이블 */}
+      {warning && (
+        <div className="rounded-admin-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          {warning}
+        </div>
+      )}
+
       <div className="bg-white rounded-admin-md border border-admin-border-mid overflow-hidden">
         {loading ? (
           <div className="divide-y divide-slate-50">
@@ -135,7 +178,9 @@ export default function CampaignsPage() {
           </div>
         ) : campaigns.length === 0 ? (
           <div className="p-10 text-center text-sm text-admin-muted-2">
-            캠페인이 없습니다. 첫 캠페인을 만들어보세요.
+            {integrationBlocked
+              ? '연동 상태를 확인한 뒤 캠페인 목록을 다시 불러오세요.'
+              : '캠페인이 없습니다. 첫 캠페인을 만들어보세요.'}
           </div>
         ) : (
           <div className="overflow-x-auto">

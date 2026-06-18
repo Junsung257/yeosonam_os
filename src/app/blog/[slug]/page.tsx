@@ -429,11 +429,22 @@ const getCachedPostFast = unstable_cache(
   { revalidate: 300, tags: [BLOG_DETAIL_CACHE_TAG] },
 );
 
+function isNextCacheContextUnavailable(error: unknown): boolean {
+  return error instanceof Error && /incrementalCache missing in unstable_cache/i.test(error.message);
+}
+
 async function getPostFast(slug: string): Promise<BlogPost | null> {
   if (process.env.NODE_ENV === 'test' || process.env.VITEST) {
     return getPostFastUncached(slug);
   }
-  return getCachedPostFast(slug);
+  try {
+    return await getCachedPostFast(slug);
+  } catch (error) {
+    if (isNextCacheContextUnavailable(error)) {
+      return getPostFastUncached(slug);
+    }
+    throw error;
+  }
 }
 
 async function getRelatedProducts(

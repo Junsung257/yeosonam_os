@@ -37,6 +37,8 @@ jobs:
         run: npm run type-check
       - name: Unit tests
         run: npm test
+      - name: Marketing automation readiness
+        run: npm run verify:marketing-automation:ci
 
   dead-code:
     name: Knip dead-code & unused deps

@@ -12,6 +12,7 @@
  */
 
 import { supabaseAdmin, isSupabaseConfigured } from './supabase';
+import { withPublicQueryFallback } from './public-query-timeout';
 import type { NoticeBlock, NoticeSurface, NoticeSeverity } from './standard-terms-client';
 import {
   hasProductSpecialCancelPolicy,
@@ -60,6 +61,10 @@ export interface PackageForTerms {
 let templateCache: TermsTemplate[] = [];
 let cacheExpiry = 0;
 const CACHE_TTL = 60_000;
+const TERMS_TEMPLATE_QUERY_TIMEOUT_MS = Math.max(
+  500,
+  Number(process.env.TERMS_TEMPLATE_QUERY_TIMEOUT_MS || '900') || 900,
+);
 
 async function loadTemplates(): Promise<TermsTemplate[]> {
   if (Date.now() < cacheExpiry && templateCache.length > 0) return templateCache;
@@ -67,15 +72,19 @@ async function loadTemplates(): Promise<TermsTemplate[]> {
 
   try {
     const now = new Date().toISOString();
-    const { data } = await supabaseAdmin
-      .from('terms_templates')
-      .select('*')
-      .eq('is_active', true)
-      .eq('is_current', true)
-      .lte('starts_at', now)
-      .or(`ends_at.is.null,ends_at.gt.${now}`)
-      .order('tier', { ascending: true })
-      .order('priority', { ascending: true });
+    const { data } = await withPublicQueryFallback(
+      supabaseAdmin
+        .from('terms_templates')
+        .select('*')
+        .eq('is_active', true)
+        .eq('is_current', true)
+        .lte('starts_at', now)
+        .or(`ends_at.is.null,ends_at.gt.${now}`)
+        .order('tier', { ascending: true })
+        .order('priority', { ascending: true }),
+      { data: templateCache },
+      TERMS_TEMPLATE_QUERY_TIMEOUT_MS,
+    );
 
     templateCache = (data ?? []) as TermsTemplate[];
     cacheExpiry = Date.now() + CACHE_TTL;
@@ -346,4 +355,3 @@ export function formatCancellationDates(
     return enriched === n.text ? n : { ...n, text: enriched };
   });
 }
-

@@ -1,23 +1,7 @@
-const CRITICAL_ENV = [
-  'SERPAPI_KEY',
-  'BAND_RSS_URL',
-  'TWITTER_BEARER_TOKEN',
-  'NAVER_CLIENT_ID',
-  'NAVER_CLIENT_SECRET',
-  'NAVER_CAFE_ID',
-  'GOOGLE_ADS_DEVELOPER_TOKEN',
-  'GOOGLE_ADS_CUSTOMER_ID',
-  'GOOGLE_ADS_CLIENT_ID',
-  'GOOGLE_ADS_CLIENT_SECRET',
-  'SLACK_WEBHOOK_URL',
-  'CRON_SECRET',
-] as const;
+import runtimeEnvReadiness from '@/config/runtime-env-readiness.json';
 
-const WARN_ENV = [
-  'AD_FLAG_UP_BID_FACTOR',
-  'AD_OFFPEAK_BID_FACTOR',
-  'AD_MIN_BID_KRW',
-] as const;
+const CRITICAL_ENV = runtimeEnvReadiness.critical as readonly string[];
+const WARN_ENV = runtimeEnvReadiness.warnDefaults as readonly string[];
 
 let hasLoggedEnvCheck = false;
 
@@ -29,7 +13,7 @@ export function checkMissingEnvVars(options: { log?: boolean } = {}): { missing:
   const shouldLog = options.log !== false && !hasLoggedEnvCheck;
 
   if (shouldLog && missing.length > 0) {
-    console.warn(
+    console.info(
       [
         `[env-check] Missing ${missing.length} important environment variable(s).`,
         ...missing.map((key) => `- ${key}`),
@@ -39,7 +23,7 @@ export function checkMissingEnvVars(options: { log?: boolean } = {}): { missing:
   }
 
   if (shouldLog && warnings.length > 0) {
-    console.warn(
+    console.info(
       [
         `[env-check] ${warnings.length} environment variable(s) are using defaults.`,
         ...warnings.map((key) => `- ${key}`),

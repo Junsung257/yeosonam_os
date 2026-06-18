@@ -6,6 +6,7 @@ import { runMarketingIntegrationProbes } from '@/lib/marketing/integration-probe
 import { withTimeout } from '@/lib/promise-timeout';
 import { checkThreadsPublishingLimit, getThreadsConfig } from '@/lib/threads-publisher';
 import { fetchThreadsInsights, probeThreadsIdentity } from '@/lib/threads-api';
+import { checkMissingEnvVars } from '@/lib/env-check';
 import {
   COMPLETION_REQUIREMENT_EXTERNAL_WRITE_ZERO,
   COMPLETION_REQUIREMENT_FULL_AUTO_DEFAULT_OFF,
@@ -77,6 +78,28 @@ function secretCheck(group: (typeof SECRET_GROUPS)[number]): Check {
   };
 }
 
+function runtimeEnvReadinessCheck(): Check {
+  const { missing, warnings } = checkMissingEnvVars({ log: false });
+  const status: Status = missing.length > 0 ? 'fail' : warnings.length > 0 ? 'warn' : 'ok';
+  return {
+    key: 'env.runtime_readiness',
+    label: 'Runtime integration env',
+    status,
+    message: status === 'ok'
+      ? 'All runtime integration environment variables are present.'
+      : status === 'fail'
+        ? `${missing.length} important environment variable(s) are missing. Related integrations will stay degraded or skipped.`
+        : `Runtime is using default values for ${warnings.join(', ')}.`,
+    detail: {
+      missing,
+      using_defaults: warnings,
+      source: 'src/lib/env-check.ts',
+      read_only: true,
+      external_api_write: false,
+    },
+  };
+}
+
 async function countRows(table: string): Promise<number> {
   const { count } = await supabaseAdmin.from(table).select('id', { count: 'exact', head: true });
   return count ?? 0;
@@ -84,7 +107,7 @@ async function countRows(table: string): Promise<number> {
 
 async function dbChecks(): Promise<Check[]> {
   if (!isSupabaseConfigured) {
-    return [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message: 'Supabase is not configured.' }];
+    return [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message: 'Supabase 연동이 설정되지 않았습니다.' }];
   }
 
   const [content, queue, cardNews, distributions, adAccounts, campaigns, traffic, conversions] = await Promise.all([
@@ -342,7 +365,7 @@ async function adOsCompletionChecks(request: NextRequest): Promise<Check[]> {
 }
 
 async function getHandler(request: NextRequest) {
-  const baseChecks = SECRET_GROUPS.map(secretCheck);
+  const baseChecks = [runtimeEnvReadinessCheck(), ...SECRET_GROUPS.map(secretCheck)];
   let db: Check[] = [];
   let cron: Check[] = [];
   let threads: Check[] = [];
@@ -364,7 +387,7 @@ async function getHandler(request: NextRequest) {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Marketing system health unavailable';
     db = [{ key: 'db.supabase', label: 'Supabase', status: 'fail', message }];
-    cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Skipped because Supabase health check timed out.' }];
+    cron = [{ key: 'cron.health', label: 'Cron health', status: 'warn', message: 'Supabase 상태 확인 시간이 초과되어 건너뛰었습니다.' }];
     threads = [{ key: 'threads.health', label: 'Threads health', status: 'warn', message: 'Skipped because system health check timed out.' }];
     adOs = [{
       key: 'ad_os.completion_audit',

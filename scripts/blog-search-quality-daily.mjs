@@ -19,13 +19,25 @@ function hasFlag(name) {
 }
 
 const baseUrl = (argValue('--base', process.env.BLOG_AUDIT_BASE_URL || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
-const preferredOrigin = (argValue('--preferred-origin', process.env.BLOG_CANONICAL_ORIGIN || 'https://www.yeosonam.com') || '').replace(/\/$/, '');
+const isLocalBase = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(baseUrl);
+const explicitPreferredOrigin = argValue('--preferred-origin', null);
+const preferredOrigin = (
+  explicitPreferredOrigin ||
+  process.env.BLOG_CANONICAL_ORIGIN ||
+  (isLocalBase ? baseUrl : 'https://www.yeosonam.com')
+).replace(/\/$/, '');
 const full = hasFlag('--full');
 const strict = hasFlag('--strict');
 const outputJson = hasFlag('--json');
 const limit = Number(argValue('--limit', full ? '0' : '30')) || 0;
 const siteLimit = Number(argValue('--site-limit', full ? '0' : '200')) || 0;
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', process.env.BLOG_AUDIT_TIMEOUT_MS || '15000')) || 15000);
+const hardTimeoutMs = Math.max(timeoutMs + 1000, Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || String(Math.max(30000, timeoutMs * 4)))) || 0);
 const outDir = argValue('--out-dir', '.tmp') || '.tmp';
+const hasSupabaseAdminEnv = Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
+const editorialSource = argValue('--editorial-source', hasSupabaseAdminEnv ? 'db' : 'web') || (hasSupabaseAdminEnv ? 'db' : 'web');
+const timeoutArg = `--timeout-ms=${timeoutMs}`;
+const hardTimeoutArg = `--hard-timeout-ms=${hardTimeoutMs}`;
 
 if (!baseUrl) {
   console.error('--base is required');
@@ -44,7 +56,7 @@ const checks = [
     owner: 'content',
     required: true,
     script: 'audit:blog-render:browser',
-    args: withLimit([`--base=${baseUrl}`, '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'image_quality',
@@ -52,7 +64,7 @@ const checks = [
     owner: 'content',
     required: true,
     script: 'audit:blog-images',
-    args: withLimit([`--base=${baseUrl}`, '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'seo_quality',
@@ -60,7 +72,7 @@ const checks = [
     owner: 'naver',
     required: true,
     script: 'audit:blog-seo',
-    args: withLimit([`--base=${baseUrl}`, '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'editorial_intent',
@@ -68,7 +80,7 @@ const checks = [
     owner: 'naver',
     required: true,
     script: 'audit:blog-editorial',
-    args: withLimit([`--base=${baseUrl}`, '--source=db', '--strict', '--json'], limit),
+    args: withLimit([`--base=${baseUrl}`, `--source=${editorialSource}`, '--strict', '--json', timeoutArg, hardTimeoutArg], limit),
   },
   {
     id: 'revenue_funnel',
@@ -84,7 +96,7 @@ const checks = [
     owner: 'google',
     required: true,
     script: 'audit:blog-gsc-domain',
-    args: [`--preferred-origin=${preferredOrigin}`, '--strict', '--json'],
+    args: [`--preferred-origin=${preferredOrigin}`, '--strict', '--json', timeoutArg, hardTimeoutArg],
   },
   {
     id: 'site_indexability',
@@ -92,9 +104,18 @@ const checks = [
     owner: 'google',
     required: true,
     script: 'audit:site-indexability',
-    args: withLimit([`--base=${baseUrl}`, '--strict', '--json'], siteLimit),
+    args: withLimit([`--base=${baseUrl}`, '--strict', '--json', timeoutArg, hardTimeoutArg], siteLimit),
   },
 ];
+
+const PROCESS_PATTERNS_BY_CHECK_ID = {
+  render_integrity: 'audit-blog-render-integrity',
+  image_quality: 'audit-blog-image-quality',
+  seo_quality: 'audit-blog-seo-quality',
+  editorial_intent: 'audit-blog-editorial-quality',
+  google_domain: 'audit-blog-gsc-domain',
+  site_indexability: 'audit-site-indexability',
+};
 
 function parseJson(stdout) {
   const text = String(stdout || '').trim();
@@ -140,16 +161,32 @@ function errorsFromPayload(payload) {
   return 0;
 }
 
+function blockedFromPayload(payload) {
+  if (!payload || typeof payload !== 'object') return 0;
+  if (typeof payload.blocked === 'number') return payload.blocked;
+  if (typeof payload.summary?.blocked === 'number') return payload.summary.blocked;
+  if (payload.status === 'blocked' || payload.summary?.status === 'blocked') return 1;
+  return 0;
+}
+
 function strictIssues(row) {
   const issues = [];
   const failed = typeof row.failed === 'number' ? row.failed : 0;
   const errors = errorsFromPayload(row.payload);
+  const blocked = blockedFromPayload(row.payload);
 
   if (!row.ok) {
     issues.push({
       code: `${row.id}.command_failed`,
       severity: 'major',
       message: `${row.id} command exited with ${row.exitCode ?? 'unknown status'}`,
+    });
+  }
+  if (blocked > 0) {
+    issues.push({
+      code: `${row.id}.blocked_items`,
+      severity: 'major',
+      message: `${row.id} reported ${blocked} blocked item(s)`,
     });
   }
   if (errors > 0) {
@@ -190,6 +227,22 @@ function isStrictScore100(row) {
   return row.ok && strictIssues(row).length === 0;
 }
 
+function cleanupTimedOutCheck(check) {
+  const pattern = PROCESS_PATTERNS_BY_CHECK_ID[check.id];
+  if (!pattern) return;
+
+  if (process.platform === 'win32') {
+    spawnSync('powershell.exe', [
+      '-NoProfile',
+      '-Command',
+      `$targets = Get-CimInstance Win32_Process | Where-Object { $_.Name -eq 'node.exe' -and $_.CommandLine -like '*${pattern}*' }; foreach ($p in $targets) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }`,
+    ], { encoding: 'utf8', timeout: 5000 });
+    return;
+  }
+
+  spawnSync('pkill', ['-f', pattern], { encoding: 'utf8', timeout: 5000 });
+}
+
 function runCheck(check) {
   const startedAt = Date.now();
   const command = process.platform === 'win32' ? 'cmd.exe' : npmBin;
@@ -201,8 +254,12 @@ function runCheck(check) {
     encoding: 'utf8',
     maxBuffer: 1024 * 1024 * 20,
     shell: false,
+    timeout: Math.max(10000, hardTimeoutMs + 5000),
   });
   const payload = parseJson(result.stdout);
+  if (result.error && result.error.code === 'ETIMEDOUT') {
+    cleanupTimedOutCheck(check);
+  }
   const score = scoreFromPayload(payload);
   const failed = failedFromPayload(payload);
   const ok = result.status === 0;

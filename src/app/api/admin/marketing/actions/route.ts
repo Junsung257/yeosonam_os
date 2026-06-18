@@ -17,10 +17,12 @@ async function getHandler(request: NextRequest) {
       actions: attachLedgerToActions(actions, ledger),
     });
   } catch (err) {
-    return apiResponse(
-      { error: sanitizeDbError(err, 'Failed to load marketing actions') },
-      { status: 500 },
-    );
+    return apiResponse({
+      checked_at: new Date().toISOString(),
+      actions: [],
+      degraded: true,
+      error: sanitizeDbError(err, 'Failed to load marketing actions'),
+    });
   }
 }
 

@@ -3,10 +3,21 @@ import { withAdminGuard } from '@/lib/admin-guard';
 import { dismissMarketingRecommendation } from '@/lib/marketing/recommendation-ledger';
 import { apiResponse } from '@/lib/api-response';
 import { sanitizeDbError } from '@/lib/error-sanitizer';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
 async function postHandler(request: NextRequest) {
+  if (!isSupabaseConfigured) {
+    return apiResponse(
+      {
+        error: 'Supabase 연동이 설정되지 않아 마케팅 추천을 숨길 수 없습니다.',
+        degraded: true,
+      },
+      { status: 503 },
+    );
+  }
+
   try {
     const body = await request.json();
     const actionId = typeof body?.action_id === 'string' ? body.action_id : '';

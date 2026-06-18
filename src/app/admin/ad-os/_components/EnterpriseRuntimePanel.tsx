@@ -21,6 +21,8 @@ export function EnterpriseRuntimePanel({
   opsQueueActionId: string | null;
   onOpsQueueAction: (row: Record<string, unknown>, action: OpsQueueAction) => void;
 }) {
+  const externalApiWriteCount = Number(summary.enterprise_layer?.platform_job_queue?.external_api_write_count || 0);
+
   return (
     <section className="admin-card p-4">
       <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
@@ -30,8 +32,8 @@ export function EnterpriseRuntimePanel({
             Runs runtime checks, dry-run executors, conversion upload checks, and adapter packets with live-write evidence visible.
           </p>
         </div>
-        <StatusPill tone={Number(summary.enterprise_layer?.platform_job_queue.external_api_write_count || 0) === 0 ? 'good' : 'bad'}>
-          external write {Number(summary.enterprise_layer?.platform_job_queue.external_api_write_count || 0).toLocaleString('ko-KR')}
+        <StatusPill tone={externalApiWriteCount === 0 ? 'good' : 'bad'}>
+          external write {externalApiWriteCount.toLocaleString('ko-KR')}
         </StatusPill>
       </div>
       <EnterpriseRuntimeActionBar actions={actions} loading={loading} />

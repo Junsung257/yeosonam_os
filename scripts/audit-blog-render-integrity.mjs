@@ -16,7 +16,12 @@ function hasFlag(name) {
 const baseUrl = (argValue('--base', DEFAULT_BASE_URL) || DEFAULT_BASE_URL).replace(/\/$/, '');
 const maxPages = Number(argValue('--pages', '12'));
 const limit = Number(argValue('--limit', '0')) || 0;
+const concurrency = Math.max(1, Math.min(10, Number(argValue('--concurrency', '4')) || 4));
+const timeoutMs = Math.max(1000, Number(argValue('--timeout-ms', '15000')) || 15000);
+const requestedHardTimeoutMs = Number(argValue('--hard-timeout-ms', process.env.BLOG_AUDIT_HARD_TIMEOUT_MS || '0')) || 0;
+const hardTimeoutMs = requestedHardTimeoutMs > 0 ? Math.max(timeoutMs + 1000, requestedHardTimeoutMs) : 0;
 const json = hasFlag('--json');
+const quiet = json || hasFlag('--quiet');
 const browserFallback = hasFlag('--browser-fallback') || hasFlag('--browser');
 const strict = hasFlag('--strict');
 const TABLE_EXPECTED_RE =
@@ -24,20 +29,41 @@ const TABLE_EXPECTED_RE =
 const RELATED_HEADING_RE =
   /\uAD00\uB828\s*(?:\uAE00|\uC0C1\uD488)|\uCD94\uCC9C\s*\uC0C1\uD488|\uAC19\uC774\s*\uBCF4\uBA74|\uD568\uAED8\s*\uBCF4\uBA74/i;
 
+let hardTimer = null;
+if (hardTimeoutMs > 0) {
+  hardTimer = setTimeout(() => {
+    console.error(`[audit-blog-render] hard timeout after ${hardTimeoutMs}ms`);
+    process.exit(124);
+  }, hardTimeoutMs);
+}
+
 async function fetchText(url) {
-  const response = await fetch(url, {
-    cache: 'no-store',
-    headers: {
-      'user-agent': 'yeosonam-blog-render-audit/1.0',
-      accept: 'text/html,application/xhtml+xml',
-      'cache-control': 'no-cache',
-      pragma: 'no-cache',
-    },
-  });
+  let response;
+  try {
+    response = await fetch(url, {
+      cache: 'no-store',
+      signal: AbortSignal.timeout(timeoutMs),
+      headers: {
+        'user-agent': 'yeosonam-blog-render-audit/1.0',
+        accept: 'text/html,application/xhtml+xml',
+        'cache-control': 'no-cache',
+        pragma: 'no-cache',
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && (error.name === 'AbortError' || error.name === 'TimeoutError')) {
+      throw new Error(`timeout ${timeoutMs}ms`);
+    }
+    throw error;
+  }
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`);
   }
   return response.text();
+}
+
+function logProgress(message) {
+  if (!quiet) console.log(message);
 }
 
 function absolutize(path) {
@@ -45,27 +71,75 @@ function absolutize(path) {
   return `${baseUrl}${path.startsWith('/') ? '' : '/'}${path}`;
 }
 
+function addBlogLink(links, href) {
+  if (!href || !/^\/blog\//.test(href)) return;
+  if (/\/blog\/(angle|destination)\//.test(href)) return;
+  if (/\/opengraph-image(?:$|[/?#])/.test(href)) return;
+  links.add(href.split('#')[0]);
+}
+
+async function collectBlogLinksFromSitemap(links, errors) {
+  const sitemapUrl = `${baseUrl}/sitemap.xml`;
+  try {
+    const xml = await fetchText(sitemapUrl);
+    const matches = xml.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/gi);
+    let added = 0;
+    for (const match of matches) {
+      try {
+        const url = new URL(match[1]);
+        const before = links.size;
+        addBlogLink(links, url.pathname);
+        if (links.size > before) added += 1;
+        if (limit > 0 && links.size >= limit) break;
+      } catch {
+        // Ignore malformed sitemap URLs and continue auditing usable entries.
+      }
+    }
+    if (added > 0) logProgress(`Collected ${added} blog link(s) from sitemap fallback`);
+  } catch (error) {
+    errors.push({
+      url: sitemapUrl,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
 async function collectBlogLinks() {
   const links = new Set();
+  const errors = [];
+  logProgress(`Collecting blog links from ${baseUrl} (pages=${maxPages}, limit=${limit || 'all'})`);
   for (let page = 1; page <= maxPages; page += 1) {
     const url = page === 1 ? `${baseUrl}/blog` : `${baseUrl}/blog?page=${page}`;
     let html = '';
     try {
       html = await fetchText(url);
-    } catch {
+    } catch (error) {
+      errors.push({
+        url,
+        error: error instanceof Error ? error.message : String(error),
+      });
       break;
     }
     const $ = cheerio.load(html);
     const before = links.size;
     $('a[href^="/blog/"]').each((_index, element) => {
-      const href = $(element).attr('href') || '';
-      if (!href || /\/blog\/(angle|destination)\//.test(href)) return;
-      links.add(href.split('#')[0]);
+      addBlogLink(links, $(element).attr('href') || '');
     });
+    if (limit > 0 && links.size >= limit) {
+      const limited = [...links].slice(0, limit);
+      limited.collectionErrors = errors;
+      return limited;
+    }
     if (page > 1 && links.size === before) break;
   }
+  if (links.size === 0) {
+    logProgress('No blog links found on listing pages; trying sitemap fallback');
+    await collectBlogLinksFromSitemap(links, errors);
+  }
   const all = [...links];
-  return limit > 0 ? all.slice(0, limit) : all;
+  const limited = limit > 0 ? all.slice(0, limit) : all;
+  limited.collectionErrors = errors;
+  return limited;
 }
 
 function count(text, pattern) {
@@ -140,7 +214,7 @@ async function inspectArticleWithRetry(path) {
 async function inspectArticleInBrowser(browser, path) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 1600 } });
   try {
-    await page.goto(absolutize(path), { waitUntil: 'networkidle', timeout: 120000 });
+    await page.goto(absolutize(path), { waitUntil: 'domcontentloaded', timeout: timeoutMs });
     await page.waitForTimeout(500);
     const result = await page.evaluate(() => {
       const count = (text, pattern) => (text.match(pattern) || []).length;
@@ -191,15 +265,38 @@ async function inspectArticleInBrowser(browser, path) {
   }
 }
 
+async function mapWithConcurrency(items, workerCount, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await worker(items[index], index);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(workerCount, Math.max(1, items.length)) }, runWorker));
+  return results;
+}
+
 function summarize(rows) {
-  const fetched = rows.filter((row) => !row.error);
+  const blockedRows = rows.filter((row) => row.blocked);
+  const fetched = rows.filter((row) => !row.error && !row.blocked);
   const failed = fetched.filter((row) => row.failed);
+  const errorRows = rows.filter((row) => row.error && !row.blocked);
   const score = fetched.length === 0 ? 0 : Math.round(((fetched.length - failed.length) / fetched.length) * 100);
+  const status = failed.length > 0 || errorRows.length > 0
+    ? 'fail'
+    : blockedRows.length > 0
+      ? 'blocked'
+      : 'pass';
   return {
+    status,
     baseUrl,
     totalLinks: rows.length,
     fetched: fetched.length,
-    errors: rows.length - fetched.length,
+    errors: errorRows.length,
+    blocked: blockedRows.length,
     failed: failed.length,
     passed: fetched.length - failed.length,
     score,
@@ -210,24 +307,47 @@ function summarize(rows) {
 
 async function main() {
   const links = await collectBlogLinks();
-  const rows = [];
-  for (const path of links) {
+  const collectionErrors = links.collectionErrors || [];
+  if (links.length === 0) {
+    logProgress(`No blog links found. Seed or connect blog source data for ${baseUrl}, or run against a base URL with published posts.`);
+  } else {
+    logProgress(`Auditing ${links.length} blog page(s) with concurrency=${concurrency}, timeout=${timeoutMs}ms`);
+  }
+  const rows = await mapWithConcurrency(links, concurrency, async (path, index) => {
+    logProgress(`[${index + 1}/${links.length}] ${path}`);
     try {
-      rows.push(await inspectArticleWithRetry(path));
+      return await inspectArticleWithRetry(path);
     } catch (error) {
-      rows.push({
+      return {
         path,
         error: error instanceof Error ? error.message : String(error),
         failed: true,
-      });
+      };
     }
+  });
+  if (links.length === 0) {
+    rows.push({
+      path: `${baseUrl}/blog`,
+      error: 'no blog links found from listing pages or sitemap',
+      blocked: true,
+      failed: false,
+      collectionError: true,
+    });
   }
-  if (browserFallback && rows.some((row) => row.failed || row.error)) {
+  for (const issue of collectionErrors) {
+    rows.push({
+      path: issue.url,
+      error: issue.error,
+      failed: true,
+      collectionError: true,
+    });
+  }
+  if (browserFallback && rows.some((row) => !row.collectionError && (row.failed || row.error))) {
     const { chromium } = await import('playwright');
     const browser = await chromium.launch({ headless: true });
     try {
       for (let index = 0; index < rows.length; index += 1) {
-        if (!rows[index].failed && !rows[index].error) continue;
+        if (rows[index].collectionError || (!rows[index].failed && !rows[index].error)) continue;
         try {
           rows[index] = await inspectArticleInBrowser(browser, rows[index].path);
         } catch (error) {
@@ -243,24 +363,32 @@ async function main() {
   }
   const summary = summarize(rows);
   const output = {
+    status: summary.status,
     summary,
-    failedExamples: rows.filter((row) => row.failed || row.error).slice(0, 20),
+    failedExamples: rows.filter((row) => row.failed || row.error || row.blocked).slice(0, 20),
     rows,
   };
+  const shouldFail = summary.failed > 0 || summary.errors > 0 || (strict && summary.blocked > 0);
   if (json) {
     console.log(JSON.stringify(output, null, 2));
-    if (strict && (summary.failed > 0 || summary.errors > 0)) process.exitCode = 1;
+    if (shouldFail) process.exitCode = 1;
     return;
   }
-  console.log(`Blog render integrity: ${summary.score}/100 (${summary.passed}/${summary.fetched} passed, errors=${summary.errors})`);
+  console.log(`Blog render integrity: ${summary.status} ${summary.score}/100 (${summary.passed}/${summary.fetched} passed, errors=${summary.errors}, blocked=${summary.blocked})`);
   console.log(`Average artifacts=${summary.avgArtifacts}, average images=${summary.avgImages}`);
   for (const row of output.failedExamples.slice(0, 10)) {
     console.log(`- ${row.path}: artifacts=${row.artifactTotal ?? 'n/a'}, images=${row.imgCount ?? 'n/a'}, h2=${row.h2Count ?? 'n/a'}, error=${row.error ?? ''}`);
   }
-  if (summary.failed > 0 || summary.errors > 0) process.exitCode = 1;
+  if (shouldFail) process.exitCode = 1;
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exitCode = 1;
-});
+main()
+  .then(() => {
+    if (hardTimer) clearTimeout(hardTimer);
+    process.exit(process.exitCode ?? 0);
+  })
+  .catch((error) => {
+    if (hardTimer) clearTimeout(hardTimer);
+    console.error(error);
+    process.exit(1);
+  });

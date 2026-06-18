@@ -1,14 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isSupabaseConfigured, getAdPerformance, upsertAdPerformanceSnapshot } from '@/lib/supabase';
+import { isSupabaseConfigured, getAdPerformance, upsertAdPerformanceSnapshot, supabaseAdmin } from '@/lib/supabase';
 import { fetchCampaignInsights, isMetaConfigured } from '@/lib/meta-api';
 import { getRateInfo } from '@/lib/exchange-rate';
 import { getMonthlyAdStats } from '@/lib/roas-calculator';
 import { parseBasis, getBasisMeta } from '@/lib/kpi-basis';
 import { getSecret } from '@/lib/secret-registry';
+import { sanitizeDbError } from '@/lib/error-sanitizer';
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({
+      campaigns: [],
+      snapshots: [],
+      degraded: true,
+      access_state: 'supabase_unconfigured',
+      message: 'Supabase 연동이 설정되지 않아 빈 Meta 성과를 표시합니다.',
+    });
   }
 
   const { searchParams } = request.nextUrl;
@@ -27,19 +34,63 @@ export async function GET(request: NextRequest) {
     }
 
     if (!campaignId) {
-      return NextResponse.json({ error: 'campaign_id 또는 type=monthly 필수' }, { status: 400 });
+      const since = new Date(Date.now() - 30 * 86_400_000).toISOString().slice(0, 10);
+      const { data: snapshots, error: snapshotError } = await supabaseAdmin
+        .from('ad_performance_snapshots')
+        .select('campaign_id, snapshot_date, impressions, clicks, spend_krw, attributed_bookings, attributed_margin, net_roas_pct')
+        .gte('snapshot_date', since)
+        .order('snapshot_date', { ascending: false })
+        .limit(100);
+
+      if (snapshotError) throw snapshotError;
+
+      const campaignIds = Array.from(new Set((snapshots ?? []).map((row) => row.campaign_id).filter(Boolean)));
+      const campaignById = new Map<string, { id: string; name?: string | null; status?: string | null }>();
+      if (campaignIds.length > 0) {
+        const { data: campaigns, error: campaignError } = await supabaseAdmin
+          .from('ad_campaigns')
+          .select('id, name, status')
+          .in('id', campaignIds);
+        if (campaignError) throw campaignError;
+        for (const campaign of campaigns ?? []) {
+          campaignById.set(campaign.id, campaign);
+        }
+      }
+
+      const campaigns = (snapshots ?? []).map((row) => {
+        const campaign = campaignById.get(row.campaign_id);
+        return {
+          ...row,
+          id: row.campaign_id,
+          name: campaign?.name ?? row.campaign_id,
+          status: campaign?.status ?? 'UNKNOWN',
+          conversions: row.attributed_bookings ?? 0,
+          spend: row.spend_krw ?? 0,
+        };
+      });
+
+      return NextResponse.json({
+        campaigns,
+        snapshots: snapshots ?? [],
+        checked_at: new Date().toISOString(),
+      });
     }
 
     const snapshots = await getAdPerformance(campaignId, from, to);
     return NextResponse.json({ snapshots });
   } catch (error) {
-    return NextResponse.json({ error: '성과 데이터 조회 실패' }, { status: 500 });
+    return NextResponse.json({
+      campaigns: [],
+      snapshots: [],
+      degraded: true,
+      error: sanitizeDbError(error, 'Failed to load Meta performance'),
+    });
   }
 }
 
 export async function POST(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json({ error: 'Supabase 연동이 설정되지 않아 Meta 성과를 저장할 수 없습니다.' }, { status: 503 });
   }
 
   try {

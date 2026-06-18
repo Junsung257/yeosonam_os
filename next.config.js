@@ -18,13 +18,18 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const isProd = process.env.NODE_ENV === 'production';
+const SPECIAL_PAGE_SHIMS = {
+  _app: 'next/dist/pages/_app',
+  _error: 'next/dist/pages/_error',
+  _document: 'next/dist/pages/_document',
+};
 
 function ensureSpecialPagesManifest() {
   const distDir = process.env.NEXT_DIST_DIR || '.next';
   const serverDir = path.join(process.cwd(), distDir, 'server');
   const pagesDir = path.join(serverDir, 'pages');
   const manifestPath = path.join(serverDir, 'pages-manifest.json');
-  if (!fs.existsSync(pagesDir)) return;
+  fs.mkdirSync(pagesDir, { recursive: true });
 
   let current = null;
   if (fs.existsSync(manifestPath)) {
@@ -34,18 +39,24 @@ function ensureSpecialPagesManifest() {
       current = null;
     }
   }
-  if (current && Object.keys(current).length > 0) return;
 
-  const manifest = {};
+  const manifest = current && typeof current === 'object' ? current : {};
+  let added = 0;
   for (const name of ['_app', '_error', '_document']) {
-    if (fs.existsSync(path.join(pagesDir, `${name}.js`))) {
-      manifest[`/${name}`] = `pages/${name}.js`;
+    const pagePath = path.join(pagesDir, `${name}.js`);
+    if (!fs.existsSync(pagePath)) {
+      fs.writeFileSync(pagePath, `module.exports = require('${SPECIAL_PAGE_SHIMS[name]}');\n`);
     }
+    if (manifest[`/${name}`] || !fs.existsSync(pagePath)) continue;
+    manifest[`/${name}`] = `pages/${name}.js`;
+    added += 1;
   }
   if (Object.keys(manifest).length === 0) return;
 
   fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-  console.log(`[next-shim] rebuilt pages-manifest.json with ${Object.keys(manifest).length} special page(s)`);
+  if (added > 0) {
+    console.log(`[next-shim] added ${added} special page(s) to pages-manifest.json`);
+  }
 }
 
 function ensureAppPathsManifest() {
@@ -86,6 +97,45 @@ function ensureAppPathsManifest() {
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
     console.log(`[next-shim] added ${added} app path(s) to app-paths-manifest.json`);
   }
+}
+
+function ensureNotFoundTraceManifest() {
+  const distDir = process.env.NEXT_DIST_DIR || '.next';
+  const appNotFound = path.join(process.cwd(), 'src', 'app', 'not-found.tsx');
+  if (!fs.existsSync(appNotFound)) return;
+
+  const tracePath = path.join(process.cwd(), distDir, 'server', 'app', '_not-found', 'page.js.nft.json');
+  if (fs.existsSync(tracePath)) return;
+
+  fs.mkdirSync(path.dirname(tracePath), { recursive: true });
+  fs.writeFileSync(tracePath, JSON.stringify({ version: 1, files: [] }, null, 2));
+  console.log('[next-shim] created missing _not-found trace manifest');
+}
+
+function ensureMissingAppTraceManifests() {
+  if (process.platform !== 'win32') return;
+  const distDir = process.env.NEXT_DIST_DIR || '.next';
+  const serverAppDir = path.join(process.cwd(), distDir, 'server', 'app');
+  if (!fs.existsSync(serverAppDir)) return;
+
+  let added = 0;
+  function walk(dir) {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+      } else if (entry.isFile() && (entry.name === 'page.js' || entry.name === 'route.js')) {
+        const tracePath = `${full}.nft.json`;
+        if (!fs.existsSync(tracePath)) {
+          fs.writeFileSync(tracePath, JSON.stringify({ version: 1, files: [] }, null, 2));
+          added += 1;
+        }
+      }
+    }
+  }
+
+  walk(serverAppDir);
+  if (added > 0) console.log(`[next-shim] created ${added} missing app trace manifest(s)`);
 }
 
 /** @type {import('next').NextConfig} */
@@ -135,6 +185,8 @@ const nextConfig = {
           compiler.hooks.afterEmit.tap('EnsureNextManifestsPlugin', () => {
             ensureSpecialPagesManifest();
             ensureAppPathsManifest();
+            ensureNotFoundTraceManifest();
+            ensureMissingAppTraceManifests();
           });
         },
       });

@@ -2,13 +2,13 @@
   "note": "Historical Knip baseline. Updated after 2026-06-12 triage: direct missing deps and three unused files were fixed/removed; remaining entries are mostly exported domain APIs and type surfaces requiring domain-aware cleanup, not bulk deletion.",
   "reviewed_at": "2026-06-17",
   "counts": {
-    "total": 1031,
+    "total": 1029,
     "by_type": {
       "binaries": 1,
       "duplicates": 2,
-      "exports": 498,
+      "exports": 497,
       "files": 76,
-      "types": 417,
+      "types": 416,
       "unlisted": 5,
       "unresolved": 32
     }
@@ -247,7 +247,6 @@
     "exports:src/lib/jarvis/orchestration/index.ts:SPECIALISTS_BY_AGENT",
     "exports:src/lib/jarvis/orchestration/index.ts:specialistToTrace",
     "exports:src/lib/jarvis/persona.ts:getBotName",
-    "exports:src/lib/jarvis/rag/indexer.ts:indexDoc",
     "exports:src/lib/jarvis/scoped-client.ts:TenantScopeError",
     "exports:src/lib/jarvis/scoped-client.ts:scopedOrAdmin",
     "exports:src/lib/kakao-moment-events.ts:trackKakaoPurchase",
@@ -805,7 +804,6 @@
     "types:src/lib/jarvis/mcp-types.ts:McpListToolsResult",
     "types:src/lib/jarvis/orchestration/index.ts:OrchestrationTurnTrace",
     "types:src/lib/jarvis/orchestration/index.ts:SpecialistRoutingMethod",
-    "types:src/lib/jarvis/rag/indexer.ts:IndexableDoc",
     "types:src/lib/jarvis/response-critic.ts:CritiqueSeverity",
     "types:src/lib/jarvis/stream-encoder.ts:StreamEventType",
     "types:src/lib/jarvis/supervisor-lite.ts:SupervisorDecision",

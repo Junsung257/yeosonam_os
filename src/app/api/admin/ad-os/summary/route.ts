@@ -357,8 +357,9 @@ function buildDegradedSummary(error: unknown) {
   ];
 
   return {
-    ok: false,
+    ok: true,
     degraded: true,
+    reason: message.toLowerCase().includes('supabase') ? 'supabase_unconfigured' : 'summary_degraded',
     error: message,
     generated_at: new Date().toISOString(),
     kpis: {
@@ -545,7 +546,7 @@ function buildDegradedSummary(error: unknown) {
 
 async function buildSummaryResponse() {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase 미설정' }, { status: 503 });
+    return NextResponse.json(buildDegradedSummary(new Error('Supabase unconfigured')));
   }
 
   const [

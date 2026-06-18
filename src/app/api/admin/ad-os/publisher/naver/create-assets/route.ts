@@ -21,7 +21,7 @@ function slugPart(value: unknown): string {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase is not configured.' }, { status: 503 });
+    return NextResponse.json({ ok: false, error: 'Supabase 연동이 설정되지 않았습니다.' }, { status: 503 });
   }
 
   const body = await request.json().catch(() => ({}));
@@ -75,9 +75,9 @@ export const POST = withAdminGuard(async (request: NextRequest) => {
         fetchNaverBusinessChannels({ recordSize: 100 }),
       ])
     : [
-        { ok: false, campaigns: [], error: 'Naver API is not configured.' },
-        { ok: false, adgroups: [], error: 'Naver API is not configured.' },
-        { ok: false, channels: [], error: 'Naver API is not configured.' },
+      { ok: false, campaigns: [], error: 'Naver API 연동이 설정되지 않았습니다.' },
+      { ok: false, adgroups: [], error: 'Naver API 연동이 설정되지 않았습니다.' },
+      { ok: false, channels: [], error: 'Naver API 연동이 설정되지 않았습니다.' },
       ];
 
   const budget = budgetRes.data as {

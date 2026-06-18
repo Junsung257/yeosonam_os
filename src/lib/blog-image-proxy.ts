@@ -3,6 +3,7 @@ const PROXYABLE_BLOG_IMAGE_HOSTS = new Set([
 ]);
 
 export const BLOG_IMAGE_PROXY_PATH = '/api/blog/image';
+const DEFAULT_BLOG_IMAGE_PROXY_WIDTH = 960;
 
 function trimUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null;
@@ -35,7 +36,7 @@ function appendPositiveInt(params: URLSearchParams, key: string, value: number |
 
 export function toBlogImageProxySrc(value: string, baseUrl = '', options: BlogImageProxyOptions = {}): string {
   const params = new URLSearchParams();
-  appendPositiveInt(params, 'w', options.width);
+  appendPositiveInt(params, 'w', options.width ?? DEFAULT_BLOG_IMAGE_PROXY_WIDTH);
   appendPositiveInt(params, 'q', options.quality);
   const optionQuery = params.toString();
   const path = `${BLOG_IMAGE_PROXY_PATH}?src=${encodeURIComponent(value.trim())}${optionQuery ? `&${optionQuery}` : ''}`;
