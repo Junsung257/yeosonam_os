@@ -321,6 +321,9 @@ function checkWorkflowHelperSmoke() {
     ...process.env,
     MONITOR_HEALTH_ENDPOINTS: '[]',
     INTEGRITY_CHECKS_JSON: JSON.stringify([{ name: 'smoke', status: 'pass' }]),
+    SUPABASE_URL: '',
+    NEXT_PUBLIC_SUPABASE_URL: '',
+    SUPABASE_SERVICE_ROLE_KEY: '',
     FORCE_COLOR: '0',
   };
 

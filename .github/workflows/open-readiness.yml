@@ -25,6 +25,8 @@ jobs:
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
       OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
       MARKETING_CHECK_CARD_NEWS_ID: ${{ vars.MARKETING_CHECK_CARD_NEWS_ID || secrets.MARKETING_CHECK_CARD_NEWS_ID }}
@@ -63,11 +65,19 @@ jobs:
       - name: Marketing automation readiness
         run: npm run verify:marketing-automation:ci
 
+      - name: Discover operational readiness inputs
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          npm run discover:operational-inputs -- --json \
+            --out=.tmp/operational-readiness-discovered.env | tee .tmp/operational-readiness-discovery.json || true
+
       - name: Operational readiness inputs
         run: |
           set -euo pipefail
           mkdir -p .tmp
           npm run verify:operational-inputs -- --json \
+            --env-file=.tmp/operational-readiness-discovered.env \
             --template-out=.tmp/operational-readiness-inputs.env.example \
             --plan-out=.tmp/operational-readiness-action-plan.md \
             --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
@@ -79,6 +89,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
+          if [[ -f .tmp/operational-readiness-discovered.env ]]; then
+            set -a
+            source .tmp/operational-readiness-discovered.env
+            set +a
+          fi
           npm run open:readiness -- --json --include-marketing-runtime --report=.tmp/open-readiness-report.json | tee .tmp/open-readiness-summary.json
 
       - name: Summarize open readiness
@@ -96,7 +111,8 @@ jobs:
             --operational-apply-script=.tmp/operational-readiness-apply-inputs.sh \
             --operational-vercel-script=.tmp/operational-readiness-vercel-env.sh \
             --operational-node-apply-script=.tmp/operational-readiness-apply-inputs.mjs \
-            --operational-node-vercel-script=.tmp/operational-readiness-vercel-env.mjs
+            --operational-node-vercel-script=.tmp/operational-readiness-vercel-env.mjs \
+            --operational-env-file=.tmp/operational-readiness-discovered.env
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/open-readiness-step-summary.md ]]; then
             cat .tmp/open-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -185,6 +201,8 @@ jobs:
             .tmp/open-readiness-issue-body.md
             .tmp/open-readiness-issue-meta.json
             .tmp/operational-readiness-inputs.json
+            .tmp/operational-readiness-discovery.json
+            .tmp/operational-readiness-discovered.env
             .tmp/operational-readiness-inputs.env.example
             .tmp/operational-readiness-action-plan.md
             .tmp/operational-readiness-apply-inputs.sh

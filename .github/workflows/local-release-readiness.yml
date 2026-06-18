@@ -68,11 +68,22 @@ jobs:
 
       - run: npm ci --no-audit --no-fund
 
+      - name: Discover operational readiness inputs
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-key-for-ci' }}
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          npm run discover:operational-inputs -- --json \
+            --out=.tmp/operational-readiness-discovered.env | tee .tmp/operational-readiness-discovery.json || true
+
       - name: Operational readiness inputs
         run: |
           set -euo pipefail
           mkdir -p .tmp
           npm run verify:operational-inputs -- --json \
+            --env-file=.tmp/operational-readiness-discovered.env \
             --template-out=.tmp/operational-readiness-inputs.env.example \
             --plan-out=.tmp/operational-readiness-action-plan.md \
             --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
@@ -84,7 +95,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
-          args=(--json --open-port="${LOCAL_RELEASE_OPEN_PORT}" --report=.tmp/local-release-readiness-report.json)
+          args=(--json --open-port="${LOCAL_RELEASE_OPEN_PORT}" --report=.tmp/local-release-readiness-report.json --operational-env-file=.tmp/operational-readiness-discovered.env)
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict_open }}" == "true" ]]; then
             args+=(--strict-open)
           fi
@@ -105,7 +116,8 @@ jobs:
             --operational-apply-script=.tmp/local-release-operational-inputs-apply.sh \
             --operational-vercel-script=.tmp/local-release-operational-inputs-vercel-env.sh \
             --operational-node-apply-script=.tmp/local-release-operational-inputs-apply.mjs \
-            --operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs
+            --operational-node-vercel-script=.tmp/local-release-operational-inputs-vercel-env.mjs \
+            --operational-env-file=.tmp/operational-readiness-discovered.env
           if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/local-release-readiness-step-summary.md ]]; then
             cat .tmp/local-release-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
           fi
@@ -201,6 +213,8 @@ jobs:
             .tmp/local-release-operational-inputs-apply.mjs
             .tmp/local-release-operational-inputs-vercel-env.mjs
             .tmp/operational-readiness-inputs.json
+            .tmp/operational-readiness-discovery.json
+            .tmp/operational-readiness-discovered.env
             .tmp/operational-readiness-inputs.env.example
             .tmp/operational-readiness-action-plan.md
             .tmp/operational-readiness-apply-inputs.sh

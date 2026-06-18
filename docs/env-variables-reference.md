@@ -386,7 +386,11 @@ production so bid behavior is intentional.
 Run this before staging/production open-readiness checks:
 
 ```bash
+npm run discover:operational-inputs -- --json \
+  --out=.tmp/operational-readiness-discovered.env
+
 npm run verify:operational-inputs -- --json \
+  --env-file=.tmp/operational-readiness-discovered.env \
   --template-out=.tmp/operational-readiness-inputs.env.example \
   --plan-out=.tmp/operational-readiness-action-plan.md \
   --apply-script-out=.tmp/operational-readiness-apply-inputs.sh \
@@ -406,8 +410,26 @@ Cross-platform Node variants are also written to
 `.tmp/local-release-operational-inputs-vercel-env.mjs` by default. Use
 `--skip-operational-inputs` only for narrow development smoke checks where
 external readiness is intentionally out of scope.
-When validating a filled template through the local release gate, pass
+`verify:local-release` also attempts
+`discover:operational-inputs` first when no `--operational-env-file` is passed,
+then loads `.tmp/local-release-operational-inputs-discovered.env` into the
+remaining readiness steps. Disable that behavior with
+`--skip-operational-discovery` for narrow smoke checks. When validating a
+filled template through the local release gate, pass
 `--operational-env-file=.tmp/operational-readiness-inputs.env.example`.
+`npm run verify:marketing-release -- --json` provides the marketing-only release
+gate. It attempts operational discovery by default, writes
+`.tmp/marketing-release-operational-inputs-discovered.env`, and then runs the
+marketing automation contracts, operational input audit, local marketing runtime
+probe, build, and bundle checks unless the matching `--skip-*` flags are used.
+The `Marketing Release Readiness` GitHub workflow runs the same gate and renders
+the summary, attention-item issue body, and generated operational input artifacts.
+When Supabase service-role credentials are available, prefer
+`npm run discover:operational-inputs -- --out=.tmp/operational-readiness-discovered.env`
+first and pass that file to `verify:operational-inputs` or `verify:local-release`.
+The discovery script only writes non-secret probe identifiers:
+`OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`,
+`MARKETING_CHECK_CARD_NEWS_ID`, and `MARKETING_CHECK_VARIANT_GROUP_ID`.
 
 Rendered readiness summaries and tracked attention-item issues include
 `Missing Inputs` for blockers and `Release Warnings` for values that are safe

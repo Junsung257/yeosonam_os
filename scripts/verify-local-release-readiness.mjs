@@ -24,6 +24,9 @@ const skipTests = hasFlag('--skip-tests');
 const skipBuild = hasFlag('--skip-build');
 const skipOpenReadiness = hasFlag('--skip-open-readiness');
 const skipOperationalInputs = hasFlag('--skip-operational-inputs');
+const skipOperationalDiscovery = skipOperationalInputs ||
+  hasFlag('--skip-operational-discovery') ||
+  process.env.LOCAL_RELEASE_SKIP_OPERATIONAL_DISCOVERY === '1';
 const strictOpenReadiness = hasFlag('--strict-open');
 const reportPath = argValue('--report', process.env.LOCAL_RELEASE_REPORT_PATH || '');
 const operationalInputsTemplatePath = argValue(
@@ -50,10 +53,17 @@ const operationalInputsNodeVercelScriptPath = argValue(
   '--operational-node-vercel-script-out',
   process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_NODE_VERCEL_SCRIPT_OUT || '.tmp/local-release-operational-inputs-vercel-env.mjs',
 );
-const operationalInputsEnvFilePath = argValue(
+const explicitOperationalInputsEnvFilePath = argValue(
   '--operational-env-file',
   process.env.LOCAL_RELEASE_OPERATIONAL_INPUTS_ENV_FILE || '',
 );
+const operationalDiscoveryOutPath = argValue(
+  '--operational-discovery-out',
+  process.env.LOCAL_RELEASE_OPERATIONAL_DISCOVERY_OUT || '.tmp/local-release-operational-inputs-discovered.env',
+);
+const autoOperationalDiscovery = !skipOperationalDiscovery && !explicitOperationalInputsEnvFilePath;
+let operationalInputsEnvFilePath = explicitOperationalInputsEnvFilePath || (autoOperationalDiscovery ? operationalDiscoveryOutPath : '');
+const operationalEnvFilePath = operationalInputsEnvFilePath;
 
 const openPort = Number(argValue('--open-port', process.env.LOCAL_RELEASE_OPEN_PORT || '3044'));
 const openMode = argValue('--open-mode', process.env.LOCAL_RELEASE_OPEN_MODE || 'dev');
@@ -76,6 +86,49 @@ const marketingRuntimeHardTimeoutMs = Number(
     process.env.LOCAL_RELEASE_MARKETING_RUNTIME_HARD_TIMEOUT_MS || '0',
   ),
 );
+
+function parseEnvLine(line) {
+  const trimmed = String(line || '').trim();
+  if (!trimmed || trimmed.startsWith('#')) return null;
+  const normalized = trimmed.startsWith('export ') ? trimmed.slice(7).trimStart() : trimmed;
+  const equalIndex = normalized.indexOf('=');
+  if (equalIndex <= 0) return null;
+  const key = normalized.slice(0, equalIndex).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return null;
+  let value = normalized.slice(equalIndex + 1).trim();
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    value = value.slice(1, -1);
+  }
+  value = value
+    .replace(/\\n/g, '\n')
+    .replace(/\\r/g, '\r')
+    .replace(/\\"/g, '"');
+  return [key, value];
+}
+
+function loadOperationalEnvFile(path) {
+  if (!path) return { path: '', loadedKeys: [], error: '' };
+  try {
+    const loadedKeys = [];
+    for (const line of readFileSync(path, 'utf8').split(/\r?\n/)) {
+      const parsed = parseEnvLine(line);
+      if (!parsed) continue;
+      const [key, value] = parsed;
+      if (!String(process.env[key] || '').trim()) process.env[key] = value;
+      loadedKeys.push(key);
+    }
+    return { path, loadedKeys: [...new Set(loadedKeys)].sort(), error: '' };
+  } catch (err) {
+    return { path, loadedKeys: [], error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+let operationalEnvFileLoad = explicitOperationalInputsEnvFilePath
+  ? loadOperationalEnvFile(explicitOperationalInputsEnvFilePath)
+  : { path: '', loadedKeys: [], error: '' };
 
 function npmRunInvocation(script, args) {
   if (process.platform !== 'win32') {
@@ -421,6 +474,44 @@ function summarizeReadinessContracts(result) {
   };
 }
 
+function summarizeOperationalDiscovery(result) {
+  const report = parseJsonFromOutput(combinedOutput(result));
+  const readinessStatus = statusField(report);
+  const missing = Array.isArray(report?.missing) ? report.missing : [];
+  const blocked = readinessStatus === 'blocked' || missing.length > 0;
+  const ok = Boolean(report) && (result.exitCode === 0 || blocked);
+  const status = ok ? (blocked ? 'blocked' : 'pass') : 'fail';
+  const blockers = blocked
+    ? [{
+      name: 'operational-input-discovery',
+      status: 'blocked',
+      notes: 'Non-secret readiness probe identifiers could not be fully auto-discovered; provide values or Supabase service-role credentials.',
+      missing,
+      missingConnection: Array.isArray(report?.missingConnection) ? report.missingConnection : undefined,
+    }]
+    : [];
+
+  return {
+    id: result.id,
+    script: result.script,
+    command: result.command,
+    status,
+    exitCode: result.exitCode,
+    error: result.error,
+    durationMs: result.durationMs,
+    readinessStatus: readinessStatus || 'unknown',
+    passed: status === 'pass' ? 1 : 0,
+    blocked: status === 'blocked' ? 1 : 0,
+    failed: status === 'fail' ? 1 : 0,
+    envFilePath: report?.outPath || operationalDiscoveryOutPath,
+    loadedEnvFileKeys: Array.isArray(report?.loadedEnvFileKeys) ? report.loadedEnvFileKeys : [],
+    missing,
+    blockers,
+    stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
+    stderrTail: status === 'fail' ? tailFile(result.stderrPath) : undefined,
+  };
+}
+
 function summarizeOperationalInputs(result) {
   const report = parseJsonFromOutput(combinedOutput(result));
   const blocked = numericField(report, 'blocked');
@@ -457,7 +548,7 @@ function summarizeOperationalInputs(result) {
     vercelScriptPath: operationalInputsVercelScriptPath,
     nodeApplyScriptPath: operationalInputsNodeApplyScriptPath,
     nodeVercelScriptPath: operationalInputsNodeVercelScriptPath,
-    envFilePath: operationalInputsEnvFilePath || undefined,
+    envFilePath: operationalEnvFilePath || undefined,
     blockers: summarizeOperationalInputBlockers(report),
     warningItems: summarizeOperationalInputWarnings(report),
     stdoutTail: status === 'fail' ? tailFile(result.stdoutPath) : undefined,
@@ -480,6 +571,19 @@ checks.push({
   args: ['--', '--json'],
   interpret: summarizeReadinessContracts,
 });
+
+if (autoOperationalDiscovery) {
+  checks.push({
+    id: 'operational-input-discovery',
+    script: 'discover:operational-inputs',
+    args: [
+      '--',
+      '--json',
+      `--out=${operationalDiscoveryOutPath}`,
+    ],
+    interpret: summarizeOperationalDiscovery,
+  });
+}
 
 if (!skipOperationalInputs) {
   checks.push({
@@ -533,6 +637,10 @@ for (const check of checks) {
   const result = runNpmScript(check.id, check.script, check.args || []);
   const summary = check.interpret ? check.interpret(result) : summarizeSimple(result);
   summaries.push(summary);
+
+  if (summary.id === 'operational-input-discovery' && operationalEnvFilePath) {
+    operationalEnvFileLoad = loadOperationalEnvFile(operationalEnvFilePath);
+  }
 
   if (!jsonOutput) {
     const suffix =
@@ -612,7 +720,15 @@ const report = {
     build: skipBuild,
     openReadiness: skipOpenReadiness,
     operationalInputs: skipOperationalInputs,
+    operationalDiscovery: !autoOperationalDiscovery,
   },
+  operationalEnvFile: operationalEnvFileLoad.path
+    ? {
+      path: operationalEnvFileLoad.path,
+      loadedKeys: operationalEnvFileLoad.loadedKeys,
+      error: operationalEnvFileLoad.error || undefined,
+    }
+    : undefined,
   releaseBlockers,
   releaseWarnings,
   checks: summaries,

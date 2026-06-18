@@ -95,6 +95,10 @@ export function isNaverAdsMutableKeywordId(keywordId: string): boolean {
   return /^nkw-[a-z0-9-]+$/i.test(keywordId);
 }
 
+export function isGoogleAdsMutableKeywordId(keywordId: string): boolean {
+  return keywordId.startsWith('customers/');
+}
+
 /** Naver SearchAd API 인증 헤더 생성 (HMAC-SHA256) */
 async function buildNaverAuthHeaders(
   method: string = 'GET',
@@ -587,8 +591,8 @@ export async function updateNaverBid(keywordId: string, newBid: number): Promise
   }
 
   if (!isNaverAdsConfigured()) {
-    console.log(`[Mock] 네이버 입찰가 변경: ${keywordId} → ₩${newBid}`);
-    return true;
+    console.warn(`[search-ads] Naver bid update blocked: account is not configured (${keywordId})`);
+    return false;
   }
 
   try {
@@ -629,8 +633,8 @@ export async function pauseNaverKeyword(keywordId: string): Promise<boolean> {
   }
 
   if (!isNaverAdsConfigured()) {
-    console.log(`[Mock] 네이버 키워드 정지: ${keywordId}`);
-    return true;
+    console.warn(`[search-ads] Naver keyword pause blocked: account is not configured (${keywordId})`);
+    return false;
   }
 
   try {
@@ -664,8 +668,8 @@ export async function setNaverKeywordUserLock(keywordId: string, userLock: boole
   }
 
   if (!isNaverAdsConfigured()) {
-    console.log(`[Mock] Naver keyword userLock ${keywordId}: ${userLock}`);
-    return true;
+    console.warn(`[search-ads] Naver keyword lock update blocked: account is not configured (${keywordId})`);
+    return false;
   }
 
   try {
@@ -817,9 +821,14 @@ export async function fetchGooglePerformance(keywords: SearchAdKeyword[]): Promi
  *   }]
  */
 export async function updateGoogleBid(keywordId: string, newBid: number): Promise<boolean> {
+  if (!isGoogleAdsMutableKeywordId(keywordId)) {
+    console.warn(`[search-ads] Google bid update skipped: not a real Google Ads resource name (${keywordId})`);
+    return false;
+  }
+
   if (!isGoogleAdsConfigured()) {
-    console.log(`[Mock] 구글 입찰가 변경: ${keywordId} → ₩${newBid}`);
-    return true;
+    console.warn(`[search-ads] Google bid update blocked: account is not configured (${keywordId})`);
+    return false;
   }
 
   try {
@@ -869,9 +878,14 @@ export async function updateGoogleBid(keywordId: string, newBid: number): Promis
  * Google Ads 키워드 일시정지
  */
 export async function pauseGoogleKeyword(keywordId: string): Promise<boolean> {
+  if (!isGoogleAdsMutableKeywordId(keywordId)) {
+    console.warn(`[search-ads] Google keyword pause skipped: not a real Google Ads resource name (${keywordId})`);
+    return false;
+  }
+
   if (!isGoogleAdsConfigured()) {
-    console.log(`[Mock] 구글 키워드 정지: ${keywordId}`);
-    return true;
+    console.warn(`[search-ads] Google keyword pause blocked: account is not configured (${keywordId})`);
+    return false;
   }
 
   try {
