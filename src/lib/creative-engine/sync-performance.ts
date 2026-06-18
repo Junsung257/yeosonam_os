@@ -8,6 +8,7 @@
 
 import { updateWinningPatterns } from './update-patterns';
 import { getSecret } from '@/lib/secret-registry';
+import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 
 export async function dailySync(): Promise<{
   meta: number;
@@ -35,11 +36,16 @@ export async function dailySync(): Promise<{
 async function syncMeta(): Promise<number> {
   const { supabaseAdmin } = await import('@/lib/supabase');
 
-  const { data: ads } = await supabaseAdmin
-    .from('ad_creatives')
-    .select('id, meta_ad_id')
-    .eq('status', 'active')
-    .not('meta_ad_id', 'is', null);
+  const { data: ads } = await runOptionalSupabaseQuery(
+    supabaseAdmin
+      .from('ad_creatives')
+      .select('id, meta_ad_id')
+      .eq('status', 'active')
+      .not('meta_ad_id', 'is', null)
+      .limit(100),
+    { data: [] },
+    { label: 'creative.syncMeta.activeAds', timeoutMs: 2000 },
+  );
 
   if (!ads?.length) return 0;
 

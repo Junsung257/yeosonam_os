@@ -21,6 +21,7 @@ import {
   type ScheduledDistributionRow,
 } from '@/lib/social-publishing/distribution-publisher';
 import { isSupabaseConfigured, supabaseAdmin } from '@/lib/supabase';
+import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver';
 
 export const runtime = 'nodejs';
 export const maxDuration = 300;
@@ -49,6 +50,9 @@ async function runPublishScheduled(request: NextRequest) {
   if (!isCronAuthorized(request)) {
     return cronUnauthorizedResponse();
   }
+
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'publish-scheduled');
+  if (resourceSaver) return resourceSaver;
 
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB not configured' }, { status: 503 });

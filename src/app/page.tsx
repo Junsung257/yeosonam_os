@@ -14,6 +14,7 @@ import type { RankingItem } from '@/components/customer/RankingSection';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
+import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
@@ -152,31 +153,55 @@ export default async function HomePage() {
 
   // 5개 쿼리 동시 실행 (ratingAgg를 합쳐 총 왕복 1회로 절감)
   const [pkgResult, attrResult, rankingResult, activeDestsResult, ratingResult] = isSupabaseConfigured ? await Promise.all([
-    sb.from('travel_packages')
-      .select('destination, price, price_tiers, price_dates, country')
-      .in('status', ['active', 'approved']),
-    sb.from('attractions')
-      .select('name, photos, country, region, mention_count')
-      .not('photos', 'is', null)
-      .limit(300),
-    sb.from('travel_packages')
-      .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
-      .in('status', ['active', 'approved'])
-      .order('created_at', { ascending: false })
-      .limit(30),
-    sb.from('active_destinations')
-      .select('destination, package_count, country')
-      .order('package_count', { ascending: false })
-      .limit(20),
-    sb.from('travel_packages')
-      .select('avg_rating, review_count')
-      .not('avg_rating', 'is', null)
-      .gte('review_count', 1),
+    runOptionalSupabaseQuery(
+      sb.from('travel_packages')
+        .select('destination, price, price_tiers, price_dates, country')
+        .in('status', ['active', 'approved'])
+        .order('updated_at', { ascending: false })
+        .limit(200),
+      emptyResult,
+      { label: 'home.packages.aggregate', timeoutMs: 2000 },
+    ),
+    runOptionalSupabaseQuery(
+      sb.from('attractions')
+        .select('name, photos, country, region, mention_count')
+        .not('photos', 'is', null)
+        .limit(60),
+      emptyResult,
+      { label: 'home.attraction.photos', timeoutMs: 1500 },
+    ),
+    runOptionalSupabaseQuery(
+      sb.from('travel_packages')
+        .select('id, title, display_title, hero_tagline, destination, price, price_tiers, price_dates, country, duration, nights, product_type, ticketing_deadline')
+        .in('status', ['active', 'approved'])
+        .order('created_at', { ascending: false })
+        .limit(30),
+      emptyResult,
+      { label: 'home.ranking.packages', timeoutMs: 2000 },
+    ),
+    runOptionalSupabaseQuery(
+      sb.from('active_destinations')
+        .select('destination, package_count, country')
+        .order('package_count', { ascending: false })
+        .limit(20),
+      emptyResult,
+      { label: 'home.active.destinations', timeoutMs: 1500 },
+    ),
+    runOptionalSupabaseQuery(
+      sb.from('travel_packages')
+        .select('avg_rating, review_count')
+        .not('avg_rating', 'is', null)
+        .gte('review_count', 1)
+        .order('updated_at', { ascending: false })
+        .limit(200),
+      emptyResult,
+      { label: 'home.rating.aggregate', timeoutMs: 1500 },
+    ),
   ]) : [emptyResult, emptyResult, emptyResult, emptyResult, emptyResult];
 
-  const allPkgs = pkgResult.data ?? [];
-  const attractions = attrResult.data ?? [];
-  const rankingPkgs = rankingResult.data ?? [];
+  const allPkgs = (pkgResult.data ?? []) as AggPkgRow[];
+  const attractions = (attrResult.data ?? []) as AttractionRow[];
+  const rankingPkgs = (rankingResult.data ?? []) as RankingPkg[];
 
   /** 홈 검색 시트 하단 — 마감 임박·특가 상품 최대 3개(랭킹 풀에서 추림) */
   const cutoffTeaser = new Date();
@@ -200,8 +225,8 @@ export default async function HomePage() {
     seenUrgent.add(p.id);
     homeUrgencyTop3.push({
       id: p.id,
-      title: p.display_title || p.title,
-      destination: p.destination,
+      title: p.display_title || p.title || '',
+      destination: p.destination ?? undefined,
       minPrice: computeRankingMinPrice(p, today),
     });
     if (homeUrgencyTop3.length >= 3) break;
@@ -287,11 +312,13 @@ export default async function HomePage() {
     .slice(0, 4);
 
   const topDestNames = topDestsRaw.map(d => d.destination);
-  const [{ data: pillarExists }] = topDestNames.length > 0
-    ? await Promise.all([
+  const { data: pillarExists } = topDestNames.length > 0
+    ? await runOptionalSupabaseQuery(
         sb.from('content_creatives').select('pillar_for').in('pillar_for', topDestNames).eq('content_type', 'pillar').eq('status', 'published'),
-      ])
-    : [{ data: null }];
+        { data: null },
+        { label: 'home.pillar.exists', timeoutMs: 1200 },
+      )
+    : { data: null };
 
   const attrImageByDest: Record<string, string> = {};
   (attractions as AttractionRow[]).forEach((a) => {
@@ -356,7 +383,7 @@ export default async function HomePage() {
       // 인기여행지 그리드 — large (카드 크기에 충분)
       destsWithImages.forEach(d => {
         if (!d.image && pexelsByDest[d.destination]) {
-          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x;
+          d.image = pexelsByDest[d.destination].large ?? pexelsByDest[d.destination].large2x ?? undefined;
         }
       });
     }
@@ -438,17 +465,25 @@ export default async function HomePage() {
   if (isSupabaseConfigured && rankingIds.length > 0) {
     const since = new Date(Date.now() - 30 * 86400000).toISOString();
     const [bkRes, sgRes] = await Promise.all([
-      sb
-        .from('bookings')
-        .select('package_id')
-        .eq('status', 'confirmed')
-        .gte('created_at', since)
-        .in('package_id', rankingIds),
-      sb
-        .from('package_score_signals')
-        .select('package_id')
-        .gte('created_at', since)
-        .in('package_id', rankingIds),
+      runOptionalSupabaseQuery(
+        sb
+          .from('bookings')
+          .select('package_id')
+          .eq('status', 'confirmed')
+          .gte('created_at', since)
+          .in('package_id', rankingIds),
+        emptyResult,
+        { label: 'home.social.bookings', timeoutMs: 1200 },
+      ),
+      runOptionalSupabaseQuery(
+        sb
+          .from('package_score_signals')
+          .select('package_id')
+          .gte('created_at', since)
+          .in('package_id', rankingIds),
+        emptyResult,
+        { label: 'home.social.signals', timeoutMs: 1200 },
+      ),
     ]);
     for (const row of bkRes.data ?? []) {
       const pid = (row as { package_id: string | null }).package_id;

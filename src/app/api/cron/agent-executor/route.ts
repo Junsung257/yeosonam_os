@@ -10,6 +10,7 @@ import {
   getInstagramConfig,
   checkPublishingLimit,
 } from '@/lib/instagram-publisher'
+import { maybeSkipNonCriticalCron } from '@/lib/cron-resource-saver'
 
 export const dynamic = 'force-dynamic';
 export async function GET(request: NextRequest) {
@@ -21,6 +22,9 @@ export async function GET(request: NextRequest) {
 
   const authErr = requireCronBearer(request)
   if (authErr) return authErr
+
+  const resourceSaver = maybeSkipNonCriticalCron(request, 'agent-executor')
+  if (resourceSaver) return resourceSaver
 
   const isForce = request.nextUrl.searchParams.get('force') === 'true'
 
