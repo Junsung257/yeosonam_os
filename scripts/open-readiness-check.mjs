@@ -35,6 +35,9 @@ const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_
 const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
 const BLOG_AUDIT_TIMEOUT_MS = Number(argValue('--blog-audit-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || '15000'));
 const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(argValue('--blog-audit-hard-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || '180000'));
+const MARKETING_AUTOMATION_TIMEOUT_MS = Number(
+  argValue('--marketing-automation-timeout-ms', process.env.MARKETING_AUTOMATION_TIMEOUT_MS || '120000'),
+);
 const IS_LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(BASE_URL);
 const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' || IS_LOCAL_BASE;
 const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
@@ -45,6 +48,9 @@ const MARKETING_RUNTIME_PORT = Number(argValue('--marketing-runtime-port', proce
 const MARKETING_RUNTIME_MODE = argValue('--marketing-runtime-mode', process.env.MARKETING_RUNTIME_MODE || 'dev');
 const MARKETING_RUNTIME_TIMEOUT_MS = Number(argValue('--marketing-runtime-timeout-ms', process.env.MARKETING_RUNTIME_TIMEOUT_MS || '60000'));
 const MARKETING_RUNTIME_READY_TIMEOUT_MS = Number(argValue('--marketing-runtime-ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '120000'));
+const MARKETING_RUNTIME_HARD_TIMEOUT_MS = Number(
+  argValue('--marketing-runtime-hard-timeout-ms', process.env.MARKETING_RUNTIME_HARD_TIMEOUT_MS || '0'),
+);
 const REPORT_PATH = argValue('--report', process.env.OPEN_READINESS_REPORT_PATH || '');
 const RUNTIME_ENV_CONTRACT = JSON.parse(
   readFileSync(new URL('../src/config/runtime-env-readiness.json', import.meta.url), 'utf8'),
@@ -295,6 +301,15 @@ function attentionCheckCount(report) {
     : 0;
 }
 
+function isProtectedPreviewRuntimeBlock(runtime, attentionChecks) {
+  const failed = Number(runtime?.failed);
+  return protectedDeploymentDetected
+    && !LOCAL_MODE
+    && Number.isFinite(failed)
+    && failed <= 1
+    && attentionChecks.some((check) => check.startsWith('live:auth-refresh-no-token(fail)'));
+}
+
 async function checkPublicUrls() {
   await fetchUrl('public:home', '/', { readBody: false });
   if (LOCAL_MODE && !HAS_EXPLICIT_PACKAGE_ID) {
@@ -459,11 +474,14 @@ function checkVercelLogs(level) {
 }
 
 function checkMarketingAutomationReadiness() {
-  const result = run('npm', ['run', '--silent', 'verify:marketing-automation', '--', '--json', '--strict'], { timeout: 120000 });
+  const args = ['scripts/verify-marketing-automation-readiness.mjs', '--json', '--strict'];
+  const result = run(process.execPath, args, {
+    timeout: MARKETING_AUTOMATION_TIMEOUT_MS,
+  });
   if (!result.ok) {
     addCheck('local:marketing-automation', 'fail', {
       ms: result.ms,
-      command: 'npm run --silent verify:marketing-automation -- --json --strict',
+      command: `${process.execPath} ${args.join(' ')}`,
       error: (result.stderr || result.stdout || result.message || '').trim().slice(0, 1200),
     });
     return;
@@ -490,12 +508,10 @@ function checkMarketingRuntimeLocal() {
   if (!INCLUDE_MARKETING_RUNTIME) return;
 
   const args = [
-    'run',
-    '--silent',
-    'verify:marketing-runtime:local',
-    '--',
+    'scripts/verify-marketing-runtime-local.mjs',
     `--timeout-ms=${MARKETING_RUNTIME_TIMEOUT_MS}`,
     `--ready-timeout-ms=${MARKETING_RUNTIME_READY_TIMEOUT_MS}`,
+    '--strict',
   ];
   if (IS_LOCAL_BASE && !MARKETING_RUNTIME_ISOLATED) {
     args.push(`--base=${BASE_URL}`);
@@ -504,23 +520,27 @@ function checkMarketingRuntimeLocal() {
   } else {
     args.push(`--port=${MARKETING_RUNTIME_PORT}`, `--mode=${MARKETING_RUNTIME_MODE}`);
   }
-  if (strict) args.push('--strict');
 
-  const timeout = Math.max(MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000, 240000);
-  const result = run('npm', args, { timeout });
+  const timeout = Number.isFinite(MARKETING_RUNTIME_HARD_TIMEOUT_MS) && MARKETING_RUNTIME_HARD_TIMEOUT_MS > 0
+    ? MARKETING_RUNTIME_HARD_TIMEOUT_MS
+    : Math.max(MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000, 240000);
+  const result = run(process.execPath, args, { timeout });
 
   try {
     const runtime = parseJsonFromOutput(result.stdout);
     const attentionChecks = attentionChecksFromReport(runtime);
     const attentionCount = attentionCheckCount(runtime);
-    addCheck('local:marketing-runtime', result.ok && runtime.status === 'pass' ? 'pass' : runtime.status === 'blocked' ? 'blocked' : 'fail', {
+    const protectedPreviewBlocked = isProtectedPreviewRuntimeBlock(runtime, attentionChecks);
+    addCheck('local:marketing-runtime', result.ok && runtime.status === 'pass' ? 'pass' : runtime.status === 'blocked' || protectedPreviewBlocked ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: runtime.passed,
       blocked: runtime.blocked,
       failed: runtime.failed,
       attentionChecks,
       attentionCheckCount: attentionCount,
-      notes: `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed`,
+      notes: protectedPreviewBlocked
+        ? `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed; protected preview requires authenticated runtime probes`
+        : `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed`,
       error: result.ok ? '' : (result.stderr || result.message || '').trim().slice(0, 1200),
     });
   } catch (err) {

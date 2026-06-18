@@ -70,6 +70,12 @@ const marketingRuntimeReadyTimeoutMs = Number(
     process.env.LOCAL_RELEASE_MARKETING_RUNTIME_READY_TIMEOUT_MS || '120000',
   ),
 );
+const marketingRuntimeHardTimeoutMs = Number(
+  argValue(
+    '--marketing-runtime-hard-timeout-ms',
+    process.env.LOCAL_RELEASE_MARKETING_RUNTIME_HARD_TIMEOUT_MS || '0',
+  ),
+);
 
 function npmRunInvocation(script, args) {
   if (process.platform !== 'win32') {
@@ -508,6 +514,9 @@ if (!skipOpenReadiness) {
       `--timeout-ms=${openTimeoutMs}`,
       `--marketing-runtime-timeout-ms=${marketingRuntimeTimeoutMs}`,
       `--marketing-runtime-ready-timeout-ms=${marketingRuntimeReadyTimeoutMs}`,
+      ...(Number.isFinite(marketingRuntimeHardTimeoutMs) && marketingRuntimeHardTimeoutMs > 0
+        ? [`--marketing-runtime-hard-timeout-ms=${marketingRuntimeHardTimeoutMs}`]
+        : []),
     ],
     interpret: summarizeOpenReadiness,
   });
