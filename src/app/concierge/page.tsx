@@ -50,6 +50,7 @@ interface IntentPrompt {
 
 const SESSION_KEY = 'concierge_session_id';
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
+const SEARCH_TIMEOUT_MS = 15_000;
 
 const INTENT_PROMPTS: IntentPrompt[] = [
   {
@@ -276,18 +277,33 @@ export default function ConciergePage() {
       party_type: prompt?.party_type ?? null,
     });
 
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
+
     try {
       const response = await fetch('/api/concierge/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({ query: normalized, ...inferIntentSummary(prompt, normalized, cart) }),
       });
+      if (!response.ok) {
+        throw new Error('검색 응답을 불러오지 못했습니다. 다시 시도하거나 카톡 상담으로 이어가 주세요.');
+      }
       const data = await response.json();
       if (data.error) throw new Error(data.error);
       setResults(data.results ?? []);
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '검색 오류가 발생했습니다.');
+      const isAbortError = error instanceof Error && error.name === 'AbortError';
+      setErrorMsg(
+        isAbortError
+          ? '검색이 오래 걸리고 있어요. 다시 검색하거나 카톡 상담으로 이어가 주세요.'
+          : error instanceof Error
+            ? error.message
+            : '검색 오류가 발생했습니다.',
+      );
     } finally {
+      window.clearTimeout(timeoutId);
       setLoading(false);
     }
   }
