@@ -141,7 +141,7 @@ export default function AffiliatesPageClient({
                   <td className="font-mono text-admin-xs text-brand">
                     {a.referral_code}
                   </td>
-                  <td>
+                  <td aria-label={`${a.name} 프론트 링크`}>
                     <div className="flex flex-col gap-1">
                       <Link
                         href={`/admin/partner-preview?code=${encodeURIComponent(a.referral_code)}`}
@@ -210,7 +210,12 @@ export default function AffiliatesPageClient({
       {/* 등록 슬라이드 패널 */}
       {showPanel && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/30" onClick={() => { setShowPanel(false); setError(''); }} />
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/30 cursor-default"
+            onClick={() => { setShowPanel(false); setError(''); }}
+            aria-label="파트너 등록 패널 닫기"
+          />
           <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between">
@@ -235,8 +240,9 @@ export default function AffiliatesPageClient({
                   { label: '계좌번호 (암호화 저장)', key: 'bank_info', type: 'text', placeholder: '신한은행 110-123-456789' },
                 ].map(f => (
                   <div key={f.key}>
-                    <label className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">{f.label}</label>
+                    <label htmlFor={`affiliate-${f.key}`} className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">{f.label}</label>
                     <input
+                      id={`affiliate-${f.key}`}
                       type={f.type}
                       placeholder={f.placeholder}
                       value={(form as Record<string, string>)[f.key]}
@@ -247,8 +253,9 @@ export default function AffiliatesPageClient({
                   </div>
                 ))}
                 <div>
-                  <label className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">정산 유형</label>
+                  <label htmlFor="affiliate-payout-type" className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">정산 유형</label>
                   <select
+                    id="affiliate-payout-type"
                     value={form.payout_type}
                     onChange={e => setForm(prev => ({ ...prev, payout_type: e.target.value as 'PERSONAL' | 'BUSINESS' }))}
                     className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
@@ -258,8 +265,9 @@ export default function AffiliatesPageClient({
                   </select>
                 </div>
                 <div>
-                  <label className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">메모</label>
+                  <label htmlFor="affiliate-memo" className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">메모</label>
                   <textarea
+                    id="affiliate-memo"
                     value={form.memo}
                     onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
                     rows={2}

@@ -41,6 +41,7 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
   const [query, setQuery] = useState(tx.counterparty_name || '');
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const isRecommended = useCallback((b: BookingOption) => {
     const bal = getBalance(b);
@@ -64,6 +65,10 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
   useEffect(() => { setFocusedIdx(0); }, [query]);
 
   useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
     const li = listRef.current?.children[focusedIdx] as HTMLElement;
     li?.scrollIntoView({ block: 'nearest' });
   }, [focusedIdx]);
@@ -82,12 +87,13 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
   return (
     <div className="flex flex-col gap-2">
       <input
-        autoFocus
+        ref={inputRef}
         value={query}
         onChange={e => setQuery(e.target.value)}
         onKeyDown={handleKeyDown}
         placeholder="이름, 상품명, 출발일 검색..."
         className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        aria-label="예약 검색"
       />
       <ul ref={listRef} className="max-h-56 overflow-y-auto border border-admin-border-mid rounded-lg divide-y divide-gray-100">
         {filtered.length === 0 && (
@@ -99,36 +105,40 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
           const isFocused = i === focusedIdx;
           const isChecked = multiSelected.has(b.id);
           return (
-            <li
-              key={b.id}
-              onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
-              onMouseEnter={() => setFocusedIdx(i)}
-              className={`px-3 py-2 cursor-pointer text-sm transition
-                ${rec ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}
-                ${isFocused && !rec ? 'bg-blue-50' : ''}
-                ${isFocused && rec ? 'bg-emerald-100' : ''}
-              `}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  {multiMode && (
-                    <input type="checkbox" readOnly checked={isChecked}
-                      className="rounded border-admin-border-strong text-blue-600" />
-                  )}
-                  <div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-xs text-admin-muted-2">[출발 {fmtDate(b.departure_date)}]</span>
-                      <span className="font-medium text-admin-text">{b.customers?.name || '이름 없음'}</span>
-                      {b.package_title && <span className="text-admin-muted">· {b.package_title}</span>}
-                      {rec && <span className="text-xs px-1.5 py-0.5 bg-emerald-200 text-emerald-800 rounded-full font-semibold">✨ 추천</span>}
-                    </div>
-                    <div className="text-xs text-admin-muted mt-0.5">
-                      💰 판매가: {fmt만(b.total_price || 0)} / 미수금: {fmt만(bal)}
+            <li key={b.id}>
+              <button
+                type="button"
+                onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
+                onMouseEnter={() => setFocusedIdx(i)}
+                className={`w-full px-3 py-2 text-left text-sm transition
+                  ${rec ? 'bg-emerald-50 border-l-2 border-emerald-400' : ''}
+                  ${isFocused && !rec ? 'bg-blue-50' : ''}
+                  ${isFocused && rec ? 'bg-emerald-100' : ''}
+                `}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    {multiMode && (
+                      <span
+                        aria-hidden="true"
+                        className={`h-3.5 w-3.5 rounded border ${isChecked ? 'border-brand bg-brand' : 'border-admin-border-strong bg-white'}`}
+                      />
+                    )}
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-admin-muted-2">[출발 {fmtDate(b.departure_date)}]</span>
+                        <span className="font-medium text-admin-text">{b.customers?.name || '이름 없음'}</span>
+                        {b.package_title && <span className="text-admin-muted">· {b.package_title}</span>}
+                        {rec && <span className="text-xs px-1.5 py-0.5 bg-emerald-200 text-emerald-800 rounded-full font-semibold">✨ 추천</span>}
+                      </div>
+                      <div className="text-xs text-admin-muted mt-0.5">
+                        💰 판매가: {fmt만(b.total_price || 0)} / 미수금: {fmt만(bal)}
+                      </div>
                     </div>
                   </div>
+                  {b.booking_no && <span className="text-xs text-admin-muted-2 shrink-0">{b.booking_no}</span>}
                 </div>
-                {b.booking_no && <span className="text-xs text-admin-muted-2 shrink-0">{b.booking_no}</span>}
-              </div>
+              </button>
             </li>
           );
         })}

@@ -672,7 +672,7 @@ export default function PackageReviewPage() {
                       onChange={e => setEditValue(e.target.value)}
                       className="w-full text-xs border border-blue-300 rounded-lg px-3 py-2 font-mono min-h-[80px] focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder={fieldPath === 'airline' ? '예: 산동항공 (SC)' : fieldPath === 'departure_airport' ? '예: 인천' : 'JSON 또는 텍스트'}
-                      autoFocus
+                      aria-label={`${fieldPath} 추가 입력`}
                     />
                     <div className="flex gap-2 mt-2 items-center">
                       <button onClick={() => saveEdit(fieldPath)} disabled={saving}
@@ -739,7 +739,7 @@ export default function PackageReviewPage() {
                       value={editValue}
                       onChange={e => setEditValue(e.target.value)}
                       className="w-full text-xs border border-emerald-300 rounded-lg px-3 py-2 font-mono min-h-[80px] focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                      autoFocus
+                      aria-label={`${fieldPath} 정답 값`}
                     />
                     <div className="flex gap-2 mt-2 items-center">
                       <button onClick={() => saveEdit(fieldPath)}
@@ -784,12 +784,12 @@ export default function PackageReviewPage() {
               {structuredFactRows.map((row, idx) => (
                 <tr key={`${row.category}:${row.evidence[0]?.line_start ?? idx}:${idx}`}>
                   <td className="border border-admin-border-mid p-2 align-top max-w-72">
-                    <div className="line-clamp-3" title={row.evidence[0]?.quote ?? ''}>
+                    <div className="line-clamp-3">
                       {row.evidence[0]?.quote ?? '-'}
                     </div>
                   </td>
                   <td className="border border-admin-border-mid p-2 align-top font-mono">{row.category}</td>
-                  <td className="border border-admin-border-mid p-2 align-top">
+                  <td className="border border-admin-border-mid p-2 align-top" aria-label={`${row.category} 추출값`}>
                     <pre className="w-56 whitespace-pre-wrap break-words font-mono">
                       {JSON.stringify(row.values, null, 2)}
                     </pre>
@@ -854,6 +854,7 @@ export default function PackageReviewPage() {
                   <td className="border border-admin-border-mid p-2 align-top">{row.source_text}</td>
                   <td className="border border-admin-border-mid p-2 align-top">
                     <select
+                      aria-label={`${row.source_text} 카테고리`}
                       value={row.category}
                       onChange={e => updateNoticeEdit(row.review_key, { category: e.target.value as StandardNoticeCategory })}
                       className="w-full min-w-40 rounded border border-admin-border-mid bg-white px-2 py-1"
@@ -865,13 +866,14 @@ export default function PackageReviewPage() {
                   </td>
                   <td className="border border-admin-border-mid p-2 align-top">
                     <textarea
+                      aria-label={`${row.source_text} 추출값`}
                       value={row.values_text}
                       onChange={e => updateNoticeEdit(row.review_key, { valuesText: e.target.value })}
                       className={`min-h-20 w-52 rounded border px-2 py-1 font-mono ${row.values_valid ? 'border-admin-border-mid' : 'border-red-400 bg-red-50'}`}
                     />
                   </td>
                   <td className="border border-admin-border-mid p-2 align-top">{row.standard_text}</td>
-                  <td className="border border-admin-border-mid p-2 align-top">
+                  <td className="border border-admin-border-mid p-2 align-top" aria-label={`${row.category} 추출값`}>
                     <div className="min-w-32 space-y-1">
                       <div className="font-mono text-[11px] text-admin-muted">
                         L{row.evidence[0]?.line_start ?? '-'}
@@ -879,7 +881,7 @@ export default function PackageReviewPage() {
                           ? `-L${row.evidence[0].line_end}`
                           : ''}
                       </div>
-                      <div className="max-w-56 truncate text-admin-text-2" title={row.evidence[0]?.quote ?? row.source_text}>
+                      <div className="max-w-56 truncate text-admin-text-2">
                         {row.evidence[0]?.quote ?? row.source_text}
                       </div>
                     </div>
@@ -897,6 +899,7 @@ export default function PackageReviewPage() {
                   </td>
                   <td className="border border-admin-border-mid p-2 align-top">
                     <select
+                      aria-label={`${row.source_text} 노출 범위`}
                       value={row.visibility}
                       onChange={e => updateNoticeEdit(row.review_key, { visibility: e.target.value as StandardNoticeDraft['visibility'] })}
                       className="w-full min-w-36 rounded border border-admin-border-mid bg-white px-2 py-1"
@@ -908,6 +911,7 @@ export default function PackageReviewPage() {
                   </td>
                   <td className="border border-admin-border-mid p-2 align-top">
                     <select
+                      aria-label={`${row.source_text} 검수 상태`}
                       value={row.review_status}
                       onChange={e => updateNoticeEdit(row.review_key, { review_status: e.target.value as StandardNoticeReviewStatus })}
                       className="w-full min-w-36 rounded border border-admin-border-mid bg-white px-2 py-1"

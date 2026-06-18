@@ -596,28 +596,27 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                 className={gi > 0 ? 'pt-1 mt-1 border-t border-admin-border' : ''}
               >
                 {/* 그룹 헤더 */}
-                <div
-                  className={`px-2 pb-1.5 flex items-center gap-1.5 text-admin-2xs font-semibold text-admin-muted uppercase tracking-[0.08em] ${
-                    showToggle ? 'cursor-pointer select-none hover:text-admin-text' : ''
-                  }`}
-                  onClick={() => {
-                    if (!showToggle) return;
-                    setCollapsedGroups((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(group.title)) {
-                        next.delete(group.title);
-                        next.add(`exp:${group.title}`); // 명시적 펼침 기록
-                      } else {
-                        next.delete(`exp:${group.title}`);
-                        next.add(group.title);
-                      }
-                      return next;
-                    });
-                  }}
-                >
-                  <GroupIcon size={11} />
-                  {group.title}
-                  {showToggle && (
+                {showToggle ? (
+                  <button
+                    type="button"
+                    className="w-full px-2 pb-1.5 flex items-center gap-1.5 text-left text-admin-2xs font-semibold text-admin-muted uppercase tracking-[0.08em] select-none hover:text-admin-text"
+                    aria-expanded={!isCollapsed}
+                    onClick={() => {
+                      setCollapsedGroups((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(group.title)) {
+                          next.delete(group.title);
+                          next.add(`exp:${group.title}`); // 명시적 펼침 기록
+                        } else {
+                          next.delete(`exp:${group.title}`);
+                          next.add(group.title);
+                        }
+                        return next;
+                      });
+                    }}
+                  >
+                    <GroupIcon size={11} />
+                    {group.title}
                     <span className="ml-auto text-admin-2xs text-admin-muted-2">
                       {isCollapsed ? (
                         <ChevronRight size={11} />
@@ -625,8 +624,13 @@ function AdminLayoutInner({ children }: { children: React.ReactNode }) {
                         <ChevronDown size={11} />
                       )}
                     </span>
-                  )}
-                </div>
+                  </button>
+                ) : (
+                  <div className="px-2 pb-1.5 flex items-center gap-1.5 text-admin-2xs font-semibold text-admin-muted uppercase tracking-[0.08em]">
+                    <GroupIcon size={11} />
+                    {group.title}
+                  </div>
+                )}
 
                 {/* 아이템 목록 */}
                 {!isCollapsed && (

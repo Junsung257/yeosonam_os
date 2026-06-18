@@ -323,8 +323,9 @@ export default function AffiliateDetailPage() {
               { label: '이메일', key: 'email', type: 'email' },
             ].map(f => (
               <div key={f.key} className="flex items-center gap-3">
-                <label className="w-16 text-xs text-admin-muted">{f.label}</label>
+                <label htmlFor={`affiliate-detail-${f.key}`} className="w-16 text-xs text-admin-muted">{f.label}</label>
                 <input
+                  id={`affiliate-detail-${f.key}`}
                   type={f.type}
                   value={(form as Record<string, string | number | boolean>)[f.key] as string}
                   onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
@@ -333,8 +334,9 @@ export default function AffiliateDetailPage() {
               </div>
             ))}
             <div className="flex items-center gap-3">
-              <label className="w-16 text-xs text-admin-muted">정산유형</label>
+              <label htmlFor="affiliate-detail-payout-type" className="w-16 text-xs text-admin-muted">정산유형</label>
               <select
+                id="affiliate-detail-payout-type"
                 value={form.payout_type}
                 onChange={e => setForm(prev => ({ ...prev, payout_type: e.target.value as 'PERSONAL'|'BUSINESS' }))}
                 className="border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm"
@@ -344,8 +346,8 @@ export default function AffiliateDetailPage() {
               </select>
             </div>
             <div className="flex items-center gap-3">
-              <label className="w-16 text-xs text-admin-muted">커미션율</label>
-              <input type="number" step="0.01" min={0} max={0.5}
+              <label htmlFor="affiliate-detail-commission-rate" className="w-16 text-xs text-admin-muted">커미션율</label>
+              <input id="affiliate-detail-commission-rate" type="number" step="0.01" min={0} max={0.5}
                 value={form.commission_rate}
                 onChange={e => setForm(prev => ({ ...prev, commission_rate: +e.target.value }))}
                 className="w-24 border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm" />
@@ -353,16 +355,17 @@ export default function AffiliateDetailPage() {
             </div>
             {form.payout_type === 'BUSINESS' && (
               <div className="flex items-center gap-3">
-                <label className="w-16 text-xs text-admin-muted">사업자번호</label>
-                <input type="text" value={form.business_number}
+                <label htmlFor="affiliate-detail-business-number" className="w-16 text-xs text-admin-muted">사업자번호</label>
+                <input id="affiliate-detail-business-number" type="text" value={form.business_number}
                   onChange={e => setForm(prev => ({ ...prev, business_number: e.target.value }))}
                   placeholder="000-00-00000"
                   className="flex-1 border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm" />
               </div>
             )}
             <div className="flex items-start gap-3">
-              <label className="w-16 text-xs text-admin-muted shrink-0 pt-2">메모</label>
+              <label htmlFor="affiliate-detail-memo" className="w-16 text-xs text-admin-muted shrink-0 pt-2">메모</label>
               <textarea
+                id="affiliate-detail-memo"
                 value={form.memo}
                 onChange={e => setForm(prev => ({ ...prev, memo: e.target.value }))}
                 rows={3}
@@ -371,7 +374,7 @@ export default function AffiliateDetailPage() {
               />
             </div>
             <div className="flex items-center gap-3">
-              <label className="w-16 text-xs text-admin-muted">활성상태</label>
+              <span className="w-16 text-xs text-admin-muted">활성상태</span>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.is_active}
                   onChange={e => setForm(prev => ({ ...prev, is_active: e.target.checked }))}
@@ -443,8 +446,9 @@ export default function AffiliateDetailPage() {
           {(siteOrigin || (process.env.NEXT_PUBLIC_BASE_URL || '').replace(/\/$/, '') || '(배포 도메인)')}/with/{affiliate.referral_code}
         </p>
         <div>
-          <label className="block text-xs font-medium text-admin-muted mb-1">상단 영상 URL (YouTube)</label>
+          <label htmlFor="affiliate-landing-video-url" className="block text-xs font-medium text-admin-muted mb-1">상단 영상 URL (YouTube)</label>
           <input
+            id="affiliate-landing-video-url"
             type="url"
             value={landingVideoUrl}
             onChange={e => setLandingVideoUrl(e.target.value)}
@@ -456,8 +460,9 @@ export default function AffiliateDetailPage() {
           </p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-admin-muted mb-1">랜딩 인사말 · 소개</label>
+          <label htmlFor="affiliate-landing-intro" className="block text-xs font-medium text-admin-muted mb-1">랜딩 인사말 · 소개</label>
           <textarea
+            id="affiliate-landing-intro"
             value={landingIntro}
             onChange={e => setLandingIntro(e.target.value)}
             rows={5}
@@ -468,7 +473,7 @@ export default function AffiliateDetailPage() {
           <p className="text-[11px] text-admin-muted-2 mt-1">비워 두면 랜딩 페이지에 기본 문구가 표시됩니다. HTML 대신 줄바꿈만 사용하세요.</p>
         </div>
         <div>
-          <label className="block text-xs font-medium text-admin-muted mb-1">Pick 상품 (순서대로 최대 12개)</label>
+          <label htmlFor="affiliate-pick-package-search" className="block text-xs font-medium text-admin-muted mb-1">Pick 상품 (순서대로 최대 12개)</label>
           {pickPackageIds.length === 0 ? (
             <p className="text-sm text-admin-muted-2 py-2">선택된 상품 없음 — 아래 검색에서 추가하면 랜딩 상단에만 노출됩니다. 비우면 최신 상품 자동.</p>
           ) : (
@@ -493,6 +498,7 @@ export default function AffiliateDetailPage() {
             </ul>
           )}
           <input
+            id="affiliate-pick-package-search"
             type="search"
             value={pkgQuery}
             onChange={e => setPkgQuery(e.target.value)}
@@ -975,8 +981,9 @@ function PortalSettingsSection({
       <div className="p-6 space-y-4">
         <div className="flex items-end gap-3">
           <div className="flex-1">
-            <label className="block text-xs font-medium text-gray-700 mb-1">PIN 번호 설정</label>
+            <label htmlFor="affiliate-pin" className="block text-xs font-medium text-gray-700 mb-1">PIN 번호 설정</label>
             <input
+              id="affiliate-pin"
               type="text"
               value={pin}
               onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
