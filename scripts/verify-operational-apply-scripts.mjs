@@ -11,6 +11,8 @@ const outDir = resolve('.tmp', 'operational-apply-scripts-verify');
 const operationalKeys = [
   'OPEN_CHECK_PACKAGE_ID',
   'OPEN_CHECK_REF_CODE',
+  'MARKETING_CHECK_CARD_NEWS_ID',
+  'MARKETING_CHECK_VARIANT_GROUP_ID',
   'SUPABASE_ACCESS_TOKEN',
   'SUPABASE_PROJECT_REF',
   'VERCEL_TOKEN',
@@ -119,6 +121,7 @@ function assertBashEnvFileContract(paths) {
   }
   assertIncludes(apply, 'DRY-RUN gh secret set SERPAPI_KEY --body <redacted>', 'bash apply');
   assertIncludes(apply, 'DRY-RUN gh variable set OPEN_CHECK_PACKAGE_ID --body <redacted>', 'bash apply');
+  assertIncludes(apply, 'DRY-RUN gh variable set MARKETING_CHECK_CARD_NEWS_ID --body <redacted>', 'bash apply');
   assertIncludes(vercel, 'DRY-RUN vercel env add $key $target --value <redacted>', 'bash Vercel');
 }
 
@@ -201,6 +204,7 @@ function main() {
   check(apply.status === 0, `node apply dry-run failed: ${applyOutput}`);
   assertIncludes(applyOutput, 'DRY-RUN gh secret set SERPAPI_KEY --body <redacted>', 'node apply dry-run');
   assertIncludes(applyOutput, 'DRY-RUN gh variable set OPEN_CHECK_PACKAGE_ID --body <redacted>', 'node apply dry-run');
+  assertIncludes(applyOutput, 'DRY-RUN gh variable set MARKETING_CHECK_CARD_NEWS_ID --body <redacted>', 'node apply dry-run');
   assertIncludes(applyOutput, 'Operational readiness inputs applied to GitHub Actions configuration.', 'node apply dry-run');
   assertExcludes(applyOutput, 'serpapi_key-env-file-dry-run-value', 'node apply dry-run');
 

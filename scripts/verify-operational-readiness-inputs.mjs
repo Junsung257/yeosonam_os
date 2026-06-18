@@ -35,6 +35,13 @@ const groups = [
     notes: 'Required to verify package detail and referral-link flows against real data.',
   },
   {
+    id: 'marketing-dynamic-probes',
+    label: 'Marketing dynamic page probe identifiers',
+    severity: 'blocked',
+    keys: ['MARKETING_CHECK_CARD_NEWS_ID', 'MARKETING_CHECK_VARIANT_GROUP_ID'],
+    notes: 'Required to verify card-news editor, V2 studio, content hub, and variant comparison pages against real marketing data.',
+  },
+  {
     id: 'external-management',
     label: 'External management APIs',
     severity: 'blocked',

@@ -10,7 +10,12 @@ const workflowPaths = [
   '.github/workflows/open-readiness.yml',
   '.github/workflows/local-release-readiness.yml',
 ];
-const dataProbeKeys = ['OPEN_CHECK_PACKAGE_ID', 'OPEN_CHECK_REF_CODE'];
+const dataProbeKeys = [
+  'OPEN_CHECK_PACKAGE_ID',
+  'OPEN_CHECK_REF_CODE',
+  'MARKETING_CHECK_CARD_NEWS_ID',
+  'MARKETING_CHECK_VARIANT_GROUP_ID',
+];
 
 const checks = [];
 

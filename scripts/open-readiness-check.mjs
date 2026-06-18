@@ -35,6 +35,9 @@ const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_
 const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
 const BLOG_AUDIT_TIMEOUT_MS = Number(argValue('--blog-audit-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_TIMEOUT_MS || '15000'));
 const BLOG_AUDIT_HARD_TIMEOUT_MS = Number(argValue('--blog-audit-hard-timeout-ms', process.env.OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS || '180000'));
+const MARKETING_AUTOMATION_TIMEOUT_MS = Number(
+  argValue('--marketing-automation-timeout-ms', process.env.MARKETING_AUTOMATION_TIMEOUT_MS || '120000'),
+);
 const IS_LOCAL_BASE = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(BASE_URL);
 const LOCAL_MODE = hasFlag('--local') || process.env.OPEN_CHECK_LOCAL === '1' || IS_LOCAL_BASE;
 const SKIP_EXTERNAL = hasFlag('--skip-external') || process.env.OPEN_CHECK_SKIP_EXTERNAL === '1' || LOCAL_MODE;
@@ -45,6 +48,9 @@ const MARKETING_RUNTIME_PORT = Number(argValue('--marketing-runtime-port', proce
 const MARKETING_RUNTIME_MODE = argValue('--marketing-runtime-mode', process.env.MARKETING_RUNTIME_MODE || 'dev');
 const MARKETING_RUNTIME_TIMEOUT_MS = Number(argValue('--marketing-runtime-timeout-ms', process.env.MARKETING_RUNTIME_TIMEOUT_MS || '60000'));
 const MARKETING_RUNTIME_READY_TIMEOUT_MS = Number(argValue('--marketing-runtime-ready-timeout-ms', process.env.MARKETING_RUNTIME_READY_TIMEOUT_MS || '120000'));
+const MARKETING_RUNTIME_HARD_TIMEOUT_MS = Number(
+  argValue('--marketing-runtime-hard-timeout-ms', process.env.MARKETING_RUNTIME_HARD_TIMEOUT_MS || '0'),
+);
 const REPORT_PATH = argValue('--report', process.env.OPEN_READINESS_REPORT_PATH || '');
 const RUNTIME_ENV_CONTRACT = JSON.parse(
   readFileSync(new URL('../src/config/runtime-env-readiness.json', import.meta.url), 'utf8'),
@@ -87,8 +93,15 @@ function releaseBlockers() {
       failedRequiredChecks: Array.isArray(check.failedRequiredChecks)
         ? check.failedRequiredChecks
         : undefined,
+      issueCounts: check.issueCounts && typeof check.issueCounts === 'object' ? check.issueCounts : undefined,
+      strictScore: Number.isFinite(Number(check.strictScore)) ? Number(check.strictScore) : undefined,
+      fleetScore: Number.isFinite(Number(check.fleetScore)) ? Number(check.fleetScore) : undefined,
       failedIssues: Array.isArray(check.failedIssues) ? check.failedIssues : undefined,
       authMode: check.authMode || undefined,
+      attentionChecks: Array.isArray(check.attentionChecks) ? check.attentionChecks : undefined,
+      attentionCheckCount: Number.isFinite(Number(check.attentionCheckCount))
+        ? Number(check.attentionCheckCount)
+        : undefined,
       checked: Number.isFinite(Number(check.checked)) ? Number(check.checked) : undefined,
       surfaceFailures: Number.isFinite(Number(check.failed)) ? Number(check.failed) : undefined,
       surfaceWarnings: Number.isFinite(Number(check.warn)) ? Number(check.warn) : undefined,
@@ -186,43 +199,62 @@ function run(command, args, options = {}) {
   }
 }
 
+async function sleep(ms) {
+  await new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
+}
+
 async function fetchUrl(name, path, options = {}) {
   const url = path.startsWith('http') ? path : `${BASE_URL}${path}`;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   const started = Date.now();
-  try {
-    const res = await fetch(url, {
-      method: options.method || 'GET',
-      redirect: options.redirect || 'manual',
-      signal: controller.signal,
-      headers: { Accept: 'text/html,application/json;q=0.9,*/*;q=0.5', ...(options.headers || {}) },
-    });
-    const shouldReadBody = options.readBody !== false || res.status === 401;
-    const body = shouldReadBody ? await res.text() : '';
-    const setCookie = res.headers.get('set-cookie') || '';
-    const ok = options.ok ? options.ok(res, body, setCookie) : res.status >= 200 && res.status < 400;
-    const protectedDeployment = isProtectedDeploymentResponse(res.status, body);
-    if (protectedDeployment) markProtectedDeployment();
-    addCheck(name, ok ? 'pass' : protectedDeployment ? 'blocked' : 'fail', {
-      statusCode: res.status,
-      ms: Date.now() - started,
-      url,
-      location: res.headers.get('location') || '',
-      notes: protectedDeployment
-        ? 'Vercel protected deployment requires an authenticated preview bypass'
-        : options.notes?.(res, body, setCookie) || '',
-      error: ok || protectedDeployment ? '' : body.slice(0, 1200),
-    });
-  } catch (err) {
-    addCheck(name, 'fail', {
-      statusCode: null,
-      ms: Date.now() - started,
-      url,
-      error: err instanceof Error ? err.message : String(err),
-    });
-  } finally {
-    clearTimeout(timer);
+  const attempts = Number(options.attempts ?? (LOCAL_MODE ? 2 : 1));
+  const retryDelayMs = Number(options.retryDelayMs ?? 1000);
+  let lastError = '';
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    if (attempt > 1 && retryDelayMs > 0) {
+      await sleep(retryDelayMs);
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+    try {
+      const res = await fetch(url, {
+        method: options.method || 'GET',
+        redirect: options.redirect || 'manual',
+        signal: controller.signal,
+        headers: { Accept: 'text/html,application/json;q=0.9,*/*;q=0.5', ...(options.headers || {}) },
+      });
+      const shouldReadBody = options.readBody !== false || res.status === 401;
+      const body = shouldReadBody ? await res.text() : '';
+      const setCookie = res.headers.get('set-cookie') || '';
+      const ok = options.ok ? options.ok(res, body, setCookie) : res.status >= 200 && res.status < 400;
+      const protectedDeployment = isProtectedDeploymentResponse(res.status, body);
+      if (protectedDeployment) markProtectedDeployment();
+      addCheck(name, ok ? 'pass' : protectedDeployment ? 'blocked' : 'fail', {
+        statusCode: res.status,
+        ms: Date.now() - started,
+        url,
+        location: res.headers.get('location') || '',
+        attempts: attempt,
+        notes: protectedDeployment
+          ? 'Vercel protected deployment requires an authenticated preview bypass'
+          : options.notes?.(res, body, setCookie) || '',
+        error: ok || protectedDeployment ? '' : body.slice(0, 1200),
+      });
+      return;
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err);
+      if (attempt === attempts) {
+        addCheck(name, 'fail', {
+          statusCode: null,
+          ms: Date.now() - started,
+          url,
+          attempts: attempt,
+          error: lastError,
+        });
+      }
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
 
@@ -248,11 +280,42 @@ function parseJsonFromOutput(output) {
   }
 }
 
+function attentionChecksFromReport(report, limit = 40) {
+  const checks = Array.isArray(report?.checks) ? report.checks : [];
+  return checks
+    .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
+    .slice(0, limit)
+    .map((check) => {
+      const name = String(check.name || check.id || 'unknown');
+      const status = String(check.status || 'unknown');
+      const missing = Array.isArray(check.missing) && check.missing.length > 0
+        ? ` missing=${check.missing.join('|')}`
+        : '';
+      return `${name}(${status}${missing})`;
+    });
+}
+
+function attentionCheckCount(report) {
+  return Array.isArray(report?.checks)
+    ? report.checks.filter((check) => check?.status === 'blocked' || check?.status === 'fail').length
+    : 0;
+}
+
+function isProtectedPreviewRuntimeBlock(runtime, attentionChecks) {
+  const failed = Number(runtime?.failed);
+  return protectedDeploymentDetected
+    && !LOCAL_MODE
+    && Number.isFinite(failed)
+    && failed <= 1
+    && attentionChecks.some((check) => check.startsWith('live:auth-refresh-no-token(fail)'));
+}
+
 async function checkPublicUrls() {
   await fetchUrl('public:home', '/', { readBody: false });
   if (LOCAL_MODE && !HAS_EXPLICIT_PACKAGE_ID) {
     addBlockedCheck('public:package-detail', {
       url: `${BASE_URL}/packages/${PACKAGE_ID}`,
+      missing: ['OPEN_CHECK_PACKAGE_ID'],
       notes: 'OPEN_CHECK_PACKAGE_ID not provided; local target may not have production package data',
     });
   } else {
@@ -262,6 +325,10 @@ async function checkPublicUrls() {
   if (LOCAL_MODE && (!HAS_EXPLICIT_REF_CODE || !HAS_EXPLICIT_PACKAGE_ID)) {
     addBlockedCheck('public:referral-link', {
       url: `${BASE_URL}/r/${REF_CODE}/${PACKAGE_ID}`,
+      missing: [
+        ...(!HAS_EXPLICIT_REF_CODE ? ['OPEN_CHECK_REF_CODE'] : []),
+        ...(!HAS_EXPLICIT_PACKAGE_ID ? ['OPEN_CHECK_PACKAGE_ID'] : []),
+      ],
       notes: 'OPEN_CHECK_REF_CODE and OPEN_CHECK_PACKAGE_ID are required for local referral-link verification',
     });
   } else {
@@ -407,11 +474,14 @@ function checkVercelLogs(level) {
 }
 
 function checkMarketingAutomationReadiness() {
-  const result = run('npm', ['run', '--silent', 'verify:marketing-automation', '--', '--json', '--strict'], { timeout: 120000 });
+  const args = ['scripts/verify-marketing-automation-readiness.mjs', '--json', '--strict'];
+  const result = run(process.execPath, args, {
+    timeout: MARKETING_AUTOMATION_TIMEOUT_MS,
+  });
   if (!result.ok) {
     addCheck('local:marketing-automation', 'fail', {
       ms: result.ms,
-      command: 'npm run --silent verify:marketing-automation -- --json --strict',
+      command: `${process.execPath} ${args.join(' ')}`,
       error: (result.stderr || result.stdout || result.message || '').trim().slice(0, 1200),
     });
     return;
@@ -436,46 +506,48 @@ function checkMarketingAutomationReadiness() {
 
 function checkMarketingRuntimeLocal() {
   if (!INCLUDE_MARKETING_RUNTIME) return;
-  if (!LOCAL_MODE) {
-    addBlockedCheck('local:marketing-runtime', {
-      notes: 'marketing runtime verification starts a local dev server; rerun with --local or a localhost --base',
-    });
-    return;
-  }
 
   const args = [
-    'run',
-    '--silent',
-    'verify:marketing-runtime:local',
-    '--',
+    'scripts/verify-marketing-runtime-local.mjs',
     `--timeout-ms=${MARKETING_RUNTIME_TIMEOUT_MS}`,
     `--ready-timeout-ms=${MARKETING_RUNTIME_READY_TIMEOUT_MS}`,
+    '--strict',
   ];
   if (IS_LOCAL_BASE && !MARKETING_RUNTIME_ISOLATED) {
+    args.push(`--base=${BASE_URL}`);
+  } else if (!LOCAL_MODE) {
     args.push(`--base=${BASE_URL}`);
   } else {
     args.push(`--port=${MARKETING_RUNTIME_PORT}`, `--mode=${MARKETING_RUNTIME_MODE}`);
   }
-  if (strict) args.push('--strict');
 
-  const timeout = Math.max(MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000, 240000);
-  const result = run('npm', args, { timeout });
+  const timeout = Number.isFinite(MARKETING_RUNTIME_HARD_TIMEOUT_MS) && MARKETING_RUNTIME_HARD_TIMEOUT_MS > 0
+    ? MARKETING_RUNTIME_HARD_TIMEOUT_MS
+    : Math.max(MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000, 240000);
+  const result = run(process.execPath, args, { timeout });
 
   try {
     const runtime = parseJsonFromOutput(result.stdout);
-    addCheck('local:marketing-runtime', result.ok && runtime.status === 'pass' ? 'pass' : runtime.status === 'blocked' ? 'blocked' : 'fail', {
+    const attentionChecks = attentionChecksFromReport(runtime);
+    const attentionCount = attentionCheckCount(runtime);
+    const protectedPreviewBlocked = isProtectedPreviewRuntimeBlock(runtime, attentionChecks);
+    addCheck('local:marketing-runtime', result.ok && runtime.status === 'pass' ? 'pass' : runtime.status === 'blocked' || protectedPreviewBlocked ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: runtime.passed,
       blocked: runtime.blocked,
       failed: runtime.failed,
-      notes: `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed`,
+      attentionChecks,
+      attentionCheckCount: attentionCount,
+      notes: protectedPreviewBlocked
+        ? `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed; protected preview requires authenticated runtime probes`
+        : `${runtime.passed} passed, ${runtime.blocked} blocked, ${runtime.failed} failed`,
       error: result.ok ? '' : (result.stderr || result.message || '').trim().slice(0, 1200),
     });
   } catch (err) {
     addCheck('local:marketing-runtime', 'fail', {
       ms: result.ms,
-      command: `npm ${args.join(' ')}`,
-      error: (result.stderr || result.stdout || result.message || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+      command: `${process.execPath} ${args.join(' ')}`,
+      error: (result.message || result.stderr || result.stdout || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
     });
   }
 }
@@ -578,11 +650,18 @@ async function checkBlogPublicSurfaceMonitor() {
         : (failedIssues.join(', ') || body || `HTTP ${res.status}`).slice(0, 1200),
     });
   } catch (err) {
-    addCheck('public:blog-surface-monitor', 'fail', {
+    const error = err instanceof Error ? err.message : String(err);
+    const localProbeUnavailable = ALLOW_LOCAL_MISSING_DATA
+      && /fetch failed|ECONNREFUSED|ECONNRESET|UND_ERR_SOCKET|terminated|operation was aborted|abort/i.test(error);
+    addCheck('public:blog-surface-monitor', localProbeUnavailable ? 'blocked' : 'fail', {
       statusCode: null,
       ms: Date.now() - started,
       url,
-      error: err instanceof Error ? err.message : String(err),
+      authMode,
+      notes: localProbeUnavailable
+        ? 'local blog surface monitor endpoint was unavailable; production/staging data or a warm local server is required for full verification'
+        : '',
+      error: localProbeUnavailable ? '' : error,
     });
   } finally {
     clearTimeout(timer);

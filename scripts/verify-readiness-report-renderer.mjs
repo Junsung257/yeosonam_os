@@ -81,6 +81,7 @@ function runWarningOnlyRenderer(kind) {
       status: 'warn',
       notes: 'sample default env',
       missing: ['AD_FLAG_UP_BID_FACTOR'],
+      alternatives: ['AD_OFFPEAK_BID_FACTOR'],
     }],
     checks: [
       { id: 'type-check', status: 'pass', durationMs: 11 },
@@ -251,21 +252,41 @@ function verifyOutput(run) {
     if (run.kind === 'open') {
       assertIncludes(summary, 'public:blog-surface-monitor', 'open summary');
       assertIncludes(issue, 'public:blog-surface-monitor', 'open issue');
+      assertIncludes(summary, 'public:blog-search-quality', 'open summary');
+      assertIncludes(issue, 'public:blog-search-quality', 'open issue');
+      assertIncludes(summary, 'scores: strict=0, fleet=28', 'open summary');
+      assertIncludes(issue, 'scores: strict=0, fleet=28', 'open issue');
+      assertIncludes(summary, 'issue counts: render_integrity.blocked_items=1', 'open summary');
+      assertIncludes(issue, 'issue counts: render_integrity.blocked_items=1', 'open issue');
       assertIncludes(summary, 'auth: dev-admin-cookie', 'open summary');
       assertIncludes(issue, 'auth: dev-admin-cookie', 'open issue');
       assertIncludes(summary, 'blog-list:db_unavailable_page', 'open summary');
       assertIncludes(issue, 'blog-list:db_unavailable_page', 'open issue');
       assertIncludes(summary, 'surfaces: checked=11, failed=2, warn=1', 'open summary');
       assertIncludes(issue, 'surfaces: checked=11, failed=2, warn=1', 'open issue');
+      assertIncludes(summary, 'local:marketing-runtime', 'open summary');
+      assertIncludes(issue, 'local:marketing-runtime', 'open issue');
+      assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'open summary');
+      assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'open issue');
     } else if (run.kind === 'local-release') {
       assertIncludes(summary, 'public:blog-surface-monitor', 'local-release summary');
       assertIncludes(issue, 'public:blog-surface-monitor', 'local-release issue');
+      assertIncludes(summary, 'public:blog-search-quality', 'local-release summary');
+      assertIncludes(issue, 'public:blog-search-quality', 'local-release issue');
+      assertIncludes(summary, 'scores: strict=0, fleet=28', 'local-release summary');
+      assertIncludes(issue, 'scores: strict=0, fleet=28', 'local-release issue');
+      assertIncludes(summary, 'issue counts: render_integrity.blocked_items=1', 'local-release summary');
+      assertIncludes(issue, 'issue counts: render_integrity.blocked_items=1', 'local-release issue');
       assertIncludes(summary, 'auth: dev-admin-cookie', 'local-release summary');
       assertIncludes(issue, 'auth: dev-admin-cookie', 'local-release issue');
       assertIncludes(summary, 'blog-list:db_unavailable_page', 'local-release summary');
       assertIncludes(issue, 'blog-list:db_unavailable_page', 'local-release issue');
       assertIncludes(summary, 'surfaces: checked=11, failed=2, warn=1', 'local-release summary');
       assertIncludes(issue, 'surfaces: checked=11, failed=2, warn=1', 'local-release issue');
+      assertIncludes(summary, 'local:marketing-runtime', 'local-release summary');
+      assertIncludes(issue, 'local:marketing-runtime', 'local-release issue');
+      assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'local-release summary');
+      assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'local-release issue');
     }
   }
   if (!run.missingReport && !run.inconsistentBlocker) {
@@ -277,6 +298,8 @@ function verifyOutput(run) {
     assertIncludes(issue, 'GitHub Actions variable', `${run.kind} issue`);
     assertIncludes(summary, 'AD_FLAG_UP_BID_FACTOR', `${run.kind} summary`);
     assertIncludes(issue, 'AD_FLAG_UP_BID_FACTOR', `${run.kind} issue`);
+    assertIncludes(summary, 'alternatives: AD_OFFPEAK_BID_FACTOR', `${run.kind} summary`);
+    assertIncludes(issue, 'alternatives: AD_OFFPEAK_BID_FACTOR', `${run.kind} issue`);
   }
 
   return {

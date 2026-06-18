@@ -84,6 +84,7 @@ jobs:
       # Vercel Preview 환경에서는 real secrets 라 정상 검증. CI 빌드 통과만 보장. (2026-05-15 박제)
       - name: Visual regression tests
         continue-on-error: true
+        timeout-minutes: 8
         run: npx playwright install && npm run test:visual
         env:
           NEXT_PUBLIC_SUPABASE_URL: 'https://example.supabase.co'

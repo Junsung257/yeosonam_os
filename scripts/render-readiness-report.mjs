@@ -79,6 +79,18 @@ function sampleReportFor(value) {
         missing: ['SERPAPI_KEY'],
       }, {
         source: 'open-readiness-local-full',
+        name: 'public:blog-search-quality',
+        status: 'blocked',
+        notes: 'sample blog quality blocker',
+        failedRequiredChecks: ['render_integrity', 'seo_quality'],
+        strictScore: 0,
+        fleetScore: 28,
+        issueCounts: {
+          'render_integrity.blocked_items': 1,
+          'seo_quality.failed_items': 2,
+        },
+      }, {
+        source: 'open-readiness-local-full',
         name: 'public:blog-surface-monitor',
         status: 'blocked',
         notes: 'sample public surface blocker',
@@ -87,6 +99,16 @@ function sampleReportFor(value) {
         surfaceFailures: 2,
         surfaceWarnings: 1,
         failedIssues: ['blog-list:db_unavailable_page', 'api-blog:blog_api_db_timeout'],
+      }, {
+        source: 'open-readiness-local-full',
+        name: 'local:marketing-runtime',
+        status: 'blocked',
+        notes: 'sample runtime blocker',
+        attentionChecks: [
+          'live:dev-admin-cookie(blocked)',
+          'live:api:/api/meta/campaigns(blocked)',
+        ],
+        attentionCheckCount: 3,
       }],
       releaseWarnings: [{
         source: 'operational-inputs',
@@ -94,6 +116,7 @@ function sampleReportFor(value) {
         status: 'warn',
         notes: 'sample default env',
         missing: ['AD_FLAG_UP_BID_FACTOR'],
+        alternatives: ['AD_OFFPEAK_BID_FACTOR'],
       }],
       checks: [
         { id: 'type-check', status: 'pass', durationMs: 111 },
@@ -126,6 +149,17 @@ function sampleReportFor(value) {
       notes: 'sample missing env',
       missing: ['SERPAPI_KEY'],
     }, {
+      name: 'public:blog-search-quality',
+      status: 'blocked',
+      notes: 'sample blog quality blocker',
+      failedRequiredChecks: ['render_integrity', 'seo_quality'],
+      strictScore: 0,
+      fleetScore: 28,
+      issueCounts: {
+        'render_integrity.blocked_items': 1,
+        'seo_quality.failed_items': 2,
+      },
+    }, {
       name: 'public:blog-surface-monitor',
       status: 'blocked',
       notes: 'sample public surface blocker',
@@ -134,6 +168,15 @@ function sampleReportFor(value) {
       surfaceFailures: 2,
       surfaceWarnings: 1,
       failedIssues: ['blog-list:db_unavailable_page', 'api-blog:blog_api_db_timeout'],
+    }, {
+      name: 'local:marketing-runtime',
+      status: 'blocked',
+      notes: 'sample runtime blocker',
+      attentionChecks: [
+        'live:dev-admin-cookie(blocked)',
+        'live:api:/api/meta/campaigns(blocked)',
+      ],
+      attentionCheckCount: 3,
     }],
     releaseWarnings: [{
       source: 'operational-inputs',
@@ -141,6 +184,7 @@ function sampleReportFor(value) {
       status: 'warn',
       notes: 'sample default env',
       missing: ['AD_FLAG_UP_BID_FACTOR'],
+      alternatives: ['AD_OFFPEAK_BID_FACTOR'],
     }],
     checks: [
       { name: 'public:home', status: 'pass', ms: 99, notes: 'ok' },
@@ -225,6 +269,17 @@ function firstText(...values) {
   return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '') ?? '';
 }
 
+function issueCountSummary(issueCounts, limit = 8) {
+  if (!issueCounts || typeof issueCounts !== 'object') return '';
+  const entries = Object.entries(issueCounts)
+    .filter(([, count]) => Number.isFinite(Number(count)))
+    .map(([name, count]) => `${name}=${Number(count)}`);
+  if (entries.length === 0) return '';
+  const visible = entries.slice(0, limit);
+  const remaining = entries.length - visible.length;
+  return remaining > 0 ? `${visible.join(', ')} (+${remaining} more)` : visible.join(', ');
+}
+
 function statusOf(report) {
   return String(report?.status ?? report?.summary?.status ?? 'unknown').toLowerCase();
 }
@@ -244,14 +299,33 @@ function noteFor(item) {
   if (Array.isArray(item.usingDefaults) && item.usingDefaults.length > 0) {
     notes.push(`defaults: ${item.usingDefaults.join(', ')}`);
   }
+  if (Array.isArray(item.alternatives) && item.alternatives.length > 0) {
+    notes.push(`alternatives: ${item.alternatives.join(', ')}`);
+  }
   if (Array.isArray(item.failedRequiredChecks) && item.failedRequiredChecks.length > 0) {
     notes.push(`failed required: ${item.failedRequiredChecks.join(', ')}`);
+  }
+  const strictScore = Number(item.strictScore);
+  const fleetScore = Number(item.fleetScore);
+  if (Number.isFinite(strictScore) || Number.isFinite(fleetScore)) {
+    notes.push(`scores: strict=${Number.isFinite(strictScore) ? strictScore : 'n/a'}, fleet=${Number.isFinite(fleetScore) ? fleetScore : 'n/a'}`);
+  }
+  const issueSummary = issueCountSummary(item.issueCounts);
+  if (issueSummary) {
+    notes.push(`issue counts: ${issueSummary}`);
   }
   if (Array.isArray(item.failedIssues) && item.failedIssues.length > 0) {
     notes.push(`issues: ${item.failedIssues.join(', ')}`);
   }
   if (item.authMode) {
     notes.push(`auth: ${item.authMode}`);
+  }
+  if (Array.isArray(item.attentionChecks) && item.attentionChecks.length > 0) {
+    const count = Number(item.attentionCheckCount);
+    const suffix = Number.isFinite(count) && count > item.attentionChecks.length
+      ? ` (+${count - item.attentionChecks.length} more)`
+      : '';
+    notes.push(`attention checks: ${item.attentionChecks.join(', ')}${suffix}`);
   }
   const checked = Number(item.checked);
   const surfaceFailures = Number(item.surfaceFailures ?? item.surfaceFailed ?? (Number.isFinite(checked) && checked > 0 ? item.failed : undefined));
@@ -285,8 +359,13 @@ function reportBlockers(report) {
       missing: check.missing,
       usingDefaults: check.usingDefaults,
       failedRequiredChecks: check.failedRequiredChecks,
+      issueCounts: check.issueCounts,
+      strictScore: check.strictScore,
+      fleetScore: check.fleetScore,
       failedIssues: check.failedIssues,
       authMode: check.authMode,
+      attentionChecks: check.attentionChecks,
+      attentionCheckCount: check.attentionCheckCount,
       checked: check.checked,
       surfaceFailures: check.surfaceFailures ?? (Number.isFinite(Number(check.checked)) ? check.failed : undefined),
       surfaceWarnings: check.surfaceWarnings ?? (Number.isFinite(Number(check.checked)) ? check.warn : undefined),

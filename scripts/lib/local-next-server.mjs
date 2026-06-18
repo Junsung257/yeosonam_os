@@ -20,21 +20,32 @@ async function sleep(ms) {
   await new Promise((resolveSleep) => setTimeout(resolveSleep, ms));
 }
 
-async function fetchHealth(baseUrl, healthPath) {
-  const res = await fetch(`${baseUrl}${healthPath}`, { redirect: 'manual' });
-  return res.status;
+async function fetchHealth(baseUrl, healthPath, timeoutMs) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${baseUrl}${healthPath}`, {
+      redirect: 'manual',
+      signal: controller.signal,
+    });
+    return res.status;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function waitForReady({
   baseUrl,
   readyTimeoutMs,
   healthPath = '/api/v1/health',
+  probeTimeoutMs = 10000,
 }) {
   const deadline = Date.now() + readyTimeoutMs;
   let lastError = '';
   while (Date.now() < deadline) {
     try {
-      const status = await fetchHealth(baseUrl, healthPath);
+      const remainingMs = Math.max(1, deadline - Date.now());
+      const status = await fetchHealth(baseUrl, healthPath, Math.min(probeTimeoutMs, remainingMs));
       if (status >= 200 && status < 500) return;
       lastError = `status ${status}`;
     } catch (err) {
