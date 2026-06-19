@@ -414,6 +414,13 @@ function PackageOpsQueue({
   const total = cards.reduce((sum, card) => sum + card.count, 0);
   const activeCards = cards.filter(card => card.count > 0);
   const priorityCard = activeCards[0];
+  const urgentCards = activeCards.filter(card => ['review', 'copy', 'deadline'].includes(card.id));
+  const clearCardsCount = cards.length - activeCards.length;
+  const packageQueueHealthItems = [
+    { label: '활성 큐', value: `${activeCards.length}/${cards.length}`, tone: activeCards.length > 0 ? 'warn' : 'good' },
+    { label: '긴급 큐', value: `${urgentCards.length}개`, tone: urgentCards.length > 0 ? 'danger' : 'good' },
+    { label: '정리됨', value: `${clearCardsCount}개`, tone: clearCardsCount === cards.length ? 'good' : 'neutral' },
+  ] as const;
   const selectedQueueCard = activeQueue ? cards.find(card => card.id === activeQueue) : undefined;
   const packageQueueSummaryId = 'admin-package-queue-summary';
   const packageQueueLeadId = 'admin-package-queue-lead';
@@ -421,7 +428,7 @@ function PackageOpsQueue({
     ? `현재 선택: ${selectedQueueCard.label} ${selectedQueueCard.count}건.`
     : '큐를 선택하면 해당 상품만 필터링됩니다.';
   const packageQueueSummaryText = total > 0
-    ? `상품 액션 큐에 처리할 작업이 ${total}건 있습니다. ${activeCards.map(card => `${card.label} ${card.count}건`).join(', ')}을 우선 확인하세요.`
+    ? `상품 액션 큐에 처리할 작업이 ${total}건 있습니다. 활성 큐 ${activeCards.length}/${cards.length}, 긴급 큐 ${urgentCards.length}개입니다. ${activeCards.map(card => `${card.label} ${card.count}건`).join(', ')}을 우선 확인하세요.`
     : '상품 액션 큐에 대기 중인 작업이 없습니다. 각 큐에서 최신 상품 상태를 확인할 수 있습니다.';
   const packageQueueLeadText = priorityCard
     ? `우선 처리: ${priorityCard.label} ${priorityCard.count}건. ${selectedQueueSummary}`
@@ -456,6 +463,30 @@ function PackageOpsQueue({
       >
         {packageQueueLeadText}
       </p>
+      <div
+        className="mb-3 grid grid-cols-3 gap-2"
+        data-testid="admin-package-queue-health"
+        aria-label={`상품 큐 상태: 활성 큐 ${activeCards.length}/${cards.length}, 긴급 큐 ${urgentCards.length}개, 정리됨 ${clearCardsCount}개`}
+      >
+        {packageQueueHealthItems.map(item => (
+          <div
+            key={item.label}
+            data-testid="admin-package-queue-health-item"
+            className={`rounded-admin-sm border px-2.5 py-2 ${
+              item.tone === 'danger'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : item.tone === 'warn'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : item.tone === 'good'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-admin-border-mid bg-admin-bg text-admin-text-2'
+            }`}
+          >
+            <p className="text-[10px] font-semibold text-current/65">{item.label}</p>
+            <p className="mt-0.5 text-[14px] font-black tabular-nums">{item.value}</p>
+          </div>
+        ))}
+      </div>
       <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {cards.map(card => {
           const cardDescriptionId = `admin-package-queue-${card.id}-description`;
