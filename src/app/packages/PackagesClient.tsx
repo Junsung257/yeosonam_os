@@ -285,10 +285,12 @@ export default function PackagesClient() {
   );
   const compareStatusId = 'packages-compare-selection-status';
   const compareHelpId = 'packages-compare-help';
+  const packageFilterGroupTitleId = 'packages-filter-title';
+  const packageFilterGroupDescriptionId = 'packages-filter-group-description';
   const packageFilterHelpId = 'packages-filter-help';
   const packageFilterSummaryId = 'packages-filter-summary';
   const packageResultSummaryId = 'packages-result-summary';
-  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageResultSummaryId}`;
+  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageResultSummaryId}`;
   const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
   const compareStatusText = compareIds.length === 0
     ? '비교 상품이 선택되지 않았습니다.'
@@ -516,6 +518,7 @@ export default function PackagesClient() {
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
   const packageAppliedFilterSummaryText = filterSummaryItems.map((item) => `${item.label} ${item.value}`).join(', ');
   const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다.`;
+  const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
 
   useEffect(() => {
     for (const pkg of visiblePackages) {
@@ -753,10 +756,19 @@ export default function PackagesClient() {
 
       <div className="sticky top-14 md:top-16 z-20 border-b border-[#EEF2F6] bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
         <div className="max-w-7xl mx-auto px-4 py-2.5 md:px-8 w-full max-w-full min-w-0">
+          <h2 id={packageFilterGroupTitleId} className="sr-only">패키지 검색 필터</h2>
           <p id={packageFilterHelpId} className="sr-only">
             필터를 변경하면 현재 조건과 상품 결과 수가 바로 갱신됩니다.
           </p>
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <p id={packageFilterGroupDescriptionId} className="sr-only">
+            {packageFilterGroupDescriptionText}
+          </p>
+          <div
+            className="flex items-center gap-2 overflow-x-auto no-scrollbar"
+            role="group"
+            aria-labelledby={packageFilterGroupTitleId}
+            aria-describedby={packageFilterDescriptionIds}
+          >
             <select
               aria-label="출발월"
               aria-describedby={packageFilterDescriptionIds}
@@ -904,6 +916,7 @@ export default function PackagesClient() {
               <button
                 type="button"
                 onClick={resetPackageFilters}
+                aria-describedby={packageFilterDescriptionIds}
                 className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-3 py-1.5 text-[12px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
               >
                 조건 초기화
@@ -980,6 +993,7 @@ export default function PackagesClient() {
                   <button
                     type="button"
                     onClick={resetPackageFilters}
+                    aria-describedby={packageFilterDescriptionIds}
                     className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
                   >
                     조건 초기화
@@ -987,6 +1001,7 @@ export default function PackagesClient() {
                 )}
                 <Link
                   href={groupInquiryHref}
+                  aria-describedby={packageResultSummaryId}
                   className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
                 >
                   직접 문의
@@ -1055,6 +1070,7 @@ export default function PackagesClient() {
           <button
             type="button"
             onClick={handleLoadMore}
+            aria-describedby={packageResultSummaryId}
             className="w-full h-11 rounded-full border border-[#D1DCE8] bg-white text-[14px] font-semibold text-text-primary hover:border-brand/60 hover:text-brand transition"
           >
             상품 더 보기 ({visiblePackages.length}/{filteredPackages.length})

@@ -902,12 +902,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     { label: '예산', value: handoffBudget },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const detailCtaSummaryId = 'package-detail-cta-summary';
+  const detailStickyCtaRegionTitleId = 'package-detail-sticky-cta-title';
+  const detailStickyCtaRegionDescriptionId = 'package-detail-sticky-cta-description';
+  const detailStickyPriceDescriptionId = 'package-detail-sticky-price-description';
   const detailKakaoDescriptionId = 'package-detail-kakao-description';
   const detailGroupInquiryDescriptionId = 'package-detail-group-inquiry-description';
   const detailReservationDescriptionId = 'package-detail-reservation-description';
-  const detailKakaoDescriptionIds = `${detailKakaoDescriptionId} ${detailCtaSummaryId}`;
-  const detailGroupInquiryDescriptionIds = `${detailGroupInquiryDescriptionId} ${detailCtaSummaryId}`;
-  const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailCtaSummaryId}`;
+  const detailStickyCtaDescriptionIds = `${detailStickyCtaRegionDescriptionId} ${detailCtaSummaryId}`;
+  const detailKakaoDescriptionIds = `${detailKakaoDescriptionId} ${detailStickyCtaDescriptionIds}`;
+  const detailGroupInquiryDescriptionIds = `${detailGroupInquiryDescriptionId} ${detailStickyCtaDescriptionIds}`;
+  const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailCtaSummaryText = [
     `${selectedProductName} 상품 상담 CTA입니다.`,
     `출발 기준은 ${firstScreenDepartureLabel}입니다.`,
@@ -916,6 +920,20 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       ? `상담 전달 조건은 ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
       : null,
   ].filter(Boolean).join(' ');
+  const stickyPriceSummaryText = selectedTier
+    ? `${selectedDate ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])}` : selectedTier.period_label} 출발, 1인 ${(selectedTier.adult_price || 0).toLocaleString()}원`
+    : displayPrice && displayPrice < Infinity
+      ? `최저가 ${(displayPrice as number).toLocaleString()}원부터`
+      : '가격은 상담 시 확인';
+  const stickyReservationLabel = selectedDate
+    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
+    : '예약 문의';
+  const stickyCtaRegionDescriptionText = [
+    '상품 상세 하단 고정 상담 영역입니다.',
+    `현재 표시 가격은 ${stickyPriceSummaryText}입니다.`,
+    '카카오톡 상담, 단체 견적, 예약 문의 순서로 바로 이동할 수 있습니다.',
+    detailCtaSummaryText,
+  ].join(' ');
   const decisionGuide = createDecisionGuide({
     pkg,
     days,
@@ -1092,7 +1110,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <div className="hidden md:block">
         <GlobalNav />
       </div>
-    <main className="min-h-dvh bg-[#F8FAFC] pb-44 md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
+    <main className="min-h-dvh bg-[#F8FAFC] pb-[calc(11rem+env(safe-area-inset-bottom))] md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
       <p id={detailCtaSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {detailCtaSummaryText}
       </p>
@@ -2432,7 +2450,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* 클립보드 복사 토스트 */}
       {clipboardToast && (
         <div
-          className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in"
+          className="fixed bottom-[calc(136px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in"
           role="status"
           aria-live="polite"
           aria-atomic="true"
@@ -2444,7 +2462,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* 링크 공유 토스트 */}
       {shareToast && (
         <div
-          className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in"
+          className="fixed bottom-[calc(136px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in"
           role="status"
           aria-live="polite"
           aria-atomic="true"
@@ -2455,7 +2473,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약 문의 (Jiwonnote 분석 P3) ═══ */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white z-50 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]">
+      <div
+        className="fixed bottom-0 left-0 right-0 bg-white z-50 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]"
+        role="region"
+        aria-labelledby={detailStickyCtaRegionTitleId}
+        aria-describedby={detailStickyCtaDescriptionIds}
+        data-testid="package-detail-sticky-cta-region"
+      >
+        <h2 id={detailStickyCtaRegionTitleId} className="sr-only">상품 상담 행동</h2>
+        <p id={detailStickyCtaRegionDescriptionId} className="sr-only">
+          {stickyCtaRegionDescriptionText}
+        </p>
         {/* 신뢰 배너 — 특약 상품은 방어형 카피, 일반 상품은 전환형 카피 */}
         {(() => {
           const specialTermsProduct = hasSpecialTermsBanner(initialNotices);
@@ -2479,7 +2507,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div
               className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-100 bg-slate-50 px-2.5 py-2 no-scrollbar"
               aria-label="상담 전달 조건"
-              aria-describedby={detailCtaSummaryId}
+              aria-describedby={detailStickyCtaDescriptionIds}
               data-testid="package-detail-sticky-handoff-summary"
             >
               {stickyHandoffItems.map((item) => (
@@ -2493,7 +2521,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           )}
           <div className="flex items-center gap-2.5">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
-          <div className="flex-1 min-w-0">
+          <div
+            className="flex-1 min-w-0"
+            aria-describedby={detailStickyPriceDescriptionId}
+            data-testid="package-detail-sticky-price-summary"
+          >
+            <p id={detailStickyPriceDescriptionId} className="sr-only">
+              {stickyPriceSummaryText}
+            </p>
             {selectedTier ? (
               <>
                 <p className="text-[11px] text-gray-500 truncate">
@@ -2628,9 +2663,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             data-analytics-id="mobile_sticky_reservation"
             data-testid="package-detail-reservation-cta"
           >
-            {selectedDate
-              ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
-              : '예약 문의'}
+            {stickyReservationLabel}
           </button>
         </div>
       </div>
