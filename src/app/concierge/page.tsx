@@ -1483,6 +1483,19 @@ function ResultCard({
   const category = resolveCategory(item);
   const categoryLabel = category === 'DYNAMIC' ? '실시간' : '고정패키지';
   const detailHref = category === 'FIXED' ? `/packages/${encodeURIComponent(item.product_id)}` : null;
+  const actionChecklist = [
+    { label: '추천 이유', value: insight.reason },
+    { label: '주의할 점', value: insight.caution },
+    { label: '추가 비용', value: insight.extraCost },
+    { label: '다음 액션', value: insight.action },
+  ];
+  const actionChecklistSummary = `상담 전 체크: ${actionChecklist.map((item) => `${item.label} ${item.value}`).join(', ')}`;
+  const ctaGridClass = detailHref
+    ? 'grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto]'
+    : 'grid-cols-2 sm:grid-cols-[1fr_1fr_auto]';
+  const kakaoCtaClass = detailHref
+    ? 'flex h-11 w-full items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E] sm:size-11 sm:w-11'
+    : 'col-span-2 flex h-11 w-full items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E] sm:col-span-1 sm:size-11 sm:w-11';
 
   return (
     <article className="flex min-h-[360px] flex-col rounded-[20px] border border-[#E5E7EB] bg-white p-4 shadow-card">
@@ -1521,7 +1534,22 @@ function ResultCard({
           </div>
           <p className="text-right text-[11px] font-bold text-text-secondary">{insight.action}</p>
         </div>
-        <div className={`grid gap-2 ${detailHref ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
+        <div
+          data-testid="concierge-result-action-checklist"
+          aria-label={actionChecklistSummary}
+          className="mb-3 rounded-[16px] border border-[#EEF2F6] bg-[#F8FAFC] p-3"
+        >
+          <p className="text-[11px] font-extrabold text-text-primary">상담 전 체크</p>
+          <dl className="mt-2 grid gap-1.5 text-[11px] leading-5">
+            {actionChecklist.map((check) => (
+              <div key={check.label} className="grid grid-cols-[64px_1fr] gap-2">
+                <dt className="font-bold text-text-secondary">{check.label}</dt>
+                <dd className="line-clamp-1 font-semibold text-text-primary">{check.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <div className={`grid gap-2 ${ctaGridClass}`}>
           {detailHref && (
             <Link
               href={detailHref}
@@ -1559,9 +1587,10 @@ function ResultCard({
             onClick={onConsult}
             aria-label={`${item.product_name} 카카오톡 상담`}
             aria-describedby={summaryId}
-            className="flex size-11 items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E]"
+            className={kakaoCtaClass}
           >
             <MessageCircle size={19} />
+            <span className="ml-1.5 text-[14px] font-bold sm:sr-only">상담</span>
           </button>
         </div>
       </div>

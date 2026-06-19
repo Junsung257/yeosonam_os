@@ -2578,10 +2578,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               ))}
             </div>
           )}
-          <div className="flex items-center gap-2.5">
+          <div className="grid gap-2 md:flex md:items-center md:gap-2.5">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
           <div
-            className="flex-1 min-w-0"
+            className="min-w-0 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2 md:flex-1 md:border-0 md:bg-transparent md:px-0 md:py-0"
             aria-describedby={detailStickyPriceDescriptionId}
             data-testid="package-detail-sticky-price-summary"
           >
@@ -2610,6 +2610,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             )}
           </div>
 
+          <div
+            data-testid="package-detail-sticky-action-grid"
+            className="grid grid-cols-[0.9fr_0.9fr_1.2fr] gap-2 md:flex md:items-center md:gap-2.5"
+          >
           {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
           <button
             type="button"
@@ -2673,9 +2677,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 setTimeout(() => setClipboardToast(false), 4000);
               }
             }}
-            className="h-11 w-11 rounded-full bg-[#FEE500] text-[#3C1E1E] font-bold text-[13px] shadow-sm active:scale-[0.98] transition-all shrink-0 flex items-center justify-center"
+            className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-3 text-[13px] font-bold text-[#3C1E1E] shadow-sm transition-all active:scale-[0.98] md:w-11 md:px-0"
           >
             <span className="text-base leading-none" aria-hidden="true">💬</span>
+            <span className="text-xs font-extrabold md:sr-only">카톡</span>
           </button>
 
           <Link
@@ -2700,7 +2705,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 },
               });
             }}
-            className="h-11 shrink-0 rounded-full border border-slate-300 bg-white px-3 text-xs font-extrabold text-slate-800 shadow-sm transition-all active:scale-[0.98] flex items-center justify-center"
+            className="flex h-11 w-full shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-xs font-extrabold text-slate-800 shadow-sm transition-all active:scale-[0.98] md:w-auto"
             aria-label={`${selectedProductName} 조건으로 맞춤 견적 문의하기`}
             aria-describedby={detailGroupInquiryDescriptionIds}
             data-testid="package-detail-sticky-group-inquiry"
@@ -2713,7 +2718,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           <button
             type="button"
             onClick={(event) => openInquiryForm('detail_sticky_cta', event.currentTarget)}
-            className="h-11 px-5 sm:px-6 rounded-full bg-slate-950 text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
+            className="h-11 w-full shrink-0 rounded-full bg-slate-950 px-3 text-sm font-bold text-white shadow-lg transition-all active:scale-[0.98] md:w-auto md:px-5 lg:px-6"
             aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
             aria-haspopup="dialog"
             aria-expanded={showForm}
@@ -2724,6 +2729,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           >
             {stickyReservationLabel}
           </button>
+          </div>
         </div>
       </div>
 

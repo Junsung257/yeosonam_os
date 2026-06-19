@@ -476,6 +476,17 @@ function CardBody({
   const hasReviews = pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0;
   const showComparisonTrust = !hasReviews && Boolean(comparisonLabel || comparisonSummary);
   const safeComparisonReasons = (comparisonReasons ?? []).slice(0, 3);
+  const availableSeats = Math.max(0, (pkg.seats_held ?? 0) - (pkg.seats_confirmed ?? 0));
+  const proofItems = [
+    nextDate ? `출발 ${nextDate}` : null,
+    duration,
+    airlineName,
+    hasReviews ? `후기 ${Number(pkg.avg_rating).toFixed(1)}(${pkg.review_count})` : null,
+    availableSeats > 0 ? `잔여 ${availableSeats}석` : null,
+  ].filter((item): item is string => Boolean(item)).slice(0, 3);
+  const proofSummaryText = proofItems.length > 0
+    ? `검증 근거: ${proofItems.join(', ')}`
+    : '검증 근거: 상세에서 출발일과 포함 조건 확인';
   return (
     <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
       {/* 목적지 + 일정 메타 */}
@@ -604,6 +615,30 @@ function CardBody({
         <span className="inline-flex h-8 min-w-[76px] shrink-0 items-center justify-center rounded-full bg-brand px-3 text-[12px] font-bold text-white shadow-sm transition-colors group-hover:bg-[#1B64DA]">
           상세 보기
         </span>
+      </div>
+
+      <div
+        data-testid="package-card-proof-strip"
+        aria-label={proofSummaryText}
+        className="mt-2.5 flex items-center gap-1.5 overflow-x-auto pb-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-extrabold text-text-secondary">
+          검증 근거
+        </span>
+        {proofItems.length > 0 ? (
+          proofItems.map((item) => (
+            <span
+              key={item}
+              className="shrink-0 rounded-full border border-border-subtle bg-white px-2 py-0.5 text-[10px] font-bold text-text-secondary"
+            >
+              {item}
+            </span>
+          ))
+        ) : (
+          <span className="shrink-0 rounded-full border border-border-subtle bg-white px-2 py-0.5 text-[10px] font-bold text-text-tertiary">
+            상세 확인
+          </span>
+        )}
       </div>
     </div>
   );

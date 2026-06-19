@@ -290,9 +290,10 @@ export default function PackagesClient() {
   const packageFilterGroupDescriptionId = 'packages-filter-group-description';
   const packageFilterHelpId = 'packages-filter-help';
   const packageFilterSummaryId = 'packages-filter-summary';
+  const packageMobileAppliedFilterSummaryId = 'packages-mobile-applied-filter-summary';
   const packageResultSummaryId = 'packages-result-summary';
   const packageFilterReadinessSummaryId = PACKAGES_FILTER_READINESS_SUMMARY_ID;
-  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageFilterReadinessSummaryId} ${packageResultSummaryId}`;
+  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageMobileAppliedFilterSummaryId} ${packageFilterReadinessSummaryId} ${packageResultSummaryId}`;
   const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
   const compareStatusText = compareIds.length === 0
     ? '비교 상품이 선택되지 않았습니다.'
@@ -531,7 +532,16 @@ export default function PackagesClient() {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
+  const mobileAppliedFilterItems = useMemo(
+    () => filterSummaryItems
+      .filter((item) => item.label !== '결과')
+      .slice(0, 4),
+    [filterSummaryItems],
+  );
   const packageAppliedFilterSummaryText = filterSummaryItems.map((item) => `${item.label} ${item.value}`).join(', ');
+  const packageMobileAppliedFilterSummaryText = mobileAppliedFilterItems.length > 0
+    ? `모바일 적용 조건 ${mobileAppliedFilterItems.length}개: ${mobileAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. 결과 ${filteredPackages.length}개.`
+    : `모바일 적용 조건 없음. 결과 ${filteredPackages.length}개.`;
   const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다. ${primaryFilterReadinessText}`;
   const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
 
@@ -906,6 +916,37 @@ export default function PackagesClient() {
                 {f}
               </button>
             ))}
+          </div>
+          <div
+            id={packageMobileAppliedFilterSummaryId}
+            data-testid="packages-mobile-applied-filter-summary"
+            aria-label={packageMobileAppliedFilterSummaryText}
+            className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+              적용 조건 {mobileAppliedFilterItems.length}
+            </span>
+            <span className="shrink-0 rounded-full border border-[#DCE5F0] bg-white px-2.5 py-1 text-[11px] font-bold text-text-primary">
+              결과 {filteredPackages.length}개
+            </span>
+            {mobileAppliedFilterItems.map((item) => (
+              <span
+                key={`mobile:${item.label}:${item.value}`}
+                className="shrink-0 rounded-full border border-[#E5E7EB] bg-white px-2.5 py-1 text-[11px] font-semibold text-text-secondary"
+              >
+                {item.label} {item.value}
+              </span>
+            ))}
+            {hasActivePackageFilters && (
+              <button
+                type="button"
+                onClick={resetPackageFilters}
+                aria-describedby={packageFilterDescriptionIds}
+                className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-2.5 py-1 text-[11px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
+              >
+                초기화
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -217,8 +217,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const homeAiConsultDescriptionId = 'home-hero-ai-consult-description';
   const groupInquiryActionId = 'home-hero-group-inquiry-action';
   const groupInquirySummaryId = 'home-hero-group-inquiry-summary';
+  const groupInquiryReadinessId = 'home-hero-group-inquiry-readiness';
   const packageSearchDescriptionIds = `${packageSearchActionId} ${packageSearchSummaryId}`;
-  const groupInquiryDescriptionIds = `${groupInquiryActionId} ${groupInquirySummaryId}`;
+  const groupInquiryDescriptionIds = `${groupInquiryActionId} ${groupInquirySummaryId} ${groupInquiryReadinessId}`;
   const packageSearchSummary = useMemo(() => {
     const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
     const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
@@ -231,6 +232,19 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
     const budget = budgetPreset === 'any' ? '예산 미정' : budgetLabel;
     return `${hubSlotLabel(hub)} 출발, ${when}, ${destination}, ${budget} 조건으로 단체 견적을 문의합니다.`;
   }, [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset]);
+  const groupInquiryReadinessChecklist = [
+    { label: '출발지', complete: Boolean(hub) },
+    { label: '일정', complete: Boolean(whenDisplayLabel || monthParam) },
+    { label: '목적지', complete: whereMode !== 'any' && Boolean(whereMode === 'city' ? whereCity : whereRegion) },
+    { label: '예산', complete: budgetPreset !== 'any' },
+  ];
+  const groupInquiryReadyCount = groupInquiryReadinessChecklist.filter((item) => item.complete).length;
+  const groupInquiryMissingLabels = groupInquiryReadinessChecklist
+    .filter((item) => !item.complete)
+    .map((item) => item.label);
+  const groupInquiryReadinessText = groupInquiryMissingLabels.length > 0
+    ? `단체 견적 전달 준비 ${groupInquiryReadyCount}/${groupInquiryReadinessChecklist.length}. 보완하면 좋은 조건: ${groupInquiryMissingLabels.join(', ')}.`
+    : `단체 견적 전달 준비 ${groupInquiryReadyCount}/${groupInquiryReadinessChecklist.length}. 바로 견적 문의로 넘길 수 있습니다.`;
 
   useEffect(() => {
     if (step === null) return;
@@ -370,6 +384,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         <p id={groupInquirySummaryId} className="sr-only">
           {groupInquirySummary}
         </p>
+        <p id={groupInquiryReadinessId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {groupInquiryReadinessText}
+        </p>
         <button
           type="button"
           onClick={() => setExpanded(true)}
@@ -408,6 +425,16 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             <span aria-hidden>🤖</span>AI 여행 상담
           </button>
         </div>
+        <div
+          data-testid="home-hero-group-inquiry-readiness"
+          aria-label={groupInquiryReadinessText}
+          className="mx-auto flex max-w-max items-center gap-2 rounded-full border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-bold text-text-secondary shadow-sm"
+        >
+          <span className="text-text-primary">견적 준비 {groupInquiryReadyCount}/{groupInquiryReadinessChecklist.length}</span>
+          <span className="font-medium">
+            {groupInquiryMissingLabels.length > 0 ? `보완: ${groupInquiryMissingLabels.join(', ')}` : '바로 문의 가능'}
+          </span>
+        </div>
       </div>
     );
   }
@@ -428,6 +455,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
       </p>
       <p id={groupInquirySummaryId} className="sr-only">
         {groupInquirySummary}
+      </p>
+      <p id={groupInquiryReadinessId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {groupInquiryReadinessText}
       </p>
       <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4 shadow-[0_12px_40px_rgba(49,130,246,0.08)]">
         <p className="text-[16px] md:text-[17px] leading-[1.75] text-text-primary tracking-[-0.03em]">
@@ -474,6 +504,16 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         </Link>
 
         {children}
+        <div
+          data-testid="home-hero-group-inquiry-readiness"
+          aria-label={groupInquiryReadinessText}
+          className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-[12px] font-bold text-text-secondary"
+        >
+          <span className="shrink-0 text-text-primary">견적 준비 {groupInquiryReadyCount}/{groupInquiryReadinessChecklist.length}</span>
+          <span className="min-w-0 truncate text-right font-medium">
+            {groupInquiryMissingLabels.length > 0 ? `보완: ${groupInquiryMissingLabels.join(', ')}` : '바로 문의 가능'}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
