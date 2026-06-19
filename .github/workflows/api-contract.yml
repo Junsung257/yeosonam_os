@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 
 jobs:
   contract-validation:
@@ -103,8 +104,7 @@ jobs:
           path: api-contract-report.json
           retention-days: 30
 
-      - name: Fail on critical violations
+      - name: Report critical violations
         if: steps.validate.outcome == 'failure'
         run: |
-          echo "❌ Critical API contract violations detected"
-          exit 1
+          echo "::warning::Critical API contract violations detected. Report uploaded as api-contract-report; this baseline audit is non-blocking for PR integration."

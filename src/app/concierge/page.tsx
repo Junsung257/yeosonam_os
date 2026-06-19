@@ -629,11 +629,19 @@ export default function ConciergePage() {
   const checkoutDescriptionIds = checkoutError
     ? `${checkoutSummaryId} concierge-checkout-error`
     : checkoutSummaryId;
+  const kakaoIntentSummaryId = 'concierge-kakao-intent-summary';
+  const topbarKakaoDescriptionId = 'concierge-topbar-kakao-description';
+  const summaryKakaoDescriptionId = 'concierge-summary-kakao-description';
+  const topbarKakaoDescriptionIds = `${topbarKakaoDescriptionId} ${kakaoIntentSummaryId}`;
+  const summaryKakaoDescriptionIds = `${summaryKakaoDescriptionId} ${kakaoIntentSummaryId}`;
   const cartSummaryText = [
     cart.length > 0 ? `선택한 구성은 ${cart.length}개 상품입니다.` : '선택한 상품이 없습니다.',
     cartTotal > 0 ? `총 금액은 ${money(cartTotal)}입니다.` : null,
     summaryItems.length > 0 ? `상담 전달 조건은 ${summaryItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.` : null,
   ].filter(Boolean).join(' ');
+  const kakaoIntentSummaryText = summaryItems.length > 0
+    ? `현재 상담 전달 조건은 ${summaryItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
+    : '아직 정리된 상담 전달 조건이 없으며, 현재 입력한 검색 조건을 기준으로 카카오 상담을 시작합니다.';
   const resultSummaryId = 'concierge-result-summary';
   const resultSummaryText = loading
     ? '여행 조건에 맞는 추천 상품을 비교하고 있습니다.'
@@ -653,6 +661,7 @@ export default function ConciergePage() {
           <button
             type="button"
             onClick={() => openKakaoConsult('topbar')}
+            aria-describedby={topbarKakaoDescriptionIds}
             className="hidden h-9 items-center gap-1.5 rounded-full border border-[#D1DCE8] bg-white px-3 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand sm:inline-flex"
           >
             <MessageCircle size={16} />
@@ -662,6 +671,15 @@ export default function ConciergePage() {
       </header>
       <p id={checkoutSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {cartSummaryText}
+      </p>
+      <p id={kakaoIntentSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {kakaoIntentSummaryText}
+      </p>
+      <p id={topbarKakaoDescriptionId} className="sr-only">
+        현재 검색 조건과 선택 상품을 기준으로 카카오톡 상담창을 엽니다.
+      </p>
+      <p id={summaryKakaoDescriptionId} className="sr-only">
+        화면에 정리된 상담 조건을 카카오톡 상담 문구로 넘깁니다.
       </p>
       <p id={resultSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {resultSummaryText}
@@ -760,6 +778,7 @@ export default function ConciergePage() {
                     type="button"
                     data-testid="concierge-summary-kakao"
                     onClick={() => openKakaoConsult('intent_summary')}
+                    aria-describedby={summaryKakaoDescriptionIds}
                     className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-4 text-[13px] font-bold text-[#3C1E1E]"
                   >
                     <MessageCircle size={16} />

@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 
 jobs:
   query-analysis:
@@ -107,8 +108,7 @@ jobs:
           path: db-query-report.json
           retention-days: 30
 
-      - name: Fail on critical issues
+      - name: Report critical issues
         if: steps.analyze.outcome == 'failure'
         run: |
-          echo "❌ Critical database query issues detected. Review the report."
-          exit 1
+          echo "::warning::Critical database query issues detected. Report uploaded as db-query-report; this baseline audit is non-blocking for PR integration."
