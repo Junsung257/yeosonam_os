@@ -132,14 +132,12 @@ function removeOwnedDistDir(server) {
 function lingeringNextDevServerPids(server) {
   if (process.platform === 'win32') return [];
   const root = server.root || process.cwd();
-  const port = String(server.port || '');
   const result = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' });
   return String(result.stdout || '')
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter((line) =>
       line.includes(root) &&
-      (!port || line.includes(port)) &&
       (/\bnpm\b.*\brun\b.*\bdev\b/.test(line) || /\bnext\b.*\bdev\b/.test(line) || line.includes('start-server.js'))
     )
     .map((line) => Number(line.split(/\s+/, 1)[0]))
@@ -164,6 +162,10 @@ async function stopLingeringNextDevServers(server) {
     } catch {
       // Best effort cleanup.
     }
+  }
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    if (pids.every((pid) => !isProcessAlive(pid))) return;
+    await sleep(250);
   }
 }
 
