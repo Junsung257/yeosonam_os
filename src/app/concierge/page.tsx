@@ -1603,7 +1603,9 @@ function ResultCard({
     { label: '추가 비용', value: insight.extraCost },
     { label: '다음 액션', value: insight.action },
   ];
+  const actionChecklistId = `concierge-result-action-checklist-${item.product_id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
   const actionChecklistSummary = `상담 전 체크: ${actionChecklist.map((item) => `${item.label} ${item.value}`).join(', ')}`;
+  const resultActionDescriptionIds = `${summaryId} ${actionChecklistId}`;
   const ctaGridClass = detailHref
     ? 'grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto]'
     : 'grid-cols-2 sm:grid-cols-[1fr_1fr_auto]';
@@ -1649,6 +1651,7 @@ function ResultCard({
           <p className="text-right text-[11px] font-bold text-text-secondary">{insight.action}</p>
         </div>
         <div
+          id={actionChecklistId}
           data-testid="concierge-result-action-checklist"
           aria-label={actionChecklistSummary}
           className="mb-3 rounded-[16px] border border-[#EEF2F6] bg-[#F8FAFC] p-3"
@@ -1669,7 +1672,7 @@ function ResultCard({
               href={detailHref}
               onClick={onViewDetail}
               aria-label={`${item.product_name} 상세 보기`}
-              aria-describedby={summaryId}
+              aria-describedby={resultActionDescriptionIds}
               className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
             >
               상세 보기
@@ -1680,7 +1683,7 @@ function ResultCard({
             onClick={onGroupInquiry}
             data-testid="concierge-result-group-inquiry"
             aria-label={`${item.product_name} 단체 견적 문의`}
-            aria-describedby={summaryId}
+            aria-describedby={resultActionDescriptionIds}
             className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
           >
             견적
@@ -1690,7 +1693,7 @@ function ResultCard({
             onClick={onAdd}
             data-testid="concierge-result-add"
             aria-label={`${item.product_name} 담기`}
-            aria-describedby={summaryId}
+            aria-describedby={resultActionDescriptionIds}
             className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark"
           >
             <Plus size={17} />
@@ -1700,7 +1703,7 @@ function ResultCard({
             type="button"
             onClick={onConsult}
             aria-label={`${item.product_name} 카카오톡 상담`}
-            aria-describedby={summaryId}
+            aria-describedby={resultActionDescriptionIds}
             className={kakaoCtaClass}
           >
             <MessageCircle size={19} />
