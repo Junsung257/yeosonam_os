@@ -1019,16 +1019,35 @@ export default function PackagesClient() {
         <div
           data-testid="packages-filter-readiness-summary"
           aria-label={primaryFilterReadinessText}
-          className="mt-2 flex items-center justify-between gap-3 rounded-[14px] border border-[#DCE5F0] bg-white px-3 py-2"
+          className="mt-2 rounded-[14px] border border-[#DCE5F0] bg-white px-3 py-2"
         >
-          <span className="shrink-0 text-[12px] font-extrabold text-text-primary">
-            핵심 조건 준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
-          </span>
-          <span className="min-w-0 truncate text-right text-[12px] font-semibold text-text-secondary">
-            {primaryFilterMissingLabels.length > 0
-              ? `보완 추천: ${primaryFilterMissingLabels.join(', ')}`
-              : '상담 전달 준비 완료'}
-          </span>
+          <div className="flex items-center justify-between gap-3">
+            <span className="shrink-0 text-[12px] font-extrabold text-text-primary">
+              핵심 조건 준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+            </span>
+            <span className="min-w-0 truncate text-right text-[12px] font-semibold text-text-secondary">
+              {primaryFilterMissingLabels.length > 0
+                ? `보완 추천: ${primaryFilterMissingLabels.join(', ')}`
+                : '상담 전달 준비 완료'}
+            </span>
+          </div>
+          <div
+            className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar"
+            data-testid="packages-filter-readiness-chips"
+          >
+            {primaryFilterChecklist.map((item) => (
+              <span
+                key={`primary-filter:${item.label}`}
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                  item.complete
+                    ? 'border-brand/20 bg-brand-light text-brand'
+                    : 'border-[#E5E7EB] bg-[#F8FAFC] text-text-secondary'
+                }`}
+              >
+                {item.complete ? '완료' : '추천'} · {item.label}
+              </span>
+            ))}
+          </div>
         </div>
         <div
           data-testid="packages-handoff-preview"
