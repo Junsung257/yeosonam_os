@@ -628,9 +628,10 @@ export default function ConciergePage() {
     { label: '담은 상품', value: selectedProductCount > 0 ? `${selectedProductCount}개` : null },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const checkoutSummaryId = 'concierge-checkout-summary';
+  const checkoutHandoffSummaryId = 'concierge-checkout-handoff-summary';
   const checkoutDescriptionIds = checkoutError
-    ? `${checkoutSummaryId} concierge-checkout-error`
-    : checkoutSummaryId;
+    ? `${checkoutSummaryId} ${checkoutHandoffSummaryId} concierge-checkout-error`
+    : `${checkoutSummaryId} ${checkoutHandoffSummaryId}`;
   const handoffReadinessSummaryId = 'concierge-handoff-readiness-summary';
   const handoffChecklist = [
     { label: '목적', complete: Boolean(activePrompt || intentSummary.intent || query.trim()) },
@@ -1238,6 +1239,32 @@ export default function ConciergePage() {
                   <span className="font-extrabold text-text-primary">{money(cartTotal)}</span>
                 </div>
                 <p className="mt-1 text-[12px] text-text-secondary">{cart.length}개 상품</p>
+              </div>
+
+              <div
+                id={checkoutHandoffSummaryId}
+                data-testid="concierge-checkout-handoff-summary"
+                className="rounded-[14px] border border-[#E5E7EB] bg-white p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-extrabold text-text-secondary">상담 전달 조건</p>
+                    <p className="mt-1 text-[12px] font-semibold leading-5 text-text-primary">{handoffReadinessText}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+                    {handoffReadyCount}/{handoffChecklist.length}
+                  </span>
+                </div>
+                {summaryItems.length > 0 && (
+                  <dl className="mt-3 grid grid-cols-2 gap-2">
+                    {summaryItems.slice(0, 4).map((item) => (
+                      <div key={`checkout:${item.label}`} className="min-w-0 rounded-[10px] bg-[#F8FAFC] px-2.5 py-2">
+                        <dt className="text-[10px] font-bold text-text-secondary">{item.label}</dt>
+                        <dd className="mt-0.5 truncate text-[12px] font-extrabold text-text-primary">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
               </div>
 
               {checkoutError && (

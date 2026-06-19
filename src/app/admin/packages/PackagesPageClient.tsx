@@ -1844,6 +1844,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   }, [packages, statusFilter, searchQuery, sortBy, showExpired]);
 
   // Shift+Click 지원 체크박스 토글
+  const selectedPackagesForBulk = useMemo(
+    () => filtered.filter(pkg => checkedIds.has(pkg.id)),
+    [checkedIds, filtered],
+  );
+  const bulkApprovableCount = selectedPackagesForBulk.filter(pkg => pkg.status === 'pending' || pkg.status === 'rejected').length;
+  const bulkArchivableCount = selectedPackagesForBulk.filter(pkg => pkg.status !== 'archived' && pkg.status !== 'INACTIVE').length;
+  const bulkRestorableCount = selectedPackagesForBulk.filter(pkg => pkg.status === 'archived' || pkg.status === 'INACTIVE').length;
+  const bulkActionSummaryId = 'admin-package-bulk-action-summary';
+  const bulkActionSummaryText = `선택 ${checkedIds.size}건. 승인 가능 ${bulkApprovableCount}건, 아카이브 가능 ${bulkArchivableCount}건, 복원 가능 ${bulkRestorableCount}건. 랜드사와 커미션은 선택 상품에 일괄 적용됩니다.`;
+  const bulkActionDescriptionIds = `${bulkActionSummaryId} admin-package-bulk-status`;
+
   const handleHeaderSort = (field: string) => {
     setSortBy(prev => {
       if (prev === `${field}_asc`) return `${field}_desc`;
@@ -2200,14 +2211,23 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         {bulkStatusMessage}
       </p>
       {checkedIds.size > 0 && (
-        <div className="flex items-center gap-2 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
-          <span className="text-admin-sm font-medium text-blue-700">{checkedIds.size}개 선택됨</span>
+        <div className="flex flex-wrap items-center gap-2 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+          <div className="min-w-[180px] flex-1">
+            <span className="text-admin-sm font-medium text-blue-700">{checkedIds.size}개 선택됨</span>
+            <p
+              id={bulkActionSummaryId}
+              data-testid="admin-package-bulk-action-summary"
+              className="mt-0.5 text-[11px] font-semibold text-blue-700/80"
+            >
+              {bulkActionSummaryText}
+            </p>
+          </div>
           <button
             type="button"
             onClick={() => { setBulkLandOperator(''); setBulkCommission(''); setBulkEditOpen(true); }}
             disabled={bulkLoading}
             aria-busy={bulkLoading}
-            aria-describedby="admin-package-bulk-status"
+            aria-describedby={bulkActionDescriptionIds}
             className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
           >일괄 수정</button>
           <button
@@ -2215,7 +2235,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             onClick={() => handleBulk('bulk_approve')}
             disabled={bulkLoading}
             aria-busy={bulkLoading}
-            aria-describedby="admin-package-bulk-status"
+            aria-describedby={bulkActionDescriptionIds}
             className="px-2.5 py-1 bg-green-600 text-white rounded-lg text-[11px] font-medium hover:bg-green-700 disabled:opacity-50"
           >일괄 승인</button>
           <button
@@ -2223,7 +2243,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             onClick={() => handleBulk('bulk_archive')}
             disabled={bulkLoading}
             aria-busy={bulkLoading}
-            aria-describedby="admin-package-bulk-status"
+            aria-describedby={bulkActionDescriptionIds}
             className="px-2.5 py-1 bg-slate-500 text-white rounded-lg text-[11px] font-medium hover:bg-slate-600 disabled:opacity-50"
           >아카이브</button>
           {statusFilter === 'archived' && (
@@ -2232,7 +2252,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               onClick={() => handleBulk('bulk_restore')}
               disabled={bulkLoading}
               aria-busy={bulkLoading}
-              aria-describedby="admin-package-bulk-status"
+              aria-describedby={bulkActionDescriptionIds}
               className="px-2.5 py-1 bg-blue-500 text-white rounded-lg text-[11px] font-medium hover:bg-blue-600 disabled:opacity-50"
             >복원</button>
           )}
@@ -2669,6 +2689,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             role="dialog"
             aria-modal="true"
             aria-labelledby="packages-bulk-edit-title"
+            aria-describedby={bulkActionSummaryId}
             className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col"
           >
             <div className="p-6 border-b border-admin-border-mid">
@@ -2718,7 +2739,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 onClick={handleBulkEdit}
                 disabled={bulkLoading || (!bulkLandOperator && bulkCommission === '')}
                 aria-busy={bulkLoading}
-                aria-describedby="admin-package-bulk-status"
+                aria-describedby={bulkActionDescriptionIds}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
               >{bulkLoading ? '저장 중...' : '일괄 저장'}</button>
             </div>

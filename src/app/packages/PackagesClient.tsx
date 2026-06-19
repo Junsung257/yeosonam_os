@@ -286,6 +286,7 @@ export default function PackagesClient() {
   );
   const compareStatusId = 'packages-compare-selection-status';
   const compareHelpId = 'packages-compare-help';
+  const compareHandoffSummaryId = 'packages-compare-handoff-summary';
   const packageFilterGroupTitleId = 'packages-filter-title';
   const packageFilterGroupDescriptionId = 'packages-filter-group-description';
   const packageFilterHelpId = 'packages-filter-help';
@@ -295,6 +296,7 @@ export default function PackagesClient() {
   const packageFilterReadinessSummaryId = PACKAGES_FILTER_READINESS_SUMMARY_ID;
   const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageMobileAppliedFilterSummaryId} ${packageFilterReadinessSummaryId} ${packageResultSummaryId}`;
   const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
+  const compareActionDescriptionIds = `${compareDescriptionIds} ${compareHandoffSummaryId}`;
   const compareStatusText = compareIds.length === 0
     ? '비교 상품이 선택되지 않았습니다.'
     : compareIds.length === 1
@@ -482,6 +484,9 @@ export default function PackagesClient() {
   const packageHandoffPreviewText = packageHandoffPreviewItems.length > 0
     ? `견적 문의 전달 조건: ${packageHandoffPreviewItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${primaryFilterReadinessText}`
     : `견적 문의 전달 조건이 아직 없습니다. ${primaryFilterReadinessText}`;
+  const compareHandoffSummaryText = selectedProductNames.length > 0
+    ? `비교 선택 상품이 상담 전달에 포함됩니다: ${selectedProductNames.join(' / ')}. ${primaryFilterReadinessText}`
+    : `비교 상품 ${compareIds.length}개가 선택되었습니다. ${primaryFilterReadinessText}`;
   const stickyHandoffItems = useMemo(
     () => filterSummaryItems
       .filter((item) => item.label !== '결과')
@@ -1330,20 +1335,35 @@ export default function PackagesClient() {
       </div>
 
       {compareIds.length > 0 && (
-        <div className="fixed bottom-32 md:bottom-[88px] left-1/2 -translate-x-1/2 z-40">
-          <div className="bg-white shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-200 rounded-full px-4 py-2 flex items-center gap-3">
+        <div className="fixed bottom-32 md:bottom-[88px] left-1/2 z-40 w-[min(calc(100vw-2rem),680px)] -translate-x-1/2">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
+            <p
+              id={compareHandoffSummaryId}
+              data-testid="packages-compare-handoff-summary"
+              className="min-w-[220px] flex-1 text-[11px] font-semibold leading-4 text-text-secondary"
+            >
+              {compareHandoffSummaryText}
+            </p>
             <span className="text-[13px] font-medium text-text-secondary whitespace-nowrap">
               {compareIds.length}개 선택됨
             </span>
             <button
               type="button"
               onClick={clearCompare}
-              aria-describedby={compareDescriptionIds}
+              aria-describedby={compareActionDescriptionIds}
               className="text-[12px] font-medium text-text-body hover:text-danger transition"
             >
               해제
             </button>
             <div className="w-px h-4 bg-gray-200" />
+            <Link
+              href={groupInquiryHref}
+              data-testid="packages-compare-group-inquiry"
+              aria-describedby={compareActionDescriptionIds}
+              className="px-3 py-1.5 text-[13px] font-bold text-brand transition hover:text-brand-dark"
+            >
+              상담 전달
+            </Link>
             <button
               type="button"
               data-testid="packages-compare-open"
@@ -1351,7 +1371,7 @@ export default function PackagesClient() {
               aria-haspopup="dialog"
               aria-expanded={compareOpen}
               aria-controls="packages-compare-dialog"
-              aria-describedby={compareDescriptionIds}
+              aria-describedby={compareActionDescriptionIds}
               onClick={() => {
                 setCompareOpen(true);
                 trackScoreSignal({
@@ -1375,6 +1395,8 @@ export default function PackagesClient() {
         <SimpleCompareModal
           a={comparePackages[0]!}
           b={comparePackages[1]!}
+          groupInquiryHref={groupInquiryHref}
+          handoffSummaryText={compareHandoffSummaryText}
           onClose={() => { setCompareOpen(false); }}
         />
       )}
@@ -1386,10 +1408,14 @@ export default function PackagesClient() {
 function SimpleCompareModal({
   a,
   b,
+  groupInquiryHref,
+  handoffSummaryText,
   onClose,
 }: {
   a: Package;
   b: Package;
+  groupInquiryHref: string;
+  handoffSummaryText: string;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -1455,6 +1481,8 @@ function SimpleCompareModal({
     { label: '출발공항', va: a.departure_airport || '-', vb: b.departure_airport || '-' },
     { label: '평점', va: a.avg_rating ? `★ ${Number(a.avg_rating).toFixed(1)}` : '-', vb: b.avg_rating ? `★ ${Number(b.avg_rating).toFixed(1)}` : '-' },
   ];
+  const compareDialogHandoffSummaryId = 'package-compare-dialog-handoff-summary';
+  const compareDialogDescriptionIds = `package-compare-description ${compareDialogHandoffSummaryId}`;
 
   return (
     <div
@@ -1463,7 +1491,7 @@ function SimpleCompareModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="package-compare-title"
-      aria-describedby="package-compare-description"
+      aria-describedby={compareDialogDescriptionIds}
       data-testid="packages-compare-dialog"
     >
       <button type="button" className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="상품 비교 닫기" onClick={onClose} />
@@ -1477,6 +1505,13 @@ function SimpleCompareModal({
         <div className="overflow-y-auto px-4 py-4 space-y-3">
           <p id="package-compare-description" className="sr-only">
             선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 같은 기준으로 비교합니다.
+          </p>
+          <p
+            id={compareDialogHandoffSummaryId}
+            data-testid="package-compare-dialog-handoff-summary"
+            className="rounded-xl bg-brand-light px-3 py-2 text-[12px] font-semibold leading-5 text-brand"
+          >
+            {handoffSummaryText}
           </p>
           <div className="grid grid-cols-2 gap-3 mb-2">
             <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
@@ -1503,6 +1538,14 @@ function SimpleCompareModal({
           </Link>
           <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
             상세보기
+          </Link>
+          <Link
+            href={groupInquiryHref}
+            data-testid="package-compare-dialog-group-inquiry"
+            aria-describedby={compareDialogHandoffSummaryId}
+            className="col-span-2 text-center py-2.5 rounded-xl bg-brand text-white text-[13px] font-bold hover:bg-brand-dark transition"
+          >
+            비교 상품으로 상담 전달
           </Link>
         </div>
       </div>

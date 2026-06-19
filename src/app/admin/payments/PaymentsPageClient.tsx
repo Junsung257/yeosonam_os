@@ -870,6 +870,28 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     ).length,
     [transactions]
   );
+  const selectedPaymentsForBulk = useMemo(
+    () => filtered.filter(tx => checkedTxIds.has(tx.id)),
+    [checkedTxIds, filtered],
+  );
+  const bulkTrashReviewCount = selectedPaymentsForBulk.filter(tx => tx.match_status === 'review').length;
+  const bulkTrashUnmatchedCount = selectedPaymentsForBulk.filter(tx => tx.match_status === 'unmatched' || tx.match_status === 'error').length;
+  const bulkTrashMatchedCount = selectedPaymentsForBulk.filter(tx => tx.match_status === 'auto' || tx.match_status === 'manual').length;
+  const bulkTrashOutflowCount = selectedPaymentsForBulk.filter(isOutflowTx).length;
+  const bulkTrashHiddenCount = Math.max(0, checkedTxIds.size - selectedPaymentsForBulk.length);
+  const bulkTrashSummaryId = 'admin-payment-bulk-trash-summary';
+  const bulkTrashStatusId = 'admin-payment-bulk-trash-status';
+  const bulkTrashDescriptionIds = `${bulkTrashSummaryId} ${bulkTrashStatusId}`;
+  const bulkTrashSummaryText = [
+    `선택 ${checkedTxIds.size}건`,
+    `현재 화면 ${selectedPaymentsForBulk.length}건`,
+    `검토 ${bulkTrashReviewCount}건`,
+    `미매칭 ${bulkTrashUnmatchedCount}건`,
+    `매칭완료 ${bulkTrashMatchedCount}건`,
+    `출금/환불 ${bulkTrashOutflowCount}건`,
+    bulkTrashHiddenCount > 0 ? `다른 필터 선택 ${bulkTrashHiddenCount}건 포함` : null,
+    '휴지통으로 이동됩니다.',
+  ].filter(Boolean).join('. ');
 
   const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
     const queueCounts: Record<PaymentQueueKey, number> = {
@@ -1800,12 +1822,29 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       ) : (
         <>
         {checkedTxIds.size > 0 && (
-          <div className="flex items-center gap-3 bg-slate-800 text-white px-4 py-2 rounded-lg mb-2">
+          <div
+            className="flex flex-wrap items-center gap-3 bg-slate-800 text-white px-4 py-2 rounded-lg mb-2"
+            aria-describedby={bulkTrashDescriptionIds}
+            data-testid="admin-payment-bulk-trash-toolbar"
+          >
+            <div className="min-w-[220px] flex-1">
+              <p
+                id={bulkTrashSummaryId}
+                data-testid="admin-payment-bulk-trash-summary"
+                className="text-[11px] font-semibold text-white/70"
+              >
+                {bulkTrashSummaryText}
+              </p>
+              <p id={bulkTrashStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+                {bulkDeleting ? '선택한 결제 거래를 휴지통으로 이동하고 있습니다.' : bulkTrashSummaryText}
+              </p>
+            </div>
             <span className="text-admin-sm font-medium">{checkedTxIds.size}건 선택</span>
             <button
               type="button"
               disabled={bulkDeleting}
               aria-busy={bulkDeleting}
+              aria-describedby={bulkTrashDescriptionIds}
               onClick={async () => {
                 if (!confirm(checkedTxIds.size + '건을 휴지통으로 이동하시겠습니까?')) return;
                 setBulkDeleting(true);
@@ -1828,6 +1867,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               {bulkDeleting ? '처리 중...' : '일괄 삭제'}
             </button>
             <button type="button" onClick={() => setCheckedTxIds(new Set())}
+              aria-describedby={bulkTrashDescriptionIds}
               className="px-3 py-1 bg-slate-600 hover:bg-slate-500 text-white text-admin-xs rounded transition">
               선택 해제
             </button>
