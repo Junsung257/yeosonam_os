@@ -564,10 +564,17 @@ function TodayWorkQueue({
   const activeRows = rows.filter(row => row.count > 0);
   const visibleRows = activeRows.length > 0 ? activeRows : rows;
   const priorityRow = activeRows[0];
+  const urgentRows = activeRows.filter(row => row.tone === 'danger' || row.tone === 'warn');
+  const clearRowsCount = rows.length - activeRows.length;
+  const workQueueHealthItems = [
+    { label: '활성 업무', value: `${activeRows.length}/${rows.length}`, tone: activeRows.length > 0 ? 'warn' : 'good' },
+    { label: '위험/주의', value: `${urgentRows.length}개`, tone: urgentRows.length > 0 ? 'danger' : 'good' },
+    { label: '정리됨', value: `${clearRowsCount}개`, tone: clearRowsCount === rows.length ? 'good' : 'neutral' },
+  ] as const;
   const workQueueSummaryId = 'admin-today-work-summary';
   const workQueueLeadId = 'admin-today-work-lead';
   const workQueueSummaryText = total > 0
-    ? `오늘 처리할 일이 ${total}건 있습니다. ${activeRows.map(row => `${row.label} ${row.count}건`).join(', ')} 순서로 확인할 수 있습니다.`
+    ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length}개입니다. ${activeRows.map(row => `${row.label} ${row.count}건`).join(', ')} 순서로 확인할 수 있습니다.`
     : '오늘 처리할 일이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
   const workQueueLeadText = priorityRow
     ? `우선 처리: ${priorityRow.label} ${priorityRow.count}건. 다음 액션은 ${priorityRow.action}입니다.`
@@ -601,6 +608,30 @@ function TodayWorkQueue({
       >
         {workQueueLeadText}
       </p>
+      <div
+        className="mt-3 grid grid-cols-3 gap-2"
+        data-testid="admin-today-work-health"
+        aria-label={`오늘 업무 상태: 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 ${urgentRows.length}개, 정리됨 ${clearRowsCount}개`}
+      >
+        {workQueueHealthItems.map(item => (
+          <div
+            key={item.label}
+            data-testid="admin-today-work-health-item"
+            className={`rounded-admin-sm border px-2.5 py-2 ${
+              item.tone === 'danger'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : item.tone === 'warn'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : item.tone === 'good'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-admin-border-mid bg-admin-bg text-admin-text-2'
+            }`}
+          >
+            <p className="text-[10px] font-semibold text-current/65">{item.label}</p>
+            <p className="mt-0.5 text-[14px] font-black tabular-nums">{item.value}</p>
+          </div>
+        ))}
+      </div>
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
         {visibleRows.map(row => {
           const rowDescriptionId = `admin-today-work-${row.label.replace(/\s+/g, '-')}-description`;
