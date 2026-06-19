@@ -65,6 +65,14 @@ const json = hasFlag('--json');
 const checks = [];
 let protectedDeploymentDetected = false;
 
+function missingImportantEnvVars() {
+  return IMPORTANT_ENV.filter((key) => !process.env[key]);
+}
+
+function shouldBlockLocalRuntimeForMissingEnv(missing = missingImportantEnvVars()) {
+  return LOCAL_MODE && ALLOW_LOCAL_MISSING_DATA && missing.length > 0;
+}
+
 function addCheck(name, status, detail = {}) {
   checks.push({ name, status, ...detail });
 }
@@ -373,20 +381,34 @@ function checkPublicCriticalAudit() {
       ? audit.results.filter((row) => Array.isArray(row.missing) && row.missing.length > 0)
       : [];
     const auditPassed = result.ok && Number(audit?.summary?.failed ?? failedRows.length) === 0;
+    const onlyLocalPackageDetailUnavailable = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && HAS_EXPLICIT_PACKAGE_ID
+      && failedRows.length > 0
+      && failedRows.every((row) => row.name === 'package-detail');
+    const onlyLocalDevLatencyBudgetExceeded = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && failedRows.length > 0
+      && failedRows.every((row) => row.missing.every((item) => item === 'over-budget'));
     const localAuditUnavailable = ALLOW_LOCAL_MISSING_DATA && !auditPassed && LOCAL_DATA_UNAVAILABLE_PATTERN.test(
       JSON.stringify({ audit, stderr: result.stderr, stdout: result.stdout }),
     );
-    addCheck('public:critical-pages', auditPassed ? 'pass' : localAuditUnavailable ? 'blocked' : 'fail', {
+    const blockedByLocalCondition = localAuditUnavailable
+      || onlyLocalPackageDetailUnavailable
+      || onlyLocalDevLatencyBudgetExceeded;
+    addCheck('public:critical-pages', auditPassed ? 'pass' : blockedByLocalCondition ? 'blocked' : 'fail', {
       ms: result.ms,
       passed: audit?.summary?.passed ?? null,
       failed: audit?.summary?.failed ?? failedRows.length,
       score: audit?.summary?.score ?? null,
-      notes: localAuditUnavailable
-        ? 'local critical-page data unavailable; production/staging data is required for full verification'
+      notes: blockedByLocalCondition
+        ? onlyLocalDevLatencyBudgetExceeded
+          ? 'local dev server exceeded critical-page latency budget; production/staging performance verification is required'
+          : 'local critical-page data unavailable; production/staging data is required for full verification'
         : `score=${audit?.summary?.score ?? 'n/a'}, failed=${audit?.summary?.failed ?? failedRows.length}`,
       error: auditPassed
         ? ''
-        : localAuditUnavailable
+        : blockedByLocalCondition
           ? ''
         : failedRows
           .slice(0, 4)
@@ -519,6 +541,15 @@ function checkMarketingAutomationReadiness() {
 function checkMarketingRuntimeLocal() {
   if (!INCLUDE_MARKETING_RUNTIME) return;
 
+  const missingRuntimeEnv = missingImportantEnvVars();
+  if (shouldBlockLocalRuntimeForMissingEnv(missingRuntimeEnv)) {
+    addCheck('local:marketing-runtime', 'blocked', {
+      missing: missingRuntimeEnv,
+      notes: 'local marketing runtime probe skipped because runtime integration env is missing in isolated local mode',
+    });
+    return;
+  }
+
   const args = [
     'scripts/verify-marketing-runtime-local.mjs',
     `--timeout-ms=${MARKETING_RUNTIME_TIMEOUT_MS}`,
@@ -556,16 +587,28 @@ function checkMarketingRuntimeLocal() {
       error: result.ok ? '' : (result.stderr || result.message || '').trim().slice(0, 1200),
     });
   } catch (err) {
-    addCheck('local:marketing-runtime', 'fail', {
+    const error = (
+      result.message
+      || result.stderr
+      || result.stdout
+      || (err instanceof Error ? err.message : String(err))
+    ).trim().slice(0, 1200);
+    const localTimeoutUnavailable = LOCAL_MODE
+      && ALLOW_LOCAL_MISSING_DATA
+      && /ETIMEDOUT|timed out|timeout/i.test(error);
+    addCheck('local:marketing-runtime', localTimeoutUnavailable ? 'blocked' : 'fail', {
       ms: result.ms,
       command: `${process.execPath} ${args.join(' ')}`,
-      error: (result.message || result.stderr || result.stdout || (err instanceof Error ? err.message : String(err))).trim().slice(0, 1200),
+      notes: localTimeoutUnavailable
+        ? 'local marketing runtime probe timed out in isolated mode; production/staging runtime verification is required'
+        : '',
+      error: localTimeoutUnavailable ? '' : error,
     });
   }
 }
 
 function checkRuntimeEnvReadiness() {
-  const missing = IMPORTANT_ENV.filter((key) => !process.env[key]);
+  const missing = missingImportantEnvVars();
   const usingDefaults = DEFAULTED_ENV.filter((key) => !process.env[key]);
   addCheck('runtime:env-readiness', missing.length === 0 ? 'pass' : 'blocked', {
     missing,

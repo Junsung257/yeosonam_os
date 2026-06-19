@@ -1,6 +1,13 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 export function validatePort(port, label) {
   if (!Number.isFinite(port) || port < 1 || port > 65535) {
@@ -97,6 +104,31 @@ function isProcessAlive(pid) {
   }
 }
 
+function snapshotFile(path) {
+  if (!existsSync(path)) {
+    return { path, existed: false, content: null };
+  }
+  return { path, existed: true, content: readFileSync(path) };
+}
+
+function restoreFileSnapshot(snapshot) {
+  if (!snapshot?.path) return;
+  if (!snapshot.existed) {
+    rmSync(snapshot.path, { force: true });
+    return;
+  }
+  writeFileSync(snapshot.path, snapshot.content);
+}
+
+function removeOwnedDistDir(server) {
+  if (!server?.ownsDistDir || !server.distDir) return;
+  const root = resolve(server.root || process.cwd());
+  const target = resolve(root, server.distDir);
+  const rel = relative(root, target);
+  if (!rel || rel.startsWith('..') || isAbsolute(rel)) return;
+  rmSync(target, { recursive: true, force: true });
+}
+
 function lingeringNextDevServerPids(server) {
   if (process.platform === 'win32') return [];
   const root = server.root || process.cwd();
@@ -161,6 +193,8 @@ export async function stopProcessTree(server, { keepServer = false, timeoutMs = 
   } finally {
     await stopLingeringNextDevServers(server);
     server.closeLogs?.();
+    restoreFileSnapshot(server.tsconfigSnapshot);
+    removeOwnedDistDir(server);
   }
 }
 
@@ -179,9 +213,13 @@ export function startNextServer({
   const { command, args } = serverCommand(script, port);
   let expectedStop = false;
   const env = { ...process.env, FORCE_COLOR: '0' };
+  const ownsDistDir = mode === 'dev' && !env.NEXT_DIST_DIR;
   if (mode === 'dev' && !env.NEXT_DIST_DIR) {
     env.NEXT_DIST_DIR = `.next-dev-${port}`;
   }
+  const tsconfigSnapshot = mode === 'dev'
+    ? snapshotFile(resolve(process.cwd(), 'tsconfig.json'))
+    : null;
 
   const child = spawn(command, args, {
     cwd: process.cwd(),
@@ -205,6 +243,9 @@ export function startNextServer({
     errLog,
     port,
     root: process.cwd(),
+    distDir: env.NEXT_DIST_DIR || '',
+    ownsDistDir,
+    tsconfigSnapshot,
     markStopping() {
       expectedStop = true;
     },
