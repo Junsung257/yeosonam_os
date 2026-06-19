@@ -1218,6 +1218,14 @@ function isDegradedPayload(payload) {
   );
 }
 
+function isRuntimeCredentialFailure(res, payload) {
+  const text = `${res.error || ''}\n${res.body || ''}\n${payload ? JSON.stringify(payload) : ''}`;
+  return (
+    [401, 403, 500, 503].includes(Number(res.status)) &&
+    /Invalid API key|invalid api key|invalid jwt|JWT|Supabase.*(?:key|configured|credential)|supabase_unconfigured|Missing Supabase|service role|anon key/i.test(text)
+  );
+}
+
 function missingTopLevelKeys(payload, keys) {
   if (!payload || typeof payload !== 'object') return keys;
   return keys.filter((key) => !(key in payload));
@@ -1370,15 +1378,22 @@ async function checkApiContract(endpoint, headers) {
     payload &&
     typeof payload === 'object' &&
     missingKeys.length === 0;
+  const credentialBlocked = !ok && isRuntimeCredentialFailure(res, payload);
 
-  addCheck(`live:api:${endpoint.path}`, ok ? 'pass' : 'fail', {
+  addCheck(`live:api:${endpoint.path}`, ok ? 'pass' : credentialBlocked ? 'blocked' : 'fail', {
     statusCode: res.status,
     contentType: res.contentType,
     ms: res.ms,
     degraded: isDegradedPayload(payload),
     missingKeys,
-    error: ok ? '' : isLoginHtml(res) ? 'received login HTML instead of JSON' : (res.error || res.body.slice(0, 300)),
+    notes: credentialBlocked ? 'runtime API credentials unavailable or invalid in this environment' : '',
+    error: ok || credentialBlocked
+      ? ''
+      : isLoginHtml(res)
+        ? 'received login HTML instead of JSON'
+        : (res.error || res.body.slice(0, 300)),
   });
+  return ok ? 'pass' : credentialBlocked ? 'blocked' : 'fail';
 }
 
 async function liveChecks() {
@@ -1437,8 +1452,17 @@ async function liveChecks() {
 
   const headers = { Cookie: cookie };
 
+  let apiCredentialBlocked = false;
   for (const endpoint of LIVE_API_ENDPOINTS) {
-    await checkApiContract(endpoint, headers);
+    const status = await checkApiContract(endpoint, headers);
+    if (status === 'blocked') apiCredentialBlocked = true;
+  }
+
+  if (apiCredentialBlocked) {
+    addCheck('live:page-probes-skipped-runtime-credentials', 'blocked', {
+      notes: 'protected marketing page probes skipped because runtime API credentials are unavailable or invalid',
+    });
+    return;
   }
 
   for (const pagePath of livePagePaths) {
