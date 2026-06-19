@@ -579,6 +579,15 @@ export default function PackagesClient() {
   const packageEmptyStateSummaryText = emptyStateAppliedFilterItems.length > 0
     ? `조건에 맞는 상품이 없습니다. 적용 조건: ${emptyStateAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${packageZeroResultRecoveryText}`
     : `조건에 맞는 상품이 없습니다. ${packageZeroResultRecoveryText}`;
+  const packageFilterNextActionText = filteredPackages.length === 0
+    ? packageZeroResultRecoveryText
+    : primaryFilterMissingLabels.length > 0
+      ? `${primaryFilterMissingLabels[0]} 조건을 추가하면 상담 전달 정확도가 올라갑니다.`
+      : compareIds.length > 0
+        ? '선택한 비교 상품을 견적 문의에 함께 전달할 수 있습니다.'
+        : filteredPackages.length <= 3
+          ? '후보가 적다면 더 많은 필터를 넓혀 다른 상품도 확인해 보세요.'
+          : '마음에 드는 상품 2개를 비교하거나 바로 상담으로 넘겨보세요.';
   const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
 
   useEffect(() => {
@@ -1048,6 +1057,12 @@ export default function PackagesClient() {
               </span>
             ))}
           </div>
+          <p
+            data-testid="packages-filter-next-action"
+            className="mt-2 text-[12px] font-semibold leading-5 text-text-secondary"
+          >
+            {packageFilterNextActionText}
+          </p>
         </div>
         <div
           data-testid="packages-handoff-preview"
