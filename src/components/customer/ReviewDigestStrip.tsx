@@ -45,6 +45,7 @@ export default function ReviewDigestStrip({ packageId }: { packageId: string }) 
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       product_id: packageId,
+      cta_type: 'review_digest_empty_state',
       page_url: typeof window !== 'undefined' ? window.location.pathname : undefined,
       metadata: { source: 'review_digest_empty_state' },
     });

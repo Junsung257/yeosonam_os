@@ -2,7 +2,16 @@ name: API Security Scan
 
 # 2026-05-13 — mail-flood-stop v2: 항상 fail로 메일 노이즈만 발생. 수동만 유지.
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/app/api/**'
+      - 'scripts/scan-api-security.js'
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   security:
@@ -24,7 +33,7 @@ jobs:
         run: node scripts/scan-api-security.js
 
       - name: OWASP dependency check
-        uses: dependency-check/Dependency-Check_Action@main
+        uses: dependency-check/Dependency-Check_Action@1e54355a8b4c8abaa8cc7d0b70aa655a3bb15a6c
         with:
           project: 'yeosonam_os'
           path: '.'
@@ -36,6 +45,7 @@ jobs:
 
       - name: Post security results
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |

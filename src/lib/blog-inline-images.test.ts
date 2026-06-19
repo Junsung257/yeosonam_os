@@ -58,6 +58,7 @@ describe('ensureBlogInlineImages', () => {
       destination: '다낭',
       primaryKeyword: '다낭 여행',
       ogImageUrl: 'https://cdn.test/og.jpg',
+      allowOgImageInBody: true,
       minImages: 2,
     });
 
@@ -74,5 +75,19 @@ describe('ensureBlogInlineImages', () => {
 
     expect(result.inserted).toBe(0);
     expect(result.markdown).toBe(markdown);
+  });
+  it('does not reuse the OG image in the body by default', async () => {
+    const markdown = '# travel guide\n\n## weather\nbody';
+
+    const result = await ensureBlogInlineImages({
+      markdown,
+      destination: 'Da Nang',
+      primaryKeyword: 'Da Nang travel',
+      ogImageUrl: 'https://cdn.test/broken-og.jpg',
+      minImages: 1,
+    });
+
+    expect(result.markdown).not.toContain('https://cdn.test/broken-og.jpg');
+    expect(result.markdown).toContain('https://images.pexels.com/photos/section.jpg');
   });
 });

@@ -7,6 +7,7 @@ import { REGIONS, getDestinationUrl, getRegionUrl } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
   const next = e.relatedTarget as Node | null;
   if (!next) return true;
@@ -14,6 +15,18 @@ function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
 }
 
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
+const KAKAO_NAV_DESCRIPTION_ID = 'global-nav-kakao-description';
+const GROUP_INQUIRY_NAV_HREF = buildGroupInquiryHandoffHref({
+  source: 'global_nav',
+  query: '내비게이션에서 단체 맞춤 견적 상담',
+});
+const GROUP_INQUIRY_NAV_SUMMARY_ID = 'global-nav-group-inquiry-summary';
+const DESKTOP_OVERSEAS_TRIGGER_ID = 'global-nav-overseas-trigger';
+const DESKTOP_OVERSEAS_MENU_ID = 'global-nav-overseas-menu';
+const DESKTOP_THEME_TRIGGER_ID = 'global-nav-theme-trigger';
+const DESKTOP_THEME_MENU_ID = 'global-nav-theme-menu';
+const MOBILE_DRAWER_ID = 'global-nav-mobile-drawer';
+const MOBILE_DRAWER_TITLE_ID = 'global-nav-mobile-title';
 
 type MenuKey = 'overseas' | 'theme' | null;
 
@@ -30,6 +43,7 @@ export default function GlobalNav() {
   const [openMobileRegion, setOpenMobileRegion] = useState<string | null>(null);
   const [scrolled, setScrolled] = useState(false);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drawerPanelRef = useRef<HTMLDivElement | null>(null);
   const drawerCloseBtnRef = useRef<HTMLButtonElement | null>(null);
   const hamburgerBtnRef = useRef<HTMLButtonElement | null>(null);
 
@@ -50,8 +64,38 @@ export default function GlobalNav() {
       const hamburgerEl = hamburgerBtnRef.current;
       document.body.style.overflow = 'hidden';
       const t = setTimeout(() => drawerCloseBtnRef.current?.focus(), 50);
+      const getFocusableElements = () => Array.from(
+        drawerPanelRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter(element => !element.getAttribute('aria-hidden'));
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key !== 'Tab') return;
+
+        const focusableElements = getFocusableElements();
+        if (focusableElements.length === 0) return;
+
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+        if (focusableElements.length === 1) {
+          event.preventDefault();
+          firstElement.focus();
+          return;
+        }
+        if (event.shiftKey && document.activeElement === firstElement) {
+          event.preventDefault();
+          lastElement.focus();
+          return;
+        }
+        if (!event.shiftKey && document.activeElement === lastElement) {
+          event.preventDefault();
+          firstElement.focus();
+        }
+      };
+      window.addEventListener('keydown', onKey);
       return () => {
         clearTimeout(t);
+        window.removeEventListener('keydown', onKey);
         document.body.style.overflow = original;
         hamburgerEl?.focus();
       };
@@ -81,6 +125,7 @@ export default function GlobalNav() {
   function trackKakaoClick(source: string) {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: source,
       page_url: pathname ?? '/',
       metadata: { source },
     });
@@ -116,9 +161,13 @@ export default function GlobalNav() {
               onBlur={(e) => { if (isFocusOutside(e)) handleMenuLeave(); }}
             >
               <button
+                id={DESKTOP_OVERSEAS_TRIGGER_ID}
                 type="button"
                 onClick={() => setOpenMenu(prev => prev === 'overseas' ? null : 'overseas')}
+                data-testid="global-nav-overseas-toggle"
+                aria-haspopup="menu"
                 aria-expanded={openMenu === 'overseas'}
+                aria-controls={DESKTOP_OVERSEAS_MENU_ID}
                 className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[15px] font-semibold transition
                   ${openMenu === 'overseas' || isOverseasActive
                     ? 'text-brand bg-brand-light'
@@ -136,8 +185,11 @@ export default function GlobalNav() {
 
               {openMenu === 'overseas' && (
                 <div
+                  id={DESKTOP_OVERSEAS_MENU_ID}
+                  data-testid="global-nav-overseas-menu"
                   className="absolute top-full left-0 mt-1.5 w-[640px] bg-white rounded-[20px] shadow-xl border border-admin-border p-5 z-50"
                   role="menu"
+                  aria-labelledby={DESKTOP_OVERSEAS_TRIGGER_ID}
                   tabIndex={-1}
                   onMouseEnter={() => handleMenuEnter('overseas')}
                   onMouseLeave={handleMenuLeave}
@@ -192,9 +244,13 @@ export default function GlobalNav() {
               onBlur={(e) => { if (isFocusOutside(e)) handleMenuLeave(); }}
             >
               <button
+                id={DESKTOP_THEME_TRIGGER_ID}
                 type="button"
                 onClick={() => setOpenMenu(prev => prev === 'theme' ? null : 'theme')}
+                data-testid="global-nav-theme-toggle"
+                aria-haspopup="menu"
                 aria-expanded={openMenu === 'theme'}
+                aria-controls={DESKTOP_THEME_MENU_ID}
                 className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-[10px] text-[15px] font-semibold transition
                   ${openMenu === 'theme' || isThemeActive
                     ? 'text-brand bg-brand-light'
@@ -212,8 +268,11 @@ export default function GlobalNav() {
 
               {openMenu === 'theme' && (
                 <div
+                  id={DESKTOP_THEME_MENU_ID}
+                  data-testid="global-nav-theme-menu"
                   className="absolute top-full left-0 mt-1.5 w-[260px] bg-white rounded-[20px] shadow-xl border border-admin-border py-2 z-50"
                   role="menu"
+                  aria-labelledby={DESKTOP_THEME_TRIGGER_ID}
                   tabIndex={-1}
                   onMouseEnter={() => handleMenuEnter('theme')}
                   onMouseLeave={handleMenuLeave}
@@ -261,8 +320,16 @@ export default function GlobalNav() {
             </Link>
 
             {/* 단체 문의 */}
+            <span id={GROUP_INQUIRY_NAV_SUMMARY_ID} className="sr-only">
+              단체 맞춤 견적 상담으로 이동합니다.
+            </span>
+            <span id={KAKAO_NAV_DESCRIPTION_ID} className="sr-only">
+              카카오톡 채널 새 창에서 여행 상담을 시작합니다. 현재 보고 있는 페이지를 기준으로 상담을 이어갈 수 있습니다.
+            </span>
             <Link
-              href="/group-inquiry"
+              href={GROUP_INQUIRY_NAV_HREF}
+              data-testid="global-nav-group-inquiry"
+              aria-describedby={GROUP_INQUIRY_NAV_SUMMARY_ID}
               className={`px-4 py-2 rounded-[10px] text-[15px] font-semibold transition
                 ${pathname?.startsWith('/group-inquiry')
                   ? 'text-brand bg-brand-light'
@@ -280,6 +347,7 @@ export default function GlobalNav() {
             rel="noopener"
             referrerPolicy="no-referrer-when-downgrade"
             onClick={() => trackKakaoClick('global_nav_desktop')}
+            aria-describedby={KAKAO_NAV_DESCRIPTION_ID}
             className="bg-[#FEE500] text-[#3C1E1E] font-bold px-4 py-2 rounded-full hover:shadow-md transition flex-shrink-0"
           >
             💬 카톡 상담
@@ -297,8 +365,11 @@ export default function GlobalNav() {
           type="button"
           ref={hamburgerBtnRef}
           onClick={() => setDrawerOpen(true)}
+          data-testid="global-nav-mobile-open"
           aria-label="메뉴 열기"
+          aria-haspopup="dialog"
           aria-expanded={drawerOpen}
+          aria-controls={MOBILE_DRAWER_ID}
           className="w-[48px] h-[48px] flex items-center justify-center rounded-[10px] hover:bg-bg-section text-text-primary"
         >
           <svg viewBox="0 0 24 24" className="w-6 h-6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -309,16 +380,23 @@ export default function GlobalNav() {
 
       {/* ── 모바일 드로어 ── */}
       {drawerOpen && (
-        <div className="md:hidden fixed inset-0 z-50" role="dialog" aria-modal="true" aria-label="메뉴">
+        <div
+          id={MOBILE_DRAWER_ID}
+          data-testid="global-nav-mobile-drawer"
+          className="md:hidden fixed inset-0 z-50"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={MOBILE_DRAWER_TITLE_ID}
+        >
           <button
             type="button"
             className="absolute inset-0 bg-black/50"
-            aria-label="Close menu"
+            aria-label="메뉴 닫기"
             onClick={() => setDrawerOpen(false)}
           />
-          <div className="absolute right-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl flex flex-col">
+          <div ref={drawerPanelRef} className="absolute right-0 top-0 bottom-0 w-[85%] max-w-sm bg-white shadow-2xl flex flex-col">
             <div className="h-14 flex items-center justify-between px-4 border-b border-admin-border flex-shrink-0">
-              <span className="text-base font-bold text-slate-900">메뉴</span>
+              <span id={MOBILE_DRAWER_TITLE_ID} className="text-base font-bold text-slate-900">메뉴</span>
               <button
                 type="button"
                 ref={drawerCloseBtnRef}
@@ -339,7 +417,14 @@ export default function GlobalNav() {
                 <Link href="/destinations" className="block py-2.5 text-base font-semibold text-slate-900">여행지 가이드</Link>
                 <Link href="/blog" className="block py-2.5 text-base font-semibold text-slate-900">매거진</Link>
                 <Link href="/private-tour" className="block py-2.5 text-base font-semibold text-slate-900">단독맞춤여행</Link>
-                <Link href="/group-inquiry" className="block py-2.5 text-base font-semibold text-slate-900">단체 문의</Link>
+                <Link
+                  href={GROUP_INQUIRY_NAV_HREF}
+                  data-testid="global-nav-mobile-group-inquiry"
+                  aria-describedby={GROUP_INQUIRY_NAV_SUMMARY_ID}
+                  className="block py-2.5 text-base font-semibold text-slate-900"
+                >
+                  단체 문의
+                </Link>
               </div>
 
               {/* 테마 */}
@@ -363,6 +448,7 @@ export default function GlobalNav() {
                 {REGIONS.map(region => {
                   const hasCities = region.featuredCities.length > 0;
                   const isExpanded = openMobileRegion === region.slug;
+                  const cityListId = `global-nav-mobile-region-${region.slug}`;
                   return (
                     <div key={region.slug} className="border-b border-admin-border last:border-b-0">
                       <div className="flex items-center">
@@ -377,8 +463,10 @@ export default function GlobalNav() {
                           <button
                             type="button"
                             onClick={() => setOpenMobileRegion(isExpanded ? null : region.slug)}
+                            data-testid="global-nav-mobile-region-toggle"
                             aria-label={`${region.label} 도시 펼치기`}
                             aria-expanded={isExpanded}
+                            aria-controls={cityListId}
                             className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-700"
                           >
                             <svg viewBox="0 0 12 12" className={`w-3.5 h-3.5 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
@@ -388,7 +476,13 @@ export default function GlobalNav() {
                         )}
                       </div>
                       {hasCities && isExpanded && (
-                        <div className="pb-2 pl-7 grid grid-cols-2 gap-x-2">
+                        <div
+                          id={cityListId}
+                          data-testid="global-nav-mobile-region-panel"
+                          className="pb-2 pl-7 grid grid-cols-2 gap-x-2"
+                          role="region"
+                          aria-label={`${region.label} 주요 도시`}
+                        >
                           {region.featuredCities.map(city => (
                             <Link
                               key={city}
@@ -413,6 +507,7 @@ export default function GlobalNav() {
                 rel="noopener"
                 referrerPolicy="no-referrer-when-downgrade"
                 onClick={() => trackKakaoClick('global_nav_mobile_drawer')}
+                aria-describedby={KAKAO_NAV_DESCRIPTION_ID}
                 className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold text-sm py-3 rounded-full text-center"
               >
                 💬 카카오톡 상담

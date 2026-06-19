@@ -124,6 +124,10 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
   const [query, setQuery] = useState(tx.counterparty_name || '');
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
+  const comboboxBaseId = `payment-booking-match-${tx.id}`;
+  const comboboxHelpId = `${comboboxBaseId}-help`;
+  const comboboxStatusId = `${comboboxBaseId}-status`;
+  const listboxId = `${comboboxBaseId}-listbox`;
 
   const isRecommended = useCallback((b: BookingFull) => {
     const bal = getBalance(b);
@@ -144,6 +148,11 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
     // 추천 항목 최상단
     return [...all.filter(isRecommended), ...all.filter(b => !isRecommended(b))];
   }, [bookings, query, isRecommended]);
+  const recommendedCount = filtered.filter(isRecommended).length;
+  const activeDescendantId = filtered[focusedIdx] ? `${comboboxBaseId}-option-${filtered[focusedIdx].id}` : undefined;
+  const resultSummary = filtered.length === 0
+    ? '일치하는 예약이 없습니다.'
+    : `예약 후보 ${filtered.length}건${recommendedCount > 0 ? `, 추천 ${recommendedCount}건` : ''}이 있습니다. 위아래 방향키로 이동하고 Enter로 ${multiMode ? '선택 또는 해제' : '매칭'}합니다.`;
 
   useEffect(() => { setFocusedIdx(0); }, [query]);
 
@@ -173,10 +182,29 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
         placeholder="이름, 상품명, 출발일 검색..."
         className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
         aria-label="예약 검색"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded="true"
+        aria-controls={listboxId}
+        aria-activedescendant={activeDescendantId}
+        aria-describedby={`${comboboxHelpId} ${comboboxStatusId}`}
       />
-      <ul ref={listRef} className="max-h-56 overflow-y-auto border border-admin-border-mid rounded divide-y divide-slate-100">
+      <p id={comboboxHelpId} className="sr-only">
+        입금자명, 예약자명, 상품명, 예약번호, 출발일로 예약을 검색합니다.
+      </p>
+      <p id={comboboxStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {resultSummary}
+      </p>
+      <ul
+        ref={listRef}
+        id={listboxId}
+        role="listbox"
+        aria-label="예약 매칭 후보"
+        aria-describedby={comboboxStatusId}
+        className="max-h-56 overflow-y-auto border border-admin-border-mid rounded divide-y divide-slate-100"
+      >
         {filtered.length === 0 && (
-          <li className="px-3 py-3 text-admin-sm text-admin-muted-2 text-center">검색 결과 없음</li>
+          <li className="px-3 py-3 text-admin-sm text-admin-muted-2 text-center" role="option" aria-disabled="true" aria-selected="false">검색 결과 없음</li>
         )}
         {filtered.map((b, i) => {
           const rec = isRecommended(b);
@@ -186,6 +214,10 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
           return (
             <li key={b.id}>
               <button
+                id={`${comboboxBaseId}-option-${b.id}`}
+                role="option"
+                aria-selected={multiMode ? isChecked : isFocused}
+                aria-label={`${b.customers?.name || '이름 없음'} 예약${b.booking_no ? ` ${b.booking_no}` : ''}${b.package_title ? `, ${b.package_title}` : ''}, 미수금 ${fmt만(bal)}${rec ? ', 추천 후보' : ''}${multiMode && isChecked ? ', 선택됨' : ''}`}
                 type="button"
                 onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
                 onMouseEnter={() => setFocusedIdx(i)}
@@ -402,14 +434,21 @@ function PaymentOpsQueue({
     label: string;
     helper: string;
     count: number;
+    target: string;
     tone: string;
   }[] = [
-    { key: 'review', label: '검토 필요', helper: '자동 후보 확인', count: counts.review, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
-    { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', count: counts.unmatched, tone: 'border-red-200 bg-red-50 text-red-700' },
-    { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', count: counts.stale, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
-    { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', count: counts.outflow, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
-    { key: 'trash', label: '제외 보관함', helper: '복구/영구삭제', count: counts.trash, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { key: 'review', label: '검토 필요', helper: '자동 후보 확인', count: counts.review, target: '자동 매칭 후보를 검토하고 확정할 거래만 보여줍니다.', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', count: counts.unmatched, target: '예약과 아직 연결되지 않은 입금 거래만 보여줍니다.', tone: 'border-red-200 bg-red-50 text-red-700' },
+    { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', count: counts.stale, target: '하루 이상 처리되지 않은 결제 거래를 우선 보여줍니다.', tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', count: counts.outflow, target: '랜드사 송금이나 고객 환불로 묶어야 할 출금 거래를 보여줍니다.', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'trash', label: '제외 보관함', helper: '복구/영구삭제', count: counts.trash, target: '제외 처리된 거래를 복구하거나 영구 삭제할 수 있는 보관함을 엽니다.', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
   ];
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  const activeItems = items.filter(item => item.count > 0);
+  const paymentQueueSummaryId = 'admin-payment-queue-summary';
+  const paymentQueueSummaryText = total > 0
+    ? `오늘 먼저 처리할 결제 작업이 ${total}건 있습니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
+    : '오늘 먼저 처리할 결제 작업이 없습니다. 큐 버튼으로 각 결제 상태를 확인할 수 있습니다.';
 
   return (
     <section className="mb-5 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
@@ -422,22 +461,136 @@ function PaymentOpsQueue({
           Command queue
         </span>
       </div>
+      <p id={paymentQueueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {paymentQueueSummaryText}
+      </p>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-5">
-        {items.map(item => (
+        {items.map(item => {
+          const itemDescriptionId = `admin-payment-queue-${item.key}-description`;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              data-testid={`admin-payment-queue-${item.key}`}
+              aria-disabled={item.count === 0}
+              aria-describedby={`${paymentQueueSummaryId} ${itemDescriptionId}`}
+              onClick={() => {
+                if (item.count > 0) onSelect(item.key);
+              }}
+              aria-pressed={activeKey === item.key}
+              aria-label={`${item.label} ${item.count}건 보기`}
+              className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition ${
+                activeKey === item.key ? 'ring-2 ring-slate-900 ring-offset-1' : ''
+              } ${
+                item.count === 0 ? 'cursor-not-allowed opacity-45' : 'hover:-translate-y-0.5 hover:shadow-admin-sm'
+              } ${item.tone}`}
+            >
+              <span id={itemDescriptionId} className="sr-only">
+                {item.target} 현재 {item.count}건입니다.
+              </span>
+              <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
+              <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
+              <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PaymentFocusBar({
+  tab,
+  outflowSubTab,
+  filteredCount,
+  reviewCount,
+  unmatchedCount,
+  staleCount,
+  outflowUnmatchedCount,
+  bulkProcessing,
+  importOpen,
+  onSelectQueue,
+  onBulkAuto,
+  onOpenImport,
+}: {
+  tab: PaymentTab;
+  outflowSubTab: OutflowSubTab;
+  filteredCount: number;
+  reviewCount: number;
+  unmatchedCount: number;
+  staleCount: number;
+  outflowUnmatchedCount: number;
+  bulkProcessing: boolean;
+  importOpen: boolean;
+  onSelectQueue: (key: PaymentQueueKey) => void;
+  onBulkAuto: () => void;
+  onOpenImport: () => void;
+}) {
+  const activeLabel =
+    tab === 'review' ? '자동 후보 검토'
+    : tab === 'matched' ? '매칭 완료 확인'
+    : tab === 'outflow' ? `출금/환불 ${outflowSubTab === 'unmatched' ? '미매칭' : outflowSubTab === 'matched' ? '매칭완료' : '전체'}`
+    : '미매칭 입금 처리';
+  const next =
+    staleCount > 0 ? { label: '24시간 경과 먼저 처리', key: 'stale' as PaymentQueueKey, count: staleCount }
+    : unmatchedCount > 0 ? { label: '미매칭 입금 연결', key: 'unmatched' as PaymentQueueKey, count: unmatchedCount }
+    : reviewCount > 0 ? { label: '자동 후보 확정', key: 'review' as PaymentQueueKey, count: reviewCount }
+    : outflowUnmatchedCount > 0 ? { label: '출금/환불 묶기', key: 'outflow' as PaymentQueueKey, count: outflowUnmatchedCount }
+    : null;
+
+  return (
+    <section className="mb-4 rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs" aria-labelledby="payment-focus-title">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p id="payment-focus-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">
+            Command queue
+          </p>
+          <h2 className="mt-1 text-admin-base font-bold text-admin-text-2">
+            {activeLabel} · 현재 {filteredCount}건
+          </h2>
+          <p className="mt-1 text-admin-xs text-admin-muted">
+            {next ? `다음 처리: ${next.label} ${next.count}건` : '대기 중인 결제 작업이 없습니다.'}
+          </p>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+          {next && (
+            <button
+              type="button"
+              onClick={() => onSelectQueue(next.key)}
+              className="h-9 rounded-admin-sm bg-slate-900 px-3 text-admin-xs font-bold text-white transition hover:bg-slate-700"
+            >
+              다음 작업 열기
+            </button>
+          )}
           <button
-            key={item.key}
             type="button"
-            disabled={item.count === 0}
-            onClick={() => onSelect(item.key)}
-            aria-pressed={activeKey === item.key}
-            aria-label={`${item.label} ${item.count}건 보기`}
-            className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-admin-sm disabled:cursor-not-allowed disabled:opacity-45 ${item.tone}`}
+            onClick={() => onSelectQueue('unmatched')}
+            disabled={unmatchedCount === 0}
+            className="h-9 rounded-admin-sm border border-admin-border-strong bg-white px-3 text-admin-xs font-bold text-admin-text-2 transition hover:bg-admin-bg disabled:opacity-45"
           >
-            <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
-            <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
-            <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+            미매칭 {unmatchedCount}
           </button>
-        ))}
+          <button
+            type="button"
+            onClick={onBulkAuto}
+            disabled={bulkProcessing || reviewCount + unmatchedCount === 0}
+            aria-busy={bulkProcessing}
+            className="h-9 rounded-admin-sm border border-admin-border-strong bg-white px-3 text-admin-xs font-bold text-admin-text-2 transition hover:bg-admin-bg disabled:opacity-45"
+          >
+            자동 매칭
+          </button>
+          <button
+            type="button"
+            data-testid="admin-payment-import-open"
+            aria-haspopup="dialog"
+            aria-expanded={importOpen}
+            aria-controls="admin-payment-import-dialog"
+            onClick={onOpenImport}
+            className="h-9 rounded-admin-sm border border-admin-border-strong bg-white px-3 text-admin-xs font-bold text-admin-text-2 transition hover:bg-admin-bg"
+          >
+            가져오기
+          </button>
+        </div>
       </div>
     </section>
   );
@@ -461,12 +614,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [transactions, setTransactions] = useState<BankTransaction[]>(initialTransactions ?? []);
   const [trashTxs,    setTrashTxs]    = useState<BankTransaction[]>(initialTrashTxs ?? []);
   const [tab, setTab] = useState<PaymentTab>(initialTab);
+  const [activePaymentQueue, setActivePaymentQueue] = useState<PaymentQueueKey | undefined>(
+    initialTab === 'review' || initialTab === 'unmatched' || initialTab === 'outflow' ? initialTab : undefined,
+  );
   // 출금·환불 탭 내 sub-필터: 기본 '미매칭만' (사장님이 처리해야 할 것 우선)
   const [outflowSubTab, setOutflowSubTab] = useState<OutflowSubTab>('unmatched');
   const [dateFilter, setDateFilter] = useState<string>('이번 달');
   const [dateDropdown, setDateDropdown] = useState(false);
   const DATE_FILTERS = ['이번 달', '지난 달', '3개월', '전체'] as const;
   const [trashOpen, setTrashOpen] = useState(false);
+  const trashToggleRef = useRef<HTMLButtonElement | null>(null);
+  const firstTrashRestoreRef = useRef<HTMLButtonElement | null>(null);
+  const trashWasOpenRef = useRef(false);
   const [undoInfo, setUndoInfo] = useState<{ ids: string[]; items: BankTransaction[]; countdown: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isLoading, setIsLoading] = useState(!initialTransactions);
@@ -482,6 +641,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [multiSelected, setMultiSelected] = useState<Set<string>>(new Set());
   const [overflowAction, setOverflowAction] = useState<'mileage' | 'refund' | null>(null);
   const [processing, setProcessing] = useState(false);
+  const matchPanelRef = useRef<HTMLDivElement | null>(null);
+  const matchCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
   // 신규 예약 생성 (입금→예약 원스톱)
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -505,6 +666,9 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [importRows, setImportRows] = useState<ImportRow[]>([]);
   const [importResult, setImportResult] = useState<{ inserted: number; duplicates: number; merged?: number; errors: number; matched: number; firstError?: string } | null>(null);
   const [importing, setImporting] = useState(false);
+  const importPanelRef = useRef<HTMLDivElement | null>(null);
+  const importCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const importPasteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   function showToast(msg: string, type: 'ok' | 'err' = 'ok') {
     setToast({ msg, type });
@@ -556,6 +720,28 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     load();
     loadErp();
   }, [load, loadErp]);
+
+  useEffect(() => {
+    if (trashOpen && !trashWasOpenRef.current) {
+      window.setTimeout(() => firstTrashRestoreRef.current?.focus(), 0);
+    }
+
+    if (!trashOpen && trashWasOpenRef.current) {
+      window.setTimeout(() => trashToggleRef.current?.focus(), 0);
+    }
+
+    trashWasOpenRef.current = trashOpen;
+  }, [trashOpen]);
+
+  useEffect(() => {
+    if (!trashOpen) return;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setTrashOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [trashOpen]);
 
   useEffect(() => {
     if (initialBookings?.length) return;
@@ -653,6 +839,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       outflow: outflowUnmatchedCount,
       trash: trashTxs.length,
     };
+    setActivePaymentQueue(queue);
     if (queue === 'review') {
       setTab('review');
       setOutflowSubTab('unmatched');
@@ -723,6 +910,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     setSingleBookingId('');
     setMultiSelected(new Set());
     setOverflowAction(null);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/payments',
+      metadata: {
+        surface: 'payments_row_action',
+        action: 'manual_match_opened',
+        transactionId: tx.id,
+        transactionType: tx.transaction_type,
+        matchStatus: tx.match_status,
+        isRefund: tx.is_refund,
+      },
+    });
   }
 
   useEffect(() => {
@@ -997,6 +1196,62 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     setImportRows([]); setImportResult(null);
   }
 
+  useEffect(() => {
+    const activePanel = selectedTx ? matchPanelRef.current : showImport ? importPanelRef.current : null;
+    if (!activePanel) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTarget = selectedTx
+      ? matchCloseButtonRef.current
+      : (importPasteTextareaRef.current ?? importCloseButtonRef.current);
+    const focusTimer = window.setTimeout(() => focusTarget?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      activePanel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const closeActivePanel = () => {
+      if (selectedTx) {
+        if (!processing) setSelectedTx(null);
+        return;
+      }
+      if (showImport && !importing) closeImport();
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeActivePanel();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [selectedTx, showImport, processing, importing]);
+
   // ── 렌더 ────────────────────────────────────────────────────────────────────
 
   let matchBtnDisabled = processing;
@@ -1007,7 +1262,17 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const renderTransactionActions = (tx: BankTransaction, layout: 'table' | 'card' = 'table') => {
     const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
     const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
+    const isPayout = tx.transaction_type === '출금' && !tx.is_refund;
     const compact = layout === 'card';
+    const nextActionLabel = isOpen
+      ? isPayout
+        ? '출금 묶기'
+        : tx.is_refund
+          ? '환불 매칭'
+          : '수동 매칭'
+      : isMatched
+        ? '매칭 취소'
+        : '제외';
     const groupClass = compact
       ? 'mt-3 grid grid-cols-2 gap-2'
       : 'flex items-center gap-1.5 justify-end';
@@ -1020,9 +1285,24 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     const commandButton = compact
       ? 'px-3 py-2 rounded border border-admin-border-strong bg-white text-admin-muted text-admin-sm font-mono hover:bg-admin-bg transition-colors text-center'
       : 'px-2 py-1 rounded border border-admin-border-strong bg-white text-admin-muted text-[11px] font-mono hover:bg-admin-bg transition-colors whitespace-nowrap';
+    const paymentActionDescriptionId = `admin-payment-row-actions-${layout}-${tx.id}`;
+    const paymentActionDescriptionIds = `${paymentActionDescriptionId} admin-payment-action-result-description`;
 
     return (
       <div className={groupClass} aria-label={`${tx.counterparty_name || '거래'} 다음 액션`} role="group">
+        <p id={paymentActionDescriptionId} className="sr-only">
+          {tx.counterparty_name || '거래'} 거래의 현재 매칭 상태는 {tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
+        </p>
+        {compact ? (
+          <div className="col-span-2 flex items-center justify-between rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
+            <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+            <span className="text-[12px] font-black text-admin-text-2">{nextActionLabel}</span>
+          </div>
+        ) : (
+          <span className="rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1 text-[11px] font-black text-admin-text-2">
+            Next: {nextActionLabel}
+          </span>
+        )}
         {isOpen && (
           <>
             <AutoSuggestChip
@@ -1036,12 +1316,26 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 load(); loadErp();
               }}
             />
-            {tx.transaction_type === '출금' && !tx.is_refund ? (
+            {isPayout ? (
               <>
                 <button
                   type="button"
-                  onClick={() => setBundleTx(tx)}
+                  data-testid="admin-payment-bundle-action"
+                  onClick={() => {
+                    trackEngagement({
+                      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                      page_url: '/admin/payments',
+                      metadata: {
+                        surface: 'payments_row_action',
+                        action: 'bundle_outflow_opened',
+                        transactionId: tx.id,
+                        transactionType: tx.transaction_type,
+                      },
+                    });
+                    setBundleTx(tx);
+                  }}
                   title="이 랜드사의 미정산 booking N건을 묶어서 정산"
+                  aria-describedby={paymentActionDescriptionIds}
                   aria-label={`${tx.counterparty_name || '출금'} 출금 묶기`}
                   className={`${primaryButton} bg-blue-50 border border-blue-300 text-blue-700 hover:bg-blue-100`}
                 >
@@ -1049,6 +1343,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 </button>
                 <button
                   type="button"
+                  data-testid="admin-payment-match-action"
+                  aria-haspopup="dialog"
+                  aria-expanded={selectedTx?.id === tx.id}
+                  aria-controls="admin-payment-match-dialog"
+                  aria-describedby={paymentActionDescriptionIds}
                   onClick={() => openMatchModal(tx)}
                   title="단건 booking 에 직접 매칭"
                   aria-label={`${tx.counterparty_name || '출금'} 수동 매칭`}
@@ -1058,8 +1357,23 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 </button>
                 <button
                   type="button"
-                  onClick={() => paymentBarRef.current?.openWithTransaction(tx.id, { txType: '출금', isRefund: false })}
+                  data-testid="admin-payment-command-match-action"
+                  onClick={() => {
+                    trackEngagement({
+                      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                      page_url: '/admin/payments',
+                      metadata: {
+                        surface: 'payments_row_action',
+                        action: 'command_match_opened',
+                        transactionId: tx.id,
+                        transactionType: '출금',
+                        isRefund: false,
+                      },
+                    });
+                    paymentBarRef.current?.openWithTransaction(tx.id, { txType: '출금', isRefund: false });
+                  }}
                   title="명령 바로 booking 검색·확정"
+                  aria-describedby={paymentActionDescriptionIds}
                   aria-label={`${tx.counterparty_name || '출금'} 명령 바로 매칭`}
                   className={commandButton}
                 >
@@ -1070,6 +1384,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               <>
                 <button
                   type="button"
+                  data-testid="admin-payment-match-action"
+                  aria-haspopup="dialog"
+                  aria-expanded={selectedTx?.id === tx.id}
+                  aria-controls="admin-payment-match-dialog"
+                  aria-describedby={paymentActionDescriptionIds}
                   onClick={() => openMatchModal(tx)}
                   aria-label={`${tx.counterparty_name || '거래'} ${tx.is_refund ? '환불 매칭' : '수동 매칭'}`}
                   className={secondaryButton}
@@ -1078,8 +1397,23 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 </button>
                 <button
                   type="button"
-                  onClick={() => paymentBarRef.current?.openWithTransaction(tx.id, { txType: tx.transaction_type, isRefund: tx.is_refund })}
+                  data-testid="admin-payment-command-match-action"
+                  onClick={() => {
+                    trackEngagement({
+                      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                      page_url: '/admin/payments',
+                      metadata: {
+                        surface: 'payments_row_action',
+                        action: 'command_match_opened',
+                        transactionId: tx.id,
+                        transactionType: tx.transaction_type,
+                        isRefund: tx.is_refund,
+                      },
+                    });
+                    paymentBarRef.current?.openWithTransaction(tx.id, { txType: tx.transaction_type, isRefund: tx.is_refund });
+                  }}
                   title="명령 바로 booking 검색·확정"
+                  aria-describedby={paymentActionDescriptionIds}
                   aria-label={`${tx.counterparty_name || '거래'} 명령 바로 매칭`}
                   className={commandButton}
                 >
@@ -1092,7 +1426,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         {isMatched && (
           <button
             type="button"
+            data-testid="admin-payment-undo-action"
             onClick={() => handleUndo(tx.id)}
+            aria-busy={processing}
+            aria-describedby={paymentActionDescriptionIds}
             aria-label={`${tx.counterparty_name || '거래'} 매칭 취소`}
             className={`${secondaryButton} text-red-500 hover:bg-red-50`}
           >
@@ -1101,8 +1438,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         )}
         <button
           type="button"
+          data-testid="admin-payment-trash-action"
           onClick={() => handleTrashSingle(tx)}
           title="휴지통으로 이동"
+          aria-busy={processing}
+          aria-describedby={paymentActionDescriptionIds}
           aria-label={`${tx.counterparty_name || '거래'} 휴지통으로 이동`}
           className={compact
             ? 'px-3 py-2 rounded border border-red-200 bg-white text-red-500 text-admin-sm font-medium hover:bg-red-50 transition-colors'
@@ -1123,13 +1463,19 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     <>
       {toast && (
         <div
-          role="status"
-          aria-live="polite"
-          className={toast.type === 'err' ? 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-red-500' : 'fixed top-6 left-1/2 -translate-x-1/2 z-50 px-5 py-2.5 rounded-lg text-sm font-medium text-white bg-slate-800'}
+          role={toast.type === 'err' ? 'alert' : 'status'}
+          aria-live={toast.type === 'err' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+          data-testid="admin-payment-toast"
+          className={`fixed top-[max(1rem,env(safe-area-inset-top))] left-1/2 z-[60] max-w-[calc(100vw-2rem)] -translate-x-1/2 px-5 py-2.5 rounded-lg text-sm font-medium text-white shadow-admin-md ${toast.type === 'err' ? 'bg-red-500' : 'bg-slate-800'}`}
         >
+          <span className="sr-only" data-testid="admin-payment-toast-message">결제 작업 결과: </span>
           {toast.msg}
         </div>
       )}
+      <p id="admin-payment-action-result-description" className="sr-only">
+        결제 작업 결과는 화면 상단 알림으로 안내됩니다.
+      </p>
 
       {/* 헤더 */}
       <div className="flex items-center justify-between mb-6">
@@ -1149,7 +1495,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
             {bulkProcessing ? '처리 중...' : '일괄 자동 매칭'}
           </button>
-          <button type="button" onClick={() => setShowImport(true)}
+          <button
+            type="button"
+            data-testid="admin-payment-import-open"
+            aria-haspopup="dialog"
+            aria-expanded={showImport}
+            aria-controls="admin-payment-import-dialog"
+            onClick={() => setShowImport(true)}
             className="px-3 py-2 bg-brand text-white text-admin-sm rounded hover:bg-[#1B64DA] transition">
             과거 내역 가져오기
           </button>
@@ -1162,7 +1514,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {/* ── 사장님용 정산판 ─────────────────────────────────────────────────── */}
       <PaymentOpsQueue
-        activeKey={tab === 'review' || tab === 'unmatched' || tab === 'outflow' ? tab : undefined}
+        activeKey={activePaymentQueue}
         counts={{
           review: reviewCount,
           unmatched: unmatchedCount,
@@ -1325,6 +1677,21 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         </div>
       )}
 
+      <PaymentFocusBar
+        tab={tab}
+        outflowSubTab={outflowSubTab}
+        filteredCount={filtered.length}
+        reviewCount={reviewCount}
+        unmatchedCount={unmatchedCount}
+        staleCount={staleCount}
+        outflowUnmatchedCount={outflowUnmatchedCount}
+        bulkProcessing={bulkProcessing}
+        importOpen={showImport}
+        onSelectQueue={handlePaymentQueueSelect}
+        onBulkAuto={handleBulkAuto}
+        onOpenImport={() => setShowImport(true)}
+      />
+
       {/* 트랜잭션 테이블 */}
       {isLoading ? (
         <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-2">
@@ -1450,8 +1817,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           })}
         </div>
 
-        <div className="hidden bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden md:block">
-          <table className="w-full">
+        <div className="hidden bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-x-auto md:block">
+          <table className="w-full min-w-[1180px]">
             <thead className="bg-admin-bg border-b border-admin-border-mid">
               <tr>
                 <th className="w-8 px-2 py-2">
@@ -1472,7 +1839,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <th className="text-left px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">연결된 예약</th>
                 <th className="text-center px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">신뢰도</th>
                 <th className="text-center px-3 py-2 text-[11px] font-semibold text-text-secondary uppercase tracking-wide">상태</th>
-                <th className="px-3 py-2"><span className="sr-only">다음 액션</span></th>
+                <th className="px-3 py-2 text-right text-[11px] font-semibold text-text-secondary uppercase tracking-wide">다음 액션</th>
               </tr>
             </thead>
             <tbody>
@@ -1617,6 +1984,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       {trashTxs.length > 0 && (
         <div className="mt-4">
           <button
+            type="button"
+            id="admin-payment-trash-title"
+            ref={trashToggleRef}
+            data-testid="admin-payment-trash-toggle"
+            aria-expanded={trashOpen}
+            aria-controls="admin-payment-trash-panel"
             onClick={() => setTrashOpen(o => !o)}
             className="w-full flex items-center justify-between px-4 py-3 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs text-admin-sm text-admin-muted hover:bg-admin-bg transition"
           >
@@ -1627,7 +2000,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           </button>
 
           {trashOpen && (
-            <div className="mt-2 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden">
+            <div
+              id="admin-payment-trash-panel"
+              role="region"
+              aria-labelledby="admin-payment-trash-title"
+              data-testid="admin-payment-trash-panel"
+              className="mt-2 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden"
+            >
               <table className="w-full text-admin-sm">
                 <thead className="bg-admin-bg border-b border-admin-border-mid">
                   <tr>
@@ -1639,28 +2018,39 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   </tr>
                 </thead>
                 <tbody>
-                  {trashTxs.map(tx => (
-                    <tr key={tx.id} className="border-b border-admin-border-mid hover:bg-admin-bg transition opacity-60">
-                      <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
-                        {fmtMonthDayTime(tx.received_at)}
-                      </td>
-                      <td className="px-3 py-2 text-admin-muted">{tx.counterparty_name || '-'}</td>
-                      <td className="px-3 py-2 text-right font-medium text-admin-text-2">{tx.amount.toLocaleString()}원</td>
-                      <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
-                        {tx.deleted_at ? fmtMonthDay(tx.deleted_at) : '-'}
-                      </td>
-                      <td className="px-3 py-2 text-right whitespace-nowrap">
-                        <div className="flex items-center gap-2 justify-end">
-                          <button type="button" onClick={() => handleRestoreSingle(tx)}
-                            aria-label={`${tx.counterparty_name || '거래'} 복원`}
-                            className="text-[11px] text-brand hover:underline">복원</button>
-                          <button type="button" onClick={() => handleHardDeleteSingle(tx)}
-                            aria-label={`${tx.counterparty_name || '거래'} 영구 삭제`}
-                            className="text-[11px] text-red-400 hover:text-red-600 hover:underline">영구삭제</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {trashTxs.map((tx, index) => {
+                    const trashActionDescriptionId = `admin-payment-trash-actions-${tx.id}`;
+                    const trashActionDescriptionIds = `${trashActionDescriptionId} admin-payment-action-result-description`;
+                    return (
+                      <tr key={tx.id} className="border-b border-admin-border-mid hover:bg-admin-bg transition opacity-60">
+                        <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
+                          {fmtMonthDayTime(tx.received_at)}
+                        </td>
+                        <td className="px-3 py-2 text-admin-muted">{tx.counterparty_name || '-'}</td>
+                        <td className="px-3 py-2 text-right font-medium text-admin-text-2">{tx.amount.toLocaleString()}원</td>
+                        <td className="px-3 py-2 text-admin-muted-2 text-[11px]">
+                          {tx.deleted_at ? fmtMonthDay(tx.deleted_at) : '-'}
+                        </td>
+                        <td className="px-3 py-2 text-right whitespace-nowrap">
+                          <p id={trashActionDescriptionId} className="sr-only">
+                            {tx.counterparty_name || '거래'} {tx.amount.toLocaleString()}원 제외 내역입니다. 복원하면 결제 목록으로 돌아가고, 영구 삭제는 되돌릴 수 없습니다.
+                          </p>
+                          <div className="flex items-center gap-2 justify-end">
+                            <button type="button" ref={index === 0 ? firstTrashRestoreRef : undefined} onClick={() => handleRestoreSingle(tx)}
+                              data-testid="admin-payment-trash-restore-action"
+                              aria-label={`${tx.counterparty_name || '거래'} 복원`}
+                              aria-describedby={trashActionDescriptionIds}
+                              className="text-[11px] text-brand hover:underline">복원</button>
+                            <button type="button" onClick={() => handleHardDeleteSingle(tx)}
+                              data-testid="admin-payment-hard-delete-action"
+                              aria-label={`${tx.counterparty_name || '거래'} 영구 삭제`}
+                              aria-describedby={trashActionDescriptionIds}
+                              className="text-[11px] text-red-400 hover:text-red-600 hover:underline">영구삭제</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -1678,11 +2068,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             onClick={() => setSelectedTx(null)}
           />
           <div
+            id="admin-payment-match-dialog"
+            ref={matchPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payment-manual-match-title"
+            aria-describedby="payment-manual-match-description"
+            data-testid="admin-payment-match-dialog"
             className="fixed top-0 right-0 h-full w-full max-w-lg bg-white border-l border-admin-border-mid flex flex-col z-50"
           >
             <div className="p-5 border-b border-admin-border-mid flex items-center justify-between">
               <div>
-                <h3 className="text-admin-lg font-semibold text-admin-text-2">
+                <h3 id="payment-manual-match-title" className="text-admin-lg font-semibold text-admin-text-2">
                   {selectedTx.is_refund ? '환불 매칭' : selectedTx.transaction_type === '출금' ? '출금 매칭' : '수동 예약 매칭'}
                 </h3>
                 <p className="text-admin-sm text-admin-muted mt-0.5">
@@ -1690,8 +2087,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   <strong className="text-admin-text-2">{selectedTx.counterparty_name}</strong>&nbsp;
                   <span className="font-bold text-admin-text-2">{selectedTx.amount.toLocaleString()}원</span>
                 </p>
+                <p id="payment-manual-match-description" className="sr-only">
+                  거래를 예약에 직접 연결하거나 여러 예약으로 나누어 매칭합니다. 잘못 매칭한 경우 매칭 취소로 원복할 수 있습니다.
+                </p>
+                <p id="payment-manual-match-status" className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+                  {processing ? '수동 매칭 작업을 처리하고 있습니다.' : '수동 매칭 작업 대기 중입니다.'}
+                </p>
               </div>
-              <button type="button" onClick={() => setSelectedTx(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="수동 매칭 패널 닫기">✕</button>
+              <button type="button" ref={matchCloseButtonRef} onClick={() => setSelectedTx(null)} data-testid="admin-payment-match-close" className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="수동 매칭 패널 닫기">✕</button>
             </div>
 
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
@@ -1975,6 +2378,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             {/* 하단 버튼 */}
             <div className="p-4 border-t border-admin-border-mid flex gap-2">
               <button type="button" onClick={handleFee} disabled={processing}
+                aria-busy={processing}
+                aria-describedby="payment-manual-match-description payment-manual-match-status"
                 className="px-3 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg transition">
                 수수료 처리
               </button>
@@ -1984,6 +2389,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 취소
               </button>
               <button type="button" onClick={handleMatch} disabled={matchBtnDisabled}
+                aria-busy={processing}
+                aria-describedby="payment-manual-match-description payment-manual-match-status"
                 className="px-4 py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
                 {processing ? '처리 중...' : '매칭 확정'}
               </button>
@@ -2017,11 +2424,17 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             onClick={closeImport}
           />
           <div
+            id="admin-payment-import-dialog"
+            ref={importPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="payment-import-panel-title"
+            data-testid="admin-payment-import-dialog"
             className="fixed top-0 right-0 h-full w-full max-w-3xl bg-white border-l border-admin-border-mid flex flex-col z-50"
           >
             <div className="p-5 border-b border-admin-border-mid flex items-center justify-between">
-              <h3 className="text-admin-lg font-semibold text-admin-text-2">과거 입출금 내역 일괄 등록</h3>
-              <button type="button" onClick={closeImport} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="과거 입출금 내역 등록 패널 닫기">✕</button>
+              <h3 id="payment-import-panel-title" className="text-admin-lg font-semibold text-admin-text-2">과거 입출금 내역 일괄 등록</h3>
+              <button type="button" ref={importCloseButtonRef} onClick={closeImport} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="과거 입출금 내역 등록 패널 닫기">✕</button>
             </div>
 
             {importStep === 'paste' && (
@@ -2029,7 +2442,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-[11px] text-blue-800">
                   컬럼 순서: 거래일시 → 입금액 → 출금액 → 적요 → 메모 (탭 구분)
                 </div>
-                <textarea value={pasteText} onChange={e => setPasteText(e.target.value)}
+                <textarea ref={importPasteTextareaRef} value={pasteText} onChange={e => setPasteText(e.target.value)}
                   aria-label="입출금 내역 붙여넣기"
                   placeholder="스프레드시트에서 복사 후 붙여넣기"
                   className="flex-1 min-h-[280px] border border-admin-border-mid rounded px-3 py-2 text-[11px] font-mono text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />

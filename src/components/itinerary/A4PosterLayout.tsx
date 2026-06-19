@@ -715,7 +715,9 @@ export function PosterScheduleTable({
                 <td style={{
                   padding: '2px 3px', borderRight: `1px solid ${BORDER}`,
                   borderBottom: dayBorder,
-                }} />
+                }}>
+                  <span className="sr-only">교통편 없음</span>
+                </td>
                 {/* HOTEL */}
                 <td style={{
                   padding: '2px 6px', color: '#1e40af', fontWeight: 600, fontSize: '9.5px',

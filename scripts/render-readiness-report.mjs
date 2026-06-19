@@ -42,6 +42,7 @@ const KIND_CONFIG = {
     countSuffix: '',
     checkColumns: ['Check', 'Status', 'Duration ms', 'Notes'],
     blockerColumns: ['Name', 'Status', 'Notes'],
+    blockerSectionTitle: 'Readiness Attention',
   },
   'local-release': {
     title: 'Local Release Readiness',
@@ -53,6 +54,7 @@ const KIND_CONFIG = {
     countSuffix: ' / Total: ${total}',
     checkColumns: ['Check', 'Status', 'Duration ms', 'Failed', 'Blocked'],
     blockerColumns: ['Source', 'Name', 'Status', 'Notes'],
+    blockerSectionTitle: 'Release Blockers',
   },
   'marketing-release': {
     title: 'Marketing Release Readiness',
@@ -64,6 +66,19 @@ const KIND_CONFIG = {
     countSuffix: ' / Total: ${total}',
     checkColumns: ['Check', 'Status', 'Duration ms', 'Failed', 'Blocked'],
     blockerColumns: ['Source', 'Name', 'Status', 'Notes'],
+    blockerSectionTitle: 'Release Blockers',
+  },
+  'full-project': {
+    title: 'Full Project Readiness',
+    issueTitle: '[readiness] Full project readiness attention items',
+    legacyIssueTitles: ['[readiness] Full project readiness blockers'],
+    issueHeading: 'Full Project Readiness Attention Items',
+    marker: '<!-- readiness-full-project-blockers -->',
+    recoveryText: 'Full project readiness is passing again.',
+    countSuffix: ' / Total: ${total}',
+    checkColumns: ['Stage', 'Status', 'Duration ms', 'Passed', 'Blocked', 'Failed', 'Warnings'],
+    blockerColumns: ['Stage', 'Source', 'Name', 'Status', 'Missing', 'Notes'],
+    blockerSectionTitle: 'Project Attention Blockers',
   },
 };
 
@@ -77,6 +92,10 @@ function configFor(value) {
 
 function isReleaseKind(value) {
   return value === 'local-release' || value === 'marketing-release';
+}
+
+function isFullProjectKind(value) {
+  return value === 'full-project';
 }
 
 function sampleReportFor(value) {
@@ -199,8 +218,8 @@ function sampleReportFor(value) {
         notes: 'sample missing env',
         missing: ['SERPAPI_KEY'],
       }, {
-        source: 'marketing-runtime-local',
-        name: 'local:marketing-runtime',
+        source: 'marketing-runtime-vercel',
+        name: 'vercel:marketing-runtime',
         status: 'blocked',
         notes: 'sample runtime blocker',
         attentionChecks: [
@@ -246,7 +265,7 @@ function sampleReportFor(value) {
           envFilePath: '.tmp/marketing-release-operational-inputs-discovered.env',
         },
         {
-          id: 'marketing-runtime-local',
+          id: 'marketing-runtime-vercel',
           status: 'blocked',
           durationMs: 666,
           blocked: 1,
@@ -258,6 +277,59 @@ function sampleReportFor(value) {
           attentionCheckCount: 3,
         },
       ],
+    };
+  }
+
+  if (value === 'full-project') {
+    return {
+      kind: 'full-project',
+      status: 'blocked',
+      strict: true,
+      passed: 1,
+      blocked: 1,
+      warned: 0,
+      failed: 0,
+      total: 2,
+      attention: [{
+        stage: 'local-release',
+        source: 'operational-inputs',
+        name: 'runtime-integrations',
+        status: 'blocked',
+        missing: ['SERPAPI_KEY', 'GOOGLE_ADS_DEVELOPER_TOKEN'],
+        notes: 'sample full-project blocker',
+      }, {
+        stage: 'marketing-release',
+        source: 'operational-inputs',
+        name: 'runtime-defaults',
+        status: 'warn',
+        missing: ['AD_MIN_BID_KRW'],
+        notes: 'sample full-project warning',
+      }],
+      checks: [{
+        id: 'local-release',
+        status: 'blocked',
+        durationMs: 111,
+        passed: 0,
+        blocked: 1,
+        failed: 0,
+        warnings: 1,
+        reportPath: '.tmp/verify-all-local-release-sample.json',
+        templatePath: '.tmp/local-release-operational-inputs.env.example',
+        actionPlanPath: '.tmp/local-release-operational-inputs-action-plan.md',
+        applyScriptPath: '.tmp/local-release-operational-inputs-apply.sh',
+        vercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.sh',
+        nodeApplyScriptPath: '.tmp/local-release-operational-inputs-apply.mjs',
+        nodeVercelScriptPath: '.tmp/local-release-operational-inputs-vercel-env.mjs',
+      }, {
+        id: 'marketing-release',
+        status: 'pass',
+        durationMs: 222,
+        passed: 4,
+        blocked: 0,
+        failed: 0,
+        warnings: 0,
+        reportPath: '.tmp/verify-all-marketing-release-sample.json',
+      }],
     };
   }
 
@@ -340,7 +412,9 @@ function missingReportFor(value, path) {
     ? 'local-release:report'
     : value === 'marketing-release'
       ? 'marketing-release:report'
-      : 'open-readiness:report';
+      : value === 'full-project'
+        ? 'full-project:report'
+        : 'open-readiness:report';
   const notes = path
     ? `Readiness report was not created at ${path}; inspect workflow logs before trusting this run.`
     : 'Readiness report path was not provided; inspect workflow logs before trusting this run.';
@@ -417,6 +491,18 @@ function countOf(report, key) {
   return Number.isFinite(nested) ? nested : 0;
 }
 
+function warningCountOf(report) {
+  const explicit = Number(report?.warnings ?? report?.warned ?? report?.summary?.warnings ?? report?.summary?.warned);
+  if (Number.isFinite(explicit) && explicit > 0) return explicit;
+  const releaseWarnings = Array.isArray(report?.releaseWarnings) ? report.releaseWarnings.length : 0;
+  if (releaseWarnings > 0) return releaseWarnings;
+  const attentionWarnings = Array.isArray(report?.attention)
+    ? report.attention.filter((item) => item?.status === 'warn').length
+    : 0;
+  if (attentionWarnings > 0) return attentionWarnings;
+  return reportChecks(report).filter((check) => check?.status === 'warn').length;
+}
+
 function noteFor(item) {
   const notes = [firstText(item.notes, item.error)];
   if (Array.isArray(item.missing) && item.missing.length > 0) {
@@ -475,6 +561,20 @@ function reportChecks(report) {
 function reportBlockers(report) {
   const direct = Array.isArray(report?.releaseBlockers) ? report.releaseBlockers : [];
   if (direct.length > 0) return direct;
+  const attention = Array.isArray(report?.attention) ? report.attention : [];
+  if (attention.length > 0) {
+    return attention
+      .filter((item) => item?.status === 'blocked' || item?.status === 'fail')
+      .map((item) => ({
+        stage: item.stage,
+        source: item.source || item.id || item.name,
+        name: item.name || item.id || 'attention',
+        status: item.status || 'unknown',
+        notes: firstText(item.notes, item.error),
+        missing: item.missing,
+        reportPath: item.reportPath,
+      }));
+  }
   return reportChecks(report)
     .filter((check) => check?.status === 'blocked' || check?.status === 'fail')
     .map((check) => ({
@@ -502,6 +602,19 @@ function reportBlockers(report) {
 function reportWarnings(report) {
   const direct = Array.isArray(report?.releaseWarnings) ? report.releaseWarnings : [];
   if (direct.length > 0) return direct;
+  const attention = Array.isArray(report?.attention) ? report.attention : [];
+  if (attention.length > 0) {
+    return attention
+      .filter((item) => item?.status === 'warn')
+      .map((item) => ({
+        source: [item.stage, item.source || item.name].filter(Boolean).join(':'),
+        name: item.name || item.id || 'attention',
+        status: 'warn',
+        notes: firstText(item.notes, item.error),
+        missing: item.missing,
+        reportPath: item.reportPath,
+      }));
+  }
   return reportChecks(report)
     .filter((check) => check?.status === 'warn')
     .map((check) => ({
@@ -527,9 +640,7 @@ function countLine(report, config) {
   const passed = countOf(report, 'passed');
   const blocked = countOf(report, 'blocked');
   const failed = countOf(report, 'failed');
-  const warnings = countOf(report, 'warnings')
-    || (Array.isArray(report?.releaseWarnings) ? report.releaseWarnings.length : 0)
-    || reportChecks(report).filter((check) => check?.status === 'warn').length;
+  const warnings = warningCountOf(report);
   const total = countOf(report, 'total');
   const suffix = config.countSuffix.replace('${total}', String(total));
   return `Passed: ${passed} / Blocked: ${blocked} / Failed: ${failed} / Warnings: ${warnings}${suffix}`;
@@ -548,6 +659,9 @@ function checkRows(report, value) {
   return reportChecks(report).map((check) => {
     const name = firstText(check.name, check.id, 'unknown');
     const duration = firstText(check.ms, check.durationMs, '');
+    if (isFullProjectKind(value)) {
+      return [name, check.status || '', duration, check.passed ?? '', check.blocked ?? '', check.failed ?? '', check.warnings ?? check.warned ?? ''];
+    }
     if (isReleaseKind(value)) {
       return [name, check.status || '', duration, check.failed ?? '', check.blocked ?? ''];
     }
@@ -557,6 +671,16 @@ function checkRows(report, value) {
 
 function blockerRows(blockers, value) {
   return blockers.map((blocker) => {
+    if (isFullProjectKind(value)) {
+      return [
+        blocker.stage || '',
+        blocker.source || blocker.name || '',
+        blocker.name || '',
+        blocker.status || '',
+        Array.isArray(blocker.missing) ? blocker.missing.join(', ') : '',
+        noteFor(blocker),
+      ];
+    }
     if (isReleaseKind(value)) {
       return [
         blocker.source || '',
@@ -729,11 +853,12 @@ function renderWarningsSection(warnings) {
 }
 
 function renderBlockersSection(config, blockers, value) {
+  const title = config.blockerSectionTitle || 'Release Blockers';
   if (blockers.length === 0) {
-    return '## Release Blockers\n\nNo release blockers reported.';
+    return `## ${title}\n\nNo blockers reported.`;
   }
   return [
-    '## Release Blockers',
+    `## ${title}`,
     '',
     table(config.blockerColumns, blockerRows(blockers, value)),
   ].join('\n');

@@ -74,7 +74,7 @@ export default function ConsentBanner() {
       {open && (
         <button
           type="button"
-          aria-label="Close cookie settings"
+          aria-label="쿠키 설정 닫기"
           className="fixed inset-0 z-[60] bg-black/30 backdrop-blur-sm"
           onClick={() => setOpen(false)}
         />
@@ -85,15 +85,16 @@ export default function ConsentBanner() {
         <div
           role="dialog"
           tabIndex={-1}
-          aria-label="Cookie consent"
+          aria-labelledby="cookie-consent-title"
+          aria-describedby="cookie-consent-description"
           className="w-full max-w-2xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden"
         >
           <div className="px-5 py-4">
             <div className="flex items-start gap-3">
-              <span className="text-2xl">🍪</span>
+              <span className="text-2xl" aria-hidden="true">🍪</span>
               <div className="flex-1 min-w-0">
-                <h2 className="font-bold text-slate-900 text-sm">쿠키 사용 동의 (PIPA)</h2>
-                <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                <h2 id="cookie-consent-title" className="font-bold text-slate-900 text-sm">쿠키 사용 동의 (PIPA)</h2>
+                <p id="cookie-consent-description" className="text-xs text-slate-500 mt-0.5 leading-relaxed">
                   더 나은 서비스를 위해 쿠키를 사용합니다. 마케팅 쿠키 동의 시 추천 링크를 30일간 추적하여 정상적인 어필리에이트 정산이 가능합니다. 미동의 시에도 핵심 기능은 정상 작동합니다.
                 </p>
               </div>
@@ -191,7 +192,7 @@ function ConsentRow({
         onClick={() => !disabled && onChange?.(!checked)}
         disabled={disabled}
         aria-pressed={checked}
-        aria-label={`${title} cookie consent`}
+        aria-label={`${title} 쿠키 동의 ${checked ? '켜짐' : '꺼짐'}`}
         className={`mt-0.5 shrink-0 w-9 h-5 rounded-full transition-colors relative ${
           disabled ? 'bg-slate-300' : checked ? 'bg-blue-600' : 'bg-slate-200'
         }`}

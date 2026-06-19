@@ -2,11 +2,12 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatStore } from '@/lib/chat-store';
 import { REGIONS } from '@/lib/regions';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref, GROUP_INQUIRY_PRODUCT_LABEL } from '@/lib/group-inquiry-handoff';
 import {
   appendDepartureHubToSearchParams,
   DEFAULT_DEPARTURE_HUB,
@@ -151,6 +152,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const [whereRegion, setWhereRegion] = useState('');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const sheetCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const regionFilters = useMemo(
     () => REGIONS.filter(r => r.featuredCities.length > 0).map(r => ({ label: r.label, emoji: r.emoji })),
@@ -189,19 +192,77 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
       }),
     [hub, monthParam, whereMode, whereCity, whereRegion, priceMin, priceMax],
   );
+  const groupInquiryHref = useMemo(
+    () => {
+      const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '';
+      const departure = `${hubSlotLabel(hub)} 출발`;
+      const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
+      const budget = budgetPreset === 'any' ? '' : budgetLabel;
+
+      return buildGroupInquiryHandoffHref({
+        source: 'home_hero',
+        intent: 'group_trip',
+        partyType: 'group',
+        query: [departure, when, destination || '목적지 미정', budget || '예산 미정'].join(', '),
+        destination,
+        budget,
+        selectedProducts: [GROUP_INQUIRY_PRODUCT_LABEL],
+      });
+    },
+    [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset],
+  );
+  const groupInquirySummaryId = 'home-hero-group-inquiry-summary';
+  const groupInquirySummary = useMemo(() => {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
+    const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
+    const budget = budgetPreset === 'any' ? '예산 미정' : budgetLabel;
+    return `${hubSlotLabel(hub)} 출발, ${when}, ${destination}, ${budget} 조건으로 단체 견적을 문의합니다.`;
+  }, [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset]);
 
   useEffect(() => {
     if (step === null) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => sheetCloseButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      setStep(null);
+      if (e.key === 'Escape') {
+        setStep(null);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [step]);
 
@@ -216,6 +277,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   function trackPackageSearchClick(source: string) {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: source,
+      filter_value: [hub, monthParam || 'any_month', whereMode, budgetPreset].join(':'),
       page_url: pageUrl,
       destination: whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : null,
       budget: budgetPreset === 'any' ? null : budgetLabel,
@@ -232,11 +295,22 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   }
 
   function trackGroupInquiryClick(source: string) {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : null;
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: source,
       page_url: pageUrl,
-      party_type: 'group_inquiry',
-      metadata: { source },
+      budget: budgetPreset === 'any' ? null : budgetLabel,
+      destination,
+      party_type: 'group',
+      selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+      metadata: {
+        source,
+        href: groupInquiryHref,
+        departure_hub: hub,
+        month: monthParam || null,
+        where_mode: whereMode,
+      },
     });
   }
 
@@ -271,6 +345,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   if (!expanded) {
     return (
       <div className="space-y-4">
+        <p id={groupInquirySummaryId} className="sr-only">
+          {groupInquirySummary}
+        </p>
         <button
           type="button"
           onClick={() => setExpanded(true)}
@@ -289,7 +366,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             <span aria-hidden>🔥</span>마감·특가
           </Link>
           <Link
-            href="/group-inquiry"
+            href={groupInquiryHref}
+            data-testid="home-hero-group-inquiry"
+            aria-describedby={groupInquirySummaryId}
             onClick={() => trackGroupInquiryClick('home_hero_compact')}
             className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}
           >
@@ -309,6 +388,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
   return (
     <div className="space-y-4">
+      <p id={groupInquirySummaryId} className="sr-only">
+        {groupInquirySummary}
+      </p>
       <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4 shadow-[0_12px_40px_rgba(49,130,246,0.08)]">
         <p className="text-[16px] md:text-[17px] leading-[1.75] text-text-primary tracking-[-0.03em]">
           나는{' '}
@@ -364,7 +446,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           마감·특가
         </Link>
         <Link
-          href="/group-inquiry"
+          href={groupInquiryHref}
+          data-testid="home-hero-group-inquiry"
+          aria-describedby={groupInquirySummaryId}
           onClick={() => trackGroupInquiryClick('home_hero_expanded')}
           className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40 hover:bg-[#F8FAFF]`}
         >
@@ -393,10 +477,11 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             aria-label="닫기"
             onClick={closeSheet}
           />
-          <div className="relative flex w-full max-h-[88vh] md:max-h-[85vh] md:max-w-lg flex-col rounded-t-[24px] md:rounded-2xl bg-white shadow-2xl">
+          <div ref={sheetRef} className="relative flex w-full max-h-[88vh] md:max-h-[85vh] md:max-w-lg flex-col rounded-t-[24px] md:rounded-2xl bg-white shadow-2xl">
             <div className="flex shrink-0 items-center gap-2 border-b border-admin-border px-2 py-2 md:rounded-t-2xl">
               <button
                 type="button"
+                ref={sheetCloseButtonRef}
                 onClick={closeSheet}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-body hover:bg-bg-section"
                 aria-label="닫기"

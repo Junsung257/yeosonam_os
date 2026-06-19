@@ -11,6 +11,7 @@ import TrackedKakaoLink from '@/components/customer/TrackedKakaoLink';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
 import { SafeCoverImg, SafeMagazineThumb } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 
 export const revalidate = 600;
 export const dynamic = 'auto'; // Next 15: 정적 평가만 가능
@@ -258,6 +259,11 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
   const encodedSlug = encodeURIComponent(slug);
   const region = getRegionBySlug(slug);
   if (!region) notFound();
+  const regionEmptyGroupInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'region_empty_state',
+    query: `${region.label} 맞춤 패키지 문의`,
+    destination: region.label,
+  });
 
   let data: RegionData | null = null;
   try {
@@ -421,7 +427,11 @@ export default async function RegionLandingPage({ params }: { params: Promise<{ 
             <section className="py-12 text-center">
               <p className="text-base text-slate-600 mb-2">{region.label} 패키지 준비 중입니다</p>
               <p className="text-[13px] text-slate-400 mb-4">곧 운영팀이 {region.label} 여행지를 정식 오픈합니다.</p>
-              <Link href="/group-inquiry" className="inline-block px-5 py-2 bg-brand text-white text-sm rounded-full hover:opacity-90">
+              <Link
+                href={regionEmptyGroupInquiryHref}
+                data-testid="region-empty-group-inquiry"
+                className="inline-block px-5 py-2 bg-brand text-white text-sm rounded-full hover:opacity-90"
+              >
                 맞춤 문의하기 →
               </Link>
             </section>

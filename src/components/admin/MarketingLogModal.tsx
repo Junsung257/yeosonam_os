@@ -89,10 +89,15 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
   const meta = PLATFORM_META[platform];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/40 cursor-default"
+        onClick={onClose}
+        aria-label="발행 기록 모달 닫기"
+      />
       <div
-        className="bg-white rounded-admin-lg shadow-2xl w-full max-w-md mx-4 p-6"
-        onClick={e => e.stopPropagation()}
+        className="relative bg-white rounded-admin-lg shadow-2xl w-full max-w-md mx-4 p-6"
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between mb-5">
@@ -100,13 +105,14 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
             <h2 className="text-lg font-bold text-admin-text">발행 기록 남기기</h2>
             <p className="text-xs text-admin-muted mt-0.5">마케팅 발행 URL을 저장합니다</p>
           </div>
-          <button onClick={onClose} className="text-admin-muted-2 hover:text-admin-text-2 text-xl leading-none">×</button>
+          <button type="button" onClick={onClose} className="text-admin-muted-2 hover:text-admin-text-2 text-xl leading-none" aria-label="발행 기록 모달 닫기">×</button>
         </div>
 
         {/* URL 입력 */}
         <div className="mb-4">
-          <label className="block text-sm font-semibold text-admin-text-2 mb-1.5">발행 URL</label>
+          <label htmlFor="marketing-log-url" className="block text-sm font-semibold text-admin-text-2 mb-1.5">발행 URL</label>
           <input
+            id="marketing-log-url"
             type="url"
             value={url}
             onChange={e => setUrl(e.target.value)}
@@ -130,7 +136,7 @@ export default function MarketingLogModal({ productId, travelPackageId, onClose,
 
         {/* 플랫폼 선택 */}
         <div className="mb-5">
-          <label className="block text-sm font-semibold text-admin-text-2 mb-2">플랫폼 선택</label>
+          <div className="block text-sm font-semibold text-admin-text-2 mb-2">플랫폼 선택</div>
           <div className="grid grid-cols-5 gap-2">
             {(Object.entries(PLATFORM_META) as [Platform, typeof PLATFORM_META[Platform]][]).map(([key, m]) => (
               <button

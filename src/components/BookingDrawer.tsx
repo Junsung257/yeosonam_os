@@ -811,6 +811,8 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   const timelineRef = useRef<HTMLDivElement>(null);
   const visible = !!bookingId;
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const drawerRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -904,9 +906,46 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   // ESC
   useEffect(() => {
     if (!visible) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      drawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
     window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', h);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
   }, [visible, onClose]);
 
   useEffect(() => {
@@ -1175,22 +1214,25 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       {/* Overlay */}
       <button
         type="button"
-        aria-label="Close booking drawer"
+        aria-label="예약 상세 패널 닫기"
         className={`fixed inset-0 bg-black/30 backdrop-blur-[2px] z-40 transition-opacity duration-300 ${visible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         onClick={onClose}
       />
 
       {/* Drawer */}
-      <div className={`fixed inset-y-0 right-0 z-50 w-[min(960px,60vw)] bg-white shadow-2xl flex flex-col
+      <div ref={drawerRef} role="dialog" aria-modal="true" aria-labelledby="booking-drawer-title" aria-describedby="booking-drawer-description" className={`fixed inset-y-0 right-0 z-50 w-[min(960px,60vw)] bg-white shadow-2xl flex flex-col
         transform transition-transform duration-300 ease-out
         ${visible ? 'translate-x-0' : 'translate-x-full'}`}>
+        <span id="booking-drawer-description" className="sr-only">
+          예약 상세 정보, 결제, 일정, 메모를 확인하고 처리합니다.
+        </span>
 
         {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white/95 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             {booking ? (
               <>
-                <span className="font-mono text-[14px] font-extrabold text-gray-800 shrink-0">
+                <span id="booking-drawer-title" className="font-mono text-[14px] font-extrabold text-gray-800 shrink-0">
                   {booking.booking_no || booking.id.slice(0, 8)}
                 </span>
                 <span className={`text-[12px] font-semibold px-2.5 py-1 rounded-full shrink-0 ${getStatusBadgeClass(booking.status)}`}>
@@ -1208,7 +1250,9 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 )}
               </>
             ) : (
-              <div className="h-5 w-48 bg-gray-100 rounded animate-pulse" />
+              <div id="booking-drawer-title" className="h-5 w-48 bg-gray-100 rounded animate-pulse">
+                <span className="sr-only">예약 상세 불러오는 중</span>
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -1218,7 +1262,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
                 전체 편집 ↗
               </Link>
             )}
-            <button onClick={onClose}
+            <button type="button" ref={closeButtonRef} onClick={onClose} aria-label="예약 상세 닫기"
               className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-500 transition text-[16px]">
               ✕
             </button>

@@ -10,7 +10,7 @@
 
 'use client';
 
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, X as CloseIcon, type LucideIcon } from 'lucide-react';
 
@@ -210,11 +210,55 @@ export function DetailDrawer({
   actions,
   children,
 }: DetailDrawerProps) {
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const titleId = useId();
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose();
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      drawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
   }, [open, onClose]);
 
   if (!open || typeof document === 'undefined') return null;
@@ -227,26 +271,30 @@ export function DetailDrawer({
         aria-hidden="true"
       />
       <aside
+        ref={drawerRef}
         role="dialog"
         aria-modal="true"
-        className={`fixed top-0 right-0 h-full ${width} bg-admin-surface border-l border-admin-border-mid shadow-admin-xl z-50 flex flex-col animate-in slide-in-from-right duration-200`}
+        aria-labelledby={titleId}
+        className={`fixed top-0 right-0 h-dvh ${width} bg-admin-surface border-l border-admin-border-mid shadow-admin-xl z-50 flex flex-col animate-in slide-in-from-right duration-200`}
       >
         <header className="h-14 px-5 flex items-center justify-between border-b border-admin-border shrink-0">
           <div className="min-w-0">
-            <h2 className="text-admin-h3 text-admin-text truncate">{title}</h2>
+            <h2 id={titleId} className="text-admin-h3 text-admin-text truncate">{title}</h2>
             {subtitle && <p className="text-admin-xs text-admin-muted truncate">{subtitle}</p>}
           </div>
           <button
+            type="button"
+            ref={closeButtonRef}
             onClick={onClose}
             className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors duration-160 shrink-0"
-            aria-label="닫기"
+            aria-label="상세 패널 닫기"
           >
             <CloseIcon size={18} />
           </button>
         </header>
         <div className="flex-1 overflow-y-auto p-5">{children}</div>
         {actions && (
-          <footer className="px-5 py-3 border-t border-admin-border bg-admin-surface-2 shrink-0">
+          <footer className="px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-admin-border bg-admin-surface-2 shrink-0">
             <div className="flex items-center justify-end gap-2">{actions}</div>
           </footer>
         )}

@@ -110,8 +110,9 @@ export default function TenantTokensPage() {
 
       {/* 테넌트 선택 */}
       <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-admin-text-2">여행사 선택</label>
+        <label htmlFor="tenant-token-tenant" className="text-sm font-medium text-admin-text-2">여행사 선택</label>
         <select
+          id="tenant-token-tenant"
           value={selectedTenant}
           onChange={e => setSelectedTenant(e.target.value)}
           className="border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -141,8 +142,9 @@ export default function TenantTokensPage() {
           <h2 className="text-base font-semibold text-admin-text-2">새 토큰 등록</h2>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-admin-text-2 mb-1">플랫폼</label>
+              <label htmlFor="tenant-token-provider" className="block text-sm font-medium text-admin-text-2 mb-1">플랫폼</label>
               <select
+                id="tenant-token-provider"
                 value={form.provider}
                 onChange={e => setForm(f => ({ ...f, provider: e.target.value }))}
                 className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -153,8 +155,9 @@ export default function TenantTokensPage() {
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-admin-text-2 mb-1">만료일 (선택)</label>
+              <label htmlFor="tenant-token-expires-at" className="block text-sm font-medium text-admin-text-2 mb-1">만료일 (선택)</label>
               <input
+                id="tenant-token-expires-at"
                 type="datetime-local"
                 value={form.expires_at}
                 onChange={e => setForm(f => ({ ...f, expires_at: e.target.value }))}
@@ -163,8 +166,9 @@ export default function TenantTokensPage() {
             </div>
           </div>
           <div>
-            <label className="block text-sm font-medium text-admin-text-2 mb-1">Access Token <span className="text-red-500">*</span></label>
+            <label htmlFor="tenant-token-access" className="block text-sm font-medium text-admin-text-2 mb-1">Access Token <span className="text-red-500">*</span></label>
             <textarea
+              id="tenant-token-access"
               value={form.access_token}
               onChange={e => setForm(f => ({ ...f, access_token: e.target.value }))}
               rows={3}
@@ -173,8 +177,9 @@ export default function TenantTokensPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-admin-text-2 mb-1">Refresh Token (선택)</label>
+            <label htmlFor="tenant-token-refresh" className="block text-sm font-medium text-admin-text-2 mb-1">Refresh Token (선택)</label>
             <input
+              id="tenant-token-refresh"
               type="text"
               value={form.refresh_token}
               onChange={e => setForm(f => ({ ...f, refresh_token: e.target.value }))}
@@ -183,8 +188,9 @@ export default function TenantTokensPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-admin-text-2 mb-1">Scopes (쉼표 구분, 선택)</label>
+            <label htmlFor="tenant-token-scopes" className="block text-sm font-medium text-admin-text-2 mb-1">Scopes (쉼표 구분, 선택)</label>
             <input
+              id="tenant-token-scopes"
               type="text"
               value={form.scopes}
               onChange={e => setForm(f => ({ ...f, scopes: e.target.value }))}

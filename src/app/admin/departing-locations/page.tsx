@@ -110,6 +110,7 @@ export default function DepartingLocationsPage() {
                   {[120, 48, 64].map((w, j) => (
                     <td key={j}>
                       <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
+                      <span className="sr-only">출발지 정보 로딩 중</span>
                     </td>
                   ))}
                 </tr>
@@ -142,7 +143,6 @@ export default function DepartingLocationsPage() {
                     {editingId === l.id ? (
                       <div className="flex gap-1.5">
                         <input
-                          autoFocus
                           value={editName}
                           onChange={e => setEditName(e.target.value)}
                           onKeyDown={e => {

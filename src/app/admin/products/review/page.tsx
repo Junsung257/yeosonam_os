@@ -585,9 +585,12 @@ export default function ProductReviewPage() {
                 <li key={p.internal_code} className="border-b border-admin-border-mid">
                   <div className={`flex items-stretch transition-colors hover:bg-admin-bg ${selected?.internal_code === p.internal_code ? 'bg-blue-50 border-l-2 border-l-blue-600' : ''} ${bulkSelected.has(p.internal_code) ? 'bg-amber-50' : ''}`}>
                     {/* P10-2 박제: 체크박스 — 좌측 컴팩트 */}
-                    <label className="flex items-center pl-3 pr-1 cursor-pointer" onClick={e => e.stopPropagation()}>
+                    <label htmlFor={`product-review-bulk-${p.internal_code}`} className="flex items-center pl-3 pr-1 cursor-pointer">
+                      <span className="sr-only">{p.display_name} 선택</span>
                       <input
+                        id={`product-review-bulk-${p.internal_code}`}
                         type="checkbox"
+                        onClick={e => e.stopPropagation()}
                         checked={bulkSelected.has(p.internal_code)}
                         onChange={() => toggleBulk(p.internal_code)}
                         className="w-4 h-4 cursor-pointer"
@@ -910,8 +913,9 @@ export default function ProductReviewPage() {
                         {faq.map((item, i) => (
                           <div key={i} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
                             <div className="mb-2">
-                              <label className="text-[11px] text-blue-600 font-medium">Q{i + 1}</label>
+                              <label htmlFor={`product-review-faq-q-${i}`} className="text-[11px] text-blue-600 font-medium">Q{i + 1}</label>
                               <textarea
+                                id={`product-review-faq-q-${i}`}
                                 value={item.q}
                                 onChange={e => setFaq(fs => fs.map((f, j) => j === i ? { ...f, q: e.target.value } : f))}
                                 rows={1}
@@ -919,8 +923,9 @@ export default function ProductReviewPage() {
                               />
                             </div>
                             <div>
-                              <label className="text-[11px] text-admin-muted-2 font-medium">A</label>
+                              <label htmlFor={`product-review-faq-a-${i}`} className="text-[11px] text-admin-muted-2 font-medium">A</label>
                               <textarea
+                                id={`product-review-faq-a-${i}`}
                                 value={item.a}
                                 onChange={e => setFaq(fs => fs.map((f, j) => j === i ? { ...f, a: e.target.value } : f))}
                                 rows={2}

@@ -6,6 +6,37 @@ loadEnv();
 
 const argv = process.argv.slice(2);
 const args = new Set(argv);
+const knownArgs = new Set([
+  '--apply',
+  '--status',
+  '--limit',
+  '--verify-limit',
+  '--promote-limit',
+  '--photo-limit',
+  '--min-score',
+  '--destination',
+  '--all-products',
+  '--skip-verify',
+  '--skip-promote',
+  '--skip-photo-fill',
+  '--command-timeout-ms',
+]);
+
+function argKey(arg: string): string {
+  return String(arg || '').split('=')[0];
+}
+
+const unknownArgs = argv.filter((arg, index) => {
+  if (index > 0 && knownArgs.has(argv[index - 1])) return false;
+  return arg.startsWith('--') && !knownArgs.has(argKey(arg));
+});
+
+if (unknownArgs.length > 0) {
+  for (const arg of unknownArgs) {
+    console.error(`[quality-engine] unknown argument: ${arg}`);
+  }
+  process.exit(1);
+}
 
 const apply = args.has('--apply');
 const status = argValue('--status', 'active');
@@ -19,6 +50,15 @@ const publicOnly = !args.has('--all-products');
 const skipVerify = args.has('--skip-verify');
 const skipPromote = args.has('--skip-promote');
 const skipPhotoFill = args.has('--skip-photo-fill');
+const commandTimeoutMs = Number(argValue(
+  '--command-timeout-ms',
+  process.env.PRODUCT_MOBILE_QUALITY_COMMAND_TIMEOUT_MS || '300000',
+));
+
+if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0) {
+  console.error('[quality-engine] --command-timeout-ms must be a positive number of milliseconds.');
+  process.exit(1);
+}
 
 type Step = {
   label: string;
@@ -28,8 +68,13 @@ type Step = {
 };
 
 function argValue(name: string, fallback: string): string {
-  const found = argv.find(arg => arg.startsWith(`${name}=`));
-  return found ? found.slice(name.length + 1) : fallback;
+  let value = fallback;
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === name && argv[index + 1] !== undefined) value = argv[index + 1];
+    if (arg.startsWith(`${name}=`)) value = arg.slice(name.length + 1);
+  }
+  return value;
 }
 
 function bin(name: string): string {
@@ -48,9 +93,14 @@ function run(step: Step): void {
     env: process.env,
     stdio: 'inherit',
     shell: false,
+    timeout: commandTimeoutMs,
   });
-  if (result.error) {
-    throw result.error;
+  const error = result.error as NodeJS.ErrnoException | undefined;
+  if (error?.code === 'ETIMEDOUT') {
+    throw new Error(`${step.label} timed out after ${commandTimeoutMs}ms`);
+  }
+  if (error) {
+    throw error;
   }
   if (result.status !== 0 && !step.optional) {
     throw new Error(`${step.label} failed with exit code ${result.status ?? 'unknown'}`);

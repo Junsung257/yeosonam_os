@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import type { NoticeBlock } from '@/lib/standard-terms-client';
 import { getSourceBadgeColor } from '@/lib/standard-terms-client';
@@ -21,12 +21,16 @@ interface Props {
 
 function GroupSection({ group, defaultOpen }: { group: TermsPresentationGroup; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen ?? false);
+  const contentId = useId();
 
   return (
     <div className="border border-gray-100 rounded-xl overflow-hidden">
       <button
         type="button"
         onClick={() => setOpen(v => !v)}
+        data-testid="package-terms-group-toggle"
+        aria-expanded={open}
+        aria-controls={contentId}
         className="w-full flex items-center gap-2 px-4 py-3 text-left bg-gray-50/80 hover:bg-gray-50 transition"
       >
         <span className="text-base shrink-0">{group.icon}</span>
@@ -34,7 +38,13 @@ function GroupSection({ group, defaultOpen }: { group: TermsPresentationGroup; d
         <span className="text-gray-300 text-sm">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <div className="px-4 pb-4 pt-2 space-y-3 bg-white">
+        <div
+          id={contentId}
+          data-testid="package-terms-group-panel"
+          className="px-4 pb-4 pt-2 space-y-3 bg-white"
+          role="region"
+          aria-label={group.title}
+        >
           {group.notices.map((notice, idx) => {
             const lines = splitNoticeLines(notice.text);
             const badgeColor = getSourceBadgeColor(notice._source, notice._tier);
@@ -73,14 +83,51 @@ export default function PackageTermsBottomSheet({
   productTitle,
 }: Props) {
   const groups = useMemo(() => groupNoticesForPresentation(notices), [notices]);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!open) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
     };
     document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
   }, [open, onClose]);
 
   useEffect(() => {
@@ -100,10 +147,14 @@ export default function PackageTermsBottomSheet({
         aria-hidden
       />
       <div
+        id="package-terms-sheet"
+        data-testid="package-terms-sheet"
+        ref={sheetRef}
         className="fixed inset-x-0 bottom-0 z-[70] flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[88dvh]"
         role="dialog"
         aria-modal="true"
         aria-labelledby="package-terms-sheet-title"
+        aria-describedby="package-terms-sheet-description"
       >
         <div className="flex justify-center pt-3 pb-1 shrink-0">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
@@ -120,15 +171,20 @@ export default function PackageTermsBottomSheet({
           </div>
           <button
             type="button"
+            ref={closeButtonRef}
             onClick={onClose}
+            data-testid="package-terms-close"
             className="p-2 -mr-2 rounded-full hover:bg-gray-100 text-gray-500"
-            aria-label="닫기"
+            aria-label="약관 바텀시트 닫기"
           >
             <X size={20} />
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+          <p id="package-terms-sheet-description" className="sr-only">
+            상품 약관과 취소 규정을 확인하고 각 항목을 펼쳐 자세한 내용을 볼 수 있습니다.
+          </p>
           {hasSpecialTerms && (
             <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5 leading-relaxed">
               ※ 본 상품은 특별약관이 적용되며, 공정거래위원회 표준약관보다 우선합니다. 예약 시 동의한 것으로 간주합니다.
@@ -151,6 +207,7 @@ export default function PackageTermsBottomSheet({
           <button
             type="button"
             onClick={onClose}
+            aria-label="약관 내용을 확인하고 닫기"
             className="w-full py-3.5 rounded-xl bg-gray-900 text-white text-sm font-bold"
           >
             확인했습니다

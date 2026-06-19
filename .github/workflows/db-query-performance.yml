@@ -2,7 +2,16 @@ name: Database Query Performance
 
 # 2026-05-13 — mail-flood-stop v2: PR comment 게시 권한 실패로 항상 fail. 수동만.
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'scripts/db-query-analyzer.js'
   workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   query-analysis:
@@ -26,6 +35,7 @@ jobs:
 
       - name: Post analysis to PR
         if: github.event_name == 'pull_request' && always()
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |

@@ -232,10 +232,11 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
               {/* 상품명 */}
               <div>
-                <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
+                <label htmlFor="approval-final-title" className="block text-sm font-medium text-admin-text-2 mb-1.5">
                   상품명 (고객 노출용)
                 </label>
                 <input
+                  id="approval-final-title"
                   type="text"
                   value={editTitle}
                   onChange={e => setEditTitle(e.target.value)}
@@ -256,10 +257,11 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
               {/* 요약 */}
               <div>
-                <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
+                <label htmlFor="approval-final-summary" className="block text-sm font-medium text-admin-text-2 mb-1.5">
                   상품 요약 (B2C 노출용)
                 </label>
                 <textarea
+                  id="approval-final-summary"
                   value={editSummary}
                   onChange={e => setEditSummary(e.target.value)}
                   maxLength={SUMMARY_MAX + 10}

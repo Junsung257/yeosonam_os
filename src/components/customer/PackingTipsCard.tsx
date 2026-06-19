@@ -8,7 +8,7 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { MonthlyNormal } from '@/lib/travel-fitness-score';
 
 interface Props {
@@ -159,7 +159,9 @@ function essentials(country: string | null): PackingItem[] {
 // ─── 메인 컴포넌트 ───────────────────────────────────────────────
 
 export default function PackingTipsCard({ monthlyNormal, country, lat, durationDays = 5, monthLabel, cityLabel }: Props) {
+  const disclosureId = useId();
   const [open, setOpen] = useState(false); // 기본 접힌 상태 (사장님 피드백 2026-04-29)
+  const tipsPanelId = `${disclosureId}-packing-tips-panel`;
 
   const m = monthlyNormal;
   const categories: PackingCategory[] = [
@@ -185,7 +187,9 @@ export default function PackingTipsCard({ monthlyNormal, country, lat, durationD
           type="button"
           onClick={() => setOpen(!open)}
           className="w-full px-5 py-3.5 flex items-center gap-3 text-left hover:bg-slate-50/50 transition"
+          data-testid="packing-tips-toggle"
           aria-expanded={open}
+          aria-controls={tipsPanelId}
         >
           <span className="text-xl flex-shrink-0">🎒</span>
           <div className="flex-1 min-w-0">
@@ -203,7 +207,12 @@ export default function PackingTipsCard({ monthlyNormal, country, lat, durationD
 
         {/* 펼친 상태 */}
         {open && (
-          <>
+          <div
+            id={tipsPanelId}
+            data-testid="packing-tips-panel"
+            role="region"
+            aria-label="짐 꾸리기 팁"
+          >
             <div className="px-5 pb-4 space-y-3 border-t border-slate-100">
               {categories.map((cat, i) => (
                 <div key={i} className="pt-3 border-t border-slate-50 first:border-t-0">
@@ -234,7 +243,7 @@ export default function PackingTipsCard({ monthlyNormal, country, lat, durationD
             <p className="text-[10px] text-slate-400 px-5 pb-3 border-t border-slate-50 pt-2">
               ※ {cityLabel} {monthLabel} 평균 기후·위도·여행 일수 기반 자동 생성. 개인 차이가 있을 수 있어요.
             </p>
-          </>
+          </div>
         )}
       </div>
     </section>

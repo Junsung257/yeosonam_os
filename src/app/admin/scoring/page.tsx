@@ -747,19 +747,19 @@ export default function ScoringAdminPage() {
         </div>
         <div className="flex gap-2 items-end flex-wrap">
           <div className="flex-1 min-w-[140px]">
-            <label className="block text-xs text-admin-muted mb-1">목적지</label>
-            <input value={previewDest} onChange={e => setPreviewDest(e.target.value)}
+            <label htmlFor="scoring-preview-destination" className="block text-xs text-admin-muted mb-1">목적지</label>
+            <input id="scoring-preview-destination" value={previewDest} onChange={e => setPreviewDest(e.target.value)}
               placeholder="다낭 / 장가계 / 나트랑"
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-44">
-            <label className="block text-xs text-admin-muted mb-1">출발일 (선택)</label>
-            <input type="date" value={previewDate} onChange={e => setPreviewDate(e.target.value)}
+            <label htmlFor="scoring-preview-date" className="block text-xs text-admin-muted mb-1">출발일 (선택)</label>
+            <input id="scoring-preview-date" type="date" value={previewDate} onChange={e => setPreviewDate(e.target.value)}
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-24">
-            <label className="block text-xs text-admin-muted mb-1">±일</label>
-            <input type="number" min={0} max={30} value={previewWindow}
+            <label htmlFor="scoring-preview-window" className="block text-xs text-admin-muted mb-1">±일</label>
+            <input id="scoring-preview-window" type="number" min={0} max={30} value={previewWindow}
               onChange={e => setPreviewWindow(parseInt(e.target.value) || 0)}
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
@@ -771,8 +771,8 @@ export default function ScoringAdminPage() {
 
         {allPolicies.length > 1 && (
           <div className="flex items-center gap-2 text-xs">
-            <label className="text-admin-muted">정책 (A/B 비교):</label>
-            <select value={previewPolicyId} onChange={e => setPreviewPolicyId(e.target.value)}
+            <label htmlFor="scoring-preview-policy" className="text-admin-muted">정책 (A/B 비교):</label>
+            <select id="scoring-preview-policy" value={previewPolicyId} onChange={e => setPreviewPolicyId(e.target.value)}
               className="text-xs border border-admin-border-strong rounded px-2 py-1">
               <option value="">활성 정책 (default)</option>
               {allPolicies.map(p => (
@@ -863,20 +863,20 @@ export default function ScoringAdminPage() {
         {/* 추가 폼 */}
         <div className="flex gap-2 items-end">
           <div className="flex-1">
-            <label className="block text-xs text-admin-muted mb-1">옵션명</label>
-            <input value={newRateName} onChange={e => setNewRateName(e.target.value)}
+            <label htmlFor="scoring-rate-name" className="block text-xs text-admin-muted mb-1">옵션명</label>
+            <input id="scoring-rate-name" value={newRateName} onChange={e => setNewRateName(e.target.value)}
               placeholder="예: 2층버스 시티투어"
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-32">
-            <label className="block text-xs text-admin-muted mb-1">목적지 (선택)</label>
-            <input value={newRateDest} onChange={e => setNewRateDest(e.target.value)}
+            <label htmlFor="scoring-rate-destination" className="block text-xs text-admin-muted mb-1">목적지 (선택)</label>
+            <input id="scoring-rate-destination" value={newRateDest} onChange={e => setNewRateDest(e.target.value)}
               placeholder="다낭"
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
           <div className="w-32">
-            <label className="block text-xs text-admin-muted mb-1">시장가 (KRW)</label>
-            <input type="number" min={0} step={10000} value={newRateValue}
+            <label htmlFor="scoring-rate-market-value" className="block text-xs text-admin-muted mb-1">시장가 (KRW)</label>
+            <input id="scoring-rate-market-value" type="number" min={0} step={10000} value={newRateValue}
               onChange={e => setNewRateValue(parseInt(e.target.value) || 0)}
               className="w-full text-sm border border-admin-border-strong rounded px-2 py-1.5"/>
           </div>
@@ -893,7 +893,9 @@ export default function ScoringAdminPage() {
                 <th className="px-3 py-2 text-left">목적지</th>
                 <th className="px-3 py-2 text-right">시장가</th>
                 <th className="px-3 py-2 text-left">출처</th>
-                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">작업</span>
+                </th>
               </tr>
             </thead>
             <tbody>

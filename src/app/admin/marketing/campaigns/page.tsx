@@ -246,8 +246,9 @@ export default function CampaignsPage() {
             <h2 className="text-lg font-bold text-admin-text mb-4">새 캠페인 생성</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="text-xs font-medium text-admin-muted">연결 상품 *</label>
+                <label htmlFor="campaign-package" className="text-xs font-medium text-admin-muted">연결 상품 *</label>
                 <select
+                  id="campaign-package"
                   value={form.package_id}
                   onChange={e => setForm(f => ({ ...f, package_id: e.target.value }))}
                   className="mt-1 w-full border border-admin-border-mid rounded-lg px-3 py-2 text-sm"
@@ -262,8 +263,9 @@ export default function CampaignsPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-admin-muted">캠페인명 *</label>
+                <label htmlFor="campaign-name" className="text-xs font-medium text-admin-muted">캠페인명 *</label>
                 <input
+                  id="campaign-name"
                   type="text"
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
@@ -273,8 +275,9 @@ export default function CampaignsPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-admin-muted">캠페인 목표</label>
+                <label htmlFor="campaign-objective" className="text-xs font-medium text-admin-muted">캠페인 목표</label>
                 <select
+                  id="campaign-objective"
                   value={form.objective}
                   onChange={e => setForm(f => ({ ...f, objective: e.target.value as CampaignObjective }))}
                   className="mt-1 w-full border border-admin-border-mid rounded-lg px-3 py-2 text-sm"
@@ -286,11 +289,12 @@ export default function CampaignsPage() {
               </div>
 
               <div>
-                <label className="text-xs font-medium text-admin-muted">
+                <label htmlFor="campaign-daily-budget" className="text-xs font-medium text-admin-muted">
                   일일 예산 *
                 </label>
                 <div className="mt-1 relative">
                   <input
+                    id="campaign-daily-budget"
                     type="number"
                     value={form.daily_budget_krw}
                     onChange={e => setForm(f => ({ ...f, daily_budget_krw: parseInt(e.target.value) || 0 }))}

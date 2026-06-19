@@ -1,7 +1,8 @@
 name: Test Coverage Gate
 
-# 2026-05-13 — mail-flood-stop v2: 항상 fail로 노이즈. 수동만 유지.
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -12,6 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout code
@@ -24,58 +26,55 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
         timeout-minutes: 10
 
       - name: Run tests with coverage
         run: npm run test -- --coverage --run
-        continue-on-error: false
 
       - name: Generate coverage badge
         if: always()
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            const coveragePath = 'coverage/coverage-summary.json';
+            const fs = require("fs");
+            const coveragePath = "coverage/coverage-summary.json";
+            if (!fs.existsSync(coveragePath)) return;
 
-            if (fs.existsSync(coveragePath)) {
-              const summary = JSON.parse(fs.readFileSync(coveragePath, 'utf8'));
-              const global = summary.total;
+            const summary = JSON.parse(fs.readFileSync(coveragePath, "utf8"));
+            const global = summary.total;
+            let body = "## Test Coverage Report\n\n";
+            body += "| Metric | Coverage | Status |\n";
+            body += "|--------|----------|--------|\n";
 
-              let comment = '## 📊 Test Coverage Report\n\n';
-              comment += '| Metric | Coverage | Status |\n';
-              comment += '|--------|----------|--------|\n';
+            const metrics = {
+              lines: "Lines",
+              statements: "Statements",
+              functions: "Functions",
+              branches: "Branches",
+            };
 
-              const metrics = {
-                lines: '📝 Lines',
-                statements: '📋 Statements',
-                functions: '🔧 Functions',
-                branches: '🔀 Branches',
-              };
+            for (const [key, label] of Object.entries(metrics)) {
+              const coverage = global[key]?.pct || 0;
+              const status = coverage >= 80 ? "PASS" : coverage >= 70 ? "WARN" : "FAIL";
+              body += `| ${label} | ${coverage.toFixed(2)}% | ${status} |\n`;
+            }
 
-              for (const [key, label] of Object.entries(metrics)) {
-                const coverage = global[key]?.pct || 0;
-                const emoji = coverage >= 80 ? '🟢' : coverage >= 70 ? '🟡' : '🔴';
-                const status = coverage >= 80 ? 'PASS' : coverage >= 70 ? 'WARN' : 'FAIL';
-                comment += `| ${label} | ${coverage.toFixed(2)}% | ${emoji} ${status} |\n`;
-              }
+            body += "\n**Threshold Status:**\n";
+            body += `- Lines: ${global.lines?.pct >= 80 ? "PASS" : "FAIL"} (threshold: 80%)\n`;
+            body += `- Statements: ${global.statements?.pct >= 80 ? "PASS" : "FAIL"} (threshold: 80%)\n`;
+            body += `- Functions: ${global.functions?.pct >= 80 ? "PASS" : "FAIL"} (threshold: 80%)\n`;
+            body += `- Branches: ${global.branches?.pct >= 75 ? "PASS" : "FAIL"} (threshold: 75%)\n`;
 
-              comment += '\n**Threshold Status:**\n';
-              comment += `- Lines: ${global.lines?.pct >= 80 ? '✅' : '❌'} (threshold: 80%)\n`;
-              comment += `- Statements: ${global.statements?.pct >= 80 ? '✅' : '❌'} (threshold: 80%)\n`;
-              comment += `- Functions: ${global.functions?.pct >= 80 ? '✅' : '❌'} (threshold: 80%)\n`;
-              comment += `- Branches: ${global.branches?.pct >= 75 ? '✅' : '❌'} (threshold: 75%)\n`;
-
-              if (context.eventName === 'pull_request') {
-                github.rest.pulls.createReview({
-                  owner: context.repo.owner,
-                  repo: context.repo.repo,
-                  pull_number: context.issue.number,
-                  body: comment,
-                  event: 'COMMENT',
-                });
-              }
+            if (context.eventName === "pull_request") {
+              await github.rest.pulls.createReview({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.issue.number,
+                body,
+                event: "COMMENT",
+              });
             }
 
       - name: Upload coverage reports
@@ -87,13 +86,14 @@ jobs:
 
       - name: Comment PR if coverage drops
         if: github.event_name == 'pull_request' && failure()
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            github.rest.pulls.createReview({
+            await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
-              body: '❌ **Test Coverage Below Threshold**\n\nPlease add more tests to maintain coverage standards. See uploaded coverage report for details.',
-              event: 'REQUEST_CHANGES',
+              body: "**Test Coverage Below Threshold**\n\nPlease add more tests to maintain coverage standards. See uploaded coverage report for details.",
+              event: "REQUEST_CHANGES",
             });

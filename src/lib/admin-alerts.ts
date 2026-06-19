@@ -13,7 +13,7 @@
  * 미래: Slack webhook 연동 시 critical은 즉시 푸시
  */
 import { supabaseAdmin } from '@/lib/supabase';
-import { getSecret } from '@/lib/secret-registry';
+import { resolveSlackAlertWebhookUrl } from '@/lib/slack-alert';
 
 export type AlertCategory =
   | 'policy_winner'
@@ -41,7 +41,7 @@ export interface AlertInput {
 
 /** Slack webhook 즉시 푸시 — env SLACK_ALERTS_WEBHOOK 있을 때만, critical/warning만 */
 async function pushSlackAlert(input: AlertInput): Promise<void> {
-  const url = getSecret('SLACK_ALERTS_WEBHOOK');
+  const url = resolveSlackAlertWebhookUrl();
   if (!url) return;
   if (input.severity === 'info') return; // info는 큐만, push X
   const emoji = input.severity === 'critical' ? '🚨' : '⚠️';

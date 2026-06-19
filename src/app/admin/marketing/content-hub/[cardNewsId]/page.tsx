@@ -428,8 +428,9 @@ export default function ContentHubPage() {
                 <div className="bg-admin-bg rounded-admin-md border border-admin-border-mid p-5 space-y-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">캠페인명 (선택)</label>
+                      <label htmlFor="content-hub-meta-campaign-name" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">캠페인명 (선택)</label>
                       <input
+                        id="content-hub-meta-campaign-name"
                         value={metaForm.campaign_name}
                         onChange={e => setMetaForm(f => ({ ...f, campaign_name: e.target.value }))}
                         placeholder={cn.title ?? '자동 생성'}
@@ -437,8 +438,9 @@ export default function ContentHubPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">일예산 (KRW)</label>
+                      <label htmlFor="content-hub-meta-daily-budget" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">일예산 (KRW)</label>
                       <input
+                        id="content-hub-meta-daily-budget"
                         type="number" min={1000} step={1000}
                         value={metaForm.daily_budget_krw}
                         onChange={e => setMetaForm(f => ({ ...f, daily_budget_krw: parseInt(e.target.value) || 10000 }))}
@@ -448,8 +450,9 @@ export default function ContentHubPage() {
                   </div>
 
                   <div>
-                    <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">광고 문구 (Primary Text)</label>
+                    <label htmlFor="content-hub-meta-primary-text" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">광고 문구 (Primary Text)</label>
                     <textarea
+                      id="content-hub-meta-primary-text"
                       value={metaForm.primary_text}
                       onChange={e => setMetaForm(f => ({ ...f, primary_text: e.target.value }))}
                       placeholder={cn.title ?? '광고 본문을 입력하세요...'}
@@ -460,8 +463,9 @@ export default function ContentHubPage() {
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">헤드라인</label>
+                      <label htmlFor="content-hub-meta-headline" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">헤드라인</label>
                       <input
+                        id="content-hub-meta-headline"
                         value={metaForm.headline}
                         onChange={e => setMetaForm(f => ({ ...f, headline: e.target.value }))}
                         placeholder={cn.title ?? '헤드라인'}
@@ -469,8 +473,9 @@ export default function ContentHubPage() {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">CTA 버튼</label>
+                      <label htmlFor="content-hub-meta-cta" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">CTA 버튼</label>
                       <select
+                        id="content-hub-meta-cta"
                         value={metaForm.cta_button}
                         onChange={e => setMetaForm(f => ({ ...f, cta_button: e.target.value }))}
                         className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm bg-white"

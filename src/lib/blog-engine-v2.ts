@@ -1,5 +1,6 @@
 import { getEffectivePriceDates, getMinPriceFromDates, getNextDepartureFromDates, type PriceDate } from './price-dates';
 import { slugifyTopic } from './slug-utils';
+import { buildGroupInquiryHandoffHref } from './group-inquiry-handoff';
 
 export type BlogArticleKind = 'product_article' | 'info_guide' | 'hybrid_article';
 export type EvidenceSource = 'travel_packages' | 'official_source' | 'serp_signal' | 'manual';
@@ -651,7 +652,18 @@ export function generateArticleContract(brief: BlogArticleBrief): ArticleContrac
     internalLinks: [
       { label: `${dest} 상품 더 보기`, href: `/packages?destination=${encodeURIComponent(dest)}` },
       { label: '전체 패키지 보기', href: '/packages' },
-      { label: '상담 신청하기', href: '/group-inquiry' },
+      {
+        label: '상담 신청하기',
+        href: buildGroupInquiryHandoffHref({
+          source: 'blog_article',
+          intent: 'consult',
+          partyType: 'group',
+          query: `${pack.title} 상담 신청`,
+          destination: pack.destination,
+          budget: pack.priceLabel,
+          selectedProducts: [pack.title],
+        }),
+      },
     ],
     seo: {
       title: `${dest} ${duration} 패키지 가격·일정·포함사항 정리`.slice(0, 58),

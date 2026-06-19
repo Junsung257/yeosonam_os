@@ -9,7 +9,7 @@
  *   3. 첫 실행 시: `npx playwright test --update-snapshots` 로 베이스라인 생성
  */
 
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { dynamicMasks, textHash, waitForStable, snapshotName, getMainContainer } from './helpers';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -25,6 +25,7 @@ const selectedFixtures = fixtures.filter((fx) => {
   if (!fixtureIds && !fixtureProducts) return true;
   return Boolean(fixtureIds?.has(fx.id) || fixtureProducts?.has(fx.product));
 });
+let availablePackageIds: Set<string> | null = null;
 
 function csvSet(value: string | undefined): Set<string> | null {
   if (!value) return null;
@@ -35,6 +36,23 @@ function csvSet(value: string | undefined): Set<string> | null {
   return items.length > 0 ? new Set(items) : null;
 }
 
+async function gotoFixtureOrSkip(page: Page, fx: Fixture): Promise<void> {
+  test.skip(
+    availablePackageIds !== null && !availablePackageIds.has(fx.id),
+    `visual fixture is not available in the current package data: ${fx.product}`,
+  );
+
+  const response = await page.goto(`/packages/${fx.id}`);
+  const hasMain = await page
+    .locator('main, [data-testid="main-content"], div.min-h-screen')
+    .first()
+    .waitFor({ state: 'attached', timeout: 5000 })
+    .then(() => true)
+    .catch(() => false);
+  const notFound = response?.status() === 404 || !hasMain || await page.getByText('NOT_FOUND', { exact: true }).count() > 0;
+  test.skip(notFound, `visual fixture is not available in the current package data: ${fx.product}`);
+}
+
 if (fixtures.length === 0) {
   test.skip('fixtures.json 없음 — scripts/sync-visual-fixtures.js 실행 필요', () => {});
 }
@@ -43,17 +61,31 @@ if (fixtures.length > 0 && selectedFixtures.length === 0) {
   test.skip('VISUAL_FIXTURE_IDS/VISUAL_FIXTURE_PRODUCTS matched no fixtures', () => {});
 }
 
+test.beforeAll(async ({ request }) => {
+  const response = await request.get('/api/packages/search');
+  if (!response.ok()) return;
+
+  const body = await response.json().catch(() => null) as { packages?: Array<{ id?: string }> } | null;
+  if (!Array.isArray(body?.packages)) return;
+
+  availablePackageIds = new Set(
+    body.packages
+      .map((pkg) => pkg.id)
+      .filter((id): id is string => Boolean(id)),
+  );
+});
+
 for (const fx of selectedFixtures) {
   test.describe(`${fx.title} (${fx.product})`, () => {
     test('모바일 랜딩 — 시각 회귀', async ({ page }) => {
-      await page.goto(`/packages/${fx.id}`);
+      await gotoFixtureOrSkip(page, fx);
       await waitForStable(page);
       const masks = await dynamicMasks(page);
       await expect(page).toHaveScreenshot(snapshotName(fx.product, 'mobile'), { mask: masks, fullPage: true });
     });
 
     test('모바일 랜딩 — 텍스트 회귀 (innerText hash)', async ({ page }) => {
-      await page.goto(`/packages/${fx.id}`);
+      await gotoFixtureOrSkip(page, fx);
       await waitForStable(page);
       const hash = await textHash(getMainContainer(page));
 

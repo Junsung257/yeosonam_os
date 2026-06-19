@@ -36,9 +36,18 @@
     "**/*.ts",
     "**/*.tsx",
     ".next-build-codex/types/**/*.ts",
+    ".next-dev-3033/types/**/*.ts",
+    ".next-dev-3034/types/**/*.ts",
+    ".next-dev-3035/types/**/*.ts",
+    ".next-dev-3036/types/**/*.ts",
+    ".next-dev-3044/types/**/*.ts",
+    ".next-dev-3052/types/**/*.ts",
+    ".next-local-release/types/**/*.ts",
+    ".next-marketing-release/types/**/*.ts",
+    ".next-verify/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-verify/types/**/*.ts"
+    ".next-dev-3037/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

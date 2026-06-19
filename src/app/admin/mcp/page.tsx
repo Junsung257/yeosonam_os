@@ -122,8 +122,9 @@ export default function McpSettingsPage() {
         <h2 className="font-semibold mb-3">새 MCP 키 발급</h2>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex-1 min-w-[200px]">
-            <label className="block text-xs text-gray-500 mb-1">키 설명</label>
+            <label htmlFor="mcp-key-label" className="block text-xs text-gray-500 mb-1">키 설명</label>
             <input
+              id="mcp-key-label"
               type="text"
               value={newLabel}
               onChange={e => setNewLabel(e.target.value)}
@@ -132,8 +133,9 @@ export default function McpSettingsPage() {
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">권한</label>
+            <label htmlFor="mcp-key-role" className="block text-xs text-gray-500 mb-1">권한</label>
             <select
+              id="mcp-key-role"
               value={newRole}
               onChange={e => setNewRole(e.target.value as 'tenant_staff' | 'tenant_admin' | 'platform_admin')}
               className="px-3 py-2 border rounded text-sm"
@@ -188,7 +190,7 @@ export default function McpSettingsPage() {
                 <th className="pb-2 pr-4">권한</th>
                 <th className="pb-2 pr-4">상태</th>
                 <th className="pb-2 pr-4">마지막 사용</th>
-                <th className="pb-2"></th>
+                <th className="pb-2"><span className="sr-only">작업</span></th>
               </tr>
             </thead>
             <tbody>

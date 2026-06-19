@@ -4,13 +4,66 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const args = new Set(process.argv.slice(2));
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
 const json = args.has('--json');
+const knownArgs = new Set(['--json', '--timeout-ms']);
+
+function argValue(name, fallback = '') {
+  let value = fallback;
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === name && rawArgs[index + 1] !== undefined) value = rawArgs[index + 1];
+    if (arg.startsWith(`${name}=`)) value = arg.slice(name.length + 1);
+  }
+  return value;
+}
+
+function argKey(arg) {
+  return String(arg || '').split('=')[0];
+}
+
+function exitConfigFailure(errors) {
+  const checks = errors.map((error) => ({
+    name: 'readiness-renderer-verifier:config',
+    status: 'fail',
+    error,
+  }));
+  const report = {
+    status: 'fail',
+    passed: 0,
+    failed: checks.length,
+    checks,
+  };
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    for (const error of errors) console.error(error);
+  }
+  process.exit(1);
+}
+
+const unknownArgs = rawArgs.filter((arg, index) => {
+  if (index > 0 && rawArgs[index - 1] === '--timeout-ms') return false;
+  return !knownArgs.has(argKey(arg));
+});
+
+if (unknownArgs.length > 0) {
+  exitConfigFailure(unknownArgs.map((arg) => `unknown readiness report renderer argument: ${arg}`));
+}
+
+const commandTimeoutMs = Number(argValue('--timeout-ms', process.env.READINESS_REPORT_RENDERER_TIMEOUT_MS || '60000'));
+
+if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0) {
+  exitConfigFailure(['--timeout-ms must be a positive number of milliseconds.']);
+}
+
 const outDir = resolve('.tmp', 'readiness-renderer-verify');
 
 function runRenderer(kind) {
   mkdirSync(outDir, { recursive: true });
   const base = resolve(outDir, kind);
+  const startedAt = Date.now();
   const result = spawnSync(process.execPath, [
     'scripts/render-readiness-report.mjs',
     '--self-test',
@@ -22,12 +75,20 @@ function runRenderer(kind) {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: commandTimeoutMs,
     windowsHide: true,
   });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
   return {
     kind,
-    status: result.status === 0 ? 'pass' : 'fail',
+    status: result.status === 0 && !timedOut ? 'pass' : 'fail',
     command: `node scripts/render-readiness-report.mjs --self-test --kind=${kind}`,
+    exitCode: result.status,
+    signal: result.signal || null,
+    timedOut,
+    timeoutMs: commandTimeoutMs,
+    durationMs: Date.now() - startedAt,
+    error: result.error?.message || '',
     stdout: result.stdout || '',
     stderr: result.stderr || '',
     summaryPath: `${base}-summary.md`,
@@ -39,6 +100,7 @@ function runRenderer(kind) {
 function runMissingReportRenderer(kind) {
   mkdirSync(outDir, { recursive: true });
   const base = resolve(outDir, `${kind}-missing`);
+  const startedAt = Date.now();
   const result = spawnSync(process.execPath, [
     'scripts/render-readiness-report.mjs',
     `--kind=${kind}`,
@@ -50,13 +112,21 @@ function runMissingReportRenderer(kind) {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: commandTimeoutMs,
     windowsHide: true,
   });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
   return {
     kind,
     missingReport: true,
-    status: result.status === 0 ? 'pass' : 'fail',
+    status: result.status === 0 && !timedOut ? 'pass' : 'fail',
     command: `node scripts/render-readiness-report.mjs --kind=${kind} --report=<missing>`,
+    exitCode: result.status,
+    signal: result.signal || null,
+    timedOut,
+    timeoutMs: commandTimeoutMs,
+    durationMs: Date.now() - startedAt,
+    error: result.error?.message || '',
     stdout: result.stdout || '',
     stderr: result.stderr || '',
     summaryPath: `${base}-summary.md`,
@@ -87,6 +157,7 @@ function runWarningOnlyRenderer(kind) {
       { id: 'type-check', status: 'pass', durationMs: 11 },
     ],
   }, null, 2)}\n`);
+  const startedAt = Date.now();
   const result = spawnSync(process.execPath, [
     'scripts/render-readiness-report.mjs',
     `--kind=${kind}`,
@@ -98,13 +169,21 @@ function runWarningOnlyRenderer(kind) {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: commandTimeoutMs,
     windowsHide: true,
   });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
   return {
     kind,
     warningOnly: true,
-    status: result.status === 0 ? 'pass' : 'fail',
+    status: result.status === 0 && !timedOut ? 'pass' : 'fail',
     command: `node scripts/render-readiness-report.mjs --kind=${kind} --report=<warning-only>`,
+    exitCode: result.status,
+    signal: result.signal || null,
+    timedOut,
+    timeoutMs: commandTimeoutMs,
+    durationMs: Date.now() - startedAt,
+    error: result.error?.message || '',
     stdout: result.stdout || '',
     stderr: result.stderr || '',
     summaryPath: `${base}-summary.md`,
@@ -135,6 +214,7 @@ function runInconsistentBlockerRenderer(kind) {
       { id: 'type-check', status: 'pass', durationMs: 11 },
     ],
   }, null, 2)}\n`);
+  const startedAt = Date.now();
   const result = spawnSync(process.execPath, [
     'scripts/render-readiness-report.mjs',
     `--kind=${kind}`,
@@ -146,13 +226,21 @@ function runInconsistentBlockerRenderer(kind) {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: commandTimeoutMs,
     windowsHide: true,
   });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
   return {
     kind,
     inconsistentBlocker: true,
-    status: result.status === 0 ? 'pass' : 'fail',
+    status: result.status === 0 && !timedOut ? 'pass' : 'fail',
     command: `node scripts/render-readiness-report.mjs --kind=${kind} --report=<inconsistent-blocker>`,
+    exitCode: result.status,
+    signal: result.signal || null,
+    timedOut,
+    timeoutMs: commandTimeoutMs,
+    durationMs: Date.now() - startedAt,
+    error: result.error?.message || '',
     stdout: result.stdout || '',
     stderr: result.stderr || '',
     summaryPath: `${base}-summary.md`,
@@ -174,21 +262,35 @@ function isReleaseKind(kind) {
   return kind === 'local-release' || kind === 'marketing-release';
 }
 
+function isFullProjectKind(kind) {
+  return kind === 'full-project';
+}
+
 function expectedHeadingFor(kind) {
   if (kind === 'local-release') return 'Local Release Readiness Attention Items';
   if (kind === 'marketing-release') return 'Marketing Release Readiness Attention Items';
+  if (kind === 'full-project') return 'Full Project Readiness Attention Items';
   return 'Open Readiness Attention Items';
+}
+
+function expectedBlockerSectionFor(kind) {
+  if (isReleaseKind(kind)) return '## Release Blockers';
+  if (isFullProjectKind(kind)) return '## Project Attention Blockers';
+  return '## Readiness Attention';
 }
 
 function verifyOutput(run) {
   if (run.status !== 'pass') {
-    throw new Error((run.stderr || run.stdout || `${run.kind} renderer failed`).trim());
+    if (run.timedOut) {
+      throw new Error(`renderer command timed out after ${run.timeoutMs}ms`);
+    }
+    throw new Error((run.stderr || run.stdout || run.error || `${run.kind} renderer failed`).trim());
   }
   const meta = JSON.parse(readRequired(run.metaPath));
   const summary = readRequired(run.summaryPath);
   const issue = readRequired(run.issuePath);
 
-  assertIncludes(summary, '## Release Blockers', `${run.kind} summary`);
+  assertIncludes(summary, expectedBlockerSectionFor(run.kind), `${run.kind} summary`);
   assertIncludes(summary, 'Warnings:', `${run.kind} summary`);
   assertIncludes(issue, 'Warnings:', `${run.kind} issue`);
   assertIncludes(issue, meta.marker, `${run.kind} issue`);
@@ -226,6 +328,11 @@ function verifyOutput(run) {
     if (!run.warningOnly) {
       assertIncludes(issue, '| Source | Name | Status | Notes |', `${run.kind} issue`);
     }
+  } else if (isFullProjectKind(run.kind)) {
+    assertIncludes(summary, '| Stage | Status | Duration ms | Passed | Blocked | Failed | Warnings |', 'full-project summary');
+    if (!run.warningOnly) {
+      assertIncludes(issue, '| Stage | Source | Name | Status | Missing | Notes |', 'full-project issue');
+    }
   } else {
     assertIncludes(summary, '| Check | Status | Duration ms | Notes |', 'open summary');
     if (!run.warningOnly) {
@@ -233,9 +340,9 @@ function verifyOutput(run) {
     }
   }
   if (run.warningOnly) {
-    assertIncludes(issue, 'No release blockers reported.', `${run.kind} warning-only issue`);
+    assertIncludes(issue, 'No blockers reported.', `${run.kind} warning-only issue`);
   }
-  if (!run.missingReport && !run.warningOnly && !run.inconsistentBlocker) {
+  if (!run.missingReport && !run.warningOnly && !run.inconsistentBlocker && !isFullProjectKind(run.kind)) {
     assertIncludes(summary, '## Operational Artifacts', `${run.kind} summary`);
     assertIncludes(issue, '## Operational Artifacts', `${run.kind} issue`);
     assertIncludes(summary, 'Action plan', `${run.kind} summary`);
@@ -310,13 +417,33 @@ function verifyOutput(run) {
       assertIncludes(issue, 'operational-input-discovery', 'marketing-release issue');
       assertIncludes(summary, 'MARKETING_CHECK_CARD_NEWS_ID', 'marketing-release summary');
       assertIncludes(issue, 'MARKETING_CHECK_CARD_NEWS_ID', 'marketing-release issue');
-      assertIncludes(summary, 'marketing-runtime-local', 'marketing-release summary');
-      assertIncludes(issue, 'marketing-runtime-local', 'marketing-release issue');
-      assertIncludes(summary, 'local:marketing-runtime', 'marketing-release summary');
-      assertIncludes(issue, 'local:marketing-runtime', 'marketing-release issue');
+      assertIncludes(summary, 'marketing-runtime-vercel', 'marketing-release summary');
+      assertIncludes(issue, 'marketing-runtime-vercel', 'marketing-release issue');
+      assertIncludes(summary, 'vercel:marketing-runtime', 'marketing-release summary');
+      assertIncludes(issue, 'vercel:marketing-runtime', 'marketing-release issue');
       assertIncludes(summary, 'attention checks: live:dev-admin-cookie(blocked)', 'marketing-release summary');
       assertIncludes(issue, 'attention checks: live:dev-admin-cookie(blocked)', 'marketing-release issue');
     }
+  }
+  if (!run.missingReport && !run.warningOnly && !run.inconsistentBlocker && isFullProjectKind(run.kind)) {
+    assertIncludes(summary, 'Warnings: 1', 'full-project summary');
+    assertIncludes(issue, 'Warnings: 1', 'full-project issue');
+    assertIncludes(summary, '## Operational Artifacts', 'full-project summary');
+    assertIncludes(issue, '## Operational Artifacts', 'full-project issue');
+    assertIncludes(summary, 'Action plan', 'full-project summary');
+    assertIncludes(issue, 'Action plan', 'full-project issue');
+    assertIncludes(summary, 'Node Vercel env script', 'full-project summary');
+    assertIncludes(issue, 'Node Vercel env script', 'full-project issue');
+    assertIncludes(summary, '.tmp/local-release-operational-inputs-action-plan.md', 'full-project summary');
+    assertIncludes(issue, '.tmp/local-release-operational-inputs-action-plan.md', 'full-project issue');
+    assertIncludes(summary, 'local-release', 'full-project summary');
+    assertIncludes(issue, 'local-release', 'full-project issue');
+    assertIncludes(summary, 'runtime-integrations', 'full-project summary');
+    assertIncludes(issue, 'runtime-integrations', 'full-project issue');
+    assertIncludes(summary, 'SERPAPI_KEY', 'full-project summary');
+    assertIncludes(issue, 'SERPAPI_KEY', 'full-project issue');
+    assertIncludes(summary, 'GOOGLE_ADS_DEVELOPER_TOKEN', 'full-project summary');
+    assertIncludes(issue, 'GOOGLE_ADS_DEVELOPER_TOKEN', 'full-project issue');
   }
   if (!run.missingReport && !run.inconsistentBlocker) {
     assertIncludes(summary, '## Release Warnings', `${run.kind} summary`);
@@ -325,10 +452,15 @@ function verifyOutput(run) {
     assertIncludes(issue, '| Source | Name | Status | Preferred Location | Notes |', `${run.kind} warning issue`);
     assertIncludes(summary, 'GitHub Actions variable', `${run.kind} summary`);
     assertIncludes(issue, 'GitHub Actions variable', `${run.kind} issue`);
-    assertIncludes(summary, 'AD_FLAG_UP_BID_FACTOR', `${run.kind} summary`);
-    assertIncludes(issue, 'AD_FLAG_UP_BID_FACTOR', `${run.kind} issue`);
-    assertIncludes(summary, 'alternatives: AD_OFFPEAK_BID_FACTOR', `${run.kind} summary`);
-    assertIncludes(issue, 'alternatives: AD_OFFPEAK_BID_FACTOR', `${run.kind} issue`);
+    if (isFullProjectKind(run.kind) && !run.warningOnly) {
+      assertIncludes(summary, 'AD_MIN_BID_KRW', `${run.kind} summary`);
+      assertIncludes(issue, 'AD_MIN_BID_KRW', `${run.kind} issue`);
+    } else {
+      assertIncludes(summary, 'AD_FLAG_UP_BID_FACTOR', `${run.kind} summary`);
+      assertIncludes(issue, 'AD_FLAG_UP_BID_FACTOR', `${run.kind} issue`);
+      assertIncludes(summary, 'alternatives: AD_OFFPEAK_BID_FACTOR', `${run.kind} summary`);
+      assertIncludes(issue, 'alternatives: AD_OFFPEAK_BID_FACTOR', `${run.kind} issue`);
+    }
   }
 
   return {
@@ -340,6 +472,11 @@ function verifyOutput(run) {
       ? `readiness-renderer:${run.kind}:missing-report`
       : `readiness-renderer:${run.kind}`,
     status: 'pass',
+    exitCode: run.exitCode,
+    signal: run.signal,
+    timedOut: run.timedOut,
+    timeoutMs: run.timeoutMs,
+    durationMs: run.durationMs,
     metaPath: run.metaPath,
     summaryPath: run.summaryPath,
     issuePath: run.issuePath,
@@ -348,7 +485,7 @@ function verifyOutput(run) {
 
 const checks = [];
 
-for (const kind of ['open', 'local-release', 'marketing-release']) {
+for (const kind of ['open', 'local-release', 'marketing-release', 'full-project']) {
   for (const run of [
     runRenderer(kind),
     runMissingReportRenderer(kind),
@@ -369,6 +506,11 @@ for (const kind of ['open', 'local-release', 'marketing-release']) {
         status: 'fail',
         command: run.command,
         error: err instanceof Error ? err.message : String(err),
+        exitCode: run.exitCode,
+        signal: run.signal,
+        timedOut: run.timedOut,
+        timeoutMs: run.timeoutMs,
+        durationMs: run.durationMs,
         stderr: run.stderr.trim(),
         stdout: run.stdout.trim(),
       });
@@ -381,6 +523,7 @@ const report = {
   status: failed.length === 0 ? 'pass' : 'fail',
   passed: checks.length - failed.length,
   failed: failed.length,
+  timeoutMs: commandTimeoutMs,
   checks,
 };
 

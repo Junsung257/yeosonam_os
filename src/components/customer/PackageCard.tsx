@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import { getMinPriceFromDates } from '@/lib/price-dates';
@@ -176,6 +176,7 @@ export default function PackageCard({
   const nextDate = findNextDeparture(pkg);
   const hasComparisonSignal = Boolean(comparisonLabel || comparisonSummary);
   const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
+  const reasonPanelId = `package-card-reasons-${pkg.id}`;
 
   useEffect(() => {
     if (!isRecommended && !hasComparisonSignal) return;
@@ -225,25 +226,38 @@ export default function PackageCard({
     }
   };
 
+  const handleReasonToggle = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    fetch('/api/tracking/score-signal', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        package_id: pkg.id,
+        signal_type: 'recommend_reason_open',
+        group_key: trackingIntent ? `intent:${trackingIntent}` : null,
+        session_id: getSessionId(),
+      }),
+    }).catch(() => {});
+    onToggleReason?.(pkg.id);
+  };
+
   if (variant === 'horizontal') {
     return (
+      <div className="relative w-full min-w-0 max-w-full">
       <Link
         href={packageHref}
         onClick={handleClick}
+        data-testid="package-card-link"
+        aria-label={`${title} 상세 보기`}
         className="block card-touch w-full min-w-0 max-w-full"
       >
         <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-admin-border last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow w-full min-w-0 max-w-full">
           <CardImage
             img={img}
-            packageId={pkg.id}
             title={title}
             destination={pkg.destination}
             airlineName={airlineName}
-            isRecommended={isRecommended}
-            isReasonOpen={isReasonOpen}
-            recommendedReasons={recommendedReasons}
-            trackingIntent={trackingIntent}
-            onToggleReason={onToggleReason ? () => onToggleReason(pkg.id) : undefined}
             sizeClass="w-[128px] h-[104px] md:w-full md:aspect-[4/3] md:h-auto rounded-[12px] md:rounded-none"
             sizes="(max-width: 768px) 128px, (max-width: 1024px) 50vw, 33vw"
             isYeosonamPick={isYeosonamPick}
@@ -262,26 +276,32 @@ export default function PackageCard({
           />
         </div>
       </Link>
+      <RecommendationReasonOverlay
+        open={isReasonOpen}
+        panelId={reasonPanelId}
+        isRecommended={isRecommended}
+        recommendedReasons={recommendedReasons}
+        onToggle={handleReasonToggle}
+        className="absolute top-5 right-1.5 z-20 md:top-2.5 md:right-2.5"
+      />
+      </div>
     );
   }
 
   return (
+    <div className="relative">
     <Link
       href={packageHref}
       onClick={handleClick}
+      data-testid="package-card-link"
+      aria-label={`${title} 상세 보기`}
       className="group block bg-white rounded-[16px] overflow-hidden shadow-card md:hover:shadow-card-hover md:hover:-translate-y-1 transition-all duration-200 card-touch"
     >
       <CardImage
         img={img}
-        packageId={pkg.id}
         title={title}
         destination={pkg.destination}
         airlineName={airlineName}
-        isRecommended={isRecommended}
-        isReasonOpen={isReasonOpen}
-        recommendedReasons={recommendedReasons}
-        trackingIntent={trackingIntent}
-        onToggleReason={onToggleReason ? () => onToggleReason(pkg.id) : undefined}
         sizeClass="w-full aspect-[4/3]"
         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
         isYeosonamPick={isYeosonamPick}
@@ -299,19 +319,25 @@ export default function PackageCard({
         catalogGroupCount={catalogGroupCount}
       />
     </Link>
+    <RecommendationReasonOverlay
+      open={isReasonOpen}
+      panelId={reasonPanelId}
+      isRecommended={isRecommended}
+      recommendedReasons={recommendedReasons}
+      onToggle={handleReasonToggle}
+      className="absolute top-1.5 right-1.5 z-20 md:top-2.5 md:right-2.5"
+    />
+    </div>
   );
 }
 
 // ── 내부 ────────────────────────────────────────────────────────────────────
 
 function CardImage({
-  img, packageId, title, destination, airlineName, isRecommended, isReasonOpen, recommendedReasons, onToggleReason, sizeClass, sizes,
-  trackingIntent, isYeosonamPick, rankNumber,
+  img, title, destination, airlineName, sizeClass, sizes,
+  isYeosonamPick, rankNumber,
 }: {
-  img: string | null; packageId: string; title: string; destination?: string | null; airlineName: string | null;
-  isRecommended: boolean; isReasonOpen: boolean; recommendedReasons: string[];
-  trackingIntent?: string | null;
-  onToggleReason?: () => void;
+  img: string | null; title: string; destination?: string | null; airlineName: string | null;
   sizeClass: string; sizes: string;
   isYeosonamPick?: boolean;
   rankNumber?: number;
@@ -367,54 +393,68 @@ function CardImage({
           {airlineName}
         </div>
       )}
-
-      {isRecommended && (
-        <>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              fetch('/api/tracking/score-signal', {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({
-                  package_id: packageId,
-                  signal_type: 'recommend_reason_open',
-                  group_key: trackingIntent ? `intent:${trackingIntent}` : null,
-                  session_id: getSessionId(),
-                }),
-              }).catch(() => {});
-              onToggleReason?.();
-            }}
-            className="absolute top-1.5 right-1.5 md:top-2.5 md:right-2.5 min-w-[44px] min-h-[44px] flex items-center justify-center text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md hover:scale-105 transition-transform cursor-pointer"
-            aria-label="추천 사유 보기"
-          >
-            추천 ⓘ
-          </button>
-          {isReasonOpen && recommendedReasons.length > 0 && (
-            <div
-              role="button"
-              tabIndex={-1}
-              aria-label="Recommendation reasons"
-              onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
-              onKeyDown={(e) => { if (e.key === 'Escape') onToggleReason?.(); }}
-              className="absolute top-9 right-1.5 md:top-10 md:right-2.5 z-20 bg-white shadow-modal rounded-[12px] p-2.5 text-[11px] text-text-body max-w-[220px] border border-admin-border"
-            >
-              <div className="font-semibold text-amber-700 mb-1.5">왜 추천?</div>
-              <ul className="space-y-1">
-                {recommendedReasons.slice(0, 4).map((r, i) => (
-                  <li key={i} className="flex gap-1.5"><span className="text-amber-500 flex-shrink-0">•</span><span>{r}</span></li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </>
-      )}
     </div>
   );
 }
 
+function RecommendationReasonOverlay({
+  open,
+  panelId,
+  isRecommended,
+  recommendedReasons,
+  onToggle,
+  className = '',
+}: {
+  open: boolean;
+  panelId: string;
+  isRecommended: boolean;
+  recommendedReasons: string[];
+  onToggle: (event: MouseEvent<HTMLButtonElement>) => void;
+  className?: string;
+}) {
+  if (!isRecommended) return null;
+
+  const visibleReasons = recommendedReasons.slice(0, 4);
+
+  return (
+    <div className={`flex w-fit flex-col items-end ${className}`}>
+      <button
+        type="button"
+        data-testid="package-card-reason-toggle"
+        onClick={onToggle}
+        className="min-w-[44px] min-h-[44px] flex items-center justify-center text-[10px] md:text-xs font-bold px-2.5 py-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-md hover:scale-105 transition-transform cursor-pointer"
+        aria-label={'\uCD94\uCC9C \uC0AC\uC720 \uBCF4\uAE30'}
+        aria-expanded={open}
+        aria-controls={panelId}
+      >
+        {'\uCD94\uCC9C'}
+      </button>
+      {open && (
+        <div
+          id={panelId}
+          data-testid="package-card-reason-panel"
+          role="region"
+          aria-label={'\uCD94\uCC9C \uC0AC\uC720'}
+          className="mt-1.5 z-20 bg-white shadow-modal rounded-[12px] p-2.5 text-[11px] text-text-body max-w-[220px] border border-admin-border"
+        >
+          <div className="font-semibold text-amber-700 mb-1.5">{'\uCD94\uCC9C \uADFC\uAC70'}</div>
+          {visibleReasons.length > 0 ? (
+            <ul className="space-y-1">
+              {visibleReasons.map((reason) => (
+                <li key={reason} className="flex gap-1.5">
+                  <span className="text-amber-500 flex-shrink-0" aria-hidden>-</span>
+                  <span>{reason}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p>{'\uC774 \uC5EC\uD589 \uC870\uAC74\uACFC \uC798 \uB9DE\uB294 \uC0C1\uD488\uC785\uB2C8\uB2E4.'}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
 function CardBody({
   pkg, title, airlineName, duration, nextDate, minPrice, compact = false,
   rankBadge, primaryReason, lossAversionText, comparisonLabel, comparisonSummary, comparisonReasons,

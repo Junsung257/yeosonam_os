@@ -303,6 +303,7 @@ export default function ContentAnalyticsPage() {
                 return (
                   <tr key={row.creative_id} className="hover:bg-admin-bg transition">
                     <td className="px-3 py-2.5">
+                      <span className="sr-only">글</span>
                       <div className="max-w-xs">
                         <Link href={`/blog/${row.slug}`} target="_blank"
                           className="text-admin-xs font-medium text-admin-text-2 hover:text-indigo-600 line-clamp-1">

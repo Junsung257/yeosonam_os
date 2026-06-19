@@ -84,6 +84,10 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const commandOpenDescriptionId = 'payments-command-open-description';
+  const commandInputDescriptionIds = error ? 'payments-command-help payments-command-error' : 'payments-command-help';
 
   // ⌘K / Ctrl+K 토글
   useEffect(() => {
@@ -110,6 +114,49 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       setImperativeIsRefund(false);
       if (abortRef.current) abortRef.current.abort();
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => commandInputRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
   }, [open]);
 
   // 디바운스 + 후보 조회
@@ -304,13 +351,20 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
 
   return (
     <>
+      <p id={commandOpenDescriptionId} className="sr-only">
+        결제 명령바는 입금 또는 출금 내역을 예약과 빠르게 매칭하거나 새 예약을 생성합니다. 단축키는 Command+K 또는 Control+K입니다.
+      </p>
       {/* 떠있는 버튼 (모달 닫힌 상태) */}
       {!open && (
         <button
           type="button"
+          data-testid="payments-command-open"
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
+          className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
           title="입금/출금 매칭 명령 (⌘K)"
+          aria-label="입금/출금 매칭 명령 열기"
+          aria-describedby={commandOpenDescriptionId}
+          aria-keyshortcuts="Meta+K Control+K"
         >
           <kbd className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-mono">⌘K</kbd>
           <span>매칭 명령</span>
@@ -320,12 +374,15 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 토스트 */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-2 rounded shadow-admin-md text-sm ${
+          className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-4 z-50 max-w-[calc(100vw-2rem)] px-4 py-2 rounded shadow-admin-md text-sm sm:right-6 ${
             toast.kind === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
           }`}
-          role="status"
-          aria-live="polite"
+          role={toast.kind === 'err' ? 'alert' : 'status'}
+          aria-live={toast.kind === 'err' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+          data-testid="payments-command-toast"
         >
+          <span className="sr-only" data-testid="payments-command-toast-message">결제 명령 결과: </span>
           {toast.msg}
         </div>
       )}
@@ -333,7 +390,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 모달 */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] px-4"
+          className="fixed inset-0 z-50 flex h-dvh items-start justify-center overflow-y-auto px-4 pt-[max(2rem,8vh)] pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
           <button
             type="button"
@@ -342,21 +399,26 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
             onClick={() => setOpen(false)}
           />
           <div
+            ref={dialogRef}
+            data-testid="payments-command-dialog"
             className="relative bg-white rounded-admin-md shadow-2xl w-full max-w-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="입금/출금 매칭 명령"
           >
-            <Command shouldFilter={false} loop>
+            <Command shouldFilter={false} loop className="flex max-h-[calc(100dvh-4rem)] flex-col">
               <div className="px-4 pt-4 pb-2">
-                <div className="text-[11px] text-admin-muted mb-1.5">
+                <div id="payments-command-help" className="text-[11px] text-admin-muted mb-1.5">
                   예시: <code className="bg-admin-surface-2 px-1 rounded">260505_남영선_베스트아시아</code>{' '}
                   · <code className="bg-admin-surface-2 px-1 rounded">BK-0042</code>
                   {' '}· <code className="bg-admin-surface-2 px-1 rounded">남영선</code>
                 </div>
                 <Command.Input
+                  ref={commandInputRef}
+                  data-testid="payments-command-input"
                   value={input}
                   onValueChange={setInput}
+                  aria-describedby={commandInputDescriptionIds}
                   placeholder="출발일_고객명_랜드사… 한 줄 입력"
                   className="w-full text-base outline-none border-0 placeholder:text-admin-muted-2 bg-transparent"
                 />
@@ -364,17 +426,17 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
 
               <div className="border-t border-admin-border" />
 
-              <Command.List className="max-h-[60vh] overflow-y-auto p-3">
+              <Command.List className="max-h-[60dvh] overflow-y-auto p-3">
                 {loading && (
                   <Command.Loading>
-                    <div className="px-3 py-4 text-sm text-admin-muted flex items-center gap-2">
+                    <div className="px-3 py-4 text-sm text-admin-muted flex items-center gap-2" role="status" aria-live="polite">
                       <Spinner /> 조회 중…
                     </div>
                   </Command.Loading>
                 )}
 
                 {error && (
-                  <div className="px-3 py-3 text-sm text-red-600 bg-red-50 rounded">
+                  <div id="payments-command-error" className="px-3 py-3 text-sm text-red-600 bg-red-50 rounded" role="alert">
                     {error}
                   </div>
                 )}

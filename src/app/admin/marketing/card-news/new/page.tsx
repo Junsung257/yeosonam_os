@@ -240,14 +240,14 @@ export default function CardNewsNewWizardPage() {
             {mode === 'product' ? (
               <>
                 <div>
-                  <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">
+                  <div className="text-xs font-semibold text-admin-muted uppercase block mb-1">
                     상품 선택 *
                     {prefilledPackageId && (
                       <span className="ml-2 normal-case font-normal text-emerald-600">
                         (블로그에서 진입 — 잠금)
                       </span>
                     )}
-                  </label>
+                  </div>
                   {prefilledPackageId ? (
                     // 블로그 편집 → "이 글로 카드뉴스" 진입 시 다른 상품으로 실수 변경 방지
                     <div className="border border-emerald-200 bg-emerald-50 rounded px-3 py-2 text-sm flex items-center justify-between">
@@ -272,6 +272,7 @@ export default function CardNewsNewWizardPage() {
                   ) : (
                     <>
                       <input
+                        aria-label="상품명 또는 지역 검색"
                         type="text"
                         value={pkgFilter}
                         onChange={e => setPkgFilter(e.target.value)}
@@ -279,6 +280,7 @@ export default function CardNewsNewWizardPage() {
                         className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm mb-2"
                       />
                       <select
+                        aria-label="카드뉴스 상품 선택"
                         value={packageId}
                         onChange={e => setPackageId(e.target.value)}
                         className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
@@ -293,11 +295,13 @@ export default function CardNewsNewWizardPage() {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">앵글</label>
+                  <div className="text-xs font-semibold text-admin-muted uppercase block mb-1">앵글</div>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                     {ANGLES.map(a => (
                       <button
                         key={a.key}
+                        type="button"
+                        aria-pressed={angle === a.key}
                         onClick={() => setAngle(a.key)}
                         className={`px-3 py-2 text-sm rounded-lg border transition ${
                           angle === a.key
@@ -317,8 +321,9 @@ export default function CardNewsNewWizardPage() {
             ) : (
               <>
                 <div>
-                  <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">주제 *</label>
+                  <label htmlFor="card-news-new-topic" className="text-xs font-semibold text-admin-muted uppercase block mb-1">주제 *</label>
                   <input
+                    id="card-news-new-topic"
                     value={topic}
                     onChange={e => setTopic(e.target.value)}
                     placeholder="예: 베트남 비자 신청 방법, 다낭 여행 준비물"
@@ -326,8 +331,9 @@ export default function CardNewsNewWizardPage() {
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">카테고리</label>
+                  <label htmlFor="card-news-new-category" className="text-xs font-semibold text-admin-muted uppercase block mb-1">카테고리</label>
                   <select
+                    id="card-news-new-category"
                     value={categoryId}
                     onChange={e => setCategoryId(e.target.value)}
                     className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
@@ -344,18 +350,20 @@ export default function CardNewsNewWizardPage() {
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">
+                <label htmlFor="card-news-new-slide-count" className="text-xs font-semibold text-admin-muted uppercase block mb-1">
                   슬라이드 개수: <span className="font-bold text-blue-600">{slideCount}장</span>
                 </label>
                 <input
+                  id="card-news-new-slide-count"
                   type="range" min={3} max={10} value={slideCount}
                   onChange={e => setSlideCount(parseInt(e.target.value))}
                   className="w-full accent-blue-600"
                 />
               </div>
               <div>
-                <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">톤</label>
+                <label htmlFor="card-news-new-tone" className="text-xs font-semibold text-admin-muted uppercase block mb-1">톤</label>
                 <select
+                  id="card-news-new-tone"
                   value={tone} onChange={e => setTone(e.target.value)}
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
                 >
@@ -368,8 +376,9 @@ export default function CardNewsNewWizardPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">추가 지시사항 (선택)</label>
+              <label htmlFor="card-news-new-extra-prompt" className="text-xs font-semibold text-admin-muted uppercase block mb-1">추가 지시사항 (선택)</label>
               <textarea
+                id="card-news-new-extra-prompt"
                 value={extraPrompt} onChange={e => setExtraPrompt(e.target.value)}
                 placeholder="예: 5성급 호텔 강조, 20대 타겟, 해시태그 많이..."
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm h-20 resize-none"
@@ -399,8 +408,9 @@ export default function CardNewsNewWizardPage() {
           <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-5">
             {/* 메타 */}
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">H1 (블로그 제목)</label>
+              <label htmlFor="card-news-brief-h1" className="text-xs font-semibold text-admin-muted uppercase block mb-1">H1 (블로그 제목)</label>
               <input
+                id="card-news-brief-h1"
                 value={brief.h1}
                 onChange={e => updateBrief({ h1: e.target.value })}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm font-bold text-admin-text"
@@ -408,8 +418,9 @@ export default function CardNewsNewWizardPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">타겟 고객층</label>
+              <label htmlFor="card-news-brief-target" className="text-xs font-semibold text-admin-muted uppercase block mb-1">타겟 고객층</label>
               <input
+                id="card-news-brief-target"
                 value={brief.target_audience}
                 onChange={e => updateBrief({ target_audience: e.target.value })}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
@@ -417,7 +428,7 @@ export default function CardNewsNewWizardPage() {
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">핵심 셀링포인트</label>
+              <div className="text-xs font-semibold text-admin-muted uppercase block mb-1">핵심 셀링포인트</div>
               <div className="flex flex-wrap gap-2">
                 {brief.key_selling_points.map((p, i) => (
                   <span key={i} className="px-2.5 py-1 bg-admin-surface-2 text-admin-text-2 text-xs rounded">{p}</span>
@@ -427,9 +438,9 @@ export default function CardNewsNewWizardPage() {
 
             {/* 섹션 편집 */}
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-2">
+              <div className="text-xs font-semibold text-admin-muted uppercase block mb-2">
                 섹션 {brief.sections.length}개 (각 H2 = 카드뉴스 슬라이드 1장)
-              </label>
+              </div>
               <div className="space-y-3">
                 {brief.sections.map((s, i) => (
                   <div key={i} className="border border-admin-border-mid rounded-lg p-3 space-y-2">
@@ -440,6 +451,7 @@ export default function CardNewsNewWizardPage() {
                       <span className="text-xs text-admin-muted-2">{s.role}</span>
                     </div>
                     <input
+                      aria-label={`섹션 ${i + 1} H2`}
                       value={s.h2}
                       onChange={e => updateSection(i, { h2: e.target.value })}
                       placeholder="H2"
@@ -447,6 +459,7 @@ export default function CardNewsNewWizardPage() {
                     />
                     <div className="grid grid-cols-2 gap-2">
                       <input
+                        aria-label={`섹션 ${i + 1} 슬라이드 헤드라인`}
                         value={s.card_slide.headline}
                         onChange={e => updateSectionCard(i, { headline: e.target.value })}
                         placeholder="슬라이드 헤드라인 (≤15자)"
@@ -454,6 +467,7 @@ export default function CardNewsNewWizardPage() {
                         className={`border rounded px-2 py-1.5 text-sm ${s.card_slide.headline.length > 15 ? 'border-orange-300 bg-orange-50' : 'border-admin-border-mid'}`}
                       />
                       <input
+                        aria-label={`섹션 ${i + 1} 슬라이드 본문`}
                         value={s.card_slide.body}
                         onChange={e => updateSectionCard(i, { body: e.target.value })}
                         placeholder="슬라이드 본문 (≤40자)"
@@ -464,6 +478,7 @@ export default function CardNewsNewWizardPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-xs text-admin-muted">템플릿:</span>
                       <select
+                        aria-label={`섹션 ${i + 1} 템플릿`}
                         value={s.card_slide.template_suggestion}
                         onChange={e => updateSectionCard(i, { template_suggestion: e.target.value as typeof TEMPLATE_IDS[number] })}
                         className="border border-admin-border-mid rounded px-2 py-1 text-xs"
@@ -481,7 +496,7 @@ export default function CardNewsNewWizardPage() {
 
             {/* CTA 슬라이드 */}
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">CTA 슬라이드 (마지막)</label>
+              <div className="text-xs font-semibold text-admin-muted uppercase block mb-1">CTA 슬라이드 (마지막)</div>
               <div className="border border-admin-border-mid rounded-lg p-3 bg-admin-bg text-sm">
                 <div className="font-bold text-admin-text-2">{brief.cta_slide.headline}</div>
                 <div className="text-admin-muted">{brief.cta_slide.body}</div>
@@ -490,7 +505,7 @@ export default function CardNewsNewWizardPage() {
 
             {/* SEO */}
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">SEO 메타</label>
+              <div className="text-xs font-semibold text-admin-muted uppercase block mb-1">SEO 메타</div>
               <div className="border border-admin-border-mid rounded-lg p-3 bg-admin-bg space-y-1 text-xs">
                 <div><span className="text-admin-muted-2">제목:</span> {brief.seo.title}</div>
                 <div><span className="text-admin-muted-2">설명:</span> {brief.seo.description}</div>

@@ -379,6 +379,7 @@ export default function SettlementsPage() {
                   {[100, 40, 80, 80, 60, 80, 56, 120, 160].map((w, j) => (
                     <td key={j}>
                       <div className="h-3 animate-pulse rounded bg-admin-surface-2" style={{ width: w }} />
+                      <span className="sr-only">정산 정보 로딩 중</span>
                     </td>
                   ))}
                 </tr>
@@ -386,6 +387,7 @@ export default function SettlementsPage() {
             ) : visibleSettlements.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-14 text-center" style={{ height: 'auto' }}>
+                  <span className="sr-only">정산 빈 상태</span>
                   <div className="flex flex-col items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-full bg-admin-surface-2 text-admin-muted">
                       <Coins size={20} strokeWidth={1.75} />

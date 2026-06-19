@@ -29,6 +29,42 @@ const PACKAGE_FIELDS = `
   products(internal_code, display_name)
 `;
 
+function packageHasDepartureMonth(pkg: any, month: string, today: string): boolean {
+  if (!month) return true;
+  const dates = (pkg.price_dates || []) as Array<{ date?: string }>;
+  if (dates.some((entry) => entry?.date && entry.date >= today && entry.date.startsWith(month))) return true;
+  const tiers = (pkg.price_tiers || []) as Array<{ departure_dates?: string[] }>;
+  return tiers.some((tier) => tier.departure_dates?.some((date) => date >= today && date.startsWith(month)));
+}
+
+function packageEffectiveMinPrice(pkg: any, month = '', today = ''): number {
+  const prices: number[] = [];
+  for (const entry of (pkg.price_dates || []) as Array<{ date?: string; price?: number }>) {
+    if (month && !entry?.date?.startsWith(month)) continue;
+    if (today && entry?.date && entry.date < today) continue;
+    if (entry?.price && entry.price > 0) prices.push(entry.price);
+  }
+  for (const tier of (pkg.price_tiers || []) as Array<{ adult_price?: number; departure_dates?: string[] }>) {
+    if (month) {
+      const hasMonth = tier.departure_dates?.some((date) => date >= today && date.startsWith(month));
+      if (!hasMonth) continue;
+    }
+    if (tier?.adult_price && tier.adult_price > 0) prices.push(tier.adult_price);
+  }
+  if (!month && pkg.price && pkg.price > 0) prices.push(pkg.price);
+  return prices.length > 0 ? Math.min(...prices) : Number.POSITIVE_INFINITY;
+}
+
+function packageMatchesBudget(pkg: any, priceMin: string, priceMax: string, month: string, today: string): boolean {
+  const min = Number(priceMin || 0);
+  const max = Number(priceMax || 0);
+  const price = packageEffectiveMinPrice(pkg, month, today);
+  if (!Number.isFinite(price)) return false;
+  if (min > 0 && price < min) return false;
+  if (max > 0 && price > max) return false;
+  return true;
+}
+
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({
@@ -63,7 +99,8 @@ export async function GET(request: NextRequest) {
 
     const urgencyOn = urgency === '1';
     const hubOr = departureHubSupabaseOr(hub);
-    const fetchLimit = urgencyOn ? 200 : 50;
+    const hasFocusedFilters = Boolean(month || priceMin || priceMax);
+    const fetchLimit = urgencyOn || hasFocusedFilters ? 200 : 50;
 
     let query = sb
       .from('travel_packages')
@@ -109,6 +146,14 @@ export async function GET(request: NextRequest) {
 
     if (urgencyOn && hub !== 'all') {
       aliveRaw = aliveRaw.filter((p: any) => hubMatchesDepartureAirport(hub, p.departure_airport));
+    }
+
+    if (month) {
+      aliveRaw = aliveRaw.filter((p: any) => packageHasDepartureMonth(p, month, today));
+    }
+
+    if (priceMin || priceMax) {
+      aliveRaw = aliveRaw.filter((p: any) => packageMatchesBudget(p, priceMin, priceMax, month, today));
     }
 
     aliveRaw = aliveRaw.slice(0, 50);

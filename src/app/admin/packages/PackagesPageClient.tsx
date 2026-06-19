@@ -350,8 +350,23 @@ function getExtendedDeadline(): string {
   return d.toISOString().split('T')[0];
 }
 
+function getPackageNextOperationLabel(pkg: Package, expired: boolean): string {
+  if (expired) return '연장';
+  if (pkg.status === 'pending_review') return '검수';
+  if (pkg.status === 'pending') return '승인/거부';
+  if (pkg.status === 'approved') return '발행';
+  return '수정';
+}
+
+function getPackagePriceRangeLabel(minPrice?: number | null, maxPrice?: number | null): string {
+  if (!minPrice) return '-';
+  if (!maxPrice || minPrice === maxPrice) return `${minPrice.toLocaleString()}원`;
+  return `${minPrice.toLocaleString()}~${maxPrice.toLocaleString()}원`;
+}
+
 // ── MarketingToggle (React.memo) ─────────────────────────────────────────────
 function PackageOpsQueue({
+  activeQueue,
   pendingCount,
   reviewCount,
   readyCount,
@@ -359,6 +374,7 @@ function PackageOpsQueue({
   gapCount,
   onQueueSelect,
 }: {
+  activeQueue?: 'review' | 'copy' | 'publish' | 'deadline' | null;
   pendingCount: number;
   reviewCount: number;
   readyCount: number;
@@ -367,13 +383,18 @@ function PackageOpsQueue({
   onQueueSelect: (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => void;
 }) {
   type QueueTone = 'amber' | 'blue' | 'emerald' | 'red';
-  const cards: Array<{ id: 'review' | 'copy' | 'publish' | 'deadline'; label: string; count: number; detail: string; tone: QueueTone }> = [
-    { id: 'review' as const, label: '검수', count: pendingCount, detail: '신규 등록 확인', tone: 'amber' },
-    { id: 'copy' as const, label: '수정', count: reviewCount + gapCount, detail: '카피/필드 보완', tone: 'blue' },
-    { id: 'publish' as const, label: '발행', count: readyCount, detail: '승인 상품 점검', tone: 'emerald' },
-    { id: 'deadline' as const, label: '마감 대응', count: deadlineCount, detail: 'D-3 이내 상품', tone: 'red' },
+  const cards: Array<{ id: 'review' | 'copy' | 'publish' | 'deadline'; label: string; count: number; detail: string; target: string; tone: QueueTone }> = [
+    { id: 'review' as const, label: '검수', count: pendingCount, detail: '신규 등록 확인', target: '신규 등록 또는 검수 대기 상품만 보여줍니다.', tone: 'amber' },
+    { id: 'copy' as const, label: '수정', count: reviewCount + gapCount, detail: '카피/필드 보완', target: '카피나 필드 보완이 필요한 상품만 보여줍니다.', tone: 'blue' },
+    { id: 'publish' as const, label: '발행', count: readyCount, detail: '승인 상품 점검', target: '승인 후 고객 노출 전 점검이 필요한 상품만 보여줍니다.', tone: 'emerald' },
+    { id: 'deadline' as const, label: '마감 대응', count: deadlineCount, detail: 'D-3 이내 상품', target: '마감 임박으로 판매 상태 확인이 필요한 상품만 보여줍니다.', tone: 'red' },
   ] as const;
   const total = cards.reduce((sum, card) => sum + card.count, 0);
+  const activeCards = cards.filter(card => card.count > 0);
+  const packageQueueSummaryId = 'admin-package-queue-summary';
+  const packageQueueSummaryText = total > 0
+    ? `상품 액션 큐에 처리할 작업이 ${total}건 있습니다. ${activeCards.map(card => `${card.label} ${card.count}건`).join(', ')}을 우선 확인하세요.`
+    : '상품 액션 큐에 대기 중인 작업이 없습니다. 각 큐에서 최신 상품 상태를 확인할 수 있습니다.';
   const toneClass: Record<QueueTone, string> = {
     amber: 'border-amber-200 bg-amber-50 text-amber-800',
     blue: 'border-blue-200 bg-blue-50 text-blue-800',
@@ -392,27 +413,41 @@ function PackageOpsQueue({
           {total > 0 ? `${total}건 처리` : '대기 없음'}
         </span>
       </div>
+      <p id={packageQueueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {packageQueueSummaryText}
+      </p>
       <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-        {cards.map(card => (
-          <button
-            key={card.id}
-            type="button"
-            onClick={() => onQueueSelect(card.id)}
-            aria-label={`${card.label} 큐 열기, ${card.count}건`}
-            className={`min-h-[86px] rounded-admin-md border p-3 text-left transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${
-              card.count > 0 ? toneClass[card.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div>
-                <p className="text-[12px] font-bold">{card.label}</p>
-                <p className="mt-0.5 text-[11px] text-current/60">{card.detail}</p>
+        {cards.map(card => {
+          const cardDescriptionId = `admin-package-queue-${card.id}-description`;
+          return (
+            <button
+              key={card.id}
+              type="button"
+              data-testid={`admin-package-queue-${card.id}`}
+              onClick={() => onQueueSelect(card.id)}
+              aria-pressed={activeQueue === card.id}
+              aria-describedby={`${packageQueueSummaryId} ${cardDescriptionId}`}
+              aria-label={`${card.label} 큐 열기, ${card.count}건`}
+              className={`min-h-[86px] rounded-admin-md border p-3 text-left transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${
+                activeQueue === card.id ? 'ring-2 ring-slate-900 ring-offset-1' : ''
+              } ${
+                card.count > 0 ? toneClass[card.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'
+              }`}
+            >
+              <span id={cardDescriptionId} className="sr-only">
+                {card.target} 현재 {card.count}건입니다.
+              </span>
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <p className="text-[12px] font-bold">{card.label}</p>
+                  <p className="mt-0.5 text-[11px] text-current/60">{card.detail}</p>
+                </div>
+                <span className="text-[24px] font-black leading-none tabular-nums">{card.count}</span>
               </div>
-              <span className="text-[24px] font-black leading-none tabular-nums">{card.count}</span>
-            </div>
-            <p className="mt-3 text-[11px] font-semibold text-current/70">{card.count > 0 ? `${card.label} 화면 보기` : '확인'}</p>
-          </button>
-        ))}
+              <p className="mt-3 text-[11px] font-semibold text-current/70">{card.count > 0 ? `${card.label} 화면 보기` : '확인'}</p>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -513,8 +548,57 @@ const PackageRow = React.memo(function PackageRow({
   contentStatus: Map<string, Set<string>>;
 }) {
   const { isActive: isPlatformActive, getAuditInfo, togglePlatform, togglingKey, getCoverage } = marketingTracker;
+  const copyMenuTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const firstCopyMenuItemRef = useRef<HTMLButtonElement | null>(null);
+  const copyMenuWasOpenRef = useRef(false);
+
+  useEffect(() => {
+    const isOpen = copyDropdownId === pkg.id;
+
+    if (isOpen && !copyMenuWasOpenRef.current) {
+      window.setTimeout(() => firstCopyMenuItemRef.current?.focus(), 0);
+    }
+
+    if (!isOpen && copyMenuWasOpenRef.current) {
+      window.setTimeout(() => copyMenuTriggerRef.current?.focus(), 0);
+    }
+
+    copyMenuWasOpenRef.current = isOpen;
+  }, [copyDropdownId, pkg.id]);
+
+  const openCopyMenuFromTrigger = useCallback((trigger: HTMLButtonElement, action: string) => {
+    copyMenuTriggerRef.current = trigger;
+    const willOpen = copyDropdownId !== pkg.id;
+
+    if (willOpen) {
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        page_url: '/admin/packages',
+        metadata: {
+          surface: 'packages_row_action',
+          action: action,
+          packageId: pkg.id,
+          status: pkg.status,
+          source: action === 'more_menu_opened' ? 'row_primary_action' : undefined,
+        },
+      });
+    }
+
+    onSetCopyDropdownId(willOpen ? pkg.id : null);
+  }, [copyDropdownId, onSetCopyDropdownId, pkg.id, pkg.status]);
 
   const handleRowClick = () => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/packages',
+      metadata: {
+        surface: 'packages_row_action',
+        action: 'row_clicked',
+        packageId: pkg.id,
+        status: pkg.status,
+        nextAction: pkg.status === 'pending_review' ? 'review_opened' : 'detail_opened',
+      },
+    });
     if (pkg.status === 'pending_review') onSetApprovalTarget(pkg);
     else onSetSelected(pkg);
   };
@@ -527,9 +611,12 @@ const PackageRow = React.memo(function PackageRow({
   }, [togglePlatform, onShowToast]);
 
   const coverage = getCoverage(pkg.id);
+  const rowActionDescriptionId = `admin-package-row-actions-${pkg.id}`;
+  const rowActionStatusDescriptionId = `${rowActionDescriptionId} admin-package-bulk-status`;
   const attractionPreview = (pkg.attraction_preview_names && pkg.attraction_preview_names.length > 0)
     ? pkg.attraction_preview_names
     : getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 3);
+  const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
 
   return (
     <tr
@@ -768,8 +855,100 @@ const PackageRow = React.memo(function PackageRow({
 
       <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
         <div className="flex flex-col gap-1.5">
+          <div className="flex items-center justify-between gap-2 rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-admin-muted-2">Next</span>
+            <span className="text-[11px] font-black text-admin-text-2">{nextOperationLabel}</span>
+          </div>
+          <p id={rowActionDescriptionId} className="sr-only">
+            {pkg.title} 상품의 다음 운영 액션은 {nextOperationLabel}입니다. 검수, 수정, 발행, 더보기 순서로 처리할 수 있습니다.
+          </p>
+          <div role="group" aria-label={`${pkg.title} 핵심 상품 관리 액션`} className="grid grid-cols-4 gap-1">
+            <button
+              type="button"
+              data-testid="admin-package-review-action"
+              onClick={() => {
+                if (pkg.status === 'pending_review') {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin/packages',
+                    metadata: {
+                      surface: 'packages_row_action',
+                      action: 'review_opened',
+                      packageId: pkg.id,
+                      status: pkg.status,
+                      source: 'row_primary_action',
+                    },
+                  });
+                  onSetApprovalTarget(pkg);
+                  return;
+                }
+                if (pkg.status === 'pending' && !expired) {
+                  onHandleAction(pkg.id, 'approve');
+                  return;
+                }
+                onSetSelected(pkg);
+              }}
+              disabled={!!actionLoading}
+              aria-busy={actionLoading?.startsWith(pkg.id)}
+              aria-describedby={rowActionStatusDescriptionId}
+              className="min-h-[34px] rounded-admin-sm border border-amber-200 bg-amber-50 px-2 text-[11px] font-black text-amber-700 transition hover:bg-amber-100 disabled:opacity-45"
+              aria-label={`${pkg.title} 검수 액션`}
+            >
+              검수
+            </button>
+            <button
+              type="button"
+              data-testid="admin-package-edit-action"
+              onClick={e => onOpenSingleEdit(pkg, e)}
+              aria-describedby={rowActionStatusDescriptionId}
+              className="min-h-[34px] rounded-admin-sm border border-blue-200 bg-blue-50 px-2 text-[11px] font-black text-blue-700 transition hover:bg-blue-100"
+              aria-label={`${pkg.title} 수정 액션`}
+            >
+              수정
+            </button>
+            <button
+              type="button"
+              data-testid="admin-package-publish-action"
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin/packages',
+                  metadata: {
+                    surface: 'packages_row_action',
+                    action: 'customer_preview_opened',
+                    packageId: pkg.id,
+                    status: pkg.status,
+                    source: 'row_primary_action',
+                  },
+                });
+                window.open(`/packages/${pkg.id}`, '_blank');
+              }}
+              aria-describedby={rowActionStatusDescriptionId}
+              className="min-h-[34px] rounded-admin-sm border border-emerald-200 bg-emerald-50 px-2 text-[11px] font-black text-emerald-700 transition hover:bg-emerald-100"
+              aria-label={`${pkg.title} 발행 미리보기 액션`}
+            >
+              발행
+            </button>
+            <button
+              type="button"
+              data-testid="admin-package-more-action"
+              aria-haspopup="menu"
+              aria-expanded={copyDropdownId === pkg.id}
+              aria-controls={`admin-package-copy-menu-${pkg.id}`}
+              aria-describedby={rowActionStatusDescriptionId}
+              onClick={e => {
+                e.stopPropagation();
+                openCopyMenuFromTrigger(e.currentTarget, 'more_menu_opened');
+              }}
+              className="min-h-[34px] rounded-admin-sm border border-admin-border-strong bg-white px-2 text-[11px] font-black text-admin-text-2 transition hover:bg-admin-bg"
+              aria-label={`${pkg.title} 복사 메뉴 더보기`}
+            >
+              더보기
+            </button>
+          </div>
           {/* 포스터 버튼 */}
           <div role="group" aria-label={`${pkg.title} 발행 자료 작업`} className="flex flex-wrap items-center gap-1">
+            <span className="mr-0.5 text-[10px] font-bold text-admin-muted-2">발행</span>
             <button
               type="button"
               onClick={() => onOpenPoster(pkg, 'A4')}
@@ -779,7 +958,20 @@ const PackageRow = React.memo(function PackageRow({
             >A4</button>
             <button
               type="button"
-              onClick={() => window.open(`/packages/${pkg.id}`, '_blank')}
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin/packages',
+                  metadata: {
+                    surface: 'packages_row_action',
+                    action: 'customer_preview_opened',
+                    packageId: pkg.id,
+                    status: pkg.status,
+                    source: 'row_publish_group',
+                  },
+                });
+                window.open(`/packages/${pkg.id}`, '_blank');
+              }}
               className="px-1.5 py-1 border border-orange-300 text-orange-600 rounded text-[10px] hover:bg-orange-50 whitespace-nowrap"
               title="모바일 랜딩페이지 (고객용)"
               aria-label={`${pkg.title} 고객용 모바일 페이지 열기`}
@@ -831,19 +1023,35 @@ const PackageRow = React.memo(function PackageRow({
             })()}
           </div>
           <div role="group" aria-label={`${pkg.title} 운영 처리 작업`} className="flex flex-wrap items-center gap-1">
+            <span className="mr-0.5 text-[10px] font-bold text-admin-muted-2">운영</span>
             {/* 플랫폼별 마케팅 복사 드롭다운 */}
             <div className="relative">
             <button
               type="button"
-              onClick={e => { e.stopPropagation(); onSetCopyDropdownId(copyDropdownId === pkg.id ? null : pkg.id); }}
+              data-testid="admin-package-copy-action"
+              aria-haspopup="menu"
+              aria-expanded={copyDropdownId === pkg.id}
+              aria-controls={`admin-package-copy-menu-${pkg.id}`}
+              onClick={e => {
+                e.stopPropagation();
+                openCopyMenuFromTrigger(e.currentTarget, 'copy_menu_opened');
+              }}
               className="px-2 py-1 border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg whitespace-nowrap"
               title="플랫폼별 AI 프롬프트 복사"
               aria-label={`${pkg.title} 플랫폼별 복사 메뉴 열기`}
             >복사</button>
             {copyDropdownId === pkg.id && (
-              <div className="absolute right-0 top-full mt-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs z-50 py-1 min-w-[120px]">
-                {PLATFORMS.map(p => (
+              <div
+                id={`admin-package-copy-menu-${pkg.id}`}
+                role="menu"
+                data-testid="admin-package-copy-menu"
+                className="absolute right-0 top-full mt-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs z-50 py-1 min-w-[120px]"
+              >
+                {PLATFORMS.map((p, index) => (
                   <button key={p.key} type="button"
+                    ref={index === 0 ? firstCopyMenuItemRef : undefined}
+                    role="menuitem"
+                    data-testid="admin-package-copy-menu-item"
                     className="w-full text-left px-3 py-2 text-[11px] text-admin-text-2 hover:bg-admin-bg flex items-center gap-2"
                     onClick={async e => {
                       e.stopPropagation();
@@ -903,7 +1111,20 @@ const PackageRow = React.memo(function PackageRow({
           {pkg.status === 'pending_review' && !expired && (
             <button
               type="button"
-              onClick={() => onSetApprovalTarget(pkg)}
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin/packages',
+                  metadata: {
+                    surface: 'packages_row_action',
+                    action: 'review_opened',
+                    packageId: pkg.id,
+                    status: pkg.status,
+                    source: 'row_button',
+                  },
+                });
+                onSetApprovalTarget(pkg);
+              }}
               className="px-2 py-1 bg-amber-500 text-white rounded text-[11px] hover:bg-amber-600"
               aria-label={`${pkg.title} 검수 시작`}
             >검수</button>
@@ -975,11 +1196,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_desc');
+  const [activePackageQueue, setActivePackageQueue] = useState<'review' | 'copy' | 'publish' | 'deadline' | null>(null);
   const [showExpired, setShowExpired] = useState(false);
   const [selected, setSelected] = useState<Package | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkStatusMessage, setBulkStatusMessage] = useState('');
   const [imgGenerating, setImgGenerating] = useState(false);
   const [reextracting, setReextracting] = useState(false);
   const [sectionBackfilling, setSectionBackfilling] = useState(false);
@@ -1015,6 +1238,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [kakaoCopyTarget, setKakaoCopyTarget] = useState<Package | null>(null);
   const [kakaoCopyText, setKakaoCopyText] = useState('');
   const [kakaoCopyLoading, setKakaoCopyLoading] = useState(false);
+  const kakaoCopyModalRef = useRef<HTMLDivElement | null>(null);
+  const kakaoCopyCloseRef = useRef<HTMLButtonElement | null>(null);
+  const kakaoCopyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const kakaoCopyGenerateRef = useRef<HTMLButtonElement | null>(null);
   const [brainOpen, setBrainOpen] = useState(false);
   const [metaLiveOpen, setMetaLiveOpen] = useState(false);
 
@@ -1054,6 +1281,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [logModalTarget, setLogModalTarget] = useState<{ packageId: string; productId?: string } | null>(null);
   const [copyDropdownId, setCopyDropdownId] = useState<string | null>(null); // 열린 복사 드롭다운 ID
 
+  useEffect(() => {
+    if (!copyDropdownId) return;
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setCopyDropdownId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [copyDropdownId]);
+
   // Shift+Click 연속 선택
   const lastCheckedIndexRef = useRef<number>(-1);
 
@@ -1061,6 +1298,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkLandOperator, setBulkLandOperator] = useState('');
   const [bulkCommission, setBulkCommission] = useState('');
+  const bulkEditPanelRef = useRef<HTMLDivElement | null>(null);
+  const bulkEditCloseRef = useRef<HTMLButtonElement | null>(null);
+  const bulkLandOperatorRef = useRef<HTMLSelectElement | null>(null);
 
   // ApprovalModal
   const [approvalTarget, setApprovalTarget] = useState<Package | null>(null);
@@ -1070,6 +1310,26 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const showToast = useCallback((type: 'success' | 'error', message: string) => {
     _t(message, type);
   }, [_t]);
+
+  const trackPackageActionCompleted = useCallback((
+    action: string,
+    pkg: Pick<Package, 'id' | 'title' | 'status' | 'destination'>,
+    metadata: Record<string, unknown> = {},
+  ) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/packages',
+      product_id: pkg.id,
+      product_name: pkg.title,
+      metadata: {
+        surface: 'admin_packages',
+        action: action,
+        status: pkg.status,
+        destination: pkg.destination ?? null,
+        ...metadata,
+      },
+    });
+  }, []);
 
   // 전체 콘텐츠 일괄 생성 (블로그 + 카드뉴스 + 광고카피)
   const handleBulkContentGen = useCallback(async (pkg: Package) => {
@@ -1086,12 +1346,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       await new Promise(r => setTimeout(r, 300));
     }
     showToast('success', '블로그+카드뉴스+광고카피 생성 완료 → 검수 큐 확인');
+    trackPackageActionCompleted('content_bulk_generated', pkg, { channels });
     setContentStatusMap(prev => {
       const next = new Map(prev);
       next.set(pkg.id, new Set(['naver_blog', 'instagram_card', 'google_search']));
       return next;
     });
-  }, [showToast]);
+  }, [showToast, trackPackageActionCompleted]);
 
   // 랜드사 전역 캐시 훅 (중복 fetch 방지)
   const { vendors: activeVendors, all: allVendors } = useVendors();
@@ -1100,6 +1361,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   // Single Edit 모달
   const [editPkg, setEditPkg] = useState<Package | null>(null);
+  const editPanelRef = useRef<HTMLDivElement | null>(null);
+  const editCloseRef = useRef<HTMLButtonElement | null>(null);
+  const editTitleInputRef = useRef<HTMLInputElement | null>(null);
   const [editForm, setEditForm] = useState<{
     title: string;
     destination: string;
@@ -1108,6 +1372,125 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     land_operator_id: string;
   }>({ title: '', destination: '', commission_rate: '', ticketing_deadline: '', land_operator_id: '' });
   const [editSaving, setEditSaving] = useState(false);
+  const detailPanelRef = useRef<HTMLDivElement | null>(null);
+  const detailCloseRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    const activePanel =
+      bulkEditOpen ? bulkEditPanelRef.current :
+        editPkg ? editPanelRef.current :
+          selected ? detailPanelRef.current : null;
+    if (!activePanel) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTarget =
+      bulkEditOpen ? (bulkLandOperatorRef.current ?? bulkEditCloseRef.current) :
+        editPkg ? (editTitleInputRef.current ?? editCloseRef.current) :
+          detailCloseRef.current;
+    const focusTimer = window.setTimeout(() => focusTarget?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      activePanel.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ),
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const closeActivePanel = () => {
+      if (bulkEditOpen) {
+        if (!bulkLoading) setBulkEditOpen(false);
+        return;
+      }
+      if (editPkg) {
+        if (!editSaving) setEditPkg(null);
+        return;
+      }
+      if (selected) setSelected(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeActivePanel();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [bulkEditOpen, bulkLoading, editPkg, editSaving, selected]);
+
+  useEffect(() => {
+    if (!kakaoCopyTarget || !kakaoCopyModalRef.current) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTarget = kakaoCopyText
+      ? (kakaoCopyTextareaRef.current ?? kakaoCopyCloseRef.current)
+      : (kakaoCopyGenerateRef.current ?? kakaoCopyCloseRef.current);
+    const focusTimer = window.setTimeout(() => focusTarget?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      kakaoCopyModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const closeModal = () => {
+      if (kakaoCopyLoading) return;
+      setKakaoCopyTarget(null);
+      setKakaoCopyText('');
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [kakaoCopyLoading, kakaoCopyTarget, kakaoCopyText]);
 
   // ── Optimistic 승인 (Human-in-the-loop) ──────────────────────────────────
   const handleApproveOptimistic = useCallback(async (
@@ -1130,12 +1513,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       });
       if (!res.ok) throw new Error((await res.json()).error ?? '알 수 없는 오류');
       showToast('success', '성공적으로 배포되었습니다!');
+      trackPackageActionCompleted('approval_approved', { id, title, status: 'active', destination: undefined }, { selectedCopyType: copyType });
     } catch (err) {
       // 3. 실패 시 롤백
       setPackages(prevPackages);
       showToast('error', `배포 실패: ${err instanceof Error ? err.message : '다시 시도해주세요.'}`);
     }
-  }, [packages, showToast]);
+  }, [packages, showToast, trackPackageActionCompleted]);
 
   const handleRejectOptimistic = useCallback(async (id: string) => {
     const prevPackages = packages;
@@ -1149,11 +1533,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       });
       if (!res.ok) throw new Error((await res.json()).error);
       showToast('success', '반려 처리되었습니다.');
+      const pkg = packages.find(p => p.id === id);
+      trackPackageActionCompleted('approval_rejected', pkg ?? { id, title: id, status: 'draft', destination: undefined });
     } catch (err) {
       setPackages(prevPackages);
       showToast('error', `반려 실패: ${err instanceof Error ? err.message : '다시 시도해주세요.'}`);
     }
-  }, [packages, showToast]);
+  }, [packages, showToast, trackPackageActionCompleted]);
 
   const handleRegenerateCopies = useCallback(async (id: string): Promise<MarketingCopy[]> => {
     const res = await fetch(`/api/packages/${id}/regenerate-copies`, { method: 'POST' });
@@ -1162,8 +1548,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     // 로컬 상태에도 반영
     setPackages(prev => prev.map(p => p.id === id ? { ...p, marketing_copies } : p));
     setApprovalTarget(prev => prev?.id === id ? { ...prev, marketing_copies } : prev);
+    const pkg = packages.find(p => p.id === id);
+    trackPackageActionCompleted('marketing_copies_regenerated', pkg ?? { id, title: id, status: 'unknown', destination: undefined }, {
+      copyCount: Array.isArray(marketing_copies) ? marketing_copies.length : 0,
+    });
     return marketing_copies as MarketingCopy[];
-  }, []);
+  }, [packages, trackPackageActionCompleted]);
 
   const handleGenerateImage = async (pkg: Package, mode: 'summary' | 'detail') => {
     setImgGenerating(true);
@@ -1180,6 +1570,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         link.href = `data:image/jpeg;base64,${base64}`;
         link.download = `${pkg.title}_${mode === 'summary' ? '요약' : idx === 0 ? '요금표' : '일정표'}.jpg`;
         link.click();
+      });
+      trackPackageActionCompleted('itinerary_image_generated', pkg, {
+        mode,
+        imageCount: Array.isArray(data.jpgs) ? data.jpgs.length : 0,
       });
     } catch (err) {
       alert('이미지 생성 실패: ' + (err instanceof Error ? err.message : '오류'));
@@ -1241,6 +1635,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   }, [swrLoading, initialPackages?.length]);
 
   const openSelectedDetail = useCallback(async (pkg: Package) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/packages',
+      metadata: {
+        surface: 'packages_detail_drawer',
+        action: 'detail_opened',
+        packageId: pkg.id,
+        status: pkg.status,
+      },
+    });
     // lite 응답에는 itinerary_data가 없을 수 있으므로 상세 조회 후 열기
     // 단, 일정표가 없는 상품(has_itinerary_data=false)은 가벼운 row 정보로 바로 열기
     if (pkg.itinerary_data === undefined && pkg.has_itinerary_data !== false) {
@@ -1308,7 +1712,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   }, [loadLogs]);
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject' | 'delete' | 'extend') => {
+    const actionLabel = action === 'approve' ? '승인' : action === 'reject' ? '비활성/거부' : action === 'delete' ? '삭제' : '판매 연장';
+    const packageTitle = packages.find(pkg => pkg.id === packageId)?.title ?? '선택한 상품';
     setActionLoading(packageId + action);
+    setBulkStatusMessage(`${packageTitle} ${actionLabel} 처리 중입니다.`);
     try {
       let res: Response;
       if (action === 'delete') {
@@ -1331,13 +1738,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin/packages',
-          metadata: { surface: 'packages_row_action', action, packageId },
+          metadata: { surface: 'packages_row_action', action: action, packageId },
         });
+        setBulkStatusMessage(`${packageTitle} ${actionLabel}을 완료했습니다.`);
+      } else {
+        setBulkStatusMessage(`${packageTitle} ${actionLabel}에 실패했습니다.`);
       }
       if (action !== 'extend') setSelected(null);
       load();
     } catch (e) {
       console.error(e);
+      setBulkStatusMessage(`${packageTitle} ${actionLabel}에 실패했습니다.`);
     } finally {
       setActionLoading(null);
     }
@@ -1440,6 +1851,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const handleBulk = async (action: 'bulk_approve' | 'bulk_archive' | 'bulk_restore') => {
     if (checkedIds.size === 0) return;
     if (action === 'bulk_archive' && !confirm(`${checkedIds.size}개 상품을 아카이브하시겠습니까?`)) return;
+    const count = checkedIds.size;
+    const actionLabel = action === 'bulk_approve' ? '승인' : action === 'bulk_archive' ? '아카이브' : '복원';
+    setBulkStatusMessage(`${count}개 상품 ${actionLabel} 처리 중입니다.`);
     setBulkLoading(true);
     try {
       const res = await fetch('/api/packages', {
@@ -1451,13 +1865,15 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin/packages',
-          metadata: { surface: 'packages_bulk_action', action, count: checkedIds.size },
+          metadata: { surface: 'packages_bulk_action', action: action, count: checkedIds.size },
         });
       }
+      setBulkStatusMessage(res.ok ? `${count}개 상품 ${actionLabel}을 완료했습니다.` : `${count}개 상품 ${actionLabel}에 실패했습니다.`);
       setCheckedIds(new Set());
       load();
     } catch (e) {
       console.error(e);
+      setBulkStatusMessage(`${count}개 상품 ${actionLabel}에 실패했습니다.`);
     } finally {
       setBulkLoading(false);
     }
@@ -1469,6 +1885,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (bulkLandOperator) fields.land_operator = bulkLandOperator;
     if (bulkCommission !== '') fields.commission_rate = Number(bulkCommission);
     if (Object.keys(fields).length === 0) return;
+    const count = checkedIds.size;
+    setBulkStatusMessage(`${count}개 상품 일괄 수정 처리 중입니다.`);
     setBulkLoading(true);
     try {
       const res = await fetch('/api/packages', {
@@ -1483,6 +1901,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           metadata: { surface: 'packages_bulk_edit', action: 'bulk_update', count: checkedIds.size, fields: Object.keys(fields) },
         });
       }
+      setBulkStatusMessage(res.ok ? `${count}개 상품 일괄 수정을 완료했습니다.` : `${count}개 상품 일괄 수정에 실패했습니다.`);
       setBulkEditOpen(false);
       setBulkLandOperator('');
       setBulkCommission('');
@@ -1490,6 +1909,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       load();
     } catch (e) {
       console.error(e);
+      setBulkStatusMessage(`${count}개 상품 일괄 수정에 실패했습니다.`);
     } finally {
       setBulkLoading(false);
     }
@@ -1497,6 +1917,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   const openSingleEdit = (pkg: Package, e: React.MouseEvent) => {
     e.stopPropagation();
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/packages',
+      metadata: {
+        surface: 'packages_row_action',
+        action: 'edit_opened',
+        packageId: pkg.id,
+        status: pkg.status,
+      },
+    });
     setEditPkg(pkg);
     setEditForm({
       title: pkg.title || '',
@@ -1589,6 +2019,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         has_waiting_work: queueCounts[queue] > 0,
       },
     });
+    setActivePackageQueue(queue === 'gaps' ? 'copy' : queue);
     setSearchQuery('');
     if (queue === 'review' || queue === 'copy') {
       setStatusFilter('pending');
@@ -1642,6 +2073,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
       {/* 검색 + 정렬 */}
       <PackageOpsQueue
+        activeQueue={activePackageQueue}
         pendingCount={pendingCount}
         reviewCount={reviewCount}
         readyCount={readyCount}
@@ -1707,6 +2139,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       </div>
 
       {/* 일괄 처리 액션 바 */}
+      <p
+        id="admin-package-bulk-status"
+        data-testid="admin-package-bulk-status"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {bulkStatusMessage}
+      </p>
       {checkedIds.size > 0 && (
         <div className="flex items-center gap-2 mb-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
           <span className="text-admin-sm font-medium text-blue-700">{checkedIds.size}개 선택됨</span>
@@ -1715,6 +2157,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             onClick={() => { setBulkLandOperator(''); setBulkCommission(''); setBulkEditOpen(true); }}
             disabled={bulkLoading}
             aria-busy={bulkLoading}
+            aria-describedby="admin-package-bulk-status"
             className="px-2.5 py-1 bg-blue-600 text-white rounded-lg text-[11px] font-medium hover:bg-blue-700 disabled:opacity-50"
           >일괄 수정</button>
           <button
@@ -1722,6 +2165,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             onClick={() => handleBulk('bulk_approve')}
             disabled={bulkLoading}
             aria-busy={bulkLoading}
+            aria-describedby="admin-package-bulk-status"
             className="px-2.5 py-1 bg-green-600 text-white rounded-lg text-[11px] font-medium hover:bg-green-700 disabled:opacity-50"
           >일괄 승인</button>
           <button
@@ -1729,6 +2173,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             onClick={() => handleBulk('bulk_archive')}
             disabled={bulkLoading}
             aria-busy={bulkLoading}
+            aria-describedby="admin-package-bulk-status"
             className="px-2.5 py-1 bg-slate-500 text-white rounded-lg text-[11px] font-medium hover:bg-slate-600 disabled:opacity-50"
           >아카이브</button>
           {statusFilter === 'archived' && (
@@ -1737,6 +2182,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               onClick={() => handleBulk('bulk_restore')}
               disabled={bulkLoading}
               aria-busy={bulkLoading}
+              aria-describedby="admin-package-bulk-status"
               className="px-2.5 py-1 bg-blue-500 text-white rounded-lg text-[11px] font-medium hover:bg-blue-600 disabled:opacity-50"
             >복원</button>
           )}
@@ -1810,7 +2256,224 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             <p className="text-admin-xs text-admin-muted-2">{searchQuery ? '검색 조건을 바꿔보세요.' : '문서 업로드 후 AI가 자동으로 등록합니다.'}</p>
           </div>
         ) : (
-          <table className="w-full text-admin-sm">
+          <>
+          <div className="divide-y divide-admin-border-mid md:hidden">
+            {filtered.map((pkg, idx) => {
+              const prices = pkg.price_tiers?.map(t => t.adult_price).filter(Boolean) as number[] || [];
+              const minPrice = prices.length > 0 ? Math.min(...prices) : pkg.price;
+              const maxPrice = prices.length > 0 ? Math.max(...prices) : (pkg.price ?? 0);
+              const dday = getDDayInfo(pkg);
+              const expired = isExpired(pkg);
+              const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
+              const mobileActionDescriptionId = `admin-package-mobile-actions-${pkg.id}`;
+              const mobileActionStatusDescriptionId = `${mobileActionDescriptionId} admin-package-bulk-status`;
+              const region = pkg.products?.departure_region
+                ?? (pkg.departure_airport ? pkg.departure_airport.replace(/\(.*\)/, '').trim() : undefined);
+
+              return (
+                <article
+                  key={`mobile-${pkg.id}`}
+                  className={`p-4 ${expired ? 'opacity-65' : ''} ${checkedIds.has(pkg.id) ? 'bg-blue-50' : 'bg-white'}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      checked={checkedIds.has(pkg.id)}
+                      onChange={() => {}}
+                      onClick={e => {
+                        e.stopPropagation();
+                        toggleCheck(pkg.id, idx, e as React.MouseEvent);
+                      }}
+                      className="mt-1 rounded cursor-pointer"
+                      aria-label={`${pkg.title} 선택`}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[pkg.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
+                          {STATUS_LABEL[pkg.status] ?? pkg.status}
+                        </span>
+                        {dday && <span className={`px-2 py-0.5 rounded text-[11px] ${dday.className}`}>{dday.label}</span>}
+                        {region && (
+                          <span className={`px-1.5 py-0.5 rounded-full border text-[10px] font-medium ${regionBadgeClass(region)}`}>
+                            {region}
+                          </span>
+                        )}
+                      </div>
+                      <h3 className="mt-2 line-clamp-2 text-admin-sm font-bold leading-snug text-admin-text-2">
+                        {pkg.title}
+                      </h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-admin-muted-2">
+                        <span>{pkg.destination || '목적지 미정'}</span>
+                        {pkg.product_type && <span>{pkg.product_type}</span>}
+                        {(pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code) && (
+                          <span className="font-mono">{pkg.products?.internal_code ?? pkg.internal_code ?? pkg.short_code}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-admin-sm font-black text-admin-text-2">
+                        {getPackagePriceRangeLabel(minPrice, maxPrice)}
+                      </p>
+                      {pkg.commission_rate != null && (
+                        <p className={`mt-1 text-[11px] ${marginColor(pkg.commission_rate / 100)}`}>
+                          {pkg.commission_rate}% 마진
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 flex items-center justify-between gap-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
+                    <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+                    <span className="text-[12px] font-black text-admin-text-2">{nextOperationLabel}</span>
+                  </div>
+
+                  <p id={mobileActionDescriptionId} className="sr-only">
+                    {pkg.title}의 다음 액션은 {nextOperationLabel}입니다. 상태는 {STATUS_LABEL[pkg.status] ?? pkg.status}이며 모바일 버튼에서 검수, 수정, 발행 또는 더보기를 실행할 수 있습니다.
+                  </p>
+
+                  <div role="group" aria-label={`${pkg.title} 모바일 처리 작업`} aria-describedby={mobileActionDescriptionId} className="mt-3 grid grid-cols-4 gap-2">
+                    {expired ? (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-extend-action"
+                        aria-label={`${pkg.title} 상품 기간 연장`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        aria-busy={actionLoading?.startsWith(pkg.id)}
+                        onClick={e => { e.stopPropagation(); handleAction(pkg.id, 'extend'); }}
+                        disabled={!!actionLoading}
+                        className="rounded-admin-sm bg-blue-600 px-2 py-2 text-[11px] font-bold text-white disabled:opacity-50"
+                      >
+                        연장
+                      </button>
+                    ) : pkg.status === 'pending_review' ? (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-review-action"
+                        aria-label={`${pkg.title} 모바일 검수 열기`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        onClick={e => {
+                          e.stopPropagation();
+                          trackEngagement({
+                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                            page_url: '/admin/packages',
+                            metadata: {
+                              surface: 'packages_row_action',
+                              action: 'review_opened',
+                              packageId: pkg.id,
+                              status: pkg.status,
+                              source: 'mobile_card',
+                            },
+                          });
+                          setApprovalTarget(pkg);
+                        }}
+                        className="rounded-admin-sm bg-amber-500 px-2 py-2 text-[11px] font-bold text-white"
+                      >
+                        검수
+                      </button>
+                    ) : pkg.status === 'pending' ? (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-approve-action"
+                        aria-label={`${pkg.title} 모바일 승인`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        aria-busy={actionLoading?.startsWith(pkg.id)}
+                        onClick={e => { e.stopPropagation(); handleAction(pkg.id, 'approve'); }}
+                        disabled={!!actionLoading}
+                        className="rounded-admin-sm bg-green-600 px-2 py-2 text-[11px] font-bold text-white disabled:opacity-50"
+                      >
+                        승인
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-publish-action"
+                        aria-label={`${pkg.title} 모바일 발행 미리보기`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        onClick={e => {
+                          e.stopPropagation();
+                          trackEngagement({
+                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                            page_url: '/admin/packages',
+                            metadata: {
+                              surface: 'packages_row_action',
+                              action: 'customer_preview_opened',
+                              packageId: pkg.id,
+                              status: pkg.status,
+                              source: 'mobile_card',
+                            },
+                          });
+                          window.open(`/packages/${pkg.id}`, '_blank');
+                        }}
+                        className="rounded-admin-sm bg-admin-text-2 px-2 py-2 text-[11px] font-bold text-white"
+                      >
+                        발행
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-testid="admin-package-mobile-edit-action"
+                      aria-label={`${pkg.title} 모바일 수정`}
+                      aria-describedby={mobileActionStatusDescriptionId}
+                      onClick={e => openSingleEdit(pkg, e)}
+                      className="rounded-admin-sm border border-admin-border-strong px-2 py-2 text-[11px] font-bold text-admin-text-2"
+                    >
+                      수정
+                    </button>
+                    {pkg.status === 'pending' && !expired ? (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-reject-action"
+                        aria-label={`${pkg.title} 모바일 거부`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        aria-busy={actionLoading?.startsWith(pkg.id)}
+                        onClick={e => { e.stopPropagation(); handleAction(pkg.id, 'reject'); }}
+                        disabled={!!actionLoading}
+                        className="rounded-admin-sm border border-red-300 px-2 py-2 text-[11px] font-bold text-red-600 disabled:opacity-50"
+                      >
+                        거부
+                      </button>
+                    ) : pkg.status === 'approved' && !expired ? (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-deactivate-action"
+                        aria-label={`${pkg.title} 모바일 비활성`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        aria-busy={actionLoading?.startsWith(pkg.id)}
+                        onClick={e => { e.stopPropagation(); handleAction(pkg.id, 'reject'); }}
+                        disabled={!!actionLoading}
+                        className="rounded-admin-sm border border-admin-border-strong px-2 py-2 text-[11px] font-bold text-admin-muted disabled:opacity-50"
+                      >
+                        비활성
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid="admin-package-mobile-publish-action"
+                        aria-label={`${pkg.title} 모바일 발행 미리보기`}
+                        aria-describedby={mobileActionStatusDescriptionId}
+                        onClick={e => { e.stopPropagation(); window.open(`/packages/${pkg.id}`, '_blank'); }}
+                        className="rounded-admin-sm border border-orange-300 px-2 py-2 text-[11px] font-bold text-orange-600"
+                      >
+                        발행
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      data-testid="admin-package-mobile-more-action"
+                      onClick={e => { e.stopPropagation(); openSelectedDetail(pkg); }}
+                      aria-label={`${pkg.title} 상세 더보기`}
+                      aria-describedby={mobileActionStatusDescriptionId}
+                      className="rounded-admin-sm border border-admin-border-strong px-2 py-2 text-[11px] font-bold text-admin-muted"
+                    >
+                      더보기
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+          <table className="min-w-[1180px] w-full text-admin-sm">
             <thead className="bg-admin-bg border-b border-admin-border-mid">
               <tr>
                 <th className="px-3 py-2 w-8">
@@ -1844,7 +2507,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   </th>
                 ))}
                 <th className="px-3 py-2 text-admin-muted font-medium text-center">마케팅 커버리지</th>
-                <th className="px-3 py-2"><span className="sr-only">행 작업</span></th>
+                <th className="px-3 py-2 text-right text-admin-muted font-medium">다음 액션</th>
               </tr>
             </thead>
             <tbody>
@@ -1892,6 +2555,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               })}
             </tbody>
           </table>
+          </div>
+          </>
         )}
       </div>
 
@@ -1924,11 +2589,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             className="fixed inset-0 bg-black/40 z-50 cursor-default"
             onClick={() => setBulkEditOpen(false)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col">
+          <div
+            ref={bulkEditPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="packages-bulk-edit-title"
+            className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col"
+          >
             <div className="p-6 border-b border-admin-border-mid">
               <div className="flex items-center justify-between">
-                <h3 className="text-admin-lg font-bold text-admin-text-2">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
-                <button type="button" onClick={() => setBulkEditOpen(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="일괄 수정 패널 닫기">×</button>
+                <h3 id="packages-bulk-edit-title" className="text-admin-lg font-bold text-admin-text-2">선택된 {checkedIds.size}개 상품 일괄 수정</h3>
+                <button type="button" ref={bulkEditCloseRef} onClick={() => setBulkEditOpen(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="일괄 수정 패널 닫기">×</button>
               </div>
               <p className="text-admin-sm text-admin-muted mt-1">변경할 항목만 선택하세요. 비워두면 해당 필드는 유지됩니다.</p>
             </div>
@@ -1936,6 +2607,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               <div>
                 <label htmlFor="bulk-land-operator" className="block text-admin-sm font-medium text-admin-text-2 mb-1">랜드사</label>
                 <select
+                  ref={bulkLandOperatorRef}
                   id="bulk-land-operator"
                   value={bulkLandOperator}
                   onChange={e => setBulkLandOperator(e.target.value)}
@@ -1970,6 +2642,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 type="button"
                 onClick={handleBulkEdit}
                 disabled={bulkLoading || (!bulkLandOperator && bulkCommission === '')}
+                aria-busy={bulkLoading}
+                aria-describedby="admin-package-bulk-status"
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg text-admin-sm font-medium hover:bg-blue-700 disabled:opacity-50"
               >{bulkLoading ? '저장 중...' : '일괄 저장'}</button>
             </div>
@@ -1986,11 +2660,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             className="fixed inset-0 bg-black/40 z-50 cursor-default"
             onClick={() => setEditPkg(null)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col">
+          <div
+            ref={editPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="packages-single-edit-title"
+            className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-admin-border-mid flex flex-col"
+          >
             <div className="p-6 border-b border-admin-border-mid">
               <div className="flex items-center justify-between">
-                <h3 className="text-admin-lg font-bold text-admin-text-2">상품 수정</h3>
-                <button type="button" onClick={() => setEditPkg(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="상품 수정 패널 닫기">×</button>
+                <h3 id="packages-single-edit-title" className="text-admin-lg font-bold text-admin-text-2">상품 수정</h3>
+                <button type="button" ref={editCloseRef} onClick={() => setEditPkg(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="상품 수정 패널 닫기">×</button>
               </div>
               <p className="text-admin-sm text-admin-muted truncate mt-0.5">{editPkg.title}</p>
             </div>
@@ -1998,6 +2678,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               <div>
                 <label htmlFor="single-package-title" className="block text-admin-sm font-medium text-admin-text-2 mb-1">상품명</label>
                 <input
+                  ref={editTitleInputRef}
                   id="single-package-title"
                   type="text"
                   value={editForm.title}
@@ -2081,10 +2762,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             className="fixed inset-0 bg-black/40 z-50 cursor-default"
             onClick={() => setSelected(null)}
           />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-admin-border-mid flex flex-col">
+          <div
+            ref={detailPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="packages-detail-panel-title"
+            className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-admin-border-mid flex flex-col"
+          >
             <div className="p-6 border-b border-admin-border-mid flex items-start justify-between">
               <div>
-                <h2 className="text-admin-lg font-bold text-admin-text-2">{selected.title}</h2>
+                <h2 id="packages-detail-panel-title" className="text-admin-lg font-bold text-admin-text-2">{selected.title}</h2>
                 <div className="flex gap-2 mt-1 flex-wrap">
                   <span className={`px-2 py-0.5 rounded text-[11px] font-medium ${STATUS_BADGE[selected.status] || 'bg-admin-surface-2 text-admin-muted'}`}>
                     {STATUS_LABEL[selected.status] ?? selected.status}
@@ -2105,7 +2792,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   })()}
                 </div>
               </div>
-              <button type="button" onClick={() => setSelected(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="상품 상세 패널 닫기">×</button>
+              <button type="button" ref={detailCloseRef} onClick={() => setSelected(null)} className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="상품 상세 패널 닫기">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-6 space-y-4 text-admin-sm">
@@ -2262,6 +2949,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                       const data = await res.json();
                       if (!res.ok) throw new Error(data.error);
                       alert(`일정표 재추출 완료! (${data.days}일차)`);
+                      trackPackageActionCompleted('itinerary_reextracted', selected, { days: data.days ?? null });
                       load();
                       setSelected(null);
                     } catch (err) {
@@ -2371,20 +3059,26 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }}
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-          <div className="pointer-events-auto bg-white rounded-admin-lg w-full max-w-xl max-h-[90vh] overflow-y-auto">
+          <div
+            ref={kakaoCopyModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="kakao-copy-modal-title"
+            className="pointer-events-auto bg-white rounded-admin-lg w-full max-w-xl max-h-[90vh] overflow-y-auto"
+          >
             <div className="p-5 border-b flex justify-between items-start">
               <div>
-                <h3 className="font-bold text-lg">카톡 마케팅 문구</h3>
+                <h3 id="kakao-copy-modal-title" className="font-bold text-lg">카톡 마케팅 문구</h3>
                 <p className="text-xs text-admin-muted-2 mt-1">{kakaoCopyTarget.title}</p>
               </div>
-              <button type="button" onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-admin-muted-2 hover:text-admin-muted text-xl" aria-label="카톡 마케팅 문구 모달 닫기">×</button>
+              <button type="button" ref={kakaoCopyCloseRef} onClick={() => { setKakaoCopyTarget(null); setKakaoCopyText(''); }} className="text-admin-muted-2 hover:text-admin-muted text-xl" aria-label="카톡 마케팅 문구 모달 닫기">×</button>
             </div>
 
             {/* 생성 버튼 */}
             {!kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-6 text-center">
                 <p className="text-sm text-admin-muted mb-4">AI가 상품 데이터를 분석하여<br/>카톡방 발송용 마케팅 문구를 생성합니다.</p>
-                <button type="button" onClick={async () => {
+                <button type="button" ref={kakaoCopyGenerateRef} onClick={async () => {
                   setKakaoCopyLoading(true);
                   try {
                     const pkg = kakaoCopyTarget;
@@ -2408,6 +3102,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     });
                     const data = await res.json();
                     setKakaoCopyText(data.copy || '문구 생성 실패');
+                    if (data.copy) trackPackageActionCompleted('kakao_copy_generated', pkg, { source: 'initial' });
                   } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                   finally { setKakaoCopyLoading(false); }
                 }} className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold rounded-admin-md hover:opacity-90 text-sm">
@@ -2427,11 +3122,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             {/* 결과 */}
             {kakaoCopyText && !kakaoCopyLoading && (
               <div className="p-4">
-                <textarea value={kakaoCopyText} onChange={e => setKakaoCopyText(e.target.value)}
+                <textarea ref={kakaoCopyTextareaRef} value={kakaoCopyText} onChange={e => setKakaoCopyText(e.target.value)}
                   aria-label="카톡 마케팅 문구"
                   rows={18} className="w-full border rounded-admin-md px-4 py-3 text-sm leading-relaxed resize-none focus:ring-2 focus:ring-pink-300 focus:outline-none" />
                 <div className="flex gap-2 mt-3">
-                  <button type="button" onClick={() => { navigator.clipboard.writeText(kakaoCopyText); }}
+                  <button type="button" onClick={() => {
+                    void navigator.clipboard.writeText(kakaoCopyText);
+                    trackPackageActionCompleted('kakao_copy_copied', kakaoCopyTarget, { textLength: kakaoCopyText.length });
+                  }}
                     className="flex-1 py-2.5 bg-blue-600 text-white font-bold text-sm rounded-admin-md hover:bg-blue-700">
                     문구 복사
                   </button>
@@ -2452,6 +3150,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                       });
                       const data = await res.json();
                       setKakaoCopyText(data.copy || '문구 생성 실패');
+                      if (data.copy) trackPackageActionCompleted('kakao_copy_generated', pkg, { source: 'regenerate' });
                     } catch { setKakaoCopyText('문구 생성 중 오류 발생'); }
                     finally { setKakaoCopyLoading(false); }
                   }} className="py-2.5 px-4 bg-admin-surface-2 text-admin-text-2 text-sm rounded-admin-md hover:bg-slate-200">

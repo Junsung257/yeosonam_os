@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from 'node:child_process';
-import { createWriteStream, mkdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { createWriteStream, existsSync, mkdirSync, rmSync } from 'node:fs';
+import { isAbsolute, relative, resolve } from 'node:path';
 
 export function validatePort(port, label) {
   if (!Number.isFinite(port) || port < 1 || port > 65535) {
@@ -74,13 +74,29 @@ export function stopProcessTree(server, { keepServer = false } = {}) {
   server.markStopping();
   if (process.platform === 'win32') {
     spawnSync('taskkill', ['/pid', String(server.child.pid), '/T', '/F'], { stdio: 'ignore' });
-    return;
+  } else {
+    try {
+      process.kill(-server.child.pid, 'SIGTERM');
+    } catch {
+      server.child.kill('SIGTERM');
+    }
   }
-  try {
-    process.kill(-server.child.pid, 'SIGTERM');
-  } catch {
-    server.child.kill('SIGTERM');
-  }
+  cleanupDevDistDir(server.devDistDir);
+}
+
+function cleanupDevDistDir(devDistDir) {
+  if (!devDistDir) return;
+  const root = resolve('.');
+  const target = resolve(devDistDir);
+  const relativeTarget = relative(root, target).replace(/\\/g, '/');
+  const firstSegment = relativeTarget.split('/')[0] || '';
+  const safe =
+    relativeTarget &&
+    !relativeTarget.startsWith('../') &&
+    !isAbsolute(relativeTarget) &&
+    firstSegment.startsWith('.next-dev-');
+  if (!safe || !existsSync(target)) return;
+  rmSync(target, { recursive: true, force: true });
 }
 
 export function startNextServer({
@@ -98,9 +114,8 @@ export function startNextServer({
   const { command, args } = serverCommand(script, port);
   let expectedStop = false;
   const env = { ...process.env, FORCE_COLOR: '0' };
-  if (mode === 'dev' && !env.NEXT_DIST_DIR) {
-    env.NEXT_DIST_DIR = `.next-dev-${port}`;
-  }
+  const devDistDir = mode === 'dev' ? env.NEXT_DIST_DIR || `.next-dev-${port}` : '';
+  if (mode === 'dev' && !env.NEXT_DIST_DIR) env.NEXT_DIST_DIR = devDistDir;
 
   const child = spawn(command, args, {
     cwd: process.cwd(),
@@ -122,6 +137,7 @@ export function startNextServer({
     child,
     outLog,
     errLog,
+    devDistDir,
     markStopping() {
       expectedStop = true;
     },

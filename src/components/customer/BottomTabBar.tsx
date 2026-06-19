@@ -7,6 +7,7 @@ import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 
 const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
+const KAKAO_TAB_DESCRIPTION_ID = 'bottom-tab-kakao-description';
 
 interface Tab {
   icon: string;
@@ -30,8 +31,8 @@ function isTabActive(href: string, pathname: string | null): boolean {
   return pathname.startsWith(href);
 }
 
-// /packages/[id] 는 DetailClient 자체 CTA바가 있어 탭바 제외
-const EXCLUDED_PATHS = ['/admin', '/login', '/tenant', '/packages/'];
+// Dedicated mobile bottom surfaces own these paths, so the global tab bar stays out.
+const EXCLUDED_PATHS = ['/admin', '/login', '/tenant', '/packages', '/concierge', '/group-inquiry'];
 
 export default function BottomTabBar() {
   const pathname = usePathname();
@@ -63,6 +64,7 @@ export default function BottomTabBar() {
   const trackKakaoClick = () => {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: 'bottom_tab_bar',
       page_url: pathname ?? '/',
       metadata: { source: 'bottom_tab_bar' },
     });
@@ -70,11 +72,15 @@ export default function BottomTabBar() {
 
   return (
     <nav
+      data-testid="bottom-tab-bar"
       className={`bottom-tab-bar md:hidden fixed bottom-0 left-0 right-0 z-50 bg-white/95 backdrop-blur-sm border-t border-[#E5E7EB] safe-area-bottom transition-transform duration-200 ${
         visible ? 'translate-y-0' : 'translate-y-full'
       }`}
       aria-label="하단 탭 메뉴"
     >
+      <p id={KAKAO_TAB_DESCRIPTION_ID} className="sr-only">
+        카카오톡 채널 새 창에서 여행 상담을 시작합니다. 현재 보고 있는 페이지를 기준으로 상담을 이어갈 수 있습니다.
+      </p>
       <div className="flex items-end justify-around px-2 pt-2 pb-1 max-w-lg mx-auto">
         {TABS.map((tab) => {
           const active = !tab.highlight && isTabActive(tab.href, pathname);
@@ -89,7 +95,9 @@ export default function BottomTabBar() {
                 rel="noopener noreferrer"
                 referrerPolicy="no-referrer-when-downgrade"
                 onClick={trackKakaoClick}
+                data-testid="bottom-tab-kakao"
                 className="flex flex-col items-center gap-0.5 -mt-4 card-touch"
+                aria-describedby={KAKAO_TAB_DESCRIPTION_ID}
                 aria-label="카카오톡 상담"
               >
                 <div className="w-[56px] h-[56px] rounded-full bg-[#FEE500] flex items-center justify-center text-[26px] shadow-lg">
@@ -104,6 +112,8 @@ export default function BottomTabBar() {
             <Link
               key={tab.label}
               href={tab.href}
+              aria-current={active ? 'page' : undefined}
+              data-testid={`bottom-tab-${tab.href === '/' ? 'home' : tab.href.replace(/^\//, '').replace(/\//g, '-')}`}
               className="flex flex-col items-center gap-0.5 min-w-[60px] py-1 card-touch"
             >
               <span className={`text-[22px] leading-none transition-transform ${active ? 'scale-110' : ''}`}>

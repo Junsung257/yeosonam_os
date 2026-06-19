@@ -6,7 +6,7 @@
  */
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import {
   CheckCircle2,
   ChevronDown,
@@ -214,8 +214,10 @@ export default function TravelFitnessCard({
   representativeMonth,
   departureDistribution,
 }: Props) {
+  const disclosureId = useId();
   const [selectedMonth, setSelectedMonth] = useState(representativeMonth);
   const [expanded, setExpanded] = useState(false);
+  const comparisonPanelId = `${disclosureId}-travel-fitness-comparison`;
   const safeMonthlyNormals = Array.isArray(monthlyNormals) ? monthlyNormals : [];
   const safeFitnessScores = Array.isArray(fitnessScores) ? fitnessScores : [];
   const safeSeasonalSignals = Array.isArray(seasonalSignals) ? seasonalSignals : null;
@@ -329,7 +331,9 @@ export default function TravelFitnessCard({
               type="button"
               onClick={() => setExpanded((value) => !value)}
               className="flex w-full items-center justify-between gap-3 bg-slate-50/70 px-5 py-3.5 text-left"
+              data-testid="travel-fitness-comparison-toggle"
               aria-expanded={expanded}
+              aria-controls={comparisonPanelId}
             >
               <span>
                 <span className="block text-[13px] font-extrabold text-slate-900">12개월 비교</span>
@@ -343,7 +347,13 @@ export default function TravelFitnessCard({
             </button>
 
             {expanded && (
-              <div className="px-5 pb-4 pt-3">
+              <div
+                id={comparisonPanelId}
+                className="px-5 pb-4 pt-3"
+                data-testid="travel-fitness-comparison-panel"
+                role="region"
+                aria-label="12개월 여행 시기 비교"
+              >
                 <div className="flex h-16 items-end gap-1">
                   {safeFitnessScores.map((f) => {
                     const isSel = f.month === selectedMonth;
@@ -359,6 +369,7 @@ export default function TravelFitnessCard({
                         onClick={() => setSelectedMonth(f.month)}
                         className="group flex flex-1 flex-col items-center gap-0.5"
                         aria-label={`${MONTHS[f.month - 1]} 날씨 ${f.score}점${sigForMonth ? ` · 한국인 인기 ${sigForMonth.popularity_score}점` : ''}`}
+                        aria-pressed={isSel}
                       >
                         <div className="flex w-full flex-1 items-end gap-[1px]">
                           <div

@@ -1,7 +1,8 @@
 name: Type Safety & Coverage
 
-# 2026-05-13 — mail-flood-stop v2: PR Quality Gate에 TypeScript+Vitest가 이미 있어 중복. 수동만.
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,12 +25,14 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Run TypeScript strict check
         id: tsc
         continue-on-error: true
-        run: npx tsc --strict --noEmit 2>&1 | tee tsc-strict-output.txt
+        run: |
+          set -o pipefail
+          npx tsc --strict --noEmit 2>&1 | tee tsc-strict-output.txt
 
       - name: Run type coverage check
         id: coverage
@@ -41,44 +44,40 @@ jobs:
         if: always()
         run: |
           TSC_ERRORS=$(grep -c "error TS" tsc-strict-output.txt || echo "0")
-          echo "tsc_errors=$TSC_ERRORS" >> $GITHUB_OUTPUT
+          echo "tsc_errors=$TSC_ERRORS" >> "$GITHUB_OUTPUT"
 
       - name: Post results to PR
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
             const tscErrors = "${{ steps.parse.outputs.tsc_errors }}" || "0";
             const coverageResult = "${{ steps.coverage.outcome }}";
+            const failed = Number(tscErrors) > 0 || coverageResult === "failure";
 
-            let icon = "✅";
-            let status = "All checks passed";
+            const body = `## Type Safety Report
 
-            if (tscErrors > 0 || coverageResult === 'failure') {
-              icon = "❌";
-              status = "Type safety checks failed";
-            }
-
-            const comment = `## ${icon} Type Safety Report
+            **Status:** ${failed ? "Type safety checks failed" : "All checks passed"}
 
             ### TypeScript Strict Mode
-            ${tscErrors === "0" ? "✅ No strict type errors" : `❌ ${tscErrors} strict type errors found`}
+            ${tscErrors === "0" ? "No strict type errors" : `${tscErrors} strict type errors found`}
 
             ### Type Coverage
-            ${coverageResult === 'success' ? "✅ Type coverage meets threshold" : "⚠️ Type coverage below threshold"}
+            ${coverageResult === "success" ? "Type coverage meets threshold" : "Type coverage below threshold"}
 
             Review \`tsc-strict-output.txt\` and \`scripts/check-type-coverage.js\` for details.`;
 
-            github.rest.pulls.createReview({
+            await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
-              body: comment,
-              event: 'COMMENT'
+              body,
+              event: "COMMENT",
             });
 
       - name: Fail if type errors
         if: steps.tsc.outcome == 'failure' || steps.coverage.outcome == 'failure'
         run: |
-          echo "❌ Type safety checks failed"
+          echo "Type safety checks failed"
           exit 1

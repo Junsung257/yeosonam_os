@@ -137,8 +137,9 @@ export default function CompetitorPricesPage() {
         <h2 className="font-semibold text-admin-text-2 mb-4">새 가격 입력</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <div>
-            <label className="block text-xs font-medium text-admin-muted mb-1">목적지 *</label>
+            <label htmlFor="competitor-price-destination" className="block text-xs font-medium text-admin-muted mb-1">목적지 *</label>
             <input
+              id="competitor-price-destination"
               value={form.destination}
               onChange={(e) => setForm((f) => ({ ...f, destination: e.target.value }))}
               placeholder="싱가포르"
@@ -146,8 +147,9 @@ export default function CompetitorPricesPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-admin-muted mb-1">기간 *</label>
+            <label htmlFor="competitor-price-duration" className="block text-xs font-medium text-admin-muted mb-1">기간 *</label>
             <input
+              id="competitor-price-duration"
               value={form.duration}
               onChange={(e) => setForm((f) => ({ ...f, duration: e.target.value }))}
               placeholder="4박5일"
@@ -155,8 +157,9 @@ export default function CompetitorPricesPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-admin-muted mb-1">경쟁사 *</label>
+            <label htmlFor="competitor-price-company" className="block text-xs font-medium text-admin-muted mb-1">경쟁사 *</label>
             <select
+              id="competitor-price-company"
               value={form.competitor}
               onChange={(e) => setForm((f) => ({ ...f, competitor: e.target.value }))}
               className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -168,8 +171,9 @@ export default function CompetitorPricesPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-admin-muted mb-1">가격 (원) *</label>
+            <label htmlFor="competitor-price-amount" className="block text-xs font-medium text-admin-muted mb-1">가격 (원) *</label>
             <input
+              id="competitor-price-amount"
               value={form.price}
               onChange={(e) => setForm((f) => ({ ...f, price: e.target.value }))}
               placeholder="1290000"
@@ -179,8 +183,9 @@ export default function CompetitorPricesPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-admin-muted mb-1">출발일 (선택)</label>
+            <label htmlFor="competitor-price-departure-date" className="block text-xs font-medium text-admin-muted mb-1">출발일 (선택)</label>
             <input
+              id="competitor-price-departure-date"
               value={form.departureDate}
               onChange={(e) => setForm((f) => ({ ...f, departureDate: e.target.value }))}
               type="date"
@@ -188,8 +193,9 @@ export default function CompetitorPricesPage() {
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-admin-muted mb-1">참고 URL (선택)</label>
+            <label htmlFor="competitor-price-source-url" className="block text-xs font-medium text-admin-muted mb-1">참고 URL (선택)</label>
             <input
+              id="competitor-price-source-url"
               value={form.sourceUrl}
               onChange={(e) => setForm((f) => ({ ...f, sourceUrl: e.target.value }))}
               placeholder="https://..."
@@ -213,8 +219,9 @@ export default function CompetitorPricesPage() {
 
       {/* 필터 */}
       <div className="flex items-center gap-3">
-        <label className="text-sm font-medium text-admin-text-2">목적지 필터:</label>
+        <label htmlFor="competitor-price-destination-filter" className="text-sm font-medium text-admin-text-2">목적지 필터:</label>
         <select
+          id="competitor-price-destination-filter"
           value={filterDest}
           onChange={(e) => setFilterDest(e.target.value)}
           className="border border-admin-border-strong rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"

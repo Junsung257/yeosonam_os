@@ -74,7 +74,6 @@ export default function JarvisRagSearchPage() {
           onChange={e => setQuery(e.target.value)}
           placeholder="고객 질문 그대로 입력 (예: 다낭 5월 가족여행 노쇼핑)"
           className="flex-1 h-9 text-admin-base border border-admin-border-mid rounded-admin-sm px-3 bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
-          autoFocus
         />
         <select
           value={filter}

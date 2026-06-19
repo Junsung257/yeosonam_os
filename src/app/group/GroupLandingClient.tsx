@@ -1,10 +1,14 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { trackLead } from '@/components/MetaPixel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
-import { openKakaoChannel } from '@/lib/kakaoChannel';
+import {
+  buildGroupInquiryHandoffHref,
+  GROUP_INQUIRY_PRODUCT_LABEL,
+} from '@/lib/group-inquiry-handoff';
+import { getKakaoChannelChatUrl, openKakaoChannel } from '@/lib/kakaoChannel';
 import { trackEngagement } from '@/lib/tracker';
 
 // ─── 폼 선택지 정의 ────────────────────────────────────────
@@ -119,6 +123,18 @@ function errorId(key: FieldErrorKey) {
   return `group-${key.replace(/_/g, '-')}-error`;
 }
 
+const FIELD_INPUT_IDS: Record<FieldErrorKey, string> = {
+  contact_name: 'group-contact-name',
+  contact_phone: 'group-contact-phone',
+  group_name: 'group-name',
+  purpose: 'group-purpose',
+  destination: 'group-destination',
+  departure_date: 'group-departure-date',
+  pax_label: 'group-pax-label',
+  budget_label: 'group-budget-label',
+  privacy_consent: 'group-privacy-consent',
+};
+
 export default function GroupLandingClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -128,6 +144,10 @@ export default function GroupLandingClient() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FieldErrorKey, string>>>({});
   const [privacyConsent, setPrivacyConsent] = useState(false);
+  const [kakaoOpening, setKakaoOpening] = useState(false);
+  const [kakaoStatus, setKakaoStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const submitErrorRef = useRef<HTMLDivElement | null>(null);
+  const kakaoStatusRef = useRef<HTMLDivElement | null>(null);
 
   // URL hash 에 preset 쿼리(?preset=...)가 있으면 단체 유형 자동 선택
   useEffect(() => {
@@ -143,6 +163,7 @@ export default function GroupLandingClient() {
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((f) => ({ ...f, [key]: value }));
+    if (error) setError(null);
     setFieldErrors((current) => {
       const fieldKey = key as FieldErrorKey;
       if (!current[fieldKey]) return current;
@@ -168,6 +189,43 @@ export default function GroupLandingClient() {
     );
   }
 
+  function focusFirstFieldError(nextErrors: Partial<Record<FieldErrorKey, string>>) {
+    const firstErrorKey = ([...REQUIRED_FIELDS, 'privacy_consent'] as FieldErrorKey[]).find((key) => nextErrors[key]);
+    if (!firstErrorKey) return;
+
+    requestAnimationFrame(() => {
+      const target = document.getElementById(FIELD_INPUT_IDS[firstErrorKey]);
+      target?.focus();
+    });
+  }
+
+  function buildGroupLandingInquiryHref() {
+    return buildGroupInquiryHandoffHref({
+      source: 'group_landing',
+      intent: form.purpose || 'group_trip',
+      partyType: 'group_landing',
+      selectedProducts: [GROUP_INQUIRY_PRODUCT_LABEL],
+      query: [
+        form.purpose || '단체 맞춤 견적 상담',
+        form.destination,
+        form.pax_label,
+        form.budget_label,
+        form.departure_date ? `출발 ${form.departure_date}` : null,
+      ].filter(Boolean).join(', '),
+      budget: form.budget_label,
+      destination: form.destination,
+    });
+  }
+
+  const aiHandoffSummary = [
+    { label: '성격', value: form.purpose || '미입력' },
+    { label: '목적지', value: form.destination || '미입력' },
+    { label: '인원', value: form.pax_label || '미입력' },
+    { label: '예산', value: form.budget_label || '미입력' },
+    { label: '출발', value: form.departure_date || '미입력' },
+  ];
+  const aiHandoffFilledCount = aiHandoffSummary.filter((item) => item.value !== '미입력').length;
+
   function validateForm() {
     const nextErrors: Partial<Record<FieldErrorKey, string>> = {};
 
@@ -187,12 +245,17 @@ export default function GroupLandingClient() {
     }
 
     setFieldErrors(nextErrors);
-    return Object.keys(nextErrors).length === 0;
+    const isValid = Object.keys(nextErrors).length === 0;
+    if (!isValid) focusFirstFieldError(nextErrors);
+    return isValid;
   }
 
   async function handleKakaoConsult() {
+    setKakaoStatus(null);
+    setKakaoOpening(true);
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: 'group_landing_form',
       page_url: window.location.pathname,
       intent: form.purpose || null,
       budget: form.budget_label || null,
@@ -204,30 +267,62 @@ export default function GroupLandingClient() {
       },
     });
 
-    await openKakaoChannel({
-      productTitle: '단체 맞춤 견적',
-      intent: form.purpose || null,
+    try {
+      await openKakaoChannel({
+        productTitle: GROUP_INQUIRY_PRODUCT_LABEL,
+        intent: form.purpose || null,
+        budget: form.budget_label || null,
+        destination: form.destination || null,
+        party_type: 'group_landing',
+        selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+        escalationSummary: [
+          `단체명: ${form.group_name || '미입력'}`,
+          `단체 성격: ${form.purpose || '미입력'}`,
+          `목적지: ${form.destination || '미입력'}`,
+          `출발일: ${form.departure_date || '미입력'}`,
+          `인원: ${form.pax_label || '미입력'}`,
+          `예산: ${form.budget_label || '미입력'}`,
+          `호텔: ${form.hotel_grade || '미정'}`,
+          `쇼핑: ${form.shopping || '미정'}`,
+          form.notes ? `요청사항: ${form.notes}` : null,
+        ].filter(Boolean).join('\n'),
+        leadForm: {
+          name: form.contact_name || undefined,
+          phone: form.contact_phone || undefined,
+          adults: parsePaxLabel(form.pax_label) || undefined,
+        },
+      });
+      setKakaoStatus({
+        tone: 'success',
+        message: '카톡 상담 문구를 복사했고 상담창을 열었습니다. 새 창이 보이지 않으면 아래 링크로 다시 열 수 있어요.',
+      });
+    } catch {
+      setKakaoStatus({
+        tone: 'error',
+        message: '카톡 상담창을 열지 못했습니다. 아래 링크로 직접 열어 상담 문구를 붙여넣어 주세요.',
+      });
+      requestAnimationFrame(() => kakaoStatusRef.current?.focus());
+    } finally {
+      setKakaoOpening(false);
+    }
+  }
+
+  function handleContinueInAiConsult() {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.aiPromptStarted,
+      page_url: window.location.pathname,
+      intent: form.purpose || 'group_trip',
       budget: form.budget_label || null,
       destination: form.destination || null,
       party_type: 'group_landing',
-      selected_products: ['단체 맞춤 견적'],
-      escalationSummary: [
-        `단체명: ${form.group_name || '미입력'}`,
-        `단체 성격: ${form.purpose || '미입력'}`,
-        `목적지: ${form.destination || '미입력'}`,
-        `출발일: ${form.departure_date || '미입력'}`,
-        `인원: ${form.pax_label || '미입력'}`,
-        `예산: ${form.budget_label || '미입력'}`,
-        `호텔: ${form.hotel_grade || '미정'}`,
-        `쇼핑: ${form.shopping || '미정'}`,
-        form.notes ? `요청사항: ${form.notes}` : null,
-      ].filter(Boolean).join('\n'),
-      leadForm: {
-        name: form.contact_name || undefined,
-        phone: form.contact_phone || undefined,
-        adults: parsePaxLabel(form.pax_label) || undefined,
+      selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+      metadata: {
+        source: 'group_landing_ai_handoff',
+        pax_label: form.pax_label || null,
       },
     });
+
+    router.push(buildGroupLandingInquiryHref());
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -293,15 +388,20 @@ export default function GroupLandingClient() {
       trackLead({ content_name: '단체여행 견적', value: 0 });
       trackEngagement({
         event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+        cta_type: 'group_landing_submit',
         page_url: window.location.pathname,
         intent: form.purpose || null,
         budget: form.budget_label || null,
         destination: form.destination || null,
         party_type: 'group_landing',
+        selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
         metadata: {
           source: 'group_landing_submit',
+          outcome: 'rfq_created',
           rfq_id: data.rfq.id,
           pax_label: form.pax_label,
+          adult_count: adultCount,
+          budget_per_person: parseBudgetLabel(form.budget_label),
         },
       });
 
@@ -322,8 +422,14 @@ export default function GroupLandingClient() {
           접수 즉시 담당자가 확인하고 당일 내 회신드립니다
         </p>
 
+        <p id="group-landing-status" className="sr-only" aria-live="polite" aria-atomic="true">
+          {submitting ? '견적 요청을 전송하고 있습니다.' : ''}
+        </p>
+
         <form
           onSubmit={handleSubmit}
+          noValidate
+          aria-describedby={error ? 'group-landing-submit-error' : submitting ? 'group-landing-status' : undefined}
           className="bg-gray-50 rounded-3xl p-6 md:p-10 border border-gray-100 shadow-sm space-y-5"
         >
           {/* 신청자 성함 */}
@@ -332,6 +438,7 @@ export default function GroupLandingClient() {
               신청자 성함 <span className="text-red-500">*</span>
             </label>
             <input id="group-contact-name"
+              data-testid="group-landing-contact-name"
               type="text"
               value={form.contact_name}
               onChange={(e) => update('contact_name', e.target.value)}
@@ -542,10 +649,13 @@ export default function GroupLandingClient() {
           <div>
             <label className="flex items-start gap-2 rounded-xl bg-white p-4 text-sm text-slate-600 border border-gray-200">
               <input
+                id="group-privacy-consent"
+                data-testid="group-landing-privacy-consent"
                 type="checkbox"
                 checked={privacyConsent}
                 onChange={(e) => {
                   setPrivacyConsent(e.target.checked);
+                  if (error) setError(null);
                   if (fieldErrors.privacy_consent) {
                     setFieldErrors((current) => {
                       const next = { ...current };
@@ -569,7 +679,12 @@ export default function GroupLandingClient() {
 
           {/* 에러 표시 */}
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl" role="alert">
+            <div
+              ref={submitErrorRef}
+              id="group-landing-submit-error"
+              className="bg-red-50 border border-red-200 text-red-700 text-sm px-4 py-3 rounded-xl"
+              role="alert"
+            >
               {error}
             </div>
           )}
@@ -578,18 +693,85 @@ export default function GroupLandingClient() {
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <button
               type="submit"
+              data-testid="group-landing-submit"
               disabled={submitting}
+              aria-busy={submitting}
+              aria-describedby={error ? 'group-landing-submit-error' : submitting ? 'group-landing-status' : undefined}
               className="w-full bg-brand hover:bg-[#1B64DA] disabled:bg-slate-400 text-white font-bold py-4 px-6 rounded-2xl text-lg transition"
             >
               {submitting ? '전송 중...' : '견적 요청하기'}
             </button>
             <button
               type="button"
+              data-testid="group-landing-kakao"
               onClick={() => void handleKakaoConsult()}
+              disabled={kakaoOpening}
+              aria-busy={kakaoOpening}
+              aria-describedby={kakaoStatus ? 'group-landing-kakao-status' : undefined}
               className="w-full sm:w-auto bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold py-4 px-6 rounded-2xl text-base transition"
             >
-              카톡 상담
+              {kakaoOpening ? '카톡 여는 중...' : '카톡 상담'}
             </button>
+          </div>
+
+          {kakaoStatus && (
+            <div
+              ref={kakaoStatusRef}
+              id="group-landing-kakao-status"
+              data-testid="group-landing-kakao-status"
+              role={kakaoStatus.tone === 'error' ? 'alert' : 'status'}
+              aria-live={kakaoStatus.tone === 'error' ? 'assertive' : 'polite'}
+              tabIndex={-1}
+              className={`rounded-2xl border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand ${
+                kakaoStatus.tone === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-yellow-200 bg-yellow-50 text-slate-800'
+              }`}
+            >
+              <p>{kakaoStatus.message}</p>
+              <a
+                href={getKakaoChannelChatUrl()}
+                target="_blank"
+                rel="noopener"
+                data-testid="group-landing-kakao-fallback"
+                className="mt-2 inline-flex font-bold text-brand underline underline-offset-2"
+              >
+                카톡 상담창 직접 열기
+              </a>
+            </div>
+          )}
+
+          <button
+            type="button"
+            data-testid="group-landing-ai-handoff"
+            onClick={handleContinueInAiConsult}
+            aria-describedby="group-landing-ai-handoff-summary"
+            className="w-full rounded-2xl border border-brand/20 bg-white px-5 py-3.5 text-sm font-extrabold text-brand transition hover:border-brand/40 hover:bg-brand-light/40 focus:outline-none focus:ring-2 focus:ring-brand"
+          >
+            AI 상담에서 조건 이어가기
+          </button>
+
+          <div
+            id="group-landing-ai-handoff-summary"
+            data-testid="group-landing-ai-handoff-summary"
+            className="rounded-2xl border border-brand/10 bg-white px-4 py-3"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-xs font-black text-slate-800">AI에 전달될 조건</p>
+              <span className="rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-black text-brand">
+                {aiHandoffFilledCount}/5 입력됨
+              </span>
+            </div>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
+              {aiHandoffSummary.map((item) => (
+                <div key={item.label} className="min-w-0 rounded-xl bg-slate-50 px-3 py-2">
+                  <dt className="font-bold text-slate-500">{item.label}</dt>
+                  <dd className={`mt-1 truncate font-extrabold ${item.value === '미입력' ? 'text-slate-400' : 'text-slate-900'}`}>
+                    {item.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
           <p className="text-center text-xs text-slate-500">

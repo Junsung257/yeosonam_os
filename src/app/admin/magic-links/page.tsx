@@ -258,8 +258,9 @@ export default function AdminMagicLinksPage() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs text-gray-600 mb-1.5">액션 종류</label>
+            <label htmlFor="magic-link-action-type" className="block text-xs text-gray-600 mb-1.5">액션 종류</label>
             <select
+              id="magic-link-action-type"
               value={actionType}
               onChange={(e) => setActionType(e.target.value as ActionType)}
               className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm"
@@ -273,10 +274,11 @@ export default function AdminMagicLinksPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-600 mb-1.5">
+            <label htmlFor="magic-link-booking-id" className="block text-xs text-gray-600 mb-1.5">
               예약 ID {actionType !== 'jarvis_session' && <span className="text-red-500">*</span>}
             </label>
             <input
+              id="magic-link-booking-id"
               type="text"
               value={bookingId}
               onChange={(e) => setBookingId(e.target.value)}
@@ -286,8 +288,9 @@ export default function AdminMagicLinksPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-600 mb-1.5">유효기간 (시간)</label>
+            <label htmlFor="magic-link-ttl-hours" className="block text-xs text-gray-600 mb-1.5">유효기간 (시간)</label>
             <input
+              id="magic-link-ttl-hours"
               type="number"
               min={1}
               max={24 * 365}
@@ -301,8 +304,9 @@ export default function AdminMagicLinksPage() {
           </div>
 
           <div>
-            <label className="block text-xs text-gray-600 mb-1.5">발송 채널 (감사 기록용)</label>
+            <label htmlFor="magic-link-recipient-channel" className="block text-xs text-gray-600 mb-1.5">발송 채널 (감사 기록용)</label>
             <select
+              id="magic-link-recipient-channel"
               value={recipientChannel}
               onChange={(e) => setRecipientChannel(e.target.value)}
               className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm"
@@ -315,8 +319,9 @@ export default function AdminMagicLinksPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-600 mb-1.5">수신자 (전화번호 또는 이메일, 선택)</label>
+            <label htmlFor="magic-link-recipient-phone" className="block text-xs text-gray-600 mb-1.5">수신자 (전화번호 또는 이메일, 선택)</label>
             <input
+              id="magic-link-recipient-phone"
               type="text"
               value={recipientPhone}
               onChange={(e) => setRecipientPhone(e.target.value)}
@@ -326,8 +331,9 @@ export default function AdminMagicLinksPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-600 mb-1.5">발송 메시지 라벨 (선택, 90자 이내)</label>
+            <label htmlFor="magic-link-custom-label" className="block text-xs text-gray-600 mb-1.5">발송 메시지 라벨 (선택, 90자 이내)</label>
             <input
+              id="magic-link-custom-label"
               type="text"
               value={customLabel}
               onChange={(e) => setCustomLabel(e.target.value)}
@@ -351,8 +357,9 @@ export default function AdminMagicLinksPage() {
           </div>
 
           <div className="sm:col-span-2">
-            <label className="block text-xs text-gray-600 mb-1.5">메타데이터 (JSON)</label>
+            <label htmlFor="magic-link-metadata" className="block text-xs text-gray-600 mb-1.5">메타데이터 (JSON)</label>
             <textarea
+              id="magic-link-metadata"
               value={metadataJson}
               onChange={(e) => setMetadataJson(e.target.value)}
               rows={4}

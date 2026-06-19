@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import nextDynamic from 'next/dynamic';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { Home, Hotel } from 'lucide-react';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { normalizeOptionalTourName, groupOptionalToursByRegion } from '@/lib/itinerary-render';
@@ -22,9 +23,11 @@ import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
 import GlobalNav from '@/components/customer/GlobalNav';
+import { DestinationImageFallback } from '@/components/customer/SafeRemoteImage';
 import type { MonthlyNormal, FitnessScore } from '@/lib/travel-fitness-score';
 import type { SeasonalSignal } from '@/lib/seasonal-signals';
 import { isSafeImageSrc } from '@/lib/image-url';
@@ -159,6 +162,15 @@ function formatCompactDepartureDate(raw: string | null | undefined): string | nu
   return `${date.getMonth() + 1}/${date.getDate()} 출발`;
 }
 
+function inferPartyTypeForHandoff(intent: string | null | undefined, productType: string | null | undefined): string | null {
+  const source = `${intent ?? ''} ${productType ?? ''}`.toLowerCase();
+  if (/가족|효도|family|parent/.test(source)) return 'family';
+  if (/골프|golf/.test(source)) return 'golf_group';
+  if (/허니문|honeymoon|신혼|couple/.test(source)) return 'couple';
+  if (/단체|워크샵|workshop|group/.test(source)) return 'group';
+  return null;
+}
+
 interface RelatedBlogPost {
   slug: string;
   seo_title: string | null;
@@ -234,14 +246,13 @@ interface DetailClientProps {
 
 const ANGLE_LABELS: Record<string, string> = { value: '가성비', emotional: '감성', filial: '효도', luxury: '럭셔리', urgency: '긴급특가', activity: '액티비티', food: '미식' };
 
-function AttractionPhotoSlide({ src, alt }: { src: string; alt: string }) {
+function AttractionPhotoSlide({ src, alt, destination }: { src: string; alt: string; destination?: string | null }) {
   const [bad, setBad] = useState(false);
   if (bad) {
     return (
-      <div
-        className="relative shrink-0 w-4/5 h-44 rounded-2xl overflow-hidden snap-center shadow-sm bg-gradient-to-br from-slate-100 to-slate-200 ring-1 ring-slate-200/60"
-        aria-hidden
-      />
+      <div className="relative shrink-0 w-4/5 h-44 rounded-2xl overflow-hidden snap-center shadow-sm bg-slate-100 ring-1 ring-slate-200/60">
+        <DestinationImageFallback title={alt} destination={destination || alt} compact />
+      </div>
     );
   }
   return (
@@ -271,8 +282,8 @@ function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; 
   if (variant === 'row') {
     if (!ok) {
       return (
-        <div className="flex h-20 w-28 flex-shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-brand-light to-[#F2F4F6]">
-          <span className="text-3xl">📖</span>
+        <div className="relative h-20 w-28 flex-shrink-0 overflow-hidden rounded-xl bg-gray-100">
+          <DestinationImageFallback title={title || '여행 준비 가이드'} destination={title} compact />
         </div>
       );
     }
@@ -284,8 +295,8 @@ function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; 
   }
   if (!ok) {
     return (
-      <div className="aspect-[4/3] flex items-center justify-center bg-gradient-to-br from-[#F2F4F6] to-brand-light">
-        <span className="text-2xl">📖</span>
+      <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
+        <DestinationImageFallback title={title || '여행 준비 가이드'} destination={title} compact />
       </div>
     );
   }
@@ -293,6 +304,46 @@ function BlogOgThumb({ url, title, variant }: { url: string | null | undefined; 
     <div className="relative aspect-[4/3] bg-gray-100 overflow-hidden">
       <Image src={url!} alt={title || ''} fill className="object-cover" sizes="(max-width: 768px) 100vw, 50vw" loading="lazy" onError={() => setHide(true)} />
     </div>
+  );
+}
+
+interface DetailFlowStep {
+  title: string;
+  description: string;
+  section: string;
+}
+
+function DetailFlowGuide({ steps, onSelect }: { steps: DetailFlowStep[]; onSelect: (section: string) => void }) {
+  return (
+    <section className="px-4 mt-3" aria-labelledby="detail-flow-guide-title">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-[0_10px_28px_rgba(15,23,42,0.06)]">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <p className="text-[11px] font-extrabold uppercase tracking-wide text-brand">확인 동선</p>
+            <h2 id="detail-flow-guide-title" className="mt-1 text-base font-extrabold text-slate-950">
+              예약 전 확인 순서
+            </h2>
+          </div>
+          <span className="shrink-0 rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-500">
+            {steps.length}단계
+          </span>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {steps.map((step, index) => (
+            <button
+              key={step.title}
+              type="button"
+              onClick={() => onSelect(step.section)}
+              className="min-h-[108px] rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3 text-left transition hover:border-brand/40 hover:bg-white focus:outline-none focus:ring-4 focus:ring-brand/10"
+            >
+              <span className="text-[11px] font-black tabular-nums text-brand">{String(index + 1).padStart(2, '0')}</span>
+              <span className="mt-1 block text-[13px] font-extrabold text-slate-950">{step.title}</span>
+              <span className="mt-1 block text-[12px] font-medium leading-5 text-slate-600">{step.description}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -407,24 +458,76 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [selectedTier, setSelectedTier] = useState<PriceTier | null>(null);
+  const attractionDialogRef = useRef<HTMLDivElement | null>(null);
+  const attractionCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const reservationDialogRef = useRef<HTMLDivElement | null>(null);
+  const reservationCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const reservationNameInputRef = useRef<HTMLInputElement | null>(null);
+  const reservationPhoneInputRef = useRef<HTMLInputElement | null>(null);
+  const reservationConsentInputRef = useRef<HTMLInputElement | null>(null);
+  const reservationSubmitErrorRef = useRef<HTMLParagraphElement | null>(null);
+  const reservationTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     if (!showForm && !attractionModal) return;
 
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const activeDialogRef = showForm ? reservationDialogRef : attractionDialogRef;
+    const focusTimer = window.setTimeout(() => {
+      if (showForm) {
+        (reservationNameInputRef.current ?? reservationCloseButtonRef.current)?.focus();
+      } else {
+        attractionCloseButtonRef.current?.focus();
+      }
+    }, 0);
+    const getFocusableElements = () => Array.from(
+      activeDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         if (attractionModal) setAttractionModal(null);
         else setShowForm(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
+      if (showForm && reservationTriggerRef.current && document.contains(reservationTriggerRef.current)) {
+        reservationTriggerRef.current.focus();
+        reservationTriggerRef.current = null;
+        return;
+      }
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [attractionModal, showForm]);
 
@@ -446,16 +549,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const [activeDay, setActiveDay] = useState(1);
   const dayRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [termsSheetOpen, setTermsSheetOpen] = useState(false);
-  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const openInquiryForm = useCallback((source: string) => {
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
+  const openInquiryForm = useCallback((source: string, trigger?: HTMLButtonElement | null) => {
+    reservationTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLButtonElement ? document.activeElement : null);
+    const handoffIntent = formatProductTypeLabel(pkg?.product_type) ?? pkg?.product_type ?? null;
+    const handoffPartyType = inferPartyTypeForHandoff(handoffIntent, pkg?.product_type);
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
       product_id: id,
       product_name: pkg?.title ?? '',
+      cta_type: source,
       page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+      intent: handoffIntent,
+      budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
+      destination: pkg?.destination ?? null,
+      party_type: handoffPartyType,
+      selected_products: [pkg?.products?.display_name || pkg?.title || id],
       metadata: {
         source,
         selectedDate,
+        productType: pkg?.product_type ?? null,
         selectedTier: selectedTier?.period_label ?? null,
       },
     });
@@ -482,7 +595,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     setReservationSubmitError('');
     setReservationConsent(false);
     setShowForm(true);
-  }, [id, pkg?.title, selectedDate, selectedTier?.period_label]);
+  }, [id, pkg?.destination, pkg?.product_type, pkg?.products?.display_name, pkg?.title, selectedDate, selectedTier?.adult_price, selectedTier?.period_label]);
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -743,11 +856,31 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
   const productTypeLabel = formatProductTypeLabel(pkg.product_type);
+  const handoffIntent = productTypeLabel ?? pkg.product_type ?? 'consult';
+  const handoffPartyType = inferPartyTypeForHandoff(handoffIntent, pkg.product_type);
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
   // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
   // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
+  const selectedProductName = pkg.products?.display_name || pkg.title;
+  const handoffBudget = selectedTier?.adult_price
+    ? `1인 ${selectedTier.adult_price.toLocaleString()}원`
+    : Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
+      ? `1인 ${(displayPrice as number).toLocaleString()}원부터`
+      : null;
+  const departureHandoffLabel = selectedDate || selectedTier?.departure_dates?.[0] || selectedTier?.period_label || formData.date;
+  const groupInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'package_detail',
+    intent: handoffIntent,
+    partyType: handoffPartyType ?? undefined,
+    query: departureHandoffLabel
+      ? `${selectedProductName} ${departureHandoffLabel} 출발 예약 문의`
+      : `${selectedProductName} 예약 문의`,
+    destination: pkg.destination,
+    budget: handoffBudget,
+    selectedProducts: [selectedProductName],
+  });
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
   const todayForDeparture = new Date().toISOString().slice(0, 10);
@@ -763,6 +896,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const firstScreenBadges = [productTypeLabel, durationLabel, airlineName]
     .filter((item): item is string => Boolean(item))
     .slice(0, 3);
+  const stickyHandoffItems = [
+    { label: '지역', value: pkg.destination },
+    { label: '출발', value: selectedDate ?? nextConfirmedDate ?? nextAvailableDepartureLabel },
+    { label: '예산', value: handoffBudget },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value));
+  const detailCtaSummaryId = 'package-detail-cta-summary';
+  const detailKakaoDescriptionId = 'package-detail-kakao-description';
+  const detailGroupInquiryDescriptionId = 'package-detail-group-inquiry-description';
+  const detailReservationDescriptionId = 'package-detail-reservation-description';
+  const detailKakaoDescriptionIds = `${detailKakaoDescriptionId} ${detailCtaSummaryId}`;
+  const detailGroupInquiryDescriptionIds = `${detailGroupInquiryDescriptionId} ${detailCtaSummaryId}`;
+  const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailCtaSummaryId}`;
+  const detailCtaSummaryText = [
+    `${selectedProductName} 상품 상담 CTA입니다.`,
+    `출발 기준은 ${firstScreenDepartureLabel}입니다.`,
+    `가격 기준은 ${firstScreenPriceLabel}입니다.`,
+    stickyHandoffItems.length > 0
+      ? `상담 전달 조건은 ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
+      : null,
+  ].filter(Boolean).join(' ');
   const decisionGuide = createDecisionGuide({
     pkg,
     days,
@@ -772,6 +925,38 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     minPrice,
     productTypeLabel,
   });
+  const detailFlowSteps: DetailFlowStep[] = [
+    {
+      title: '가격/포함/불포함',
+      description: `${firstScreenPriceLabel} 기준으로 포함 항목과 별도 비용을 먼저 확인`,
+      section: '요금표',
+    },
+    {
+      title: '출발/항공/호텔',
+      description: `${firstScreenDepartureLabel}${airlineName ? ` · ${airlineName}` : ''} 조건을 일정에서 확인`,
+      section: '일정표',
+    },
+    {
+      title: '일정 흐름',
+      description: `${durationLabel ?? '전체 일정'} 동안 이동과 주요 체류 시간을 확인`,
+      section: '일정표',
+    },
+    {
+      title: '추천/비추천',
+      description: '잘 맞는 대상과 조심해야 할 조건을 나란히 확인',
+      section: '추천 대상과 확인할 점',
+    },
+    {
+      title: '후기/자주 묻는 질문',
+      description: '최근 후기 요약과 상담 전 자주 묻는 질문을 확인',
+      section: '후기',
+    },
+    {
+      title: '취소/주의',
+      description: '특별약관, 취소·환불, 현지 유의사항을 마지막으로 확인',
+      section: '유의사항',
+    },
+  ];
 
   // ERR-KUL-05 / Phase 2 — view.flightHeader 단일 소비. pkg.itinerary_data 직접 파싱 금지.
   // JSX 호환: flightDep/flightReturn 로컬 프록시 (기존 렌더 로직 보존).
@@ -798,7 +983,20 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     setReservationSubmitAttempted(true);
     setReservationSubmitError('');
 
-    if (!formData.name.trim() || !formData.phone.trim() || !reservationConsent || isSubmitting) return;
+    if (!formData.name.trim() || !formData.phone.trim() || !reservationConsent || isSubmitting) {
+      if (!isSubmitting) {
+        window.setTimeout(() => {
+          if (!formData.name.trim()) {
+            reservationNameInputRef.current?.focus();
+          } else if (!formData.phone.trim()) {
+            reservationPhoneInputRef.current?.focus();
+          } else if (!reservationConsent) {
+            reservationConsentInputRef.current?.focus();
+          }
+        }, 0);
+      }
+      return;
+    }
     setIsSubmitting(true);
     let ok = false;
     let errMsg = '';
@@ -848,6 +1046,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       }, 3000);
     } else {
       setReservationSubmitError(`예약 문의 전송에 실패했습니다. ${errMsg} 카카오톡 채널로 직접 문의해주시면 빠르게 도와드리겠습니다.`);
+      window.requestAnimationFrame(() => reservationSubmitErrorRef.current?.focus());
     }
   };
 
@@ -893,7 +1092,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <div className="hidden md:block">
         <GlobalNav />
       </div>
-    <main className="min-h-screen bg-[#F8FAFC] pb-32 md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
+    <main className="min-h-dvh bg-[#F8FAFC] pb-44 md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
+      <p id={detailCtaSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {detailCtaSummaryText}
+      </p>
+      <p id={detailKakaoDescriptionId} className="sr-only">
+        현재 상품과 선택한 출발 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
+      </p>
+      <p id={detailGroupInquiryDescriptionId} className="sr-only">
+        현재 상품과 선택한 출발 조건을 단체 맞춤 견적 문의로 이어갑니다.
+      </p>
+      <p id={detailReservationDescriptionId} className="sr-only">
+        현재 상품과 선택한 출발 조건으로 예약 문의 입력창을 엽니다.
+      </p>
 
       {/* ═══ 히어로 (사진 배경) ═══ */}
       <div ref={el => { sectionRefs.current['상품정보'] = el; }} data-section="상품정보"
@@ -931,7 +1142,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               onError={() => setHeroImgBroken(true)}
             />
           ) : (
-            <div className="absolute inset-0 bg-gradient-to-br from-text-primary via-brand-dark to-brand" />
+            <DestinationImageFallback title={pkg.title} destination={pkg.destination || pkg.title} />
           )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/25 to-black/10" />
@@ -1016,7 +1227,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             </div>
             <button
               type="button"
-              onClick={() => openInquiryForm('detail_first_screen_summary')}
+              onClick={(event) => openInquiryForm('detail_first_screen_summary', event.currentTarget)}
               className="shrink-0 rounded-xl bg-slate-950 px-4 py-3 text-[13px] font-extrabold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] active:scale-[0.98] transition"
             >
               예약 문의
@@ -1067,7 +1278,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       )}
 
       {/* ═══ 리뷰 1줄 요약 strip (PR-F, cron review-digest 산출물) ═══ */}
-      <ReviewDigestStrip packageId={pkg.id} />
+      <div ref={el => { sectionRefs.current['후기'] = el; }} data-section="후기" className="scroll-mt-[108px]">
+        <ReviewDigestStrip packageId={pkg.id} />
+      </div>
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}
       <section className="px-4 mt-3 relative z-10">
@@ -1187,13 +1400,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <div className="px-4 mt-3 mb-1">
         <button
           type="button"
-          onClick={() => openInquiryForm('detail_price_card')}
+          onClick={(event) => openInquiryForm('detail_price_card', event.currentTarget)}
+          aria-haspopup="dialog"
+          aria-expanded={showForm}
+          aria-controls="package-detail-reservation-dialog"
+          aria-describedby={detailCtaSummaryId}
           className="w-full h-12 rounded-2xl bg-slate-950 text-white font-bold text-sm shadow-[0_10px_24px_rgba(15,23,42,0.18)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
           <span>예약 문의하기</span>
           <span className="text-white/65 text-xs font-normal">날짜·인원 상담</span>
         </button>
       </div>
+
+      <DetailFlowGuide steps={detailFlowSteps} onSelect={scrollToSection} />
 
       {/* ═══ 추천 카드 — 출발일별 동적 점수 (v3 옵션 A) ═══
           selectedDate가 있으면 그 날의 score, 없으면 가장 가까운 미래 출발일.
@@ -1393,6 +1612,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <div className="flex gap-0 px-3">
           {NAV_SECTIONS.map(section => (
             <button key={section} onClick={() => scrollToSection(section)}
+              aria-label={`${section} 섹션으로 이동`}
+              aria-current={activeSection === section ? 'true' : undefined}
               className={`flex-1 py-3 text-[11px] font-bold text-center transition-colors border-b-2 ${
                 activeSection === section ? 'text-slate-950 border-slate-950' : 'text-gray-500 border-transparent'
               }`}>{section}</button>
@@ -1486,7 +1707,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {selectedDate ? (
             <button
               type="button"
-              onClick={() => openInquiryForm('detail_recommendation')}
+              onClick={(event) => openInquiryForm('detail_recommendation', event.currentTarget)}
               className="w-full h-12 rounded-2xl bg-brand text-white font-bold text-sm shadow-md active:scale-[0.98] transition-all flex items-center justify-center gap-2"
             >
               <span>
@@ -1501,7 +1722,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           ) : (
             <button
               type="button"
-              onClick={() => openInquiryForm('detail_recommendation_secondary')}
+              onClick={(event) => openInquiryForm('detail_recommendation_secondary', event.currentTarget)}
               className="w-full h-10 rounded-2xl border-2 border-brand text-brand font-semibold text-sm active:scale-[0.98] transition-all flex items-center justify-center gap-1.5"
             >
               <span>💬</span>
@@ -1514,7 +1735,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       {/* ═══ 포함/불포함/써차지/쇼핑 — CRC + terms-catalog ═══ */}
       {view && <PackageTermsSection view={view} />}
 
-      <section className="px-4 py-6" aria-label="추천 대상과 확인할 점">
+      <section
+        ref={el => { sectionRefs.current['추천 대상과 확인할 점'] = el; }}
+        data-section="추천 대상과 확인할 점"
+        className="px-4 py-6 scroll-mt-[108px]"
+        aria-label="추천 대상과 확인할 점"
+      >
         <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-[0_12px_30px_rgba(15,23,42,0.06)]">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
@@ -1523,7 +1749,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             </div>
             <button
               type="button"
-              onClick={() => openInquiryForm('detail_decision_guide')}
+              onClick={(event) => openInquiryForm('detail_decision_guide', event.currentTarget)}
               className="shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-extrabold text-slate-800 active:scale-[0.98] transition"
             >
               조건 확인
@@ -1846,7 +2072,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                             {hasPhotos && (
                               <div className="flex gap-2 overflow-x-auto scrollbar-hide snap-x mt-3 pb-2 -mx-1 px-1">
                                 {validAttrPhotoUrls.slice(0, 5).map((url, pIdx) => (
-                                  <AttractionPhotoSlide key={`${url}-${pIdx}`} src={url} alt={attr.name} />
+                                  <AttractionPhotoSlide key={`${url}-${pIdx}`} src={url} alt={attr.name} destination={pkg.destination || attr.region || attr.name} />
                                 ))}
                               </div>
                             )}
@@ -1903,9 +2129,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       <div>
                         <h3 className="font-bold text-base text-gray-900 mb-2">{card.title}</h3>
                         <div className="bg-gray-50 rounded-xl p-3 flex gap-3 items-center border border-gray-100">
-                          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-brand-light to-brand/30 flex items-center justify-center text-xl shrink-0">
+                          <div className="w-14 h-14 rounded-xl bg-brand-light text-brand flex items-center justify-center shrink-0">
                             {/* ERR-HET-hotel-ger-star@2026-04-22 — 게르는 성급 표기가 없는 숙소라 별 대신 🛖 아이콘 */}
-                            {gradeLabel && /게르/.test(gradeLabel) ? '🛖' : '🏨'}
+                            {gradeLabel && /게르/.test(gradeLabel) ? <Home className="h-6 w-6" aria-hidden /> : <Hotel className="h-6 w-6" aria-hidden />}
                           </div>
                           <div>
                             {gradeLabel && (() => {
@@ -2052,15 +2278,37 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       <PackageFAQ
         destination={pkg.destination ?? ''}
         productType={pkg.product_type ?? null}
-        kakaoChannel={() => openKakaoChannel({
-          internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
-          productTitle: pkg.products?.display_name || pkg.title,
-          intent: pkg.product_type ?? null,
-          budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
-          destination: pkg.destination ?? null,
-          selected_products: [pkg.products?.display_name || pkg.title],
-          departureDate: selectedDate || selectedTier?.departure_dates?.[0],
-        })}
+        kakaoChannel={() => {
+          trackEngagement({
+            event_type: ANALYTICS_EVENTS.kakaoClicked,
+            product_id: id,
+            product_name: pkg.title,
+            cta_type: 'detail_faq_kakao',
+            page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+            intent: handoffIntent,
+            budget: handoffBudget,
+            destination: pkg.destination ?? null,
+            party_type: handoffPartyType,
+            selected_products: [selectedProductName],
+            metadata: {
+              source: 'detail_faq_kakao',
+              selectedDate,
+              productType: pkg.product_type ?? null,
+              selectedTier: selectedTier?.period_label ?? null,
+              destination: pkg.destination ?? null,
+            },
+          });
+          void openKakaoChannel({
+            internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
+            productTitle: selectedProductName,
+            intent: handoffIntent,
+            budget: handoffBudget,
+            destination: pkg.destination ?? null,
+            party_type: handoffPartyType,
+            selected_products: [selectedProductName],
+            departureDate: selectedDate || selectedTier?.departure_dates?.[0],
+          });
+        }}
       />
 
       {/* ═══ 여행 준비 가이드 (통합 블로그 섹션) ═══
@@ -2164,6 +2412,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               <button
                 type="button"
                 onClick={() => setTermsSheetOpen(true)}
+                data-testid="package-terms-open"
+                aria-haspopup="dialog"
+                aria-expanded={termsSheetOpen}
+                aria-controls="package-terms-sheet"
                 className="mt-2.5 text-[11px] text-brand font-medium hover:underline"
               >
                 전체 약관 보기 →
@@ -2175,13 +2427,25 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* 클립보드 복사 토스트 */}
       {clipboardToast && (
-        <div className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in" role="status" aria-live="polite">
+        <div
+          className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="package-detail-clipboard-toast"
+        >
           📋 문의 메시지가 복사됐어요 — 채팅창에 붙여넣기 하세요
         </div>
       )}
       {/* 링크 공유 토스트 */}
       {shareToast && (
-        <div className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in" role="status" aria-live="polite">
+        <div
+          className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-[90] bg-gray-900 text-white text-xs px-4 py-2.5 rounded-full shadow-lg animate-fade-in"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="package-detail-share-toast"
+        >
           🔗 링크가 복사되었습니다
         </div>
       )}
@@ -2206,7 +2470,24 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             </div>
           );
         })()}
-        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex items-center gap-2.5">
+        <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          {stickyHandoffItems.length > 0 && (
+            <div
+              className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-100 bg-slate-50 px-2.5 py-2 no-scrollbar"
+              aria-label="상담 전달 조건"
+              aria-describedby={detailCtaSummaryId}
+              data-testid="package-detail-sticky-handoff-summary"
+            >
+              {stickyHandoffItems.map((item) => (
+                <span key={item.label} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-slate-700 shadow-sm">
+                  <span className="text-slate-500">{item.label}</span>
+                  <span className="mx-1 text-slate-300">/</span>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2.5">
           {/* 가격/날짜 정보 — 좌측 1인 표시 */}
           <div className="flex-1 min-w-0">
             {selectedTier ? (
@@ -2234,17 +2515,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
           <button
             type="button"
-            aria-label="카카오톡으로 문의"
+            aria-label={`${selectedProductName} 카카오톡 상담 열기`}
+            aria-describedby={detailKakaoDescriptionIds}
             data-analytics-id="mobile_kakao_consult"
+            data-testid="package-detail-sticky-kakao"
             onClick={async () => {
               trackEngagement({
                 event_type: ANALYTICS_EVENTS.kakaoClicked,
                 product_id: id,
                 product_name: pkg.title,
+                cta_type: 'mobile_kakao_consult',
                 page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+                intent: handoffIntent,
+                budget: handoffBudget,
+                destination: pkg.destination ?? null,
+                party_type: handoffPartyType,
+                selected_products: [selectedProductName],
                 metadata: {
                   source: 'detail_mobile_sticky_kakao',
                   selectedDate,
+                  productType: pkg.product_type ?? null,
                   selectedTier: selectedTier?.period_label ?? null,
                 },
               });
@@ -2272,11 +2562,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               }).catch(() => {});
               const copied = await openKakaoChannel({
                 internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
-                productTitle: pkg.products?.display_name || pkg.title,
-                intent: pkg.product_type ?? null,
-                budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
+                productTitle: selectedProductName,
+                intent: handoffIntent,
+                budget: handoffBudget,
                 destination: pkg.destination ?? null,
-                selected_products: [pkg.products?.display_name || pkg.title],
+                party_type: handoffPartyType,
+                selected_products: [selectedProductName],
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
               });
               if (copied) {
@@ -2289,13 +2580,49 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <span className="text-base leading-none" aria-hidden="true">💬</span>
           </button>
 
+          <Link
+            href={groupInquiryHref}
+            onClick={() => {
+              trackEngagement({
+                event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+                product_id: id,
+                product_name: pkg.title,
+                cta_type: 'detail_sticky_group_inquiry',
+                page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+                intent: handoffIntent,
+                budget: handoffBudget,
+                destination: pkg.destination ?? null,
+                party_type: handoffPartyType,
+                selected_products: [selectedProductName],
+                metadata: {
+                  source: 'detail_sticky_group_inquiry',
+                  selectedDate,
+                  productType: pkg.product_type ?? null,
+                  selectedTier: selectedTier?.period_label ?? null,
+                },
+              });
+            }}
+            className="h-11 shrink-0 rounded-full border border-slate-300 bg-white px-3 text-xs font-extrabold text-slate-800 shadow-sm transition-all active:scale-[0.98] flex items-center justify-center"
+            aria-label={`${selectedProductName} 조건으로 맞춤 견적 문의하기`}
+            aria-describedby={detailGroupInquiryDescriptionIds}
+            data-testid="package-detail-sticky-group-inquiry"
+            data-analytics-id="mobile_sticky_group_inquiry"
+          >
+            견적
+          </Link>
+
           {/* 예약 문의 — primary, 폼 열기 (상태형: 날짜 선택 여부에 따라 텍스트 변경) */}
           <button
             type="button"
-            onClick={() => openInquiryForm('detail_sticky_cta')}
+            onClick={(event) => openInquiryForm('detail_sticky_cta', event.currentTarget)}
             className="h-11 px-5 sm:px-6 rounded-full bg-slate-950 text-white font-bold text-sm shadow-lg active:scale-[0.98] transition-all shrink-0"
             aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
+            aria-haspopup="dialog"
+            aria-expanded={showForm}
+            aria-controls="package-detail-reservation-dialog"
+            aria-describedby={detailReservationDescriptionIds}
             data-analytics-id="mobile_sticky_reservation"
+            data-testid="package-detail-reservation-cta"
           >
             {selectedDate
               ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
@@ -2305,16 +2632,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       </div>
 
       {/* ═══ 관광지 상세 바텀시트 ═══ */}
+      </div>
+
       {attractionModal && (
         <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true" aria-labelledby="attraction-modal-title">
           <button
             type="button"
-            aria-label="Close attraction details"
+            aria-label="관광지 상세 닫기"
             tabIndex={-1}
             className="absolute inset-0 bg-black/40"
             onClick={() => setAttractionModal(null)}
           />
-          <div className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl overflow-hidden max-h-[80vh] overflow-y-auto">
+          <div ref={attractionDialogRef} className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto rounded-t-3xl overflow-hidden max-h-[80vh] overflow-y-auto">
             <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mt-3 mb-2" />
             {/* 대표 사진 */}
             {attractionModal.photos && attractionModal.photos.length > 0 && (
@@ -2329,7 +2658,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <div className="p-5">
               <div className="flex items-start justify-between mb-2">
                 <h3 id="attraction-modal-title" className="font-extrabold text-lg text-gray-900">{attractionModal.name}</h3>
-                <button type="button" aria-label="Close attraction details" onClick={() => setAttractionModal(null)} className="text-gray-400 text-xl ml-3 shrink-0">✕</button>
+                <button type="button" ref={attractionCloseButtonRef} aria-label="관광지 상세 닫기" onClick={() => setAttractionModal(null)} className="text-gray-400 text-xl ml-3 shrink-0">✕</button>
               </div>
               {attractionModal.short_desc && (
                 <p className="text-sm font-medium text-gray-700 mb-3">{attractionModal.short_desc}</p>
@@ -2347,7 +2676,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 예약 폼 바텀시트 ═══ */}
       {showForm && (
-        <div className="fixed inset-0 flex items-end" style={{ zIndex: 70 }} role="dialog" aria-modal="true" aria-labelledby="reservation-inquiry-title" aria-describedby="reservation-inquiry-description">
+        <div id="package-detail-reservation-dialog" className="fixed inset-0 flex items-end" style={{ zIndex: 70 }} role="dialog" aria-modal="true" aria-labelledby="reservation-inquiry-title" aria-describedby="reservation-inquiry-description" data-testid="package-detail-reservation-dialog">
           <button
             type="button"
             aria-label="예약 문의 배경 닫기"
@@ -2355,7 +2684,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             className="absolute inset-0 bg-black/40"
             onClick={() => setShowForm(false)}
           />
-          <div className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto max-h-[92dvh] overflow-y-auto overscroll-contain rounded-t-3xl p-6 shadow-[0_-20px_50px_rgba(15,23,42,0.18)]">
+          <div ref={reservationDialogRef} className="relative bg-white w-full max-w-lg md:max-w-2xl mx-auto max-h-[92dvh] overflow-y-auto overscroll-contain rounded-t-3xl p-6 shadow-[0_-20px_50px_rgba(15,23,42,0.18)]">
+            <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
+            <button
+              type="button"
+              ref={reservationCloseButtonRef}
+              data-testid="package-detail-reservation-close"
+              aria-label="예약 문의 닫기"
+              onClick={() => setShowForm(false)}
+              className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200"
+            >
+              ✕
+            </button>
+            <h3 id="reservation-inquiry-title" className="text-lg font-extrabold text-gray-900 mb-2">
+              {submitted ? '문의 접수 완료' : '예약 문의'}
+            </h3>
+            <p id="reservation-inquiry-description" className="mb-4 text-xs leading-relaxed text-slate-500">
+              {submitted
+                ? '빠른 시간 내에 담당자가 출발 가능일과 인원을 확인해 연락드립니다.'
+                : '이름과 연락처만 남기면 담당자가 출발 가능일과 인원을 확인해 연락드립니다.'}
+            </p>
             {submitted ? (
               <div className="text-center py-8">
                 <p className="text-3xl mb-2">✅</p>
@@ -2364,19 +2712,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               </div>
             ) : (
               <>
-                <div className="w-10 h-1 bg-gray-300 rounded-full mx-auto mb-4" />
-                <button
-                  type="button"
-                  aria-label="예약 문의 닫기"
-                  onClick={() => setShowForm(false)}
-                  className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition-colors hover:bg-slate-200"
-                >
-                  ✕
-                </button>
-                <h3 id="reservation-inquiry-title" className="text-lg font-extrabold text-gray-900 mb-2">예약 문의</h3>
-                <p id="reservation-inquiry-description" className="mb-4 text-xs leading-relaxed text-slate-500">
-                  이름과 연락처만 남기면 담당자가 출발 가능일과 인원을 확인해 연락드립니다.
-                </p>
                 <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4 text-xs text-text-primary">
                   <p className="font-bold">{pkg.title}</p>
                   {selectedTier ? (
@@ -2388,18 +2723,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 <div className="space-y-3">
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">이름 <span className="text-brand">*</span></span>
-                    <input id="reservation-name" name="name" autoComplete="name" aria-describedby={showReservationNameError ? 'reservation-name-error' : 'reservation-inquiry-description'} aria-invalid={showReservationNameError} placeholder="홍길동" value={formData.name} onChange={e => { setFormData(f => ({ ...f, name: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
+                    <input ref={reservationNameInputRef} id="reservation-name" name="name" autoComplete="name" aria-describedby={showReservationNameError ? 'reservation-name-error' : 'reservation-inquiry-description'} aria-invalid={showReservationNameError} placeholder="홍길동" value={formData.name} onChange={e => { setFormData(f => ({ ...f, name: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                     {showReservationNameError && (
-                      <p id="reservation-name-error" className="mt-1 text-xs font-semibold text-red-600">이름을 입력해주세요.</p>
+                      <p id="reservation-name-error" className="mt-1 text-xs font-semibold text-red-600" role="alert">이름을 입력해주세요.</p>
                     )}
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">연락처 <span className="text-brand">*</span></span>
-                    <input id="reservation-phone" name="phone" autoComplete="tel" inputMode="tel" aria-describedby={showReservationPhoneError ? 'reservation-phone-error' : undefined} aria-invalid={showReservationPhoneError} placeholder="010-0000-0000" value={formData.phone} onChange={e => { setFormData(f => ({ ...f, phone: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
+                    <input ref={reservationPhoneInputRef} id="reservation-phone" name="phone" autoComplete="tel" inputMode="tel" aria-describedby={showReservationPhoneError ? 'reservation-phone-error' : undefined} aria-invalid={showReservationPhoneError} placeholder="010-0000-0000" value={formData.phone} onChange={e => { setFormData(f => ({ ...f, phone: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                     {showReservationPhoneError && (
-                      <p id="reservation-phone-error" className="mt-1 text-xs font-semibold text-red-600">연락처를 입력해주세요.</p>
+                      <p id="reservation-phone-error" className="mt-1 text-xs font-semibold text-red-600" role="alert">연락처를 입력해주세요.</p>
                     )}
                   </label>
                   {!selectedTier && <label className="block">
@@ -2415,6 +2750,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   <div>
                     <label className="flex items-start gap-2 rounded-xl bg-slate-50 px-3 py-3 text-xs leading-relaxed text-slate-600">
                       <input
+                        ref={reservationConsentInputRef}
+                        id="reservation-consent"
                         type="checkbox"
                         checked={reservationConsent}
                         onChange={(e) => {
@@ -2431,23 +2768,32 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                       </span>
                     </label>
                     {showReservationConsentError && (
-                      <p id="reservation-consent-error" className="mt-1 text-xs font-semibold text-red-600">개인정보 안내에 동의해주세요.</p>
+                      <p id="reservation-consent-error" className="mt-1 text-xs font-semibold text-red-600" role="alert">개인정보 안내에 동의해주세요.</p>
                     )}
                   </div>
                   {reservationSubmitError && (
-                    <p className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold leading-relaxed text-red-700" role="alert">
+                    <p
+                      ref={reservationSubmitErrorRef}
+                      id="reservation-submit-error"
+                      className="rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold leading-relaxed text-red-700 outline-none focus:ring-2 focus:ring-red-200"
+                      role="alert"
+                      tabIndex={-1}
+                    >
                       {reservationSubmitError}
                     </p>
                   )}
-                  <p className={`rounded-xl px-3 py-2 text-[11px] font-semibold leading-relaxed ${
+                  <p id="reservation-form-hint" className={`rounded-xl px-3 py-2 text-[11px] font-semibold leading-relaxed ${
                     reservationFormReady ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'
-                  }`}>
+                  }`} aria-live="polite" aria-atomic="true">
                     {reservationFormHint}
                   </p>
                   <button onClick={handleSubmit} disabled={isSubmitting}
+                    aria-busy={isSubmitting}
                     aria-disabled={!reservationFormReady}
+                    aria-describedby={reservationSubmitError ? 'reservation-form-hint reservation-submit-error' : 'reservation-form-hint'}
                     title={!reservationFormReady ? '필수 항목을 확인해 주세요' : undefined}
                     data-analytics-id="reservation_sheet_submit"
+                    data-testid="package-detail-reservation-submit"
                     className="w-full py-3 bg-slate-950 text-white font-bold rounded-xl text-sm disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-500 shadow-lg disabled:shadow-none flex items-center justify-center gap-2">
                     {isSubmitting ? (
                       <>

@@ -212,8 +212,9 @@ export default function FlightAlertsAdminPage() {
           <h2 className="text-admin-base font-semibold text-admin-text-2 mb-3">새 항공편 등록</h2>
           <form onSubmit={(e) => void handleAddFlight(e)} className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] text-admin-muted mb-1">편명 *</label>
+              <label htmlFor="flight-alert-number" className="block text-[11px] text-admin-muted mb-1">편명 *</label>
               <input
+                id="flight-alert-number"
                 type="text"
                 placeholder="예: VN215"
                 value={formData.flightNumber}
@@ -223,8 +224,9 @@ export default function FlightAlertsAdminPage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-admin-muted mb-1">노선 *</label>
+              <label htmlFor="flight-alert-route" className="block text-[11px] text-admin-muted mb-1">노선 *</label>
               <input
+                id="flight-alert-route"
                 type="text"
                 placeholder="예: 인천 → 다낭"
                 value={formData.route}
@@ -234,8 +236,9 @@ export default function FlightAlertsAdminPage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-admin-muted mb-1">예정 출발 *</label>
+              <label htmlFor="flight-alert-scheduled-departure" className="block text-[11px] text-admin-muted mb-1">예정 출발 *</label>
               <input
+                id="flight-alert-scheduled-departure"
                 type="datetime-local"
                 value={formData.scheduledDeparture}
                 onChange={e => setFormData(p => ({ ...p, scheduledDeparture: e.target.value }))}
@@ -244,8 +247,9 @@ export default function FlightAlertsAdminPage() {
               />
             </div>
             <div>
-              <label className="block text-[11px] text-admin-muted mb-1">예약 ID (선택)</label>
+              <label htmlFor="flight-alert-booking-id" className="block text-[11px] text-admin-muted mb-1">예약 ID (선택)</label>
               <input
+                id="flight-alert-booking-id"
                 type="text"
                 placeholder="UUID"
                 value={formData.bookingId}
@@ -254,8 +258,9 @@ export default function FlightAlertsAdminPage() {
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-[11px] text-admin-muted mb-1">메모</label>
+              <label htmlFor="flight-alert-note" className="block text-[11px] text-admin-muted mb-1">메모</label>
               <input
+                id="flight-alert-note"
                 type="text"
                 value={formData.note}
                 onChange={e => setFormData(p => ({ ...p, note: e.target.value }))}

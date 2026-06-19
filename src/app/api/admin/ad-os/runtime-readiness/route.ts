@@ -71,9 +71,48 @@ async function inspectRuntime(tenantId?: string | null) {
   };
 }
 
+function buildSupabaseUnconfiguredResponse() {
+  const tableStatus = Object.fromEntries(TABLES.map((table) => [table, false]));
+  const counts = Object.fromEntries(TABLES.map((table) => [table, 0]));
+  const apiJson = {
+    summary: false,
+    data_quality: false,
+    platform_jobs_run: false,
+    conversion_upload_run: false,
+    tenant_workspaces: false,
+    runtime_readiness: false,
+  };
+
+  return {
+    ok: false,
+    degraded: true,
+    reason: 'supabase_unconfigured',
+    access_state: 'supabase_unconfigured',
+    error: 'Supabase is not configured. Runtime readiness checks are unavailable in this environment.',
+    tableStatus,
+    counts,
+    errors: {},
+    checks: buildRuntimeReadinessChecks({
+      tenantId: null,
+      tables: tableStatus,
+      apiJson,
+      counts,
+      fullAutoEnabled: 0,
+      externalApiWrites: 0,
+    }),
+    summary: {
+      tables_ready: 0,
+      tables_total: TABLES.length,
+      missing_tables: TABLES,
+      full_auto_enabled: 0,
+      external_api_write_count: 0,
+    },
+  };
+}
+
 export const GET = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 503 });
+    return NextResponse.json(buildSupabaseUnconfiguredResponse(), { status: 503 });
   }
   const tenantId = request.nextUrl.searchParams.get('tenant_id');
   const result = await inspectRuntime(tenantId);
@@ -82,7 +121,7 @@ export const GET = withAdminGuard(async (request: NextRequest) => {
 
 export const POST = withAdminGuard(async (request: NextRequest) => {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 503 });
+    return NextResponse.json(buildSupabaseUnconfiguredResponse(), { status: 503 });
   }
   const body = await request.json().catch(() => ({}));
   const apply = body.apply === true;

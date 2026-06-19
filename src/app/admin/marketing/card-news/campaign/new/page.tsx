@@ -195,6 +195,7 @@ export default function CampaignNewPage() {
                 <div className="text-sm text-admin-muted-2">상품 목록 로딩 중...</div>
               ) : (
                 <select
+                  aria-label="대상 상품"
                   value={selectedPkg}
                   onChange={(e) => setSelectedPkg(e.target.value)}
                   className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -217,6 +218,8 @@ export default function CampaignNewPage() {
                 {ANGLES.map((a) => (
                   <button
                     key={a.key}
+                    type="button"
+                    aria-pressed={angle === a.key}
                     onClick={() => setAngle(a.key)}
                     disabled={running}
                     className={`px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
@@ -238,6 +241,8 @@ export default function CampaignNewPage() {
                 {FAMILIES.map((f) => (
                   <button
                     key={f.key}
+                    type="button"
+                    aria-pressed={family === f.key}
                     onClick={() => setFamily(f.key)}
                     disabled={running}
                     className={`p-3 rounded-lg border text-left transition-colors ${
@@ -256,6 +261,7 @@ export default function CampaignNewPage() {
             {/* 자동 컨펌 */}
             <div className="bg-white rounded-admin-md border border-admin-border-mid p-5">
               <label className="flex items-center gap-3 cursor-pointer">
+                <span className="sr-only">렌더 완료 후 자동 CONFIRMED</span>
                 <input
                   type="checkbox"
                   checked={autoConfirm}

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
+import { Phone } from 'lucide-react';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -11,7 +12,9 @@ import PackageCard from '@/components/customer/PackageCard';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -25,6 +28,10 @@ const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
 const INITIAL_VISIBLE_COUNT = 18;
 const VISIBLE_STEP = 18;
 const consultTelHref = getConsultTelHref();
+const PACKAGES_STICKY_HANDOFF_SUMMARY_ID = 'packages-sticky-handoff-summary';
+const PACKAGES_STICKY_PHONE_DESCRIPTION_ID = 'packages-sticky-phone-description';
+const PACKAGES_STICKY_GROUP_DESCRIPTION_ID = 'packages-sticky-group-description';
+const PACKAGES_STICKY_KAKAO_DESCRIPTION_ID = 'packages-sticky-kakao-description';
 
 interface Package {
   id: string;
@@ -73,6 +80,10 @@ const INTENT_OPTIONS = [
 
 type IntentId = typeof INTENT_OPTIONS[number]['id'];
 
+function normalizeIntentId(value: string | null): IntentId | null {
+  return INTENT_OPTIONS.some(opt => opt.id === value) ? (value as IntentId) : null;
+}
+
 const MONTH_FILTER_OPTIONS = Array.from({ length: 6 }, (_, index) => {
   const date = new Date();
   date.setMonth(date.getMonth() + index);
@@ -101,6 +112,18 @@ const CATEGORY_SUMMARY_LABELS: Record<string, string> = {
   golf: '해외골프',
   cruise: '크루즈',
   theme: '테마여행',
+};
+
+const INTENT_HANDOFF_LABELS: Record<IntentId, string> = {
+  family: '부모님/가족',
+  budget: '예산 맞춤',
+  no_shopping: '쇼핑 없는 상품',
+  consult: '상담 추천',
+};
+
+const INTENT_PARTY_TYPE: Partial<Record<IntentId, string>> = {
+  family: 'family',
+  no_shopping: 'family',
 };
 
 function matchesFilter(pkg: Package, filter: string): boolean {
@@ -202,9 +225,13 @@ export default function PackagesClient() {
   const searchParamsString = rawSearchParams?.toString() ?? '';
   const searchParams = useMemo(() => new URLSearchParams(searchParamsString), [searchParamsString]);
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
-  const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(null);
+  const intentFromQuery = normalizeIntentId(searchParams.get('intent'));
+  const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(intentFromQuery);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const trackedRecommendViewsRef = useRef<Set<string>>(new Set());
+  const moreFiltersToggleRef = useRef<HTMLButtonElement | null>(null);
+  const moreFiltersFirstControlRef = useRef<HTMLSelectElement | null>(null);
+  const moreFiltersWasOpenRef = useRef(false);
 
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
@@ -256,6 +283,21 @@ export default function PackagesClient() {
     () => compareIds.map(id => initialPackages.find(p => p.id === id)).filter(Boolean),
     [compareIds, initialPackages],
   );
+  const compareStatusId = 'packages-compare-selection-status';
+  const compareHelpId = 'packages-compare-help';
+  const packageFilterHelpId = 'packages-filter-help';
+  const packageFilterSummaryId = 'packages-filter-summary';
+  const packageResultSummaryId = 'packages-result-summary';
+  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageResultSummaryId}`;
+  const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
+  const compareStatusText = compareIds.length === 0
+    ? '비교 상품이 선택되지 않았습니다.'
+    : compareIds.length === 1
+      ? '비교 상품 1개가 선택되었습니다. 하나 더 선택하면 비교할 수 있습니다.'
+      : '비교 상품 2개가 선택되었습니다. 비교하기를 열 수 있습니다.';
+  const compareHelpText = compareIds.length >= 2
+    ? '선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 비교 모달에서 확인할 수 있습니다.'
+    : '비교할 상품을 최대 2개까지 선택할 수 있습니다. 이미 2개를 고른 뒤 다른 상품을 누르면 가장 오래된 선택이 교체됩니다.';
 
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
@@ -284,6 +326,10 @@ export default function PackagesClient() {
     setActiveFilter(filter || FILTER_OPTIONS[0]);
   }, [filter]);
 
+  useEffect(() => {
+    setSelectedIntent(intentFromQuery);
+  }, [intentFromQuery]);
+
   const trackScoreSignal = useCallback((input: {
     packageId?: string;
     signalType: 'recommend_badge_view' | 'recommend_reason_open' | 'comparison_open' | 'intent_chip_select' | 'lead_sheet_open';
@@ -311,7 +357,12 @@ export default function PackagesClient() {
 
   const handleIntentSelect = useCallback((intent: IntentId) => {
     const nextIntent = selectedIntent === intent ? null : intent;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextIntent) params.set('intent', nextIntent);
+    else params.delete('intent');
+    const qs = params.toString();
     setSelectedIntent(nextIntent);
+    router.push(qs ? `/packages?${qs}` : '/packages');
     trackScoreSignal({
       signalType: 'intent_chip_select',
       groupKey: `intent:${intent}:${nextIntent ? 'on' : 'off'}`,
@@ -319,6 +370,8 @@ export default function PackagesClient() {
     });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: 'intent',
+      filter_value: intent,
       page_url: '/packages',
       metadata: { filterName: 'intent', value: intent, state: nextIntent ? 'on' : 'off', selectedIntent: nextIntent, hub },
     });
@@ -327,12 +380,27 @@ export default function PackagesClient() {
     if (intent === 'consult') {
       trackEngagement({
         event_type: ANALYTICS_EVENTS.kakaoClicked,
+        cta_type: 'packages_intent_consult_chip',
         page_url: '/packages',
+        intent: nextIntent ?? intent,
+        budget: formatBudgetSummary(priceMin, priceMax),
+        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
         metadata: { source: 'packages_intent_consult_chip', selectedIntent: nextIntent, hub },
       });
-      window.open('https://pf.kakao.com/_xcFxkBG/chat', '_blank', 'noopener,noreferrer');
+      void openKakaoChannel({
+        intent: INTENT_HANDOFF_LABELS[nextIntent ?? intent] ?? intent,
+        budget: formatBudgetSummary(priceMin, priceMax),
+        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
+        escalationSummary: [
+          q ? `검색어: ${q}` : null,
+          month ? `출발월: ${formatMonthSummary(month)}` : null,
+          `출발지: ${HUB_SUMMARY_LABELS[hub]}`,
+        ].filter(Boolean).join('\n'),
+      });
     }
-  }, [hub, selectedIntent, trackScoreSignal]);
+  }, [activeFilter, destination, hub, month, priceMax, priceMin, q, router, searchParams, selectedIntent, trackScoreSignal]);
 
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
@@ -374,9 +442,80 @@ export default function PackagesClient() {
     return items;
   }, [activeFilter, category, filteredPackages.length, hub, month, priceMax, priceMin, selectedIntentInfo, urgency]);
 
+  const selectedProductNames = useMemo(
+    () => comparePackages
+      .map((pkg) => pkg?.display_title || pkg?.products?.display_name || pkg?.title)
+      .filter((name): name is string => Boolean(name))
+      .slice(0, 2),
+    [comparePackages],
+  );
+
+  const handoffBudget = useMemo(() => formatBudgetSummary(priceMin, priceMax), [priceMax, priceMin]);
+  const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null);
+  const handoffIntent = selectedIntent ? INTENT_HANDOFF_LABELS[selectedIntent] : null;
+  const handoffPartyType = selectedIntent ? INTENT_PARTY_TYPE[selectedIntent] ?? null : null;
+  const stickyHandoffItems = useMemo(
+    () => filterSummaryItems
+      .filter((item) => item.label !== '결과')
+      .slice(0, 4),
+    [filterSummaryItems],
+  );
+  const stickyPhoneDescriptionIds = stickyHandoffItems.length > 0
+    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID}`
+    : PACKAGES_STICKY_PHONE_DESCRIPTION_ID;
+  const stickyGroupDescriptionIds = stickyHandoffItems.length > 0
+    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID}`
+    : PACKAGES_STICKY_GROUP_DESCRIPTION_ID;
+  const stickyKakaoDescriptionIds = stickyHandoffItems.length > 0
+    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID}`
+    : PACKAGES_STICKY_KAKAO_DESCRIPTION_ID;
+  const handoffSummary = useMemo(() => [
+    q ? `검색어: ${q}` : null,
+    ...filterSummaryItems
+      .filter((item) => item.label !== '결과')
+      .map((item) => `${item.label}: ${item.value}`),
+    selectedProductNames.length > 0 ? `비교 선택: ${selectedProductNames.join(' / ')}` : null,
+  ].filter(Boolean).join('\n'), [filterSummaryItems, q, selectedProductNames]);
+
+  const groupInquiryHref = useMemo(() => {
+    return buildGroupInquiryHandoffHref({
+      source: 'packages',
+      intent: selectedIntent ?? undefined,
+      partyType: handoffPartyType ?? undefined,
+      query: q || handoffSummary || '패키지 목록 상담',
+      destination: handoffDestination,
+      budget: handoffBudget,
+      selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
+    });
+  }, [handoffBudget, handoffDestination, handoffPartyType, handoffSummary, q, selectedIntent, selectedProductNames]);
+
+  const openPackagesKakao = useCallback((source: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: source,
+      page_url: '/packages',
+      intent: selectedIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      metadata: { source, selectedIntent, hub, selectedProductNames },
+    });
+    void openKakaoChannel({
+      intent: handoffIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames,
+      escalationSummary: handoffSummary,
+    });
+  }, [handoffBudget, handoffDestination, handoffIntent, handoffPartyType, handoffSummary, hub, selectedIntent, selectedProductNames]);
+
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
+  const packageAppliedFilterSummaryText = filterSummaryItems.map((item) => `${item.label} ${item.value}`).join(', ');
+  const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다.`;
 
   useEffect(() => {
     for (const pkg of visiblePackages) {
@@ -405,6 +544,18 @@ export default function PackagesClient() {
     return map;
   }, [initialPackages]);
 
+  const visiblePackageTrackingById = useMemo(() => {
+    const map = new Map<string, { productName: string; rank: number; price: number | null }>();
+    visiblePackages.forEach((pkg, index) => {
+      map.set(pkg.id, {
+        productName: pkg.display_title || pkg.products?.display_name || pkg.title,
+        rank: index + 1,
+        price: minPriceByPkgId.get(pkg.id) ?? pkg.price ?? null,
+      });
+    });
+    return map;
+  }, [minPriceByPkgId, visiblePackages]);
+
   const catalogGroupSizeMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of initialPackages) {
@@ -415,20 +566,33 @@ export default function PackagesClient() {
   }, [initialPackages]);
 
   const trackClick = useCallback((id: string) => {
-    fetch('/api/tracking/click', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ package_id: id, source: 'list' }),
-    }).catch(() => {});
-  }, []);
+    const tracking = visiblePackageTrackingById.get(id);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageCardClicked,
+      page_url: '/packages',
+      event_source: 'list',
+      product_id: id,
+      product_name: tracking?.productName ?? id,
+      intent: selectedIntent,
+      metadata: {
+        source: 'list',
+        rank: tracking?.rank ?? null,
+        price: tracking?.price ?? null,
+        selectedIntent,
+        hub,
+      },
+    });
+  }, [hub, selectedIntent, visiblePackageTrackingById]);
 
   const trackPackageFilter = useCallback((filterName: string, value: string) => {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: filterName,
+      filter_value: value,
       page_url: '/packages',
-      metadata: { filterName, value, selectedIntent, hub },
+      metadata: { filterName, value, selectedIntent, hub, resultCount: filteredPackages.length },
     });
-  }, [hub, selectedIntent]);
+  }, [filteredPackages.length, hub, selectedIntent]);
 
   const currentBudgetValue = useMemo(() => {
     const matched = BUDGET_FILTER_OPTIONS.find(opt => opt.min === priceMin && opt.max === priceMax);
@@ -463,11 +627,18 @@ export default function PackagesClient() {
   const handlePurposeFilterChange = useCallback((value: string) => {
     if (!value) {
       setSelectedIntent(null);
+      updatePackageQuery({ intent: null });
       trackPackageFilter('intent', 'all');
       return;
     }
     if (value !== selectedIntent) handleIntentSelect(value as IntentId);
-  }, [handleIntentSelect, selectedIntent, trackPackageFilter]);
+  }, [handleIntentSelect, selectedIntent, trackPackageFilter, updatePackageQuery]);
+
+  const handleRegionFilterChange = useCallback((value: string) => {
+    setActiveFilter(value);
+    updatePackageQuery({ filter: value === FILTER_OPTIONS[0] ? null : value });
+    trackPackageFilter('region', value);
+  }, [trackPackageFilter, updatePackageQuery]);
 
   const hasActivePackageFilters = Boolean(
     destination ||
@@ -491,16 +662,56 @@ export default function PackagesClient() {
     router.push('/packages');
   }, [router, trackPackageFilter]);
 
+  const handleMoreFiltersToggle = useCallback(() => {
+    setShowMoreFilters((current) => {
+      const next = !current;
+      trackPackageFilter('more_filters_panel', next ? 'open' : 'closed');
+      return next;
+    });
+  }, [trackPackageFilter]);
+
+  const handleMoreFiltersEscape = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    setShowMoreFilters(false);
+    trackPackageFilter('more_filters_panel', 'closed_escape');
+  }, [trackPackageFilter]);
+
+  useEffect(() => {
+    if (showMoreFilters) {
+      moreFiltersWasOpenRef.current = true;
+      const focusTimer = window.setTimeout(() => moreFiltersFirstControlRef.current?.focus(), 0);
+      return () => window.clearTimeout(focusTimer);
+    }
+    if (moreFiltersWasOpenRef.current) {
+      moreFiltersWasOpenRef.current = false;
+      window.setTimeout(() => moreFiltersToggleRef.current?.focus(), 0);
+    }
+    return undefined;
+  }, [showMoreFilters]);
+
+  const handleLoadMore = useCallback(() => {
+    const nextVisibleCount = Math.min(visibleCount + VISIBLE_STEP, filteredPackages.length);
+    setVisibleCount(nextVisibleCount);
+    trackPackageFilter('list_visible_count', String(nextVisibleCount));
+  }, [filteredPackages.length, trackPackageFilter, visibleCount]);
+
   const listTopRef = useRef<HTMLDivElement>(null);
   if (isLoading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white pb-36 md:pb-0">
       <GlobalNav />
       <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <a href={consultTelHref || '/group-inquiry'} className="sr-only">
+      <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
       </a>
+      <p id={compareStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {compareStatusText}
+      </p>
+      <p id={compareHelpId} className="sr-only">
+        {compareHelpText}
+      </p>
 
       <div className="md:border-b md:border-[#F2F4F6]">
         <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 pb-[5px] md:pb-0">
@@ -542,9 +753,14 @@ export default function PackagesClient() {
 
       <div className="sticky top-14 md:top-16 z-20 border-b border-[#EEF2F6] bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
         <div className="max-w-7xl mx-auto px-4 py-2.5 md:px-8 w-full max-w-full min-w-0">
+          <p id={packageFilterHelpId} className="sr-only">
+            필터를 변경하면 현재 조건과 상품 결과 수가 바로 갱신됩니다.
+          </p>
           <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             <select
               aria-label="출발월"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={month}
               onChange={e => handleMonthFilterChange(e.target.value)}
@@ -556,6 +772,8 @@ export default function PackagesClient() {
             </select>
             <select
               aria-label="출발지"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={hub}
               onChange={e => {
@@ -570,6 +788,8 @@ export default function PackagesClient() {
             </select>
             <select
               aria-label="여행 목적"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={selectedIntent ?? ''}
               onChange={e => handlePurposeFilterChange(e.target.value)}
@@ -581,6 +801,8 @@ export default function PackagesClient() {
             </select>
             <select
               aria-label="예산"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={currentBudgetValue === 'custom' ? '' : currentBudgetValue}
               onChange={e => handleBudgetFilterChange(e.target.value)}
@@ -591,9 +813,12 @@ export default function PackagesClient() {
             </select>
             <button
               type="button"
-              onClick={() => setShowMoreFilters(v => !v)}
+              ref={moreFiltersToggleRef}
+              data-testid="packages-more-filters-toggle"
+              onClick={handleMoreFiltersToggle}
               aria-expanded={showMoreFilters}
               aria-controls="package-more-filters"
+              aria-describedby={packageFilterDescriptionIds}
               className={`h-[36px] shrink-0 rounded-full border px-3.5 text-[13px] font-bold transition ${
                 showMoreFilters
                   ? 'border-brand bg-brand text-white'
@@ -603,10 +828,20 @@ export default function PackagesClient() {
               더 많은 필터
             </button>
           </div>
-          <div id="package-more-filters" className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}>
+          <div
+            id="package-more-filters"
+            role="region"
+            aria-label="추가 패키지 필터"
+            aria-describedby={packageFilterDescriptionIds}
+            className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}
+          >
             <div className="relative shrink-0">
               <select
+                ref={moreFiltersFirstControlRef}
                 aria-label="정렬 순서"
+                aria-describedby={packageFilterDescriptionIds}
+                aria-controls="packages-list"
+                onKeyDown={handleMoreFiltersEscape}
                 className="h-[34px] text-[13px] border border-[#E5E7EB] rounded-full pl-3 pr-7 bg-white text-text-primary appearance-none cursor-pointer font-medium"
                 value={sortBy}
                 onChange={e => {
@@ -631,15 +866,15 @@ export default function PackagesClient() {
                 key={f}
                 type="button"
                 aria-pressed={activeFilter === f}
+                aria-describedby={packageFilterDescriptionIds}
+                aria-controls="packages-list"
                 className={`shrink-0 h-[34px] px-3.5 text-[13px] font-medium rounded-full border transition card-touch ${
                   activeFilter === f
                     ? 'bg-brand text-white border-brand shadow-sm'
                     : 'bg-white text-text-body border-[#E5E7EB] hover:border-brand/40 hover:text-brand'
                 }`}
-                onClick={() => {
-                  setActiveFilter(f);
-                  trackPackageFilter('region', f);
-                }}
+                onKeyDown={handleMoreFiltersEscape}
+                onClick={() => handleRegionFilterChange(f)}
               >
                 {f}
               </button>
@@ -648,9 +883,9 @@ export default function PackagesClient() {
         </div>
       </div>
 
-      <section className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8" aria-label="현재 검색 조건">
+      <section className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8" aria-label="현재 검색 조건" aria-describedby={packageResultSummaryId}>
         <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3 md:flex md:items-center md:justify-between md:gap-4">
-          <div className="flex items-center justify-between gap-3 md:shrink-0">
+          <div id={packageFilterSummaryId} className="flex items-center justify-between gap-3 md:shrink-0">
             <p className="text-[13px] font-bold text-text-primary">현재 조건</p>
             <span className="text-[12px] font-semibold text-brand">{filteredPackages.length}개 상품</span>
           </div>
@@ -707,7 +942,17 @@ export default function PackagesClient() {
         )}
       </div>
 
-      <div ref={listTopRef} />
+      <p
+        id={packageResultSummaryId}
+        data-testid="packages-result-summary"
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {packageResultSummaryText}
+      </p>
+
+      <div ref={listTopRef} id="packages-list" aria-describedby={packageResultSummaryId} />
       {filteredPackages.length === 0 ? (
         <div className="text-center py-20 px-6">
           {urgency === '1' ? (
@@ -740,14 +985,12 @@ export default function PackagesClient() {
                     조건 초기화
                   </button>
                 )}
-                {consultTelHref && (
-                  <a
-                    href={consultTelHref}
-                    className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
-                  >
-                    📞 직접 문의
-                  </a>
-                )}
+                <Link
+                  href={groupInquiryHref}
+                  className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
+                >
+                  직접 문의
+                </Link>
               </div>
             </div>
           )}
@@ -764,6 +1007,7 @@ export default function PackagesClient() {
             <div key={pkg.id} className="relative">
               <button
                 type="button"
+                data-testid="packages-compare-toggle"
                 onClick={(e) => { e.preventDefault(); toggleCompare(pkg.id); }}
                 className={`absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full border-2 transition-all ${
                   compareIds.includes(pkg.id)
@@ -772,6 +1016,7 @@ export default function PackagesClient() {
                 }`}
                 aria-pressed={compareIds.includes(pkg.id)}
                 aria-label={compareIds.includes(pkg.id) ? `비교 해제: ${pkg.display_title || pkg.title}` : `비교 추가: ${pkg.display_title || pkg.title}`}
+                aria-describedby={compareDescriptionIds}
               >
                 {compareIds.includes(pkg.id) ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -809,7 +1054,7 @@ export default function PackagesClient() {
         <div className="px-4 pb-6 md:max-w-7xl md:mx-auto md:px-8">
           <button
             type="button"
-            onClick={() => setVisibleCount(v => Math.min(v + VISIBLE_STEP, filteredPackages.length))}
+            onClick={handleLoadMore}
             className="w-full h-11 rounded-full border border-[#D1DCE8] bg-white text-[14px] font-semibold text-text-primary hover:border-brand/60 hover:text-brand transition"
           >
             상품 더 보기 ({visiblePackages.length}/{filteredPackages.length})
@@ -819,32 +1064,93 @@ export default function PackagesClient() {
 
       {/* 플로팅 CTA — 모바일 전용 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
-        <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex items-center gap-3">
+        <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <p id={PACKAGES_STICKY_PHONE_DESCRIPTION_ID} className="sr-only">
+            현재 패키지 목록 조건을 기준으로 전화 상담을 시작합니다.
+          </p>
+          <p id={PACKAGES_STICKY_GROUP_DESCRIPTION_ID} className="sr-only">
+            현재 패키지 목록 조건과 비교 선택 상품을 단체 견적 문의로 이어갑니다.
+          </p>
+          <p id={PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} className="sr-only">
+            현재 패키지 목록 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
+          </p>
+          {stickyHandoffItems.length > 0 && (
+            <div
+              id={PACKAGES_STICKY_HANDOFF_SUMMARY_ID}
+              className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
+              aria-label="상담 전달 조건"
+              data-testid="packages-sticky-handoff-summary"
+            >
+              {stickyHandoffItems.map((item) => (
+                <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-text-body shadow-sm">
+                  <span className="text-text-secondary">{item.label}</span>
+                  <span className="mx-1 text-[#CBD5E1]">/</span>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-3">
           {consultTelHref ? (
             <a
               href={consultTelHref}
+              aria-label="전화 상담"
+              aria-describedby={stickyPhoneDescriptionIds}
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+                  cta_type: 'packages_mobile_phone',
+                  page_url: '/packages',
+                  intent: selectedIntent,
+                  budget: handoffBudget,
+                  destination: handoffDestination,
+                  party_type: handoffPartyType,
+                  selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+                  metadata: { source: 'packages_mobile_phone', selectedIntent, hub },
+                });
+              }}
               className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0"
             >
-              <span className="text-lg">📞</span>
+              <Phone className="h-5 w-5 text-text-primary" aria-hidden="true" />
             </a>
           ) : null}
-          <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade"
+          <Link
+            href={groupInquiryHref}
+            aria-describedby={stickyGroupDescriptionIds}
             onClick={() => {
               trackEngagement({
-                event_type: ANALYTICS_EVENTS.kakaoClicked,
+                event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+                cta_type: 'packages_mobile_group_inquiry',
                 page_url: '/packages',
-                metadata: { source: 'packages_mobile_bottom_cta', selectedIntent, hub },
+                intent: selectedIntent,
+                budget: handoffBudget,
+                destination: handoffDestination,
+                party_type: handoffPartyType,
+                selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+                metadata: { source: 'packages_mobile_group_inquiry', selectedIntent, hub },
               });
             }}
-            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
-            💬 카카오톡 상담
-          </a>
+            className="flex-1 bg-brand h-12 rounded-full text-white font-bold text-[14px] flex items-center justify-center shadow-lg active:scale-[0.98] transition-all"
+          >
+            견적 문의
+          </Link>
+          <button
+            type="button"
+            data-testid="packages-sticky-kakao"
+            aria-describedby={stickyKakaoDescriptionIds}
+            onClick={() => openPackagesKakao('packages_mobile_bottom_cta')}
+            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-[14px] flex items-center justify-center shadow-lg active:scale-[0.98] transition-all"
+          >
+            카톡 상담
+          </button>
         </div>
       </div>
 
       {/* ── 비교 플로팅 버튼 ── */}
+      </div>
+
       {compareIds.length > 0 && (
-        <div className="fixed bottom-20 md:bottom-[88px] left-1/2 -translate-x-1/2 z-40">
+        <div className="fixed bottom-32 md:bottom-[88px] left-1/2 -translate-x-1/2 z-40">
           <div className="bg-white shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-200 rounded-full px-4 py-2 flex items-center gap-3">
             <span className="text-[13px] font-medium text-text-secondary whitespace-nowrap">
               {compareIds.length}개 선택됨
@@ -852,6 +1158,7 @@ export default function PackagesClient() {
             <button
               type="button"
               onClick={clearCompare}
+              aria-describedby={compareDescriptionIds}
               className="text-[12px] font-medium text-text-body hover:text-danger transition"
             >
               해제
@@ -859,7 +1166,12 @@ export default function PackagesClient() {
             <div className="w-px h-4 bg-gray-200" />
             <button
               type="button"
+              data-testid="packages-compare-open"
               disabled={compareIds.length < 2}
+              aria-haspopup="dialog"
+              aria-expanded={compareOpen}
+              aria-controls="packages-compare-dialog"
+              aria-describedby={compareDescriptionIds}
               onClick={() => {
                 setCompareOpen(true);
                 trackScoreSignal({
@@ -900,13 +1212,51 @@ function SimpleCompareModal({
   b: Package;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
   useEffect(() => {
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
     document.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = '';
       document.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [onClose]);
 
@@ -927,16 +1277,27 @@ function SimpleCompareModal({
   ];
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end md:items-center md:justify-center">
-      <button type="button" className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="닫기" onClick={onClose} />
-      <div className="relative w-full max-h-[85vh] md:max-w-lg bg-white rounded-t-[24px] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div
+      id="packages-compare-dialog"
+      className="fixed inset-0 z-[200] flex items-end md:items-center md:justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="package-compare-title"
+      aria-describedby="package-compare-description"
+      data-testid="packages-compare-dialog"
+    >
+      <button type="button" className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="상품 비교 닫기" onClick={onClose} />
+      <div ref={dialogRef} className="relative w-full max-h-[85vh] md:max-w-lg bg-white rounded-t-[24px] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
-          <h2 className="text-[16px] font-bold text-text-primary">상품 비교</h2>
-          <button type="button" aria-label="Close comparison" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
+          <h2 id="package-compare-title" className="text-[16px] font-bold text-text-primary">상품 비교</h2>
+          <button type="button" ref={closeButtonRef} data-testid="packages-compare-close" aria-label="상품 비교 닫기" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
             <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg>
           </button>
         </div>
         <div className="overflow-y-auto px-4 py-4 space-y-3">
+          <p id="package-compare-description" className="sr-only">
+            선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 같은 기준으로 비교합니다.
+          </p>
           <div className="grid grid-cols-2 gap-3 mb-2">
             <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {a.display_title || a.title}

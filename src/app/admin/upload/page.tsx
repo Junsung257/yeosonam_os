@@ -655,11 +655,20 @@ export default function UploadPage() {
           {/* 드래그 존 */}
           <div className="bg-white p-5 rounded-admin-md border border-admin-border shadow-[0_1px_4px_rgba(0,0,0,0.04)]">
             <div
+              role="button"
+              tabIndex={0}
+              aria-label="파일 선택"
               onDragEnter={handleDrag} onDragLeave={handleDrag} onDragOver={handleDrag} onDrop={handleDrop}
               className={`border-2 border-dashed rounded-lg p-8 text-center transition cursor-pointer ${
                 dragActive ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid bg-admin-bg hover:border-admin-border-strong'
               }`}
               onClick={() => fileInputRef.current?.click()}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
             >
               <svg className="mx-auto h-10 w-10 text-admin-muted-2 mb-3" stroke="currentColor" fill="none" viewBox="0 0 48 48">
                 <path d="M28 8H12a4 4 0 00-4 4v20a4 4 0 004 4h24a4 4 0 004-4V20m-18-8v12m0 0l-4-4m4 4l4-4" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -670,6 +679,7 @@ export default function UploadPage() {
               <input
                 ref={fileInputRef}
                 type="file"
+                aria-label="업로드 파일"
                 multiple
                 accept=".pdf,.jpg,.jpeg,.png,.hwp,.hwpx"
                 onChange={e => e.target.files && addFiles(e.target.files)}

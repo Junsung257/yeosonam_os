@@ -3,9 +3,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
+const distDir = process.env.NEXT_DIST_DIR || '.next';
+
 const budgets = {
-  js: { limitKB: Number(process.env.BUNDLE_JS_LIMIT_KB || '30000'), path: '.next/static/chunks' },
-  css: { limitKB: Number(process.env.BUNDLE_CSS_LIMIT_KB || '512'), path: '.next/static/css' },
+  js: { limitKB: Number(process.env.BUNDLE_JS_LIMIT_KB || '30000'), path: path.join(distDir, 'static', 'chunks') },
+  css: { limitKB: Number(process.env.BUNDLE_CSS_LIMIT_KB || '512'), path: path.join(distDir, 'static', 'css') },
 };
 
 function directorySizeKB(dir) {

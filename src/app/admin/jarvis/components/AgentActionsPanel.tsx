@@ -159,7 +159,17 @@ export default function AgentActionsPanel() {
               {/* 카드 헤더 */}
               <div
                 className="p-3 cursor-pointer"
+                role="button"
+                tabIndex={0}
+                aria-expanded={expandedId === action.id}
+                aria-label={`${action.summary} 액션 ${expandedId === action.id ? '접기' : '펼치기'}`}
                 onClick={() => setExpandedId(expandedId === action.id ? null : action.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setExpandedId(expandedId === action.id ? null : action.id);
+                  }
+                }}
               >
                 {/* 배지 줄 */}
                 <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">

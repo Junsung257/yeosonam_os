@@ -8,7 +8,20 @@ export const dynamic = 'force-dynamic';
 
 async function buildResponse(apply: boolean) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 503 });
+    return NextResponse.json({
+      ok: false,
+      degraded: true,
+      reason: 'supabase_unconfigured',
+      access_state: 'supabase_unconfigured',
+      error: 'Supabase is not configured. Channel adapter health history is unavailable in this environment.',
+      summary: {
+        status: 'blocked',
+        platforms: 0,
+        writable_adapters: 0,
+        external_api_write: false,
+      },
+      capabilities: [],
+    }, { status: 503 });
   }
 
   const capabilities = await loadAdapterCapabilities();

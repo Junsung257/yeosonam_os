@@ -189,6 +189,7 @@ export default function ReviewsAdminPage() {
                   {[70, 80, 200, 50, 130].map((w, j) => (
                     <td key={j} className="px-4 py-3">
                       <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: w }} />
+                      <span className="sr-only">리뷰 정보 로딩 중</span>
                     </td>
                   ))}
                 </tr>

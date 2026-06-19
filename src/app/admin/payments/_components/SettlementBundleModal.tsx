@@ -13,7 +13,7 @@
  * 정책: 자동 묶기 절대 금지 — 모든 선택은 사장님 ☑.
  */
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { operatorScore } from '@/lib/payment-command-resolver';
 import { fmtDate } from '@/lib/admin-utils';
 
@@ -62,9 +62,55 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const open = !!transaction;
   const txAmountAbs = transaction ? Math.abs(transaction.amount) : 0;
+
+  useEffect(() => {
+    if (!open) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) {
@@ -205,6 +251,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
         aria-label="출금 정산 묶기 닫기"
       />
       <div
+        ref={dialogRef}
         className="relative bg-white rounded-admin-md shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col"
         role="dialog"
         aria-modal="true"
@@ -221,6 +268,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
           </div>
           <button
             type="button"
+            ref={closeButtonRef}
             onClick={onClose}
             className="text-admin-muted-2 hover:text-admin-muted text-2xl leading-none"
             aria-label="출금 정산 묶기 닫기"

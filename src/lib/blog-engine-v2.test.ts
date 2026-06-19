@@ -76,6 +76,10 @@ describe('blog-engine-v2 product pipeline', () => {
     expect(markdown).toContain('2026-07-01');
     expect(markdown).toContain('포함사항');
     expect(markdown).toContain('불포함사항');
+    expect(markdown).toContain('/group-inquiry?source=blog_article');
+    expect(markdown).toContain('intent=consult');
+    expect(markdown).toContain('party_type=group');
+    expect(markdown).toContain('selected_products=');
     expect(markdown).not.toContain('숨은 비용 없음');
     expect(integrity.passed).toBe(true);
   });

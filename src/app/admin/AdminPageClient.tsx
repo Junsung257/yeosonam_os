@@ -5,6 +5,10 @@ import Link from 'next/link';
 import nextDynamic from 'next/dynamic';
 import { fmtNum as fmtComma } from '@/lib/admin-utils';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import {
+  buildGroupInquiryHandoffHref,
+  GROUP_INQUIRY_PRODUCT_LABEL,
+} from '@/lib/group-inquiry-handoff';
 import { trackEngagement } from '@/lib/tracker';
 const ScoringKpiWidget = nextDynamic(() => import('@/components/admin/ScoringKpiWidget'), { ssr: false });
 const AdKpiWidget = nextDynamic(() => import('@/components/admin/AdKpiWidget'), { ssr: false });
@@ -18,6 +22,14 @@ const YAxis = nextDynamic(() => import('recharts').then(m => ({ default: m.YAxis
 const Tooltip = nextDynamic(() => import('recharts').then(m => ({ default: m.Tooltip })), { ssr: false });
 const ResponsiveContainer = nextDynamic(() => import('recharts').then(m => ({ default: m.ResponsiveContainer })), { ssr: false });
 const Cell = nextDynamic(() => import('recharts').then(m => ({ default: m.Cell })), { ssr: false });
+
+const ADMIN_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
+  source: 'admin_dashboard',
+  intent: 'operator_quote',
+  partyType: 'admin',
+  query: '관리자 단체 견적 AI 상담',
+  selectedProducts: [GROUP_INQUIRY_PRODUCT_LABEL],
+});
 
 // ── 타입 ──────────────────────────────────────────────────
 
@@ -517,6 +529,7 @@ function TodayWorkQueue({
       detail: '출발 전 잔금 확인',
       count: stats?.unpaidD7 ?? 0,
       action: '알림 발송',
+      target: '예약 관리의 출발 임박 미납 필터로 이동합니다.',
       tone: 'danger',
     },
     {
@@ -525,6 +538,7 @@ function TodayWorkQueue({
       detail: '입금자명과 예약 연결',
       count: unmatchedCount ?? 0,
       action: '매칭하기',
+      target: '결제 관리의 미매칭 입금 필터로 이동합니다.',
       tone: 'warn',
     },
     {
@@ -533,6 +547,7 @@ function TodayWorkQueue({
       detail: '자동화 제안 검수',
       count: pendingActionsCount,
       action: '검토하기',
+      target: '자비스 승인 대기 액션 화면으로 이동합니다.',
       tone: 'neutral',
     },
     {
@@ -541,12 +556,17 @@ function TodayWorkQueue({
       detail: '등록 대기 상품 발행',
       count: pendingPackagesCount,
       action: '검수하기',
+      target: '상품 관리의 검수 대기 목록으로 이동합니다.',
       tone: 'neutral',
     },
   ] as const;
   const total = rows.reduce((sum, row) => sum + row.count, 0);
   const activeRows = rows.filter(row => row.count > 0);
   const visibleRows = activeRows.length > 0 ? activeRows : rows;
+  const workQueueSummaryId = 'admin-today-work-summary';
+  const workQueueSummaryText = total > 0
+    ? `오늘 처리할 일이 ${total}건 있습니다. ${activeRows.map(row => `${row.label} ${row.count}건`).join(', ')} 순서로 확인할 수 있습니다.`
+    : '오늘 처리할 일이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
   const toneClass = {
     danger: 'border-red-200 bg-red-50 text-red-700',
     warn: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -554,51 +574,181 @@ function TodayWorkQueue({
   };
 
   return (
-    <section className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+    <section aria-labelledby="admin-today-work-title" className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-admin-base font-bold text-text-primary">오늘 처리할 일</h2>
+          <h2 id="admin-today-work-title" className="text-admin-base font-bold text-text-primary">오늘 처리할 일</h2>
           <p className="mt-0.5 text-[11px] text-admin-muted-2">예약, 입금, 자동화, 상품 검수를 한 번에 훑습니다.</p>
         </div>
         <span className={`rounded-full px-2.5 py-1 text-[11px] font-black tabular-nums ${total > 0 ? 'bg-slate-950 text-white' : 'bg-emerald-100 text-emerald-800'}`}>
           {total > 0 ? `${total}건 대기` : '처리 완료'}
         </span>
       </div>
+      <p id={workQueueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {workQueueSummaryText}
+      </p>
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
-        {visibleRows.map(row => (
-          <Link
-            key={row.href}
-            href={row.href}
-            aria-label={`${row.label} ${row.count}건 ${row.count > 0 ? row.action : '확인'}`}
-            onClick={() => {
-              trackEngagement({
-                event_type: ANALYTICS_EVENTS.adminActionCompleted,
-                page_url: '/admin',
-                metadata: {
-                  surface: 'today_work_queue',
-                  action: 'queue_opened',
-                  label: row.label,
-                  href: row.href,
-                  count: row.count,
-                  has_waiting_work: row.count > 0,
-                },
-              });
-            }}
-            className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="text-[12px] font-bold">{row.label}</p>
-                <p className="mt-0.5 text-[11px] text-current/60">{row.detail}</p>
+        {visibleRows.map(row => {
+          const rowDescriptionId = `admin-today-work-${row.label.replace(/\s+/g, '-')}-description`;
+          return (
+            <Link
+              key={row.href}
+              href={row.href}
+              data-testid="admin-today-work-queue-link"
+              aria-label={`${row.label} ${row.count}건 ${row.count > 0 ? row.action : '확인'}`}
+              aria-describedby={`${workQueueSummaryId} ${rowDescriptionId}`}
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                  page_url: '/admin',
+                  metadata: {
+                    surface: 'today_work_queue',
+                    action: 'queue_opened',
+                    label: row.label,
+                    href: row.href,
+                    count: row.count,
+                    has_waiting_work: row.count > 0,
+                  },
+                });
+              }}
+              className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
+            >
+              <p id={rowDescriptionId} className="sr-only">
+                {row.target} 현재 {row.count}건이며 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
+              </p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[12px] font-bold">{row.label}</p>
+                  <p className="mt-0.5 text-[11px] text-current/60">{row.detail}</p>
+                </div>
+                <span className="text-[22px] font-black leading-none tabular-nums">{row.count}</span>
               </div>
-              <span className="text-[22px] font-black leading-none tabular-nums">{row.count}</span>
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold">
-              <span className="text-current/55">{row.count > 0 ? '다음 액션' : '대기 없음'}</span>
-              <span className="text-current group-hover:underline">{row.count > 0 ? row.action : '확인'}</span>
-            </div>
-          </Link>
-        ))}
+              <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold">
+                <span className="text-current/55">{row.count > 0 ? '다음 액션' : '대기 없음'}</span>
+                <span className="text-current group-hover:underline">{row.count > 0 ? row.action : '확인'}</span>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function OperatorCommandBar({
+  stats,
+  unmatchedCount,
+  pendingActionsCount,
+  pendingPackagesCount,
+}: {
+  stats: DashboardStats | null;
+  unmatchedCount: number | null;
+  pendingActionsCount: number;
+  pendingPackagesCount: number;
+}) {
+  const actions = [
+    {
+      href: '/admin/bookings?mode=upcoming&filter=unpaid',
+      label: '잔금 알림',
+      count: stats?.unpaidD7 ?? 0,
+      helper: 'D-7 미납',
+      target: '예약 관리의 출발 임박 미납 예약을 열어 잔금 알림을 처리합니다.',
+      priority: 1,
+    },
+    {
+      href: '/admin/payments?filter=unmatched',
+      label: '입금 매칭',
+      count: unmatchedCount ?? 0,
+      helper: '미매칭',
+      target: '결제 관리의 미매칭 입금을 열어 예약과 연결합니다.',
+      priority: 2,
+    },
+    {
+      href: '/admin/jarvis?tab=actions',
+      label: '자동화 검토',
+      count: pendingActionsCount,
+      helper: '승인 대기',
+      target: '자비스 승인 대기 액션을 열어 자동화 제안을 검토합니다.',
+      priority: 3,
+    },
+    {
+      href: '/admin/packages',
+      label: '상품 검수',
+      count: pendingPackagesCount,
+      helper: '발행 대기',
+      target: '상품 관리 화면을 열어 발행 대기 상품을 검수합니다.',
+      priority: 4,
+    },
+  ].sort((a, b) => (b.count > 0 ? 1 : 0) - (a.count > 0 ? 1 : 0) || a.priority - b.priority);
+  const nextAction = actions.find(action => action.count > 0) ?? actions[0];
+  const total = actions.reduce((sum, action) => sum + action.count, 0);
+  const commandSummaryId = 'admin-operator-command-summary';
+  const commandSummaryText = total > 0
+    ? `운영 커맨드에 오늘 처리 후보 ${total}건이 있습니다. 다음 우선순위는 ${nextAction.label} ${nextAction.count}건입니다.`
+    : '운영 커맨드에 대기 중인 작업이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
+
+  return (
+    <section aria-labelledby="admin-operator-command-title" className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+        <div className="min-w-0 lg:w-[220px]">
+          <p id="admin-operator-command-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">Action queue</p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-admin-lg font-black text-admin-text tabular-nums">{total}</span>
+            <span className="text-admin-xs font-semibold text-admin-muted">오늘 처리 후보</span>
+          </div>
+          <p className="mt-0.5 truncate text-[11px] text-admin-muted-2">
+            다음: {nextAction.count > 0 ? nextAction.label : '대기 없음'}
+          </p>
+        </div>
+        <p id={commandSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {commandSummaryText}
+        </p>
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 no-scrollbar">
+          {actions.map(action => {
+            const isActive = action.count > 0;
+            const actionDescriptionId = `admin-operator-command-${action.priority}-description`;
+            return (
+              <Link
+                key={action.href}
+                href={action.href}
+                data-testid="admin-operator-command-link"
+                aria-label={`${action.label} ${action.count}건 열기`}
+                aria-describedby={`${commandSummaryId} ${actionDescriptionId}`}
+                onClick={() => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin',
+                    metadata: {
+                      surface: 'operator_command_bar',
+                      action: 'command_opened',
+                      label: action.label,
+                      href: action.href,
+                      count: action.count,
+                    },
+                  });
+                }}
+                className={`flex min-w-[148px] items-center justify-between gap-3 rounded-admin-md border px-3 py-2 transition-all duration-160 ${
+                  isActive
+                    ? 'border-admin-border-strong bg-admin-bg text-admin-text hover:shadow-admin-sm'
+                  : 'border-admin-border bg-white text-admin-muted hover:border-admin-border-mid'
+                }`}
+              >
+                <p id={actionDescriptionId} className="sr-only">
+                  {action.target} 현재 {action.count}건입니다.
+                </p>
+                <span className="min-w-0">
+                  <span className="block truncate text-[12px] font-bold">{action.label}</span>
+                  <span className="block truncate text-[11px] text-current/60">{action.helper}</span>
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums ${
+                  isActive ? 'bg-slate-950 text-white' : 'bg-admin-surface-2 text-admin-muted'
+                }`}>
+                  {action.count}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
       </div>
     </section>
   );
@@ -1000,10 +1150,13 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
 
   return (
     <div className="bg-admin-surface border border-admin-border-mid rounded-admin-md shadow-admin-xs p-4">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="text-admin-base font-semibold text-text-primary">실무자 경고판</h2>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="min-w-0">
+          <h2 className="text-admin-base font-semibold text-text-primary">운영 리스크 보드</h2>
+          <p className="mt-0.5 text-[11px] text-admin-muted-2">작업 큐 이후 놓치기 쉬운 미납·여권·미수금 리스크만 모아봅니다.</p>
+        </div>
         {cards.some(c => c.count > 0) && (
-          <span className="text-[11px] text-admin-muted-2">{cards.filter(c => c.count > 0).length}개 항목 처리 필요</span>
+          <span className="shrink-0 text-[11px] text-admin-muted-2">{cards.filter(c => c.count > 0).length}개 항목 처리 필요</span>
         )}
       </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5">
@@ -1032,6 +1185,22 @@ function ActionBoard({ stats, unmatchedCount }: { stats: DashboardStats | null; 
                 aria-disabled={isEmpty}
                 tabIndex={isEmpty ? -1 : undefined}
                 aria-label={`${c.label} ${c.count}${c.unit} ${isEmpty ? '처리할 항목 없음' : c.btnLabel}`}
+                onClick={() => {
+                  if (isEmpty) return;
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                    page_url: '/admin',
+                    metadata: {
+                      surface: 'admin_risk_board',
+                      action: 'risk_card_opened',
+                      label: c.label,
+                      href: c.href,
+                      count: c.count,
+                      unit: c.unit,
+                      severity: c.severity,
+                    },
+                  });
+                }}
                 className={`mt-auto w-full text-center py-1.5 rounded-lg text-[11px] font-medium transition ${isEmpty ? 'bg-admin-surface-2 text-admin-muted-2 pointer-events-none' : s.btn}`}>
                 {isEmpty ? '이상 없음' : c.btnLabel}
               </Link>
@@ -1463,6 +1632,7 @@ export default function AdminPage({
   const [unmatchedCount, setUnmatchedCount] = useState<number | null>(null);
   const [pendingActions, setPendingActions] = useState<any[]>([]);
   const [actionProcessingId, setActionProcessingId] = useState<string | null>(null);
+  const [dashboardStatusMessage, setDashboardStatusMessage] = useState('');
   // 서버 pre-fetch가 있으면 초기 로딩 스피너 스킵
   const [isLoading, setIsLoading] = useState(!(initialPendingPackages && initialPackages));
   const _skipPackageFetch = useRef(!!(initialPendingPackages && initialPackages));
@@ -1579,6 +1749,8 @@ export default function AdminPage({
   useEffect(() => { loadAll(6); }, []);
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject') => {
+    const actionLabel = action === 'approve' ? '승인' : '반려';
+    setDashboardStatusMessage(`상품 ${actionLabel} 처리 중입니다.`);
     setProcessingId(packageId);
     try {
       const res = await fetch('/api/packages', {
@@ -1590,12 +1762,41 @@ export default function AdminPage({
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin',
-          metadata: { surface: 'dashboard_pending_package', action, packageId },
+          metadata: { surface: 'dashboard_pending_package', action: action, packageId },
         });
         setSelectedPackage(null);
         await loadAll();
       }
+      setDashboardStatusMessage(res.ok ? `상품 ${actionLabel}을 완료했습니다.` : `상품 ${actionLabel}에 실패했습니다.`);
+    } catch {
+      setDashboardStatusMessage(`상품 ${actionLabel}에 실패했습니다.`);
     } finally { setProcessingId(null); }
+  };
+
+  const handleAgentAction = async (act: any, action: 'approve' | 'reject') => {
+    const actionLabel = action === 'approve' ? '승인' : '반려';
+    setActionProcessingId(act.id);
+    setDashboardStatusMessage(`자비스 결재 ${actionLabel} 처리 중입니다.`);
+    try {
+      const res = await fetch('/api/agent-actions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_id: act.id, action }),
+      });
+      if (res.ok) {
+        trackEngagement({
+          event_type: ANALYTICS_EVENTS.adminActionCompleted,
+          page_url: '/admin',
+          metadata: { surface: 'dashboard_agent_action', action: action, actionId: act.id, actionType: act.action_type },
+        });
+        setPendingActions(prev => prev.filter(a => a.id !== act.id));
+      }
+      setDashboardStatusMessage(res.ok ? `자비스 결재 ${actionLabel}을 완료했습니다.` : `자비스 결재 ${actionLabel}에 실패했습니다.`);
+    } catch {
+      setDashboardStatusMessage(`자비스 결재 ${actionLabel}에 실패했습니다.`);
+    } finally {
+      setActionProcessingId(null);
+    }
   };
 
   if (isLoading) {
@@ -1646,6 +1847,16 @@ export default function AdminPage({
 
   return (
     <div className="space-y-4">
+      <p
+        id="admin-dashboard-status"
+        data-testid="admin-dashboard-status"
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {dashboardStatusMessage}
+      </p>
       {/* BUG-4: fetch 실패 배너 */}
       {fetchErrors.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-2.5 flex items-center justify-between">
@@ -1713,17 +1924,25 @@ export default function AdminPage({
         </button>
       </div>
 
-      <OwnerFinanceCommandCenter
+      {/* Zone 0: first screen starts with work to clear, not charts or finance summaries. */}
+      <TodayWorkQueue
         stats={stats}
-        settlement={settlement}
-        capitalTotal={capitalTotal}
         unmatchedCount={unmatchedCount}
         pendingActionsCount={pendingActions.length}
         pendingPackagesCount={pendingPackages.length}
       />
 
-      <TodayWorkQueue
+      <OperatorCommandBar
         stats={stats}
+        unmatchedCount={unmatchedCount}
+        pendingActionsCount={pendingActions.length}
+        pendingPackagesCount={pendingPackages.length}
+      />
+
+      <OwnerFinanceCommandCenter
+        stats={stats}
+        settlement={settlement}
+        capitalTotal={capitalTotal}
         unmatchedCount={unmatchedCount}
         pendingActionsCount={pendingActions.length}
         pendingPackagesCount={pendingPackages.length}
@@ -1779,20 +1998,8 @@ export default function AdminPage({
                     type="button"
                     aria-label={`${act.summary} 승인`}
                     aria-busy={actionProcessingId === act.id}
-                    onClick={async () => {
-                      setActionProcessingId(act.id);
-                      try {
-                        const res = await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'approve' }) });
-                        if (res.ok) {
-                          trackEngagement({
-                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
-                            page_url: '/admin',
-                            metadata: { surface: 'dashboard_agent_action', action: 'approve', actionId: act.id, actionType: act.action_type },
-                          });
-                          setPendingActions(prev => prev.filter(a => a.id !== act.id));
-                        }
-                      } catch {} finally { setActionProcessingId(null); }
-                    }}
+                    aria-describedby="admin-dashboard-status"
+                    onClick={() => { void handleAgentAction(act, 'approve'); }}
                     disabled={actionProcessingId === act.id}
                     className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition"
                   >
@@ -1802,20 +2009,8 @@ export default function AdminPage({
                     type="button"
                     aria-label={`${act.summary} 반려`}
                     aria-busy={actionProcessingId === act.id}
-                    onClick={async () => {
-                      setActionProcessingId(act.id);
-                      try {
-                        const res = await fetch('/api/agent-actions', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_id: act.id, action: 'reject' }) });
-                        if (res.ok) {
-                          trackEngagement({
-                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
-                            page_url: '/admin',
-                            metadata: { surface: 'dashboard_agent_action', action: 'reject', actionId: act.id, actionType: act.action_type },
-                          });
-                          setPendingActions(prev => prev.filter(a => a.id !== act.id));
-                        }
-                      } catch {} finally { setActionProcessingId(null); }
-                    }}
+                    aria-describedby="admin-dashboard-status"
+                    onClick={() => { void handleAgentAction(act, 'reject'); }}
                     disabled={actionProcessingId === act.id}
                     className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition"
                   >
@@ -1856,12 +2051,14 @@ export default function AdminPage({
                   <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
                     aria-label={`${pkg.title} 승인`}
                     aria-busy={processingId === pkg.id}
+                    aria-describedby="admin-dashboard-status"
                     className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
                     승인
                   </button>
                   <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
                     aria-label={`${pkg.title} 반려`}
                     aria-busy={processingId === pkg.id}
+                    aria-describedby="admin-dashboard-status"
                     className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
                     반려
                   </button>
@@ -1981,7 +2178,7 @@ export default function AdminPage({
             ]},
             { title: '단체/견적', links: [
               { href: '/group', label: '단체여행 랜딩' },
-              { href: '/group-inquiry', label: '단체 견적 (AI)' },
+              { href: ADMIN_GROUP_INQUIRY_HREF, label: '단체 견적 (AI)' },
               { href: '/partner-apply', label: '파트너 신청' },
             ]},
             { title: '인플루언서', links: [
@@ -2068,9 +2265,19 @@ export default function AdminPage({
             <div className="sticky bottom-0 bg-white border-t border-admin-border-mid px-5 py-3 flex gap-2">
               {selectedPackage.status === 'pending' && (
                 <>
-                  <button onClick={() => handleAction(selectedPackage.id, 'approve')} disabled={processingId === selectedPackage.id}
+                  <button
+                    type="button"
+                    onClick={() => { void handleAction(selectedPackage.id, 'approve'); }}
+                    disabled={processingId === selectedPackage.id}
+                    aria-busy={processingId === selectedPackage.id}
+                    aria-describedby="admin-dashboard-status"
                     className="flex-1 bg-brand text-white py-2 rounded text-admin-sm hover:bg-blue-700 disabled:bg-slate-300 transition">승인</button>
-                  <button onClick={() => handleAction(selectedPackage.id, 'reject')} disabled={processingId === selectedPackage.id}
+                  <button
+                    type="button"
+                    onClick={() => { void handleAction(selectedPackage.id, 'reject'); }}
+                    disabled={processingId === selectedPackage.id}
+                    aria-busy={processingId === selectedPackage.id}
+                    aria-describedby="admin-dashboard-status"
                     className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">반려</button>
                 </>
               )}

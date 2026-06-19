@@ -59,6 +59,10 @@ type TrackingPayload =
       event_type: string;
       product_id?: string;
       product_name?: string;
+      source?: string;
+      cta_type?: string;
+      filter_name?: string;
+      filter_value?: string;
       page_url?: string;
       event_source?: string | null;
       destination?: string | null;
@@ -66,6 +70,7 @@ type TrackingPayload =
       budget?: string | null;
       party_type?: string | null;
       selected_products?: string[] | null;
+      recommended_rank?: number | null;
       metadata?: Record<string, unknown>;
       cart_added?: boolean;
       lead_time_days?: number;
@@ -314,12 +319,17 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       const baseMetadata = normalizeMetadata(body.metadata);
       const metadata: Record<string, unknown> = {
         ...baseMetadata,
+        ...(body.source ? { source: body.source } : {}),
+        ...(body.cta_type ? { cta_type: body.cta_type } : {}),
+        ...(body.filter_name ? { filter_name: body.filter_name } : {}),
+        ...(body.filter_value ? { filter_value: body.filter_value } : {}),
         ...(body.intent ? { intent: body.intent } : {}),
         ...(body.budget ? { budget: body.budget } : {}),
         ...(body.party_type ? { party_type: body.party_type } : {}),
         ...(body.selected_products ? { selected_products: body.selected_products } : {}),
+        ...(body.recommended_rank ? { recommended_rank: body.recommended_rank } : {}),
       };
-      const eventSource = nonEmptyString(body.event_source) ?? nonEmptyString(baseMetadata.source);
+      const eventSource = nonEmptyString(body.event_source) ?? nonEmptyString(body.source) ?? nonEmptyString(baseMetadata.source);
 
       void insertEngagementLog({
         session_id: body.session_id,

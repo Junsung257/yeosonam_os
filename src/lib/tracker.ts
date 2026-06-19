@@ -1,5 +1,7 @@
 'use client';
 
+import type { AnalyticsEventName } from './analytics-events';
+
 /**
  * 3대 광고 통합 트래커 — Google / Meta / Naver
  *
@@ -285,17 +287,10 @@ export function trackSearch(params: {
 // ── trackEngagement ────────────────────────────────────────────
 
 export type EngagementEventType =
+  | AnalyticsEventName
   | 'page_view'
   | 'product_view'
-  | 'cart_added'
   | 'cart_abandon_exit'
-  | 'checkout_start'
-  | 'package_filter_applied'
-  | 'sticky_cta_clicked'
-  | 'kakao_clicked'
-  | 'ai_prompt_started'
-  | 'ai_recommendation_clicked'
-  | 'admin_action_completed'
   | 'page_exit'
   | 'scroll_25'
   | 'scroll_50'
@@ -306,6 +301,10 @@ export function trackEngagement(params: {
   event_type: EngagementEventType | string;
   product_id?: string;
   product_name?: string;
+  source?: string;
+  cta_type?: string;
+  filter_name?: string;
+  filter_value?: string;
   page_url?: string;
   event_source?: string | null;
   lead_time_days?: number;
@@ -317,6 +316,7 @@ export function trackEngagement(params: {
   destination?: string | null;
   party_type?: string | null;
   selected_products?: string[] | null;
+  recommended_rank?: number | null;
   metadata?: Record<string, unknown>;
 }): void {
   const { uid: visitor_uid } = getVisitorUid();

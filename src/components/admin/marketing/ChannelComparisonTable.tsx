@@ -119,7 +119,7 @@ export default function ChannelComparisonTable({ data, loading }: ChannelCompari
               const bg = CHANNEL_BG[row.channel] ?? 'bg-admin-surface-2';
               return (
                 <tr key={row.channel} className="border-b border-admin-border-mid hover:bg-admin-bg">
-                  <td className="px-3 py-2">
+                  <td className="px-3 py-2" aria-label={row.channelLabel}>
                     <div className="flex items-center gap-2">
                       <span className={`w-2 h-2 rounded-full ${bg} border border-current ${color}`} />
                       <span className="font-medium text-admin-text-2">{row.channelLabel}</span>

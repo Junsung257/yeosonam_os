@@ -287,6 +287,37 @@ function describeExit(result) {
   return parts.length > 0 ? parts.join(', ') : 'unknown exit';
 }
 
+function npmRunInvocation(script, args = []) {
+  if (process.platform !== 'win32') return ['npm', ['run', script, ...args]];
+  return ['cmd.exe', ['/d', '/s', '/c', ['npm.cmd', 'run', script, ...args].map(quoteWindowsArg).join(' ')]];
+}
+
+function quoteWindowsArg(value) {
+  const text = String(value);
+  if (/^[A-Za-z0-9_/:.=+\-]+$/.test(text)) return text;
+  return `"${text.replace(/(["^&|<>()%!])/g, '^$1')}"`;
+}
+
+function runTypeCheckGate() {
+  if (process.env.NEXT_BUILD_SKIP_TYPE_CHECK === '1') {
+    console.warn('[next-build] skipping explicit type-check because NEXT_BUILD_SKIP_TYPE_CHECK=1');
+    return;
+  }
+
+  console.log('[next-build] running explicit type-check before Next build');
+  const [command, args] = npmRunInvocation('type-check');
+  const result = spawnSync(command, args, {
+    cwd: root,
+    env: { ...process.env, FORCE_COLOR: '0' },
+    stdio: 'inherit',
+    windowsHide: true,
+  });
+  if (result.status !== 0) {
+    process.exitCode = result.status ?? 1;
+    throw new Error(`Explicit type-check failed before Next build (${describeExit(result)}).`);
+  }
+}
+
 function cleanupLingeringNextBuildProcesses() {
   if (process.platform !== 'win32') return;
   const escapedWorkspaceName = path.basename(root).replace(/'/g, "''");
@@ -452,6 +483,7 @@ async function main() {
   }
   acquireLock();
   assertNoActiveNextDevServer();
+  runTypeCheckGate();
   cleanDistDir();
   require('./ensure-next-routes-js-shim.cjs');
   buildStartedAt = Date.now();

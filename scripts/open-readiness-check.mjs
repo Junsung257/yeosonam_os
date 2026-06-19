@@ -52,6 +52,9 @@ const MARKETING_RUNTIME_READY_TIMEOUT_MS = Number(argValue('--marketing-runtime-
 const MARKETING_RUNTIME_HARD_TIMEOUT_MS = Number(
   argValue('--marketing-runtime-hard-timeout-ms', process.env.MARKETING_RUNTIME_HARD_TIMEOUT_MS || '0'),
 );
+const MARKETING_RUNTIME_COMMAND_TIMEOUT_MS = Number(
+  argValue('--marketing-runtime-command-timeout-ms', process.env.MARKETING_RUNTIME_COMMAND_TIMEOUT_MS || '180000'),
+);
 const REPORT_PATH = argValue('--report', process.env.OPEN_READINESS_REPORT_PATH || '');
 const RUNTIME_ENV_CONTRACT = JSON.parse(
   readFileSync(new URL('../src/config/runtime-env-readiness.json', import.meta.url), 'utf8'),
@@ -518,6 +521,7 @@ function checkMarketingRuntimeLocal() {
     'scripts/verify-marketing-runtime-local.mjs',
     `--timeout-ms=${MARKETING_RUNTIME_TIMEOUT_MS}`,
     `--ready-timeout-ms=${MARKETING_RUNTIME_READY_TIMEOUT_MS}`,
+    `--command-timeout-ms=${MARKETING_RUNTIME_COMMAND_TIMEOUT_MS}`,
     '--strict',
   ];
   if (IS_LOCAL_BASE && !MARKETING_RUNTIME_ISOLATED) {
@@ -530,7 +534,11 @@ function checkMarketingRuntimeLocal() {
 
   const timeout = Number.isFinite(MARKETING_RUNTIME_HARD_TIMEOUT_MS) && MARKETING_RUNTIME_HARD_TIMEOUT_MS > 0
     ? MARKETING_RUNTIME_HARD_TIMEOUT_MS
-    : Math.max(MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000, 240000);
+    : Math.max(
+      MARKETING_RUNTIME_COMMAND_TIMEOUT_MS + 30000,
+      MARKETING_RUNTIME_READY_TIMEOUT_MS + MARKETING_RUNTIME_TIMEOUT_MS + 60000,
+      240000,
+    );
   const result = run(process.execPath, args, { timeout });
 
   try {

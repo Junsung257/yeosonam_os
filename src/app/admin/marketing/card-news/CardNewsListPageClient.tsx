@@ -292,11 +292,16 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
       {/* 신규 생성 슬라이드 패널 */}
       {showCreate && (
         <>
-          <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50" onClick={() => setShowCreate(false)} />
+          <button
+            type="button"
+            className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50"
+            onClick={() => setShowCreate(false)}
+            aria-label="새 카드뉴스 생성 패널 닫기"
+          />
           <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-admin-border-mid">
             <div className="px-6 py-4 border-b border-admin-border-mid flex items-center justify-between">
               <h2 className="text-admin-lg font-bold text-admin-text-2">새 카드뉴스 생성</h2>
-              <button onClick={() => setShowCreate(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl">x</button>
+              <button type="button" aria-label="새 카드뉴스 생성 패널 닫기" onClick={() => setShowCreate(false)} className="text-admin-muted-2 hover:text-admin-muted text-xl">x</button>
             </div>
             <div className="p-6 space-y-5 flex-1 overflow-y-auto">
             <p className="text-admin-xs text-admin-muted">
@@ -305,12 +310,16 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
 
             <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1">
               <button
+                type="button"
+                aria-pressed={createMode === 'product'}
                 onClick={() => setCreateMode('product')}
                 className={`flex-1 px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${createMode === 'product' ? 'bg-white text-admin-text-2 shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}
               >
                 상품 카드뉴스
               </button>
               <button
+                type="button"
+                aria-pressed={createMode === 'info'}
                 onClick={() => setCreateMode('info')}
                 className={`flex-1 px-3 py-1.5 text-admin-xs font-medium rounded-md transition ${createMode === 'info' ? 'bg-white text-admin-text-2 shadow-admin-xs' : 'text-admin-muted hover:text-admin-text-2'}`}
               >
@@ -320,8 +329,9 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
 
             {createMode === 'product' ? (
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">상품 선택 *</label>
+                <label htmlFor="card-news-create-package" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">상품 선택 *</label>
                 <select
+                  id="card-news-create-package"
                   value={selectedPkg}
                   onChange={e => setSelectedPkg(e.target.value)}
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:ring-1 focus:ring-[#005d90]"
@@ -337,8 +347,9 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             ) : (
               <>
                 <div>
-                  <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">주제 *</label>
+                  <label htmlFor="card-news-create-topic" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">주제 *</label>
                   <input
+                    id="card-news-create-topic"
                     value={createTopic}
                     onChange={e => setCreateTopic(e.target.value)}
                     placeholder="예: 베트남 비자 신청 방법, 다낭 여행 준비물"
@@ -346,8 +357,9 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                   />
                 </div>
                 <div>
-                  <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">카테고리</label>
+                  <label htmlFor="card-news-create-category" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">카테고리</label>
                   <select
+                    id="card-news-create-category"
                     value={createCategoryId}
                     onChange={e => setCreateCategoryId(e.target.value)}
                     className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm"
@@ -368,19 +380,19 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             )}
 
             <div>
-              <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">
+              <label htmlFor="card-news-create-slide-count" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">
                 슬라이드 개수: <span className="text-blue-600 font-bold">{createSlideCount}장</span>
               </label>
-              <input type="range" min={3} max={10} value={createSlideCount}
+              <input id="card-news-create-slide-count" type="range" min={3} max={10} value={createSlideCount}
                 onChange={e => setCreateSlideCount(parseInt(e.target.value))}
                 className="w-full accent-blue-600" />
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">이미지 비율</label>
+              <div className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">이미지 비율</div>
               <div className="flex gap-2">
                 {(['1:1', '4:5', '9:16'] as const).map(r => (
-                  <button key={r} onClick={() => setCreateRatio(r)}
+                  <button key={r} type="button" aria-pressed={createRatio === r} onClick={() => setCreateRatio(r)}
                     className={`px-3 py-1.5 rounded text-admin-xs transition ${createRatio === r ? 'bg-blue-600 text-white' : 'bg-admin-surface-2 text-admin-muted hover:bg-slate-200'}`}>
                     {r === '1:1' ? '1:1 피드' : r === '4:5' ? '4:5 세로' : '9:16 릴스'}
                   </button>
@@ -389,8 +401,8 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">톤</label>
-              <select value={createTone} onChange={e => setCreateTone(e.target.value)}
+              <label htmlFor="card-news-create-tone" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">톤</label>
+              <select id="card-news-create-tone" value={createTone} onChange={e => setCreateTone(e.target.value)}
                 className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm">
                 <option value="professional">전문가 (신뢰감)</option>
                 <option value="casual">캐주얼 (친근)</option>
@@ -400,8 +412,8 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">추가 지시사항 (선택)</label>
-              <textarea value={createExtra} onChange={e => setCreateExtra(e.target.value)}
+              <label htmlFor="card-news-create-extra" className="text-[11px] font-semibold text-admin-muted uppercase block mb-1">추가 지시사항 (선택)</label>
+              <textarea id="card-news-create-extra" value={createExtra} onChange={e => setCreateExtra(e.target.value)}
                 placeholder="예: 5성급 호텔 강조, 마감임박 느낌으로, 20대 타겟..."
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-xs h-20 resize-none focus:ring-1 focus:ring-[#005d90]" />
             </div>

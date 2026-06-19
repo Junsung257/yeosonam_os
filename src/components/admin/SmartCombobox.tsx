@@ -42,6 +42,10 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
   const [focusedIdx, setFocusedIdx] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const comboboxBaseId = `admin-smart-booking-match-${tx.amount}-${tx.counterparty_name || 'unknown'}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const comboboxHelpId = `${comboboxBaseId}-help`;
+  const comboboxStatusId = `${comboboxBaseId}-status`;
+  const listboxId = `${comboboxBaseId}-listbox`;
 
   const isRecommended = useCallback((b: BookingOption) => {
     const bal = getBalance(b);
@@ -61,6 +65,11 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
     });
     return [...all.filter(isRecommended), ...all.filter(b => !isRecommended(b))];
   }, [bookings, query, isRecommended]);
+  const recommendedCount = filtered.filter(isRecommended).length;
+  const activeDescendantId = filtered[focusedIdx] ? `${comboboxBaseId}-option-${filtered[focusedIdx].id}` : undefined;
+  const resultSummary = filtered.length === 0
+    ? '일치하는 예약이 없습니다.'
+    : `예약 후보 ${filtered.length}건${recommendedCount > 0 ? `, 추천 ${recommendedCount}건` : ''}이 있습니다. 위아래 방향키로 이동하고 Enter로 ${multiMode ? '선택 또는 해제' : '매칭'}합니다.`;
 
   useEffect(() => { setFocusedIdx(0); }, [query]);
 
@@ -94,10 +103,29 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
         placeholder="이름, 상품명, 출발일 검색..."
         className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         aria-label="예약 검색"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded="true"
+        aria-controls={listboxId}
+        aria-activedescendant={activeDescendantId}
+        aria-describedby={`${comboboxHelpId} ${comboboxStatusId}`}
       />
-      <ul ref={listRef} className="max-h-56 overflow-y-auto border border-admin-border-mid rounded-lg divide-y divide-gray-100">
+      <p id={comboboxHelpId} className="sr-only">
+        입금자명, 예약자명, 상품명, 예약번호, 출발일로 예약을 검색합니다.
+      </p>
+      <p id={comboboxStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {resultSummary}
+      </p>
+      <ul
+        ref={listRef}
+        id={listboxId}
+        role="listbox"
+        aria-label="예약 매칭 후보"
+        aria-describedby={comboboxStatusId}
+        className="max-h-56 overflow-y-auto border border-admin-border-mid rounded-lg divide-y divide-gray-100"
+      >
         {filtered.length === 0 && (
-          <li className="px-3 py-3 text-sm text-admin-muted-2 text-center">검색 결과 없음</li>
+          <li className="px-3 py-3 text-sm text-admin-muted-2 text-center" role="option" aria-disabled="true" aria-selected="false">검색 결과 없음</li>
         )}
         {filtered.map((b, i) => {
           const rec = isRecommended(b);
@@ -107,6 +135,10 @@ export function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect
           return (
             <li key={b.id}>
               <button
+                id={`${comboboxBaseId}-option-${b.id}`}
+                role="option"
+                aria-selected={multiMode ? isChecked : isFocused}
+                aria-label={`${b.customers?.name || '이름 없음'} 예약${b.booking_no ? ` ${b.booking_no}` : ''}${b.package_title ? `, ${b.package_title}` : ''}, 미수금 ${fmt만(bal)}${rec ? ', 추천 후보' : ''}${multiMode && isChecked ? ', 선택됨' : ''}`}
                 type="button"
                 onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
                 onMouseEnter={() => setFocusedIdx(i)}

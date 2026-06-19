@@ -117,10 +117,10 @@ export function SafeMagazineThumb({ url, title, placeholderClassName }: Magazine
       <div
         className={
           placeholderClassName ||
-          'aspect-[16/9] bg-gradient-to-br from-brand-light to-[#F2F4F6] flex items-center justify-center text-3xl'
+          'relative aspect-[16/9] overflow-hidden bg-gray-100'
         }
       >
-        📖
+        <DestinationImageFallback title={title || '여행 준비 가이드'} destination={title} compact />
       </div>
     );
   }

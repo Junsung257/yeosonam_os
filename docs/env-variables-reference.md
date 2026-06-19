@@ -351,24 +351,48 @@ This section is checked by `npm run verify:runtime-env-docs`. Keep it in sync wi
 
 ### Critical keys
 
-These keys are required for the open-readiness gate to prove connected marketing,
-search, social, ads, Slack, and cron integrations. If they are missing, local
-checks can still run, but the readiness result stays `blocked`.
+These keys are required for the open-readiness gate to prove the currently
+connected core marketing runtime: search, Meta/Threads social, Supabase-backed
+data, and cron. If they are missing, local checks can still run, but the
+readiness result stays `blocked`.
 
 | Key | Purpose |
 |---|---|
 | `SERPAPI_KEY` | SerpAPI fallback/provider key for search rank checks. |
-| `BAND_RSS_URL` | Band RSS source URL for marketing/social ingestion. |
-| `TWITTER_BEARER_TOKEN` | Twitter/X API bearer token for social publishing and reads. |
 | `NAVER_CLIENT_ID` | Naver API client ID for search, seasonal, OAuth, and rank flows. |
 | `NAVER_CLIENT_SECRET` | Naver API client secret paired with `NAVER_CLIENT_ID`. |
-| `NAVER_CAFE_ID` | Naver Cafe ID for cafe/community marketing checks. |
+| `META_AD_ACCOUNT_ID` | Meta ad account ID used by marketing and Ad OS status checks. |
+| `META_ACCESS_TOKEN` | Meta API access token; some routes can also use `META_ADS_ACCESS_TOKEN`. |
+| `META_APP_ID` | Meta app ID for OAuth and token refresh flows. |
+| `META_APP_SECRET` | Meta app secret paired with `META_APP_ID`. |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key for operational data checks. |
+| `CRON_SECRET` | Bearer secret used by cron and server-to-server jobs. |
+
+### Optional channel keys
+
+These keys enable specific live channels. Missing values should be shown as
+channel-readiness warnings, not as proof that the core Vercel runtime is
+unconfigured.
+
+| Key | Purpose |
+|---|---|
+| `BAND_RSS_URL` | Band RSS source URL for marketing/social ingestion. |
+| `TWITTER_BEARER_TOKEN` | Twitter/X API bearer token for X publishing and reads. |
+| `NAVER_CAFE_ID` | Naver Cafe ID for cafe/community publishing. |
+| `NAVER_ADS_API_KEY` | Naver Search Ads API key. |
+| `NAVER_ADS_SECRET_KEY` | Naver Search Ads secret key. |
+| `NAVER_ADS_CUSTOMER_ID` | Naver Search Ads customer ID. |
 | `GOOGLE_ADS_DEVELOPER_TOKEN` | Google Ads developer token. |
 | `GOOGLE_ADS_CUSTOMER_ID` | Google Ads customer account ID. |
 | `GOOGLE_ADS_CLIENT_ID` | Google Ads OAuth client ID. |
 | `GOOGLE_ADS_CLIENT_SECRET` | Google Ads OAuth client secret. |
+| `GOOGLE_ADS_REFRESH_TOKEN` | Google Ads OAuth refresh token. |
+| `GOOGLE_ADS_CONVERSION_ACTION_ID` | Google Ads conversion action ID. |
+| `THREADS_ACCESS_TOKEN` | Threads publish/insights token. Some read paths can use `META_ACCESS_TOKEN` fallback. |
+| `THREADS_USER_ID` | Threads publishing account ID for live Threads publishing. |
 | `SLACK_WEBHOOK_URL` | Slack operations webhook for marketing/readiness alerts. |
-| `CRON_SECRET` | Bearer secret used by cron and server-to-server jobs. |
+| `SLACK_ALERT_WEBHOOK_URL` | Slack alert webhook alternative. |
+| `SLACK_ALERTS_WEBHOOK` | Legacy Slack alert webhook alternative. |
 
 ### Warn-default keys
 
@@ -427,9 +451,24 @@ the summary, attention-item issue body, and generated operational input artifact
 When Supabase service-role credentials are available, prefer
 `npm run discover:operational-inputs -- --out=.tmp/operational-readiness-discovered.env`
 first and pass that file to `verify:operational-inputs` or `verify:local-release`.
-The discovery script only writes non-secret probe identifiers:
+If the correct Supabase credentials live in Vercel rather than the local env
+file, run `npm run discover:operational-inputs:vercel -- --json`; it pulls the
+selected Vercel environment into a temporary file, discovers the non-secret
+probe identifiers, and removes the temporary env file afterward.
+To verify the marketing runtime against the linked Vercel environment variables
+without keeping a local env file, run
+`npm run verify:marketing-runtime:vercel -- --json`. The command pulls Vercel
+env values into a temporary file, discovers non-secret operational probe IDs,
+runs the local marketing runtime check with dynamic probes required, and removes
+the temporary files.
+When no `card_news.variant_group_id` row exists, run
+`npm run ensure:operational-variant-group -- --from-vercel --json` first to
+dry-run the repair. Add `--apply` only when it is acceptable to create two
+`[READINESS]` DRAFT card-news rows used solely for dynamic page verification.
+The discovery script only writes non-secret operational identifiers:
 `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`,
-`MARKETING_CHECK_CARD_NEWS_ID`, and `MARKETING_CHECK_VARIANT_GROUP_ID`.
+`MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID`, and
+`SUPABASE_PROJECT_REF`.
 
 Rendered readiness summaries and tracked attention-item issues include
 `Missing Inputs` for blockers and `Release Warnings` for values that are safe
@@ -449,6 +488,18 @@ The audit covers:
 
 Use the generated `.tmp/operational-readiness-inputs.env.example` as the fill-in
 template for GitHub Actions variables/secrets or local staging smoke runs.
+`npm run generate:full-operational-inputs` inspects local env files, Vercel env
+names, GitHub Actions secret/variable names, and local Vercel/Supabase CLI auth
+without printing secret values, so externally configured values are reported
+separately from values loaded into the current process. Local CLI auth is enough
+for a developer-machine smoke check, but scheduled GitHub workflows still need
+`VERCEL_TOKEN` and `SUPABASE_ACCESS_TOKEN` as repository secrets.
+Run `npm run bootstrap:ci-management-secrets -- --json` to check whether those
+two CI-only management secrets can be sourced from the current machine's Vercel
+and Supabase CLI auth without printing token values. Add `--apply` only when you
+intend to write the available tokens into GitHub Actions secrets; the script
+passes values to `gh secret set` through stdin and keeps the default mode as a
+dry-run.
 After filling the generated template, run
 `npm run verify:operational-inputs -- --json --env-file=.tmp/operational-readiness-inputs.env.example`
 to confirm the file satisfies the readiness audit. Then run

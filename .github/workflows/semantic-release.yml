@@ -46,6 +46,7 @@ jobs:
           GIT_COMMITTER_NAME: github-actions
           GIT_COMMITTER_EMAIL: github-actions@github.com
         run: |
+          set -o pipefail
           semantic-release \
             --ci \
             --branches main,develop \

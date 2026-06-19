@@ -6,7 +6,7 @@
  */
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 interface RivalLite {
   package_id: string;
@@ -40,14 +40,52 @@ interface Props {
 }
 
 export default function PairwiseCompareModal({ self, rivals, departureDate, open, onClose }: Props) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
     return () => {
+      window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', onKey);
       document.body.style.overflow = '';
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [open, onClose]);
 
@@ -126,31 +164,51 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
+    <div
+      id="pairwise-compare-dialog"
+      data-testid="pairwise-compare-dialog"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="pairwise-compare-title"
+      aria-describedby="pairwise-compare-description"
+    >
       <button
         type="button"
-        aria-label="Close comparison"
+        aria-label="일정 비교 닫기"
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         className="relative bg-white w-full md:max-w-2xl md:rounded-2xl rounded-t-2xl max-h-[90vh] overflow-hidden flex flex-col"
       >
         {/* 헤더 */}
         <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h3 className="text-[15px] font-extrabold text-slate-900">📊 같은 일정 비교</h3>
+            <h3 id="pairwise-compare-title" className="text-[15px] font-extrabold text-slate-900">📊 같은 일정 비교</h3>
             {departureDate && (
               <p className="text-[11px] text-slate-500 mt-0.5">
                 {departureDate.slice(5).replace('-', '/')} 출발 · {all.length}개 옵션
               </p>
             )}
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl px-2" aria-label="닫기">✕</button>
+          <button
+            ref={closeButtonRef}
+            onClick={onClose}
+            data-testid="pairwise-compare-close"
+            className="text-slate-400 hover:text-slate-600 text-xl px-2"
+            aria-label="일정 비교 닫기"
+          >
+            ✕
+          </button>
         </div>
 
         {/* 비교 표 */}
         <div className="flex-1 overflow-auto">
+          <p id="pairwise-compare-description" className="sr-only">
+            같은 출발일의 후보 상품을 가격, 호텔 등급, 직항 여부, 쇼핑 횟수, 무료 옵션 기준으로 비교합니다.
+          </p>
           <table className="w-full text-xs">
             <thead className="bg-slate-50 sticky top-0">
               <tr className="border-b border-slate-100">

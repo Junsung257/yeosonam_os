@@ -184,8 +184,9 @@ export default function AssembleFreeTravelPage() {
           <h2 className="text-lg font-semibold text-admin-text-2">1단계: 여행 정보 입력</h2>
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
-              <label className="block text-xs font-medium text-admin-muted mb-1">목적지 도시</label>
+              <label htmlFor="assemble-free-travel-city" className="block text-xs font-medium text-admin-muted mb-1">목적지 도시</label>
               <input
+                id="assemble-free-travel-city"
                 value={city}
                 onChange={e => setCity(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleSearch(); }}
@@ -194,23 +195,23 @@ export default function AssembleFreeTravelPage() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-admin-muted mb-1">출발일</label>
-              <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
+              <label htmlFor="assemble-free-travel-date-from" className="block text-xs font-medium text-admin-muted mb-1">출발일</label>
+              <input id="assemble-free-travel-date-from" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)}
                 className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-admin-muted mb-1">귀국일</label>
-              <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
+              <label htmlFor="assemble-free-travel-date-to" className="block text-xs font-medium text-admin-muted mb-1">귀국일</label>
+              <input id="assemble-free-travel-date-to" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)}
                 className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-admin-muted mb-1">성인</label>
-              <input type="number" min={1} max={20} value={adults} onChange={e => setAdults(parseInt(e.target.value, 10))}
+              <label htmlFor="assemble-free-travel-adults" className="block text-xs font-medium text-admin-muted mb-1">성인</label>
+              <input id="assemble-free-travel-adults" type="number" min={1} max={20} value={adults} onChange={e => setAdults(parseInt(e.target.value, 10))}
                 className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-admin-muted mb-1">아동</label>
-              <input type="number" min={0} max={10} value={children} onChange={e => setChildren(parseInt(e.target.value, 10))}
+              <label htmlFor="assemble-free-travel-children" className="block text-xs font-medium text-admin-muted mb-1">아동</label>
+              <input id="assemble-free-travel-children" type="number" min={0} max={10} value={children} onChange={e => setChildren(parseInt(e.target.value, 10))}
                 className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm outline-none focus:border-blue-500" />
             </div>
           </div>
@@ -344,8 +345,9 @@ export default function AssembleFreeTravelPage() {
             </div>
 
             <div className="flex items-center gap-3 mb-4">
-              <label className="text-sm font-medium text-admin-text-2 shrink-0">마진율 (%)</label>
+              <label htmlFor="assemble-free-travel-margin" className="text-sm font-medium text-admin-text-2 shrink-0">마진율 (%)</label>
               <input
+                id="assemble-free-travel-margin"
                 type="number"
                 min={0}
                 max={50}

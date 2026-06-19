@@ -16,6 +16,7 @@ import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
+import { stabilizeBlogMarkdownImages, type BlogImageAssetReport } from '@/lib/blog-image-assets';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
@@ -1076,6 +1077,7 @@ async function processQueueItem(
     const primaryKeyword = rawKeyword?.includes('/')
       ? rawKeyword.split('/')[0].trim()
       : rawKeyword;
+    let imageAssetReport: BlogImageAssetReport | null = null;
 
     generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
     generated.blog_html = ensureAnswerExtractabilityStructure(generated.blog_html, item, primaryKeyword, blogType);
@@ -1089,6 +1091,7 @@ async function processQueueItem(
         destination: item.destination,
         primaryKeyword,
         ogImageUrl: generated.og_image_url,
+        allowOgImageInBody: !!generated.og_image_url && !/\/og-image\.(?:png|jpe?g|webp)(?:\?|$)/i.test(generated.og_image_url),
         minImages: item.card_news_id ? 2 : 3,
         maxImages: item.card_news_id ? 3 : 4,
       });
@@ -1102,6 +1105,30 @@ async function processQueueItem(
 
     // 이미지/CTA 후처리 이후에도 공식 외부 링크 기준을 최종 보장한다.
     generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+
+    try {
+      imageAssetReport = await stabilizeBlogMarkdownImages({
+        markdown: generated.blog_html,
+        slug: generated.slug,
+        destination: item.destination,
+        primaryKeyword,
+        removeBroken: true,
+        requireMirroredExternal: true,
+        maxImages: item.card_news_id ? 4 : 6,
+      });
+      if (imageAssetReport.changed) {
+        generated.blog_html = imageAssetReport.markdown;
+      }
+      if (imageAssetReport.mirrored > 0 || imageAssetReport.removed > 0 || imageAssetReport.failed > 0) {
+        console.log(
+          `[blog-publisher] image asset stabilization: mirrored=${imageAssetReport.mirrored}, removed=${imageAssetReport.removed}, failed=${imageAssetReport.failed}`,
+        );
+      }
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      await handleFailure(item, `image asset stabilization failed: ${reason}`, null);
+      return { id: item.id, topic: item.topic, status: 'image_asset_failed', reason };
+    }
 
     const editorialRepair = repairBlogEditorialQuality({
       title: generated.seo_title,
@@ -1287,6 +1314,7 @@ async function processQueueItem(
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
       ...(item.meta || {}),
       ...(generated.generation_meta || {}),
+      ...(imageAssetReport ? { image_assets: imageAssetReport } : {}),
     };
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,

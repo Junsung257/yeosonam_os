@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from '@/lib/supabase';
 import { fmtDateTime } from '@/lib/admin-utils';
+import { resolveSlackAlertWebhookUrl } from '@/lib/slack-alert';
 
 type LooseSupabaseAdmin = {
   from(table: string): any;
@@ -67,11 +68,11 @@ export async function saveWebVital(payload: WebVitalPayload): Promise<void> {
   }
 }
 
-const SLACK_WEBHOOK_URL = process.env.SLACK_CWV_WEBHOOK_URL;
 const CWV_ALERT_COOLDOWN_MS = 3600_000; // 1시간
 
 export async function alertIfPoorVital(payload: WebVitalPayload): Promise<void> {
-  if (!SLACK_WEBHOOK_URL) return;
+  const slackWebhookUrl = resolveSlackAlertWebhookUrl();
+  if (!slackWebhookUrl) return;
   const supabase = getLooseSupabaseAdmin();
   if (!supabase) return;
 
@@ -88,7 +89,7 @@ export async function alertIfPoorVital(payload: WebVitalPayload): Promise<void> 
     });
   if (recentError) return; // cooldown 내 중복이면 unique constraint 에러
 
-  await fetch(SLACK_WEBHOOK_URL, {
+  await fetch(slackWebhookUrl, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

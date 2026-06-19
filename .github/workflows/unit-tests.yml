@@ -1,8 +1,13 @@
 name: Unit Tests
 
-# 2026-05-13 — mail-flood-stop v2: PR Quality Gate의 TypeScript+Vitest와 중복. 수동만.
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   test:
@@ -20,7 +25,7 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Run unit tests
         id: test
@@ -49,42 +54,41 @@ jobs:
 
       - name: Post coverage report
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
-            let comment = `## 🧪 Unit Test Coverage\n\n`;
+            const fs = require("fs");
+            let body = "## Unit Test Coverage\n\n";
 
             try {
-              const coverage = JSON.parse(fs.readFileSync('coverage/coverage-final.json', 'utf8'));
+              const coverage = JSON.parse(fs.readFileSync("coverage/coverage-final.json", "utf8"));
               const totals = coverage.total || {};
 
-              comment += `| Metric | Coverage |\n`;
-              comment += `|--------|----------|\n`;
-              comment += `| Lines | ${totals.lines?.pct || 'N/A'}% |\n`;
-              comment += `| Statements | ${totals.statements?.pct || 'N/A'}% |\n`;
-              comment += `| Functions | ${totals.functions?.pct || 'N/A'}% |\n`;
-              comment += `| Branches | ${totals.branches?.pct || 'N/A'}% |\n`;
-            } catch (err) {
-              comment += `Coverage report not available\n`;
+              body += "| Metric | Coverage |\n";
+              body += "|--------|----------|\n";
+              body += `| Lines | ${totals.lines?.pct || "N/A"}% |\n`;
+              body += `| Statements | ${totals.statements?.pct || "N/A"}% |\n`;
+              body += `| Functions | ${totals.functions?.pct || "N/A"}% |\n`;
+              body += `| Branches | ${totals.branches?.pct || "N/A"}% |\n`;
+            } catch {
+              body += "Coverage report not available\n";
             }
 
-            if ("${{ steps.test.outcome }}" === "success") {
-              comment += `\n✅ All tests passed`;
-            } else {
-              comment += `\n❌ Tests failed - see logs`;
-            }
+            body += "${{ steps.test.outcome }}" === "success"
+              ? "\nAll tests passed"
+              : "\nTests failed - see logs";
 
-            github.rest.pulls.createReview({
+            await github.rest.pulls.createReview({
               owner: context.repo.owner,
               repo: context.repo.repo,
               pull_number: context.issue.number,
-              body: comment,
-              event: 'COMMENT'
+              body,
+              event: "COMMENT",
             });
 
       - name: Check coverage threshold
         if: steps.test.outcome == 'failure'
         run: |
-          echo "❌ Unit tests failed or coverage below threshold"
+          echo "Unit tests failed or coverage below threshold"
           exit 1

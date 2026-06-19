@@ -45,7 +45,7 @@ export default function JarvisQuickAsk({
     setResult(null)
 
     try {
-      const res = await fetch('/api/jarvis/chat', {
+      const res = await fetch('/api/jarvis', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

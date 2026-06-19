@@ -148,7 +148,10 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   typescript: {
-    ignoreBuildErrors: process.env.VERCEL === '1',
+    // scripts/run-next-build.cjs runs the same strict type gate before invoking
+    // Next. Keeping Next's separate worker off avoids flaky Windows exits after
+    // a clean standalone `npm run type-check`.
+    ignoreBuildErrors: true,
   },
   // Next 15: instrumentationHook 제거 — instrumentation.ts 가 자동 활성화됨.
   // Next 15: serverComponentsExternalPackages → 최상위 serverExternalPackages 로 이동.

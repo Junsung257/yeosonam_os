@@ -36,6 +36,7 @@ export default function TrackedKakaoLink({
         trackEngagement({
           event_type: ANALYTICS_EVENTS.kakaoClicked,
           product_id: productId ?? undefined,
+          cta_type: source,
           event_source: source,
           destination: destination ?? undefined,
           page_url: typeof window !== 'undefined' ? window.location.pathname : undefined,

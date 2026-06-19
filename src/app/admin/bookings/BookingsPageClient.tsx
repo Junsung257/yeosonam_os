@@ -195,6 +195,7 @@ const NumInputCell = React.memo(function NumInputCell({
   className?: string;
 }) {
   const committed = useRef(false);
+  const helpId = `booking-inline-${bookingId}-${field}-help`;
 
   const handleCommit = useCallback((rawVal: string) => {
     if (committed.current) return; // Enter + blur 이중 발화 방지
@@ -204,11 +205,13 @@ const NumInputCell = React.memo(function NumInputCell({
   }, [bookingId, field, onCommit]);
 
   return (
+    <>
     <input
       type="number"
       min={0}
       defaultValue={initialValue}
       aria-label={field === 'adult_price' ? '1인 판매가 입력' : '인원 입력'}
+      aria-describedby={helpId}
       onKeyDown={e => {
         e.stopPropagation();
         if (e.key === 'Enter')  { e.preventDefault(); handleCommit((e.target as HTMLInputElement).value); }
@@ -218,6 +221,10 @@ const NumInputCell = React.memo(function NumInputCell({
       onBlur={e => handleCommit(e.target.value)}
       className={className}
     />
+    <span id={helpId} className="sr-only">
+      Enter 또는 Tab 키로 저장하고 Escape 키로 취소합니다. 숫자만 입력할 수 있습니다.
+    </span>
+    </>
   );
 });
 
@@ -234,6 +241,7 @@ const DateInputCell = React.memo(function DateInputCell({
   onCancel: () => void;
 }) {
   const committed = useRef(false);
+  const helpId = 'booking-inline-departure-date-help';
 
   const handleCommit = useCallback((raw: string) => {
     if (committed.current) return;
@@ -255,11 +263,13 @@ const DateInputCell = React.memo(function DateInputCell({
     : '';
 
   return (
+    <>
     <input
       type="text"
       defaultValue={defaultVal}
       placeholder="260317"
       aria-label="출발일 입력"
+      aria-describedby={helpId}
       maxLength={10}
       onKeyDown={e => {
         e.stopPropagation();
@@ -270,6 +280,10 @@ const DateInputCell = React.memo(function DateInputCell({
       onBlur={e => handleCommit(e.target.value)}
       className="w-28 border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-mono tracking-widest focus:outline-none bg-white"
     />
+    <span id={helpId} className="sr-only">
+      여섯 자리 날짜를 입력하면 출발일로 저장합니다. 예: 260317. Enter 또는 Tab 키로 저장하고 Escape 키로 취소합니다.
+    </span>
+    </>
   );
 });
 
@@ -321,6 +335,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
   const adultRef  = useRef<HTMLInputElement>(null);
   const childRef  = useRef<HTMLInputElement>(null);
   const committed = useRef(false);
+  const helpId = `booking-inline-headcount-${bookingId}-help`;
 
   const doCommit = useCallback(() => {
     if (committed.current) return;
@@ -334,6 +349,9 @@ const HeadcountCell = React.memo(function HeadcountCell({
 
   return (
     <div className="flex items-center gap-1.5">
+      <span id={helpId} className="sr-only">
+        성인과 아동 인원을 입력합니다. Tab 키로 아동 입력으로 이동하고, Enter 또는 아동 입력의 Tab 키로 저장합니다. Escape 키로 취소합니다.
+      </span>
       <span className="text-[11px] text-admin-muted font-medium shrink-0">성인</span>
       <input
         ref={adultRef}
@@ -341,6 +359,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
         min={1}
         defaultValue={initialAdult}
         aria-label="성인 인원 입력"
+        aria-describedby={helpId}
         className={inputCls}
         onKeyDown={e => {
           e.stopPropagation();
@@ -359,6 +378,7 @@ const HeadcountCell = React.memo(function HeadcountCell({
         min={0}
         defaultValue={initialChild}
         aria-label="아동 인원 입력"
+        aria-describedby={helpId}
         className={inputCls}
         onKeyDown={e => {
           e.stopPropagation();
@@ -479,9 +499,14 @@ function SmartProductSelect({
   const [q, setQ]           = useState('');
   const [products, setProducts] = useState<ProductHit[]>([]);
   const [loading, setLoading]   = useState(true);
+  const [focusedProductIdx, setFocusedProductIdx] = useState(0);
   const inputRef     = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dropPos, setDropPos] = useState<{ top: number; left: number; width: number } | null>(null);
+  const productSearchBaseId = `booking-product-search-${departureDate || 'all'}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+  const productSearchHelpId = `${productSearchBaseId}-help`;
+  const productSearchStatusId = `${productSearchBaseId}-status`;
+  const productSearchListboxId = `${productSearchBaseId}-listbox`;
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -521,6 +546,22 @@ function SmartProductSelect({
       p.destination?.toLowerCase().includes(lq)
     );
   }).slice(0, 12);
+  const activeProductId = hits[focusedProductIdx]?.internal_code
+    ? `${productSearchBaseId}-option-${hits[focusedProductIdx].internal_code}`
+    : undefined;
+  const productSearchSummary = loading
+    ? '상품 후보를 불러오는 중입니다.'
+    : hits.length === 0
+      ? (departureDate ? '출발일 기준으로 선택할 수 있는 활성 상품이 없습니다.' : '선택할 수 있는 활성 상품이 없습니다.')
+      : `상품 후보 ${hits.length}건이 있습니다. 위아래 방향키로 이동하고 Enter로 선택합니다.`;
+
+  useEffect(() => {
+    setFocusedProductIdx(0);
+  }, [q, products]);
+
+  useEffect(() => {
+    if (focusedProductIdx >= hits.length) setFocusedProductIdx(Math.max(0, hits.length - 1));
+  }, [focusedProductIdx, hits.length]);
 
   return (
     <div ref={containerRef} className="flex items-center gap-1">
@@ -530,34 +571,59 @@ function SmartProductSelect({
         onChange={e => setQ(e.target.value)}
         placeholder="상품 검색..."
         aria-label="상품 검색"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={Boolean(dropPos)}
+        aria-controls={productSearchListboxId}
+        aria-activedescendant={activeProductId}
+        aria-describedby={`${productSearchHelpId} ${productSearchStatusId}`}
         onKeyDown={e => {
           e.stopPropagation();
           if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
-          if (e.key === 'Enter' && hits[0]) { e.preventDefault(); onCommit(hits[0]); }
+          if (e.key === 'ArrowDown') { e.preventDefault(); setFocusedProductIdx(i => Math.min(i + 1, hits.length - 1)); }
+          if (e.key === 'ArrowUp') { e.preventDefault(); setFocusedProductIdx(i => Math.max(i - 1, 0)); }
+          if (e.key === 'Enter' && hits[focusedProductIdx]) { e.preventDefault(); onCommit(hits[focusedProductIdx]); }
         }}
         onBlur={() => setTimeout(onCancel, 180)}
         className="w-48 border border-blue-500 rounded px-2 py-1.5 text-admin-sm font-medium focus:outline-none bg-white"
       />
+      <p id={productSearchHelpId} className="sr-only">
+        상품명, 상품 코드, 랜드사, 목적지로 예약에 연결할 상품을 검색합니다.
+      </p>
+      <p id={productSearchStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {productSearchSummary}
+      </p>
 
       {dropPos && createPortal(
         <div
+          id={productSearchListboxId}
+          role="listbox"
+          aria-label="상품 검색 후보"
+          aria-describedby={productSearchStatusId}
           style={{ position: 'fixed', top: dropPos.top, left: dropPos.left, width: dropPos.width, zIndex: 9999 }}
           className="bg-white rounded-[12px] shadow-[0_1px_4px_rgba(0,0,0,0.06)] max-h-[360px] overflow-y-auto py-1"
         >
           {loading && (
-            <p className="px-4 py-3 text-admin-sm text-admin-muted text-center">상품 불러오는 중...</p>
+            <div className="px-4 py-3 text-admin-sm text-admin-muted text-center" role="option" aria-disabled="true" aria-selected="false">상품 불러오는 중...</div>
           )}
           {!loading && hits.length === 0 && (
-            <p className="px-4 py-3 text-admin-sm text-admin-muted text-center">
+            <div className="px-4 py-3 text-admin-sm text-admin-muted text-center" role="option" aria-disabled="true" aria-selected="false">
               {departureDate ? `출발일 ±60일 내 활성 상품 없음` : '활성 상품 없음'}
-            </p>
+            </div>
           )}
-          {!loading && hits.map(p => (
+          {!loading && hits.map((p, index) => (
             <button
               key={p.internal_code}
+              id={`${productSearchBaseId}-option-${p.internal_code}`}
+              role="option"
+              aria-selected={index === focusedProductIdx}
+              aria-label={`${p.display_name}, 상품 코드 ${p.internal_code}${p.departure_date ? `, 출발 ${p.departure_date.slice(0, 10)}` : ''}${p.supplier_name ? `, 랜드사 ${p.supplier_name}` : ''}, 판가 ${p.selling_price?.toLocaleString()}원`}
               type="button"
+              onMouseEnter={() => setFocusedProductIdx(index)}
               onMouseDown={e => { e.preventDefault(); onCommit(p); }}
-              className="w-full text-left px-4 py-2 hover:bg-admin-bg transition-colors border-b border-admin-border last:border-0"
+              className={`w-full text-left px-4 py-2 hover:bg-admin-bg transition-colors border-b border-admin-border last:border-0 ${
+                index === focusedProductIdx ? 'bg-admin-bg' : ''
+              }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="text-[11px] font-mono text-admin-muted">{p.internal_code}</span>
@@ -733,15 +799,25 @@ function SortTh({ label, field, sortField, sortDir, onSort, className = '' }: {
   onSort: (f: string) => void; className?: string;
 }) {
   const active = sortField === field;
+  const sortDirectionLabel = active && sortDir === 'asc' ? 'ascending' : active && sortDir === 'desc' ? 'descending' : 'none';
+  const alignClass = className.includes('text-right') ? 'justify-end text-right' : 'justify-start text-left';
   return (
-    <th onClick={() => onSort(field)}
-      className={`cursor-pointer select-none px-3 py-2 whitespace-nowrap hover:bg-admin-bg group text-left ${className}`}>
-      <span className="flex items-center gap-1 text-admin-sm text-admin-text-2 font-semibold">
+    <th
+      aria-sort={sortDirectionLabel}
+      className={`select-none whitespace-nowrap ${className}`}
+    >
+      <button
+        type="button"
+        data-testid={`admin-booking-sort-${field}`}
+        aria-label={`${label} 정렬`}
+        onClick={() => onSort(field)}
+        className={`group flex w-full items-center gap-1 px-3 py-2 text-admin-sm text-admin-text-2 font-semibold hover:bg-admin-bg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1 ${alignClass}`}
+      >
         {label}
         <span className={active ? 'text-blue-500' : 'text-admin-muted-2 group-hover:text-admin-muted-2'}>
           {!active ? '↕' : sortDir === 'asc' ? '↑' : '↓'}
         </span>
-      </span>
+      </button>
     </th>
   );
 }
@@ -755,9 +831,11 @@ type BookingActiveTab =
 type BookingWorkQueueKey = 'unpaid' | 'prep' | 'deposit' | 'land' | 'settlement' | 'refund';
 
 function BookingWorkQueue({
+  activeKey,
   counts,
   onSelect,
 }: {
+  activeKey?: BookingWorkQueueKey;
   counts: Record<BookingWorkQueueKey, number>;
   onSelect: (key: BookingWorkQueueKey) => void;
 }) {
@@ -766,15 +844,22 @@ function BookingWorkQueue({
     label: string;
     helper: string;
     count: number;
+    target: string;
     tone: string;
   }[] = [
-    { key: 'unpaid', label: '잔금 미수', helper: '출발 7일 이내', count: counts.unpaid, tone: 'border-red-200 bg-red-50 text-red-700' },
-    { key: 'prep', label: '확정서 미발송', helper: '준비물 확인 필요', count: counts.prep, tone: 'border-rose-200 bg-rose-50 text-rose-700' },
-    { key: 'deposit', label: '계약금 미입금', helper: '첫 결제 대기', count: counts.deposit, tone: 'border-orange-200 bg-orange-50 text-orange-700' },
-    { key: 'land', label: '랜드사 미송금', helper: '출발 전 송금', count: counts.land, tone: 'border-amber-200 bg-amber-50 text-amber-700' },
-    { key: 'settlement', label: '정산 대기', helper: '출발 후 7일+', count: counts.settlement, tone: 'border-slate-200 bg-slate-50 text-slate-700' },
-    { key: 'refund', label: '환불 대기', helper: '취소건 잔액', count: counts.refund, tone: 'border-blue-200 bg-blue-50 text-blue-700' },
+    { key: 'unpaid', label: '잔금 미수', helper: '출발 7일 이내', count: counts.unpaid, target: '출발 임박 예약 중 잔금 미수 건만 보여줍니다.', tone: 'border-red-200 bg-red-50 text-red-700' },
+    { key: 'prep', label: '확정서 미발송', helper: '준비물 확인 필요', count: counts.prep, target: '확정서나 준비물 안내가 필요한 예약만 보여줍니다.', tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { key: 'deposit', label: '계약금 미입금', helper: '첫 결제 대기', count: counts.deposit, target: '계약금이나 첫 결제가 아직 없는 예약만 보여줍니다.', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'land', label: '랜드사 미송금', helper: '출발 전 송금', count: counts.land, target: '출발 전 랜드사 송금이 필요한 예약만 보여줍니다.', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { key: 'settlement', label: '정산 대기', helper: '출발 후 7일+', count: counts.settlement, target: '출발 완료 후 정산 대기 예약만 보여줍니다.', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { key: 'refund', label: '환불 대기', helper: '취소건 잔액', count: counts.refund, target: '취소 후 환불 처리가 필요한 예약만 보여줍니다.', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
   ];
+  const total = items.reduce((sum, item) => sum + item.count, 0);
+  const activeItems = items.filter(item => item.count > 0);
+  const queueSummaryId = 'admin-booking-work-queue-summary';
+  const queueSummaryText = total > 0
+    ? `오늘 처리할 예약 업무가 ${total}건 있습니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
+    : '오늘 처리할 예약 업무가 없습니다. 큐 버튼으로 각 예약 필터의 최신 상태를 확인할 수 있습니다.';
 
   return (
     <section className="mb-3 shrink-0 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
@@ -787,21 +872,39 @@ function BookingWorkQueue({
           Action queue
         </span>
       </div>
+      <p id={queueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {queueSummaryText}
+      </p>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
-        {items.map(item => (
-          <button
-            key={item.key}
-            type="button"
-            disabled={item.count === 0}
-            onClick={() => onSelect(item.key)}
-            aria-label={`${item.label} ${item.count}건 보기`}
-            className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:shadow-admin-sm disabled:cursor-not-allowed disabled:opacity-45 ${item.tone}`}
-          >
-            <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
-            <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
-            <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
-          </button>
-        ))}
+        {items.map(item => {
+          const itemDescriptionId = `admin-booking-queue-${item.key}-description`;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              data-testid={`admin-booking-queue-${item.key}`}
+              aria-disabled={item.count === 0}
+              aria-pressed={activeKey === item.key}
+              aria-describedby={`${queueSummaryId} ${itemDescriptionId}`}
+              onClick={() => {
+                if (item.count > 0) onSelect(item.key);
+              }}
+              aria-label={`${item.label} ${item.count}건 보기`}
+              className={`min-h-[82px] rounded-admin-md border px-3 py-3 text-left transition ${
+                activeKey === item.key ? 'ring-2 ring-slate-900 ring-offset-1' : ''
+              } ${
+                item.count === 0 ? 'cursor-not-allowed opacity-45' : 'hover:-translate-y-0.5 hover:shadow-admin-sm'
+              } ${item.tone}`}
+            >
+              <span id={itemDescriptionId} className="sr-only">
+                {item.target} 현재 {item.count}건입니다.
+              </span>
+              <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
+              <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
+              <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+            </button>
+          );
+        })}
       </div>
     </section>
   );
@@ -884,6 +987,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const [pendingDelete, setPendingDelete] = useState<Booking[]>([]);
   const [undoToast, setUndoToast]   = useState<{ count: number; ids: string[] } | null>(null);
   const undoTimerRef                = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const undoDeleteButtonRef         = useRef<HTMLButtonElement | null>(null);
   const [ctxMenu, setCtxMenu]       = useState<{ x: number; y: number; b: Booking } | null>(null);
 
   // ── 예약 취소 모달 (state만; handler는 showToast 선언 후) ─────────────────────
@@ -892,6 +996,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     refund: '', penalty: '', reason: '',
   });
   const [cancelling, setCancelling]     = useState(false);
+  const cancelModalRef = useRef<HTMLDivElement | null>(null);
+  const cancelModalCloseRef = useRef<HTMLButtonElement | null>(null);
+  const cancelRefundInputRef = useRef<HTMLInputElement | null>(null);
 
   const openCancelModal = useCallback((b: Booking) => {
     // 기본값: 환불액=입금액 (전액 환불 가정), 위약금=0, 사유 비움
@@ -901,13 +1008,70 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       reason:  '',
     });
     setCancelTarget(b);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_row_action',
+        action: 'cancel_modal_opened',
+        bookingId: b.id,
+        status: b.status,
+      },
+    });
   }, []);
+
+  useEffect(() => {
+    if (!cancelTarget) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const focusTimer = window.setTimeout(() => {
+      (cancelRefundInputRef.current ?? cancelModalCloseRef.current)?.focus();
+    }, 0);
+    const getFocusableElements = () => Array.from(
+      cancelModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!cancelling) setCancelTarget(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [cancelTarget, cancelling]);
 
   // ── Drawer / 가상화 ──────────────────────────────────────────────────────────
   // ?id=<uuid> 진입 시 해당 예약 drawer 자동 오픈 (Cmd+K / 대시보드 drilldown 진입점)
   const [drawerBookingId, setDrawerBookingId] = useState<string | null>(
     searchParams?.get('id') ?? null,
   );
+  const trackedDrawerOpenRef = useRef<string | null>(null);
   const tableContainerRef  = useRef<HTMLDivElement>(null);
   const lastClickedRowRef  = useRef<string | null>(null);
   const [scrollTop, setScrollTop]   = useState(0);
@@ -923,6 +1087,21 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     setToast({ msg, type });
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
+
+  useEffect(() => {
+    if (!drawerBookingId || trackedDrawerOpenRef.current === drawerBookingId) return;
+    trackedDrawerOpenRef.current = drawerBookingId;
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_detail_drawer',
+        action: 'drawer_opened',
+        bookingId: drawerBookingId,
+        source: lastClickedRowRef.current === drawerBookingId ? 'row' : 'direct',
+      },
+    });
+  }, [drawerBookingId]);
 
   // 일괄 취소: 1건이면 모달, 다건이면 공통 사유 prompt + 각 예약 paid_amount 만큼 자동 환불
   const handleBulkCancel = useCallback(async () => {
@@ -1376,6 +1555,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
   const triggerUndoDelete = useCallback((targets: Booking[]) => {
     const ids = targets.map(b => b.id);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_row_action',
+        action: 'delete_queued',
+        count: ids.length,
+        bookingIds: ids,
+      },
+    });
     if (undoTimerRef.current) {
       clearTimeout(undoTimerRef.current);
       commitDeleteToDB(pendingDelete.map(b => b.id));
@@ -1394,10 +1583,21 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     setPendingDelete([]); setUndoToast(null);
   }, [pendingDelete]);
 
+  useEffect(() => {
+    if (!undoToast) return;
+    const focusTimer = window.setTimeout(() => undoDeleteButtonRef.current?.focus(), 0);
+    return () => window.clearTimeout(focusTimer);
+  }, [undoToast]);
+
   const restore = useCallback(async (id: string) => {
     setProcessing(id);
     try {
       await fetch('/api/bookings', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, is_deleted: false }) });
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        page_url: '/admin/bookings',
+        metadata: { surface: 'bookings_trash', action: 'restore_from_trash', bookingId: id },
+      });
       load();
     } finally { setProcessing(null); }
   }, [load]);
@@ -1420,6 +1620,16 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     await fetch('/api/notify/alimtalk', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: b.customers.phone, name: b.customers.name, templateCode: 'BOOKING' }),
+    });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_row_action',
+        action: 'alimtalk_sent',
+        bookingId: b.id,
+        status: b.status,
+      },
     });
     showToast('알림톡 발송 완료');
   }, [showToast]);
@@ -1510,6 +1720,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       },
     });
   }, [depositUnpaidCnt, landBombCnt, prepDocsCnt, refundPendingCnt, settlementPendingCnt, unpaidRiskCnt]);
+  const activeWorkQueueKey: BookingWorkQueueKey | undefined = ({
+    unpaid_risk: 'unpaid',
+    prep_docs: 'prep',
+    deposit_unpaid: 'deposit',
+    land_bomb: 'land',
+    settlement_pending: 'settlement',
+    refund_pending: 'refund',
+  } as Partial<Record<BookingActiveTab, BookingWorkQueueKey>>)[activeTab];
 
   // ── 필터 + 정렬 ─────────────────────────────────────────────────────────────
   const filtered = useMemo(() => {
@@ -1751,6 +1969,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
       {!isTrash && (
         <BookingWorkQueue
+          activeKey={activeWorkQueueKey}
           counts={{
             unpaid: unpaidRiskCnt,
             prep: prepDocsCnt,
@@ -1991,7 +2210,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   </div>
                 </div>
 
-                <div className="mt-3 flex gap-2">
+                <div className="mt-3 flex items-center justify-between rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
+                  <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+                  <span className="text-[12px] font-black text-admin-text-2">{nextAction.label}</span>
+                </div>
+
+                <div className="mt-2 flex gap-2">
                   <button
                     type="button"
                     disabled={processing === b.id}
@@ -2049,7 +2273,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
                 <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
-                <th className="sticky right-0 z-30 bg-white px-3 py-2 min-w-[140px]"><span className="sr-only">예약 작업</span></th>
+                <th className="sticky right-0 z-30 bg-white px-3 py-2 text-right text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">다음 액션</th>
               </tr>
             </thead>
 
@@ -2085,6 +2309,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 const isSel           = selected.has(b.id);
                 const hasBusanRec     = busanRec.has(b.id);
                 const isEditing       = (field: string) => editingCell?.id === b.id && editingCell.field === field;
+                const bookingActionDescriptionId = `admin-booking-row-actions-${b.id}`;
+                const bookingActionDescriptionIds = `${bookingActionDescriptionId} admin-booking-action-result-description`;
+                const bookingDeleteDescriptionIds = `${bookingActionDescriptionIds} admin-booking-delete-description`;
 
                 const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : isMissing ? 'bg-yellow-50/70 hover:bg-yellow-50' : isDepositUnpaid ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-admin-bg';
                 const rowBorder  = isLandBomb ? 'outline outline-2 outline-red-400 outline-offset-[-1px]' : '';
@@ -2470,40 +2697,66 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
                     {/* 액션 (sticky right) */}
                     <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <div className="flex gap-1.5 justify-end opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                      <div className="flex gap-1.5 justify-end opacity-100 md:opacity-80 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity duration-150">
+                        <p id={bookingActionDescriptionId} className="sr-only">
+                          {b.customers?.name || b.booking_no || '예약'} 예약의 현재 상태는 {STATUS_LABELS[b.status] || b.status}입니다. 이 행에서 예약 확정, 완료 처리, 수정, 취소, 복구, 삭제 작업을 처리할 수 있습니다.
+                        </p>
                         {!isTrash && b.status === 'pending' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
+                            data-testid="admin-booking-confirm-action"
+                            aria-busy={processing === b.id}
+                            aria-describedby={bookingActionDescriptionIds}
                             aria-label={`${b.customers?.name || b.booking_no || '예약'} 예약 확정`}
                             className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap font-semibold">확정</button>
                         )}
                         {!isTrash && b.status === 'confirmed' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'completed')} disabled={processing === b.id}
+                            data-testid="admin-booking-complete-action"
+                            aria-busy={processing === b.id}
+                            aria-describedby={bookingActionDescriptionIds}
                             aria-label={`${b.customers?.name || b.booking_no || '예약'} 결제 완료 처리`}
                             className="text-[11px] bg-brand text-white px-2.5 py-1.5 rounded-lg hover:bg-[#1B64DA] disabled:opacity-50 whitespace-nowrap font-semibold">완납</button>
                         )}
                         {!isTrash ? (
                           <>
                             <button type="button" onClick={() => window.open(`/admin/bookings/${b.id}`, '_blank')}
+                              data-testid="admin-booking-edit-action"
+                              aria-describedby={bookingActionDescriptionId}
                               aria-label={`${b.customers?.name || b.booking_no || '예약'} 수정 화면 열기`}
                               className="text-[11px] text-admin-text-2 border border-admin-border-strong px-2.5 py-1.5 rounded-lg hover:bg-admin-bg whitespace-nowrap">수정</button>
                             {!isCancelled && (
                               <button type="button" onClick={() => openCancelModal(b)} disabled={processing === b.id}
+                                data-testid="admin-booking-cancel-action"
+                                aria-busy={processing === b.id}
+                                aria-describedby={bookingActionDescriptionIds}
+                                aria-haspopup="dialog"
+                                aria-expanded={cancelTarget?.id === b.id}
+                                aria-controls="admin-booking-cancel-dialog"
                                 aria-label={`${b.customers?.name || b.booking_no || '예약'} 취소 처리`}
                                 title="예약 취소 — 환불/위약금/사유를 입력하고 정식 취소 처리"
                                 className="text-[11px] text-amber-700 border border-amber-200 bg-amber-50 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap font-semibold">취소</button>
                             )}
                             {isCancelled && (
                               <button type="button" onClick={() => handleRestoreBooking(b)} disabled={processing === b.id}
+                                data-testid="admin-booking-restore-action"
+                                aria-busy={processing === b.id}
+                                aria-describedby={bookingActionDescriptionIds}
                                 aria-label={`${b.customers?.name || b.booking_no || '예약'} 복구`}
                                 title="예약 복구 — 취소 이력은 보존하고 활성 상태로 되돌림"
                                 className="text-[11px] text-emerald-700 border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap font-semibold">↺ 복구</button>
                             )}
                             <button type="button" onClick={() => triggerUndoDelete([b])} disabled={processing === b.id}
+                              data-testid="admin-booking-delete-action"
+                              aria-describedby={bookingDeleteDescriptionIds}
+                              aria-busy={processing === b.id}
                               aria-label={`${b.customers?.name || b.booking_no || '예약'} 삭제`}
                               className="text-[11px] text-red-400 border border-red-100 px-2.5 py-1.5 rounded-lg hover:bg-red-50 disabled:opacity-50 whitespace-nowrap">삭제</button>
                           </>
                         ) : (
                           <button type="button" onClick={() => restore(b.id)} disabled={processing === b.id}
+                            data-testid="admin-booking-trash-restore-action"
+                            aria-busy={processing === b.id}
+                            aria-describedby={bookingActionDescriptionIds}
                             aria-label={`${b.customers?.name || b.booking_no || '예약'} 휴지통에서 복구`}
                             className="text-[11px] bg-blue-50 text-blue-700 px-2.5 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50 whitespace-nowrap">복구</button>
                         )}
@@ -2644,10 +2897,25 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               disabled={cancelling}
             />
             <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
-            <div className="pointer-events-auto bg-white rounded-admin-lg shadow-2xl w-full max-w-lg p-6 space-y-4">
+            <div
+              id="admin-booking-cancel-dialog"
+              ref={cancelModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="booking-cancel-title"
+              aria-describedby="booking-cancel-description"
+              data-testid="admin-booking-cancel-dialog"
+              className="pointer-events-auto bg-white rounded-admin-lg shadow-2xl w-full max-w-lg p-6 space-y-4"
+            >
               <div className="flex items-center justify-between gap-3">
-                <h2 className="text-admin-lg font-bold text-admin-text">예약 취소 처리</h2>
-                <button type="button" onClick={() => !cancelling && setCancelTarget(null)}
+                <div>
+                  <h2 id="booking-cancel-title" className="text-admin-lg font-bold text-admin-text">예약 취소 처리</h2>
+                  <p id="booking-cancel-description" className="mt-1 text-admin-xs text-admin-muted">
+                    환불액, 위약금, 취소 사유를 확인한 뒤 예약 상태를 취소로 변경합니다.
+                  </p>
+                </div>
+                <button type="button" ref={cancelModalCloseRef} onClick={() => !cancelling && setCancelTarget(null)}
+                  data-testid="admin-booking-cancel-close"
                   aria-label="예약 취소 모달 닫기"
                   disabled={cancelling}
                   className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-admin-surface-2 text-admin-muted text-admin-lg">✕</button>
@@ -2679,7 +2947,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">환불액 (고객에게 돌려줄 금액)</span>
-                  <input type="number" min={0}
+                  <input ref={cancelRefundInputRef} type="number" min={0}
+                    data-testid="admin-booking-cancel-refund"
                     value={cancelForm.refund}
                     onChange={e => setCancelForm(f => ({ ...f, refund: e.target.value }))}
                     aria-label="환불액"
@@ -2688,6 +2957,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <label className="block">
                   <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">위약금 (랜드사 차감액)</span>
                   <input type="number" min={0}
+                    data-testid="admin-booking-cancel-penalty"
                     value={cancelForm.penalty}
                     onChange={e => setCancelForm(f => ({ ...f, penalty: e.target.value }))}
                     aria-label="위약금"
@@ -2708,6 +2978,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <label className="block">
                 <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">취소 사유</span>
                 <textarea rows={3}
+                  data-testid="admin-booking-cancel-reason"
                   value={cancelForm.reason}
                   onChange={e => setCancelForm(f => ({ ...f, reason: e.target.value }))}
                   placeholder="예: 고객 일정 변경 / 항공편 결항 / 단순 변심"
@@ -2719,7 +2990,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <div className="flex gap-2 justify-end pt-2 border-t border-admin-border">
                 <button type="button" onClick={() => !cancelling && setCancelTarget(null)}
                   className="px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 rounded-lg">닫기</button>
-                <button type="button" onClick={handleCancelBooking} disabled={cancelling}
+                <button type="button" data-testid="admin-booking-cancel-confirm" onClick={handleCancelBooking} disabled={cancelling}
+                  aria-busy={cancelling}
                   className="px-4 py-2 text-admin-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
                   {cancelling ? '처리 중...' : '취소 처리 확정'}
                 </button>
@@ -2732,16 +3004,36 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
       {/* Toast */}
       {toast && (
-        <div className={`fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm font-semibold ${toast.type === 'err' ? 'bg-red-600' : 'bg-slate-800'}`}>
+        <div
+          role={toast.type === 'err' ? 'alert' : 'status'}
+          aria-live={toast.type === 'err' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+          data-testid="admin-booking-toast"
+          className={`fixed bottom-[max(1rem,env(safe-area-inset-bottom))] right-4 z-[60] max-w-[calc(100vw-2rem)] px-4 py-2.5 rounded-lg text-white text-admin-sm font-semibold shadow-admin-md sm:right-6 ${toast.type === 'err' ? 'bg-red-600' : 'bg-slate-800'}`}
+        >
+          <span className="sr-only" data-testid="admin-booking-toast-message">예약 작업 결과: </span>
           {toast.msg}
         </div>
       )}
 
+      <p id="admin-booking-action-result-description" className="sr-only">
+        예약 작업 결과는 화면 하단 알림으로 안내됩니다.
+      </p>
+      <p id="admin-booking-delete-description" className="sr-only">
+        예약은 휴지통으로 이동하며 5초 안에 실행 취소할 수 있습니다.
+      </p>
+
       {/* Undo Toast */}
       {undoToast && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-3 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm">
-          <span className="text-admin-muted-2">{undoToast.count}건의 예약이 삭제되었습니다.</span>
-          <button type="button" onClick={handleUndoDelete} className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition whitespace-nowrap">실행 취소</button>
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="admin-booking-undo-toast"
+          className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-[60] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 flex-wrap items-center justify-center gap-3 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm shadow-admin-md"
+        >
+          <span className="text-admin-muted-2">{undoToast.count}건의 예약이 삭제되었습니다. 5초 안에 실행 취소할 수 있습니다.</span>
+          <button type="button" ref={undoDeleteButtonRef} data-testid="admin-booking-undo-delete" onClick={handleUndoDelete} className="font-bold text-blue-400 hover:text-blue-300 underline underline-offset-2 transition whitespace-nowrap">실행 취소</button>
         </div>
       )}
 

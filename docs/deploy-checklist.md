@@ -49,6 +49,24 @@ npm run open:readiness
 npm run open:readiness:strict
 ```
 
+For the top-level project readiness gate that chains the readiness contracts,
+local release gate, and marketing release gate, run:
+
+```bash
+npm run verify:all -- --json --report=.tmp/full-readiness-report.json
+```
+
+Use `--strict` before a release promotion. In strict mode, known blocked
+operational inputs exit with code `2` so scheduled CI cannot look green while
+external data, credentials, or channel probes are still missing. The `Full
+Project Readiness` GitHub workflow renders this report with
+`render-readiness-report.mjs --kind=full-project`, updates the full-project
+attention-item issue, and uploads the raw logs plus rendered summary artifacts.
+For the release-promotion form of the same gate, use `npm run verify:all:strict`.
+When `verify:all` is run locally without `--json`, it also prints the top
+attention items and generated operational artifact paths directly in the
+terminal.
+
 For marketing-only release readiness, run the single gate:
 
 ```bash
@@ -272,17 +290,34 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 ### Critical staging/production keys
 
 - [ ] `SERPAPI_KEY`
-- [ ] `BAND_RSS_URL`
-- [ ] `TWITTER_BEARER_TOKEN`
 - [ ] `NAVER_CLIENT_ID`
 - [ ] `NAVER_CLIENT_SECRET`
+- [ ] `META_AD_ACCOUNT_ID`
+- [ ] `META_ACCESS_TOKEN`
+- [ ] `META_APP_ID`
+- [ ] `META_APP_SECRET`
+- [ ] `SUPABASE_SERVICE_ROLE_KEY`
+- [ ] `CRON_SECRET`
+
+### Optional channel keys
+
+- [ ] `BAND_RSS_URL`
+- [ ] `TWITTER_BEARER_TOKEN`
 - [ ] `NAVER_CAFE_ID`
+- [ ] `NAVER_ADS_API_KEY`
+- [ ] `NAVER_ADS_SECRET_KEY`
+- [ ] `NAVER_ADS_CUSTOMER_ID`
 - [ ] `GOOGLE_ADS_DEVELOPER_TOKEN`
 - [ ] `GOOGLE_ADS_CUSTOMER_ID`
 - [ ] `GOOGLE_ADS_CLIENT_ID`
 - [ ] `GOOGLE_ADS_CLIENT_SECRET`
+- [ ] `GOOGLE_ADS_REFRESH_TOKEN`
+- [ ] `GOOGLE_ADS_CONVERSION_ACTION_ID`
+- [ ] `THREADS_ACCESS_TOKEN`
+- [ ] `THREADS_USER_ID`
 - [ ] `SLACK_WEBHOOK_URL`
-- [ ] `CRON_SECRET`
+- [ ] `SLACK_ALERT_WEBHOOK_URL`
+- [ ] `SLACK_ALERTS_WEBHOOK`
 
 ### Explicit bid defaults
 
@@ -298,6 +333,8 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] Review `Missing Inputs` and `Release Warnings` in the rendered readiness summary before promoting.
 - [ ] Run `npm run verify:operational-inputs -- --json --template-out=.tmp/operational-readiness-inputs.env.example --plan-out=.tmp/operational-readiness-action-plan.md --apply-script-out=.tmp/operational-readiness-apply-inputs.sh --vercel-script-out=.tmp/operational-readiness-vercel-env.sh --node-apply-script-out=.tmp/operational-readiness-apply-inputs.mjs --node-vercel-script-out=.tmp/operational-readiness-vercel-env.mjs`.
 - [ ] Run `npm run verify:operational-apply-scripts -- --json` to prove generated apply scripts support redacted dry-runs.
+- [ ] Run `npm run verify:all:strict` before broad release promotion.
+- [ ] Review the rendered `Full Project Readiness` summary or the `[readiness] Full project readiness attention items` issue before promoting.
 - [ ] Follow `.tmp/operational-readiness-action-plan.md` before promoting.
 - [ ] If Supabase service-role credentials are available, run `npm run discover:operational-inputs -- --json --out=.tmp/operational-readiness-discovered.env`.
 - [ ] Verify discovered probe identifiers with `npm run verify:operational-inputs -- --json --env-file=.tmp/operational-readiness-discovered.env`.
@@ -309,9 +346,14 @@ This section is checked by `npm run verify:runtime-env-docs`. It mirrors
 - [ ] Run `node .tmp/operational-readiness-apply-inputs.mjs --env-file=.tmp/operational-readiness-inputs.env.example` when using GitHub CLI to apply repository secrets/variables.
 - [ ] Run `node .tmp/operational-readiness-vercel-env.mjs --env-file=.tmp/operational-readiness-inputs.env.example` when using Vercel CLI to apply Production/Preview runtime variables.
 - [ ] Bash alternatives also accept the same `--env-file` when running from a Bash-based shell.
+- [ ] Run `npm run generate:full-operational-inputs -- --json` to inspect local env files, Vercel env names, GitHub Actions secret/variable names, and local Vercel/Supabase CLI auth without printing secret values.
+- [ ] Run `npm run bootstrap:ci-management-secrets -- --json` to confirm `VERCEL_TOKEN` and `SUPABASE_ACCESS_TOKEN` can be sourced for scheduled GitHub workflows, then add `--apply` only when intentionally writing those tokens to GitHub Actions secrets.
+- [ ] When local Supabase credentials are stale, run `npm run discover:operational-inputs:vercel -- --json` to discover probe IDs directly from the linked Vercel environment.
+- [ ] Run `npm run verify:marketing-runtime:vercel -- --json` when the local smoke check should use the linked Vercel environment variables exactly.
+- [ ] If `MARKETING_CHECK_VARIANT_GROUP_ID` is still missing, run `npm run ensure:operational-variant-group -- --from-vercel --json` as a dry-run, then add `--apply` only to create readiness-only DRAFT card-news rows.
 - [ ] Fill any missing public data probes: `OPEN_CHECK_PACKAGE_ID`, `OPEN_CHECK_REF_CODE`.
 - [ ] Fill marketing dynamic page probes: `MARKETING_CHECK_CARD_NEWS_ID`, `MARKETING_CHECK_VARIANT_GROUP_ID`.
 - [ ] Confirm protected ops probes can authenticate with `CRON_SECRET` or `OPEN_CHECK_AUTH_COOKIE`.
-- [ ] Fill external management credentials: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN`.
+- [ ] Fill external management credentials for scheduled GitHub workflows: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF`, `VERCEL_TOKEN`. Local CLI auth can satisfy developer-machine smoke checks but is not available to CI.
 - [ ] Fill runtime integration keys listed in `src/config/runtime-env-readiness.json`.
 - [ ] Confirm blog quality data is available through staging/production Supabase or set `BLOG_QUALITY_SOURCE_READY`.

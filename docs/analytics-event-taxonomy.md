@@ -1,6 +1,6 @@
 # Analytics Event Taxonomy
 
-Last updated: 2026-06-01
+Last updated: 2026-06-19
 
 This document is the canonical event dictionary for customer UX, recommendation quality, and guidebook behavior analytics. Keep event names stable; add a new row here before shipping a new tracking event.
 
@@ -25,6 +25,25 @@ This document is the canonical event dictionary for customer UX, recommendation 
 | `scroll_50` | Growth | `page_url`, `session_id`, `visitor_uid` | `product_id` | Is the middle content being consumed? |
 | `scroll_75` | Growth | `page_url`, `session_id`, `visitor_uid` | `product_id` | Are users reaching proof and detail sections? |
 | `scroll_90` | Growth | `page_url`, `session_id`, `visitor_uid` | `product_id` | Are long pages earning deep attention? |
+| `package_filter_applied` | Growth/Product | `filter_name`, `filter_value`, `page_url`, `session_id` | `destination`, `budget`, `departure_month`, `departure_city`, `travel_purpose` | Which package filters create qualified browsing? |
+| `package_card_clicked` | Growth/Product | `product_id`, `product_name`, `page_url`, `session_id` | `rank`, `intent`, `source`, `price` | Which package cards move users from list to detail or consultation? |
+| `sticky_cta_clicked` | Sales | `cta_type`, `page_url`, `session_id` | `product_id`, `intent`, `budget`, `destination`, `party_type`, `selected_products` | Which mobile sticky CTAs create inquiry intent? |
+| `kakao_clicked` | Sales | `cta_type`, `page_url`, `session_id` | `event_source`, `product_id`, `intent`, `budget`, `destination`, `party_type`, `selected_products` | Which screens and CTA placements send users to Kakao consultation? |
+| `ai_prompt_started` | AI/Product | `source`, `session_id` | `intent`, `budget`, `destination`, `party_type`, `selected_products` | Which AI consultation intents are started? |
+| `ai_recommendation_clicked` | AI/Product | `product_id`, `source`, `session_id` | `intent`, `budget`, `destination`, `party_type`, `selected_products`, `recommended_rank` | Which AI recommendations earn action? |
+
+## Consultation Handoff Fields
+
+AI and Kakao consultation entry points may add the following optional fields to the existing tracking and handoff payloads. These fields must stay structured and must not contain raw phone numbers, free-form private notes, passport data, or chat transcripts.
+
+| Field | Type | Purpose |
+| --- | --- | --- |
+| `intent` | string or null | Coarse travel goal such as filial trip, family no-shopping, group workshop, or golf comparison. |
+| `cta_type` | string | Stable CTA placement or action identifier, such as `mobile_kakao_consult`, `bottom_tab_bar`, or `group_inquiry_rfq_submit`. |
+| `budget` | string or null | Coarse budget label or range. |
+| `destination` | string or null | Destination or region label. |
+| `party_type` | string or null | Coarse party segment such as family, senior family, group, or golf. |
+| `selected_products` | string array or null | Product names or IDs selected for shortlist/consultation context. |
 
 ## Recommendation Events
 
@@ -60,12 +79,13 @@ Package score signals are stored in `package_score_signals`. They are lightweigh
 | `directions_activity` | Ops | `guide_ref` | `day`, `label` | Which activity route links are used? |
 | `book_activity` | Growth | `guide_ref` | `day`, `label` | Which activity upsells get tapped? |
 
-## Admin/ERP Events To Add
+## Admin/ERP Events
 
-These events are not all implemented yet. They are the next instrumentation layer for ERP usability and operational AI.
+These events instrument ERP usability and operational AI. Use structured identifiers and coarse action labels rather than customer free text.
 
 | Event | Owner | Required properties | Forbidden properties | Purpose |
 | --- | --- | --- | --- | --- |
+| `admin_action_completed` | Ops | `action`, `surface`, `session_id` | raw customer PII, bank account number, vendor private notes | Measure whether admin queues and command bars reduce operational workload. |
 | `admin_kpi_drilldown` | Ops | `admin_user_id`, `metric_key`, `range` | raw customer PII | Measure whether dashboard cards explain anomalies. |
 | `admin_payment_match` | Finance | `admin_user_id`, `transaction_id`, `match_confidence` | bank account number | Measure payment matching workload and confidence. |
 | `admin_package_approve` | Product Ops | `admin_user_id`, `package_id`, `source` | vendor private notes | Measure package approval throughput. |

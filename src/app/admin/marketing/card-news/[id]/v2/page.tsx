@@ -714,9 +714,11 @@ export default function CardNewsV2Studio() {
                   family === f.value ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid'
                 }`}
               >
+                <span className="sr-only">{f.label}</span>
                 <input
                   type="radio"
                   name="family"
+                  aria-label={f.label}
                   value={f.value}
                   checked={family === f.value}
                   onChange={() => setFamily(f.value)}
@@ -741,8 +743,10 @@ export default function CardNewsV2Studio() {
                   formats.includes(f.value) ? 'border-blue-500 bg-blue-50' : 'border-admin-border-mid'
                 }`}
               >
+                <span className="sr-only">{f.label}</span>
                 <input
                   type="checkbox"
+                  aria-label={f.label}
                   checked={formats.includes(f.value)}
                   onChange={() => toggleFormat(f.value)}
                 />

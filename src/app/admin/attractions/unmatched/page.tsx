@@ -964,7 +964,6 @@ export default function UnmatchedPage() {
                     onChange={e => setLinkSearch(e.target.value)}
                     placeholder="관광지명 검색 (2글자 이상)..."
                     className="w-full text-sm border border-violet-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-violet-500 focus:outline-none"
-                    autoFocus
                   />
                   {linkLoading && <p className="text-xs text-violet-400 mt-1">검색 중...</p>}
                   {linkResults.length > 0 && (

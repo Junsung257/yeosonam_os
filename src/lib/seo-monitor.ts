@@ -1,8 +1,7 @@
 import { fetchGscSearchAnalytics } from '@/lib/keyword-research';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { fmtDateTime } from '@/lib/admin-utils';
-
-const SLACK_WEBHOOK_URL = process.env.SLACK_CWV_WEBHOOK_URL || process.env.SLACK_ALERTS_WEBHOOK_URL;
+import { resolveSlackAlertWebhookUrl } from '@/lib/slack-alert';
 
 export interface DailyGscSnapshot {
   date: string;
@@ -141,7 +140,8 @@ export async function detectSeoAnomalies(
 
 /** 감지된 알림 Slack 전송 */
 export async function sendSeoAlerts(alerts: SeoAlert[]): Promise<void> {
-  if (!SLACK_WEBHOOK_URL || alerts.length === 0) return;
+  const slackWebhookUrl = resolveSlackAlertWebhookUrl();
+  if (!slackWebhookUrl || alerts.length === 0) return;
 
   // 같은 타입의 알림은 24시간 내 중복 전송 방지
   for (const alert of alerts) {
@@ -156,7 +156,7 @@ export async function sendSeoAlerts(alerts: SeoAlert[]): Promise<void> {
       });
     if (recentError) continue; // unique constraint = 이미 같은 타입 전송됨
 
-    await fetch(SLACK_WEBHOOK_URL, {
+    await fetch(slackWebhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
