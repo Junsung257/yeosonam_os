@@ -371,6 +371,19 @@ export default function GroupInquiryPage() {
       hasValue(extractedSummary.adult_count) &&
       (hasValue(extractedSummary.budget_per_person) || hasValue(extractedSummary.total_budget) || hasValue(extractedSummary.budget_label)),
   );
+  const rfqReadinessChecklist = [
+    { label: '목적지', complete: hasValue(extractedSummary.destination) },
+    { label: '인원', complete: hasValue(extractedSummary.adult_count) },
+    {
+      label: '예산',
+      complete: hasValue(extractedSummary.budget_per_person) || hasValue(extractedSummary.total_budget) || hasValue(extractedSummary.budget_label),
+    },
+  ];
+  const rfqReadinessReadyCount = rfqReadinessChecklist.filter((item) => item.complete).length;
+  const rfqReadinessMissingLabels = rfqReadinessChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const rfqReadinessSummaryText = rfqReadinessMissingLabels.length > 0
+    ? `견적 요청 준비 ${rfqReadinessReadyCount}/${rfqReadinessChecklist.length}. 보완이 필요한 조건은 ${rfqReadinessMissingLabels.join(', ')}입니다.`
+    : `견적 요청 준비 ${rfqReadinessReadyCount}/${rfqReadinessChecklist.length}. 바로 견적 요청을 보낼 수 있습니다.`;
   const stickyHandoffItems = [
     { label: '목적', value: selectedIntent?.label },
     { label: '지역', value: getSummaryValue(extractedSummary, 'destination') },
@@ -381,6 +394,7 @@ export default function GroupInquiryPage() {
   const rfqContactHelpId = 'group-inquiry-rfq-contact-help';
   const rfqSubmitDescriptionId = 'group-inquiry-rfq-submit-description';
   const handoffContextDescriptionId = 'group-inquiry-handoff-context-description';
+  const handoffReadinessSummaryId = 'group-inquiry-handoff-readiness-summary';
   const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
   const intentChipStatusId = 'group-inquiry-intent-chip-status';
   const handoffContextSummaryText = [
@@ -400,7 +414,7 @@ export default function GroupInquiryPage() {
     : selectedIntent
       ? `${selectedIntent.label} 조건이 선택되어 상담 전달 조건에 반영되었습니다.`
       : '빠른 시작 조건을 선택하면 AI 상담이 바로 시작됩니다.';
-  const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${rfqConditionSummaryId} ${rfqContactHelpId}`;
+  const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${rfqConditionSummaryId} ${rfqContactHelpId}`;
   const contactNameDescriptionIds = contactErrors.contactName
     ? `${rfqContactDescriptionIds} contact-name-error`
     : rfqContactDescriptionIds;
@@ -412,6 +426,7 @@ export default function GroupInquiryPage() {
     : rfqContactDescriptionIds;
   const rfqSubmitDescriptionIds = [
     handoffContextDescriptionId,
+    handoffReadinessSummaryId,
     rfqConditionSummaryId,
     rfqSubmitDescriptionId,
     contactErrors.submit ? 'group-inquiry-submit-error' : null,
@@ -677,6 +692,9 @@ export default function GroupInquiryPage() {
       <p id={handoffContextDescriptionId} className="sr-only">
         {handoffContextSummaryText}
       </p>
+      <p id={handoffReadinessSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {rfqReadinessSummaryText}
+      </p>
       <p id="group-inquiry-status" className="sr-only" aria-live="polite" aria-atomic="true">
         {statusMessage}
       </p>
@@ -771,7 +789,7 @@ export default function GroupInquiryPage() {
           <section
             data-testid="group-inquiry-handoff-summary"
             aria-labelledby="handoff-summary-title"
-            aria-describedby={handoffContextDescriptionId}
+            aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId}`}
             className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm"
           >
             <div className="flex items-start gap-3">
@@ -818,6 +836,18 @@ export default function GroupInquiryPage() {
                     <p className="mt-1 line-clamp-2 text-sm font-bold text-gray-900">{selectedProducts.join(', ')}</p>
                   </div>
                 )}
+                <div
+                  data-testid="group-inquiry-handoff-readiness-summary"
+                  aria-label={rfqReadinessSummaryText}
+                  className={`mt-3 rounded-lg px-3 py-2 text-sm font-bold ${
+                    requiredReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  <span>견적 요청 준비 {rfqReadinessReadyCount}/{rfqReadinessChecklist.length}</span>
+                  <span className="ml-2 font-medium">
+                    {rfqReadinessMissingLabels.length > 0 ? `보완 필요: ${rfqReadinessMissingLabels.join(', ')}` : '바로 등록 가능'}
+                  </span>
+                </div>
               </div>
             </div>
           </section>
@@ -1095,9 +1125,17 @@ export default function GroupInquiryPage() {
               <div
                 className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
                 aria-label="상담 전달 조건"
-                aria-describedby={handoffContextDescriptionId}
+                aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId}`}
                 data-testid="group-inquiry-sticky-handoff-summary"
               >
+                <span
+                  data-testid="group-inquiry-sticky-readiness"
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${
+                    requiredReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  준비 {rfqReadinessReadyCount}/{rfqReadinessChecklist.length}
+                </span>
                 {stickyHandoffItems.map((item) => (
                   <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-gray-800 shadow-sm">
                     <span className="text-gray-500">{item.label}</span>

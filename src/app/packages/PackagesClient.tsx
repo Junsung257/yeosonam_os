@@ -32,6 +32,7 @@ const PACKAGES_STICKY_HANDOFF_SUMMARY_ID = 'packages-sticky-handoff-summary';
 const PACKAGES_STICKY_PHONE_DESCRIPTION_ID = 'packages-sticky-phone-description';
 const PACKAGES_STICKY_GROUP_DESCRIPTION_ID = 'packages-sticky-group-description';
 const PACKAGES_STICKY_KAKAO_DESCRIPTION_ID = 'packages-sticky-kakao-description';
+const PACKAGES_FILTER_READINESS_SUMMARY_ID = 'packages-filter-readiness-summary';
 
 interface Package {
   id: string;
@@ -290,7 +291,8 @@ export default function PackagesClient() {
   const packageFilterHelpId = 'packages-filter-help';
   const packageFilterSummaryId = 'packages-filter-summary';
   const packageResultSummaryId = 'packages-result-summary';
-  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageResultSummaryId}`;
+  const packageFilterReadinessSummaryId = PACKAGES_FILTER_READINESS_SUMMARY_ID;
+  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageFilterReadinessSummaryId} ${packageResultSummaryId}`;
   const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
   const compareStatusText = compareIds.length === 0
     ? '비교 상품이 선택되지 않았습니다.'
@@ -456,6 +458,19 @@ export default function PackagesClient() {
   const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null);
   const handoffIntent = selectedIntent ? INTENT_HANDOFF_LABELS[selectedIntent] : null;
   const handoffPartyType = selectedIntent ? INTENT_PARTY_TYPE[selectedIntent] ?? null : null;
+  const primaryFilterChecklist = [
+    { label: '출발월', complete: Boolean(month) },
+    { label: '출발지', complete: Boolean(hub) },
+    { label: '여행 목적', complete: Boolean(selectedIntent) },
+    { label: '예산', complete: Boolean(handoffBudget) },
+  ];
+  const primaryFilterReadyCount = primaryFilterChecklist.filter((item) => item.complete).length;
+  const primaryFilterMissingLabels = primaryFilterChecklist
+    .filter((item) => !item.complete)
+    .map((item) => item.label);
+  const primaryFilterReadinessText = primaryFilterMissingLabels.length > 0
+    ? `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 보완하면 좋은 조건: ${primaryFilterMissingLabels.join(', ')}.`
+    : `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 상담과 비교에 필요한 핵심 조건이 준비되었습니다.`;
   const stickyHandoffItems = useMemo(
     () => filterSummaryItems
       .filter((item) => item.label !== '결과')
@@ -463,14 +478,14 @@ export default function PackagesClient() {
     [filterSummaryItems],
   );
   const stickyPhoneDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID}`
-    : PACKAGES_STICKY_PHONE_DESCRIPTION_ID;
+    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
   const stickyGroupDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID}`
-    : PACKAGES_STICKY_GROUP_DESCRIPTION_ID;
+    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
   const stickyKakaoDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID}`
-    : PACKAGES_STICKY_KAKAO_DESCRIPTION_ID;
+    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
   const handoffSummary = useMemo(() => [
     q ? `검색어: ${q}` : null,
     ...filterSummaryItems
@@ -517,7 +532,7 @@ export default function PackagesClient() {
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
   const packageAppliedFilterSummaryText = filterSummaryItems.map((item) => `${item.label} ${item.value}`).join(', ');
-  const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다.`;
+  const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다. ${primaryFilterReadinessText}`;
   const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
 
   useEffect(() => {
@@ -924,6 +939,20 @@ export default function PackagesClient() {
             )}
           </div>
         </div>
+        <div
+          data-testid="packages-filter-readiness-summary"
+          aria-label={primaryFilterReadinessText}
+          className="mt-2 flex items-center justify-between gap-3 rounded-[14px] border border-[#DCE5F0] bg-white px-3 py-2"
+        >
+          <span className="shrink-0 text-[12px] font-extrabold text-text-primary">
+            핵심 조건 준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+          </span>
+          <span className="min-w-0 truncate text-right text-[12px] font-semibold text-text-secondary">
+            {primaryFilterMissingLabels.length > 0
+              ? `보완 추천: ${primaryFilterMissingLabels.join(', ')}`
+              : '상담 전달 준비 완료'}
+          </span>
+        </div>
       </section>
 
       <div className="px-4 pt-3 pb-1 md:max-w-7xl md:mx-auto md:px-8">
@@ -963,6 +992,15 @@ export default function PackagesClient() {
         aria-atomic="true"
       >
         {packageResultSummaryText}
+      </p>
+      <p
+        id={packageFilterReadinessSummaryId}
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {primaryFilterReadinessText}
       </p>
 
       <div ref={listTopRef} id="packages-list" aria-describedby={packageResultSummaryId} />
@@ -1097,6 +1135,12 @@ export default function PackagesClient() {
               aria-label="상담 전달 조건"
               data-testid="packages-sticky-handoff-summary"
             >
+              <span
+                data-testid="packages-sticky-filter-readiness"
+                className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand"
+              >
+                준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+              </span>
               {stickyHandoffItems.map((item) => (
                 <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-text-body shadow-sm">
                   <span className="text-text-secondary">{item.label}</span>

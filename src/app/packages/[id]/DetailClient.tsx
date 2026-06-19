@@ -902,20 +902,35 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     { label: '예산', value: handoffBudget },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const detailCtaSummaryId = 'package-detail-cta-summary';
+  const detailHandoffReadinessSummaryId = 'package-detail-handoff-readiness-summary';
   const detailStickyCtaRegionTitleId = 'package-detail-sticky-cta-title';
   const detailStickyCtaRegionDescriptionId = 'package-detail-sticky-cta-description';
   const detailStickyPriceDescriptionId = 'package-detail-sticky-price-description';
   const detailKakaoDescriptionId = 'package-detail-kakao-description';
   const detailGroupInquiryDescriptionId = 'package-detail-group-inquiry-description';
   const detailReservationDescriptionId = 'package-detail-reservation-description';
-  const detailStickyCtaDescriptionIds = `${detailStickyCtaRegionDescriptionId} ${detailCtaSummaryId}`;
+  const detailStickyCtaDescriptionIds = `${detailStickyCtaRegionDescriptionId} ${detailCtaSummaryId} ${detailHandoffReadinessSummaryId}`;
   const detailKakaoDescriptionIds = `${detailKakaoDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailGroupInquiryDescriptionIds = `${detailGroupInquiryDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailStickyCtaDescriptionIds}`;
+  const detailHandoffChecklist = [
+    { label: '상품', complete: Boolean(selectedProductName) },
+    { label: '지역', complete: Boolean(pkg.destination) },
+    { label: '출발', complete: Boolean(selectedDate ?? nextConfirmedDate ?? nextAvailableDepartureLabel) },
+    { label: '가격', complete: Boolean(handoffBudget) },
+  ];
+  const detailHandoffReadyCount = detailHandoffChecklist.filter((item) => item.complete).length;
+  const detailHandoffMissingLabels = detailHandoffChecklist
+    .filter((item) => !item.complete)
+    .map((item) => item.label);
+  const detailHandoffReadinessText = detailHandoffMissingLabels.length > 0
+    ? `상담 전달 준비 ${detailHandoffReadyCount}/${detailHandoffChecklist.length}. 보완하면 좋은 조건: ${detailHandoffMissingLabels.join(', ')}.`
+    : `상담 전달 준비 ${detailHandoffReadyCount}/${detailHandoffChecklist.length}. 상품, 지역, 출발, 가격 조건을 상담으로 바로 넘길 수 있습니다.`;
   const detailCtaSummaryText = [
     `${selectedProductName} 상품 상담 CTA입니다.`,
     `출발 기준은 ${firstScreenDepartureLabel}입니다.`,
     `가격 기준은 ${firstScreenPriceLabel}입니다.`,
+    detailHandoffReadinessText,
     stickyHandoffItems.length > 0
       ? `상담 전달 조건은 ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
       : null,
@@ -1105,7 +1120,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const reservationContextSummaryId = 'reservation-context-summary';
   const reservationContextTitleId = 'reservation-context-title';
   const reservationFieldHintId = 'reservation-field-hint';
-  const reservationDialogDescriptionIds = `reservation-inquiry-description ${reservationContextSummaryId} ${reservationFieldHintId}`;
+  const reservationDialogDescriptionIds = `reservation-inquiry-description ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId} ${reservationFieldHintId}`;
   const reservationNameDescriptionIds = showReservationNameError
     ? `${reservationFieldHintId} reservation-name-error`
     : reservationFieldHintId;
@@ -1116,8 +1131,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     ? `${reservationFieldHintId} reservation-consent-error`
     : reservationFieldHintId;
   const reservationSubmitDescriptionIds = reservationSubmitError
-    ? `reservation-form-hint ${reservationContextSummaryId} reservation-submit-error`
-    : `reservation-form-hint ${reservationContextSummaryId}`;
+    ? `reservation-form-hint ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId} reservation-submit-error`
+    : `reservation-form-hint ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId}`;
   const reservationContextItems = [
     { label: '상품', value: selectedProductName },
     { label: '출발', value: selectedDate ?? selectedTier?.period_label ?? (formData.date || firstScreenDepartureLabel) },
@@ -1134,6 +1149,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     <main className="min-h-dvh bg-[#F8FAFC] pb-[calc(11rem+env(safe-area-inset-bottom))] md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
       <p id={detailCtaSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {detailCtaSummaryText}
+      </p>
+      <p id={detailHandoffReadinessSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {detailHandoffReadinessText}
       </p>
       <p id={detailKakaoDescriptionId} className="sr-only">
         현재 상품과 선택한 출발 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
@@ -1281,6 +1299,20 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               ))}
             </div>
           )}
+          <div
+            data-testid="package-detail-handoff-readiness-summary"
+            aria-label={detailHandoffReadinessText}
+            className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2"
+          >
+            <span className="shrink-0 text-[12px] font-extrabold text-slate-900">
+              상담 전달 준비 {detailHandoffReadyCount}/{detailHandoffChecklist.length}
+            </span>
+            <span className="min-w-0 truncate text-right text-[12px] font-semibold text-slate-500">
+              {detailHandoffMissingLabels.length > 0
+                ? `보완 추천: ${detailHandoffMissingLabels.join(', ')}`
+                : '바로 상담 가능'}
+            </span>
+          </div>
         </div>
       </section>
 
@@ -2531,6 +2563,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               aria-describedby={detailStickyCtaDescriptionIds}
               data-testid="package-detail-sticky-handoff-summary"
             >
+              <span
+                data-testid="package-detail-sticky-readiness"
+                className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand"
+              >
+                준비 {detailHandoffReadyCount}/{detailHandoffChecklist.length}
+              </span>
               {stickyHandoffItems.map((item) => (
                 <span key={item.label} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-slate-700 shadow-sm">
                   <span className="text-slate-500">{item.label}</span>
@@ -2780,6 +2818,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   data-testid="package-detail-reservation-context"
                 >
                   <h4 id={reservationContextTitleId} className="mb-2 font-bold text-slate-900">문의 조건 요약</h4>
+                  <div
+                    data-testid="package-detail-reservation-readiness"
+                    aria-label={detailHandoffReadinessText}
+                    className="mb-2 flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-2"
+                  >
+                    <span className="font-extrabold text-slate-900">전달 준비 {detailHandoffReadyCount}/{detailHandoffChecklist.length}</span>
+                    <span className="min-w-0 truncate text-right font-semibold text-slate-500">
+                      {detailHandoffMissingLabels.length > 0
+                        ? detailHandoffMissingLabels.join(', ')
+                        : '완료'}
+                    </span>
+                  </div>
                   <dl className="grid gap-1.5">
                     {reservationContextItems.map((item) => (
                       <div key={item.label} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-2">
