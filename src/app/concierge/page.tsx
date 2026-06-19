@@ -650,6 +650,9 @@ export default function ConciergePage() {
       : searchError
         ? searchError
         : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
+  const intentPromptGroupLabelId = 'concierge-intent-prompt-group-label';
+  const intentPromptGroupDescriptionId = 'concierge-intent-prompt-group-description';
+  const intentPromptDescriptionId = (intent: string) => `concierge-intent-prompt-description-${intent}`;
 
   return (
     <div className="min-h-dvh bg-[#F8FAFC] pb-[calc(96px+env(safe-area-inset-bottom))] lg:pb-0">
@@ -738,28 +741,43 @@ export default function ConciergePage() {
             </p>
 
             <div className="mt-4">
-              <p className="mb-2 text-[13px] font-bold text-text-primary">빠른 시작</p>
-              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+              <p id={intentPromptGroupLabelId} className="mb-2 text-[13px] font-bold text-text-primary">빠른 시작</p>
+              <p id={intentPromptGroupDescriptionId} className="sr-only">
+                칩을 선택하면 예시 문장이 검색창에 입력되고 추천 검색이 바로 시작됩니다. 선택한 의도는 카카오 상담과 단체 견적에 함께 전달됩니다.
+              </p>
+              <div
+                className="flex gap-2 overflow-x-auto pb-1 no-scrollbar"
+                role="group"
+                aria-labelledby={intentPromptGroupLabelId}
+                aria-describedby={intentPromptGroupDescriptionId}
+              >
                 {INTENT_PROMPTS.map((prompt) => {
                   const selected = activePrompt?.intent === prompt.intent;
+                  const promptDescriptionId = intentPromptDescriptionId(prompt.intent);
                   return (
-                    <button
-                      key={prompt.intent}
-                      type="button"
-                      data-testid="concierge-intent-prompt"
-                      aria-pressed={selected}
-                      onClick={() => {
-                        setQuery(prompt.query);
-                        void performSearch(prompt.query, prompt);
-                      }}
-                      className={`shrink-0 rounded-full border px-4 py-2 text-[13px] font-bold transition ${
-                        selected
-                          ? 'border-brand bg-brand text-white shadow-sm'
-                          : 'border-[#D1DCE8] bg-white text-text-body hover:border-brand/60 hover:text-brand'
-                      }`}
-                    >
-                      {prompt.label}
-                    </button>
+                    <div key={prompt.intent} className="shrink-0">
+                      <button
+                        type="button"
+                        data-testid="concierge-intent-prompt"
+                        aria-pressed={selected}
+                        aria-describedby={promptDescriptionId}
+                        onClick={() => {
+                          setQuery(prompt.query);
+                          void performSearch(prompt.query, prompt);
+                        }}
+                        className={`rounded-full border px-4 py-2 text-[13px] font-bold transition ${
+                          selected
+                            ? 'border-brand bg-brand text-white shadow-sm'
+                            : 'border-[#D1DCE8] bg-white text-text-body hover:border-brand/60 hover:text-brand'
+                        }`}
+                      >
+                        {prompt.label}
+                      </button>
+                      <span id={promptDescriptionId} className="sr-only">
+                        {prompt.query} 조건으로 검색하고 상담 전달 조건에 {PARTY_TYPE_LABELS[prompt.party_type] ?? prompt.party_type}
+                        {prompt.destination ? `, ${prompt.destination}` : ''} 정보를 저장합니다.
+                      </span>
+                    </div>
                   );
                 })}
               </div>

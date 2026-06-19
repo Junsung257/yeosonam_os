@@ -87,7 +87,12 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const commandInputRef = useRef<HTMLInputElement | null>(null);
   const commandOpenDescriptionId = 'payments-command-open-description';
-  const commandInputDescriptionIds = error ? 'payments-command-help payments-command-error' : 'payments-command-help';
+  const commandResultSummaryId = 'payments-command-result-summary';
+  const commandInputDescriptionIds = [
+    'payments-command-help',
+    result ? commandResultSummaryId : null,
+    error ? 'payments-command-error' : null,
+  ].filter(Boolean).join(' ');
 
   // ⌘K / Ctrl+K 토글
   useEffect(() => {
@@ -444,6 +449,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
                 {!loading && !error && result && (
                   <ResultPanel
                     result={result}
+                    summaryId={commandResultSummaryId}
                     onConfirm={handleConfirmBooking}
                     onCreateAndMatch={handleCreateAndMatch}
                     confirming={confirming}
@@ -502,6 +508,7 @@ const BRANCH_INFO: Record<MatchBranch, { label: string; color: string; desc: str
 
 function ResultPanel({
   result,
+  summaryId,
   onConfirm,
   onCreateAndMatch,
   confirming,
@@ -510,6 +517,7 @@ function ResultPanel({
   setInput,
 }: {
   result: ResolveResult;
+  summaryId: string;
   onConfirm: (b: BookingHit) => void;
   onCreateAndMatch: () => void;
   confirming: string | null;
@@ -518,10 +526,19 @@ function ResultPanel({
   setInput: (s: string) => void;
 }) {
   const info = BRANCH_INFO[result.branch];
+  const branchTitleId = 'payments-command-branch-title';
+  const resultSummaryText = result.bookings.length > 0
+    ? `결제 명령 결과는 분기 ${result.branch}, 예약 후보 ${result.bookings.length}건입니다. ${result.branch === 'A' ? '첫 번째 후보는 Enter 또는 확정 버튼으로 매칭할 수 있습니다.' : '후보를 확인한 뒤 확정 버튼을 선택하세요.'}`
+    : result.branch === 'C'
+      ? '예약 후보가 없어 새 예약 생성이 필요합니다. 입력한 고객명과 랜드사 정보를 확인하세요.'
+      : '예약 후보가 없습니다. 입력을 수정하거나 비슷한 고객 후보를 확인하세요.';
 
   return (
-    <div className="space-y-3">
-      <BranchHeader branch={result.branch} parsed={result.parsed} info={info} />
+    <div className="space-y-3" role="region" aria-labelledby={branchTitleId} aria-describedby={summaryId}>
+      <p id={summaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {resultSummaryText}
+      </p>
+      <BranchHeader branch={result.branch} parsed={result.parsed} info={info} titleId={branchTitleId} />
 
       {result.bookings.length > 0 && (
         <div>
@@ -529,55 +546,63 @@ function ResultPanel({
             예약 후보 ({result.bookings.length})
           </div>
           <Command.Group>
-            {result.bookings.map((b, idx) => (
-              <Command.Item
-                key={b.id}
-                value={`${b.booking_no}_${b.customer_name ?? ''}_${b.id}`}
-                // Enter 1-click 자동 확정은 분기 A 의 top-1 후보에만 허용.
-                // 분기 B/D 에서는 click 만 받음 — 디바운스 직후 들어오는 의도치 않은 Enter 차단.
-                onSelect={() => {
-                  if (result.branch === 'A' && idx === 0) onConfirm(b);
-                }}
-                disabled={confirming !== null && confirming !== b.id}
-                className="flex items-center justify-between gap-3 px-3 py-2 rounded cursor-pointer hover:bg-admin-bg data-[selected=true]:bg-blue-50 data-[disabled=true]:opacity-40"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-sm font-medium text-admin-text-2">
-                    <span>{b.customer_name ?? '이름 없음'}</span>
-                    <span className="text-admin-muted-2">/</span>
-                    <span className="text-admin-muted font-mono text-xs">{b.booking_no}</span>
-                    {b.departure_date && (
-                      <span className="text-xs text-admin-muted">
-                        {b.departure_date.slice(2, 10).replace(/-/g, '')}
-                      </span>
-                    )}
-                    {b.land_operator_name && (
-                      <span className="text-xs text-admin-muted">· {b.land_operator_name}</span>
-                    )}
+            {result.bookings.map((b, idx) => {
+              const bookingDescriptionId = `payments-command-booking-${b.id}-description`;
+              const bookingName = b.customer_name ?? '이름 없음';
+              return (
+                <Command.Item
+                  key={b.id}
+                  value={`${b.booking_no}_${b.customer_name ?? ''}_${b.id}`}
+                  aria-describedby={bookingDescriptionId}
+                  // Enter 1-click 자동 확정은 분기 A 의 top-1 후보에만 허용.
+                  // 분기 B/D 에서는 click 만 받음 — 디바운스 직후 들어오는 의도치 않은 Enter 차단.
+                  onSelect={() => {
+                    if (result.branch === 'A' && idx === 0) onConfirm(b);
+                  }}
+                  disabled={confirming !== null && confirming !== b.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 rounded cursor-pointer hover:bg-admin-bg data-[selected=true]:bg-blue-50 data-[disabled=true]:opacity-40"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-admin-text-2">
+                      <span>{bookingName}</span>
+                      <span className="text-admin-muted-2">/</span>
+                      <span className="text-admin-muted font-mono text-xs">{b.booking_no}</span>
+                      {b.departure_date && (
+                        <span className="text-xs text-admin-muted">
+                          {b.departure_date.slice(2, 10).replace(/-/g, '')}
+                        </span>
+                      )}
+                      {b.land_operator_name && (
+                        <span className="text-xs text-admin-muted">· {b.land_operator_name}</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-admin-muted mt-0.5 truncate">
+                      {b.reasons.slice(0, 3).join(' · ')}
+                    </div>
+                    <div id={bookingDescriptionId} className="text-[11px] text-admin-muted-2 mt-0.5 tabular-nums">
+                      판매가 {fmtKRW(b.total_price)} · 수금 {fmtKRW(b.paid_amount)} · 잔금{' '}
+                      {fmtKRW(Math.max(0, b.total_price - b.paid_amount))} · 매칭 점수 {Math.round(b.score * 100)}점
+                    </div>
                   </div>
-                  <div className="text-xs text-admin-muted mt-0.5 truncate">
-                    {b.reasons.slice(0, 3).join(' · ')}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <ScoreBar score={b.score} />
+                    <button
+                      type="button"
+                      disabled={confirming === b.id}
+                      aria-label={`${bookingName} ${b.booking_no} 결제 매칭 확정`}
+                      aria-describedby={bookingDescriptionId}
+                      onClick={e => {
+                        e.stopPropagation();
+                        onConfirm(b);
+                      }}
+                      className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {confirming === b.id ? '...' : '확정'}
+                    </button>
                   </div>
-                  <div className="text-[11px] text-admin-muted-2 mt-0.5 tabular-nums">
-                    판매가 {fmtKRW(b.total_price)} · 수금 {fmtKRW(b.paid_amount)} · 잔금{' '}
-                    {fmtKRW(Math.max(0, b.total_price - b.paid_amount))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <ScoreBar score={b.score} />
-                  <button
-                    disabled={confirming === b.id}
-                    onClick={e => {
-                      e.stopPropagation();
-                      onConfirm(b);
-                    }}
-                    className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {confirming === b.id ? '...' : '확정'}
-                  </button>
-                </div>
-              </Command.Item>
-            ))}
+                </Command.Item>
+              );
+            })}
           </Command.Group>
         </div>
       )}
@@ -599,8 +624,11 @@ function ResultPanel({
             </span>
           </div>
           <button
+            type="button"
+            data-testid="payments-command-create-booking"
             onClick={onCreateAndMatch}
             disabled={creatingNew || !result.parsed.customerName}
+            aria-describedby={summaryId}
             className="inline-block text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {creatingNew
@@ -618,7 +646,9 @@ function ResultPanel({
           <div className="flex flex-wrap gap-1.5">
             {result.similarCustomers.map(name => (
               <button
+                type="button"
                 key={name}
+                aria-label={`${name} 고객명으로 명령어 다시 검색`}
                 onClick={() =>
                   setInput(
                     result.parsed.rawInput.replace(
@@ -649,15 +679,17 @@ function BranchHeader({
   branch,
   parsed,
   info,
+  titleId,
 }: {
   branch: MatchBranch;
   parsed: ParsedCommand;
   info: { label: string; color: string; desc: string };
+  titleId: string;
 }) {
   return (
     <div className={`border rounded-lg p-2.5 text-sm ${info.color}`}>
       <div className="flex items-center justify-between">
-        <span className="font-semibold">{info.label}</span>
+        <span id={titleId} className="font-semibold">{info.label}</span>
         <span className="text-[11px] opacity-70 font-mono">분기 {branch}</span>
       </div>
       <div className="text-xs mt-1 opacity-80">{info.desc}</div>

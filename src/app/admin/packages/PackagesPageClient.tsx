@@ -2265,16 +2265,30 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               const dday = getDDayInfo(pkg);
               const expired = isExpired(pkg);
               const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
+              const mobileCardSummaryId = `admin-package-mobile-card-summary-${pkg.id}`;
               const mobileActionDescriptionId = `admin-package-mobile-actions-${pkg.id}`;
-              const mobileActionStatusDescriptionId = `${mobileActionDescriptionId} admin-package-bulk-status`;
+              const mobileActionStatusDescriptionId = `${mobileCardSummaryId} ${mobileActionDescriptionId} admin-package-bulk-status`;
               const region = pkg.products?.departure_region
                 ?? (pkg.departure_airport ? pkg.departure_airport.replace(/\(.*\)/, '').trim() : undefined);
+              const mobileCardSummaryText = [
+                `${pkg.title} 상품`,
+                `현재 상태는 ${STATUS_LABEL[pkg.status] ?? pkg.status}`,
+                `가격은 ${getPackagePriceRangeLabel(minPrice, maxPrice)}`,
+                pkg.commission_rate != null ? `마진은 ${pkg.commission_rate}%` : null,
+                region ? `출발 지역은 ${region}` : null,
+                expired ? '판매 기간이 만료되었습니다' : dday ? `출발 또는 마감 상태는 ${dday.label}` : null,
+                `다음 액션은 ${nextOperationLabel}`,
+              ].filter(Boolean).join(', ');
 
               return (
                 <article
                   key={`mobile-${pkg.id}`}
                   className={`p-4 ${expired ? 'opacity-65' : ''} ${checkedIds.has(pkg.id) ? 'bg-blue-50' : 'bg-white'}`}
+                  aria-describedby={mobileCardSummaryId}
                 >
+                  <p id={mobileCardSummaryId} className="sr-only">
+                    {mobileCardSummaryText}
+                  </p>
                   <div className="flex items-start gap-3">
                     <input
                       type="checkbox"
@@ -2331,7 +2345,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     {pkg.title}의 다음 액션은 {nextOperationLabel}입니다. 상태는 {STATUS_LABEL[pkg.status] ?? pkg.status}이며 모바일 버튼에서 검수, 수정, 발행 또는 더보기를 실행할 수 있습니다.
                   </p>
 
-                  <div role="group" aria-label={`${pkg.title} 모바일 처리 작업`} aria-describedby={mobileActionDescriptionId} className="mt-3 grid grid-cols-4 gap-2">
+                  <div role="group" aria-label={`${pkg.title} 모바일 처리 작업`} aria-describedby={mobileActionStatusDescriptionId} className="mt-3 grid grid-cols-4 gap-2">
                     {expired ? (
                       <button
                         type="button"

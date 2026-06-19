@@ -20,28 +20,42 @@ interface Props {
 
 export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
   const [current, setCurrent] = useState(0);
-  const [paused, setPaused] = useState(false);
+  const [hoverPaused, setHoverPaused] = useState(false);
+  const [userPaused, setUserPaused] = useState(false);
 
   const next = useCallback(() => {
     setCurrent(c => (c + 1) % slides.length);
   }, [slides.length]);
 
   useEffect(() => {
-    if (paused || slides.length <= 1) return;
+    if (hoverPaused || userPaused || slides.length <= 1) return;
     const id = setInterval(next, autoPlayMs);
     return () => clearInterval(id);
-  }, [paused, next, autoPlayMs, slides.length]);
+  }, [hoverPaused, userPaused, next, autoPlayMs, slides.length]);
 
   if (slides.length === 0) return null;
 
   const slide = slides[current];
+  const descriptionId = 'home-hero-banner-description';
+  const statusId = 'home-hero-banner-status';
+  const isPaused = hoverPaused || userPaused;
 
   return (
     <div
       className="relative w-full aspect-[16/9] md:aspect-[21/8] overflow-hidden bg-bg-section"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
+      role="region"
+      aria-roledescription="carousel"
+      aria-label="추천 여행 배너"
+      aria-describedby={`${descriptionId} ${statusId}`}
+      onMouseEnter={() => setHoverPaused(true)}
+      onMouseLeave={() => setHoverPaused(false)}
     >
+      <p id={descriptionId} className="sr-only">
+        추천 여행 상품이 자동으로 전환됩니다. 일시정지 버튼으로 자동 전환을 멈추거나 다시 재생할 수 있습니다.
+      </p>
+      <p id={statusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {current + 1}번째 배너, 총 {slides.length}개. {isPaused ? '자동 전환이 일시정지되었습니다.' : '자동 전환 중입니다.'}
+      </p>
       {/* 슬라이드 이미지 */}
       {slides.map((s, i) => (
         <div
@@ -68,7 +82,11 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
       />
 
       {/* 텍스트 + CTA */}
-      <Link href={slide.href} className="absolute inset-0 flex flex-col justify-end p-6 md:p-12 pb-10 md:pb-14">
+      <Link
+        href={slide.href}
+        aria-label={`${slide.destination} ${slide.title} 상품 자세히 보기`}
+        className="absolute inset-0 flex flex-col justify-end p-6 md:p-12 pb-10 md:pb-14"
+      >
         <div>
           <p className="text-micro md:text-body font-semibold text-white/80 uppercase tracking-widest mb-2">{slide.destination}</p>
           <h2 className="text-[28px] md:text-[44px] font-extrabold text-white leading-[1.2] tracking-[-0.03em] line-clamp-2 break-keep">
@@ -101,9 +119,23 @@ export default function HeroBanner({ slides, autoPlayMs = 5000 }: Props) {
                   : 'w-1.5 h-1.5 bg-white/50'
               }`}
               aria-label={`슬라이드 ${i + 1}`}
+              aria-current={i === current ? 'true' : undefined}
             />
           ))}
         </div>
+      )}
+
+      {slides.length > 1 && (
+        <button
+          type="button"
+          data-testid="hero-banner-pause-toggle"
+          aria-pressed={userPaused}
+          aria-describedby={descriptionId}
+          onClick={() => setUserPaused(value => !value)}
+          className="absolute top-4 left-4 inline-flex min-h-10 items-center justify-center rounded-full border border-white/25 bg-black/35 px-3 text-[12px] font-bold text-white shadow-sm backdrop-blur-sm transition-colors hover:bg-black/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/80"
+        >
+          {userPaused ? '재생' : '일시정지'}
+        </button>
       )}
 
       {/* 슬라이드 번호 */}

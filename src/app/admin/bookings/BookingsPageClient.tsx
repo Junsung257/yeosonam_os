@@ -2178,9 +2178,27 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               !isTrash && b.status === 'confirmed' ? { label: '결제완료', run: () => patchStatus(b.id, 'completed'), primary: true } :
               !isTrash && b.status === 'cancelled' ? { label: '복구', run: () => handleRestoreBooking(b), primary: false } :
               { label: '상세', run: () => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }, primary: false };
+            const mobileCardSummaryId = `admin-booking-mobile-card-summary-${b.id}`;
+            const mobileActionGroupId = `admin-booking-mobile-actions-${b.id}`;
+            const mobileBalanceLabel = b.status === 'cancelled' ? '환불잔액' : '잔금';
+            const mobileBalanceValue = b.status === 'cancelled' ? netCashflow : Math.max(0, balance);
+            const mobileCardSummaryText = [
+              `${b.customers?.name ?? b.booking_no ?? '고객명 미입력'} 예약`,
+              `현재 상태는 ${STATUS_LABELS[b.status] || b.status}`,
+              `출발일은 ${fmtDateKo(b.departure_date)}`,
+              `${mobileBalanceLabel}은 ${fmtK(mobileBalanceValue)}`,
+              `다음 액션은 ${nextAction.label}`,
+            ].join(', ');
 
             return (
-              <article key={b.id} className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+              <article
+                key={b.id}
+                className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs"
+                aria-describedby={mobileCardSummaryId}
+              >
+                <p id={mobileCardSummaryId} className="sr-only">
+                  {mobileCardSummaryText}
+                </p>
                 <div className="mb-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <StatusBadge booking={b} onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }} />
@@ -2203,9 +2221,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     <p className="mt-1 text-admin-sm font-bold text-blue-700 tabular-nums">{fmtK(b.paid_amount || 0)}</p>
                   </div>
                   <div>
-                    <p className="text-admin-xs text-admin-muted-2">{b.status === 'cancelled' ? '환불잔액' : '잔금'}</p>
-                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${(b.status === 'cancelled' ? netCashflow : balance) > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
-                      {fmtK(b.status === 'cancelled' ? netCashflow : Math.max(0, balance))}
+                    <p className="text-admin-xs text-admin-muted-2">{mobileBalanceLabel}</p>
+                    <p className={`mt-1 text-admin-sm font-bold tabular-nums ${mobileBalanceValue > 0 ? 'text-red-600' : 'text-admin-muted'}`}>
+                      {fmtK(mobileBalanceValue)}
                     </p>
                   </div>
                 </div>
@@ -2215,10 +2233,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   <span className="text-[12px] font-black text-admin-text-2">{nextAction.label}</span>
                 </div>
 
-                <div className="mt-2 flex gap-2">
+                <div
+                  id={mobileActionGroupId}
+                  className="mt-2 flex gap-2"
+                  role="group"
+                  aria-label={`${b.customers?.name || b.booking_no || '예약'} 모바일 예약 작업`}
+                  aria-describedby={mobileCardSummaryId}
+                >
                   <button
                     type="button"
+                    data-testid="admin-booking-mobile-next-action"
                     disabled={processing === b.id}
+                    aria-label={`${b.customers?.name || b.booking_no || '예약'} ${nextAction.label}`}
+                    aria-describedby={mobileCardSummaryId}
+                    aria-busy={processing === b.id}
                     onClick={e => { e.stopPropagation(); nextAction.run(); }}
                     className={`min-h-[42px] flex-1 rounded-admin-md px-3 text-admin-sm font-bold transition disabled:opacity-50 ${nextAction.primary ? 'bg-brand text-white hover:bg-[#1B64DA]' : 'border border-admin-border-strong bg-white text-admin-text-2 hover:bg-admin-bg'}`}
                   >
@@ -2226,6 +2254,9 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   </button>
                   <button
                     type="button"
+                    data-testid="admin-booking-mobile-detail-action"
+                    aria-label={`${b.customers?.name || b.booking_no || '예약'} 상세 패널 열기`}
+                    aria-describedby={mobileCardSummaryId}
                     onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }}
                     className="min-h-[42px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg"
                   >

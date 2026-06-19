@@ -213,6 +213,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   );
   const packageSearchActionId = 'home-hero-package-search-action';
   const packageSearchSummaryId = 'home-hero-package-search-summary';
+  const homeSearchOpenDescriptionId = 'home-hero-search-open-description';
+  const homeAiConsultDescriptionId = 'home-hero-ai-consult-description';
   const groupInquiryActionId = 'home-hero-group-inquiry-action';
   const groupInquirySummaryId = 'home-hero-group-inquiry-summary';
   const packageSearchDescriptionIds = `${packageSearchActionId} ${packageSearchSummaryId}`;
@@ -356,6 +358,12 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   if (!expanded) {
     return (
       <div className="space-y-4">
+        <p id={homeSearchOpenDescriptionId} className="sr-only">
+          출발지, 출발 시기, 목적지, 예산을 차례로 선택하는 검색 조건 위자드를 엽니다.
+        </p>
+        <p id={homeAiConsultDescriptionId} className="sr-only">
+          현재 페이지에서 AI 여행 상담창을 열어 목적지와 여행 조건을 대화로 추천받습니다.
+        </p>
         <p id={groupInquiryActionId} className="sr-only">
           선택한 출발지, 일정, 목적지, 예산을 단체 견적 문의서에 미리 채웁니다.
         </p>
@@ -365,8 +373,10 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         <button
           type="button"
           onClick={() => setExpanded(true)}
+          data-testid="home-hero-search-open"
           className="w-full flex items-center gap-3 bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3.5 shadow-[0_4px_16px_rgba(49,130,246,0.07)] hover:border-brand/40 hover:shadow-[0_4px_20px_rgba(49,130,246,0.13)] transition-all card-touch"
           aria-label="여행 검색 열기"
+          aria-describedby={homeSearchOpenDescriptionId}
         >
           <span className="text-xl flex-shrink-0">🔍</span>
           <span className="flex-1 text-left">
@@ -391,6 +401,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           <button
             type="button"
             onClick={() => openChat('home_hero')}
+            data-testid="home-hero-ai-consult"
+            aria-describedby={homeAiConsultDescriptionId}
             className={`${pillBase} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] text-white shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30`}
           >
             <span aria-hidden>🤖</span>AI 여행 상담
@@ -402,6 +414,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
   return (
     <div className="space-y-4">
+      <p id={homeAiConsultDescriptionId} className="sr-only">
+        현재 선택한 검색 조건을 참고해 AI 여행 상담창을 열고 추천을 이어갑니다.
+      </p>
       <p id={packageSearchActionId} className="sr-only">
         선택한 조건으로 패키지 목록 페이지를 엽니다.
       </p>
@@ -481,6 +496,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         <button
           type="button"
           onClick={() => openChat('home_hero')}
+          data-testid="home-hero-ai-consult"
+          aria-describedby={homeAiConsultDescriptionId}
           className={`${pillBase} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] text-white shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30`}
         >
           <span aria-hidden>🤖</span>AI 여행 상담

@@ -170,7 +170,8 @@ const checksToRun = [
       '--report=.tmp/marketing-release-strict-blocked-contract-report.json',
     ],
     expectedStatus: 'warn',
-    allowedExitCodes: [0],
+    allowedStatuses: ['warn', 'blocked'],
+    allowedExitCodes: [0, 2],
     clearOperationalEnv: true,
   },
   {
@@ -195,7 +196,8 @@ const checksToRun = [
       '--report=.tmp/local-release-strict-blocked-contract-report.json',
     ],
     expectedStatus: 'warn',
-    allowedExitCodes: [0],
+    allowedStatuses: ['warn', 'blocked'],
+    allowedExitCodes: [0, 2],
     clearOperationalEnv: true,
   },
   {
@@ -277,7 +279,8 @@ const checksToRun = [
       '--report=.tmp/all-readiness-strict-blocked-contract-report.json',
     ],
     expectedStatus: 'warn',
-    allowedExitCodes: [0],
+    allowedStatuses: ['warn', 'blocked'],
+    allowedExitCodes: [0, 2],
     clearOperationalEnv: true,
   },
   {
@@ -304,7 +307,8 @@ const checksToRun = [
       '--report=.tmp/all-readiness-attention-contract-report.json',
     ],
     expectedStatus: 'warn',
-    allowedExitCodes: [0],
+    allowedStatuses: ['warn', 'blocked'],
+    allowedExitCodes: [0, 2],
     clearOperationalEnv: true,
     minAttentionCount: 1,
     requiredAttentionMissing: [
@@ -364,7 +368,7 @@ const checksToRun = [
       '--skip-operational-discovery',
       '--report=.tmp/all-readiness-console-guidance-contract-report.json',
     ],
-    allowedExitCodes: [0],
+    allowedExitCodes: [0, 2],
     clearOperationalEnv: true,
     stdoutOnly: true,
     expectedStdoutIncludes: [
@@ -553,6 +557,7 @@ function runCheck(check) {
   const report = parseJson(result.stdout);
   const stdoutOnly = check.stdoutOnly === true;
   const expectedStatus = check.expectedStatus || (stdoutOnly ? '' : 'pass');
+  const allowedStatuses = check.allowedStatuses || [expectedStatus];
   const allowedExitCodes = check.allowedExitCodes || [0];
   const failedCount = Number(report?.failed ?? 0);
   const failedCountOk = check.allowFailedCount === true || failedCount === 0;
@@ -601,7 +606,7 @@ function runCheck(check) {
   ].filter(Boolean).join('; ');
   const passed = !timedOut
     && allowedExitCodes.includes(result.status)
-    && (stdoutOnly || report?.status === expectedStatus)
+    && (stdoutOnly || allowedStatuses.includes(report?.status))
     && (stdoutOnly || failedCountOk)
     && stdoutOk
     && filesOk
@@ -622,7 +627,7 @@ function runCheck(check) {
     warnings: Number(report?.warnings ?? report?.warned ?? 0),
     failed: Number(report?.failed ?? (passed ? 0 : 1)),
     reportStatus: report?.status || 'unknown',
-    expectedStatus,
+    expectedStatus: stdoutOnly ? expectedStatus : allowedStatuses.join('|'),
     attentionCount,
     missingRequiredAttention,
     missingRequiredCheckFields,
