@@ -629,11 +629,23 @@ export default function ConciergePage() {
   const checkoutDescriptionIds = checkoutError
     ? `${checkoutSummaryId} concierge-checkout-error`
     : checkoutSummaryId;
+  const handoffReadinessSummaryId = 'concierge-handoff-readiness-summary';
+  const handoffChecklist = [
+    { label: '목적', complete: Boolean(activePrompt || intentSummary.intent || query.trim()) },
+    { label: '동행', complete: Boolean(intentSummary.party_type) },
+    { label: '지역', complete: Boolean(intentSummary.destination) },
+    { label: '예산', complete: Boolean(intentSummary.budget) },
+  ];
+  const handoffReadyCount = handoffChecklist.filter((item) => item.complete).length;
+  const handoffMissingLabels = handoffChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const handoffReadinessText = handoffMissingLabels.length > 0
+    ? `상담 전달 준비 ${handoffReadyCount}/${handoffChecklist.length}. 보완하면 좋은 조건: ${handoffMissingLabels.join(', ')}.`
+    : `상담 전달 준비 ${handoffReadyCount}/${handoffChecklist.length}. 바로 상담으로 넘길 수 있습니다.`;
   const kakaoIntentSummaryId = 'concierge-kakao-intent-summary';
   const topbarKakaoDescriptionId = 'concierge-topbar-kakao-description';
   const summaryKakaoDescriptionId = 'concierge-summary-kakao-description';
   const topbarKakaoDescriptionIds = `${topbarKakaoDescriptionId} ${kakaoIntentSummaryId}`;
-  const summaryKakaoDescriptionIds = `${summaryKakaoDescriptionId} ${kakaoIntentSummaryId}`;
+  const summaryKakaoDescriptionIds = `${summaryKakaoDescriptionId} ${kakaoIntentSummaryId} ${handoffReadinessSummaryId}`;
   const cartSummaryText = [
     cart.length > 0 ? `선택한 구성은 ${cart.length}개 상품입니다.` : '선택한 상품이 없습니다.',
     cartTotal > 0 ? `총 금액은 ${money(cartTotal)}입니다.` : null,
@@ -650,6 +662,22 @@ export default function ConciergePage() {
       : searchError
         ? searchError
         : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
+  const resultBriefItems = results.slice(0, 3).map((item, index) => {
+    const insight = getResultInsight(item);
+    return {
+      rank: index + 1,
+      name: item.product_name,
+      price: money(item.price),
+      reason: insight.reason,
+      caution: insight.caution,
+      extraCost: insight.extraCost,
+      action: insight.action,
+    };
+  });
+  const resultBriefSummaryId = 'concierge-result-brief-summary';
+  const resultBriefSummaryText = resultBriefItems.length > 0
+    ? `AI 추천 브리핑입니다. 상위 ${resultBriefItems.length}개 상품 기준으로 추천 이유, 주의할 점, 추가 비용 가능성, 다음 액션을 정리했습니다. ${resultBriefItems.map((item) => `${item.rank}순위 ${item.name}, ${item.price}, 다음 액션 ${item.action}`).join(' ')}`
+    : resultSummaryText;
   const intentPromptGroupLabelId = 'concierge-intent-prompt-group-label';
   const intentPromptGroupDescriptionId = 'concierge-intent-prompt-group-description';
   const intentPromptDescriptionId = (intent: string) => `concierge-intent-prompt-description-${intent}`;
@@ -814,6 +842,17 @@ export default function ConciergePage() {
                 ) : (
                   <p className="mt-3 text-[12px] font-medium text-text-secondary">빠른 시작을 누르거나 검색어를 입력하면 조건이 자동으로 정리됩니다.</p>
                 )}
+                <div
+                  id={handoffReadinessSummaryId}
+                  data-testid="concierge-handoff-readiness-summary"
+                  aria-label={handoffReadinessText}
+                  className="mt-3 rounded-[14px] border border-white bg-white px-3 py-2 text-[12px] font-bold text-text-secondary shadow-sm"
+                >
+                  <span className="text-text-primary">상담 전달 준비 {handoffReadyCount}/{handoffChecklist.length}</span>
+                  <span className="ml-2 font-medium">
+                    {handoffMissingLabels.length > 0 ? `보완 추천: ${handoffMissingLabels.join(', ')}` : '바로 상담 가능'}
+                  </span>
+                </div>
               </div>
             )}
 
@@ -849,6 +888,11 @@ export default function ConciergePage() {
                   상담으로 확인
                 </button>
               </div>
+              <RecommendationBrief
+                items={resultBriefItems}
+                summaryId={resultBriefSummaryId}
+                summaryText={resultBriefSummaryText}
+              />
               <ResultComparisonTable
                 results={results}
                 summaryId={resultSummaryId}
@@ -861,6 +905,15 @@ export default function ConciergePage() {
                     key={item.product_id}
                     item={item}
                     summaryId={resultSummaryId}
+                    groupInquiryHref={buildGroupInquiryHandoffHref({
+                      source: 'concierge_result',
+                      intent: intentSummary.intent ?? undefined,
+                      partyType: intentSummary.party_type ?? undefined,
+                      query: query.trim() || activePrompt?.query || `${item.product_name} 단체 견적`,
+                      destination: intentSummary.destination,
+                      budget: intentSummary.budget || `예상가 ${money(item.price)}`,
+                      selectedProducts: [item.product_name],
+                    })}
                     onAdd={() => addToCart(item)}
                     onViewDetail={() => {
                       trackEngagement({
@@ -891,6 +944,24 @@ export default function ConciergePage() {
                         ...intentSummary,
                       });
                       openKakaoConsult('result_card', item);
+                    }}
+                    onGroupInquiry={() => {
+                      trackEngagement({
+                        event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                        source: 'concierge_result_group_inquiry',
+                        product_id: item.product_id,
+                        product_name: item.product_name,
+                        page_url: '/concierge',
+                        recommended_rank: index + 1,
+                        ...intentSummary,
+                        selected_products: [item.product_name],
+                        metadata: {
+                          action: 'group_inquiry_handoff',
+                          resultIndex: index + 1,
+                          apiName: item.api_name,
+                          productType: item.product_type,
+                        },
+                      });
                     }}
                   />
                 ))}
@@ -1217,18 +1288,126 @@ function ResultComparisonTable({
   );
 }
 
+function RecommendationBrief({
+  items,
+  summaryId,
+  summaryText,
+}: {
+  items: Array<{
+    rank: number;
+    name: string;
+    price: string;
+    reason: string;
+    caution: string;
+    extraCost: string;
+    action: string;
+  }>;
+  summaryId: string;
+  summaryText: string;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby="concierge-result-brief-title"
+      aria-describedby={summaryId}
+      data-testid="concierge-result-brief"
+      className="rounded-[20px] border border-[#E5E7EB] bg-white p-4 shadow-card"
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 id="concierge-result-brief-title" className="text-[15px] font-extrabold text-text-primary">
+            AI 추천 브리핑
+          </h3>
+          <p className="mt-0.5 text-[12px] text-text-secondary">
+            이유, 주의점, 추가 비용, 다음 액션을 먼저 좁혀보세요.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+          상위 {items.length}개
+        </span>
+      </div>
+      <p id={summaryId} className="sr-only">
+        {summaryText}
+      </p>
+      <div className="grid gap-3">
+        {items.map((item) => (
+          <article
+            key={`${item.rank}:${item.name}`}
+            data-testid="concierge-result-brief-item"
+            className="rounded-[16px] border border-[#EEF2F6] bg-[#F8FAFC] p-3"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-extrabold text-brand">{item.rank}순위</p>
+                <h4 className="mt-0.5 line-clamp-1 text-[14px] font-extrabold text-text-primary">{item.name}</h4>
+              </div>
+              <p className="shrink-0 text-[13px] font-extrabold text-brand">{item.price}</p>
+            </div>
+            <dl className="grid gap-2 text-[12px] leading-5 md:grid-cols-2">
+              <BriefLine icon="reason" label="추천 이유" value={item.reason} />
+              <BriefLine icon="caution" label="주의할 점" value={item.caution} />
+              <BriefLine icon="cost" label="추가 비용" value={item.extraCost} />
+              <BriefLine icon="action" label="다음 액션" value={item.action} />
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BriefLine({
+  icon,
+  label,
+  value,
+}: {
+  icon: 'reason' | 'caution' | 'cost' | 'action';
+  label: string;
+  value: string;
+}) {
+  const Icon =
+    icon === 'reason'
+      ? CheckCircle2
+      : icon === 'caution'
+        ? AlertTriangle
+        : icon === 'cost'
+          ? Wallet
+          : Send;
+  const tone =
+    icon === 'reason'
+      ? 'text-emerald-600'
+      : icon === 'caution'
+        ? 'text-amber-600'
+        : icon === 'cost'
+          ? 'text-blue-600'
+          : 'text-brand';
+
+  return (
+    <div className="grid grid-cols-[18px_64px_1fr] gap-2">
+      <Icon className={`mt-0.5 h-4 w-4 ${tone}`} aria-hidden="true" />
+      <dt className="font-extrabold text-text-primary">{label}</dt>
+      <dd className="min-w-0 text-text-secondary">{value}</dd>
+    </div>
+  );
+}
+
 function ResultCard({
   item,
   summaryId,
+  groupInquiryHref,
   onAdd,
   onViewDetail,
   onConsult,
+  onGroupInquiry,
 }: {
   item: MockSearchResult;
   summaryId: string;
+  groupInquiryHref: string;
   onAdd: () => void;
   onViewDetail: () => void;
   onConsult: () => void;
+  onGroupInquiry: () => void;
 }) {
   const insight = getResultInsight(item);
   const tone = PRODUCT_TYPE_TONES[item.product_type] ?? 'bg-brand-light text-brand border-blue-100';
@@ -1273,7 +1452,7 @@ function ResultCard({
           </div>
           <p className="text-right text-[11px] font-bold text-text-secondary">{insight.action}</p>
         </div>
-        <div className={`grid gap-2 ${detailHref ? 'grid-cols-[1fr_1fr_auto]' : 'grid-cols-[1fr_auto]'}`}>
+        <div className={`grid gap-2 ${detailHref ? 'grid-cols-[1fr_1fr_1fr_auto]' : 'grid-cols-[1fr_1fr_auto]'}`}>
           {detailHref && (
             <Link
               href={detailHref}
@@ -1285,6 +1464,16 @@ function ResultCard({
               상세 보기
             </Link>
           )}
+          <Link
+            href={groupInquiryHref}
+            onClick={onGroupInquiry}
+            data-testid="concierge-result-group-inquiry"
+            aria-label={`${item.product_name} 단체 견적 문의`}
+            aria-describedby={summaryId}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+          >
+            견적
+          </Link>
           <button
             type="button"
             onClick={onAdd}

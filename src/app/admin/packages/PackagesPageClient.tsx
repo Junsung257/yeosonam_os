@@ -391,10 +391,19 @@ function PackageOpsQueue({
   ] as const;
   const total = cards.reduce((sum, card) => sum + card.count, 0);
   const activeCards = cards.filter(card => card.count > 0);
+  const priorityCard = activeCards[0];
+  const selectedQueueCard = activeQueue ? cards.find(card => card.id === activeQueue) : undefined;
   const packageQueueSummaryId = 'admin-package-queue-summary';
+  const packageQueueLeadId = 'admin-package-queue-lead';
+  const selectedQueueSummary = selectedQueueCard
+    ? `현재 선택: ${selectedQueueCard.label} ${selectedQueueCard.count}건.`
+    : '큐를 선택하면 해당 상품만 필터링됩니다.';
   const packageQueueSummaryText = total > 0
     ? `상품 액션 큐에 처리할 작업이 ${total}건 있습니다. ${activeCards.map(card => `${card.label} ${card.count}건`).join(', ')}을 우선 확인하세요.`
     : '상품 액션 큐에 대기 중인 작업이 없습니다. 각 큐에서 최신 상품 상태를 확인할 수 있습니다.';
+  const packageQueueLeadText = priorityCard
+    ? `우선 처리: ${priorityCard.label} ${priorityCard.count}건. ${selectedQueueSummary}`
+    : '대기 중인 상품 작업이 없습니다.';
   const toneClass: Record<QueueTone, string> = {
     amber: 'border-amber-200 bg-amber-50 text-amber-800',
     blue: 'border-blue-200 bg-blue-50 text-blue-800',
@@ -403,7 +412,7 @@ function PackageOpsQueue({
   };
 
   return (
-    <section className="mb-3 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+    <section className="mb-3 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs" aria-describedby={`${packageQueueSummaryId} ${packageQueueLeadId}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-admin-base font-bold text-admin-text-2">상품 액션 큐</h2>
@@ -415,6 +424,15 @@ function PackageOpsQueue({
       </div>
       <p id={packageQueueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {packageQueueSummaryText}
+      </p>
+      <p
+        id={packageQueueLeadId}
+        data-testid="admin-package-queue-lead"
+        className={`mt-3 rounded-admin-sm border px-3 py-2 text-admin-xs font-semibold ${
+          priorityCard ? 'border-admin-border-mid bg-admin-bg text-admin-text-2' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        }`}
+      >
+        {packageQueueLeadText}
       </p>
       <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {cards.map(card => {

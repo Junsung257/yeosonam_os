@@ -563,10 +563,15 @@ function TodayWorkQueue({
   const total = rows.reduce((sum, row) => sum + row.count, 0);
   const activeRows = rows.filter(row => row.count > 0);
   const visibleRows = activeRows.length > 0 ? activeRows : rows;
+  const priorityRow = activeRows[0];
   const workQueueSummaryId = 'admin-today-work-summary';
+  const workQueueLeadId = 'admin-today-work-lead';
   const workQueueSummaryText = total > 0
     ? `오늘 처리할 일이 ${total}건 있습니다. ${activeRows.map(row => `${row.label} ${row.count}건`).join(', ')} 순서로 확인할 수 있습니다.`
     : '오늘 처리할 일이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
+  const workQueueLeadText = priorityRow
+    ? `우선 처리: ${priorityRow.label} ${priorityRow.count}건. 다음 액션은 ${priorityRow.action}입니다.`
+    : '대기 중인 운영 작업이 없습니다.';
   const toneClass = {
     danger: 'border-red-200 bg-red-50 text-red-700',
     warn: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -574,7 +579,7 @@ function TodayWorkQueue({
   };
 
   return (
-    <section aria-labelledby="admin-today-work-title" className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+    <section aria-labelledby="admin-today-work-title" aria-describedby={`${workQueueSummaryId} ${workQueueLeadId}`} className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 id="admin-today-work-title" className="text-admin-base font-bold text-text-primary">오늘 처리할 일</h2>
@@ -586,6 +591,15 @@ function TodayWorkQueue({
       </div>
       <p id={workQueueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {workQueueSummaryText}
+      </p>
+      <p
+        id={workQueueLeadId}
+        data-testid="admin-today-work-lead"
+        className={`mt-3 rounded-admin-sm border px-3 py-2 text-admin-xs font-semibold ${
+          priorityRow ? 'border-admin-border-mid bg-admin-bg text-admin-text-2' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        }`}
+      >
+        {workQueueLeadText}
       </p>
       <div className="mt-3 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
         {visibleRows.map(row => {

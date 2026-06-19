@@ -1102,6 +1102,27 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       : reservationConsentMissing
         ? '개인정보 안내에 동의하면 문의를 접수할 수 있어요.'
         : '담당자가 출발 가능일과 인원을 확인해 연락드립니다.';
+  const reservationContextSummaryId = 'reservation-context-summary';
+  const reservationContextTitleId = 'reservation-context-title';
+  const reservationFieldHintId = 'reservation-field-hint';
+  const reservationDialogDescriptionIds = `reservation-inquiry-description ${reservationContextSummaryId} ${reservationFieldHintId}`;
+  const reservationNameDescriptionIds = showReservationNameError
+    ? `${reservationFieldHintId} reservation-name-error`
+    : reservationFieldHintId;
+  const reservationPhoneDescriptionIds = showReservationPhoneError
+    ? `${reservationFieldHintId} reservation-phone-error`
+    : reservationFieldHintId;
+  const reservationConsentDescriptionIds = showReservationConsentError
+    ? `${reservationFieldHintId} reservation-consent-error`
+    : reservationFieldHintId;
+  const reservationSubmitDescriptionIds = reservationSubmitError
+    ? `reservation-form-hint ${reservationContextSummaryId} reservation-submit-error`
+    : `reservation-form-hint ${reservationContextSummaryId}`;
+  const reservationContextItems = [
+    { label: '상품', value: selectedProductName },
+    { label: '출발', value: selectedDate ?? selectedTier?.period_label ?? (formData.date || firstScreenDepartureLabel) },
+    { label: '가격', value: stickyPriceSummaryText },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   // currentDay는 일정표 days.map 루프 내에서 정의됨
 
   return (
@@ -2713,7 +2734,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 예약 폼 바텀시트 ═══ */}
       {showForm && (
-        <div id="package-detail-reservation-dialog" className="fixed inset-0 flex items-end" style={{ zIndex: 70 }} role="dialog" aria-modal="true" aria-labelledby="reservation-inquiry-title" aria-describedby="reservation-inquiry-description" data-testid="package-detail-reservation-dialog">
+        <div id="package-detail-reservation-dialog" className="fixed inset-0 flex items-end" style={{ zIndex: 70 }} role="dialog" aria-modal="true" aria-labelledby="reservation-inquiry-title" aria-describedby={reservationDialogDescriptionIds} data-testid="package-detail-reservation-dialog">
           <button
             type="button"
             aria-label="예약 문의 배경 닫기"
@@ -2741,6 +2762,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 ? '빠른 시간 내에 담당자가 출발 가능일과 인원을 확인해 연락드립니다.'
                 : '이름과 연락처만 남기면 담당자가 출발 가능일과 인원을 확인해 연락드립니다.'}
             </p>
+            <p id={reservationFieldHintId} className="sr-only">
+              필수 입력은 이름, 연락처, 개인정보 동의입니다. 희망 출발일과 요청사항은 선택 입력입니다.
+            </p>
             {submitted ? (
               <div className="text-center py-8">
                 <p className="text-3xl mb-2">✅</p>
@@ -2749,18 +2773,26 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               </div>
             ) : (
               <>
-                <div className="bg-slate-50 border border-slate-100 rounded-xl p-3 mb-4 text-xs text-text-primary">
-                  <p className="font-bold">{pkg.title}</p>
-                  {selectedTier ? (
-                    <p className="mt-1">📅 {selectedTier.period_label} — ₩{selectedTier.adult_price?.toLocaleString()}</p>
-                  ) : displayPrice && displayPrice < Infinity ? (
-                    <p className="mt-1">₩{displayPrice.toLocaleString()}~ / 1인</p>
-                  ) : null}
-                </div>
+                <section
+                  id={reservationContextSummaryId}
+                  aria-labelledby={reservationContextTitleId}
+                  className="mb-4 rounded-xl border border-slate-100 bg-slate-50 p-3 text-xs text-text-primary"
+                  data-testid="package-detail-reservation-context"
+                >
+                  <h4 id={reservationContextTitleId} className="mb-2 font-bold text-slate-900">문의 조건 요약</h4>
+                  <dl className="grid gap-1.5">
+                    {reservationContextItems.map((item) => (
+                      <div key={item.label} className="grid grid-cols-[3.5rem_minmax(0,1fr)] gap-2">
+                        <dt className="font-semibold text-slate-500">{item.label}</dt>
+                        <dd className="min-w-0 truncate font-bold text-slate-800">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </section>
                 <div className="space-y-3">
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">이름 <span className="text-brand">*</span></span>
-                    <input ref={reservationNameInputRef} id="reservation-name" name="name" autoComplete="name" aria-describedby={showReservationNameError ? 'reservation-name-error' : 'reservation-inquiry-description'} aria-invalid={showReservationNameError} placeholder="홍길동" value={formData.name} onChange={e => { setFormData(f => ({ ...f, name: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
+                    <input ref={reservationNameInputRef} id="reservation-name" name="name" autoComplete="name" aria-describedby={reservationNameDescriptionIds} aria-invalid={showReservationNameError} placeholder="홍길동" value={formData.name} onChange={e => { setFormData(f => ({ ...f, name: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                     {showReservationNameError && (
                       <p id="reservation-name-error" className="mt-1 text-xs font-semibold text-red-600" role="alert">이름을 입력해주세요.</p>
@@ -2768,7 +2800,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </label>
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">연락처 <span className="text-brand">*</span></span>
-                    <input ref={reservationPhoneInputRef} id="reservation-phone" name="phone" autoComplete="tel" inputMode="tel" aria-describedby={showReservationPhoneError ? 'reservation-phone-error' : undefined} aria-invalid={showReservationPhoneError} placeholder="010-0000-0000" value={formData.phone} onChange={e => { setFormData(f => ({ ...f, phone: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
+                    <input ref={reservationPhoneInputRef} id="reservation-phone" name="phone" autoComplete="tel" inputMode="tel" aria-describedby={reservationPhoneDescriptionIds} aria-invalid={showReservationPhoneError} placeholder="010-0000-0000" value={formData.phone} onChange={e => { setFormData(f => ({ ...f, phone: e.target.value })); if (reservationSubmitError) setReservationSubmitError(''); }}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                     {showReservationPhoneError && (
                       <p id="reservation-phone-error" className="mt-1 text-xs font-semibold text-red-600" role="alert">연락처를 입력해주세요.</p>
@@ -2776,12 +2808,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   </label>
                   {!selectedTier && <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">희망 출발일</span>
-                    <input name="departureDate" autoComplete="off" placeholder="예: 7월 23일 또는 날짜 미정" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
+                    <input id="reservation-departure-date" name="departureDate" autoComplete="off" aria-describedby={reservationFieldHintId} placeholder="예: 7월 23일 또는 날짜 미정" value={formData.date} onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
                       className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400" />
                   </label>}
                   <label className="block">
                     <span className="mb-1.5 block text-xs font-bold text-slate-700">요청사항</span>
-                    <textarea name="message" placeholder="인원, 객실, 부모님 동행 여부 등" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
+                    <textarea id="reservation-message" name="message" aria-describedby={reservationFieldHintId} placeholder="인원, 객실, 부모님 동행 여부 등" value={formData.message} onChange={e => setFormData(f => ({ ...f, message: e.target.value }))}
                       rows={2} className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400 resize-none" />
                   </label>
                   <div>
@@ -2796,7 +2828,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                           if (reservationSubmitError) setReservationSubmitError('');
                         }}
                         aria-invalid={showReservationConsentError}
-                        aria-describedby={showReservationConsentError ? 'reservation-consent-error' : undefined}
+                        aria-describedby={reservationConsentDescriptionIds}
                         className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
                       />
                       <span>
@@ -2827,7 +2859,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   <button onClick={handleSubmit} disabled={isSubmitting}
                     aria-busy={isSubmitting}
                     aria-disabled={!reservationFormReady}
-                    aria-describedby={reservationSubmitError ? 'reservation-form-hint reservation-submit-error' : 'reservation-form-hint'}
+                    aria-describedby={reservationSubmitDescriptionIds}
                     title={!reservationFormReady ? '필수 항목을 확인해 주세요' : undefined}
                     data-analytics-id="reservation_sheet_submit"
                     data-testid="package-detail-reservation-submit"

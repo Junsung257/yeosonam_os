@@ -380,8 +380,18 @@ export default function GroupInquiryPage() {
   const rfqConditionSummaryId = 'group-inquiry-rfq-condition-summary';
   const rfqContactHelpId = 'group-inquiry-rfq-contact-help';
   const rfqSubmitDescriptionId = 'group-inquiry-rfq-submit-description';
+  const handoffContextDescriptionId = 'group-inquiry-handoff-context-description';
   const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
   const intentChipStatusId = 'group-inquiry-intent-chip-status';
+  const handoffContextSummaryText = [
+    handoffSource ? `유입 경로는 ${handoffSource}입니다.` : null,
+    selectedIntent?.label ? `상담 목적은 ${selectedIntent.label}입니다.` : null,
+    selectedIntent?.partyType ? `동행 유형은 ${PARTY_LABELS[selectedIntent.partyType] ?? selectedIntent.partyType}입니다.` : null,
+    `지역은 ${getSummaryValue(extractedSummary, 'destination')}입니다.`,
+    `예산은 ${getSummaryValue(extractedSummary, 'budget')}입니다.`,
+    selectedProducts.length > 0 ? `관심 상품은 ${selectedProducts.join(', ')}입니다.` : null,
+    requiredReady ? '필수 조건이 준비되어 견적 요청을 보낼 수 있습니다.' : '견적 요청에는 목적지, 인원, 예산 조건이 필요합니다.',
+  ].filter(Boolean).join(' ');
   const rfqConditionSummaryText = FIELD_GROUPS
     .map((field) => `${field.label} ${getSummaryValue(extractedSummary, field.key)}`)
     .join(', ');
@@ -390,7 +400,7 @@ export default function GroupInquiryPage() {
     : selectedIntent
       ? `${selectedIntent.label} 조건이 선택되어 상담 전달 조건에 반영되었습니다.`
       : '빠른 시작 조건을 선택하면 AI 상담이 바로 시작됩니다.';
-  const rfqContactDescriptionIds = `${rfqConditionSummaryId} ${rfqContactHelpId}`;
+  const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${rfqConditionSummaryId} ${rfqContactHelpId}`;
   const contactNameDescriptionIds = contactErrors.contactName
     ? `${rfqContactDescriptionIds} contact-name-error`
     : rfqContactDescriptionIds;
@@ -401,6 +411,7 @@ export default function GroupInquiryPage() {
     ? `${rfqContactDescriptionIds} privacy-consent-error`
     : rfqContactDescriptionIds;
   const rfqSubmitDescriptionIds = [
+    handoffContextDescriptionId,
     rfqConditionSummaryId,
     rfqSubmitDescriptionId,
     contactErrors.submit ? 'group-inquiry-submit-error' : null,
@@ -663,6 +674,9 @@ export default function GroupInquiryPage() {
 
   return (
     <main className="min-h-dvh bg-[#F8FAFC] pb-[calc(env(safe-area-inset-bottom)+144px)] md:pb-0">
+      <p id={handoffContextDescriptionId} className="sr-only">
+        {handoffContextSummaryText}
+      </p>
       <p id="group-inquiry-status" className="sr-only" aria-live="polite" aria-atomic="true">
         {statusMessage}
       </p>
@@ -757,6 +771,7 @@ export default function GroupInquiryPage() {
           <section
             data-testid="group-inquiry-handoff-summary"
             aria-labelledby="handoff-summary-title"
+            aria-describedby={handoffContextDescriptionId}
             className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm"
           >
             <div className="flex items-start gap-3">
@@ -764,9 +779,19 @@ export default function GroupInquiryPage() {
                 <ClipboardList className="h-5 w-5" aria-hidden="true" />
               </div>
               <div className="min-w-0 flex-1">
-                <h2 id="handoff-summary-title" className="text-sm font-extrabold text-gray-950">
-                  이어받은 상담 조건
-                </h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 id="handoff-summary-title" className="text-sm font-extrabold text-gray-950">
+                    이어받은 상담 조건
+                  </h2>
+                  {handoffSource && (
+                    <span
+                      data-testid="group-inquiry-handoff-source"
+                      className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-blue-700"
+                    >
+                      {handoffSource}
+                    </span>
+                  )}
+                </div>
                 <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
                   <div data-testid="group-inquiry-handoff-intent" className="rounded-lg bg-[#F8FAFC] px-3 py-2">
                     <dt className="text-xs font-semibold text-gray-500">의도</dt>
@@ -1070,6 +1095,7 @@ export default function GroupInquiryPage() {
               <div
                 className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
                 aria-label="상담 전달 조건"
+                aria-describedby={handoffContextDescriptionId}
                 data-testid="group-inquiry-sticky-handoff-summary"
               >
                 {stickyHandoffItems.map((item) => (
@@ -1096,7 +1122,7 @@ export default function GroupInquiryPage() {
                 onKeyDown={handleKeyDown}
                 disabled={loading}
                 aria-invalid={Boolean(inputError)}
-                aria-describedby={inputError ? 'group-inquiry-message-error' : 'group-inquiry-message-help'}
+                aria-describedby={inputError ? `${handoffContextDescriptionId} group-inquiry-message-error` : `${handoffContextDescriptionId} group-inquiry-message-help`}
                 placeholder="예: 부산 출발, 성인 20명, 1인 100만원대, 베트남 다낭"
                 rows={2}
                 className="min-h-14 flex-1 resize-none rounded-lg border border-[#E5E7EB] px-4 py-3 text-sm leading-relaxed outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
@@ -1105,7 +1131,7 @@ export default function GroupInquiryPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                aria-describedby={loading ? 'group-inquiry-message-help group-inquiry-status' : 'group-inquiry-message-help'}
+                aria-describedby={loading ? `${handoffContextDescriptionId} group-inquiry-message-help group-inquiry-status` : `${handoffContextDescriptionId} group-inquiry-message-help`}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-brand text-white hover:bg-[#1B64DA] disabled:opacity-50"
                 aria-label="메시지 보내기"
               >

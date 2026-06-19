@@ -23,6 +23,10 @@ const commandTimeoutKillGraceMs = Number(
   argValue('--command-timeout-kill-grace-ms', process.env.MARKETING_READINESS_COMMAND_TIMEOUT_KILL_GRACE_MS || '5000'),
 );
 const providedCookie = argValue('--cookie', process.env.MARKETING_READINESS_COOKIE || '');
+const vercelProtectionBypassSecret = argValue(
+  '--vercel-protection-bypass',
+  process.env.VERCEL_AUTOMATION_BYPASS_SECRET || process.env.VERCEL_PROTECTION_BYPASS_SECRET || '',
+);
 const marketingCheckCardNewsId = argValue('--card-news-id', process.env.MARKETING_CHECK_CARD_NEWS_ID || '');
 const marketingCheckVariantGroupId = argValue('--variant-group-id', process.env.MARKETING_CHECK_VARIANT_GROUP_ID || '');
 const requireDynamicProbes = args.has('--require-dynamic-probes') || process.env.MARKETING_READINESS_REQUIRE_DYNAMIC_PROBES === '1';
@@ -63,6 +67,12 @@ function requireExcludes(name, path, needles) {
     file: path,
     present,
   });
+}
+
+function defaultRequestHeaders() {
+  return vercelProtectionBypassSecret
+    ? { 'x-vercel-protection-bypass': vercelProtectionBypassSecret }
+    : {};
 }
 
 function normalizeSlashes(value) {
@@ -2083,6 +2093,7 @@ async function fetchWithTimeout(url, options = {}) {
       ...options,
       headers: {
         Accept: 'application/json,text/html;q=0.9,*/*;q=0.5',
+        ...defaultRequestHeaders(),
         ...(options.headers || {}),
       },
     });

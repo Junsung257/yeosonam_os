@@ -856,13 +856,22 @@ function BookingWorkQueue({
   ];
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const activeItems = items.filter(item => item.count > 0);
+  const priorityItem = activeItems[0];
+  const selectedQueueItem = activeKey ? items.find(item => item.key === activeKey) : undefined;
   const queueSummaryId = 'admin-booking-work-queue-summary';
+  const queueLeadId = 'admin-booking-work-queue-lead';
+  const selectedQueueSummary = selectedQueueItem
+    ? `현재 선택: ${selectedQueueItem.label} ${selectedQueueItem.count}건.`
+    : '큐를 선택하면 해당 예약만 필터링됩니다.';
   const queueSummaryText = total > 0
     ? `오늘 처리할 예약 업무가 ${total}건 있습니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
     : '오늘 처리할 예약 업무가 없습니다. 큐 버튼으로 각 예약 필터의 최신 상태를 확인할 수 있습니다.';
+  const queueLeadText = priorityItem
+    ? `우선 처리: ${priorityItem.label} ${priorityItem.count}건. ${selectedQueueSummary}`
+    : '대기 중인 예약 작업이 없습니다.';
 
   return (
-    <section className="mb-3 shrink-0 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs">
+    <section className="mb-3 shrink-0 rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs" aria-describedby={`${queueSummaryId} ${queueLeadId}`}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div>
           <h2 className="text-admin-base font-bold text-admin-text-2">오늘 처리할 예약</h2>
@@ -874,6 +883,15 @@ function BookingWorkQueue({
       </div>
       <p id={queueSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {queueSummaryText}
+      </p>
+      <p
+        id={queueLeadId}
+        data-testid="admin-booking-work-queue-lead"
+        className={`mb-3 rounded-admin-sm border px-3 py-2 text-admin-xs font-semibold ${
+          priorityItem ? 'border-admin-border-mid bg-admin-bg text-admin-text-2' : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        }`}
+      >
+        {queueLeadText}
       </p>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
         {items.map(item => {

@@ -30,6 +30,10 @@ const HAS_EXPLICIT_REF_CODE = Boolean(REF_CODE_ARG || process.env.OPEN_CHECK_REF
 const VERCEL_SCOPE = argValue('--vercel-scope', process.env.VERCEL_SCOPE || 'zzbaa0317-4596s-projects');
 const VERCEL_LOG_TARGET = argValue('--vercel-log-target', process.env.VERCEL_LOG_TARGET || BASE_URL);
 const OPEN_CHECK_AUTH_COOKIE = argValue('--auth-cookie', process.env.OPEN_CHECK_AUTH_COOKIE || '');
+const VERCEL_PROTECTION_BYPASS_SECRET = argValue(
+  '--vercel-protection-bypass',
+  process.env.VERCEL_AUTOMATION_BYPASS_SECRET || process.env.VERCEL_PROTECTION_BYPASS_SECRET || '',
+);
 const TIMEOUT_MS = Number(argValue('--timeout-ms', process.env.OPEN_CHECK_TIMEOUT_MS || '30000'));
 const BLOG_AUDIT_LIMIT = Number(argValue('--blog-audit-limit', process.env.OPEN_CHECK_BLOG_AUDIT_LIMIT || '10'));
 const BLOG_AUDIT_SITE_LIMIT = Number(argValue('--blog-audit-site-limit', process.env.OPEN_CHECK_BLOG_AUDIT_SITE_LIMIT || '50'));
@@ -169,6 +173,12 @@ function markProtectedDeployment() {
   protectedDeploymentDetected = true;
 }
 
+function vercelProtectionHeaders() {
+  return VERCEL_PROTECTION_BYPASS_SECRET
+    ? { 'x-vercel-protection-bypass': VERCEL_PROTECTION_BYPASS_SECRET }
+    : {};
+}
+
 function quoteCmdArg(value) {
   const s = String(value);
   if (!/[()\s^&|<>"]/.test(s)) return s;
@@ -225,7 +235,11 @@ async function fetchUrl(name, path, options = {}) {
         method: options.method || 'GET',
         redirect: options.redirect || 'manual',
         signal: controller.signal,
-        headers: { Accept: 'text/html,application/json;q=0.9,*/*;q=0.5', ...(options.headers || {}) },
+        headers: {
+          Accept: 'text/html,application/json;q=0.9,*/*;q=0.5',
+          ...vercelProtectionHeaders(),
+          ...(options.headers || {}),
+        },
       });
       const shouldReadBody = options.readBody !== false || res.status === 401;
       const body = shouldReadBody ? await res.text() : '';
@@ -463,13 +477,13 @@ function checkVercelLogs(level) {
     { timeout: 120000 },
   );
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
-  if (!result.ok && /login|auth|token|unauthorized|forbidden|No existing credentials/i.test(output || result.message)) {
+  if (!result.ok && /login|auth|token|unauthorized|forbidden|No existing credentials|do not have access|specified account|scope-not-accessible/i.test(output || result.message)) {
     addCheck(`vercel:${level}-logs`, 'blocked', {
       ms: result.ms,
       target: VERCEL_LOG_TARGET,
       exitStatus: result.status ?? null,
       signal: result.signal ?? '',
-      notes: 'Vercel token unavailable; skipping recent log verification',
+      notes: 'Vercel token or scope cannot access recent logs; skipping recent log verification',
     });
     return;
   }
@@ -582,7 +596,7 @@ function checkRuntimeEnvReadiness() {
 }
 
 function opsRequestHeaders() {
-  const headers = { Accept: 'application/json' };
+  const headers = { Accept: 'application/json', ...vercelProtectionHeaders() };
   if (process.env.CRON_SECRET) {
     headers.Authorization = `Bearer ${process.env.CRON_SECRET}`;
     return { headers, authMode: 'cron-secret' };
