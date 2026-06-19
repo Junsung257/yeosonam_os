@@ -483,7 +483,19 @@ function TaskCard({
           : 'border-admin-border-mid hover:border-admin-border-strong hover:shadow-admin-xs'
       }`}
     >
-      <div className="p-4 flex items-start gap-4" onClick={onOpen}>
+      <div
+        className="p-4 flex items-start gap-4"
+        role="button"
+        tabIndex={0}
+        aria-label={`업무 열기: ${task.title}`}
+        onClick={onOpen}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onOpen();
+          }
+        }}
+      >
         {/* Priority pill */}
         <div className="pt-0.5">
           <span className={`inline-block px-2 py-0.5 text-[10px] rounded-admin-xs font-bold ${PRIORITY_BADGE_CLASS[task.priority]}`}>
@@ -509,9 +521,12 @@ function TaskCard({
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-1.5 shrink-0" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
-            onClick={onResolve}
+            onClick={(event) => {
+              event.stopPropagation();
+              onResolve();
+            }}
             className="h-8 px-3 text-admin-sm rounded-admin-sm bg-success text-white hover:opacity-90 transition-opacity font-medium"
             title="이 Task 를 수동으로 종결합니다"
           >
@@ -520,7 +535,10 @@ function TaskCard({
 
           <div className="relative">
             <button
-              onClick={onToggleSnoozeMenu}
+              onClick={(event) => {
+                event.stopPropagation();
+                onToggleSnoozeMenu();
+              }}
               className="h-8 px-3 text-admin-sm rounded-admin-sm border border-admin-border-mid text-admin-text-2 hover:bg-admin-surface-2 hover:border-admin-border-strong transition-colors font-medium"
               title="나중에 다시 알림"
             >
@@ -531,7 +549,10 @@ function TaskCard({
                 {SNOOZE_PRESETS.map(preset => (
                   <button
                     key={preset.label}
-                    onClick={() => onSnooze(preset.hours)}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onSnooze(preset.hours);
+                    }}
                     className="w-full text-left px-3 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 hover:text-admin-text transition-colors"
                   >
                     {preset.label}

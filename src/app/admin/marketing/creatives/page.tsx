@@ -249,18 +249,18 @@ export default function CreativesPage() {
           <h2 className="text-sm font-semibold text-admin-text-2">소재 생성 설정</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-medium text-admin-muted block mb-1">상품 선택 *</label>
-              <select value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)}
+              <label htmlFor="creative-package" className="text-xs font-medium text-admin-muted block mb-1">상품 선택 *</label>
+              <select id="creative-package" value={selectedPkg} onChange={e => setSelectedPkg(e.target.value)}
                 className="w-full border border-admin-border-mid rounded-lg px-3 py-2 text-sm">
                 <option value="">상품 선택...</option>
                 {packages.map(p => <option key={p.id} value={p.id}>{p.title} ({p.destination})</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-admin-muted block mb-1">채널</label>
+              <div className="text-xs font-medium text-admin-muted block mb-1">채널</div>
               <div className="flex gap-2">
                 {['meta', 'naver', 'google'].map(ch => (
-                  <button key={ch} onClick={() => toggleChannel(ch)}
+                  <button key={ch} type="button" aria-pressed={channels.includes(ch)} onClick={() => toggleChannel(ch)}
                     className={`px-3 py-1.5 text-xs rounded-lg border transition ${channels.includes(ch) ? 'bg-violet-50 border-violet-300 text-violet-700' : 'border-admin-border-mid text-admin-muted'}`}>
                     {CHANNEL_LABELS[ch]}
                   </button>
@@ -271,19 +271,19 @@ export default function CreativesPage() {
           {channels.includes('meta') && (
             <div className="flex gap-6">
               <div>
-                <label className="text-xs text-admin-muted">캐러셀 변형 수</label>
+                <div className="text-xs text-admin-muted">캐러셀 변형 수</div>
                 <div className="flex items-center gap-2 mt-1">
                   {[1,2,3].map(n => (
-                    <button key={n} onClick={() => setCarouselCount(n)}
+                    <button key={n} type="button" aria-label={`캐러셀 변형 ${n}개`} aria-pressed={carouselCount === n} onClick={() => setCarouselCount(n)}
                       className={`w-8 h-8 rounded-lg text-xs font-medium transition ${carouselCount === n ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted'}`}>{n}</button>
                   ))}
                 </div>
               </div>
               <div>
-                <label className="text-xs text-admin-muted">단일이미지 변형 수</label>
+                <div className="text-xs text-admin-muted">단일이미지 변형 수</div>
                 <div className="flex items-center gap-2 mt-1">
                   {[1,2,3].map(n => (
-                    <button key={n} onClick={() => setSingleCount(n)}
+                    <button key={n} type="button" aria-label={`단일이미지 변형 ${n}개`} aria-pressed={singleCount === n} onClick={() => setSingleCount(n)}
                       className={`w-8 h-8 rounded-lg text-xs font-medium transition ${singleCount === n ? 'bg-violet-600 text-white' : 'bg-admin-surface-2 text-admin-muted'}`}>{n}</button>
                   ))}
                 </div>

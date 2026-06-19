@@ -104,18 +104,22 @@ export default function LedgerViewer({ bookingId, onClose }: Props) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="Close ledger viewer"
+        aria-label="원장 보기 닫기"
         className="absolute inset-0 bg-black/40"
         onClick={onClose}
       />
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="ledger-viewer-title"
+        aria-describedby="ledger-viewer-description"
         className="relative bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col"
       >
         {/* 헤더 */}
         <div className="flex items-center justify-between p-4 border-b">
           <div>
-            <h2 className="text-base font-bold text-slate-800">📒 원장 (append-only ledger)</h2>
-            <p className="text-xs text-slate-500 mt-0.5">
+            <h2 id="ledger-viewer-title" className="text-base font-bold text-slate-800">📒 원장 (append-only ledger)</h2>
+            <p id="ledger-viewer-description" className="text-xs text-slate-500 mt-0.5">
               {data?.booking.booking_no ?? bookingId.slice(0, 8)} · 거래는 immutable, 매 변경마다 새 entry 추가
             </p>
           </div>

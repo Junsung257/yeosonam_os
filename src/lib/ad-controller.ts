@@ -23,7 +23,7 @@
  */
 
 import { fetchAdAccountSnapshot, isMetaConfigured } from '@/lib/meta-api';
-import { getSecret } from '@/lib/secret-registry';
+import { resolveSlackAlertWebhookUrl } from '@/lib/slack-alert';
 import {
   fetchNaverKeywordIdeas,
   isNaverAdsConfigured,
@@ -149,7 +149,7 @@ export async function checkAndAlertLowBalance(
   console.error('[AdController] 잔액 긴급 알림:\n' + message);
 
   // Slack 발송 — SLACK_ALERT_WEBHOOK_URL 또는 SLACK_ALERTS_WEBHOOK 재사용 (이미 운영 알림 채널)
-  const webhook = getSecret('SLACK_ALERT_WEBHOOK_URL') ?? getSecret('SLACK_ALERTS_WEBHOOK');
+  const webhook = resolveSlackAlertWebhookUrl();
   if (webhook) {
     try {
       const res = await fetch(webhook, {

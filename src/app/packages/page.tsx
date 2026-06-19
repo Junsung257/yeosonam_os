@@ -1,10 +1,16 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Suspense } from 'react';
 import PackagesClient from './PackagesClient';
 import Loading from './loading';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 
 const BASE_URL = (process.env.NEXT_PUBLIC_BASE_URL || process.env.NEXT_PUBLIC_SITE_URL || 'https://www.yeosonam.com')
   .replace(/\/+$/, '');
+const PACKAGES_SR_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
+  source: 'packages_sr_link',
+  query: '패키지 목록에서 여행 상품 문의',
+});
 
 // 옵션 4a — Page 가 searchParams 안 받음 → 정적 prerender (`○`).
 //   클라이언트(PackagesClient) 가 useSearchParams + SWR 로 `/api/packages/search` fetch.
@@ -29,7 +35,7 @@ export default function PackagesPage() {
   return (
     <>
       <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <a href="/group-inquiry" className="sr-only">여행 상품 문의</a>
+      <Link href={PACKAGES_SR_GROUP_INQUIRY_HREF} className="sr-only">여행 상품 문의</Link>
       <Suspense fallback={<Loading />}>
         <PackagesClient />
       </Suspense>

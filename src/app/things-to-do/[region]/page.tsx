@@ -16,7 +16,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl, isSafeImageSrc } from '@/lib/image-url';
-import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 86400; // 1d
@@ -311,15 +311,19 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
                 const photo = pickAttractionPhotoUrl(a.photos);
                 return (
                   <article key={a.id} className="overflow-hidden rounded-lg border border-neutral-200 bg-white">
-                    {photo ? (
-                      <SafeCoverImg
-                        src={photo}
-                        alt={a.name}
-                        loading="lazy"
-                        className="h-40 w-full object-cover"
-                        fallback={<div className="h-40 w-full bg-neutral-100" aria-hidden />}
-                      />
-                    ) : null}
+                    <div className="relative h-40 w-full bg-neutral-100">
+                      {photo ? (
+                        <SafeCoverImg
+                          src={photo}
+                          alt={a.name}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                          fallback={<DestinationImageFallback title={a.name} destination={data.region} compact />}
+                        />
+                      ) : (
+                        <DestinationImageFallback title={a.name} destination={data.region} compact />
+                      )}
+                    </div>
                     <div className="p-4">
                       <h3 className="font-semibold">
                         {a.emoji && <span className="mr-1">{a.emoji}</span>}
@@ -355,15 +359,21 @@ export default async function ThingsToDoRegionPage({ params }: { params: Promise
               >
                 {(() => {
                   const cover = pickPackageCoverUrl(p);
-                  return cover ? (
-                    <SafeCoverImg
-                      src={cover}
-                      alt={p.title}
-                      loading="lazy"
-                      className="h-32 w-full object-cover"
-                      fallback={<div className="h-32 w-full bg-neutral-100" aria-hidden />}
-                    />
-                  ) : null;
+                  return (
+                    <div className="relative h-32 w-full bg-neutral-100">
+                      {cover ? (
+                        <SafeCoverImg
+                          src={cover}
+                          alt={p.title}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                          fallback={<DestinationImageFallback title={p.title} destination={data.region} compact />}
+                        />
+                      ) : (
+                        <DestinationImageFallback title={p.title} destination={data.region} compact />
+                      )}
+                    </div>
+                  );
                 })()}
                 <div className="p-3">
                   <h3 className="text-sm font-semibold line-clamp-2">{p.title}</h3>

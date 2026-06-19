@@ -306,6 +306,16 @@ export default function AdminDestinationsPage() {
                   <div
                     className="flex items-center gap-4 px-5 py-4 cursor-pointer hover:bg-admin-bg transition"
                     onClick={() => setExpanded(isExpanded ? null : row.destination)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        setExpanded(isExpanded ? null : row.destination);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                    aria-expanded={isExpanded}
+                    aria-controls={`destination-details-${row.destination}`}
                   >
                     <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${status.color}`}>
                       {status.icon} {status.label}
@@ -322,13 +332,14 @@ export default function AdminDestinationsPage() {
 
                   {/* 확장 패널 */}
                   {isExpanded && (
-                    <div className="border-t border-admin-border p-5 space-y-6">
+                    <div id={`destination-details-${row.destination}`} className="border-t border-admin-border p-5 space-y-6">
                       {/* 타이틀 편집 */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-bold text-admin-muted block mb-1.5">TAGLINE (H1)</label>
+                          <label htmlFor={`destination-tagline-${row.destination}`} className="text-xs font-bold text-admin-muted block mb-1.5">TAGLINE (H1)</label>
                           <div className="flex gap-2">
                             <input
+                              id={`destination-tagline-${row.destination}`}
                               value={edit.tagline ?? row.metadata?.tagline ?? ''}
                               onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], tagline: e.target.value } }))}
                               placeholder="감성 타이틀 입력..."
@@ -344,8 +355,9 @@ export default function AdminDestinationsPage() {
                           </div>
                         </div>
                         <div>
-                          <label className="text-xs font-bold text-admin-muted block mb-1.5">HERO_TAGLINE (서브설명)</label>
+                          <label htmlFor={`destination-hero-tagline-${row.destination}`} className="text-xs font-bold text-admin-muted block mb-1.5">HERO_TAGLINE (서브설명)</label>
                           <input
+                            id={`destination-hero-tagline-${row.destination}`}
                             value={edit.hero_tagline ?? row.metadata?.hero_tagline ?? ''}
                             onChange={e => setEditing(p => ({ ...p, [row.destination]: { ...p[row.destination], hero_tagline: e.target.value } }))}
                             placeholder="1~2문장 서브 설명..."
@@ -366,7 +378,7 @@ export default function AdminDestinationsPage() {
 
                       {/* 히어로 사진 */}
                       <div>
-                        <label className="text-xs font-bold text-admin-muted block mb-3">히어로 사진</label>
+                        <div className="text-xs font-bold text-admin-muted block mb-3">히어로 사진</div>
 
                         {/* 현재 사진 */}
                         {row.metadata?.hero_image_url && (

@@ -12,7 +12,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
-import { openKakaoChannel } from '@/lib/kakaoChannel';
+import { GROUP_INQUIRY_PRODUCT_LABEL } from '@/lib/group-inquiry-handoff';
+import { getKakaoChannelChatUrl, openKakaoChannel } from '@/lib/kakaoChannel';
 import { trackEngagement } from '@/lib/tracker';
 
 interface Message {
@@ -33,6 +34,7 @@ interface RfqExtracted {
   child_count?: number;
   budget_per_person?: number;
   total_budget?: number;
+  budget_label?: string;
   departure_date_from?: string;
   departure_date_to?: string;
   duration_nights?: number;
@@ -65,6 +67,9 @@ const FIELD_GROUPS = [
   { key: 'special', label: '요청', keys: ['special_requests'] },
 ];
 
+const KAKAO_ACTION_DESCRIPTION_ID = 'group-inquiry-kakao-action-description';
+const KAKAO_STATUS_ID = 'group-inquiry-kakao-status';
+
 const INTENT_CHIPS: IntentChip[] = [
   {
     label: '부산 출발 60대 효도 여행',
@@ -96,6 +101,62 @@ const INTENT_CHIPS: IntentChip[] = [
 const INITIAL_AI_MESSAGE =
   '안녕하세요. 단체여행 전문 컨시어지 AI입니다. 목적지, 인원, 예산만 먼저 알려주시면 견적 요청에 필요한 조건을 빠르게 정리해드릴게요.';
 
+const INTENT_LABELS: Record<string, string> = {
+  filial_trip: '효도 여행',
+  senior_family_trip: '효도 여행',
+  no_shopping_family: '노쇼핑 가족여행',
+  no_shopping_family_trip: '노쇼핑 가족여행',
+  group_workshop: '단체 워크샵',
+  company_workshop: '단체 워크샵',
+  golf_compare: '골프 비교',
+  golf_comparison: '골프 비교',
+  group_trip: '단체 여행',
+  family: '부모님/가족',
+  budget: '예산 맞춤',
+  no_shopping: '쇼핑 없는 상품',
+  consult: '상담 추천',
+};
+
+const PARTY_LABELS: Record<string, string> = {
+  senior_family: '60대 이상 가족',
+  family: '가족',
+  group_20: '20명 단체',
+  company: '기업/워크샵',
+  golf: '골프팀',
+  golf_group: '골프 모임',
+  club: '동호회/모임',
+  couple: '커플/허니문',
+  group: '단체',
+  group_landing: '단체 문의',
+};
+
+function resolveHandoffPartyType(intent: string | null, partyType: string | null): string | null {
+  const cleanPartyType = partyType?.trim();
+  if (cleanPartyType) return cleanPartyType;
+
+  const source = String(intent ?? '').trim().toLowerCase();
+  if (!source) return null;
+  if (/가족|효도|family|parent/.test(source)) return 'family';
+  if (/골프|golf/.test(source)) return 'golf_group';
+  if (/허니문|honeymoon|신혼|couple/.test(source)) return 'couple';
+  if (/단체|워크샵|workshop|group/.test(source)) return 'group';
+  return null;
+}
+
+function resolveHandoffIntentLabel(intent: string | null, partyType: string | null): string {
+  const cleanIntent = intent?.trim();
+  if (!cleanIntent) return 'AI 상담 조건';
+  if (INTENT_LABELS[cleanIntent]) return INTENT_LABELS[cleanIntent];
+
+  const source = `${cleanIntent} ${partyType ?? ''}`.toLowerCase();
+  if (/노쇼핑|no.?shopping/.test(source)) return '노쇼핑 가족여행';
+  if (/효도|senior|filial|parent/.test(source)) return '효도 여행';
+  if (/골프|golf/.test(source)) return '골프 비교';
+  if (/허니문|honeymoon|신혼|couple/.test(source)) return '허니문/커플 여행';
+  if (/단체|워크샵|workshop|group/.test(source)) return '단체 여행';
+  return cleanIntent;
+}
+
 function hasValue(value: unknown): boolean {
   if (value === null || value === undefined) return false;
   if (typeof value === 'string') return value.trim().length > 0;
@@ -106,6 +167,36 @@ function hasValue(value: unknown): boolean {
 function formatMoney(value?: number): string {
   if (!value || value <= 0) return '미정';
   return `${value.toLocaleString('ko-KR')}원`;
+}
+
+function parseKoreanBudget(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const normalized = value.replace(/,/g, '').trim();
+  const rawNumber = normalized.match(/\d+(?:\.\d+)?/)?.[0];
+  if (!rawNumber) return undefined;
+  const numeric = Number(rawNumber);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  if (normalized.includes('억')) return Math.round(numeric * 100000000);
+  if (normalized.includes('천만')) return Math.round(numeric * 10000000);
+  if (normalized.includes('백만')) return Math.round(numeric * 1000000);
+  if (normalized.includes('만원')) return Math.round(numeric * 10000);
+  return Math.round(numeric);
+}
+
+function parsePartyCount(value: string | null): number | undefined {
+  if (!value) return undefined;
+  const directCount = value.match(/(\d+)\s*명/)?.[1] ?? value.match(/group_(\d+)/)?.[1];
+  if (!directCount) return undefined;
+  const count = Number(directCount);
+  return Number.isFinite(count) && count > 0 ? count : undefined;
+}
+
+function decodeListParam(value: string | null): string[] {
+  if (!value) return [];
+  return value.split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 8);
 }
 
 function getSummaryValue(extracted: RfqExtracted, key: string): string {
@@ -119,6 +210,7 @@ function getSummaryValue(extracted: RfqExtracted, key: string): string {
       return `성인 ${adults || 0}명${children ? `, 아동 ${children}명` : ''}`;
     }
     case 'budget':
+      if (typeof extracted.budget_label === 'string' && extracted.budget_label.trim()) return extracted.budget_label;
       return extracted.budget_per_person
         ? `1인 ${formatMoney(extracted.budget_per_person)}`
         : formatMoney(extracted.total_budget);
@@ -157,8 +249,15 @@ function buildEscalationSummary(extracted: RfqExtracted, messages: Message[]): s
 
 export default function GroupInquiryPage() {
   const router = useRouter();
+  const appliedHandoffRef = useRef('');
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const contactNameRef = useRef<HTMLInputElement>(null);
+  const contactPhoneRef = useRef<HTMLInputElement>(null);
+  const privacyConsentRef = useRef<HTMLInputElement>(null);
+  const summaryErrorRef = useRef<HTMLParagraphElement>(null);
+  const summaryKakaoRef = useRef<HTMLButtonElement>(null);
+  const kakaoStatusRef = useRef<HTMLDivElement | null>(null);
 
   const [messages, setMessages] = useState<Message[]>([
     { role: 'ai', content: INITIAL_AI_MESSAGE },
@@ -176,15 +275,92 @@ export default function GroupInquiryPage() {
   const [rfqReady, setRfqReady] = useState(false);
   const [extractedSummary, setExtractedSummary] = useState<RfqExtracted>({});
   const [selectedIntent, setSelectedIntent] = useState<IntentChip | null>(null);
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [handoffSource, setHandoffSource] = useState<string | null>(null);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [contactErrors, setContactErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [kakaoOpening, setKakaoOpening] = useState(false);
+  const [kakaoStatus, setKakaoStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const kakaoActionDescriptionIds = kakaoStatus
+    ? `${KAKAO_ACTION_DESCRIPTION_ID} ${KAKAO_STATUS_ID}`
+    : KAKAO_ACTION_DESCRIPTION_ID;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, loading, rfqReady]);
+
+  useEffect(() => {
+    if (!rfqReady) return;
+    const frame = window.requestAnimationFrame(() => contactNameRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [rfqReady]);
+
+  useEffect(() => {
+    const searchParams = new URLSearchParams(window.location.search);
+    const handoffKey = searchParams.toString();
+    if (!handoffKey || appliedHandoffRef.current === handoffKey) return;
+    appliedHandoffRef.current = handoffKey;
+
+    const intent = searchParams.get('intent');
+    const partyType = searchParams.get('party_type');
+    const budget = searchParams.get('budget');
+    const destination = searchParams.get('destination');
+    const productNames = decodeListParam(searchParams.get('selected_products'));
+    const query = searchParams.get('query');
+    if (!intent && !partyType && !budget && !destination && productNames.length === 0 && !query) return;
+
+    const normalizedPartyType = resolveHandoffPartyType(intent, partyType);
+    const matchedChip = intent ? INTENT_CHIPS.find((chip) => chip.intent === intent) : undefined;
+    const nextIntent: IntentChip = matchedChip ?? {
+      label: resolveHandoffIntentLabel(intent, normalizedPartyType),
+      prompt: query || [destination, budget, PARTY_LABELS[normalizedPartyType ?? ''] ?? normalizedPartyType].filter(Boolean).join(', '),
+      intent: intent ?? 'group_trip',
+      partyType: normalizedPartyType ?? 'group',
+      destination: destination ?? undefined,
+      budget: budget ?? undefined,
+    };
+    setSelectedIntent(nextIntent);
+    setSelectedProducts(productNames);
+    setHandoffSource(searchParams.get('source') ?? 'concierge');
+
+    const parsedBudget = parseKoreanBudget(budget);
+    const parsedPeople = parsePartyCount(normalizedPartyType) ?? parsePartyCount(query);
+    const nextExtracted: RfqExtracted = {
+      destination: destination ?? undefined,
+      adult_count: parsedPeople,
+      budget_per_person: budget?.includes('1인') ? parsedBudget : undefined,
+      total_budget: budget && !budget.includes('1인') ? parsedBudget : undefined,
+      budget_label: budget ?? undefined,
+      special_requests: [
+        query ? `상담 요청: ${query}` : null,
+        productNames.length > 0 ? `관심 상품: ${productNames.join(', ')}` : null,
+      ].filter(Boolean).join('\n') || undefined,
+    };
+    setExtractedSummary((current) => ({ ...nextExtracted, ...current }));
+    setInterviewState((current) => ({
+      ...current,
+      extracted: { ...nextExtracted, ...current.extracted },
+      stepsDone: Array.from(new Set([...current.stepsDone, 'handoff_context'])),
+    }));
+    if (hasValue(nextExtracted.destination) && hasValue(nextExtracted.adult_count) && hasValue(nextExtracted.budget_label)) {
+      setRfqReady(true);
+    }
+    setMessages((current) => {
+      if (current.some((message) => message.role === 'ai' && message.content.includes('이전 상담 조건을 이어받았습니다'))) {
+        return current;
+      }
+      return [
+        ...current,
+        {
+          role: 'ai',
+          content: '이전 상담 조건을 이어받았습니다. 부족한 항목만 채우면 바로 견적 요청으로 넘길 수 있어요.',
+        },
+      ];
+    });
+  }, []);
 
   const collectedCount = FIELD_GROUPS.filter((field) =>
     field.keys.some((key) => hasValue(interviewState.extracted[key])),
@@ -193,10 +369,88 @@ export default function GroupInquiryPage() {
   const requiredReady = Boolean(
     hasValue(extractedSummary.destination) &&
       hasValue(extractedSummary.adult_count) &&
-      (hasValue(extractedSummary.budget_per_person) || hasValue(extractedSummary.total_budget)),
+      (hasValue(extractedSummary.budget_per_person) || hasValue(extractedSummary.total_budget) || hasValue(extractedSummary.budget_label)),
   );
+  const rfqReadinessChecklist = [
+    { label: '목적지', complete: hasValue(extractedSummary.destination) },
+    { label: '인원', complete: hasValue(extractedSummary.adult_count) },
+    {
+      label: '예산',
+      complete: hasValue(extractedSummary.budget_per_person) || hasValue(extractedSummary.total_budget) || hasValue(extractedSummary.budget_label),
+    },
+  ];
+  const rfqReadinessReadyCount = rfqReadinessChecklist.filter((item) => item.complete).length;
+  const rfqReadinessMissingLabels = rfqReadinessChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const contactReadinessChecklist = [
+    { label: '이름', complete: contactName.trim().length > 0 },
+    { label: '연락처', complete: contactPhone.trim().length > 0 },
+    { label: '개인정보 동의', complete: privacyConsent },
+  ];
+  const contactReadyCount = contactReadinessChecklist.filter((item) => item.complete).length;
+  const contactMissingLabels = contactReadinessChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const rfqReadinessSummaryText = rfqReadinessMissingLabels.length > 0
+    ? `견적 요청 준비 ${rfqReadinessReadyCount}/${rfqReadinessChecklist.length}. 보완이 필요한 조건은 ${rfqReadinessMissingLabels.join(', ')}입니다.`
+    : `견적 요청 준비 ${rfqReadinessReadyCount}/${rfqReadinessChecklist.length}. 바로 견적 요청을 보낼 수 있습니다.`;
+  const submitMissingLabels = [...rfqReadinessMissingLabels, ...contactMissingLabels];
+  const submitReadyCount = rfqReadinessReadyCount + contactReadyCount;
+  const submitTotalCount = rfqReadinessChecklist.length + contactReadinessChecklist.length;
+  const submitReadinessSummaryText = submitMissingLabels.length > 0
+    ? `제출 준비 ${submitReadyCount}/${submitTotalCount}. 보완 필요: ${submitMissingLabels.join(', ')}.`
+    : `제출 준비 ${submitReadyCount}/${submitTotalCount}. 바로 견적 요청을 보낼 수 있습니다.`;
+  const stickyHandoffItems = [
+    { label: '목적', value: selectedIntent?.label },
+    { label: '지역', value: getSummaryValue(extractedSummary, 'destination') },
+    { label: '예산', value: getSummaryValue(extractedSummary, 'budget') },
+    selectedProducts.length > 0 ? { label: '상품', value: `${selectedProducts.length}개` } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item?.value && item.value !== '미정'));
+  const rfqConditionSummaryId = 'group-inquiry-rfq-condition-summary';
+  const rfqContactHelpId = 'group-inquiry-rfq-contact-help';
+  const rfqSubmitDescriptionId = 'group-inquiry-rfq-submit-description';
+  const submitReadinessSummaryId = 'group-inquiry-submit-readiness-summary';
+  const handoffContextDescriptionId = 'group-inquiry-handoff-context-description';
+  const handoffReadinessSummaryId = 'group-inquiry-handoff-readiness-summary';
+  const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
+  const intentChipStatusId = 'group-inquiry-intent-chip-status';
+  const handoffContextSummaryText = [
+    handoffSource ? `유입 경로는 ${handoffSource}입니다.` : null,
+    selectedIntent?.label ? `상담 목적은 ${selectedIntent.label}입니다.` : null,
+    selectedIntent?.partyType ? `동행 유형은 ${PARTY_LABELS[selectedIntent.partyType] ?? selectedIntent.partyType}입니다.` : null,
+    `지역은 ${getSummaryValue(extractedSummary, 'destination')}입니다.`,
+    `예산은 ${getSummaryValue(extractedSummary, 'budget')}입니다.`,
+    selectedProducts.length > 0 ? `관심 상품은 ${selectedProducts.join(', ')}입니다.` : null,
+    requiredReady ? '필수 조건이 준비되어 견적 요청을 보낼 수 있습니다.' : '견적 요청에는 목적지, 인원, 예산 조건이 필요합니다.',
+  ].filter(Boolean).join(' ');
+  const rfqConditionSummaryText = FIELD_GROUPS
+    .map((field) => `${field.label} ${getSummaryValue(extractedSummary, field.key)}`)
+    .join(', ');
+  const intentChipStatusText = loading
+    ? 'AI가 선택한 빠른 시작 조건을 정리하고 있습니다.'
+    : selectedIntent
+      ? `${selectedIntent.label} 조건이 선택되어 상담 전달 조건에 반영되었습니다.`
+      : '빠른 시작 조건을 선택하면 AI 상담이 바로 시작됩니다.';
+  const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${rfqConditionSummaryId} ${submitReadinessSummaryId} ${rfqContactHelpId}`;
+  const contactNameDescriptionIds = contactErrors.contactName
+    ? `${rfqContactDescriptionIds} contact-name-error`
+    : rfqContactDescriptionIds;
+  const contactPhoneDescriptionIds = contactErrors.contactPhone
+    ? `${rfqContactDescriptionIds} contact-phone-error`
+    : rfqContactDescriptionIds;
+  const privacyConsentDescriptionIds = contactErrors.privacyConsent
+    ? `${rfqContactDescriptionIds} privacy-consent-error`
+    : rfqContactDescriptionIds;
+  const rfqSubmitDescriptionIds = [
+    handoffContextDescriptionId,
+    handoffReadinessSummaryId,
+    rfqConditionSummaryId,
+    submitReadinessSummaryId,
+    rfqSubmitDescriptionId,
+    contactErrors.submit ? 'group-inquiry-submit-error' : null,
+    contactErrors.summary ? 'group-inquiry-summary-error' : null,
+    submitting ? 'group-inquiry-status' : null,
+  ].filter(Boolean).join(' ');
 
   async function sendMessage(messageOverride?: string, chip?: IntentChip) {
+    if (loading) return;
     const text = (messageOverride ?? input).trim();
 
     if (!text) {
@@ -211,13 +465,16 @@ export default function GroupInquiryPage() {
 
     trackEngagement({
       event_type: ANALYTICS_EVENTS.aiPromptStarted,
+      source: chip ? 'group_inquiry_intent_chip' : 'group_inquiry_manual_input',
       page_url: window.location.pathname,
       intent: chip?.intent ?? selectedIntent?.intent ?? null,
       budget: chip?.budget ?? null,
       destination: chip?.destination ?? null,
       party_type: chip?.partyType ?? selectedIntent?.partyType ?? null,
+      selected_products: selectedProducts.length > 0 ? selectedProducts : null,
       metadata: {
         source: chip ? 'intent_chip' : 'manual_input',
+        handoff_source: handoffSource,
         message_length: text.length,
       },
     });
@@ -249,13 +506,16 @@ export default function GroupInquiryPage() {
         setExtractedSummary(nextState.extracted);
         trackEngagement({
           event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+          source: 'group_inquiry_ai_ready',
           page_url: window.location.pathname,
           intent: chip?.intent ?? selectedIntent?.intent ?? null,
           budget: getSummaryValue(nextState.extracted, 'budget'),
           destination: nextState.extracted.destination ?? null,
           party_type: chip?.partyType ?? selectedIntent?.partyType ?? null,
+          selected_products: selectedProducts.length > 0 ? selectedProducts : null,
           metadata: {
             source: 'group_inquiry_ai_ready',
+            handoff_source: handoffSource,
             collected_fields: FIELD_GROUPS.filter((field) => field.keys.some((key) => hasValue(nextState.extracted[key]))).map((field) => field.key),
           },
         });
@@ -290,7 +550,35 @@ export default function GroupInquiryPage() {
     if (!requiredReady) nextErrors.summary = '목적지, 인원, 예산 조건이 필요합니다. 채팅으로 한 번만 더 알려주세요.';
 
     setContactErrors(nextErrors);
+    window.requestAnimationFrame(() => {
+      if (nextErrors.contactName) {
+        contactNameRef.current?.focus();
+        return;
+      }
+      if (nextErrors.contactPhone) {
+        contactPhoneRef.current?.focus();
+        return;
+      }
+      if (nextErrors.privacyConsent) {
+        privacyConsentRef.current?.focus();
+        return;
+      }
+      if (nextErrors.summary) {
+        summaryErrorRef.current?.focus();
+      }
+    });
     return Object.keys(nextErrors).length === 0;
+  }
+
+  function clearContactErrors(...keys: string[]) {
+    setContactErrors((current) => {
+      if (keys.every((key) => !current[key])) return current;
+      const next = { ...current };
+      keys.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
   }
 
   async function registerRfq() {
@@ -298,6 +586,8 @@ export default function GroupInquiryPage() {
 
     setSubmitting(true);
     setStatusMessage('견적 요청을 등록하고 있습니다.');
+
+    const rfqSelectedProducts = selectedProducts.length > 0 ? selectedProducts : [GROUP_INQUIRY_PRODUCT_LABEL];
 
     const payload = {
       ...extractedSummary,
@@ -309,9 +599,11 @@ export default function GroupInquiryPage() {
       })),
       custom_requirements: {
         source: 'group_inquiry_ai',
+        handoff_source: handoffSource,
         intent: selectedIntent?.intent ?? null,
         party_type: selectedIntent?.partyType ?? null,
         budget_range_label: getSummaryValue(extractedSummary, 'budget'),
+        selected_products: rfqSelectedProducts,
         privacy_consent: privacyConsent,
       },
     };
@@ -331,14 +623,22 @@ export default function GroupInquiryPage() {
 
       trackEngagement({
         event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+        cta_type: 'group_inquiry_rfq_submit',
         page_url: window.location.pathname,
         intent: selectedIntent?.intent ?? null,
         budget: getSummaryValue(extractedSummary, 'budget'),
         destination: extractedSummary.destination ?? null,
         party_type: selectedIntent?.partyType ?? null,
+        selected_products: rfqSelectedProducts,
         metadata: {
           source: 'group_inquiry_rfq_submit',
+          outcome: 'rfq_created',
           rfq_id: rfqId,
+          handoff_source: handoffSource,
+          adult_count: extractedSummary.adult_count ?? null,
+          child_count: extractedSummary.child_count ?? null,
+          budget_per_person: extractedSummary.budget_per_person ?? null,
+          total_budget: extractedSummary.total_budget ?? null,
         },
       });
 
@@ -348,41 +648,74 @@ export default function GroupInquiryPage() {
       setContactErrors({
         submit: '견적 요청 등록에 실패했습니다. 카카오톡 상담으로 조건을 보내주시면 바로 이어서 도와드릴게요.',
       });
+      window.requestAnimationFrame(() => summaryKakaoRef.current?.focus());
     } finally {
       setSubmitting(false);
     }
   }
 
   async function openKakaoFallback(source: string) {
+    const kakaoSelectedProducts = selectedProducts.length > 0 ? selectedProducts : [GROUP_INQUIRY_PRODUCT_LABEL];
+    setKakaoStatus(null);
+    setKakaoOpening(true);
+
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: source,
       page_url: window.location.pathname,
       intent: selectedIntent?.intent ?? null,
       budget: getSummaryValue(extractedSummary, 'budget'),
       destination: extractedSummary.destination ?? null,
       party_type: selectedIntent?.partyType ?? null,
-      metadata: { source },
+      selected_products: kakaoSelectedProducts,
+      metadata: { source, handoff_source: handoffSource },
     });
 
-    await openKakaoChannel({
-      productTitle: '단체 맞춤 견적',
-      intent: selectedIntent?.intent ?? null,
-      budget: getSummaryValue(extractedSummary, 'budget'),
-      destination: extractedSummary.destination ?? null,
-      party_type: selectedIntent?.partyType ?? null,
-      selected_products: ['단체 맞춤 견적'],
-      escalationSummary: buildEscalationSummary(extractedSummary, messages),
-      leadForm: {
-        name: contactName.trim() || undefined,
-        phone: contactPhone.trim() || undefined,
-        adults: extractedSummary.adult_count,
-        children: extractedSummary.child_count,
-      },
-    });
+    try {
+      await openKakaoChannel({
+        productTitle: GROUP_INQUIRY_PRODUCT_LABEL,
+        intent: selectedIntent?.intent ?? null,
+        budget: getSummaryValue(extractedSummary, 'budget'),
+        destination: extractedSummary.destination ?? null,
+        party_type: selectedIntent?.partyType ?? null,
+        selected_products: kakaoSelectedProducts,
+        escalationSummary: buildEscalationSummary(extractedSummary, messages),
+        leadForm: {
+          name: contactName.trim() || undefined,
+          phone: contactPhone.trim() || undefined,
+          adults: extractedSummary.adult_count,
+          children: extractedSummary.child_count,
+        },
+      });
+      setKakaoStatus({
+        tone: 'success',
+        message: '카카오 상담 문구를 복사했고 상담창을 열었습니다. 새 창이 보이지 않으면 아래 링크로 다시 열 수 있어요.',
+      });
+    } catch {
+      setKakaoStatus({
+        tone: 'error',
+        message: '카카오 상담창을 열지 못했습니다. 아래 링크로 직접 열고 복사된 상담 문구를 붙여넣어 주세요.',
+      });
+      requestAnimationFrame(() => kakaoStatusRef.current?.focus());
+    } finally {
+      setKakaoOpening(false);
+    }
   }
 
   return (
-    <main className="min-h-dvh bg-[#F8FAFC] pb-[calc(env(safe-area-inset-bottom)+88px)] md:pb-0">
+    <main className="min-h-dvh bg-[#F8FAFC] pb-[calc(env(safe-area-inset-bottom)+144px)] md:pb-0">
+      <p id={handoffContextDescriptionId} className="sr-only">
+        {handoffContextSummaryText}
+      </p>
+      <p id={handoffReadinessSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {rfqReadinessSummaryText}
+      </p>
+      <p id="group-inquiry-status" className="sr-only" aria-live="polite" aria-atomic="true">
+        {statusMessage}
+      </p>
+      <p id={KAKAO_ACTION_DESCRIPTION_ID} className="sr-only">
+        상담 조건을 복사한 뒤 카카오톡 채널 상담창을 새 창으로 엽니다.
+      </p>
       <header className="sticky top-0 z-20 border-b border-[#E5E7EB] bg-white/95 px-4 py-4 backdrop-blur">
         <div className="mx-auto max-w-3xl">
           <div className="flex items-start justify-between gap-3">
@@ -398,10 +731,13 @@ export default function GroupInquiryPage() {
             <button
               type="button"
               onClick={() => void openKakaoFallback('header_kakao')}
+              disabled={kakaoOpening}
+              aria-busy={kakaoOpening}
+              aria-describedby={kakaoActionDescriptionIds}
               className="hidden shrink-0 items-center gap-2 rounded-full border border-[#E5E7EB] bg-white px-3 py-2 text-sm font-bold text-gray-800 shadow-sm hover:border-brand/40 md:inline-flex"
             >
               <MessageCircle className="h-4 w-4" aria-hidden="true" />
-              카톡 상담
+              {kakaoOpening ? '카톡 여는 중...' : '카톡 상담'}
             </button>
           </div>
 
@@ -437,25 +773,146 @@ export default function GroupInquiryPage() {
       </header>
 
       <section className="mx-auto flex max-w-3xl flex-col gap-4 px-4 py-5">
-        {!rfqReady && messages.length <= 1 && (
+        {kakaoStatus && (
+          <div
+            ref={kakaoStatusRef}
+            id={KAKAO_STATUS_ID}
+            data-testid="group-inquiry-kakao-status"
+            role={kakaoStatus.tone === 'error' ? 'alert' : 'status'}
+            aria-live={kakaoStatus.tone === 'error' ? 'assertive' : 'polite'}
+            tabIndex={-1}
+            className={`rounded-lg border px-4 py-3 text-sm font-semibold outline-none ${
+              kakaoStatus.tone === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-blue-100 bg-blue-50 text-blue-800'
+            }`}
+          >
+            <p>{kakaoStatus.message}</p>
+            <a
+              href={getKakaoChannelChatUrl()}
+              target="_blank"
+              rel="noopener noreferrer"
+              data-testid="group-inquiry-kakao-fallback"
+              className="mt-2 inline-flex font-extrabold underline underline-offset-4"
+            >
+              카카오 상담창 직접 열기
+            </a>
+          </div>
+        )}
+
+        {(handoffSource || selectedProducts.length > 0) && (
+          <section
+            data-testid="group-inquiry-handoff-summary"
+            aria-labelledby="handoff-summary-title"
+            aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId}`}
+            className="rounded-lg border border-blue-100 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-light text-brand">
+                <ClipboardList className="h-5 w-5" aria-hidden="true" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 id="handoff-summary-title" className="text-sm font-extrabold text-gray-950">
+                    이어받은 상담 조건
+                  </h2>
+                  {handoffSource && (
+                    <span
+                      data-testid="group-inquiry-handoff-source"
+                      className="rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-extrabold text-blue-700"
+                    >
+                      {handoffSource}
+                    </span>
+                  )}
+                </div>
+                <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+                  <div data-testid="group-inquiry-handoff-intent" className="rounded-lg bg-[#F8FAFC] px-3 py-2">
+                    <dt className="text-xs font-semibold text-gray-500">의도</dt>
+                    <dd className="mt-1 font-bold text-gray-900">{selectedIntent?.label ?? '직접 문의'}</dd>
+                  </div>
+                  <div data-testid="group-inquiry-handoff-party" className="rounded-lg bg-[#F8FAFC] px-3 py-2">
+                    <dt className="text-xs font-semibold text-gray-500">동행</dt>
+                    <dd className="mt-1 font-bold text-gray-900">
+                      {PARTY_LABELS[selectedIntent?.partyType ?? ''] ?? selectedIntent?.partyType ?? '미정'}
+                    </dd>
+                  </div>
+                  <div data-testid="group-inquiry-handoff-destination" className="rounded-lg bg-[#F8FAFC] px-3 py-2">
+                    <dt className="text-xs font-semibold text-gray-500">지역</dt>
+                    <dd className="mt-1 font-bold text-gray-900">{getSummaryValue(extractedSummary, 'destination')}</dd>
+                  </div>
+                  <div data-testid="group-inquiry-handoff-budget" className="rounded-lg bg-[#F8FAFC] px-3 py-2">
+                    <dt className="text-xs font-semibold text-gray-500">예산</dt>
+                    <dd className="mt-1 font-bold text-gray-900">{getSummaryValue(extractedSummary, 'budget')}</dd>
+                  </div>
+                </dl>
+                {selectedProducts.length > 0 && (
+                  <div data-testid="group-inquiry-handoff-products" className="mt-3 rounded-lg bg-blue-50 px-3 py-2">
+                    <p className="text-xs font-semibold text-blue-700">관심 상품 {selectedProducts.length}개</p>
+                    <p className="mt-1 line-clamp-2 text-sm font-bold text-gray-900">{selectedProducts.join(', ')}</p>
+                  </div>
+                )}
+                <div
+                  data-testid="group-inquiry-handoff-readiness-summary"
+                  aria-label={rfqReadinessSummaryText}
+                  className={`mt-3 rounded-lg px-3 py-2 text-sm font-bold ${
+                    requiredReady ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  <span>견적 요청 준비 {rfqReadinessReadyCount}/{rfqReadinessChecklist.length}</span>
+                  <span className="ml-2 font-medium">
+                    {rfqReadinessMissingLabels.length > 0 ? `보완 필요: ${rfqReadinessMissingLabels.join(', ')}` : '바로 등록 가능'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {!rfqReady && (messages.length <= 1 || loading) && (
           <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-brand" aria-hidden="true" />
-              <h2 className="text-sm font-bold text-gray-950">빠른 시작</h2>
+              <h2 id="group-inquiry-intent-chip-title" className="text-sm font-bold text-gray-950">빠른 시작</h2>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {INTENT_CHIPS.map((chip) => (
-                <button
-                  key={chip.intent}
-                  type="button"
-                  onClick={() => void sendMessage(chip.prompt, chip)}
-                  disabled={loading}
-                  className="group flex min-h-14 items-center justify-between gap-3 rounded-lg border border-[#E5E7EB] bg-white px-3 py-3 text-left text-sm font-bold text-gray-800 hover:border-brand/50 hover:bg-brand-light/40 disabled:opacity-50"
-                >
-                  <span>{chip.label}</span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-gray-400 group-hover:text-brand" aria-hidden="true" />
-                </button>
-              ))}
+            <p id={intentChipGroupDescriptionId} className="sr-only">
+              빠른 시작 칩을 선택하면 해당 상담 조건이 메시지로 전송되고, 목적과 여행 유형이 상담 전달 조건에 반영됩니다.
+            </p>
+            <p id={intentChipStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {intentChipStatusText}
+            </p>
+            <div
+              className="grid gap-2 sm:grid-cols-2"
+              role="group"
+              aria-labelledby="group-inquiry-intent-chip-title"
+              aria-describedby={`${intentChipGroupDescriptionId} ${intentChipStatusId}`}
+            >
+              {INTENT_CHIPS.map((chip) => {
+                const selected = selectedIntent?.intent === chip.intent;
+                const intentChipDescriptionId = `group-inquiry-intent-chip-${chip.intent}-description`;
+                return (
+                  <button
+                    key={chip.intent}
+                    type="button"
+                    data-testid="group-inquiry-intent-chip"
+                    aria-pressed={selected}
+                    aria-busy={loading && selected}
+                    aria-describedby={`${intentChipGroupDescriptionId} ${intentChipDescriptionId} ${intentChipStatusId}`}
+                    onClick={() => void sendMessage(chip.prompt, chip)}
+                    disabled={loading}
+                    className={`group flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left text-sm font-bold transition disabled:opacity-50 ${
+                      selected
+                        ? 'border-brand bg-brand text-white shadow-sm'
+                        : 'border-[#E5E7EB] bg-white text-gray-800 hover:border-brand/50 hover:bg-brand-light/40'
+                    }`}
+                  >
+                    <span id={intentChipDescriptionId} className="sr-only">
+                      {chip.label} 조건으로 AI 상담을 시작합니다. 여행 유형은 {PARTY_LABELS[chip.partyType] ?? chip.partyType}이고{chip.budget ? ` 예산은 ${chip.budget}` : ''}{chip.destination ? ` 목적지는 ${chip.destination}` : ''}입니다.
+                    </span>
+                    <span>{chip.label}</span>
+                    <ArrowRight className={`h-4 w-4 shrink-0 ${selected ? 'text-white' : 'text-gray-400 group-hover:text-brand'}`} aria-hidden="true" />
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -496,7 +953,9 @@ export default function GroupInquiryPage() {
 
           {rfqReady && (
             <section
+              data-testid="group-inquiry-rfq-summary"
               aria-labelledby="rfq-summary-title"
+              aria-describedby={`${rfqContactHelpId} ${rfqConditionSummaryId}`}
               className="rounded-lg border border-blue-200 bg-white p-5 shadow-sm"
             >
               <div className="flex items-start gap-3">
@@ -507,17 +966,27 @@ export default function GroupInquiryPage() {
                   <h2 id="rfq-summary-title" className="text-base font-extrabold text-gray-950">
                     견적 요청 조건이 정리되었습니다
                   </h2>
-                  <p className="mt-1 text-sm text-gray-500">
+                  <p id={rfqContactHelpId} className="mt-1 text-sm text-gray-500">
                     담당자가 연락드릴 수 있도록 기본 연락처만 확인해주세요.
                   </p>
                 </div>
               </div>
 
               {contactErrors.summary && (
-                <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+                <p
+                  ref={summaryErrorRef}
+                  id="group-inquiry-summary-error"
+                  className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 outline-none focus:ring-2 focus:ring-red-200"
+                  role="alert"
+                  tabIndex={-1}
+                >
                   {contactErrors.summary}
                 </p>
               )}
+
+              <p id={rfqConditionSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+                현재 견적 조건은 {rfqConditionSummaryText}입니다.
+              </p>
 
               <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
                 {FIELD_GROUPS.map((field) => (
@@ -535,10 +1004,15 @@ export default function GroupInquiryPage() {
                   </label>
                   <input
                     id="contact-name"
+                    ref={contactNameRef}
+                    data-testid="group-inquiry-contact-name"
                     value={contactName}
-                    onChange={(event) => setContactName(event.target.value)}
+                    onChange={(event) => {
+                      setContactName(event.target.value);
+                      clearContactErrors('contactName', 'submit');
+                    }}
                     aria-invalid={Boolean(contactErrors.contactName)}
-                    aria-describedby={contactErrors.contactName ? 'contact-name-error' : undefined}
+                    aria-describedby={contactNameDescriptionIds}
                     autoComplete="name"
                     className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
                     placeholder="홍길동"
@@ -555,10 +1029,15 @@ export default function GroupInquiryPage() {
                   </label>
                   <input
                     id="contact-phone"
+                    ref={contactPhoneRef}
+                    data-testid="group-inquiry-contact-phone"
                     value={contactPhone}
-                    onChange={(event) => setContactPhone(event.target.value)}
+                    onChange={(event) => {
+                      setContactPhone(event.target.value);
+                      clearContactErrors('contactPhone', 'submit');
+                    }}
                     aria-invalid={Boolean(contactErrors.contactPhone)}
-                    aria-describedby={contactErrors.contactPhone ? 'contact-phone-error' : undefined}
+                    aria-describedby={contactPhoneDescriptionIds}
                     autoComplete="tel"
                     inputMode="tel"
                     className="mt-1 w-full rounded-lg border border-[#E5E7EB] bg-white px-3 py-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
@@ -576,10 +1055,15 @@ export default function GroupInquiryPage() {
                 <label className="flex items-start gap-2 rounded-lg bg-[#F8FAFC] p-3 text-sm text-gray-600">
                   <input
                     type="checkbox"
+                    ref={privacyConsentRef}
+                    data-testid="group-inquiry-privacy-consent"
                     checked={privacyConsent}
-                    onChange={(event) => setPrivacyConsent(event.target.checked)}
+                    onChange={(event) => {
+                      setPrivacyConsent(event.target.checked);
+                      clearContactErrors('privacyConsent', 'submit');
+                    }}
                     aria-invalid={Boolean(contactErrors.privacyConsent)}
-                    aria-describedby={contactErrors.privacyConsent ? 'privacy-consent-error' : undefined}
+                    aria-describedby={privacyConsentDescriptionIds}
                     className="mt-0.5 h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
                   />
                   <span>
@@ -596,29 +1080,106 @@ export default function GroupInquiryPage() {
                 )}
               </div>
 
+              <div
+                id={submitReadinessSummaryId}
+                data-testid="group-inquiry-submit-readiness-summary"
+                aria-label={submitReadinessSummaryText}
+                className="mt-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-extrabold text-gray-950">
+                    제출 준비 {submitReadyCount}/{submitTotalCount}
+                  </p>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                    submitMissingLabels.length > 0 ? 'bg-white text-gray-500 ring-1 ring-gray-200' : 'bg-brand-light text-brand'
+                  }`}
+                  >
+                    {submitMissingLabels.length > 0 ? '보완 필요' : '바로 제출 가능'}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-3">
+                  <div data-testid="group-inquiry-submit-condition-readiness">
+                    <p className="mb-1.5 text-[11px] font-extrabold text-gray-500">견적 조건</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {rfqReadinessChecklist.map((item) => (
+                        <span
+                          key={`condition:${item.label}`}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold ${
+                            item.complete ? 'bg-white text-brand ring-1 ring-brand/20' : 'bg-white text-gray-500 ring-1 ring-gray-200'
+                          }`}
+                        >
+                          {item.complete && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {item.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                  <div data-testid="group-inquiry-submit-contact-readiness">
+                    <p className="mb-1.5 text-[11px] font-extrabold text-gray-500">연락 준비</p>
+                    <div className="grid gap-2 sm:grid-cols-3">
+                      {contactReadinessChecklist.map((item) => (
+                        <span
+                          key={`contact:${item.label}`}
+                          className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold ${
+                            item.complete ? 'bg-white text-brand ring-1 ring-brand/20' : 'bg-white text-gray-500 ring-1 ring-gray-200'
+                          }`}
+                        >
+                          {item.complete && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                          {item.label}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                {submitMissingLabels.length > 0 ? (
+                  <p className="mt-2 text-xs font-semibold text-gray-500">
+                    남은 항목: {submitMissingLabels.join(', ')}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs font-semibold text-brand">
+                    조건과 연락처가 준비되어 바로 견적 요청을 보낼 수 있습니다.
+                  </p>
+                )}
+              </div>
+
               {contactErrors.submit && (
-                <p className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+                <p
+                  id="group-inquiry-submit-error"
+                  className="mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm font-semibold text-red-700"
+                  role="alert"
+                >
                   {contactErrors.submit}
                 </p>
               )}
 
               <div className="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]">
+                <p id={rfqSubmitDescriptionId} className="sr-only">
+                  제출하면 현재 정리된 견적 조건과 연락처가 상담 접수로 전달됩니다.
+                </p>
                 <button
                   type="button"
+                  data-testid="group-inquiry-rfq-submit"
                   onClick={registerRfq}
                   disabled={submitting}
+                  aria-busy={submitting}
+                  aria-describedby={rfqSubmitDescriptionIds}
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg bg-brand px-5 py-3 text-sm font-extrabold text-white hover:bg-[#1B64DA] disabled:opacity-50"
                 >
                   {submitting ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Send className="h-4 w-4" aria-hidden="true" />}
-                  견적 요청 등록
+                  {submitting ? '등록 중...' : '견적 요청 등록'}
                 </button>
                 <button
                   type="button"
+                  ref={summaryKakaoRef}
+                  data-testid="group-inquiry-summary-kakao"
                   onClick={() => void openKakaoFallback('summary_kakao')}
+                  disabled={kakaoOpening}
+                  aria-busy={kakaoOpening}
+                  aria-describedby={kakaoActionDescriptionIds}
                   className="inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-[#E5E7EB] bg-white px-5 py-3 text-sm font-extrabold text-gray-800 hover:border-brand/40"
                 >
                   <MessageCircle className="h-4 w-4" aria-hidden="true" />
-                  카톡으로 이어가기
+                  {kakaoOpening ? '카톡 여는 중...' : '카톡으로 이어가기'}
                 </button>
               </div>
             </section>
@@ -637,6 +1198,30 @@ export default function GroupInquiryPage() {
           }}
         >
           <div className="mx-auto max-w-3xl">
+            {stickyHandoffItems.length > 0 && (
+              <div
+                className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
+                aria-label="상담 전달 조건"
+                aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId}`}
+                data-testid="group-inquiry-sticky-handoff-summary"
+              >
+                <span
+                  data-testid="group-inquiry-sticky-readiness"
+                  className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-extrabold ${
+                    requiredReady ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800'
+                  }`}
+                >
+                  준비 {rfqReadinessReadyCount}/{rfqReadinessChecklist.length}
+                </span>
+                {stickyHandoffItems.map((item) => (
+                  <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-gray-800 shadow-sm">
+                    <span className="text-gray-500">{item.label}</span>
+                    <span className="mx-1 text-gray-300">/</span>
+                    {item.value}
+                  </span>
+                ))}
+              </div>
+            )}
             <label htmlFor="group-inquiry-message" className="sr-only">
               단체여행 견적 문의 메시지
             </label>
@@ -652,7 +1237,7 @@ export default function GroupInquiryPage() {
                 onKeyDown={handleKeyDown}
                 disabled={loading}
                 aria-invalid={Boolean(inputError)}
-                aria-describedby={inputError ? 'group-inquiry-message-error' : 'group-inquiry-message-help'}
+                aria-describedby={inputError ? `${handoffContextDescriptionId} group-inquiry-message-error` : `${handoffContextDescriptionId} group-inquiry-message-help`}
                 placeholder="예: 부산 출발, 성인 20명, 1인 100만원대, 베트남 다낭"
                 rows={2}
                 className="min-h-14 flex-1 resize-none rounded-lg border border-[#E5E7EB] px-4 py-3 text-sm leading-relaxed outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
@@ -660,6 +1245,8 @@ export default function GroupInquiryPage() {
               <button
                 type="submit"
                 disabled={loading}
+                aria-busy={loading}
+                aria-describedby={loading ? `${handoffContextDescriptionId} group-inquiry-message-help group-inquiry-status` : `${handoffContextDescriptionId} group-inquiry-message-help`}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-brand text-white hover:bg-[#1B64DA] disabled:opacity-50"
                 aria-label="메시지 보내기"
               >
@@ -674,9 +1261,6 @@ export default function GroupInquiryPage() {
                 {inputError}
               </p>
             )}
-            <p className="sr-only" aria-live="polite">
-              {statusMessage}
-            </p>
           </div>
         </form>
       )}

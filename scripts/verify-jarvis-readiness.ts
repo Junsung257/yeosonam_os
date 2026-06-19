@@ -19,12 +19,17 @@ type CliOptions = {
   requireDb: boolean;
   skipHeavy: boolean;
   limit: number;
+  commandTimeoutMs: number;
 };
 
 type CommandResult = {
   ok: boolean;
   command: string;
   status: number | null;
+  signal: NodeJS.Signals | null;
+  timedOut: boolean;
+  timeoutMs: number;
+  durationMs: number;
   stdout: string;
   stderr: string;
 };
@@ -44,6 +49,11 @@ function parseCliOptions(args: string[]): CliOptions {
     requireDb: args.includes('--require-db'),
     skipHeavy: args.includes('--skip-heavy'),
     limit: Math.max(1, Math.floor(readNumberArg(args, '--limit', 250))),
+    commandTimeoutMs: Math.floor(readNumberArg(
+      args,
+      '--command-timeout-ms',
+      Number(process.env.JARVIS_READINESS_COMMAND_TIMEOUT_MS || 300000),
+    )),
   };
 }
 
@@ -56,25 +66,36 @@ function quoteWindowsArg(value: string): string {
   return `"${value.replace(/"/g, '\\"')}"`;
 }
 
-function runCommand(command: string, args: string[]): CommandResult {
+function runCommand(command: string, args: string[], timeoutMs: number): CommandResult {
   const printableCommand = [command, ...args].join(' ');
+  const startedAt = Date.now();
   const result = process.platform === 'win32'
     ? spawnSync('cmd.exe', ['/d', '/s', '/c', [command, ...args].map(quoteWindowsArg).join(' ')], {
       cwd: process.cwd(),
       encoding: 'utf8',
       shell: false,
+      timeout: timeoutMs,
     })
     : spawnSync(command, args, {
     cwd: process.cwd(),
     encoding: 'utf8',
       shell: false,
+      timeout: timeoutMs,
     });
+  const commandError = result.error as NodeJS.ErrnoException | undefined;
+  const timedOut = commandError?.code === 'ETIMEDOUT';
+  const timeoutMessage = timedOut ? `\ncommand timed out after ${timeoutMs}ms` : '';
+  const errorMessage = commandError && !timedOut ? `\n${commandError.message}` : '';
   return {
-    ok: result.status === 0,
+    ok: result.status === 0 && !timedOut,
     command: printableCommand,
     status: result.status,
+    signal: result.signal,
+    timedOut,
+    timeoutMs,
+    durationMs: Date.now() - startedAt,
     stdout: result.stdout ?? '',
-    stderr: result.stderr ?? '',
+    stderr: `${result.stderr ?? ''}${timeoutMessage}${errorMessage}`,
   };
 }
 
@@ -164,7 +185,7 @@ async function buildReadinessPayload(options: CliOptions) {
 
   const commands: CommandResult[] = [];
   if (!options.skipHeavy) {
-    commands.push(runCommand(commandName('npx'), ['tsc', '--noEmit', '-p', 'tsconfig.jarvis-readiness.json']));
+    commands.push(runCommand(commandName('npx'), ['tsc', '--noEmit', '-p', 'tsconfig.jarvis-readiness.json'], options.commandTimeoutMs));
     commands.push(runCommand(commandName('npx'), [
       'vitest',
       'run',
@@ -172,8 +193,8 @@ async function buildReadinessPayload(options: CliOptions) {
       'src/lib/jarvis/eval/readiness-gate.test.ts',
       'src/components/admin/JarvisReadinessCard.test.tsx',
       'src/components/admin/JarvisRagStatusCard.test.tsx',
-    ]));
-    commands.push(runCommand('node', ['--test', 'db/smoke_jarvis_v2.js']));
+    ], options.commandTimeoutMs));
+    commands.push(runCommand('node', ['--test', 'db/smoke_jarvis_v2.js'], options.commandTimeoutMs));
   }
 
   const typecheck = commands.find((command) => command.command.includes('tsc --noEmit'));
@@ -195,6 +216,7 @@ async function buildReadinessPayload(options: CliOptions) {
     ok: summary.status === 'pass' || (!options.strict && summary.status === 'warn'),
     strict: options.strict,
     requireDb: options.requireDb,
+    commandTimeoutMs: options.commandTimeoutMs,
     deterministic,
     rag,
     trace,
@@ -206,6 +228,11 @@ async function buildReadinessPayload(options: CliOptions) {
 
 async function main(): Promise<void> {
   const options = parseCliOptions(process.argv.slice(2));
+  if (!Number.isFinite(options.commandTimeoutMs) || options.commandTimeoutMs <= 0) {
+    console.error('--command-timeout-ms must be a positive number of milliseconds.');
+    process.exitCode = 1;
+    return;
+  }
   const payload = await buildReadinessPayload(options);
 
   if (options.json) {

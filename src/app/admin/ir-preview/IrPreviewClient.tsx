@@ -130,7 +130,17 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
             {/* 헤더 */}
             <div
               className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-admin-surface-2 transition-colors"
+              role="button"
+              tabIndex={0}
+              aria-expanded={open}
+              aria-label={`${row.region ?? row.land_operator ?? 'IR'} 미리보기 ${open ? '닫기' : '열기'}`}
               onClick={() => setOpenId(open ? null : row.id)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  setOpenId(open ? null : row.id);
+                }
+              }}
             >
               <div className="flex items-center gap-3 min-w-0">
                 <span className={`text-admin-xs px-2 py-0.5 rounded-admin-xs font-semibold ${STATUS_COLOR[row.status] || 'bg-admin-surface-2 text-admin-muted'}`}>

@@ -8,9 +8,11 @@
  * Response: { variant_card_news_id, family }
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { randomUUID } from 'node:crypto';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { ContentBriefSchema, type TemplateFamily, type ContentBrief } from '@/lib/validators/content-brief';
 import { briefToSlides } from '@/lib/card-news/v2/brief-to-slides';
+import { isAdminRequest } from '@/lib/admin-guard';
 
 export const runtime = 'nodejs';
 
@@ -20,6 +22,10 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
   const params = await props.params;
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: 'DB 미설정' }, { status: 503 });
+  }
+
+  if (!(await isAdminRequest(request))) {
+    return NextResponse.json({ error: 'admin required' }, { status: 403 });
   }
 
   const baseId = params.id;
@@ -40,6 +46,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
     }
 
     // 2. 기존 variant 이미 있으면 재사용 (UNIQUE 제약 회피)
+    let variantGroupId = String(base.variant_group_id || '').trim();
+
     const { data: existing } = await supabaseAdmin
       .from('card_news_variants')
       .select('variant_card_news_id')
@@ -47,8 +55,25 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
       .eq('template_family', body.family)
       .maybeSingle();
     if (existing?.variant_card_news_id) {
+      if (!variantGroupId) {
+        const { data: existingVariant } = await supabaseAdmin
+          .from('card_news')
+          .select('variant_group_id')
+          .eq('id', existing.variant_card_news_id)
+          .maybeSingle();
+        variantGroupId = String(existingVariant?.variant_group_id || '').trim() || randomUUID();
+      }
+      const { error: syncErr } = await supabaseAdmin
+        .from('card_news')
+        .update({ variant_group_id: variantGroupId })
+        .in('id', [baseId, existing.variant_card_news_id])
+        .is('variant_group_id', null);
+      if (syncErr) {
+        return NextResponse.json({ error: `variant_group_id sync failed: ${syncErr.message}` }, { status: 500 });
+      }
       return NextResponse.json({
         variant_card_news_id: existing.variant_card_news_id,
+        variant_group_id: variantGroupId,
         family: body.family,
         reused: true,
       });
@@ -56,6 +81,18 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     // 3. 가능하면 원본 brief 재활용 → briefToSlides 로 V2 슬롯 포함 새로 생성.
     //    brief 없거나 검증 실패 시 기존 slides 에 template_family만 덮어써 복사 (V1 품질).
+    if (!variantGroupId) {
+      variantGroupId = randomUUID();
+      const { error: baseGroupErr } = await supabaseAdmin
+        .from('card_news')
+        .update({ variant_group_id: variantGroupId, variant_angle: base.variant_angle ?? 'base' })
+        .eq('id', baseId)
+        .is('variant_group_id', null);
+      if (baseGroupErr) {
+        return NextResponse.json({ error: `variant_group_id base update failed: ${baseGroupErr.message}` }, { status: 500 });
+      }
+    }
+
     const baseSlides = Array.isArray(base.slides) ? (base.slides as Array<Record<string, unknown>>) : [];
     const briefRaw = (base.generation_config as { brief?: unknown } | null)?.brief;
     let newSlides: Array<Record<string, unknown>> = [];
@@ -105,6 +142,8 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
         template_family: body.family,
         template_version: base.template_version ?? 'v2',
         brand_kit_id: base.brand_kit_id,
+        variant_group_id: variantGroupId,
+        variant_angle: body.family,
         generation_config: base.generation_config,  // 같은 brief 재사용
       })
       .select('id')
@@ -128,6 +167,7 @@ export async function POST(request: NextRequest, props: { params: Promise<{ id: 
 
     return NextResponse.json({
       variant_card_news_id: variant.id,
+      variant_group_id: variantGroupId,
       family: body.family,
       reused: false,
     }, { status: 201 });

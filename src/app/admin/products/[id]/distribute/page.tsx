@@ -99,7 +99,7 @@ function DistributePageContent() {
       }
 
       // 1. 상품 조회
-      const prodRes = await fetch(`/api/packages/${encodedId}`);
+      const prodRes = await fetch(`/api/packages?id=${encodedId}`);
       let prodOk = false;
       if (prodRes.ok) {
         const d = await prodRes.json();
@@ -180,7 +180,8 @@ function DistributePageContent() {
     if (!meta || !meta.api) return;
     setGenerating(platform);
     try {
-      const res = await fetch(`/api/content/${meta.api}`, {
+      const endpoint = `/api/content/${meta.api}`;
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ product_id: id }),

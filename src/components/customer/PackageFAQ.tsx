@@ -8,7 +8,9 @@
  *   미래: DB의 package_faqs 테이블에서 상품별 커스텀 FAQ 오버레이 (JARVIS 자동 생성)
  */
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
+
+const PACKAGE_FAQ_KAKAO_DESCRIPTION_ID = 'package-faq-kakao-description';
 
 interface FaqItem {
   question: string;
@@ -134,11 +136,14 @@ function getDestinationFaqs(destination: string): FaqItem[] {
 
 function FaqRow({ item }: { item: FaqItem }) {
   const [open, setOpen] = useState(false);
+  const answerId = useId();
   return (
     <div className="border-b border-gray-100 last:border-0">
       <button
         type="button"
         onClick={() => setOpen(o => !o)}
+        aria-expanded={open}
+        aria-controls={answerId}
         className="w-full flex items-start justify-between py-3.5 text-left gap-3 group"
       >
         <span className="flex items-start gap-2 flex-1 min-w-0">
@@ -152,7 +157,7 @@ function FaqRow({ item }: { item: FaqItem }) {
         </span>
       </button>
       {open && (
-        <div className="pb-4 -mt-1">
+        <div id={answerId} className="pb-4 -mt-1">
           <div className="flex items-start gap-2 bg-gray-50 rounded-lg p-3 border-l-4 border-brand/40">
             <span className="shrink-0 inline-flex items-center justify-center w-5 h-5 rounded-full bg-gray-200 text-gray-600 text-xs font-bold mt-0.5">A</span>
             <p className="text-sm text-gray-700 leading-relaxed flex-1">
@@ -186,14 +191,21 @@ export default function PackageFAQ({ destination, productType, kakaoChannel }: P
         ))}
       </div>
       {kakaoChannel && (
-        <button
-          type="button"
-          onClick={kakaoChannel}
-          className="mt-4 w-full py-3 rounded-2xl bg-[#FEE500] text-[#3C1E1E] font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
-        >
-          <span>💬</span>
-          <span>다른 궁금한 점은 카톡으로 바로 문의</span>
-        </button>
+        <>
+          <p id={PACKAGE_FAQ_KAKAO_DESCRIPTION_ID} className="sr-only">
+            현재 상품과 선택한 출발 조건을 유지한 채 FAQ에서 해결되지 않은 질문을 카카오톡 상담으로 이어갑니다.
+          </p>
+          <button
+            type="button"
+            onClick={kakaoChannel}
+            data-testid="package-faq-kakao"
+            aria-describedby={PACKAGE_FAQ_KAKAO_DESCRIPTION_ID}
+            className="mt-4 w-full py-3 rounded-2xl bg-[#FEE500] text-[#3C1E1E] font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-all"
+          >
+            <span aria-hidden>💬</span>
+            <span>다른 궁금한 점은 카톡으로 바로 문의</span>
+          </button>
+        </>
       )}
     </section>
   );

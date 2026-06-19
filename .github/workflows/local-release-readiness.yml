@@ -3,6 +3,14 @@ name: Local Release Readiness
 on:
   workflow_dispatch:
     inputs:
+      strict:
+        description: Treat blocked local release checks as failures
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
       strict_open:
         description: Treat local open-readiness blocked checks as failures
         required: false
@@ -39,6 +47,12 @@ jobs:
       MARKETING_AUTOMATION_TIMEOUT_MS: '120000'
       LOCAL_RELEASE_MARKETING_RUNTIME_READY_TIMEOUT_MS: '180000'
       LOCAL_RELEASE_MARKETING_RUNTIME_HARD_TIMEOUT_MS: '300000'
+      LOCAL_RELEASE_COMMAND_TIMEOUT_MS: '900000'
+      LOCAL_RELEASE_COMMAND_TIMEOUT_KILL_GRACE_MS: '10000'
+      VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE || 'zzbaa0317-4596s-projects' }}
+      VERCEL_PROJECT_NAME: ${{ vars.VERCEL_PROJECT_NAME || 'os' }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET || vars.VERCEL_AUTOMATION_BYPASS_SECRET }}
       OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
       OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
       MARKETING_CHECK_CARD_NEWS_ID: ${{ vars.MARKETING_CHECK_CARD_NEWS_ID || secrets.MARKETING_CHECK_CARD_NEWS_ID }}
@@ -48,6 +62,12 @@ jobs:
       TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN || vars.TWITTER_BEARER_TOKEN }}
       NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID || vars.NAVER_CLIENT_ID }}
       NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET || vars.NAVER_CLIENT_SECRET }}
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID || vars.META_AD_ACCOUNT_ID }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN || vars.META_ACCESS_TOKEN }}
+      META_APP_ID: ${{ secrets.META_APP_ID || vars.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET || vars.META_APP_SECRET }}
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN || vars.THREADS_ACCESS_TOKEN }}
+      THREADS_USER_ID: ${{ secrets.THREADS_USER_ID || vars.THREADS_USER_ID }}
       NAVER_CAFE_ID: ${{ secrets.NAVER_CAFE_ID || vars.NAVER_CAFE_ID }}
       GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN || vars.GOOGLE_ADS_DEVELOPER_TOKEN }}
       GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID || vars.GOOGLE_ADS_CUSTOMER_ID }}
@@ -67,6 +87,29 @@ jobs:
           cache: 'npm'
 
       - run: npm ci --no-audit --no-fund
+
+      - name: Import Vercel environment variables
+        if: env.VERCEL_TOKEN != ''
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          link_args=(link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN")
+          pull_args=(env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN")
+          if [[ -n "${VERCEL_SCOPE:-}" ]]; then
+            link_args+=(--scope "$VERCEL_SCOPE")
+            pull_args+=(--scope "$VERCEL_SCOPE")
+          fi
+
+          if npx vercel "${link_args[@]}" && npx vercel "${pull_args[@]}"; then
+            node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+            echo "VERCEL_ENV_PULL_STATUS=success" >> "$GITHUB_ENV"
+          elif [[ -n "${VERCEL_SCOPE:-}" ]] && npx vercel link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN" && npx vercel env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN"; then
+            node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+            echo "VERCEL_ENV_PULL_STATUS=success_without_scope" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Vercel env pull failed; continuing with workflow-provided readiness environment variables."
+            echo "VERCEL_ENV_PULL_STATUS=failed" >> "$GITHUB_ENV"
+          fi
 
       - name: Discover operational readiness inputs
         env:
@@ -95,7 +138,10 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
-          args=(--json --open-port="${LOCAL_RELEASE_OPEN_PORT}" --report=.tmp/local-release-readiness-report.json --operational-env-file=.tmp/operational-readiness-discovered.env)
+          args=(--json --open-port="${LOCAL_RELEASE_OPEN_PORT}" --report=.tmp/local-release-readiness-report.json --operational-env-file=.tmp/operational-readiness-discovered.env --command-timeout-ms="${LOCAL_RELEASE_COMMAND_TIMEOUT_MS}" --command-timeout-kill-grace-ms="${LOCAL_RELEASE_COMMAND_TIMEOUT_KILL_GRACE_MS}")
+          if [[ "${{ github.event_name }}" == "schedule" || ( "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict }}" == "true" ) ]]; then
+            args+=(--strict)
+          fi
           if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict_open }}" == "true" ]]; then
             args+=(--strict-open)
           fi

@@ -96,8 +96,9 @@ export default function PartnerPreviewClient() {
       </div>
 
       <div className="rounded-admin-md border border-admin-border-mid shadow-admin-xs bg-admin-surface p-4 space-y-3">
-        <label className="block text-xs font-semibold text-admin-muted uppercase tracking-wide">추천코드 (슬러그)</label>
+        <label htmlFor="partner-preview-code" className="block text-xs font-semibold text-admin-muted uppercase tracking-wide">추천코드 (슬러그)</label>
         <input
+          id="partner-preview-code"
           type="text"
           value={code}
           onChange={(e) => setCode(e.target.value)}

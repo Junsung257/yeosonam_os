@@ -206,8 +206,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
       <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         <h2 className="text-sm font-bold text-admin-text">기본 정보</h2>
         <div>
-          <label className="text-xs font-bold text-admin-muted">이름 *</label>
+          <label htmlFor="terms-template-name" className="text-xs font-bold text-admin-muted">이름 *</label>
           <input
+            id="terms-template-name"
             type="text"
             value={tpl.name}
             onChange={e => updateField('name', e.target.value)}
@@ -217,8 +218,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         </div>
         <div className="grid grid-cols-3 gap-3">
           <div>
-            <label className="text-xs font-bold text-admin-muted">Tier *</label>
+            <label htmlFor="terms-template-tier" className="text-xs font-bold text-admin-muted">Tier *</label>
             <select
+              id="terms-template-tier"
               value={tpl.tier}
               onChange={e => handleTierChange(Number(e.target.value) as 1 | 2 | 3)}
               className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
@@ -229,8 +231,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
             </select>
           </div>
           <div>
-            <label className="text-xs font-bold text-admin-muted">Priority</label>
+            <label htmlFor="terms-template-priority" className="text-xs font-bold text-admin-muted">Priority</label>
             <input
+              id="terms-template-priority"
               type="number"
               value={tpl.priority}
               onChange={e => updateField('priority', Number(e.target.value))}
@@ -238,8 +241,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
             />
           </div>
           <div>
-            <label className="text-xs font-bold text-admin-muted">활성</label>
+            <label htmlFor="terms-template-active" className="text-xs font-bold text-admin-muted">활성</label>
             <select
+              id="terms-template-active"
               value={tpl.is_active ? 'true' : 'false'}
               onChange={e => updateField('is_active', e.target.value === 'true')}
               className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
@@ -250,8 +254,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
           </div>
         </div>
         <div>
-          <label className="text-xs font-bold text-admin-muted">메모</label>
+          <label htmlFor="terms-template-notes" className="text-xs font-bold text-admin-muted">메모</label>
           <input
+            id="terms-template-notes"
             type="text"
             value={tpl.notes ?? ''}
             onChange={e => updateField('notes', e.target.value || null)}
@@ -268,8 +273,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         )}
         {(tpl.tier === 2 || tpl.tier === 3) && (
           <div>
-            <label className="text-xs font-bold text-admin-muted">랜드사 *</label>
+            <label htmlFor="terms-template-land-operator" className="text-xs font-bold text-admin-muted">랜드사 *</label>
             <select
+              id="terms-template-land-operator"
               value={(tpl.scope.land_operator_id ?? '') as string}
               onChange={e => updateScope('land_operator_id', e.target.value)}
               className="w-full border border-admin-border-strong rounded px-3 py-2 text-sm"
@@ -283,8 +289,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         )}
         {tpl.tier === 3 && (
           <div>
-            <label className="text-xs font-bold text-admin-muted">상품타입 키워드 * (쉼표로 구분, 예: 전세기, 골프, 하드블록)</label>
+            <label htmlFor="terms-template-product-type-keywords" className="text-xs font-bold text-admin-muted">상품타입 키워드 * (쉼표로 구분, 예: 전세기, 골프, 하드블록)</label>
             <input
+              id="terms-template-product-type-keywords"
               type="text"
               value={(tpl.scope.product_type_keywords ?? []).join(', ')}
               onChange={e => updateScope(

@@ -62,17 +62,21 @@ function sourceTextForRuntimeRefs() {
 
 const contract = JSON.parse(readText(contractPath));
 const critical = Array.isArray(contract.critical) ? contract.critical : [];
+const channelOptional = Array.isArray(contract.channelOptional) ? contract.channelOptional : [];
 const warnDefaults = Array.isArray(contract.warnDefaults) ? contract.warnDefaults : [];
-const allKeys = unique([...critical, ...warnDefaults]);
+const aliases = contract.aliases && typeof contract.aliases === 'object' ? contract.aliases : {};
+const aliasKeys = Object.values(aliases).flatMap((value) => (Array.isArray(value) ? value : []));
+const allKeys = unique([...critical, ...channelOptional, ...warnDefaults, ...aliasKeys]);
 const checks = [];
 
-addCheck(checks, 'runtime-env-contract:shape', critical.length > 0 && warnDefaults.length > 0 ? 'pass' : 'fail', {
+addCheck(checks, 'runtime-env-contract:shape', critical.length > 0 && channelOptional.length > 0 && warnDefaults.length > 0 ? 'pass' : 'fail', {
   contractPath,
   criticalCount: critical.length,
+  channelOptionalCount: channelOptional.length,
   warnDefaultsCount: warnDefaults.length,
 });
 
-const duplicates = duplicateValues([...critical, ...warnDefaults]);
+const duplicates = duplicateValues([...critical, ...channelOptional, ...warnDefaults]);
 addCheck(checks, 'runtime-env-contract:no-duplicates', duplicates.length === 0 ? 'pass' : 'fail', {
   duplicates,
 });
@@ -82,6 +86,14 @@ const missingRegistry = critical.filter((key) => !secretRegistry.includes(`'${ke
 addCheck(checks, 'runtime-env-contract:critical-secret-registry', missingRegistry.length === 0 ? 'pass' : 'fail', {
   file: secretRegistryPath,
   missing: missingRegistry,
+});
+
+const missingOptionalRegistry = channelOptional
+  .concat(aliasKeys)
+  .filter((key) => !secretRegistry.includes(`'${key}'`));
+addCheck(checks, 'runtime-env-contract:optional-secret-registry', missingOptionalRegistry.length === 0 ? 'pass' : 'fail', {
+  file: secretRegistryPath,
+  missing: missingOptionalRegistry,
 });
 
 const sourceScan = sourceTextForRuntimeRefs();

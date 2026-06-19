@@ -349,6 +349,7 @@ export default function TaxPage() {
                       {/* 랜드사 송금 상태 */}
                       <td className="px-3 py-2">
                         <select
+                          aria-label={`${b.booking_no} 랜드사 송금 상태`}
                           value={b.transfer_status}
                           disabled={isSaving}
                           onChange={e => updateField(b.id, { transfer_status: e.target.value as 'PENDING' | 'COMPLETED' })}
@@ -367,6 +368,7 @@ export default function TaxPage() {
                       <td className="px-3 py-2 text-center">
                         <label className="flex items-center justify-center gap-1.5 cursor-pointer">
                           <input
+                            aria-label={`${b.booking_no} 세금계산서 여부`}
                             type="checkbox"
                             checked={b.has_tax_invoice}
                             disabled={isSaving}
@@ -382,6 +384,7 @@ export default function TaxPage() {
                       {/* 고객 현금영수증 */}
                       <td className="px-3 py-2">
                         <select
+                          aria-label={`${b.booking_no} 고객 현금영수증 상태`}
                           value={b.customer_receipt_status}
                           disabled={isSaving}
                           onChange={e => updateField(b.id, { customer_receipt_status: e.target.value as TaxBooking['customer_receipt_status'] })}

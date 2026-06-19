@@ -268,6 +268,7 @@ export default function ScoringFunnelPage() {
                       {row.has_feedback && <span className="ml-1.5 text-[11px] font-semibold text-violet-700">피드백 있음</span>}
                     </td>
                     <td className="px-3 py-2">
+                      <span className="sr-only">피드백</span>
                       <div className="flex justify-end gap-1">
                         <button
                           type="button"

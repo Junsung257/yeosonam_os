@@ -427,7 +427,7 @@ function SearchAdsContent() {
           <table className="w-full">
             <thead className="sticky top-0 bg-admin-bg border-y border-admin-border-mid">
               <tr>
-                <th className="w-8 py-1.5 px-2"><input type="checkbox" onChange={e => {
+                <th className="w-8 py-1.5 px-2"><input type="checkbox" aria-label="광고 플랜 전체 선택" onChange={e => {
                   if (e.target.checked) setSelectedPlanIds(new Set(planRows.filter(p => p.plan_status === 'draft').map(p => p.id)));
                   else setSelectedPlanIds(new Set());
                 }} className="rounded border-admin-border-strong" /></th>
@@ -444,7 +444,7 @@ function SearchAdsContent() {
                 <tr><td colSpan={7} className="py-8 text-center text-admin-muted-2 text-admin-sm">생성된 광고 플랜이 없습니다.</td></tr>
               ) : planRows.slice(0, 80).map(row => (
                 <tr key={row.id} className="border-b border-admin-border hover:bg-admin-bg">
-                  <td className="py-1.5 px-2"><input type="checkbox" checked={selectedPlanIds.has(row.id)} onChange={e => {
+                  <td className="py-1.5 px-2"><input type="checkbox" aria-label={`${row.keyword_text} 광고 플랜 선택`} checked={selectedPlanIds.has(row.id)} onChange={e => {
                     const next = new Set(selectedPlanIds);
                     e.target.checked ? next.add(row.id) : next.delete(row.id);
                     setSelectedPlanIds(next);
@@ -522,7 +522,7 @@ function SearchAdsContent() {
         <table className="w-full">
           <thead>
             <tr className="bg-admin-bg border-b border-admin-border-mid">
-              <th className="w-8 py-2 px-2"><input type="checkbox" onChange={e => {
+              <th className="w-8 py-2 px-2"><input type="checkbox" aria-label="키워드 전체 선택" onChange={e => {
                 if (e.target.checked) setSelectedIds(new Set(filtered.map(k => k.id)));
                 else setSelectedIds(new Set());
               }} className="rounded border-admin-border-strong" /></th>
@@ -544,7 +544,7 @@ function SearchAdsContent() {
             ) : (
               filtered.map(k => (
                 <tr key={k.id} className="border-b border-admin-border hover:bg-admin-bg group">
-                  <td className="py-1.5 px-2"><input type="checkbox" checked={selectedIds.has(k.id)} onChange={e => {
+                  <td className="py-1.5 px-2"><input type="checkbox" aria-label={`${k.keyword} 선택`} checked={selectedIds.has(k.id)} onChange={e => {
                     const next = new Set(selectedIds);
                     e.target.checked ? next.add(k.id) : next.delete(k.id);
                     setSelectedIds(next);
@@ -554,9 +554,9 @@ function SearchAdsContent() {
                   <td className="py-1.5 px-2 text-center"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${TIER_COLORS[k.tier]}`}>{TIER_LABELS[k.tier]}</span></td>
                   <td className="text-admin-xs text-admin-text-2 py-1.5 px-2 text-right">
                     {editingBid === k.id ? (
-                      <input type="number" value={editBidValue} onChange={e => setEditBidValue(e.target.value)}
+                      <input aria-label={`${k.keyword} 입찰가`} type="number" value={editBidValue} onChange={e => setEditBidValue(e.target.value)}
                         onBlur={() => handleBidSave(k.id)} onKeyDown={e => e.key === 'Enter' && handleBidSave(k.id)}
-                        autoFocus className="w-16 px-1 py-0.5 border border-[#005d90] rounded text-admin-xs text-right" />
+                        className="w-16 px-1 py-0.5 border border-[#005d90] rounded text-admin-xs text-right" />
                     ) : (
                       <button onClick={() => { setEditingBid(k.id); setEditBidValue(String(k.bid)); }}
                         className="hover:bg-blue-50 px-1 rounded transition">₩{k.bid.toLocaleString()}</button>
@@ -582,18 +582,23 @@ function SearchAdsContent() {
 
       {/* ── 키워드 추출 드로어 ─────────────────────────── */}
       {extractorOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setExtractorOpen(false)}>
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            onClick={() => setExtractorOpen(false)}
+            aria-label="키워드 추출기 닫기"
+          />
+          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col">
             <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
               <h2 className="text-admin-lg font-semibold text-admin-text-2">키워드 추출기</h2>
-              <button onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+              <button aria-label="키워드 추출기 닫기" onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-4">
               {/* 상품 선택 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">상품 선택</label>
-                <select value={selectedPkg?.id || ''} onChange={e => {
+                <label htmlFor="search-ads-extractor-package" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">상품 선택</label>
+                <select id="search-ads-extractor-package" value={selectedPkg?.id || ''} onChange={e => {
                   const pkg = packages.find(p => p.id === e.target.value);
                   if (pkg) handleExtract(pkg);
                 }} className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
@@ -662,12 +667,17 @@ function SearchAdsContent() {
 
       {/* ── AI 최적화 드로어 ───────────────────────────── */}
       {optimizerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setOptimizerOpen(false)}>
-          <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex justify-end">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+            onClick={() => setOptimizerOpen(false)}
+            aria-label="AI 입찰 최적화 닫기"
+          />
+          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col">
             <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
               <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 입찰 최적화</h2>
-              <button onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+              <button aria-label="AI 입찰 최적화 닫기" onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
             <div className="flex-1 overflow-y-auto p-5 space-y-3">
               {recommendations.length === 0 ? (

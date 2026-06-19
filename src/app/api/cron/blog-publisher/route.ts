@@ -4,7 +4,7 @@ import { logWarning } from '@/lib/sentry-logger';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { BANNED_CLICHES, runQualityGates, type QualityGateReport } from '@/lib/blog-quality-gate';
 import { generateBlogText, hasBlogApiKey } from '@/lib/blog-ai-caller';
-import { generateBlogPost, generateBlogSeo, type AngleType } from '@/lib/content-generator';
+import { generateBlogPost as generateLegacyBlogPost, generateBlogSeo, type AngleType } from '@/lib/content-generator';
 import { enqueueBlogIndexingJob } from '@/lib/blog-indexing-outbox';
 import { processDueBlogIndexingJobs } from '@/lib/blog-indexing-worker';
 import { revalidatePublicBlogCache } from '@/lib/revalidate-blog-cache';
@@ -16,6 +16,7 @@ import { computeReadability } from '@/lib/blog-readability';
 import { computeSeoScore } from '@/lib/blog-seo-scorer';
 import { repairBlogSeoMetadata } from '@/lib/blog-seo-repair';
 import { ensureBlogInlineImages } from '@/lib/blog-inline-images';
+import { stabilizeBlogMarkdownImages, type BlogImageAssetReport } from '@/lib/blog-image-assets';
 import { optimizeImageSeoInHtml } from '@/lib/blog-image-seo';
 import { indexBlog } from '@/lib/jarvis/rag/indexer';
 import { parsePublisherBridgeResponse } from '@/lib/blog-card-news-bridge';
@@ -48,6 +49,19 @@ import { getBlogPublishingPolicy, normalizeDailyPostTarget } from '@/lib/blog-sc
 import { classifyBlogQueueFailure, shouldSelfHealBlogQueueItem } from '@/lib/blog-queue-failure-policy';
 import { normalizeBlogAngleType } from '@/lib/blog-queue-normalize';
 import { evaluateBlogTopicFit } from '@/lib/blog-topic-fit-gate';
+import {
+  buildArticleBrief,
+  buildInfoEvidencePack,
+  buildProductFactPack,
+  buildProductFactPolicy,
+  buildTravelOfficialSourceCandidates,
+  formatInfoEvidencePromptBlock,
+  generateArticleContract,
+  mergeFactIntegrityResults,
+  renderArticleMarkdown,
+  validateArticleContract,
+  validateRenderedArticleFacts,
+} from '@/lib/blog-engine-v2';
 
 /**
  * 블로그 자동 발행 크론 — vercel.json 의 schedule (현재 `0 2 * * *`, UTC 매일 02시) + 수동 GET
@@ -278,6 +292,83 @@ function strengthenIntroHook(markdown: string, item: any, primaryKeyword?: strin
   return lines.join('\n');
 }
 
+function hasAnswerExtractableStructure(markdown: string): boolean {
+  const firstBody = markdown
+    .replace(/[#*_`[\]()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 700);
+  const h2s = markdown.match(/^##\s+.+$/gm) ?? [];
+  const questionH2s = h2s.filter((line) =>
+    /[?？]$/.test(line.trim()) ||
+    /(인가요|얼마|무엇|어디|어떻게|언제|맞나요|되나요|확인해야|좋나요)/.test(line),
+  );
+  const hasAnswerBlock = /핵심\s*답변|답변\s*:|요약\s*답변/i.test(firstBody);
+  const hasDirectAnswer = /(기준|가격|포함|불포함|일정|출발|확인)/.test(firstBody);
+  const questionRatio = h2s.length === 0 ? 0 : questionH2s.length / h2s.length;
+  return hasAnswerBlock && hasDirectAnswer && (h2s.length < 3 || questionRatio >= 0.4);
+}
+
+function ensureAnswerExtractabilityStructure(
+  markdown: string,
+  item: any,
+  primaryKeyword?: string | null,
+  blogType: 'product' | 'info' = 'info',
+): string {
+  if (hasAnswerExtractableStructure(markdown)) return markdown;
+
+  const lines = markdown.split('\n');
+  let h1Index = lines.findIndex(line => /^#\s+\S/.test(line.trim()));
+  const keyword = primaryKeyword || item.destination || extractDestination(item.topic || '') || item.topic || '여행 정보';
+  if (h1Index < 0) {
+    lines.unshift(`# ${keyword}`, '');
+    h1Index = 0;
+  }
+
+  const hasAnswerHeading = /^##\s*핵심\s*답변\s*$/m.test(markdown);
+  if (!hasAnswerHeading) {
+    const answerLines = blogType === 'product'
+      ? [
+          '## 핵심 답변',
+          '',
+          `**답변:** ${keyword} 상품은 가격, 일정, 포함사항, 불포함사항, 유의사항을 함께 확인해야 판단할 수 있습니다.`,
+          '이 글은 등록된 상품 데이터와 본문에 표시된 조건을 기준으로 예약 전 확인할 항목을 먼저 정리합니다.',
+          '최종 가격, 좌석, 객실, 출발 가능 여부는 예약 시점에 달라질 수 있으므로 상담에서 다시 확인하는 것이 안전합니다.',
+        ]
+      : [
+          '## 핵심 답변',
+          '',
+          `**답변:** ${keyword}를 준비할 때는 비용, 이동 동선, 준비물, 예약 조건을 먼저 확인해야 합니다.`,
+          '이 글은 확인 가능한 정보와 여소남의 여행 상품 맥락을 기준으로 바로 판단할 수 있는 순서로 정리합니다.',
+          '본문의 각 섹션은 질문별로 짧은 답을 먼저 보고, 필요한 경우 상세 근거와 다음 행동을 확인하는 구조입니다.',
+        ];
+    lines.splice(h1Index + 1, 0, '', ...answerLines);
+  }
+
+  const current = lines.join('\n');
+  const h2s = current.match(/^##\s+.+$/gm) ?? [];
+  const questionH2s = h2s.filter((line) =>
+    /[?？]$/.test(line.trim()) ||
+    /(인가요|얼마|무엇|어디|어떻게|언제|맞나요|되나요|확인해야|좋나요)/.test(line),
+  );
+  if (h2s.length >= 3 && questionH2s.length / h2s.length >= 0.4) {
+    return lines.join('\n');
+  }
+
+  const question = blogType === 'product'
+    ? `${keyword} 상품에서 가장 먼저 확인해야 할 것은 무엇인가요?`
+    : `${keyword}에서 가장 먼저 확인해야 할 것은 무엇인가요?`;
+  lines.push(
+    '',
+    `## ${question}`,
+    '',
+    blogType === 'product'
+      ? '가격만 보지 말고 일정, 포함사항, 불포함사항, 유의사항을 함께 확인해야 실제 예약 판단이 쉬워집니다.'
+      : '비용, 이동 동선, 준비물, 예약 조건을 먼저 확인하면 검색 후 바로 행동으로 옮기기 쉽습니다.',
+  );
+  return lines.join('\n');
+}
+
 function softenKeywordDensity(markdown: string, primaryKeyword?: string | null, blogType: 'product' | 'info' = 'info'): string {
   const keyword = primaryKeyword?.trim();
   if (!keyword || keyword.length < 2) return markdown;
@@ -339,6 +430,28 @@ function buildQualityGateInput(
   blogType: 'product' | 'info',
   primaryKeyword?: string | null,
 ) {
+  const contentBriefMeta = generated.generation_meta?.content_brief as {
+    source_requirements?: unknown;
+  } | undefined;
+  const sourceCoverageMeta = generated.generation_meta?.source_coverage as {
+    required?: boolean;
+    trusted_sources?: unknown;
+    blockers?: unknown;
+  } | undefined;
+  const sourceRequirements = Array.isArray(contentBriefMeta?.source_requirements)
+    ? contentBriefMeta.source_requirements.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const trustedSources = Array.isArray(sourceCoverageMeta?.trusted_sources)
+    ? sourceCoverageMeta.trusted_sources
+    : [];
+  const sourceBlockers = Array.isArray(sourceCoverageMeta?.blockers)
+    ? sourceCoverageMeta.blockers.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
+  const sourceLinks = [...generated.blog_html.matchAll(/https?:\/\/[^\s)]+/g)]
+    .map((match) => match[0].replace(/[),.]+$/, ''))
+    .filter(Boolean);
+  const sourceCoverageRequired = blogType === 'info' && (sourceCoverageMeta?.required === true || sourceRequirements.length > 0);
+
   return {
     blog_html: generated.blog_html,
     slug: generated.slug,
@@ -349,6 +462,27 @@ function buildQualityGateInput(
     category: item.category,
     content_type: item.source === 'pillar' ? 'pillar' : (item.product_id ? 'package_intro' : 'guide'),
     product_id: item.product_id ?? null,
+    fact_integrity: generated.generation_meta?.fact_integrity as {
+      passed?: boolean;
+      issues?: Array<{ code?: string; message?: string }>;
+    } | null | undefined,
+    fact_policy: generated.generation_meta?.fact_policy as {
+      mode?: 'product';
+      allowedMoneyClaims?: string[];
+      blockedClaims?: string[];
+    } | null | undefined,
+    source_coverage: sourceCoverageRequired
+      ? {
+          required: true,
+          passed: sourceLinks.length > 0 && sourceBlockers.length === 0,
+          sources: sourceLinks,
+          trustedSources,
+          blockers: [
+            ...sourceBlockers,
+            ...(sourceLinks.length > 0 ? [] : ['missing_source_links']),
+          ],
+        }
+      : null,
   };
 }
 
@@ -418,6 +552,15 @@ async function repairFailedQualityGates(
       generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
       if (generated.blog_html !== before) {
         changes.push('strengthened_intro_hook');
+        changed = true;
+      }
+    }
+
+    if (failed.has('answer_extractability')) {
+      const before = generated.blog_html;
+      generated.blog_html = ensureAnswerExtractabilityStructure(generated.blog_html, item, primaryKeyword, blogType);
+      if (generated.blog_html !== before) {
+        changes.push('ensured_answer_extractability');
         changed = true;
       }
     }
@@ -934,8 +1077,10 @@ async function processQueueItem(
     const primaryKeyword = rawKeyword?.includes('/')
       ? rawKeyword.split('/')[0].trim()
       : rawKeyword;
+    let imageAssetReport: BlogImageAssetReport | null = null;
 
     generated.blog_html = strengthenIntroHook(generated.blog_html, item, primaryKeyword);
+    generated.blog_html = ensureAnswerExtractabilityStructure(generated.blog_html, item, primaryKeyword, blogType);
     generated.blog_html = softenKeywordDensity(generated.blog_html, primaryKeyword, blogType);
 
     // 일반 정보성/상품 글도 카드뉴스 경로처럼 본문 안에 사진을 보유하게 만든다.
@@ -946,6 +1091,7 @@ async function processQueueItem(
         destination: item.destination,
         primaryKeyword,
         ogImageUrl: generated.og_image_url,
+        allowOgImageInBody: !!generated.og_image_url && !/\/og-image\.(?:png|jpe?g|webp)(?:\?|$)/i.test(generated.og_image_url),
         minImages: item.card_news_id ? 2 : 3,
         maxImages: item.card_news_id ? 3 : 4,
       });
@@ -959,6 +1105,30 @@ async function processQueueItem(
 
     // 이미지/CTA 후처리 이후에도 공식 외부 링크 기준을 최종 보장한다.
     generated.blog_html = appendOfficialReferenceLinksIfNeeded(generated.blog_html);
+
+    try {
+      imageAssetReport = await stabilizeBlogMarkdownImages({
+        markdown: generated.blog_html,
+        slug: generated.slug,
+        destination: item.destination,
+        primaryKeyword,
+        removeBroken: true,
+        requireMirroredExternal: true,
+        maxImages: item.card_news_id ? 4 : 6,
+      });
+      if (imageAssetReport.changed) {
+        generated.blog_html = imageAssetReport.markdown;
+      }
+      if (imageAssetReport.mirrored > 0 || imageAssetReport.removed > 0 || imageAssetReport.failed > 0) {
+        console.log(
+          `[blog-publisher] image asset stabilization: mirrored=${imageAssetReport.mirrored}, removed=${imageAssetReport.removed}, failed=${imageAssetReport.failed}`,
+        );
+      }
+    } catch (e) {
+      const reason = e instanceof Error ? e.message : String(e);
+      await handleFailure(item, `image asset stabilization failed: ${reason}`, null);
+      return { id: item.id, topic: item.topic, status: 'image_asset_failed', reason };
+    }
 
     const editorialRepair = repairBlogEditorialQuality({
       title: generated.seo_title,
@@ -1144,6 +1314,7 @@ async function processQueueItem(
       ...(promoteDraftId ? { promoted_from_draft: true } : {}),
       ...(item.meta || {}),
       ...(generated.generation_meta || {}),
+      ...(imageAssetReport ? { image_assets: imageAssetReport } : {}),
     };
     const rowPayload: Record<string, unknown> = {
       tenant_id: item.tenant_id ?? null,
@@ -1255,7 +1426,11 @@ async function processQueueItem(
 
     // 컨텍스트 부족(관광지+상품 0)은 재시도해도 동일 결과 → 즉시 permanently failed
     const isUnrecoverable = msg.includes('컨텍스트 부족');
-    await handleFailure(item, msg, null, isUnrecoverable);
+    const v2Unrecoverable =
+      msg.startsWith('needs_product_data:')
+      || msg.startsWith('fact_integrity_failed:')
+      || msg.startsWith('needs_source_review:');
+    await handleFailure(item, msg, null, isUnrecoverable || v2Unrecoverable);
     return { id: item.id, topic: item.topic, status: 'error', reason: msg };
   }
 }
@@ -1470,7 +1645,7 @@ ${serpBlock ? `\n${serpBlock}\n` : ''}
 - 출력 마지막에 \`<!-- pillar_for:${item.destination} prompt_version:${promptVersion} -->\` HTML 주석 남기기
 - 마크다운 코드블록으로 감싸지 말 것`;
 
-  const raw = await generateBlogText(prompt, { temperature: 0.65 });
+  const raw = await generateBlogText(prompt, { temperature: 0.65, cascade: false });
   const blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -1530,7 +1705,65 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
     attractions = attrs || [];
   }
 
-  let blog_html = generateBlogPost(product, angle, attractions);
+  if (process.env.BLOG_ENGINE_V2_PRODUCT === 'false') {
+    let legacyBlogHtml = generateLegacyBlogPost(product, angle, attractions);
+    const legacyReviewSnips = await fetchApprovedReviewSnippets({
+      packageId: product.id,
+      destination: product.destination,
+      limit: 3,
+    });
+    legacyBlogHtml += formatReviewQuotesAppendMarkdown(legacyReviewSnips);
+    const legacySeo = generateBlogSeo(product, angle);
+    const legacySlug = `${legacySeo.slug}-${product.id.slice(-6)}`;
+    const legacyBaseUrl = (process.env.NEXT_PUBLIC_BASE_URL || 'https://yeosonam.com').replace(/\/$/, '');
+    const legacyFirstAttrPhoto =
+      attractions[0]?.photos?.[0]?.src_medium ||
+      attractions
+        .flatMap((a: any) => (Array.isArray(a?.photos) ? a.photos : []))
+        .find((p: any) => p?.src_medium)?.src_medium ||
+      null;
+    const legacyOgImageUrl: string =
+      (product as { hero_image_url?: string | null }).hero_image_url ||
+      (Array.isArray((product as { thumbnail_urls?: string[] }).thumbnail_urls)
+        ? (product as { thumbnail_urls?: string[] }).thumbnail_urls?.[0]
+        : null) ||
+      legacyFirstAttrPhoto ||
+      `${legacyBaseUrl}/og-image.png`;
+
+    return {
+      blog_html: legacyBlogHtml,
+      slug: legacySlug,
+      seo_title: legacySeo.seoTitle,
+      seo_description: legacySeo.seoDescription,
+      og_image_url: legacyOgImageUrl,
+      generation_meta: {
+        blog_engine_v2: {
+          enabled: false,
+          reason: 'BLOG_ENGINE_V2_PRODUCT=false',
+        },
+      },
+    };
+  }
+
+  const factPack = buildProductFactPack(product);
+  if (factPack.blockers.length > 0) {
+    throw new Error(`needs_product_data:${factPack.blockers.join(',')}`);
+  }
+
+  const brief = buildArticleBrief(factPack, {
+    kind: 'product_article',
+    angleType: angle,
+    primaryKeyword: item.primary_keyword || product.destination || product.title,
+  });
+  const article = generateArticleContract(brief);
+  const contractFactIntegrity = validateArticleContract(article, factPack);
+  let blog_html = renderArticleMarkdown(article, factPack);
+  const renderedFactIntegrity = validateRenderedArticleFacts(blog_html, factPack);
+  const factIntegrity = mergeFactIntegrityResults(contractFactIntegrity, renderedFactIntegrity);
+  if (!factIntegrity.passed) {
+    throw new Error(`fact_integrity_failed:${factIntegrity.issues.map((issue) => issue.code).join(',')}`);
+  }
+
   const reviewSnips = await fetchApprovedReviewSnippets({
     packageId: product.id,
     destination: product.destination,
@@ -1539,7 +1772,7 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   blog_html += formatReviewQuotesAppendMarkdown(reviewSnips);
   const seo = generateBlogSeo(product, angle);
   // Append product ID suffix to prevent slug collisions between same-destination products
-  const slug = `${seo.slug}-${product.id.slice(-6)}`;
+  const slug = `${article.seo.slug || seo.slug}-${product.id.slice(-6)}`;
 
   // og_image_url 폴백 체인 — null 비율 83% 문제 해결 (2026-05-12)
   // 1. 상품 대표사진 hero_image_url
@@ -1565,9 +1798,32 @@ async function generateFromProduct(item: any): Promise<GeneratedBlog> {
   return {
     blog_html,
     slug,
-    seo_title: seo.seoTitle,
-    seo_description: seo.seoDescription,
+    seo_title: article.seo.title || seo.seoTitle,
+    seo_description: article.seo.description || seo.seoDescription,
     og_image_url,
+    generation_meta: {
+      blog_engine_v2: {
+        enabled: true,
+        article_kind: article.kind,
+        fact_pack_kind: factPack.kind,
+        product_id: factPack.productId,
+        blockers: factPack.blockers,
+        warnings: factPack.warnings,
+        fact_count: factPack.facts.length,
+        rendered_by: 'deterministic_renderer',
+      },
+      fact_integrity: factIntegrity,
+      fact_policy: buildProductFactPolicy(factPack),
+      product_fact_pack_summary: {
+        price_label: factPack.priceLabel,
+        duration_label: factPack.durationLabel,
+        next_departure_label: factPack.nextDepartureLabel,
+        departure_summary: factPack.departureSummary,
+        inclusion_count: factPack.canonicalFacts.inclusions.length,
+        exclude_count: factPack.canonicalFacts.excludes.length,
+        itinerary_day_count: factPack.canonicalFacts.itineraryDays.length,
+      },
+    },
   };
 }
 
@@ -1611,6 +1867,21 @@ async function generateFromTopic(item: any): Promise<GeneratedBlog> {
   });
   if (!contentBrief.passed) {
     throw new Error(`blog_content_brief_failed:${contentBrief.issues.join(',')}`);
+  }
+  const officialSourceCandidates = buildTravelOfficialSourceCandidates({
+    topic: item.topic,
+    destination: item.destination,
+    freshnessTopics: freshnessRisk.topics,
+    sourceRequirements: contentBrief.sourceRequirements,
+  });
+  const infoEvidencePack = buildInfoEvidencePack(
+    item.topic,
+    officialSourceCandidates,
+    queuedKeywords,
+  );
+  const sourcePromptBlock = formatInfoEvidencePromptBlock(infoEvidencePack);
+  if (freshnessRisk.requiresOfficialSources && infoEvidencePack.blockers.length > 0) {
+    throw new Error(`needs_source_review:${infoEvidencePack.blockers.join(',')}`);
   }
   const effectiveTopic = contentBrief.title;
   const primaryKw = contentBrief.primaryKeyword;
@@ -1719,6 +1990,7 @@ ${item.destination ? `**목적지**: ${item.destination}` : ''}
 ${reviewPromptBlock}
 ${originalityPromptBlock}
 ${freshnessPromptBlock}
+${sourcePromptBlock}
 ${intentPromptBlock}
 ${buildBlogContentBriefPromptBlock(contentBrief)}
 
@@ -1738,7 +2010,7 @@ ${serpGapBlock}
   - 중간: [여소남 큐레이터에게 문의](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=mid_cta)
   - 마지막: [여소남에서 안심 여행 준비하세요](${baseForUtm}/?utm_source=${utmSrc}&utm_medium=organic&utm_campaign=${utmCamp}&utm_content=bottom_cta)`;
 
-  const raw = await generateBlogText(prompt, { temperature: 0.7 });
+  const raw = await generateBlogText(prompt, { temperature: 0.7, cascade: false });
   let blog_html = raw
     .replace(/^```markdown\s*/i, '')
     .replace(/^```\s*/i, '')
@@ -1802,6 +2074,33 @@ ${serpGapBlock}
       min_price: originalitySignals.minPrice,
       max_price: originalitySignals.maxPrice,
       latest_package_updated_at: originalitySignals.latestPackageUpdatedAt,
+    },
+    info_evidence_pack: {
+      kind: infoEvidencePack.kind,
+      topic: infoEvidencePack.topic,
+      blocker_count: infoEvidencePack.blockers.length,
+      warning_count: infoEvidencePack.warnings.length,
+      trusted_sources: infoEvidencePack.facts.map((fact) => ({
+        id: fact.id,
+        label: fact.label,
+        url: typeof fact.value === 'object' && fact.value && 'url' in fact.value
+          ? (fact.value as { url?: unknown }).url
+          : fact.field,
+        source: fact.source,
+        confidence: fact.confidence,
+      })),
+      serp_signals: infoEvidencePack.serpSignals,
+    },
+    source_coverage: {
+      required: contentBrief.sourceRequirements.length > 0 || freshnessRisk.requiresOfficialSources,
+      source_requirements: contentBrief.sourceRequirements,
+      trusted_sources: infoEvidencePack.facts.map((fact) => ({
+        label: fact.label,
+        url: typeof fact.value === 'object' && fact.value && 'url' in fact.value
+          ? (fact.value as { url?: unknown }).url
+          : fact.field,
+      })),
+      blockers: infoEvidencePack.blockers,
     },
     ...(serpData ? {
       serp_analysis: {

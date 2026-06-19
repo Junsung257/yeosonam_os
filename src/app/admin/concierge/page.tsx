@@ -223,7 +223,9 @@ export default function AdminConciergePage() {
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-admin-muted">원가</th>
                 <th className="px-3 py-2 text-right text-[11px] font-medium text-admin-muted">순마진</th>
                 <th className="px-3 py-2 text-left text-[11px] font-medium text-admin-muted">생성일</th>
-                <th className="px-3 py-2"></th>
+                <th className="px-3 py-2">
+                  <span className="sr-only">작업</span>
+                </th>
               </tr>
             </thead>
             <tbody>

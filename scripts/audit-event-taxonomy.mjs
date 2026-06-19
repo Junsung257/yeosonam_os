@@ -14,18 +14,28 @@ import { relative } from 'node:path';
 const root = process.cwd();
 const taxonomyPath = 'docs/analytics-event-taxonomy.md';
 const taxonomy = readFileSync(taxonomyPath, 'utf8');
+const analyticsEventsPath = 'src/lib/analytics-events.ts';
+const analyticsEventsSource = readFileSync(analyticsEventsPath, 'utf8');
 
 const trackedFiles = [
   'src/lib/tracker.ts',
   'src/app/concierge/page.tsx',
+  'src/app/group-inquiry/page.tsx',
+  'src/app/packages/PackagesClient.tsx',
+  'src/app/packages/[id]/DetailClient.tsx',
+  'src/app/admin/AdminPageClient.tsx',
+  'src/app/admin/bookings/BookingsPageClient.tsx',
+  'src/app/admin/packages/PackagesPageClient.tsx',
+  'src/app/admin/payments/PaymentsPageClient.tsx',
   'src/app/m/guide/[token]/GuideTimeline.tsx',
   'src/app/api/tracking/route.ts',
   'src/app/api/tracking/recommendation/route.ts',
   'src/app/api/tracking/guidebook/route.ts',
   'src/components/ProductCard.tsx',
   'src/components/customer/PackageCard.tsx',
+  'src/components/customer/HomeHeroSearchCluster.tsx',
+  'src/components/customer/TrackedKakaoLink.tsx',
   'src/components/customer/RecommendationCard.tsx',
-  'src/app/packages/[id]/DetailClient.tsx',
 ];
 
 const requiredCurrentEvents = [
@@ -51,8 +61,20 @@ const requiredCurrentEvents = [
   'book_activity',
 ];
 
+const definedAnalyticsEvents = Array.from(
+  analyticsEventsSource.matchAll(/:\s*['"`]([a-z0-9_]+)['"`]/g),
+  (match) => match[1],
+);
+const analyticsEventMap = new Map(
+  Array.from(
+    analyticsEventsSource.matchAll(/^\s*([a-zA-Z0-9_]+)\s*:\s*['"`]([a-z0-9_]+)['"`]/gm),
+    (match) => [match[1], match[2]],
+  ),
+);
+const requiredEvents = Array.from(new Set([...requiredCurrentEvents, ...definedAnalyticsEvents]));
+
 const allowedOperationalTrackingEvents = new Set(['view', 'click', 'inquiry', 'booking']);
-const allowedRecommendationOutcomes = new Set(['click', 'inquiry', 'booking', 'cancelled']);
+const allowedTrackedOutcomes = new Set(['click', 'inquiry', 'booking', 'cancelled', 'rfq_created']);
 const knownDynamicPatterns = [/scroll_\$\{depthPct\}/];
 
 function documented(eventName) {
@@ -83,22 +105,33 @@ function extractEvents(filePath) {
     }
   }
 
+  for (const match of source.matchAll(/ANALYTICS_EVENTS\.([a-zA-Z0-9_]+)/g)) {
+    const key = match[1];
+    const value = analyticsEventMap.get(key);
+    events.push({ filePath, kind: 'analytics_constant', value: value ?? `ANALYTICS_EVENTS.${key}` });
+  }
+
   return events;
 }
 
-const missingDocs = requiredCurrentEvents.filter((eventName) => !documented(eventName));
+const missingDocs = requiredEvents.filter((eventName) => !documented(eventName));
 const discovered = trackedFiles.flatMap(extractEvents);
 
 const unknown = discovered.filter((event) => {
   if (knownDynamicPatterns.some((pattern) => pattern.test(event.value))) return false;
   if (allowedOperationalTrackingEvents.has(event.value)) return false;
-  if (allowedRecommendationOutcomes.has(event.value)) return false;
+  if (allowedTrackedOutcomes.has(event.value)) return false;
   return !documented(event.value);
 });
 
-for (const eventName of requiredCurrentEvents) {
+for (const eventName of requiredEvents) {
   const label = documented(eventName) ? 'PASS' : 'FAIL';
   console.log(`${label}  taxonomy  ${eventName}`);
+}
+
+for (const eventName of definedAnalyticsEvents) {
+  const label = documented(eventName) ? 'PASS' : 'FAIL';
+  console.log(`${label}  canonical  ${eventName}  ${analyticsEventsPath}`);
 }
 
 for (const event of discovered) {
@@ -120,4 +153,4 @@ if (missingDocs.length > 0 || unknown.length > 0) {
   process.exit(1);
 }
 
-console.log(`\n[event-taxonomy] ${requiredCurrentEvents.length} required events documented; ${discovered.length} code references checked.`);
+console.log(`\n[event-taxonomy] ${requiredEvents.length} required events documented; ${definedAnalyticsEvents.length} canonical analytics events checked; ${discovered.length} code references checked.`);

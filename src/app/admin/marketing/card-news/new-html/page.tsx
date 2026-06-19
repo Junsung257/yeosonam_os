@@ -210,8 +210,9 @@ export default function CardNewsHtmlNewPage() {
       {/* 입력 폼 */}
       <section className="space-y-4 rounded-admin-md border bg-white p-6 shadow-admin-xs">
         <div>
-          <label className="mb-1 block text-sm font-semibold">제목 (선택)</label>
+          <label htmlFor="card-news-html-title" className="mb-1 block text-sm font-semibold">제목 (선택)</label>
           <input
+            id="card-news-html-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -222,8 +223,9 @@ export default function CardNewsHtmlNewPage() {
         </div>
 
         <div>
-          <label className="mb-1 block text-sm font-semibold">상품 선택 (선택)</label>
+          <label htmlFor="card-news-html-package" className="mb-1 block text-sm font-semibold">상품 선택 (선택)</label>
           <select
+            id="card-news-html-package"
             value={packageId}
             onChange={(e) => setPackageId(e.target.value)}
             className="w-full rounded-lg border px-3 py-2 text-sm"
@@ -249,7 +251,7 @@ export default function CardNewsHtmlNewPage() {
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <label className="text-sm font-semibold">
+            <label htmlFor="card-news-html-raw-text" className="text-sm font-semibold">
               원문 텍스트 <span className="text-red-500">*</span>
             </label>
             {rawSource === 'normalized_intakes' && (
@@ -264,6 +266,7 @@ export default function CardNewsHtmlNewPage() {
             )}
           </div>
           <textarea
+            id="card-news-html-raw-text"
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             placeholder="상품 선택 시 자동으로 채워지거나, 직접 붙여넣기.&#10;&#10;⚠️ 원문에 없는 사실(연령제한, 할인조건 등)은 자동으로 제거됩니다."
@@ -276,8 +279,9 @@ export default function CardNewsHtmlNewPage() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="mb-1 block text-sm font-semibold">각도 (선택)</label>
+            <label htmlFor="card-news-html-angle" className="mb-1 block text-sm font-semibold">각도 (선택)</label>
             <select
+              id="card-news-html-angle"
               value={angleHint}
               onChange={(e) => setAngleHint(e.target.value)}
               className="w-full rounded-lg border px-3 py-2 text-sm"
@@ -291,8 +295,9 @@ export default function CardNewsHtmlNewPage() {
             </select>
           </div>
           <div>
-            <label className="mb-1 block text-sm font-semibold">톤 힌트 (선택)</label>
+            <label htmlFor="card-news-html-tone-hint" className="mb-1 block text-sm font-semibold">톤 힌트 (선택)</label>
             <input
+              id="card-news-html-tone-hint"
               type="text"
               value={toneHint}
               onChange={(e) => setToneHint(e.target.value)}

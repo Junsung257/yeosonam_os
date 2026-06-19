@@ -266,7 +266,7 @@ export default function BlogAdsPage() {
       {formOpen && (
         <section className="admin-card border-brand/20 p-4 space-y-2">
           <div className="grid gap-2 md:grid-cols-2">
-            <select value={fBlog} onChange={(e) => setFBlog(e.target.value)} className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text">
+            <select aria-label="블로그 선택" value={fBlog} onChange={(e) => setFBlog(e.target.value)} className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text">
               <option value="">블로그 선택</option>
               {blogs.map((blog) => (
                 <option key={blog.id} value={blog.id}>
@@ -274,16 +274,16 @@ export default function BlogAdsPage() {
                 </option>
               ))}
             </select>
-            <select value={fPlatform} onChange={(e) => setFPlatform(e.target.value)} className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text">
+            <select aria-label="광고 플랫폼 선택" value={fPlatform} onChange={(e) => setFPlatform(e.target.value)} className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text">
               {PLATFORMS.map((platform) => <option key={platform.v} value={platform.v}>{platform.label}</option>)}
             </select>
           </div>
           <div className="grid gap-2 md:grid-cols-2">
-            <input value={fKeyword} onChange={(e) => setFKeyword(e.target.value)} placeholder="광고 키워드 예: 부산 부모님 다낭 여행" className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
-            <input value={fCampaignSlug} onChange={(e) => setFCampaignSlug(e.target.value)} placeholder="캠페인 슬러그 선택, 미입력시 자동" className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
+            <input aria-label="광고 키워드" value={fKeyword} onChange={(e) => setFKeyword(e.target.value)} placeholder="광고 키워드 예: 부산 부모님 다낭 여행" className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
+            <input aria-label="캠페인 슬러그" value={fCampaignSlug} onChange={(e) => setFCampaignSlug(e.target.value)} placeholder="캠페인 슬러그 선택, 미입력시 자동" className="h-9 rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
           </div>
-          <input value={fDkiHeadline} onChange={(e) => setFDkiHeadline(e.target.value)} placeholder="광고 제목 치환 문구 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
-          <input value={fDkiSubtitle} onChange={(e) => setFDkiSubtitle(e.target.value)} placeholder="광고 부제 치환 문구 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
+          <input aria-label="광고 제목 치환 문구" value={fDkiHeadline} onChange={(e) => setFDkiHeadline(e.target.value)} placeholder="광고 제목 치환 문구 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
+          <input aria-label="광고 부제 치환 문구" value={fDkiSubtitle} onChange={(e) => setFDkiSubtitle(e.target.value)} placeholder="광고 부제 치환 문구 선택" className="h-9 w-full rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 text-admin-sm text-admin-text" />
           <Button variant="primary" onClick={createMapping} className="w-full">
             생성 + 추적 URL 자동 발급
           </Button>
@@ -320,7 +320,7 @@ export default function BlogAdsPage() {
                 <th className="text-right" style={{ width: 70 }}>상담</th>
                 <th className="text-right" style={{ width: 70 }}>전환</th>
                 <th className="text-center" style={{ width: 100 }}>상태</th>
-                <th style={{ width: 170 }}></th>
+                <th style={{ width: 170 }}><span className="sr-only">액션</span></th>
               </tr>
             </thead>
             <tbody>

@@ -44,7 +44,7 @@ const THRESHOLDS = {
 const DEDUP_WINDOW_DAYS = 14;
 
 export interface GateResult {
-  gate: 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality';
+  gate: 'fact_integrity' | 'answer_extractability' | 'source_coverage' | 'commerce_fit' | 'distribution_integrity' | 'length' | 'cliche' | 'duplicate' | 'keyword_density' | 'hook' | 'cta' | 'links' | 'readability' | 'ai_readability' | 'render_integrity' | 'structure_integrity' | 'topic_fit' | 'intent_quality' | 'editorial_quality' | 'image_quality';
   passed: boolean;
   reason?: string;
   evidence?: Record<string, unknown>;
@@ -69,6 +69,138 @@ interface CheckInput {
   content_type?: string | null;
   product_id?: string | null;
   skipFuzzyDuplicate?: boolean;
+  fact_integrity?: {
+    passed?: boolean;
+    issues?: Array<{ code?: string; message?: string }>;
+  } | null;
+  fact_policy?: {
+    mode?: 'product';
+    allowedMoneyClaims?: string[];
+    blockedClaims?: string[];
+  } | null;
+  source_coverage?: {
+    required?: boolean;
+    passed?: boolean;
+    sources?: unknown[];
+    blockers?: string[];
+  } | null;
+  distribution_integrity?: {
+    passed?: boolean;
+    reason?: string;
+  } | null;
+}
+
+export function checkFactIntegrity(input: CheckInput): GateResult {
+  const report = input.fact_integrity;
+  const policy = input.fact_policy;
+  if (!report && !policy) {
+    return { gate: 'fact_integrity', passed: true, evidence: { skipped: 'no fact integrity report' } };
+  }
+  const issues = Array.isArray(report?.issues) ? [...report.issues] : [];
+  if (policy?.mode === 'product') {
+    const allowedMoney = new Set(policy.allowedMoneyClaims ?? []);
+    const moneyClaims = input.blog_html.match(/\d{1,3}(?:,\d{3})+원|\d+\s*만원/g) ?? [];
+    for (const claim of moneyClaims) {
+      const normalized = claim.includes('만원')
+        ? String(Number(claim.replace(/[^\d]/g, '')) * 10000)
+        : claim.replace(/[^\d]/g, '');
+      if (allowedMoney.size > 0 && !allowedMoney.has(normalized)) {
+        issues.push({ code: 'unsupported_money_claim', message: `Money claim is not in product data: ${claim}` });
+      }
+    }
+    for (const claim of policy.blockedClaims ?? []) {
+      if (input.blog_html.includes(claim)) {
+        issues.push({ code: 'unsupported_product_claim', message: `Unsupported product claim in final body: ${claim}` });
+      }
+    }
+  }
+  const passed = report?.passed !== false && issues.length === 0;
+  return {
+    gate: 'fact_integrity',
+    passed,
+    reason: passed ? undefined : issues.map((issue) => issue.message || issue.code || 'fact issue').join(' | '),
+    evidence: { issues },
+  };
+}
+
+export function checkSourceCoverage(input: CheckInput): GateResult {
+  const report = input.source_coverage;
+  if (!report || !report.required) {
+    return { gate: 'source_coverage', passed: true, evidence: { skipped: 'not required' } };
+  }
+  const blockers = Array.isArray(report.blockers) ? report.blockers : [];
+  const sourceCount = Array.isArray(report.sources) ? report.sources.length : 0;
+  const passed = report.passed !== false && blockers.length === 0 && sourceCount > 0;
+  return {
+    gate: 'source_coverage',
+    passed,
+    reason: passed ? undefined : `trusted source coverage failed: ${blockers.join(', ') || 'no trusted sources'}`,
+    evidence: { sourceCount, blockers },
+  };
+}
+
+export function checkCommerceFit(input: CheckInput): GateResult {
+  if (input.blog_type !== 'product') {
+    return { gate: 'commerce_fit', passed: true, evidence: { skipped: 'non-product post' } };
+  }
+  const hasPackageLink = /\/packages(?:\/|\?)/.test(input.blog_html);
+  const hasPrice = /\d{1,3}(?:,\d{3})+원|\d+\s*만원|가격 확인/.test(input.blog_html);
+  const hasIncluded = /포함사항|불포함사항/.test(input.blog_html);
+  const missing = [
+    hasPackageLink ? null : 'package_link',
+    hasPrice ? null : 'price_or_price_status',
+    hasIncluded ? null : 'included_excluded',
+  ].filter(Boolean);
+  return {
+    gate: 'commerce_fit',
+    passed: missing.length === 0,
+    reason: missing.length > 0 ? `product commerce blocks missing: ${missing.join(', ')}` : undefined,
+    evidence: { hasPackageLink, hasPrice, hasIncluded },
+  };
+}
+
+export function checkDistributionIntegrity(input: CheckInput): GateResult {
+  const report = input.distribution_integrity;
+  if (!report) {
+    return { gate: 'distribution_integrity', passed: true, evidence: { skipped: 'canonical article generation' } };
+  }
+  return {
+    gate: 'distribution_integrity',
+    passed: report.passed !== false,
+    reason: report.passed === false ? report.reason || 'distribution integrity failed' : undefined,
+  };
+}
+
+export function checkAnswerExtractability(input: CheckInput): GateResult {
+  const lines = input.blog_html.split(/\r?\n/);
+  const text = stripMarkup(input.blog_html);
+  const firstBody = text.slice(0, 700);
+  const h2s = lines
+    .map((line) => line.trim())
+    .filter((line) => /^##\s+/.test(line))
+    .map((line) => line.replace(/^##\s+/, '').trim());
+  const questionHeadings = h2s.filter((heading) =>
+    /[?？]$/.test(heading) ||
+    /(인가요|얼마|무엇|어디|어떻게|언제|맞나요|되나요|확인해야|좋나요)/.test(heading),
+  );
+  const hasAnswerBlock = /핵심\s*답변|답변\s*:|요약\s*답변/i.test(firstBody);
+  const hasDirectAnswer = /(기준|가격|포함|불포함|일정|출발|확인)/.test(firstBody);
+  const h2Ratio = h2s.length === 0 ? 0 : questionHeadings.length / h2s.length;
+  const passed = hasAnswerBlock && hasDirectAnswer && (h2s.length < 3 || h2Ratio >= 0.4);
+  return {
+    gate: 'answer_extractability',
+    passed,
+    reason: passed
+      ? undefined
+      : `answer extractability failed: answerBlock=${hasAnswerBlock}, directAnswer=${hasDirectAnswer}, questionH2=${questionHeadings.length}/${h2s.length}`,
+    evidence: {
+      hasAnswerBlock,
+      hasDirectAnswer,
+      h2Count: h2s.length,
+      questionHeadingCount: questionHeadings.length,
+      questionHeadingRatio: Number(h2Ratio.toFixed(2)),
+    },
+  };
 }
 
 export function checkLength(blog_html: string, blog_type: 'product' | 'info' = 'product'): GateResult {
@@ -630,6 +762,11 @@ export async function runQualityGates(input: CheckInput): Promise<QualityGateRep
     // fallback: 기본 THRESHOLDS 상수 사용
   }
 
+  gates.push(checkFactIntegrity(input));
+  gates.push(checkAnswerExtractability(input));
+  gates.push(checkSourceCoverage(input));
+  gates.push(checkCommerceFit(input));
+  gates.push(checkDistributionIntegrity(input));
   gates.push(checkLength(input.blog_html, blogType));
   gates.push(checkCliche(input.blog_html, blogType));
   gates.push(await checkDuplicate(input));

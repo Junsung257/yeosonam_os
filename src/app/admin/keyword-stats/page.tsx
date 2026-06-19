@@ -78,11 +78,18 @@ export default function KeywordStatsPage() {
     const fetchAll = async () => {
       setLoading(true);
       try {
-        const params = platform !== 'all' ? `?platform=${platform}` : '';
+        const summaryParams = new URLSearchParams();
+        const topParams = new URLSearchParams({ _path: 'top' });
+        const termsParams = new URLSearchParams({ _path: 'search-terms' });
+        if (platform !== 'all') {
+          summaryParams.set('platform', platform);
+          topParams.set('platform', platform);
+          termsParams.set('platform', platform);
+        }
         const [summaryRes, topRes, termsRes] = await Promise.all([
-          fetch(`/api/admin/keyword-stats${params}`),
-          fetch(`/api/admin/keyword-stats/top${params}`),
-          fetch(`/api/admin/keyword-stats/search-terms${params}`),
+          fetch(`/api/admin/keyword-stats?${summaryParams.toString()}`),
+          fetch(`/api/admin/keyword-stats?${topParams.toString()}`),
+          fetch(`/api/admin/keyword-stats?${termsParams.toString()}`),
         ]);
         if (summaryRes.ok) setSummary((await summaryRes.json()) as KeywordStatsSummary);
         if (topRes.ok) {

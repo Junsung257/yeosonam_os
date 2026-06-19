@@ -2,11 +2,12 @@
 
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useChatStore } from '@/lib/chat-store';
 import { REGIONS } from '@/lib/regions';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref, GROUP_INQUIRY_PRODUCT_LABEL } from '@/lib/group-inquiry-handoff';
 import {
   appendDepartureHubToSearchParams,
   DEFAULT_DEPARTURE_HUB,
@@ -151,6 +152,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const [whereRegion, setWhereRegion] = useState('');
   const [priceMin, setPriceMin] = useState('');
   const [priceMax, setPriceMax] = useState('');
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const sheetCloseButtonRef = useRef<HTMLButtonElement | null>(null);
 
   const regionFilters = useMemo(
     () => REGIONS.filter(r => r.featuredCities.length > 0).map(r => ({ label: r.label, emoji: r.emoji })),
@@ -189,19 +192,104 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
       }),
     [hub, monthParam, whereMode, whereCity, whereRegion, priceMin, priceMax],
   );
+  const groupInquiryHref = useMemo(
+    () => {
+      const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '';
+      const departure = `${hubSlotLabel(hub)} 출발`;
+      const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
+      const budget = budgetPreset === 'any' ? '' : budgetLabel;
+
+      return buildGroupInquiryHandoffHref({
+        source: 'home_hero',
+        intent: 'group_trip',
+        partyType: 'group',
+        query: [departure, when, destination || '목적지 미정', budget || '예산 미정'].join(', '),
+        destination,
+        budget,
+        selectedProducts: [GROUP_INQUIRY_PRODUCT_LABEL],
+      });
+    },
+    [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset],
+  );
+  const packageSearchActionId = 'home-hero-package-search-action';
+  const packageSearchSummaryId = 'home-hero-package-search-summary';
+  const homeSearchOpenDescriptionId = 'home-hero-search-open-description';
+  const homeAiConsultDescriptionId = 'home-hero-ai-consult-description';
+  const groupInquiryActionId = 'home-hero-group-inquiry-action';
+  const groupInquirySummaryId = 'home-hero-group-inquiry-summary';
+  const groupInquiryReadinessId = 'home-hero-group-inquiry-readiness';
+  const packageSearchDescriptionIds = `${packageSearchActionId} ${packageSearchSummaryId}`;
+  const groupInquiryDescriptionIds = `${groupInquiryActionId} ${groupInquirySummaryId} ${groupInquiryReadinessId}`;
+  const packageSearchSummary = useMemo(() => {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
+    const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
+    const budget = budgetPreset === 'any' ? '예산 미정' : budgetLabel;
+    return `${hubSlotLabel(hub)} 출발, ${when}, ${destination}, ${budget} 조건으로 패키지 목록을 엽니다.`;
+  }, [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset]);
+  const groupInquirySummary = useMemo(() => {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
+    const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
+    const budget = budgetPreset === 'any' ? '예산 미정' : budgetLabel;
+    return `${hubSlotLabel(hub)} 출발, ${when}, ${destination}, ${budget} 조건으로 단체 견적을 문의합니다.`;
+  }, [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset]);
+  const groupInquiryReadinessChecklist = [
+    { label: '출발지', complete: Boolean(hub) },
+    { label: '일정', complete: Boolean(whenDisplayLabel || monthParam) },
+    { label: '목적지', complete: whereMode !== 'any' && Boolean(whereMode === 'city' ? whereCity : whereRegion) },
+    { label: '예산', complete: budgetPreset !== 'any' },
+  ];
+  const groupInquiryReadyCount = groupInquiryReadinessChecklist.filter((item) => item.complete).length;
+  const groupInquiryMissingLabels = groupInquiryReadinessChecklist
+    .filter((item) => !item.complete)
+    .map((item) => item.label);
+  const groupInquiryReadinessText = groupInquiryMissingLabels.length > 0
+    ? `단체 견적 전달 준비 ${groupInquiryReadyCount}/${groupInquiryReadinessChecklist.length}. 보완하면 좋은 조건: ${groupInquiryMissingLabels.join(', ')}.`
+    : `단체 견적 전달 준비 ${groupInquiryReadyCount}/${groupInquiryReadinessChecklist.length}. 바로 견적 문의로 넘길 수 있습니다.`;
 
   useEffect(() => {
     if (step === null) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => sheetCloseButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      setStep(null);
+      if (e.key === 'Escape') {
+        setStep(null);
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [step]);
 
@@ -216,6 +304,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   function trackPackageSearchClick(source: string) {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: source,
+      filter_value: [hub, monthParam || 'any_month', whereMode, budgetPreset].join(':'),
       page_url: pageUrl,
       destination: whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : null,
       budget: budgetPreset === 'any' ? null : budgetLabel,
@@ -232,11 +322,22 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   }
 
   function trackGroupInquiryClick(source: string) {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : null;
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: source,
       page_url: pageUrl,
-      party_type: 'group_inquiry',
-      metadata: { source },
+      budget: budgetPreset === 'any' ? null : budgetLabel,
+      destination,
+      party_type: 'group',
+      selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+      metadata: {
+        source,
+        href: groupInquiryHref,
+        departure_hub: hub,
+        month: monthParam || null,
+        where_mode: whereMode,
+      },
     });
   }
 
@@ -271,11 +372,28 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   if (!expanded) {
     return (
       <div className="space-y-4">
+        <p id={homeSearchOpenDescriptionId} className="sr-only">
+          출발지, 출발 시기, 목적지, 예산을 차례로 선택하는 검색 조건 위자드를 엽니다.
+        </p>
+        <p id={homeAiConsultDescriptionId} className="sr-only">
+          현재 페이지에서 AI 여행 상담창을 열어 목적지와 여행 조건을 대화로 추천받습니다.
+        </p>
+        <p id={groupInquiryActionId} className="sr-only">
+          선택한 출발지, 일정, 목적지, 예산을 단체 견적 문의서에 미리 채웁니다.
+        </p>
+        <p id={groupInquirySummaryId} className="sr-only">
+          {groupInquirySummary}
+        </p>
+        <p id={groupInquiryReadinessId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {groupInquiryReadinessText}
+        </p>
         <button
           type="button"
           onClick={() => setExpanded(true)}
+          data-testid="home-hero-search-open"
           className="w-full flex items-center gap-3 bg-white border border-[#E5E7EB] rounded-2xl px-4 py-3.5 shadow-[0_4px_16px_rgba(49,130,246,0.07)] hover:border-brand/40 hover:shadow-[0_4px_20px_rgba(49,130,246,0.13)] transition-all card-touch"
           aria-label="여행 검색 열기"
+          aria-describedby={homeSearchOpenDescriptionId}
         >
           <span className="text-xl flex-shrink-0">🔍</span>
           <span className="flex-1 text-left">
@@ -289,7 +407,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             <span aria-hidden>🔥</span>마감·특가
           </Link>
           <Link
-            href="/group-inquiry"
+            href={groupInquiryHref}
+            data-testid="home-hero-group-inquiry"
+            aria-describedby={groupInquiryDescriptionIds}
             onClick={() => trackGroupInquiryClick('home_hero_compact')}
             className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}
           >
@@ -298,10 +418,22 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           <button
             type="button"
             onClick={() => openChat('home_hero')}
+            data-testid="home-hero-ai-consult"
+            aria-describedby={homeAiConsultDescriptionId}
             className={`${pillBase} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] text-white shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30`}
           >
             <span aria-hidden>🤖</span>AI 여행 상담
           </button>
+        </div>
+        <div
+          data-testid="home-hero-group-inquiry-readiness"
+          aria-label={groupInquiryReadinessText}
+          className="mx-auto flex max-w-max items-center gap-2 rounded-full border border-[#E5E7EB] bg-white px-3 py-1.5 text-[12px] font-bold text-text-secondary shadow-sm"
+        >
+          <span className="text-text-primary">견적 준비 {groupInquiryReadyCount}/{groupInquiryReadinessChecklist.length}</span>
+          <span className="font-medium">
+            {groupInquiryMissingLabels.length > 0 ? `보완: ${groupInquiryMissingLabels.join(', ')}` : '바로 문의 가능'}
+          </span>
         </div>
       </div>
     );
@@ -309,6 +441,24 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
   return (
     <div className="space-y-4">
+      <p id={homeAiConsultDescriptionId} className="sr-only">
+        현재 선택한 검색 조건을 참고해 AI 여행 상담창을 열고 추천을 이어갑니다.
+      </p>
+      <p id={packageSearchActionId} className="sr-only">
+        선택한 조건으로 패키지 목록 페이지를 엽니다.
+      </p>
+      <p id={packageSearchSummaryId} className="sr-only">
+        {packageSearchSummary}
+      </p>
+      <p id={groupInquiryActionId} className="sr-only">
+        선택한 출발지, 일정, 목적지, 예산을 단체 견적 문의서에 미리 채웁니다.
+      </p>
+      <p id={groupInquirySummaryId} className="sr-only">
+        {groupInquirySummary}
+      </p>
+      <p id={groupInquiryReadinessId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {groupInquiryReadinessText}
+      </p>
       <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4 shadow-[0_12px_40px_rgba(49,130,246,0.08)]">
         <p className="text-[16px] md:text-[17px] leading-[1.75] text-text-primary tracking-[-0.03em]">
           나는{' '}
@@ -346,6 +496,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
         <Link
           href={resultsHref}
+          aria-describedby={packageSearchDescriptionIds}
           onClick={() => trackPackageSearchClick('home_hero_sentence_search')}
           className="mt-4 flex w-full items-center justify-center rounded-xl bg-brand text-white text-[15px] font-bold py-3.5 shadow-md shadow-brand/25 hover:bg-brand-dark transition-colors card-touch"
         >
@@ -353,6 +504,16 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         </Link>
 
         {children}
+        <div
+          data-testid="home-hero-group-inquiry-readiness"
+          aria-label={groupInquiryReadinessText}
+          className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2 text-[12px] font-bold text-text-secondary"
+        >
+          <span className="shrink-0 text-text-primary">견적 준비 {groupInquiryReadyCount}/{groupInquiryReadinessChecklist.length}</span>
+          <span className="min-w-0 truncate text-right font-medium">
+            {groupInquiryMissingLabels.length > 0 ? `보완: ${groupInquiryMissingLabels.join(', ')}` : '바로 문의 가능'}
+          </span>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-2.5">
@@ -364,7 +525,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           마감·특가
         </Link>
         <Link
-          href="/group-inquiry"
+          href={groupInquiryHref}
+          data-testid="home-hero-group-inquiry"
+          aria-describedby={groupInquiryDescriptionIds}
           onClick={() => trackGroupInquiryClick('home_hero_expanded')}
           className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40 hover:bg-[#F8FAFF]`}
         >
@@ -373,6 +536,8 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         <button
           type="button"
           onClick={() => openChat('home_hero')}
+          data-testid="home-hero-ai-consult"
+          aria-describedby={homeAiConsultDescriptionId}
           className={`${pillBase} bg-gradient-to-br from-[#6366F1] to-[#4F46E5] text-white shadow-md shadow-indigo-500/20 hover:shadow-lg hover:shadow-indigo-500/30`}
         >
           <span aria-hidden>🤖</span>AI 여행 상담
@@ -393,10 +558,11 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             aria-label="닫기"
             onClick={closeSheet}
           />
-          <div className="relative flex w-full max-h-[88vh] md:max-h-[85vh] md:max-w-lg flex-col rounded-t-[24px] md:rounded-2xl bg-white shadow-2xl">
+          <div ref={sheetRef} className="relative flex w-full max-h-[88vh] md:max-h-[85vh] md:max-w-lg flex-col rounded-t-[24px] md:rounded-2xl bg-white shadow-2xl">
             <div className="flex shrink-0 items-center gap-2 border-b border-admin-border px-2 py-2 md:rounded-t-2xl">
               <button
                 type="button"
+                ref={sheetCloseButtonRef}
                 onClick={closeSheet}
                 className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-text-body hover:bg-bg-section"
                 aria-label="닫기"

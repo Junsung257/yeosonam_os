@@ -3,6 +3,8 @@ name: Visual Regression
 # 2026-05-14 — mail-flood-stop v3: 매일 fail. 시각 회귀는 수동·릴리즈 시점에만.
 # baseline 갱신은 workflow_dispatch update_baseline=true 로 명시 호출.
 on:
+  schedule:
+    - cron: '0 21 * * 1'
   workflow_dispatch:
     inputs:
       update_baseline:
@@ -15,6 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -78,6 +81,7 @@ jobs:
 
       - name: Create issue on failure
         if: steps.visual.outcome == 'failure' && github.event_name == 'schedule'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |

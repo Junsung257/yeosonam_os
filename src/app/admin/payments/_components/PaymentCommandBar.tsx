@@ -84,6 +84,15 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const commandInputRef = useRef<HTMLInputElement | null>(null);
+  const commandOpenDescriptionId = 'payments-command-open-description';
+  const commandResultSummaryId = 'payments-command-result-summary';
+  const commandInputDescriptionIds = [
+    'payments-command-help',
+    result ? commandResultSummaryId : null,
+    error ? 'payments-command-error' : null,
+  ].filter(Boolean).join(' ');
 
   // ⌘K / Ctrl+K 토글
   useEffect(() => {
@@ -110,6 +119,49 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       setImperativeIsRefund(false);
       if (abortRef.current) abortRef.current.abort();
     }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => commandInputRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
   }, [open]);
 
   // 디바운스 + 후보 조회
@@ -304,13 +356,20 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
 
   return (
     <>
+      <p id={commandOpenDescriptionId} className="sr-only">
+        결제 명령바는 입금 또는 출금 내역을 예약과 빠르게 매칭하거나 새 예약을 생성합니다. 단축키는 Command+K 또는 Control+K입니다.
+      </p>
       {/* 떠있는 버튼 (모달 닫힌 상태) */}
       {!open && (
         <button
           type="button"
+          data-testid="payments-command-open"
           onClick={() => setOpen(true)}
-          className="fixed bottom-6 right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
+          className="fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-6 z-40 bg-blue-600 text-white px-4 py-2.5 rounded-full shadow-admin-md hover:bg-blue-700 text-sm flex items-center gap-2 transition"
           title="입금/출금 매칭 명령 (⌘K)"
+          aria-label="입금/출금 매칭 명령 열기"
+          aria-describedby={commandOpenDescriptionId}
+          aria-keyshortcuts="Meta+K Control+K"
         >
           <kbd className="bg-white/20 px-1.5 py-0.5 rounded text-xs font-mono">⌘K</kbd>
           <span>매칭 명령</span>
@@ -320,12 +379,15 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 토스트 */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-4 py-2 rounded shadow-admin-md text-sm ${
+          className={`fixed bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-4 z-50 max-w-[calc(100vw-2rem)] px-4 py-2 rounded shadow-admin-md text-sm sm:right-6 ${
             toast.kind === 'ok' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
           }`}
-          role="status"
-          aria-live="polite"
+          role={toast.kind === 'err' ? 'alert' : 'status'}
+          aria-live={toast.kind === 'err' ? 'assertive' : 'polite'}
+          aria-atomic="true"
+          data-testid="payments-command-toast"
         >
+          <span className="sr-only" data-testid="payments-command-toast-message">결제 명령 결과: </span>
           {toast.msg}
         </div>
       )}
@@ -333,7 +395,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
       {/* 모달 */}
       {open && (
         <div
-          className="fixed inset-0 z-50 flex items-start justify-center pt-[8vh] px-4"
+          className="fixed inset-0 z-50 flex h-dvh items-start justify-center overflow-y-auto px-4 pt-[max(2rem,8vh)] pb-[max(1rem,env(safe-area-inset-bottom))]"
         >
           <button
             type="button"
@@ -342,21 +404,26 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
             onClick={() => setOpen(false)}
           />
           <div
+            ref={dialogRef}
+            data-testid="payments-command-dialog"
             className="relative bg-white rounded-admin-md shadow-2xl w-full max-w-2xl"
             role="dialog"
             aria-modal="true"
             aria-label="입금/출금 매칭 명령"
           >
-            <Command shouldFilter={false} loop>
+            <Command shouldFilter={false} loop className="flex max-h-[calc(100dvh-4rem)] flex-col">
               <div className="px-4 pt-4 pb-2">
-                <div className="text-[11px] text-admin-muted mb-1.5">
+                <div id="payments-command-help" className="text-[11px] text-admin-muted mb-1.5">
                   예시: <code className="bg-admin-surface-2 px-1 rounded">260505_남영선_베스트아시아</code>{' '}
                   · <code className="bg-admin-surface-2 px-1 rounded">BK-0042</code>
                   {' '}· <code className="bg-admin-surface-2 px-1 rounded">남영선</code>
                 </div>
                 <Command.Input
+                  ref={commandInputRef}
+                  data-testid="payments-command-input"
                   value={input}
                   onValueChange={setInput}
+                  aria-describedby={commandInputDescriptionIds}
                   placeholder="출발일_고객명_랜드사… 한 줄 입력"
                   className="w-full text-base outline-none border-0 placeholder:text-admin-muted-2 bg-transparent"
                 />
@@ -364,17 +431,17 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
 
               <div className="border-t border-admin-border" />
 
-              <Command.List className="max-h-[60vh] overflow-y-auto p-3">
+              <Command.List className="max-h-[60dvh] overflow-y-auto p-3">
                 {loading && (
                   <Command.Loading>
-                    <div className="px-3 py-4 text-sm text-admin-muted flex items-center gap-2">
+                    <div className="px-3 py-4 text-sm text-admin-muted flex items-center gap-2" role="status" aria-live="polite">
                       <Spinner /> 조회 중…
                     </div>
                   </Command.Loading>
                 )}
 
                 {error && (
-                  <div className="px-3 py-3 text-sm text-red-600 bg-red-50 rounded">
+                  <div id="payments-command-error" className="px-3 py-3 text-sm text-red-600 bg-red-50 rounded" role="alert">
                     {error}
                   </div>
                 )}
@@ -382,6 +449,7 @@ const PaymentCommandBar = forwardRef<PaymentCommandBarHandle, Props>(function Pa
                 {!loading && !error && result && (
                   <ResultPanel
                     result={result}
+                    summaryId={commandResultSummaryId}
                     onConfirm={handleConfirmBooking}
                     onCreateAndMatch={handleCreateAndMatch}
                     confirming={confirming}
@@ -440,6 +508,7 @@ const BRANCH_INFO: Record<MatchBranch, { label: string; color: string; desc: str
 
 function ResultPanel({
   result,
+  summaryId,
   onConfirm,
   onCreateAndMatch,
   confirming,
@@ -448,6 +517,7 @@ function ResultPanel({
   setInput,
 }: {
   result: ResolveResult;
+  summaryId: string;
   onConfirm: (b: BookingHit) => void;
   onCreateAndMatch: () => void;
   confirming: string | null;
@@ -456,10 +526,19 @@ function ResultPanel({
   setInput: (s: string) => void;
 }) {
   const info = BRANCH_INFO[result.branch];
+  const branchTitleId = 'payments-command-branch-title';
+  const resultSummaryText = result.bookings.length > 0
+    ? `결제 명령 결과는 분기 ${result.branch}, 예약 후보 ${result.bookings.length}건입니다. ${result.branch === 'A' ? '첫 번째 후보는 Enter 또는 확정 버튼으로 매칭할 수 있습니다.' : '후보를 확인한 뒤 확정 버튼을 선택하세요.'}`
+    : result.branch === 'C'
+      ? '예약 후보가 없어 새 예약 생성이 필요합니다. 입력한 고객명과 랜드사 정보를 확인하세요.'
+      : '예약 후보가 없습니다. 입력을 수정하거나 비슷한 고객 후보를 확인하세요.';
 
   return (
-    <div className="space-y-3">
-      <BranchHeader branch={result.branch} parsed={result.parsed} info={info} />
+    <div className="space-y-3" role="region" aria-labelledby={branchTitleId} aria-describedby={summaryId}>
+      <p id={summaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {resultSummaryText}
+      </p>
+      <BranchHeader branch={result.branch} parsed={result.parsed} info={info} titleId={branchTitleId} />
 
       {result.bookings.length > 0 && (
         <div>
@@ -467,55 +546,63 @@ function ResultPanel({
             예약 후보 ({result.bookings.length})
           </div>
           <Command.Group>
-            {result.bookings.map((b, idx) => (
-              <Command.Item
-                key={b.id}
-                value={`${b.booking_no}_${b.customer_name ?? ''}_${b.id}`}
-                // Enter 1-click 자동 확정은 분기 A 의 top-1 후보에만 허용.
-                // 분기 B/D 에서는 click 만 받음 — 디바운스 직후 들어오는 의도치 않은 Enter 차단.
-                onSelect={() => {
-                  if (result.branch === 'A' && idx === 0) onConfirm(b);
-                }}
-                disabled={confirming !== null && confirming !== b.id}
-                className="flex items-center justify-between gap-3 px-3 py-2 rounded cursor-pointer hover:bg-admin-bg data-[selected=true]:bg-blue-50 data-[disabled=true]:opacity-40"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 text-sm font-medium text-admin-text-2">
-                    <span>{b.customer_name ?? '이름 없음'}</span>
-                    <span className="text-admin-muted-2">/</span>
-                    <span className="text-admin-muted font-mono text-xs">{b.booking_no}</span>
-                    {b.departure_date && (
-                      <span className="text-xs text-admin-muted">
-                        {b.departure_date.slice(2, 10).replace(/-/g, '')}
-                      </span>
-                    )}
-                    {b.land_operator_name && (
-                      <span className="text-xs text-admin-muted">· {b.land_operator_name}</span>
-                    )}
+            {result.bookings.map((b, idx) => {
+              const bookingDescriptionId = `payments-command-booking-${b.id}-description`;
+              const bookingName = b.customer_name ?? '이름 없음';
+              return (
+                <Command.Item
+                  key={b.id}
+                  value={`${b.booking_no}_${b.customer_name ?? ''}_${b.id}`}
+                  aria-describedby={bookingDescriptionId}
+                  // Enter 1-click 자동 확정은 분기 A 의 top-1 후보에만 허용.
+                  // 분기 B/D 에서는 click 만 받음 — 디바운스 직후 들어오는 의도치 않은 Enter 차단.
+                  onSelect={() => {
+                    if (result.branch === 'A' && idx === 0) onConfirm(b);
+                  }}
+                  disabled={confirming !== null && confirming !== b.id}
+                  className="flex items-center justify-between gap-3 px-3 py-2 rounded cursor-pointer hover:bg-admin-bg data-[selected=true]:bg-blue-50 data-[disabled=true]:opacity-40"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-medium text-admin-text-2">
+                      <span>{bookingName}</span>
+                      <span className="text-admin-muted-2">/</span>
+                      <span className="text-admin-muted font-mono text-xs">{b.booking_no}</span>
+                      {b.departure_date && (
+                        <span className="text-xs text-admin-muted">
+                          {b.departure_date.slice(2, 10).replace(/-/g, '')}
+                        </span>
+                      )}
+                      {b.land_operator_name && (
+                        <span className="text-xs text-admin-muted">· {b.land_operator_name}</span>
+                      )}
+                    </div>
+                    <div className="text-xs text-admin-muted mt-0.5 truncate">
+                      {b.reasons.slice(0, 3).join(' · ')}
+                    </div>
+                    <div id={bookingDescriptionId} className="text-[11px] text-admin-muted-2 mt-0.5 tabular-nums">
+                      판매가 {fmtKRW(b.total_price)} · 수금 {fmtKRW(b.paid_amount)} · 잔금{' '}
+                      {fmtKRW(Math.max(0, b.total_price - b.paid_amount))} · 매칭 점수 {Math.round(b.score * 100)}점
+                    </div>
                   </div>
-                  <div className="text-xs text-admin-muted mt-0.5 truncate">
-                    {b.reasons.slice(0, 3).join(' · ')}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <ScoreBar score={b.score} />
+                    <button
+                      type="button"
+                      disabled={confirming === b.id}
+                      aria-label={`${bookingName} ${b.booking_no} 결제 매칭 확정`}
+                      aria-describedby={bookingDescriptionId}
+                      onClick={e => {
+                        e.stopPropagation();
+                        onConfirm(b);
+                      }}
+                      className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                      {confirming === b.id ? '...' : '확정'}
+                    </button>
                   </div>
-                  <div className="text-[11px] text-admin-muted-2 mt-0.5 tabular-nums">
-                    판매가 {fmtKRW(b.total_price)} · 수금 {fmtKRW(b.paid_amount)} · 잔금{' '}
-                    {fmtKRW(Math.max(0, b.total_price - b.paid_amount))}
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <ScoreBar score={b.score} />
-                  <button
-                    disabled={confirming === b.id}
-                    onClick={e => {
-                      e.stopPropagation();
-                      onConfirm(b);
-                    }}
-                    className="text-xs px-2.5 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {confirming === b.id ? '...' : '확정'}
-                  </button>
-                </div>
-              </Command.Item>
-            ))}
+                </Command.Item>
+              );
+            })}
           </Command.Group>
         </div>
       )}
@@ -537,8 +624,11 @@ function ResultPanel({
             </span>
           </div>
           <button
+            type="button"
+            data-testid="payments-command-create-booking"
             onClick={onCreateAndMatch}
             disabled={creatingNew || !result.parsed.customerName}
+            aria-describedby={summaryId}
             className="inline-block text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {creatingNew
@@ -556,7 +646,9 @@ function ResultPanel({
           <div className="flex flex-wrap gap-1.5">
             {result.similarCustomers.map(name => (
               <button
+                type="button"
                 key={name}
+                aria-label={`${name} 고객명으로 명령어 다시 검색`}
                 onClick={() =>
                   setInput(
                     result.parsed.rawInput.replace(
@@ -587,15 +679,17 @@ function BranchHeader({
   branch,
   parsed,
   info,
+  titleId,
 }: {
   branch: MatchBranch;
   parsed: ParsedCommand;
   info: { label: string; color: string; desc: string };
+  titleId: string;
 }) {
   return (
     <div className={`border rounded-lg p-2.5 text-sm ${info.color}`}>
       <div className="flex items-center justify-between">
-        <span className="font-semibold">{info.label}</span>
+        <span id={titleId} className="font-semibold">{info.label}</span>
         <span className="text-[11px] opacity-70 font-mono">분기 {branch}</span>
       </div>
       <div className="text-xs mt-1 opacity-80">{info.desc}</div>

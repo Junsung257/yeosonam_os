@@ -39,6 +39,10 @@ jobs:
         run: npm test
       - name: Marketing automation readiness
         run: npm run verify:marketing-automation:ci
+      - name: Readiness automation contracts
+        run: npm run verify:readiness-contracts -- --json
+      - name: a11y lint
+        run: npm run lint:a11y:ci
 
   dead-code:
     name: Knip dead-code & unused deps

@@ -281,7 +281,12 @@ export default function BrandKitsPage() {
       {/* ─── 편집/생성 사이드 패널 ─── */}
       {editing && (
         <>
-          <div className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50" onClick={() => { setEditing(null); setIsNew(false); }} />
+          <button
+            type="button"
+            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50"
+            onClick={() => { setEditing(null); setIsNew(false); }}
+            aria-label="브랜드킷 편집 패널 닫기"
+          />
           <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-white z-50 flex flex-col border-l shadow-xl">
             {/* 패널 헤더 */}
             <div className="px-6 py-4 border-b flex items-center justify-between">
@@ -513,7 +518,12 @@ export default function BrandKitsPage() {
       {/* 삭제 확인 다이얼로그 */}
       {deleteConfirm && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-50" onClick={() => setDeleteConfirm(null)} />
+          <button
+            type="button"
+            className="fixed inset-0 bg-black/30 z-50"
+            onClick={() => setDeleteConfirm(null)}
+            aria-label="브랜드킷 삭제 확인 닫기"
+          />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
             <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 pointer-events-auto">
               <h3 className="font-semibold text-gray-900 mb-2">브랜드킷 삭제</h3>

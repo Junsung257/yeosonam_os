@@ -1,5 +1,8 @@
 export const ANALYTICS_EVENTS = {
   packageFilterApplied: 'package_filter_applied',
+  packageCardClicked: 'package_card_clicked',
+  cartAdded: 'cart_added',
+  checkoutStart: 'checkout_start',
   stickyCtaClicked: 'sticky_cta_clicked',
   kakaoClicked: 'kakao_clicked',
   aiPromptStarted: 'ai_prompt_started',
@@ -9,4 +12,3 @@ export const ANALYTICS_EVENTS = {
 
 export type AnalyticsEventName =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
-

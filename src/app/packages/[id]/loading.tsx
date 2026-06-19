@@ -1,12 +1,20 @@
 import Link from 'next/link';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
+
+const PACKAGE_LOADING_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
+  source: 'package_detail_loading',
+  intent: 'package_reservation',
+  query: '패키지 상세 로딩 중 예약 문의',
+  selectedProducts: ['패키지 상세 예약 문의'],
+});
 
 export default function Loading() {
   return (
-    <div className="min-h-screen bg-white max-w-lg md:max-w-3xl mx-auto animate-pulse pb-24">
+    <div className="min-h-dvh bg-white max-w-lg md:max-w-3xl mx-auto animate-pulse pb-[calc(116px+env(safe-area-inset-bottom))]">
       <div className="sr-only">
         <h1>여소남 패키지 여행 상품 상세</h1>
         <p>일정, 가격, 포함 사항, 취소 규정, 예약 문의 정보를 확인할 수 있는 여행 상품 상세 페이지입니다.</p>
-        <Link href="/group-inquiry">예약 문의</Link>
+        <Link href={PACKAGE_LOADING_GROUP_INQUIRY_HREF}>예약 문의</Link>
         <Link href="/packages">다른 패키지 보기</Link>
       </div>
 
@@ -69,7 +77,7 @@ export default function Loading() {
       </div>
 
       {/* 하단 고정 액션 바 */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-100 px-4 pb-5 pt-3 flex gap-2 max-w-lg md:max-w-3xl mx-auto">
+      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 safe-area-bottom px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex gap-2 max-w-lg md:max-w-3xl mx-auto shadow-[0_-16px_40px_rgba(15,23,42,0.08)]">
         <div className="flex-1 h-11 bg-bg-section rounded-full" />
         <div className="h-11 w-20 bg-[#FEE500]/50 rounded-full shrink-0" />
         <div className="h-11 w-28 bg-blue-100 rounded-full shrink-0" />

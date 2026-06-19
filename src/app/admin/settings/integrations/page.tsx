@@ -336,6 +336,7 @@ export default function IntegrationsPage() {
                     {Array.from({ length: 6 }).map((__, j) => (
                       <td key={j} className="px-3 py-3">
                         <div className="h-3 bg-admin-surface-2 rounded animate-pulse" style={{ width: j === 0 ? 80 : j === 5 ? 60 : 48 }} />
+                        <span className="sr-only">정책 정보 로딩 중</span>
                       </td>
                     ))}
                   </tr>

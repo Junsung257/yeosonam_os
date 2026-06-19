@@ -16,9 +16,14 @@ import { getDeterministicPexelsPhoto, destToEnKeyword } from '@/lib/pexels';
 import { getDestinationUrl } from '@/lib/regions';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 import { runOptionalSupabaseQuery } from '@/lib/supabase-query-guard';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 
 /** 목적지 카드에 상품 개수 숫자를 노출할 최소치(그 미만이면 '상품 적음' 인상 완화 — 인지 부하·역효과 방지) */
 const PKG_COUNT_DISCLOSE_MIN = 6;
+const HOME_FOOTER_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
+  source: 'home_footer',
+  query: '홈 하단에서 단체 맞춤 견적 상담',
+});
 
 // Build-safe: home data depends on live Supabase rows, so render on demand instead of blocking deploy prerender.
 export const revalidate = 300;
@@ -781,7 +786,13 @@ export default async function HomePage() {
           <Link href="/packages" className="text-[13px] text-text-body hover:text-brand transition-colors">전체 상품</Link>
           <Link href="/blog" className="text-[13px] text-text-body hover:text-brand transition-colors">매거진</Link>
           <Link href="/private-tour" className="text-[13px] text-text-body hover:text-brand transition-colors">단독맞춤여행</Link>
-          <Link href="/group-inquiry" className="text-[13px] text-text-body hover:text-brand transition-colors">단체 문의</Link>
+          <Link
+            href={HOME_FOOTER_GROUP_INQUIRY_HREF}
+            data-testid="home-footer-group-inquiry"
+            className="text-[13px] text-text-body hover:text-brand transition-colors"
+          >
+            단체 문의
+          </Link>
         </div>
       </footer>
 

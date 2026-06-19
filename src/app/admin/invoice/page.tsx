@@ -114,9 +114,11 @@ export default function InvoiceParsePage() {
       <div style={styles.card}>
         <h2 style={styles.sectionTitle}>파일 업로드</h2>
 
-        <div
+        <button
+          type="button"
           style={styles.dropzone}
           onClick={() => fileInputRef.current?.click()}
+          aria-label="인보이스 이미지 파일 선택"
         >
           {preview ? (
             <img src={preview} alt="미리보기" style={styles.previewImg} />
@@ -127,10 +129,11 @@ export default function InvoiceParsePage() {
               <p style={styles.dropzoneHint}>JPG, PNG, WEBP 지원</p>
             </div>
           )}
-        </div>
+        </button>
         <input
           ref={fileInputRef}
           type="file"
+          aria-label="인보이스 이미지 파일"
           accept="image/*"
           style={{ display: 'none' }}
           onChange={handleFileChange}
@@ -141,8 +144,9 @@ export default function InvoiceParsePage() {
         )}
 
         <div style={styles.optionRow}>
-          <label style={styles.label}>랜드사 ID (선택)</label>
+          <label htmlFor="invoice-land-operator-id" style={styles.label}>랜드사 ID (선택)</label>
           <input
+            id="invoice-land-operator-id"
             type="text"
             placeholder="UUID 입력 시 해당 랜드사 원장과 대조"
             value={landOperatorId}

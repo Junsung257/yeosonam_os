@@ -215,7 +215,9 @@ export default function PromptEditPage(props: { params: Promise<Promise<{ key: s
                   <th className="text-left px-4 py-2 font-semibold text-admin-text-2">작성자</th>
                   <th className="text-left px-4 py-2 font-semibold text-admin-text-2">메모</th>
                   <th className="px-4 py-2 font-semibold text-admin-text-2">상태</th>
-                  <th className="px-4 py-2"></th>
+                  <th className="px-4 py-2">
+                    <span className="sr-only">작업</span>
+                  </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">

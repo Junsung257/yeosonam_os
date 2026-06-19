@@ -245,6 +245,7 @@ export default function SharedCardNewsPage() {
               {Array.from({ length: totalSlides }).map((_, i) => (
                 <button
                   key={i}
+                  aria-label={`${i + 1}번 슬라이드 보기`}
                   onClick={() => setCurrentSlide(i)}
                   className={`w-2 h-2 rounded-full transition-all ${
                     i === currentSlideIndex

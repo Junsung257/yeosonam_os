@@ -211,7 +211,9 @@ export default async function BlogDataFetcher({
               <th style={{ width: 64 }}>상태</th>
               <th style={{ width: 150 }}>검색 상태</th>
               <th style={{ width: 96 }}>날짜</th>
-              <th style={{ width: 64 }}></th>
+              <th style={{ width: 64 }}>
+                <span className="sr-only">작업</span>
+              </th>
             </tr>
           </thead>
           <tbody>
@@ -219,7 +221,7 @@ export default async function BlogDataFetcher({
               const searchStatus = post.slug ? searchStatusBySlug.get(post.slug) : null;
               return (
               <tr key={post.id}>
-                <td>
+                <td aria-label="검색 상태">
                   <p className="text-admin-sm font-medium text-admin-text truncate max-w-md">
                     {post.seo_title || (Array.isArray(post.travel_packages) ? post.travel_packages[0]?.title : post.travel_packages?.title) || '(제목 없음)'}
                   </p>
@@ -255,6 +257,7 @@ export default async function BlogDataFetcher({
                   </span>
                 </td>
                 <td>
+                  <span className="sr-only">검색 상태</span>
                   <div className="flex flex-col gap-1">
                     <span className={`w-fit px-1.5 py-0.5 text-admin-2xs rounded-admin-xs font-semibold ${searchStatus?.googleIndexClass || 'bg-admin-surface-2 text-admin-muted'}`}>
                       {searchStatus?.googleIndexLabel || '구글 대기'}

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import {
   AlertTriangle,
   CheckCircle2,
+  ClipboardList,
   MessageCircle,
   Package,
   Plus,
@@ -15,7 +16,9 @@ import {
   X,
 } from 'lucide-react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 
 interface MockSearchResult {
   product_id: string;
@@ -48,8 +51,9 @@ interface IntentPrompt {
   destination: string | null;
 }
 
+type SummaryItem = { label: string; value: string };
+
 const SESSION_KEY = 'concierge_session_id';
-const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
 const SEARCH_TIMEOUT_MS = 15_000;
 
 const INTENT_PROMPTS: IntentPrompt[] = [
@@ -104,6 +108,21 @@ const API_LABELS: Record<string, string> = {
   klook_mock: 'Klook',
   cruise_mock: 'Cruise',
   tenant_product: '랜드사',
+};
+
+const INTENT_LABELS: Record<string, string> = {
+  filial_trip: '효도 여행',
+  no_shopping_family: '노쇼핑 가족여행',
+  group_workshop: '단체 워크샵',
+  golf_compare: '골프 비교',
+  group_trip: '단체 여행',
+};
+
+const PARTY_TYPE_LABELS: Record<string, string> = {
+  senior_family: '60대 이상 가족',
+  family: '가족',
+  group_20: '20명 단체',
+  golf: '골프팀',
 };
 
 function getOrCreateSessionId(): string {
@@ -167,11 +186,19 @@ function ModalFrame({
   title,
   onClose,
   children,
+  dialogId,
+  testId,
+  closeTestId,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  dialogId?: string;
+  testId?: string;
+  closeTestId?: string;
 }) {
+  const titleId = dialogId ? `${dialogId}-title` : undefined;
+
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
@@ -188,12 +215,20 @@ function ModalFrame({
         className="absolute inset-0 bg-slate-950/45"
         onClick={onClose}
       />
-      <div className="relative flex max-h-[88dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl md:rounded-[20px]">
+      <div
+        id={dialogId}
+        data-testid={testId}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="relative flex max-h-[88dvh] w-full max-w-lg flex-col overflow-hidden rounded-t-[24px] bg-white shadow-2xl md:rounded-[20px]"
+      >
         <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#EEF2F6] px-5">
-          <h2 className="text-[17px] font-extrabold text-text-primary">{title}</h2>
+          <h2 id={titleId} className="text-[17px] font-extrabold text-text-primary">{title}</h2>
           <button
             type="button"
             aria-label="닫기"
+            data-testid={closeTestId}
             onClick={onClose}
             className="flex size-10 items-center justify-center rounded-full text-text-secondary hover:bg-[#F2F4F6] hover:text-text-primary"
           >
@@ -216,17 +251,31 @@ export default function ConciergePage() {
   const [customer, setCustomer] = useState({ name: '', phone: '', email: '' });
   const [paying, setPaying] = useState(false);
   const [vouchers, setVouchers] = useState<VoucherItem[] | null>(null);
-  const [errorMsg, setErrorMsg] = useState('');
+  const [searchError, setSearchError] = useState('');
+  const [checkoutError, setCheckoutError] = useState('');
   const [sharing, setSharing] = useState(false);
   const [shareToast, setShareToast] = useState('');
   const [activePrompt, setActivePrompt] = useState<IntentPrompt | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const customerNameRef = useRef<HTMLInputElement>(null);
   const sessionId = getOrCreateSessionId();
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
   const dynamicItems = useMemo(() => cart.filter((item) => resolveCategory(item) === 'DYNAMIC'), [cart]);
   const fixedItems = useMemo(() => cart.filter((item) => resolveCategory(item) === 'FIXED'), [cart]);
   const intentSummary = useMemo(() => inferIntentSummary(activePrompt, query, cart), [activePrompt, cart, query]);
+  const groupInquiryHref = useMemo(() => {
+    const productNames = cart.map((item) => item.product_name).filter(Boolean);
+    return buildGroupInquiryHandoffHref({
+      source: 'concierge',
+      intent: intentSummary.intent ?? undefined,
+      partyType: intentSummary.party_type ?? undefined,
+      query: query.trim() || activePrompt?.query || 'AI 상담 장바구니 단체 견적',
+      destination: intentSummary.destination,
+      budget: intentSummary.budget || (cartTotal > 0 ? `총 ${cartTotal.toLocaleString('ko-KR')}원` : null),
+      selectedProducts: productNames.length > 0 ? productNames : undefined,
+    });
+  }, [activePrompt?.query, cart, cartTotal, intentSummary, query]);
 
   useEffect(() => {
     const onBeforeUnload = () => {
@@ -258,23 +307,29 @@ export default function ConciergePage() {
       .catch(() => {});
   }, [sessionId]);
 
+  useEffect(() => {
+    if (!checkoutOpen) return;
+    const frame = window.requestAnimationFrame(() => customerNameRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [checkoutOpen]);
+
   async function performSearch(rawQuery: string, prompt: IntentPrompt | null = null) {
     const normalized = rawQuery.trim();
     if (!normalized) {
+      setSearchError('찾고 싶은 여행 조건을 한 문장으로 입력해 주세요.');
       inputRef.current?.focus();
       return;
     }
     setLoading(true);
     setResults([]);
-    setErrorMsg('');
+    setSearchError('');
     setActivePrompt(prompt);
+    const nextIntentSummary = inferIntentSummary(prompt, normalized, cart);
     trackEngagement({
       event_type: ANALYTICS_EVENTS.aiPromptStarted,
+      source: prompt ? 'concierge_intent_prompt' : 'concierge_manual_search',
       page_url: '/concierge',
-      intent: prompt?.intent ?? null,
-      budget: prompt?.budget ?? null,
-      destination: prompt?.destination ?? null,
-      party_type: prompt?.party_type ?? null,
+      ...nextIntentSummary,
     });
 
     const controller = new AbortController();
@@ -285,7 +340,7 @@ export default function ConciergePage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         signal: controller.signal,
-        body: JSON.stringify({ query: normalized, ...inferIntentSummary(prompt, normalized, cart) }),
+        body: JSON.stringify({ query: normalized, ...nextIntentSummary }),
       });
       if (!response.ok) {
         throw new Error('검색 응답을 불러오지 못했습니다. 다시 시도하거나 카톡 상담으로 이어가 주세요.');
@@ -295,7 +350,7 @@ export default function ConciergePage() {
       setResults(data.results ?? []);
     } catch (error) {
       const isAbortError = error instanceof Error && error.name === 'AbortError';
-      setErrorMsg(
+      setSearchError(
         isAbortError
           ? '검색이 오래 걸리고 있어요. 다시 검색하거나 카톡 상담으로 이어가 주세요.'
           : error instanceof Error
@@ -327,12 +382,29 @@ export default function ConciergePage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ session_id: sessionId, item: newItem }),
     });
+    const nextIntentSummary = inferIntentSummary(activePrompt, query, updated);
+    const recommendationRank = results.findIndex((result) => result.product_id === item.product_id) + 1;
     trackEngagement({
-      event_type: 'cart_added',
+      event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+      source: 'concierge_add_to_cart',
       product_id: item.product_id,
       product_name: item.product_name,
       page_url: '/concierge',
-      ...inferIntentSummary(activePrompt, query, updated),
+      recommended_rank: recommendationRank > 0 ? recommendationRank : null,
+      metadata: {
+        action: 'add_to_cart',
+        apiName: item.api_name,
+        productType: item.product_type,
+        cartCount: updated.length,
+      },
+      ...nextIntentSummary,
+    });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.cartAdded,
+      product_id: item.product_id,
+      product_name: item.product_name,
+      page_url: '/concierge',
+      ...nextIntentSummary,
     });
   }
 
@@ -348,11 +420,15 @@ export default function ConciergePage() {
 
   async function handleCheckout(event: React.FormEvent) {
     event.preventDefault();
-    if (!customer.name.trim()) return;
+    if (!customer.name.trim()) {
+      setCheckoutError('예약 확인을 위해 이름을 입력해 주세요.');
+      customerNameRef.current?.focus();
+      return;
+    }
     setPaying(true);
-    setErrorMsg('');
+    setCheckoutError('');
     trackEngagement({
-      event_type: 'checkout_start',
+      event_type: ANALYTICS_EVENTS.checkoutStart,
       page_url: '/concierge',
       ...intentSummary,
     });
@@ -371,10 +447,10 @@ export default function ConciergePage() {
         setCheckoutOpen(false);
         setCartSheetOpen(false);
       } else if (data.status === 'PARTIAL_FAIL') {
-        setErrorMsg(`일부 API 오류로 결제가 취소되었습니다: ${data.errors?.join(', ')}`);
+        setCheckoutError(`일부 API 오류로 결제가 취소되었습니다: ${data.errors?.join(', ')}`);
       }
     } catch (error) {
-      setErrorMsg(error instanceof Error ? error.message : '결제 오류가 발생했습니다.');
+      setCheckoutError(error instanceof Error ? error.message : '결제 오류가 발생했습니다.');
     } finally {
       setPaying(false);
     }
@@ -385,6 +461,7 @@ export default function ConciergePage() {
     setSharing(true);
     trackEngagement({
       event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+      source: 'concierge_share_cart',
       page_url: '/concierge',
       metadata: { action: 'share_cart' },
       ...intentSummary,
@@ -420,14 +497,58 @@ export default function ConciergePage() {
     }
   }
 
-  function openKakaoConsult(source: string) {
+  function handleGroupInquiryClick(source: string) {
     trackEngagement({
-      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+      source,
       page_url: '/concierge',
-      metadata: { source },
+      metadata: {
+        action: 'group_inquiry_handoff',
+        source,
+        cartCount: cart.length,
+        selectedProductNames: cart.map((item) => item.product_name),
+      },
       ...intentSummary,
     });
-    window.open(KAKAO_URL, '_blank', 'noopener,noreferrer');
+  }
+
+  async function openKakaoConsult(source: string, focusedProduct?: MockSearchResult, handoffProducts: string[] = []) {
+    const selectedProductNames = [
+      ...(focusedProduct ? [focusedProduct.product_name] : []),
+      ...handoffProducts,
+      ...cart.map((item) => item.product_name),
+    ].filter((name, index, all) => all.indexOf(name) === index);
+    const escalationSummary = [
+      query.trim() ? `검색어: ${query.trim()}` : null,
+      activePrompt?.label ? `빠른 시작: ${activePrompt.label}` : null,
+      focusedProduct ? `현재 추천: ${focusedProduct.product_name}` : null,
+      selectedProductNames.length > 0 ? `선택 구성: ${selectedProductNames.join(' / ')}` : null,
+    ].filter(Boolean).join('\n');
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: source,
+      page_url: '/concierge',
+      metadata: {
+        source,
+        focusedProductId: focusedProduct?.product_id ?? null,
+        selectedProductNames,
+      },
+      ...intentSummary,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : intentSummary.selected_products,
+    });
+    const copied = await openKakaoChannel({
+      productTitle: focusedProduct?.product_name,
+      intent: intentSummary.intent,
+      budget: intentSummary.budget,
+      destination: intentSummary.destination,
+      party_type: intentSummary.party_type,
+      selected_products: selectedProductNames,
+      escalationSummary,
+    });
+    if (copied) {
+      setShareToast('상담 조건이 복사되었습니다. 카톡에 붙여넣어 주세요.');
+      setTimeout(() => setShareToast(''), 3000);
+    }
   }
 
   const renderCartItems = () => (
@@ -494,6 +615,95 @@ export default function ConciergePage() {
     );
   }
 
+  const selectedProductCount = intentSummary.selected_products?.length ?? 0;
+  const showIntentSummary = Boolean(activePrompt || query.trim() || selectedProductCount > 0);
+  const summaryItems = [
+    {
+      label: '목적',
+      value: activePrompt?.label ?? (intentSummary.intent ? INTENT_LABELS[intentSummary.intent] ?? '직접 입력' : null),
+    },
+    { label: '동행', value: intentSummary.party_type ? PARTY_TYPE_LABELS[intentSummary.party_type] ?? intentSummary.party_type : null },
+    { label: '지역', value: intentSummary.destination },
+    { label: '예산', value: intentSummary.budget },
+    { label: '담은 상품', value: selectedProductCount > 0 ? `${selectedProductCount}개` : null },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value));
+  const checkoutSummaryId = 'concierge-checkout-summary';
+  const checkoutHandoffSummaryId = 'concierge-checkout-handoff-summary';
+  const checkoutDescriptionIds = checkoutError
+    ? `${checkoutSummaryId} ${checkoutHandoffSummaryId} concierge-checkout-error`
+    : `${checkoutSummaryId} ${checkoutHandoffSummaryId}`;
+  const handoffReadinessSummaryId = 'concierge-handoff-readiness-summary';
+  const handoffChecklist = [
+    { label: '목적', complete: Boolean(activePrompt || intentSummary.intent || query.trim()) },
+    { label: '동행', complete: Boolean(intentSummary.party_type) },
+    { label: '지역', complete: Boolean(intentSummary.destination) },
+    { label: '예산', complete: Boolean(intentSummary.budget) },
+    { label: '상품', complete: selectedProductCount > 0 },
+  ];
+  const handoffReadyCount = handoffChecklist.filter((item) => item.complete).length;
+  const handoffMissingLabels = handoffChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const handoffReadinessText = handoffMissingLabels.length > 0
+    ? `상담 전달 준비 ${handoffReadyCount}/${handoffChecklist.length}. 보완하면 좋은 조건: ${handoffMissingLabels.join(', ')}.`
+    : `상담 전달 준비 ${handoffReadyCount}/${handoffChecklist.length}. 바로 상담으로 넘길 수 있습니다.`;
+  const kakaoIntentSummaryId = 'concierge-kakao-intent-summary';
+  const topbarKakaoDescriptionId = 'concierge-topbar-kakao-description';
+  const summaryKakaoDescriptionId = 'concierge-summary-kakao-description';
+  const topbarKakaoDescriptionIds = `${topbarKakaoDescriptionId} ${kakaoIntentSummaryId}`;
+  const summaryKakaoDescriptionIds = `${summaryKakaoDescriptionId} ${kakaoIntentSummaryId} ${handoffReadinessSummaryId}`;
+  const cartSummaryText = [
+    cart.length > 0 ? `선택한 구성은 ${cart.length}개 상품입니다.` : '선택한 상품이 없습니다.',
+    cartTotal > 0 ? `총 금액은 ${money(cartTotal)}입니다.` : null,
+    summaryItems.length > 0 ? `상담 전달 조건은 ${summaryItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.` : null,
+  ].filter(Boolean).join(' ');
+  const kakaoIntentSummaryText = summaryItems.length > 0
+    ? `현재 상담 전달 조건은 ${summaryItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
+    : '아직 정리된 상담 전달 조건이 없으며, 현재 입력한 검색 조건을 기준으로 카카오 상담을 시작합니다.';
+  const resultSummaryId = 'concierge-result-summary';
+  const resultSummaryText = loading
+    ? '여행 조건에 맞는 추천 상품을 비교하고 있습니다.'
+    : results.length > 0
+      ? `추천 결과 ${results.length}건이 준비되었습니다. 비교표에서 가격과 주의할 점을 확인한 뒤 상세 보기, 견적, 담기, 카톡 상담을 선택할 수 있습니다.`
+      : searchError
+        ? searchError
+        : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
+  const resultBriefItems = results.slice(0, 3).map((item, index) => {
+    const insight = getResultInsight(item);
+    return {
+      rank: index + 1,
+      name: item.product_name,
+      price: money(item.price),
+      reason: insight.reason,
+      caution: insight.caution,
+      extraCost: insight.extraCost,
+      action: insight.action,
+    };
+  });
+  const resultBriefSummaryId = 'concierge-result-brief-summary';
+  const resultBriefSummaryText = resultBriefItems.length > 0
+    ? `AI 추천 브리핑입니다. 상위 ${resultBriefItems.length}개 상품 기준으로 추천 이유, 주의할 점, 추가 비용 가능성, 다음 액션을 정리했습니다. ${resultBriefItems.map((item) => `${item.rank}순위 ${item.name}, ${item.price}, 다음 액션 ${item.action}`).join(' ')}`
+    : resultSummaryText;
+  const resultHandoffProductNames = resultBriefItems.map((item) => item.name);
+  const resultBundleSummaryId = 'concierge-result-bundle-summary';
+  const resultBundleSummaryText = resultHandoffProductNames.length > 0
+    ? `상위 추천 ${resultHandoffProductNames.length}개 상품을 상담 조건과 함께 전달합니다. 선택 상품은 ${resultHandoffProductNames.join(', ')}입니다.`
+    : resultSummaryText;
+  const resultBundleHandoffItems = [
+    ...summaryItems,
+    resultHandoffProductNames.length > 0 ? { label: '상품', value: `${resultHandoffProductNames.length}개` } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item?.value));
+  const resultBundleGroupInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'concierge_results_bundle',
+    intent: intentSummary.intent ?? undefined,
+    partyType: intentSummary.party_type ?? undefined,
+    query: query.trim() || activePrompt?.query || 'AI 추천 결과 단체 견적',
+    destination: intentSummary.destination,
+    budget: intentSummary.budget || (resultBriefItems[0] ? `상위 추천 ${resultBriefItems[0].price}부터` : null),
+    selectedProducts: resultHandoffProductNames.length > 0 ? resultHandoffProductNames : undefined,
+  });
+  const intentPromptGroupLabelId = 'concierge-intent-prompt-group-label';
+  const intentPromptGroupDescriptionId = 'concierge-intent-prompt-group-description';
+  const intentPromptDescriptionId = (intent: string) => `concierge-intent-prompt-description-${intent}`;
+
   return (
     <div className="min-h-dvh bg-[#F8FAFC] pb-[calc(96px+env(safe-area-inset-bottom))] lg:pb-0">
       <header className="sticky top-0 z-30 border-b border-[#EEF2F6] bg-white/95 backdrop-blur">
@@ -504,6 +714,7 @@ export default function ConciergePage() {
           <button
             type="button"
             onClick={() => openKakaoConsult('topbar')}
+            aria-describedby={topbarKakaoDescriptionIds}
             className="hidden h-9 items-center gap-1.5 rounded-full border border-[#D1DCE8] bg-white px-3 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand sm:inline-flex"
           >
             <MessageCircle size={16} />
@@ -511,6 +722,21 @@ export default function ConciergePage() {
           </button>
         </div>
       </header>
+      <p id={checkoutSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {cartSummaryText}
+      </p>
+      <p id={kakaoIntentSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {kakaoIntentSummaryText}
+      </p>
+      <p id={topbarKakaoDescriptionId} className="sr-only">
+        현재 검색 조건과 선택 상품을 기준으로 카카오톡 상담창을 엽니다.
+      </p>
+      <p id={summaryKakaoDescriptionId} className="sr-only">
+        화면에 정리된 상담 조건을 카카오톡 상담 문구로 넘깁니다.
+      </p>
+      <p id={resultSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {resultSummaryText}
+      </p>
 
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-5 px-4 py-5 md:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:py-7">
         <section className="min-w-0 space-y-5">
@@ -539,7 +765,13 @@ export default function ConciergePage() {
                   ref={inputRef}
                   type="text"
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    setQuery(event.target.value);
+                    if (searchError) setSearchError('');
+                    if (activePrompt && event.target.value !== activePrompt.query) setActivePrompt(null);
+                  }}
+                  aria-invalid={Boolean(searchError)}
+                  aria-describedby={searchError ? 'concierge-search-error' : 'concierge-search-help'}
                   placeholder="예: 부산 출발 부모님 효도 여행 추천해줘"
                   className="h-13 w-full rounded-[16px] border border-[#D1DCE8] bg-white py-3 pl-11 pr-4 text-[15px] text-text-primary placeholder:text-[#B0B8C1] focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/10"
                 />
@@ -547,41 +779,115 @@ export default function ConciergePage() {
               <button
                 type="submit"
                 disabled={loading}
+                aria-busy={loading}
+                aria-describedby={resultSummaryId}
                 className="h-13 rounded-[16px] bg-brand px-6 text-[15px] font-bold text-white transition hover:bg-brand-dark disabled:opacity-50"
               >
                 {loading ? '검색 중' : '검색'}
               </button>
             </form>
+            <p id="concierge-search-help" className="mt-2 text-[12px] font-medium text-text-secondary">
+              목적지, 출발지, 인원, 예산 중 아는 조건만 적어도 추천을 시작할 수 있어요.
+            </p>
 
             <div className="mt-4">
-              <p className="mb-2 text-[13px] font-bold text-text-primary">빠른 시작</p>
-              <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-                {INTENT_PROMPTS.map((prompt) => (
-                  <button
-                    key={prompt.intent}
-                    type="button"
-                    onClick={() => {
-                      setQuery(prompt.query);
-                      void performSearch(prompt.query, prompt);
-                    }}
-                    className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-4 py-2 text-[13px] font-bold text-text-body transition hover:border-brand/60 hover:text-brand"
-                  >
-                    {prompt.label}
-                  </button>
-                ))}
+              <p id={intentPromptGroupLabelId} className="mb-2 text-[13px] font-bold text-text-primary">빠른 시작</p>
+              <p id={intentPromptGroupDescriptionId} className="sr-only">
+                칩을 선택하면 예시 문장이 검색창에 입력되고 추천 검색이 바로 시작됩니다. 선택한 의도는 카카오 상담과 단체 견적에 함께 전달됩니다.
+              </p>
+              <div
+                className="flex gap-2 overflow-x-auto pb-1 no-scrollbar"
+                role="group"
+                aria-labelledby={intentPromptGroupLabelId}
+                aria-describedby={intentPromptGroupDescriptionId}
+              >
+                {INTENT_PROMPTS.map((prompt) => {
+                  const selected = activePrompt?.intent === prompt.intent;
+                  const promptDescriptionId = intentPromptDescriptionId(prompt.intent);
+                  return (
+                    <div key={prompt.intent} className="shrink-0">
+                      <button
+                        type="button"
+                        data-testid="concierge-intent-prompt"
+                        aria-pressed={selected}
+                        aria-describedby={promptDescriptionId}
+                        onClick={() => {
+                          setQuery(prompt.query);
+                          void performSearch(prompt.query, prompt);
+                        }}
+                        className={`rounded-full border px-4 py-2 text-[13px] font-bold transition ${
+                          selected
+                            ? 'border-brand bg-brand text-white shadow-sm'
+                            : 'border-[#D1DCE8] bg-white text-text-body hover:border-brand/60 hover:text-brand'
+                        }`}
+                      >
+                        {prompt.label}
+                      </button>
+                      <span id={promptDescriptionId} className="sr-only">
+                        {prompt.query} 조건으로 검색하고 상담 전달 조건에 {PARTY_TYPE_LABELS[prompt.party_type] ?? prompt.party_type}
+                        {prompt.destination ? `, ${prompt.destination}` : ''} 정보를 저장합니다.
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {errorMsg && (
-              <div className="mt-4 flex items-start gap-2 rounded-[14px] border border-danger/20 bg-danger-light p-3 text-[13px] text-danger">
+            {showIntentSummary && (
+              <div className="mt-4 rounded-[18px] border border-[#D1DCE8] bg-[#F8FAFC] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-extrabold text-text-primary">상담에 전달될 조건</p>
+                    <p className="mt-1 text-[12px] text-text-secondary">
+                      검색어와 담은 상품을 요약해 상담원이 바로 이어받을 수 있게 보냅니다.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="concierge-summary-kakao"
+                    onClick={() => openKakaoConsult('intent_summary')}
+                    aria-describedby={summaryKakaoDescriptionIds}
+                    className="inline-flex h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-4 text-[13px] font-bold text-[#3C1E1E]"
+                  >
+                    <MessageCircle size={16} />
+                    카톡으로 넘기기
+                  </button>
+                </div>
+                {summaryItems.length > 0 ? (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {summaryItems.map((item) => (
+                      <span key={item.label} className="rounded-full border border-white bg-white px-2.5 py-1 text-[12px] font-bold text-text-body shadow-sm">
+                        {item.label}: {item.value}
+                      </span>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-[12px] font-medium text-text-secondary">빠른 시작을 누르거나 검색어를 입력하면 조건이 자동으로 정리됩니다.</p>
+                )}
+                <div
+                  id={handoffReadinessSummaryId}
+                  data-testid="concierge-handoff-readiness-summary"
+                  aria-label={handoffReadinessText}
+                  className="mt-3 rounded-[14px] border border-white bg-white px-3 py-2 text-[12px] font-bold text-text-secondary shadow-sm"
+                >
+                  <span className="text-text-primary">상담 전달 준비 {handoffReadyCount}/{handoffChecklist.length}</span>
+                  <span className="ml-2 font-medium">
+                    {handoffMissingLabels.length > 0 ? `보완 추천: ${handoffMissingLabels.join(', ')}` : '바로 상담 가능'}
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {searchError && (
+              <div id="concierge-search-error" className="mt-4 flex items-start gap-2 rounded-[14px] border border-danger/20 bg-danger-light p-3 text-[13px] text-danger" role="alert">
                 <AlertTriangle size={16} className="mt-0.5 shrink-0" />
-                <p>{errorMsg}</p>
+                <p>{searchError}</p>
               </div>
             )}
           </div>
 
           {loading && (
-            <div className="rounded-[20px] border border-[#EEF2F6] bg-white p-6 text-center shadow-card">
+            <div className="rounded-[20px] border border-[#EEF2F6] bg-white p-6 text-center shadow-card" role="status" aria-live="polite" aria-atomic="true">
               <Sparkles className="mx-auto mb-3 animate-pulse text-brand" size={32} />
               <p className="text-[15px] font-bold text-text-primary">조건에 맞는 상품을 비교하고 있습니다</p>
               <p className="mt-1 text-[13px] text-text-secondary">가격, 조건, 주의사항을 함께 정리할게요.</p>
@@ -589,36 +895,202 @@ export default function ConciergePage() {
           )}
 
           {results.length > 0 && (
-            <section className="space-y-3">
+            <section className="space-y-3" aria-labelledby="concierge-results-title" aria-describedby={resultSummaryId}>
               <div className="flex items-end justify-between gap-3">
                 <div>
-                  <h2 className="text-[20px] font-extrabold text-text-primary">추천 결과 {results.length}건</h2>
+                  <h2 id="concierge-results-title" className="text-[20px] font-extrabold text-text-primary">추천 결과 {results.length}건</h2>
                   <p className="mt-1 text-[13px] text-text-secondary">추천 이유와 확인할 점을 같이 보세요.</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => openKakaoConsult('results_header')}
+                  aria-describedby={resultSummaryId}
                   className="hidden rounded-full border border-[#D1DCE8] px-4 py-2 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand md:inline-flex"
                 >
                   상담으로 확인
                 </button>
               </div>
+              <div
+                id={resultBundleSummaryId}
+                data-testid="concierge-result-bundle-handoff"
+                aria-label={resultBundleSummaryText}
+                className="rounded-[20px] border border-[#D1DCE8] bg-white p-4 shadow-card"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-[13px] font-extrabold text-text-primary">
+                      <ClipboardList size={16} aria-hidden="true" />
+                      상위 추천 묶어서 상담
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-secondary">
+                      {resultHandoffProductNames.slice(0, 3).join(' · ')} 조건을 상담원에게 바로 넘깁니다.
+                    </p>
+                    {resultBundleHandoffItems.length > 0 && (
+                      <div
+                        className="mt-2 flex flex-wrap gap-1.5"
+                        data-testid="concierge-result-bundle-handoff-summary"
+                      >
+                        {resultBundleHandoffItems.slice(0, 5).map((item) => (
+                          <span
+                            key={`${item.label}-${item.value}`}
+                            className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#F8FAFC] px-2 py-1 text-[11px] font-bold text-text-secondary ring-1 ring-[#E5ECF3]"
+                          >
+                            <span className="text-text-tertiary">{item.label}</span>
+                            <span className="max-w-[8rem] truncate text-text-primary">{item.value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+                    <button
+                      type="button"
+                      data-testid="concierge-result-bundle-kakao"
+                      onClick={() => openKakaoConsult('results_bundle', undefined, resultHandoffProductNames)}
+                      aria-describedby={`${resultSummaryId} ${resultBundleSummaryId}`}
+                      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-4 text-[13px] font-bold text-[#3C1E1E]"
+                    >
+                      <MessageCircle size={16} aria-hidden="true" />
+                      카톡
+                    </button>
+                    <Link
+                      href={resultBundleGroupInquiryHref}
+                      data-testid="concierge-result-bundle-group-inquiry"
+                      onClick={() => {
+                        trackEngagement({
+                          event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                          source: 'concierge_results_bundle_group_inquiry',
+                          page_url: '/concierge',
+                          ...intentSummary,
+                          selected_products: resultHandoffProductNames,
+                          metadata: {
+                            action: 'group_inquiry_handoff',
+                            selectedProductNames: resultHandoffProductNames,
+                          },
+                        });
+                      }}
+                      aria-describedby={`${resultSummaryId} ${resultBundleSummaryId}`}
+                      className="inline-flex h-10 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-4 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                    >
+                      견적
+                    </Link>
+                  </div>
+                </div>
+              </div>
+              <RecommendationBrief
+                items={resultBriefItems}
+                summaryId={resultBriefSummaryId}
+                summaryText={resultBriefSummaryText}
+              />
+              <ResultComparisonTable
+                results={results}
+                summaryId={resultSummaryId}
+                getGroupInquiryHref={(item) => buildGroupInquiryHandoffHref({
+                  source: 'concierge_comparison',
+                  intent: intentSummary.intent ?? undefined,
+                  partyType: intentSummary.party_type ?? undefined,
+                  query: query.trim() || activePrompt?.query || `${item.product_name} 단체 견적`,
+                  destination: intentSummary.destination,
+                  budget: intentSummary.budget || `예상가 ${money(item.price)}`,
+                  selectedProducts: [item.product_name],
+                })}
+                onAdd={(item) => addToCart(item)}
+                onViewDetail={(item) => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                    source: 'concierge_comparison_detail',
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    page_url: '/concierge',
+                    metadata: {
+                      action: 'view_detail_from_comparison',
+                      apiName: item.api_name,
+                      productType: item.product_type,
+                    },
+                    ...intentSummary,
+                  });
+                }}
+                onConsult={(item) => openKakaoConsult('comparison_table', item)}
+                onGroupInquiry={(item) => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                    source: 'concierge_comparison_group_inquiry',
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    page_url: '/concierge',
+                    ...intentSummary,
+                    selected_products: [item.product_name],
+                    metadata: {
+                      action: 'group_inquiry_from_comparison',
+                      apiName: item.api_name,
+                      productType: item.product_type,
+                    },
+                  });
+                }}
+              />
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {results.map((item) => (
+                {results.map((item, index) => (
                   <ResultCard
                     key={item.product_id}
                     item={item}
+                    summaryId={resultSummaryId}
+                    groupInquiryHref={buildGroupInquiryHandoffHref({
+                      source: 'concierge_result',
+                      intent: intentSummary.intent ?? undefined,
+                      partyType: intentSummary.party_type ?? undefined,
+                      query: query.trim() || activePrompt?.query || `${item.product_name} 단체 견적`,
+                      destination: intentSummary.destination,
+                      budget: intentSummary.budget || `예상가 ${money(item.price)}`,
+                      selectedProducts: [item.product_name],
+                    })}
                     onAdd={() => addToCart(item)}
-                    onConsult={() => {
+                    onViewDetail={() => {
                       trackEngagement({
                         event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                        source: 'concierge_result_detail',
                         product_id: item.product_id,
                         product_name: item.product_name,
                         page_url: '/concierge',
+                        recommended_rank: index + 1,
+                        metadata: {
+                          action: 'view_detail',
+                          resultIndex: index + 1,
+                          apiName: item.api_name,
+                          productType: item.product_type,
+                        },
+                        ...intentSummary,
+                      });
+                    }}
+                    onConsult={() => {
+                      trackEngagement({
+                        event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                        source: 'concierge_result_kakao',
+                        product_id: item.product_id,
+                        product_name: item.product_name,
+                        page_url: '/concierge',
+                        recommended_rank: index + 1,
                         metadata: { action: 'kakao_from_result' },
                         ...intentSummary,
                       });
-                      openKakaoConsult('result_card');
+                      openKakaoConsult('result_card', item);
+                    }}
+                    onGroupInquiry={() => {
+                      trackEngagement({
+                        event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                        source: 'concierge_result_group_inquiry',
+                        product_id: item.product_id,
+                        product_name: item.product_name,
+                        page_url: '/concierge',
+                        recommended_rank: index + 1,
+                        ...intentSummary,
+                        selected_products: [item.product_name],
+                        metadata: {
+                          action: 'group_inquiry_handoff',
+                          resultIndex: index + 1,
+                          apiName: item.api_name,
+                          productType: item.product_type,
+                        },
+                      });
                     }}
                   />
                 ))}
@@ -638,12 +1110,20 @@ export default function ConciergePage() {
             </div>
             <div className="max-h-[calc(100dvh-280px)] overflow-y-auto p-5">{renderCartItems()}</div>
             <CartActions
+              surface="desktop"
               cartCount={cart.length}
               cartTotal={cartTotal}
+              summaryItems={summaryItems}
+              handoffReadinessText={handoffReadinessText}
+              handoffReadyCount={handoffReadyCount}
+              handoffTotalCount={handoffChecklist.length}
+              groupInquiryHref={groupInquiryHref}
               sharing={sharing}
+              checkoutOpen={checkoutOpen}
               onShare={handleShare}
               onCheckout={() => setCheckoutOpen(true)}
               onKakao={() => openKakaoConsult('desktop_cart')}
+              onGroupInquiry={() => handleGroupInquiryClick('desktop_cart')}
             />
           </div>
         </aside>
@@ -654,6 +1134,11 @@ export default function ConciergePage() {
           <div className="mx-auto flex max-w-lg items-center gap-3 px-4">
             <button
               type="button"
+              data-testid="concierge-mobile-cart-summary"
+              aria-haspopup="dialog"
+              aria-expanded={cartSheetOpen}
+              aria-controls="concierge-cart-sheet"
+              aria-describedby={checkoutSummaryId}
               onClick={() => setCartSheetOpen(true)}
               className="min-w-0 flex-1 rounded-[16px] bg-[#F8FAFC] px-4 py-3 text-left"
             >
@@ -665,11 +1150,17 @@ export default function ConciergePage() {
               onClick={() => openKakaoConsult('mobile_cart_bar')}
               className="flex size-12 items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E]"
               aria-label="카카오톡 상담"
+              aria-describedby={checkoutSummaryId}
             >
               <MessageCircle size={21} />
             </button>
             <button
               type="button"
+              data-testid="concierge-mobile-cart-open"
+              aria-haspopup="dialog"
+              aria-expanded={cartSheetOpen}
+              aria-controls="concierge-cart-sheet"
+              aria-describedby={checkoutSummaryId}
               onClick={() => setCartSheetOpen(true)}
               className="h-12 rounded-full bg-brand px-5 text-[14px] font-bold text-white"
             >
@@ -680,21 +1171,44 @@ export default function ConciergePage() {
       )}
 
       {cartSheetOpen && (
-        <ModalFrame title="선택한 구성" onClose={() => setCartSheetOpen(false)}>
+        <ModalFrame
+          title="선택한 구성"
+          dialogId="concierge-cart-sheet"
+          testId="concierge-cart-sheet"
+          closeTestId="concierge-cart-sheet-close"
+          onClose={() => setCartSheetOpen(false)}
+        >
           <div className="min-h-0 flex-1 overflow-y-auto p-5">{renderCartItems()}</div>
           <CartActions
+            surface="mobile"
             cartCount={cart.length}
             cartTotal={cartTotal}
+            summaryItems={summaryItems}
+            handoffReadinessText={handoffReadinessText}
+            handoffReadyCount={handoffReadyCount}
+            handoffTotalCount={handoffChecklist.length}
+            groupInquiryHref={groupInquiryHref}
             sharing={sharing}
+            checkoutOpen={checkoutOpen}
             onShare={handleShare}
-            onCheckout={() => setCheckoutOpen(true)}
+            onCheckout={() => {
+              setCartSheetOpen(false);
+              setCheckoutOpen(true);
+            }}
             onKakao={() => openKakaoConsult('mobile_cart_sheet')}
+            onGroupInquiry={() => handleGroupInquiryClick('mobile_cart_sheet')}
           />
         </ModalFrame>
       )}
 
       {checkoutOpen && (
-        <ModalFrame title="고객 정보 입력" onClose={() => { setCheckoutOpen(false); setErrorMsg(''); }}>
+        <ModalFrame
+          title="고객 정보 입력"
+          dialogId="concierge-checkout-dialog"
+          testId="concierge-checkout-dialog"
+          closeTestId="concierge-checkout-close"
+          onClose={() => { setCheckoutOpen(false); setCheckoutError(''); }}
+        >
           <form onSubmit={handleCheckout} className="min-h-0 overflow-y-auto p-5">
             <div className="space-y-4">
               <div>
@@ -703,10 +1217,16 @@ export default function ConciergePage() {
                 </label>
                 <input
                   id="concierge-customer-name"
+                  ref={customerNameRef}
                   type="text"
                   required
                   value={customer.name}
-                  onChange={(event) => setCustomer((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) => {
+                    setCustomer((current) => ({ ...current, name: event.target.value }));
+                    if (checkoutError) setCheckoutError('');
+                  }}
+                  aria-invalid={Boolean(checkoutError && !customer.name.trim())}
+                  aria-describedby={checkoutDescriptionIds}
                   className="h-11 w-full rounded-[12px] border border-[#D1DCE8] px-3 text-[15px] focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/10"
                   placeholder="홍길동"
                 />
@@ -720,6 +1240,7 @@ export default function ConciergePage() {
                   type="tel"
                   value={customer.phone}
                   onChange={(event) => setCustomer((current) => ({ ...current, phone: event.target.value }))}
+                  aria-describedby={checkoutSummaryId}
                   className="h-11 w-full rounded-[12px] border border-[#D1DCE8] px-3 text-[15px] focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/10"
                   placeholder="010-0000-0000"
                 />
@@ -733,6 +1254,7 @@ export default function ConciergePage() {
                   type="email"
                   value={customer.email}
                   onChange={(event) => setCustomer((current) => ({ ...current, email: event.target.value }))}
+                  aria-describedby={checkoutSummaryId}
                   className="h-11 w-full rounded-[12px] border border-[#D1DCE8] px-3 text-[15px] focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/10"
                   placeholder="example@email.com"
                 />
@@ -746,9 +1268,35 @@ export default function ConciergePage() {
                 <p className="mt-1 text-[12px] text-text-secondary">{cart.length}개 상품</p>
               </div>
 
-              {errorMsg && (
-                <div className="rounded-[14px] border border-danger/20 bg-danger-light p-3 text-[13px] text-danger">
-                  {errorMsg}
+              <div
+                id={checkoutHandoffSummaryId}
+                data-testid="concierge-checkout-handoff-summary"
+                className="rounded-[14px] border border-[#E5E7EB] bg-white p-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-extrabold text-text-secondary">상담 전달 조건</p>
+                    <p className="mt-1 text-[12px] font-semibold leading-5 text-text-primary">{handoffReadinessText}</p>
+                  </div>
+                  <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+                    {handoffReadyCount}/{handoffChecklist.length}
+                  </span>
+                </div>
+                {summaryItems.length > 0 && (
+                  <dl className="mt-3 grid grid-cols-2 gap-2">
+                    {summaryItems.slice(0, 4).map((item) => (
+                      <div key={`checkout:${item.label}`} className="min-w-0 rounded-[10px] bg-[#F8FAFC] px-2.5 py-2">
+                        <dt className="text-[10px] font-bold text-text-secondary">{item.label}</dt>
+                        <dd className="mt-0.5 truncate text-[12px] font-extrabold text-text-primary">{item.value}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                )}
+              </div>
+
+              {checkoutError && (
+                <div id="concierge-checkout-error" className="rounded-[14px] border border-danger/20 bg-danger-light p-3 text-[13px] text-danger" role="alert">
+                  {checkoutError}
                 </div>
               )}
             </div>
@@ -756,14 +1304,17 @@ export default function ConciergePage() {
             <div className="mt-5 grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => { setCheckoutOpen(false); setErrorMsg(''); }}
+                onClick={() => { setCheckoutOpen(false); setCheckoutError(''); }}
                 className="h-11 rounded-full border border-[#D1DCE8] text-[14px] font-bold text-text-body hover:bg-[#F8FAFC]"
               >
                 취소
               </button>
               <button
                 type="submit"
-                disabled={paying || !customer.name.trim()}
+                data-testid="concierge-checkout-submit"
+                disabled={paying}
+                aria-busy={paying}
+                aria-describedby={checkoutDescriptionIds}
                 className="h-11 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark disabled:opacity-50"
               >
                 {paying ? '처리 중' : '결제 완료'}
@@ -774,7 +1325,13 @@ export default function ConciergePage() {
       )}
 
       {shareToast && (
-        <div className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 z-[90] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2.5 text-[13px] font-bold text-white shadow-lg">
+        <div
+          className="fixed bottom-[calc(104px+env(safe-area-inset-bottom))] left-1/2 z-[90] -translate-x-1/2 rounded-full bg-slate-900 px-4 py-2.5 text-[13px] font-bold text-white shadow-lg"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          data-testid="concierge-share-toast"
+        >
           {shareToast}
         </div>
       )}
@@ -782,18 +1339,286 @@ export default function ConciergePage() {
   );
 }
 
+function ResultComparisonTable({
+  results,
+  summaryId,
+  getGroupInquiryHref,
+  onAdd,
+  onViewDetail,
+  onConsult,
+  onGroupInquiry,
+}: {
+  results: MockSearchResult[];
+  summaryId: string;
+  getGroupInquiryHref: (item: MockSearchResult) => string;
+  onAdd: (item: MockSearchResult) => void | Promise<void>;
+  onViewDetail: (item: MockSearchResult) => void;
+  onConsult: (item: MockSearchResult) => void;
+  onGroupInquiry: (item: MockSearchResult) => void;
+}) {
+  if (results.length < 2) return null;
+
+  const comparisonItems = results.slice(0, 5);
+
+  return (
+    <section aria-labelledby="concierge-comparison-title" aria-describedby={summaryId} className="overflow-hidden rounded-[20px] border border-[#E5E7EB] bg-white shadow-card">
+      <div className="flex items-start justify-between gap-3 border-b border-[#EEF2F6] px-4 py-3">
+        <div>
+          <h3 id="concierge-comparison-title" className="text-[15px] font-extrabold text-text-primary">
+            추천 비교표
+          </h3>
+          <p className="mt-0.5 text-[12px] text-text-secondary">
+            가격, 추가 비용, 다음 액션을 먼저 좁혀보세요.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#F2F4F6] px-2.5 py-1 text-[11px] font-bold text-text-secondary">
+          상위 {comparisonItems.length}개
+        </span>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-[12px]">
+          <thead className="bg-[#F8FAFC] text-[11px] font-extrabold text-text-secondary">
+            <tr>
+              <th scope="col" className="px-4 py-3">
+                상품
+              </th>
+              <th scope="col" className="px-3 py-3">
+                유형
+              </th>
+              <th scope="col" className="px-3 py-3">
+                예상가
+              </th>
+              <th scope="col" className="px-3 py-3">
+                확인 포인트
+              </th>
+              <th scope="col" className="px-3 py-3">
+                추가 비용 가능성
+              </th>
+              <th scope="col" className="px-4 py-3 text-right">
+                다음 액션
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#EEF2F6]">
+            {comparisonItems.map((item) => {
+              const insight = getResultInsight(item);
+              const category = resolveCategory(item);
+              const categoryLabel = category === 'DYNAMIC' ? '실시간 조건' : '고정 패키지';
+              const detailHref = category === 'FIXED' ? `/packages/${encodeURIComponent(item.product_id)}` : null;
+              const groupInquiryHref = getGroupInquiryHref(item);
+
+              return (
+                <tr key={item.product_id} className="align-top">
+                  <th scope="row" className="max-w-[220px] px-4 py-3 font-bold text-text-primary">
+                    <span className="block line-clamp-2">{item.product_name}</span>
+                    <span className="mt-1 block text-[11px] font-bold text-text-secondary">{API_LABELS[item.api_name] ?? item.api_name}</span>
+                  </th>
+                  <td className="px-3 py-3">
+                    <span className="inline-flex rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-secondary">
+                      {PRODUCT_TYPE_LABELS[item.product_type] ?? item.product_type}
+                    </span>
+                    <span className="mt-1 block text-[11px] font-bold text-text-secondary">{categoryLabel}</span>
+                  </td>
+                  <td className="whitespace-nowrap px-3 py-3 font-extrabold text-brand">{money(item.price)}</td>
+                  <td className="max-w-[150px] px-3 py-3 font-bold text-text-primary">{insight.action}</td>
+                  <td className="max-w-[220px] px-3 py-3 leading-5 text-text-secondary">{insight.extraCost}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {detailHref && (
+                        <Link
+                          href={detailHref}
+                          onClick={() => onViewDetail(item)}
+                          aria-label={`${item.product_name} 비교표에서 상세 보기`}
+                          aria-describedby={summaryId}
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[12px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                        >
+                          상세
+                        </Link>
+                      )}
+                      <Link
+                        href={groupInquiryHref}
+                        onClick={() => onGroupInquiry(item)}
+                        data-testid="concierge-comparison-group-inquiry"
+                        aria-label={`${item.product_name} 비교표에서 단체 견적 문의`}
+                        aria-describedby={summaryId}
+                        className="inline-flex h-9 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[12px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                      >
+                        견적
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void onAdd(item);
+                        }}
+                        aria-label={`${item.product_name} 비교표에서 담기`}
+                        aria-describedby={summaryId}
+                        className="h-9 rounded-full bg-brand px-3 text-[12px] font-bold text-white hover:bg-brand-dark"
+                      >
+                        담기
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onConsult(item)}
+                        aria-label={`${item.product_name} 비교표에서 카카오톡 상담`}
+                        aria-describedby={summaryId}
+                        className="flex size-9 items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E]"
+                      >
+                        <MessageCircle size={17} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function RecommendationBrief({
+  items,
+  summaryId,
+  summaryText,
+}: {
+  items: Array<{
+    rank: number;
+    name: string;
+    price: string;
+    reason: string;
+    caution: string;
+    extraCost: string;
+    action: string;
+  }>;
+  summaryId: string;
+  summaryText: string;
+}) {
+  if (items.length === 0) return null;
+
+  return (
+    <section
+      aria-labelledby="concierge-result-brief-title"
+      aria-describedby={summaryId}
+      data-testid="concierge-result-brief"
+      className="rounded-[20px] border border-[#E5E7EB] bg-white p-4 shadow-card"
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <h3 id="concierge-result-brief-title" className="text-[15px] font-extrabold text-text-primary">
+            AI 추천 브리핑
+          </h3>
+          <p className="mt-0.5 text-[12px] text-text-secondary">
+            이유, 주의점, 추가 비용, 다음 액션을 먼저 좁혀보세요.
+          </p>
+        </div>
+        <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+          상위 {items.length}개
+        </span>
+      </div>
+      <p id={summaryId} className="sr-only">
+        {summaryText}
+      </p>
+      <div className="grid gap-3">
+        {items.map((item) => (
+          <article
+            key={`${item.rank}:${item.name}`}
+            data-testid="concierge-result-brief-item"
+            className="rounded-[16px] border border-[#EEF2F6] bg-[#F8FAFC] p-3"
+          >
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[11px] font-extrabold text-brand">{item.rank}순위</p>
+                <h4 className="mt-0.5 line-clamp-1 text-[14px] font-extrabold text-text-primary">{item.name}</h4>
+              </div>
+              <p className="shrink-0 text-[13px] font-extrabold text-brand">{item.price}</p>
+            </div>
+            <dl className="grid gap-2 text-[12px] leading-5 md:grid-cols-2">
+              <BriefLine icon="reason" label="추천 이유" value={item.reason} />
+              <BriefLine icon="caution" label="주의할 점" value={item.caution} />
+              <BriefLine icon="cost" label="추가 비용" value={item.extraCost} />
+              <BriefLine icon="action" label="다음 액션" value={item.action} />
+            </dl>
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function BriefLine({
+  icon,
+  label,
+  value,
+}: {
+  icon: 'reason' | 'caution' | 'cost' | 'action';
+  label: string;
+  value: string;
+}) {
+  const Icon =
+    icon === 'reason'
+      ? CheckCircle2
+      : icon === 'caution'
+        ? AlertTriangle
+        : icon === 'cost'
+          ? Wallet
+          : Send;
+  const tone =
+    icon === 'reason'
+      ? 'text-emerald-600'
+      : icon === 'caution'
+        ? 'text-amber-600'
+        : icon === 'cost'
+          ? 'text-blue-600'
+          : 'text-brand';
+
+  return (
+    <div className="grid grid-cols-[18px_64px_1fr] gap-2">
+      <Icon className={`mt-0.5 h-4 w-4 ${tone}`} aria-hidden="true" />
+      <dt className="font-extrabold text-text-primary">{label}</dt>
+      <dd className="min-w-0 text-text-secondary">{value}</dd>
+    </div>
+  );
+}
+
 function ResultCard({
   item,
+  summaryId,
+  groupInquiryHref,
   onAdd,
+  onViewDetail,
   onConsult,
+  onGroupInquiry,
 }: {
   item: MockSearchResult;
+  summaryId: string;
+  groupInquiryHref: string;
   onAdd: () => void;
+  onViewDetail: () => void;
   onConsult: () => void;
+  onGroupInquiry: () => void;
 }) {
   const insight = getResultInsight(item);
   const tone = PRODUCT_TYPE_TONES[item.product_type] ?? 'bg-brand-light text-brand border-blue-100';
-  const categoryLabel = resolveCategory(item) === 'DYNAMIC' ? '실시간' : '고정패키지';
+  const category = resolveCategory(item);
+  const categoryLabel = category === 'DYNAMIC' ? '실시간' : '고정패키지';
+  const detailHref = category === 'FIXED' ? `/packages/${encodeURIComponent(item.product_id)}` : null;
+  const actionChecklist = [
+    { label: '추천 이유', value: insight.reason },
+    { label: '주의할 점', value: insight.caution },
+    { label: '추가 비용', value: insight.extraCost },
+    { label: '다음 액션', value: insight.action },
+  ];
+  const actionChecklistId = `concierge-result-action-checklist-${item.product_id.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+  const actionChecklistSummary = `상담 전 체크: ${actionChecklist.map((item) => `${item.label} ${item.value}`).join(', ')}`;
+  const resultActionDescriptionIds = `${summaryId} ${actionChecklistId}`;
+  const ctaGridClass = detailHref
+    ? 'grid-cols-2 sm:grid-cols-[1fr_1fr_1fr_auto]'
+    : 'grid-cols-2 sm:grid-cols-[1fr_1fr_auto]';
+  const kakaoCtaClass = detailHref
+    ? 'flex h-11 w-full items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E] sm:size-11 sm:w-11'
+    : 'col-span-2 flex h-11 w-full items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E] sm:col-span-1 sm:size-11 sm:w-11';
 
   return (
     <article className="flex min-h-[360px] flex-col rounded-[20px] border border-[#E5E7EB] bg-white p-4 shadow-card">
@@ -832,11 +1657,50 @@ function ResultCard({
           </div>
           <p className="text-right text-[11px] font-bold text-text-secondary">{insight.action}</p>
         </div>
-        <div className="grid grid-cols-[1fr_auto] gap-2">
+        <div
+          id={actionChecklistId}
+          data-testid="concierge-result-action-checklist"
+          aria-label={actionChecklistSummary}
+          className="mb-3 rounded-[16px] border border-[#EEF2F6] bg-[#F8FAFC] p-3"
+        >
+          <p className="text-[11px] font-extrabold text-text-primary">상담 전 체크</p>
+          <dl className="mt-2 grid gap-1.5 text-[11px] leading-5">
+            {actionChecklist.map((check) => (
+              <div key={check.label} className="grid grid-cols-[64px_1fr] gap-2">
+                <dt className="font-bold text-text-secondary">{check.label}</dt>
+                <dd className="line-clamp-1 font-semibold text-text-primary">{check.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+        <div className={`grid gap-2 ${ctaGridClass}`}>
+          {detailHref && (
+            <Link
+              href={detailHref}
+              onClick={onViewDetail}
+              aria-label={`${item.product_name} 상세 보기`}
+              aria-describedby={resultActionDescriptionIds}
+              className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+            >
+              상세 보기
+            </Link>
+          )}
+          <Link
+            href={groupInquiryHref}
+            onClick={onGroupInquiry}
+            data-testid="concierge-result-group-inquiry"
+            aria-label={`${item.product_name} 단체 견적 문의`}
+            aria-describedby={resultActionDescriptionIds}
+            className="inline-flex h-11 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+          >
+            견적
+          </Link>
           <button
             type="button"
             onClick={onAdd}
+            data-testid="concierge-result-add"
             aria-label={`${item.product_name} 담기`}
+            aria-describedby={resultActionDescriptionIds}
             className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark"
           >
             <Plus size={17} />
@@ -846,9 +1710,11 @@ function ResultCard({
             type="button"
             onClick={onConsult}
             aria-label={`${item.product_name} 카카오톡 상담`}
-            className="flex size-11 items-center justify-center rounded-full bg-[#FEE500] text-[#3C1E1E]"
+            aria-describedby={resultActionDescriptionIds}
+            className={kakaoCtaClass}
           >
             <MessageCircle size={19} />
+            <span className="ml-1.5 text-[14px] font-bold sm:sr-only">상담</span>
           </button>
         </div>
       </div>
@@ -903,22 +1769,70 @@ function CartGroup({
 }
 
 function CartActions({
+  surface,
   cartCount,
   cartTotal,
+  summaryItems,
+  handoffReadinessText,
+  handoffReadyCount,
+  handoffTotalCount,
+  groupInquiryHref,
   sharing,
+  checkoutOpen,
   onShare,
   onCheckout,
   onKakao,
+  onGroupInquiry,
 }: {
+  surface: 'desktop' | 'mobile';
   cartCount: number;
   cartTotal: number;
+  summaryItems: SummaryItem[];
+  handoffReadinessText: string;
+  handoffReadyCount: number;
+  handoffTotalCount: number;
+  groupInquiryHref: string;
   sharing: boolean;
+  checkoutOpen: boolean;
   onShare: () => void;
   onCheckout: () => void;
   onKakao: () => void;
+  onGroupInquiry: () => void;
 }) {
+  const cartActionSummaryId = `concierge-cart-action-summary-${surface}`;
+  const cartShareDescriptionId = `concierge-cart-share-description-${surface}`;
+  const cartKakaoDescriptionId = `concierge-cart-kakao-description-${surface}`;
+  const cartGroupInquiryDescriptionId = `concierge-cart-group-inquiry-description-${surface}`;
+  const cartCheckoutDescriptionId = `concierge-cart-checkout-description-${surface}`;
+  const cartReadinessSummaryId = `concierge-cart-readiness-summary-${surface}`;
+  const cartShareDescriptionIds = `${cartShareDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartKakaoDescriptionIds = `${cartKakaoDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartGroupInquiryDescriptionIds = `${cartGroupInquiryDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartCheckoutDescriptionIds = `${cartCheckoutDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartActionSummaryText = [
+    cartCount > 0 ? `선택한 구성은 ${cartCount}개 상품입니다.` : '선택한 상품이 없습니다.',
+    cartTotal > 0 ? `총 금액은 ${money(cartTotal)}입니다.` : null,
+    handoffReadinessText,
+    summaryItems.length > 0 ? `상담 전달 조건은 ${summaryItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.` : null,
+  ].filter(Boolean).join(' ');
+
   return (
     <div className="shrink-0 border-t border-[#EEF2F6] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+      <p id={cartActionSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {cartActionSummaryText}
+      </p>
+      <p id={cartShareDescriptionId} className="sr-only">
+        선택 상품과 상담 조건을 복사해 다른 상담 채널에 붙여넣을 수 있게 합니다.
+      </p>
+      <p id={cartKakaoDescriptionId} className="sr-only">
+        선택 상품과 상담 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
+      </p>
+      <p id={cartGroupInquiryDescriptionId} className="sr-only">
+        선택 상품과 상담 조건을 단체 맞춤 견적 문의로 이어갑니다.
+      </p>
+      <p id={cartCheckoutDescriptionId} className="sr-only">
+        선택 상품과 상담 조건을 바탕으로 결제 요청 입력창을 엽니다.
+      </p>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
           <p className="text-[12px] font-bold text-text-secondary">총 {cartCount}개 상품</p>
@@ -927,24 +1841,90 @@ function CartActions({
         <button
           type="button"
           onClick={onKakao}
+          aria-describedby={cartKakaoDescriptionIds}
           className="inline-flex h-10 items-center gap-1.5 rounded-full bg-[#FEE500] px-3 text-[13px] font-bold text-[#3C1E1E]"
         >
           <MessageCircle size={16} />
           상담
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div
+        id={cartReadinessSummaryId}
+        data-testid="concierge-cart-readiness-summary"
+        aria-label={handoffReadinessText}
+        className="mb-4 rounded-[14px] border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-text-secondary">상담 준비</p>
+            <p className="mt-0.5 text-[12px] font-semibold leading-5 text-text-primary">{handoffReadinessText}</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-brand ring-1 ring-[#E5ECF3]">
+            {handoffReadyCount}/{handoffTotalCount}
+          </span>
+        </div>
+      </div>
+      {summaryItems.length > 0 && (
+        <div
+          className="mb-4 rounded-[14px] border border-[#E5E7EB] bg-[#F8FAFC] p-3"
+          aria-label="상담 전달 조건"
+          aria-describedby={cartActionSummaryId}
+          data-testid="concierge-cart-handoff-summary"
+        >
+          <p className="mb-2 text-[11px] font-extrabold text-text-secondary">상담 전달 조건</p>
+          <dl className="grid grid-cols-2 gap-2">
+            {summaryItems.slice(0, 4).map((item) => (
+              <div key={item.label} className="min-w-0 rounded-[10px] bg-white px-2.5 py-2">
+                <dt className="text-[10px] font-bold text-text-secondary">{item.label}</dt>
+                <dd className="mt-0.5 truncate text-[12px] font-extrabold text-text-primary">{item.value}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+      <div className="grid grid-cols-3 gap-2">
         <button
           type="button"
           onClick={onShare}
           disabled={cartCount === 0 || sharing}
+          aria-busy={sharing}
+          aria-describedby={cartShareDescriptionIds}
           className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-[#D1DCE8] text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand disabled:opacity-40"
         >
           <Send size={17} />
           {sharing ? '생성 중' : '공유'}
         </button>
+        {cartCount === 0 ? (
+          <button
+            type="button"
+            disabled
+            aria-disabled="true"
+            aria-describedby={cartGroupInquiryDescriptionIds}
+            data-testid="concierge-cart-group-inquiry"
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-[#D1DCE8] text-[14px] font-bold text-text-primary opacity-40 disabled:cursor-not-allowed"
+          >
+            <ClipboardList size={17} />
+            견적
+          </button>
+        ) : (
+          <Link
+            href={groupInquiryHref}
+            onClick={onGroupInquiry}
+            data-testid="concierge-cart-group-inquiry"
+            aria-describedby={cartGroupInquiryDescriptionIds}
+            className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full border border-[#D1DCE8] text-[14px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+          >
+            <ClipboardList size={17} />
+            견적
+          </Link>
+        )}
         <button
           type="button"
+          data-testid="concierge-cart-checkout"
+          aria-haspopup="dialog"
+          aria-expanded={checkoutOpen}
+          aria-controls="concierge-checkout-dialog"
+          aria-describedby={cartCheckoutDescriptionIds}
           onClick={onCheckout}
           disabled={cartCount === 0}
           className="inline-flex h-11 items-center justify-center gap-1.5 rounded-full bg-brand text-[14px] font-bold text-white hover:bg-brand-dark disabled:opacity-40"

@@ -2,6 +2,8 @@ name: Lighthouse CI
 
 # 2026-05-13 — mail-flood-stop v2: 항상 fail로 노이즈. 수동만 유지.
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -34,19 +36,22 @@ jobs:
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+          SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-ci
           NEXT_PUBLIC_BASE_URL: https://example.com
         run: npm run build
         timeout-minutes: 10
 
-      - name: Start development server
+      - name: Start production server
         env:
           NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
           NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-anon-key-for-ci
+          SUPABASE_SERVICE_ROLE_KEY: dummy-service-role-key-for-ci
           NEXT_PUBLIC_BASE_URL: https://example.com
+          PORT: '3000'
         run: |
-          npm run dev > /tmp/dev.log 2>&1 &
+          npm run start > /tmp/next-start.log 2>&1 &
           sleep 10
-          curl -f http://localhost:3000 || (cat /tmp/dev.log && exit 1)
+          curl -f http://localhost:3000 || (cat /tmp/next-start.log && exit 1)
         timeout-minutes: 5
 
       - name: Run Lighthouse CI
@@ -59,6 +64,7 @@ jobs:
 
       - name: Comment Lighthouse scores on PR
         if: github.event_name == 'pull_request'
+        continue-on-error: true
         uses: actions/github-script@v7
         with:
           script: |

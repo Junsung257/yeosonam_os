@@ -10,7 +10,7 @@ import {
 } from './lib/local-next-server.mjs';
 
 const rawArgs = process.argv.slice(2);
-const WRAPPER_OPTIONS = new Set(['--port', '--mode', '--ready-timeout-ms', '--keep-server']);
+const WRAPPER_OPTIONS = new Set(['--port', '--mode', '--ready-timeout-ms', '--command-timeout-ms', '--keep-server']);
 
 function argValue(name, fallback = '') {
   const prefix = `${name}=`;
@@ -54,6 +54,7 @@ function openReadinessArgs() {
 const port = Number(argValue('--port', process.env.OPEN_READINESS_LOCAL_PORT || '3040'));
 const mode = argValue('--mode', process.env.OPEN_READINESS_LOCAL_MODE || 'dev');
 const readyTimeoutMs = Number(argValue('--ready-timeout-ms', process.env.OPEN_READINESS_LOCAL_READY_TIMEOUT_MS || '120000'));
+const commandTimeoutMs = Number(argValue('--command-timeout-ms', process.env.OPEN_READINESS_LOCAL_COMMAND_TIMEOUT_MS || '300000'));
 const keepServer = hasFlag('--keep-server');
 const explicitBase = argValue('--base', process.env.OPEN_READINESS_LOCAL_BASE_URL || '').replace(/\/$/, '');
 const baseUrl = explicitBase || `http://127.0.0.1:${port}`;
@@ -62,11 +63,17 @@ const shouldStartServer = !explicitBase;
 validatePort(port, 'open-readiness-local');
 validateMode(mode, 'open-readiness-local');
 
+if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0) {
+  console.error('[open-readiness-local] --command-timeout-ms must be a positive number of milliseconds.');
+  process.exit(1);
+}
+
 function runOpenReadiness() {
   return spawnSync(process.execPath, ['scripts/open-readiness-check.mjs', ...openReadinessArgs()], {
     cwd: process.cwd(),
     env: process.env,
     stdio: 'inherit',
+    timeout: commandTimeoutMs,
   });
 }
 
@@ -88,7 +95,15 @@ try {
   }
 
   const result = runOpenReadiness();
-  process.exitCode = result.status ?? 1;
+  if (result.error?.code === 'ETIMEDOUT') {
+    console.error(`[open-readiness-local] open readiness command timed out after ${commandTimeoutMs}ms.`);
+    process.exitCode = 1;
+  } else if (result.error) {
+    console.error(`[open-readiness-local] open readiness command failed: ${result.error.message}`);
+    process.exitCode = 1;
+  } else {
+    process.exitCode = result.status ?? 1;
+  }
 } catch (err) {
   console.error(`[open-readiness-local] ${err instanceof Error ? err.message : String(err)}`);
   process.exitCode = 1;

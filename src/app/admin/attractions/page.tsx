@@ -741,7 +741,20 @@ export default function AttractionsPage() {
             return (
               <div key={a.id} className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden hover:shadow-admin-xs transition">
                 {/* 메인 행 */}
-                <div className="flex items-start gap-3 p-4 cursor-pointer" onClick={() => setExpandedId(isExpanded ? null : a.id)}>
+                <div
+                  className="flex items-start gap-3 p-4 cursor-pointer"
+                  onClick={() => setExpandedId(isExpanded ? null : a.id)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      setExpandedId(isExpanded ? null : a.id);
+                    }
+                  }}
+                  role="button"
+                  tabIndex={0}
+                  aria-expanded={isExpanded}
+                  aria-controls={`attraction-details-${a.id}`}
+                >
                   {/* 사진 썸네일 */}
                   <div className="w-16 h-16 rounded-lg overflow-hidden bg-admin-surface-2 shrink-0 flex items-center justify-center">
                     {a.photos?.length > 0 ? (
@@ -772,7 +785,7 @@ export default function AttractionsPage() {
 
                 {/* 확장 패널 */}
                 {isExpanded && (
-                  <div className="border-t border-admin-border bg-admin-bg p-4 space-y-4">
+                  <div id={`attraction-details-${a.id}`} className="border-t border-admin-border bg-admin-bg p-4 space-y-4">
                     {/* 사진 관리 */}
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -806,7 +819,7 @@ export default function AttractionsPage() {
                       {isPhotoOpen && photoPanel && (
                         <div className="mt-3 bg-white border border-blue-200 rounded-admin-md p-3">
                           <div className="flex gap-2 mb-3">
-                            <input value={photoPanel.keyword} onChange={e => setPhotoPanel(p => p ? { ...p, keyword: e.target.value } : p)}
+                            <input aria-label="Pexels 검색 키워드" value={photoPanel.keyword} onChange={e => setPhotoPanel(p => p ? { ...p, keyword: e.target.value } : p)}
                               onKeyDown={e => { if (e.key === 'Enter') searchPhotos(a.id, photoPanel.keyword); }}
                               className="flex-1 border rounded-lg px-3 py-1.5 text-sm" placeholder="Pexels 검색 키워드" />
                             <button onClick={() => searchPhotos(a.id, photoPanel.keyword)} disabled={photoPanel.searching}
@@ -819,11 +832,13 @@ export default function AttractionsPage() {
                               {photoPanel.results.map(p => {
                                 const already = a.photos?.some(x => x.pexels_id === p.pexels_id);
                                 return (
-                                  <div key={p.pexels_id} onClick={() => !already && addPhotoToAttraction(a.id, p)}
-                                    className={`cursor-pointer rounded-lg overflow-hidden border-2 transition ${already ? 'border-green-400 opacity-60' : 'border-transparent hover:border-blue-400'}`}>
+                                  <button key={p.pexels_id} type="button" onClick={() => !already && addPhotoToAttraction(a.id, p)}
+                                    disabled={already}
+                                    aria-label={`${p.photographer} 사진 ${already ? '이미 추가됨' : '추가'}`}
+                                    className={`cursor-pointer rounded-lg overflow-hidden border-2 transition text-left ${already ? 'border-green-400 opacity-60' : 'border-transparent hover:border-blue-400'}`}>
                                     <img src={p.src_medium} alt={p.alt || ''} className="w-full h-16 object-cover" />
                                     <p className="text-[8px] text-admin-muted-2 px-1 truncate">{already ? '✅ 추가됨' : `📸 ${p.photographer}`}</p>
-                                  </div>
+                                  </button>
                                 );
                               })}
                             </div>
@@ -889,41 +904,41 @@ export default function AttractionsPage() {
                     {/* 기본 정보 편집 */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
-                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">관광지명</label>
-                        <input defaultValue={a.name} onBlur={e => { if (e.target.value !== a.name) inlineSave(a.id, 'name', e.target.value); }}
+                        <label htmlFor={`attraction-name-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">관광지명</label>
+                        <input id={`attraction-name-${a.id}`} defaultValue={a.name} onBlur={e => { if (e.target.value !== a.name) inlineSave(a.id, 'name', e.target.value); }}
                           className="w-full text-sm border rounded-lg px-3 py-2" />
                       </div>
                       <div>
-                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">한줄 설명</label>
-                        <input defaultValue={a.short_desc || ''} onBlur={e => { if (e.target.value !== (a.short_desc || '')) inlineSave(a.id, 'short_desc', e.target.value); }}
+                        <label htmlFor={`attraction-short-desc-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">한줄 설명</label>
+                        <input id={`attraction-short-desc-${a.id}`} defaultValue={a.short_desc || ''} onBlur={e => { if (e.target.value !== (a.short_desc || '')) inlineSave(a.id, 'short_desc', e.target.value); }}
                           className="w-full text-sm border rounded-lg px-3 py-2" />
                       </div>
                       <div className="md:col-span-2">
-                        <label className="text-[10px] font-bold text-admin-muted mb-1 block">상세 설명 (long_desc)</label>
-                        <textarea defaultValue={a.long_desc || ''} onBlur={e => { if (e.target.value !== (a.long_desc || '')) inlineSave(a.id, 'long_desc', e.target.value); }}
+                        <label htmlFor={`attraction-long-desc-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">상세 설명 (long_desc)</label>
+                        <textarea id={`attraction-long-desc-${a.id}`} defaultValue={a.long_desc || ''} onBlur={e => { if (e.target.value !== (a.long_desc || '')) inlineSave(a.id, 'long_desc', e.target.value); }}
                           rows={3} className="w-full text-sm border rounded-lg px-3 py-2 resize-none" />
                       </div>
                       <div className="flex gap-2">
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">국가</label>
-                          <input defaultValue={a.country || ''} onBlur={e => { if (e.target.value !== (a.country || '')) inlineSave(a.id, 'country', e.target.value); }}
+                          <label htmlFor={`attraction-country-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">국가</label>
+                          <input id={`attraction-country-${a.id}`} defaultValue={a.country || ''} onBlur={e => { if (e.target.value !== (a.country || '')) inlineSave(a.id, 'country', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2" />
                         </div>
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">지역</label>
-                          <input defaultValue={a.region || ''} onBlur={e => { if (e.target.value !== (a.region || '')) inlineSave(a.id, 'region', e.target.value); }}
+                          <label htmlFor={`attraction-region-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">지역</label>
+                          <input id={`attraction-region-${a.id}`} defaultValue={a.region || ''} onBlur={e => { if (e.target.value !== (a.region || '')) inlineSave(a.id, 'region', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2" />
                         </div>
                         <div className="w-20">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">이모지</label>
-                          <input defaultValue={a.emoji || ''} onBlur={e => { if (e.target.value !== (a.emoji || '')) inlineSave(a.id, 'emoji', e.target.value); }}
+                          <label htmlFor={`attraction-emoji-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">이모지</label>
+                          <input id={`attraction-emoji-${a.id}`} defaultValue={a.emoji || ''} onBlur={e => { if (e.target.value !== (a.emoji || '')) inlineSave(a.id, 'emoji', e.target.value); }}
                             className="w-full text-sm border rounded-lg px-3 py-2 text-center" />
                         </div>
                       </div>
                       <div className="flex gap-2 items-end">
                         <div className="flex-1">
-                          <label className="text-[10px] font-bold text-admin-muted mb-1 block">배지 타입</label>
-                          <select value={a.badge_type} onChange={e => inlineSave(a.id, 'badge_type', e.target.value)}
+                          <label htmlFor={`attraction-badge-type-${a.id}`} className="text-[10px] font-bold text-admin-muted mb-1 block">배지 타입</label>
+                          <select id={`attraction-badge-type-${a.id}`} value={a.badge_type} onChange={e => inlineSave(a.id, 'badge_type', e.target.value)}
                             className="w-full text-sm border rounded-lg px-3 py-2">
                             {BADGE_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.icon} {b.label}</option>)}
                           </select>

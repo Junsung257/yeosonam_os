@@ -22,6 +22,16 @@ export default function ChatWidget() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [inputValue, setInputValue] = useState('');
+  const chatDialogTitleId = 'chat-widget-title';
+  const chatDialogDescriptionId = 'chat-widget-description';
+  const chatMessagesId = 'chat-widget-messages';
+  const chatInputHelpId = 'chat-widget-input-help';
+  const chatStatusId = 'chat-widget-status';
+  const chatStatusText = isTyping
+    ? 'AI 상담사가 답변을 작성하고 있습니다.'
+    : messages.length > 0
+      ? `대화 메시지 ${messages.length}개가 있습니다.`
+      : '아직 대화 메시지가 없습니다. 추천 질문을 선택하거나 메시지를 입력할 수 있습니다.';
 
   // 메시지 자동 스크롤
   useEffect(() => {
@@ -67,6 +77,7 @@ export default function ChatWidget() {
     }
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: 'chat_widget_escalation',
       page_url: pathname || '/',
       metadata: {
         source: 'chat_widget_escalation',
@@ -99,28 +110,52 @@ export default function ChatWidget() {
 
       {/* 채팅 창 */}
       {isOpen && (
-        <div className="fixed bottom-0 right-0 md:bottom-6 md:right-6 w-full md:w-96 h-full md:h-[600px] md:max-h-[80vh] bg-white md:rounded-2xl shadow-2xl flex flex-col z-[60] border border-gray-200">
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={chatDialogTitleId}
+          aria-describedby={`${chatDialogDescriptionId} ${chatStatusId}`}
+          className="fixed bottom-0 right-0 md:bottom-6 md:right-6 w-full md:w-96 h-full md:h-[600px] md:max-h-[80vh] bg-white md:rounded-2xl shadow-2xl flex flex-col z-[60] border border-gray-200"
+        >
+          <p id={chatDialogDescriptionId} className="sr-only">
+            여행 상담 메시지를 입력하고 AI 추천 또는 상담 연결을 받을 수 있습니다.
+          </p>
+          <p id={chatStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {chatStatusText}
+          </p>
           {/* 헤더 */}
           <div className="bg-violet-600 text-white px-4 py-3 md:rounded-t-2xl flex justify-between items-center shrink-0">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center">
+              <div className="w-9 h-9 bg-white/20 rounded-full flex items-center justify-center" aria-hidden="true">
                 <MessageCircle size={20} />
               </div>
               <div>
-                <div className="font-bold text-sm">여소남 상담</div>
+                <div id={chatDialogTitleId} className="font-bold text-sm">여소남 상담</div>
                 <div className="text-[10px] text-white/80">AI가 도와드립니다</div>
               </div>
             </div>
-            <button onClick={closeChat} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition">
+            <button
+              type="button"
+              onClick={closeChat}
+              aria-label="채팅 닫기"
+              className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-white/20 transition"
+            >
               <X size={20} />
             </button>
           </div>
 
           {/* 메시지 영역 */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          <div
+            id={chatMessagesId}
+            className="flex-1 overflow-y-auto p-4 space-y-3"
+            role="log"
+            aria-live="polite"
+            aria-relevant="additions text"
+            aria-describedby={chatStatusId}
+          >
             {messages.length === 0 && (
               <div className="text-center py-8">
-                <div className="w-16 h-16 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-16 h-16 bg-violet-50 rounded-full flex items-center justify-center mx-auto mb-4" aria-hidden="true">
                   <MessageCircle size={32} className="text-violet-400" />
                 </div>
                 <p className="text-sm font-medium text-gray-700 mb-1">궁금하신 점을 물어보세요!</p>
@@ -182,19 +217,28 @@ export default function ChatWidget() {
                 ref={inputRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                aria-label="채팅 메시지 입력"
+                aria-describedby={chatInputHelpId}
+                aria-controls={chatMessagesId}
                 placeholder="메시지를 입력하세요..."
                 className="flex-1 border border-gray-200 rounded-xl px-4 py-2.5 resize-none text-sm focus:outline-none focus:ring-2 focus:ring-violet-300 focus:border-violet-400 max-h-24"
                 rows={1}
                 onKeyDown={handleKeyDown}
               />
               <button
+                type="button"
                 onClick={handleSend}
                 disabled={!inputValue.trim()}
+                aria-label="채팅 메시지 보내기"
+                aria-describedby={chatInputHelpId}
                 className="w-10 h-10 bg-violet-600 hover:bg-violet-700 disabled:bg-gray-300 text-white rounded-xl flex items-center justify-center transition shrink-0"
               >
                 <Send size={18} />
               </button>
             </div>
+            <p id={chatInputHelpId} className="sr-only">
+              Enter 키로 전송하고 Shift와 Enter를 함께 누르면 줄바꿈합니다.
+            </p>
           </div>
         </div>
       )}
@@ -676,7 +720,8 @@ function MessageBubble({
                   ? 'text-green-600 bg-green-50'
                   : 'text-gray-400 hover:text-green-600 hover:bg-green-50'
               }`}
-              aria-label="도움이 됨"
+              aria-label="이 답변이 도움이 됨"
+              aria-pressed={feedbackGiven === 'up'}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill={feedbackGiven === 'up' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
             </button>
@@ -692,7 +737,8 @@ function MessageBubble({
                   ? 'text-red-600 bg-red-50'
                   : 'text-gray-400 hover:text-red-600 hover:bg-red-50'
               }`}
-              aria-label="도움이 안 됨"
+              aria-label="이 답변이 도움이 안 됨"
+              aria-pressed={feedbackGiven === 'down'}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill={feedbackGiven === 'down' ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3H10zM17 2h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>
             </button>

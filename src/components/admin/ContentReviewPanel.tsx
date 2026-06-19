@@ -273,10 +273,11 @@ export default function ContentReviewPanel({
         {/* 반려 사유 카테고리 */}
         {showRejectionFields && (
           <div>
-            <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
+            <label htmlFor="content-review-rejection-category" className="block text-sm font-medium text-admin-text-2 mb-1.5">
               반려 사유 카테고리 <span className="text-red-500">*</span>
             </label>
             <select
+              id="content-review-rejection-category"
               value={rejectionCategory}
               onChange={(e) => setRejectionCategory(e.target.value)}
               className="w-full border-2 border-admin-border-mid rounded-admin-md px-4 py-2.5 text-sm focus:outline-none focus:border-blue-500 bg-white"
@@ -289,10 +290,11 @@ export default function ContentReviewPanel({
               ))}
             </select>
 
-            <label className="block text-sm font-medium text-admin-text-2 mb-1.5 mt-3">
+            <label htmlFor="content-review-rejection-reason" className="block text-sm font-medium text-admin-text-2 mb-1.5 mt-3">
               반려 사유 상세 <span className="text-red-500">*</span>
             </label>
             <textarea
+              id="content-review-rejection-reason"
               value={rejectionReason}
               onChange={(e) => setRejectionReason(e.target.value)}
               rows={2}
@@ -305,10 +307,11 @@ export default function ContentReviewPanel({
         {/* 수정 요청 제안 */}
         {showChangesFields && (
           <div>
-            <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
+            <label htmlFor="content-review-suggested-changes" className="block text-sm font-medium text-admin-text-2 mb-1.5">
               수정 제안
             </label>
             <textarea
+              id="content-review-suggested-changes"
               value={suggestedChanges}
               onChange={(e) => setSuggestedChanges(e.target.value)}
               rows={3}
@@ -322,10 +325,11 @@ export default function ContentReviewPanel({
 
         {/* 리뷰 노트 (공통) */}
         <div>
-          <label className="block text-sm font-medium text-admin-text-2 mb-1.5">
+          <label htmlFor="content-review-note" className="block text-sm font-medium text-admin-text-2 mb-1.5">
             검토 메모
           </label>
           <textarea
+            id="content-review-note"
             value={reviewNote}
             onChange={(e) => setReviewNote(e.target.value)}
             rows={2}

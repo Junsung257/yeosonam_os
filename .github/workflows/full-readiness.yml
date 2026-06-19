@@ -1,0 +1,255 @@
+name: Full Project Readiness
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict:
+        description: Treat blocked readiness stages as failures
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      quick_mode:
+        description: Skip build and local runtime smoke stages for a faster contract pass
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_local_release:
+        description: Skip local release readiness stage
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      skip_marketing_release:
+        description: Skip marketing release readiness stage
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+  schedule:
+    - cron: '0 18 * * 0'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: full-project-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  full-readiness:
+    name: Full Project Readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL || secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://example.supabase.co' }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ vars.NEXT_PUBLIC_SUPABASE_ANON_KEY || secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'dummy-anon-key-for-ci' }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'dummy-service-role-key-for-ci' }}
+      NEXT_PUBLIC_BASE_URL: 'http://127.0.0.1:3050'
+      LOCAL_RELEASE_OPEN_PORT: '3050'
+      LOCAL_RELEASE_OPEN_READY_TIMEOUT_MS: '180000'
+      LOCAL_RELEASE_APP_ROUTE_RUNTIME_PORT: '3052'
+      LOCAL_RELEASE_APP_ROUTE_RUNTIME_READY_TIMEOUT_MS: '180000'
+      LOCAL_RELEASE_MARKETING_RUNTIME_READY_TIMEOUT_MS: '180000'
+      LOCAL_RELEASE_MARKETING_RUNTIME_HARD_TIMEOUT_MS: '300000'
+      MARKETING_RELEASE_RUNTIME_PORT: '3033'
+      MARKETING_RELEASE_RUNTIME_MODE: 'dev'
+      MARKETING_RELEASE_RUNTIME_READY_TIMEOUT_MS: '180000'
+      MARKETING_RELEASE_RUNTIME_TIMEOUT_MS: '300000'
+      MARKETING_AUTOMATION_TIMEOUT_MS: '120000'
+      VERIFY_ALL_STAGE_TIMEOUT_MS: '1800000'
+      VERIFY_ALL_COMMAND_TIMEOUT_MS: '1500000'
+      VERIFY_ALL_COMMAND_TIMEOUT_KILL_GRACE_MS: '10000'
+      VERCEL_SCOPE: ${{ secrets.VERCEL_SCOPE || 'zzbaa0317-4596s-projects' }}
+      VERCEL_PROJECT_NAME: ${{ vars.VERCEL_PROJECT_NAME || 'os' }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET || vars.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      OPEN_CHECK_PACKAGE_ID: ${{ vars.OPEN_CHECK_PACKAGE_ID || secrets.OPEN_CHECK_PACKAGE_ID }}
+      OPEN_CHECK_REF_CODE: ${{ vars.OPEN_CHECK_REF_CODE || secrets.OPEN_CHECK_REF_CODE }}
+      MARKETING_CHECK_CARD_NEWS_ID: ${{ vars.MARKETING_CHECK_CARD_NEWS_ID || secrets.MARKETING_CHECK_CARD_NEWS_ID }}
+      MARKETING_CHECK_VARIANT_GROUP_ID: ${{ vars.MARKETING_CHECK_VARIANT_GROUP_ID || secrets.MARKETING_CHECK_VARIANT_GROUP_ID }}
+      SERPAPI_KEY: ${{ secrets.SERPAPI_KEY || vars.SERPAPI_KEY }}
+      BAND_RSS_URL: ${{ secrets.BAND_RSS_URL || vars.BAND_RSS_URL }}
+      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN || vars.TWITTER_BEARER_TOKEN }}
+      NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID || vars.NAVER_CLIENT_ID }}
+      NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET || vars.NAVER_CLIENT_SECRET }}
+      META_AD_ACCOUNT_ID: ${{ secrets.META_AD_ACCOUNT_ID || vars.META_AD_ACCOUNT_ID }}
+      META_ACCESS_TOKEN: ${{ secrets.META_ACCESS_TOKEN || vars.META_ACCESS_TOKEN }}
+      META_APP_ID: ${{ secrets.META_APP_ID || vars.META_APP_ID }}
+      META_APP_SECRET: ${{ secrets.META_APP_SECRET || vars.META_APP_SECRET }}
+      THREADS_ACCESS_TOKEN: ${{ secrets.THREADS_ACCESS_TOKEN || vars.THREADS_ACCESS_TOKEN }}
+      THREADS_USER_ID: ${{ secrets.THREADS_USER_ID || vars.THREADS_USER_ID }}
+      NAVER_CAFE_ID: ${{ secrets.NAVER_CAFE_ID || vars.NAVER_CAFE_ID }}
+      GOOGLE_ADS_DEVELOPER_TOKEN: ${{ secrets.GOOGLE_ADS_DEVELOPER_TOKEN || vars.GOOGLE_ADS_DEVELOPER_TOKEN }}
+      GOOGLE_ADS_CUSTOMER_ID: ${{ secrets.GOOGLE_ADS_CUSTOMER_ID || vars.GOOGLE_ADS_CUSTOMER_ID }}
+      GOOGLE_ADS_CLIENT_ID: ${{ secrets.GOOGLE_ADS_CLIENT_ID || vars.GOOGLE_ADS_CLIENT_ID }}
+      GOOGLE_ADS_CLIENT_SECRET: ${{ secrets.GOOGLE_ADS_CLIENT_SECRET || vars.GOOGLE_ADS_CLIENT_SECRET }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL || secrets.SLACK_WEBHOOK || vars.SLACK_WEBHOOK_URL }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET || vars.CRON_SECRET }}
+      AD_FLAG_UP_BID_FACTOR: ${{ vars.AD_FLAG_UP_BID_FACTOR }}
+      AD_OFFPEAK_BID_FACTOR: ${{ vars.AD_OFFPEAK_BID_FACTOR }}
+      AD_MIN_BID_KRW: ${{ vars.AD_MIN_BID_KRW }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - run: npm ci --no-audit --no-fund
+
+      - name: Import Vercel environment variables
+        if: env.VERCEL_TOKEN != ''
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          link_args=(link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN")
+          pull_args=(env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN")
+          if [[ -n "${VERCEL_SCOPE:-}" ]]; then
+            link_args+=(--scope "$VERCEL_SCOPE")
+            pull_args+=(--scope "$VERCEL_SCOPE")
+          fi
+
+          if npx vercel "${link_args[@]}" && npx vercel "${pull_args[@]}"; then
+            node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+            echo "VERCEL_ENV_PULL_STATUS=success" >> "$GITHUB_ENV"
+          elif [[ -n "${VERCEL_SCOPE:-}" ]] && npx vercel link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN" && npx vercel env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN"; then
+            node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+            echo "VERCEL_ENV_PULL_STATUS=success_without_scope" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Vercel env pull failed; continuing with workflow-provided readiness environment variables."
+            echo "VERCEL_ENV_PULL_STATUS=failed" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run full project readiness
+        run: |
+          set -euo pipefail
+          mkdir -p .tmp
+          args=(--json --report=.tmp/full-readiness-report.json --stage-timeout-ms="${VERIFY_ALL_STAGE_TIMEOUT_MS}" --command-timeout-ms="${VERIFY_ALL_COMMAND_TIMEOUT_MS}" --command-timeout-kill-grace-ms="${VERIFY_ALL_COMMAND_TIMEOUT_KILL_GRACE_MS}")
+          if [[ "${{ github.event_name }}" == "schedule" || ( "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.strict }}" == "true" ) ]]; then
+            args+=(--strict)
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.quick_mode }}" == "true" ]]; then
+            args+=(--skip-build --skip-open-readiness --skip-app-route-runtime --skip-runtime)
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.skip_local_release }}" == "true" ]]; then
+            args+=(--skip-local-release)
+          fi
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ inputs.skip_marketing_release }}" == "true" ]]; then
+            args+=(--skip-marketing-release)
+          fi
+          npm run verify:all -- "${args[@]}" | tee .tmp/full-readiness-summary.json
+
+      - name: Summarize full project readiness
+        if: always()
+        run: |
+          set -euo pipefail
+          node scripts/render-readiness-report.mjs \
+            --kind=full-project \
+            --report=.tmp/full-readiness-report.json \
+            --summary-out=.tmp/full-readiness-step-summary.md \
+            --issue-body-out=.tmp/full-readiness-issue-body.md \
+            --meta-out=.tmp/full-readiness-issue-meta.json
+          if [[ -n "${GITHUB_STEP_SUMMARY:-}" && -f .tmp/full-readiness-step-summary.md ]]; then
+            cat .tmp/full-readiness-step-summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Track full project readiness attention items
+        if: always()
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const metaPath = '.tmp/full-readiness-issue-meta.json';
+            if (!fs.existsSync(metaPath)) return;
+
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+
+            const marker = meta.marker;
+            const title = meta.issueTitle;
+            const legacyTitles = Array.isArray(meta.legacyIssueTitles) ? meta.legacyIssueTitles : [];
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = issues.data.find((issue) =>
+              issue.title === title ||
+              legacyTitles.includes(issue.title) ||
+              issue.body?.includes(marker)
+            );
+
+            if (meta.shouldCloseIssue) {
+              if (existing) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  body: meta.recoveryComment,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: existing.number,
+                  state: 'closed',
+                });
+              }
+              return;
+            }
+
+            if (!(meta.hasAttentionItems || meta.hasBlockers || meta.hasWarnings)) return;
+
+            const bodyPath = meta.issueBodyPath || '.tmp/full-readiness-issue-body.md';
+            if (!fs.existsSync(bodyPath)) return;
+            const body = fs.readFileSync(bodyPath, 'utf8');
+
+            if (existing) {
+              await github.rest.issues.update({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existing.number,
+                title,
+                body,
+              });
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                body,
+              });
+            }
+
+      - name: Upload full readiness logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: full-project-readiness-${{ github.run_id }}
+          retention-days: 14
+          path: |
+            .tmp/full-readiness-report.json
+            .tmp/full-readiness-summary.json
+            .tmp/full-readiness-step-summary.md
+            .tmp/full-readiness-issue-body.md
+            .tmp/full-readiness-issue-meta.json
+            .tmp/full-project-operational-inputs*
+            .tmp/verify-all-*.log
+            .tmp/verify-all-*.json
+            .tmp/local-release-*.log
+            .tmp/local-release-operational-inputs*
+            .tmp/marketing-release-*.log
+            .tmp/marketing-release-operational-inputs*
+            .tmp/open-readiness-local-*.log

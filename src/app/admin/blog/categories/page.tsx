@@ -109,7 +109,7 @@ export default function BlogCategoriesPage() {
                 <th>Key</th>
                 <th style={{ width: 80 }}>범위</th>
                 <th style={{ width: 80 }}>상태</th>
-                <th style={{ width: 128 }}></th>
+                <th style={{ width: 128 }}><span className="sr-only">액션</span></th>
               </tr>
             </thead>
             <tbody>
@@ -212,27 +212,27 @@ function CategoryForm({ initial, onClose, onSaved }: {
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <div>
-          <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">Key (영소문자, 수정 불가)</label>
-          <input value={key} onChange={e => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+          <label htmlFor="blog-category-key" className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">Key (영소문자, 수정 불가)</label>
+          <input id="blog-category-key" value={key} onChange={e => setKey(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
             disabled={isEdit}
             placeholder="예: accommodation"
             className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm font-mono bg-admin-surface text-admin-text disabled:bg-admin-surface-2 disabled:text-admin-muted-2 focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors" />
         </div>
         <div>
-          <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">라벨 (화면 표시)</label>
-          <input value={label} onChange={e => setLabel(e.target.value)}
+          <label htmlFor="blog-category-label" className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">라벨 (화면 표시)</label>
+          <input id="blog-category-label" value={label} onChange={e => setLabel(e.target.value)}
             placeholder="예: 숙박"
             className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors" />
         </div>
         <div className="md:col-span-2">
-          <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">설명 (선택)</label>
-          <input value={description} onChange={e => setDescription(e.target.value)}
+          <label htmlFor="blog-category-description" className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">설명 (선택)</label>
+          <input id="blog-category-description" value={description} onChange={e => setDescription(e.target.value)}
             placeholder="카테고리에 대한 간단한 설명"
             className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors" />
         </div>
         <div>
-          <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">범위</label>
-          <select value={scope} onChange={e => setScope(e.target.value as 'info' | 'product' | 'both')}
+          <label htmlFor="blog-category-scope" className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">범위</label>
+          <select id="blog-category-scope" value={scope} onChange={e => setScope(e.target.value as 'info' | 'product' | 'both')}
             className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors">
             <option value="info">정보성 전용</option>
             <option value="product">상품 전용</option>
@@ -240,8 +240,8 @@ function CategoryForm({ initial, onClose, onSaved }: {
           </select>
         </div>
         <div>
-          <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">표시 순서</label>
-          <input type="number" value={displayOrder} onChange={e => setDisplayOrder(parseInt(e.target.value) || 0)}
+          <label htmlFor="blog-category-display-order" className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">표시 순서</label>
+          <input id="blog-category-display-order" type="number" value={displayOrder} onChange={e => setDisplayOrder(parseInt(e.target.value) || 0)}
             className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-sm bg-admin-surface text-admin-text admin-num focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors" />
         </div>
       </div>

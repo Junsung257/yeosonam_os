@@ -181,6 +181,9 @@ export default function RecommendationCard({
   const chips = generateChips(deductions, features, productHighlights);
   const proof = socialProofMessage(socialProof);
   const dateLabel = departureDate ? `${departureDate.slice(5).replace('-', '/')} 출발` : '같은 일정';
+  const panelKey = (packageId ?? `rank-${rankInGroup}`).replace(/[^A-Za-z0-9_-]/g, '-');
+  const comparisonPanelId = `recommendation-card-comparison-${panelKey}`;
+  const rationalePanelId = `recommendation-card-rationale-${panelKey}`;
 
   return (
     <section className="px-4 mt-4">
@@ -259,7 +262,9 @@ export default function RecommendationCard({
                 type="button"
                 onClick={() => setCompareOpen(!compareOpen)}
                 className="flex-1 px-5 py-3 text-left flex items-center justify-between text-micro text-slate-700 hover:bg-white/40 transition"
+                data-testid="recommendation-card-comparison-toggle"
                 aria-expanded={compareOpen}
+                aria-controls={comparisonPanelId}
               >
                 <span className="font-semibold">
                   같은 날 다른 옵션과 비교 <span className="text-slate-400 font-normal">({rivals.length}개)</span>
@@ -270,13 +275,23 @@ export default function RecommendationCard({
                 type="button"
                 onClick={() => setModalOpen(true)}
                 className="px-3 py-3 text-[11px] font-semibold text-violet-700 hover:bg-violet-50 transition border-l border-emerald-100/60"
+                data-testid="recommendation-card-full-compare-open"
                 aria-label="풀 비교 표 열기"
+                aria-haspopup="dialog"
+                aria-expanded={modalOpen}
+                aria-controls="pairwise-compare-dialog"
               >
                 풀 비교 ↗
               </button>
             </div>
             {compareOpen && (
-              <div className="px-5 pb-3 border-t border-emerald-100/40 bg-white/60 space-y-2.5 pt-3">
+              <div
+                id={comparisonPanelId}
+                className="px-5 pb-3 border-t border-emerald-100/40 bg-white/60 space-y-2.5 pt-3"
+                data-testid="recommendation-card-comparison-panel"
+                role="region"
+                aria-label="다른 옵션 비교"
+              >
                 {rivals.map(r => {
                   const line = diffLine({ listPrice, features, productHighlights }, r);
                   return (
@@ -308,13 +323,21 @@ export default function RecommendationCard({
           type="button"
           onClick={() => setOpen(!open)}
           className="w-full px-5 py-3 text-left flex items-center justify-between border-t border-emerald-100/60 text-micro text-slate-600 hover:bg-white/40 transition"
+          data-testid="recommendation-card-rationale-toggle"
           aria-expanded={open}
+          aria-controls={rationalePanelId}
         >
           <span className="font-medium">어떻게 골랐나요?</span>
           <span className={`transition-transform text-slate-400 ${open ? 'rotate-180' : ''}`}>▾</span>
         </button>
         {open && (
-          <div className="px-5 pb-4 border-t border-emerald-100/40 bg-white/60 text-micro text-slate-600 leading-relaxed space-y-2 pt-3">
+          <div
+            id={rationalePanelId}
+            className="px-5 pb-4 border-t border-emerald-100/40 bg-white/60 text-micro text-slate-600 leading-relaxed space-y-2 pt-3"
+            data-testid="recommendation-card-rationale-panel"
+            role="region"
+            aria-label="추천 기준 설명"
+          >
             <p>
               여소남이 같은 목적지·같은 출발일 패키지를 모아 <strong>호텔 등급·직항·옵션 포함·쇼핑 횟수·랜드사 신뢰도</strong>를 종합적으로 비교해요.
             </p>

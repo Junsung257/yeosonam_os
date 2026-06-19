@@ -136,7 +136,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
             <>
               {/* 오버레이 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">오버레이</label>
+                <div className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">오버레이</div>
                 <div className="flex gap-1">
                   {(['dark', 'light', 'none'] as const).map(style => (
                     <button
@@ -156,7 +156,7 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* 배경 이미지 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">배경 이미지</label>
+                <div className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">배경 이미지</div>
                 {activeSlide.bg_image_url ? (
                   <div className="relative mb-2">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -219,8 +219,9 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* 텍스트 편집 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">제목</label>
+                <label htmlFor="card-news-headline" className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">제목</label>
                 <textarea
+                  id="card-news-headline"
                   value={activeSlide.headline}
                   onChange={e => updateSlide(activeSlideIndex, { headline: e.target.value })}
                   rows={2}
@@ -228,8 +229,9 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
                 />
               </div>
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">본문</label>
+                <label htmlFor="card-news-body" className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">본문</label>
                 <textarea
+                  id="card-news-body"
                   value={activeSlide.body}
                   onChange={e => updateSlide(activeSlideIndex, { body: e.target.value })}
                   rows={4}
@@ -239,8 +241,9 @@ export default function CardNewsEditor({ cardNewsId }: CardNewsEditorProps) {
 
               {/* Pexels 키워드 */}
               <div>
-                <label className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">이미지 키워드</label>
+                <label htmlFor="card-news-pexels-keyword" className="text-[11px] font-semibold text-admin-muted uppercase block mb-2">이미지 키워드</label>
                 <input
+                  id="card-news-pexels-keyword"
                   value={activeSlide.pexels_keyword}
                   onChange={e => updateSlide(activeSlideIndex, { pexels_keyword: e.target.value })}
                   className="w-full px-2 py-1.5 border border-admin-border-mid rounded text-admin-sm focus:ring-1 focus:ring-[#005d90]"

@@ -193,18 +193,20 @@ export default function AutoPublishPage() {
               {suggestions.length > 0 && (
                 <ul className="absolute z-10 mt-2 w-full bg-slate-900 border border-slate-700 rounded-admin-md shadow-admin-lg max-h-64 overflow-y-auto divide-y divide-slate-800">
                   {suggestions.map((s) => (
-                    <li
-                      key={s.id}
-                      onClick={() => {
-                        setSelected(s);
-                        setStep(2);
-                      }}
-                      className="px-4 py-3 hover:bg-slate-800 cursor-pointer transition-colors flex flex-col"
-                    >
-                      <span className="font-semibold text-admin-border-mid">{s.title}</span>
-                      <span className="text-xs text-admin-muted-2 mt-1">
-                        {s.destination || '미지정'} · {s.short_code || '코드없음'}
-                      </span>
+                    <li key={s.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelected(s);
+                          setStep(2);
+                        }}
+                        className="w-full px-4 py-3 text-left hover:bg-slate-800 transition-colors flex flex-col"
+                      >
+                        <span className="font-semibold text-admin-border-mid">{s.title}</span>
+                        <span className="text-xs text-admin-muted-2 mt-1">
+                          {s.destination || '미지정'} · {s.short_code || '코드없음'}
+                        </span>
+                      </button>
                     </li>
                   ))}
                 </ul>
@@ -236,9 +238,10 @@ export default function AutoPublishPage() {
             </div>
 
             <div className="space-y-4">
-              <label className="block space-y-2">
+              <label htmlFor="auto-publish-tenant" className="block space-y-2">
                 <span className="text-sm text-admin-muted-2">테넌트 아이디 (필요시 입력)</span>
                 <input
+                  id="auto-publish-tenant"
                   type="text"
                   value={tenantId}
                   onChange={(e) => setTenantId(e.target.value)}
@@ -248,9 +251,10 @@ export default function AutoPublishPage() {
               </label>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                <label className="flex items-center gap-3 bg-slate-900/30 border border-slate-800 hover:border-slate-700 rounded-admin-md p-4 cursor-pointer transition-all">
+                <div className="flex items-center gap-3 bg-slate-900/30 border border-slate-800 hover:border-slate-700 rounded-admin-md p-4 transition-all">
                   <input
                     type="checkbox"
+                    aria-label="Dry-Run 테스트 모드"
                     checked={dryRun}
                     onChange={(e) => {
                       setDryRun(e.target.checked);
@@ -262,11 +266,12 @@ export default function AutoPublishPage() {
                     <div className="text-sm font-semibold text-admin-border-mid">Dry-Run 테스트 모드</div>
                     <div className="text-xs text-admin-muted-2">콘텐츠 생성만 수행하고 실제 발행 큐에 넣지 않습니다.</div>
                   </div>
-                </label>
+                </div>
 
-                <label className="flex items-center gap-3 bg-slate-900/30 border border-slate-800 hover:border-slate-700 rounded-admin-md p-4 cursor-pointer transition-all">
+                <div className="flex items-center gap-3 bg-slate-900/30 border border-slate-800 hover:border-slate-700 rounded-admin-md p-4 transition-all">
                   <input
                     type="checkbox"
+                    aria-label="즉시 발행"
                     checked={publishNow}
                     onChange={(e) => {
                       setPublishNow(e.target.checked);
@@ -278,7 +283,7 @@ export default function AutoPublishPage() {
                     <div className="text-sm font-semibold text-admin-border-mid">⚡ 즉시 발행</div>
                     <div className="text-xs text-admin-muted-2">Threads와 Meta Ads는 즉시 발행하고, 나머지는 즉시 예약/큐에 적재합니다.</div>
                   </div>
-                </label>
+                </div>
               </div>
             </div>
 

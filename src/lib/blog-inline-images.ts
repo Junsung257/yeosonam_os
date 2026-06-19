@@ -28,6 +28,7 @@ interface BlogInlineImageOptions {
   destination?: string | null;
   primaryKeyword?: string | null;
   ogImageUrl?: string | null;
+  allowOgImageInBody?: boolean;
   minImages?: number;
   maxImages?: number;
 }
@@ -89,14 +90,22 @@ async function pickPexelsImage(query: string, usedUrls: Set<string>, seed = quer
     const photos = await searchPexelsPhotos(query, 10, page);
     const startIndex = stableHash(`${seed}:image`) % Math.max(1, photos.length);
     const rotated = photos.slice(startIndex).concat(photos.slice(0, startIndex));
-    const picked = photos
-      .length > 0
-      ? rotated
-      : photos;
-    const url = picked
-      .map((photo) => photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original)
-      .find((url) => url && !usedUrls.has(url));
-    return url ?? null;
+    const scored = rotated
+      .map((photo) => {
+        const width = photo.width || 0;
+        const height = photo.height || 0;
+        const ratio = height > 0 ? width / height : 0;
+        const url = photo.src.landscape || photo.src.large2x || photo.src.large || photo.src.original;
+        const score =
+          (width >= 1600 ? 4 : width >= 1200 ? 3 : width >= 900 ? 1 : -4) +
+          (height >= 500 ? 2 : -3) +
+          (ratio >= 1.25 && ratio <= 2.25 ? 3 : -5) +
+          (photo.src.landscape ? 1 : 0);
+        return { url, score };
+      })
+      .filter((candidate) => candidate.url && !usedUrls.has(candidate.url))
+      .sort((a, b) => b.score - a.score);
+    return scored[0]?.url ?? null;
   } catch {
     return null;
   }
@@ -134,7 +143,7 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
 
     const heading = h2.match[1] ?? '';
     let url: string | null = null;
-    if (options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
+    if (options.allowOgImageInBody === true && options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
       url = options.ogImageUrl;
     } else {
       url = await pickPexelsImage(
@@ -153,7 +162,7 @@ export async function ensureBlogInlineImages(options: BlogInlineImageOptions): P
     imageCount += 1;
   }
 
-  if (imageCount < minImages && options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
+  if (options.allowOgImageInBody === true && imageCount < minImages && options.ogImageUrl && !usedUrls.has(options.ogImageUrl)) {
     const alt = buildAlt(options.destination, '여행 핵심 이미지', options.primaryKeyword || '');
     lines.push('', `![${alt}](${options.ogImageUrl})`, `<figcaption>${alt}</figcaption>`);
     inserted += 1;

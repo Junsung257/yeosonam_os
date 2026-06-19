@@ -96,8 +96,9 @@ function BookingGuideContent() {
         }
       />
       <div className="admin-card p-4 mb-4">
-        <label className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">상품 선택</label>
+        <label htmlFor="booking-guide-package" className="block text-admin-xs text-admin-text-2 font-medium mb-1.5">상품 선택</label>
         <select
+          id="booking-guide-package"
           value={selectedPkgId}
           onChange={(e) => setSelectedPkgId(e.target.value)}
           className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"

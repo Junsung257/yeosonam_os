@@ -81,7 +81,12 @@ export default function InstagramPublishModal({
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60]" onClick={onClose} />
+      <button
+        type="button"
+        className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[60] cursor-default"
+        onClick={onClose}
+        aria-label="인스타그램 발행 모달 닫기"
+      />
       <div className="fixed inset-0 z-[61] flex items-center justify-center p-4 pointer-events-none">
         <div className="pointer-events-auto bg-white rounded-admin-md w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
           {/* 헤더 */}
@@ -141,8 +146,9 @@ export default function InstagramPublishModal({
           <div className="px-5 py-4 overflow-y-auto flex-1 space-y-4">
             {tab === 'scheduled' && (
               <div>
-                <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">발행 일시 (KST)</label>
+                <label htmlFor="instagram-scheduled-at" className="text-xs font-semibold text-admin-muted uppercase block mb-1">발행 일시 (KST)</label>
                 <input
+                  id="instagram-scheduled-at"
                   type="datetime-local"
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}

@@ -295,17 +295,17 @@ export default function BlogEditPage() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
+            <label htmlFor="blog-edit-slug" className="block text-[10px] text-admin-muted-2 mb-1">URL 슬러그</label>
             <div className="flex items-center gap-1">
               <span className="text-[11px] text-admin-muted-2">/blog/</span>
-              <input value={slug}
+              <input id="blog-edit-slug" value={slug}
                 onChange={e => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9가-힣-]/g, '-').replace(/-+/g, '-'))}
                 className="flex-1 border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
-            <input value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
+            <label htmlFor="blog-edit-og-image" className="block text-[10px] text-admin-muted-2 mb-1">OG 이미지</label>
+            <input id="blog-edit-og-image" value={ogImageUrl} onChange={e => setOgImageUrl(e.target.value)}
               className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]" />
           </div>
           <div>

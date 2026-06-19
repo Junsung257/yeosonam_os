@@ -4,8 +4,63 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-const args = new Set(process.argv.slice(2));
+const rawArgs = process.argv.slice(2);
+const args = new Set(rawArgs);
 const json = args.has('--json');
+const knownArgs = new Set(['--json', '--command-timeout-ms']);
+
+function argValue(name, fallback = '') {
+  let value = fallback;
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === name && rawArgs[index + 1] !== undefined) value = rawArgs[index + 1];
+    if (arg.startsWith(`${name}=`)) value = arg.slice(name.length + 1);
+  }
+  return value;
+}
+
+function argKey(arg) {
+  return String(arg || '').split('=')[0];
+}
+
+function exitConfigFailure(errors) {
+  const checks = errors.map((error) => ({
+    id: 'operational-apply-scripts:config',
+    status: 'fail',
+    error,
+  }));
+  const report = {
+    status: 'fail',
+    passed: 0,
+    failed: checks.length,
+    checks,
+  };
+  if (json) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    for (const error of errors) console.error(error);
+  }
+  process.exit(1);
+}
+
+const unknownArgs = rawArgs.filter((arg, index) => {
+  if (index > 0 && rawArgs[index - 1] === '--command-timeout-ms') return false;
+  return !knownArgs.has(argKey(arg));
+});
+
+if (unknownArgs.length > 0) {
+  exitConfigFailure(unknownArgs.map((arg) => `unknown operational apply scripts argument: ${arg}`));
+}
+
+const commandTimeoutMs = Number(argValue(
+  '--command-timeout-ms',
+  process.env.OPERATIONAL_APPLY_VERIFY_COMMAND_TIMEOUT_MS || '120000',
+));
+
+if (!Number.isFinite(commandTimeoutMs) || commandTimeoutMs <= 0) {
+  exitConfigFailure(['--command-timeout-ms must be a positive number of milliseconds.']);
+}
+
 const outDir = resolve('.tmp', 'operational-apply-scripts-verify');
 
 const operationalKeys = [
@@ -19,14 +74,32 @@ const operationalKeys = [
   'SERPAPI_KEY',
   'BAND_RSS_URL',
   'TWITTER_BEARER_TOKEN',
+  'X_BEARER_TOKEN',
   'NAVER_CLIENT_ID',
   'NAVER_CLIENT_SECRET',
+  'META_AD_ACCOUNT_ID',
+  'META_ACCESS_TOKEN',
+  'META_ADS_ACCESS_TOKEN',
+  'META_APP_ID',
+  'META_APP_SECRET',
+  'THREADS_ACCESS_TOKEN',
+  'THREADS_USER_ID',
   'NAVER_CAFE_ID',
+  'NAVER_ADS_API_KEY',
+  'NAVER_ADS_SECRET_KEY',
+  'NAVER_ADS_CUSTOMER_ID',
   'GOOGLE_ADS_DEVELOPER_TOKEN',
   'GOOGLE_ADS_CUSTOMER_ID',
   'GOOGLE_ADS_CLIENT_ID',
   'GOOGLE_ADS_CLIENT_SECRET',
+  'GOOGLE_ADS_REFRESH_TOKEN',
+  'GOOGLE_ADS_CONVERSION_ACTION_ID',
   'SLACK_WEBHOOK_URL',
+  'SLACK_PAYMENTS_WEBHOOK_URL',
+  'SLACK_ALERT_WEBHOOK_URL',
+  'SLACK_ALERTS_WEBHOOK',
+  'SLACK_ALERTS_WEBHOOK_URL',
+  'SLACK_CWV_WEBHOOK_URL',
   'CRON_SECRET',
   'BLOG_QUALITY_SOURCE_READY',
   'SUPABASE_SERVICE_ROLE_KEY',
@@ -36,13 +109,22 @@ const operationalKeys = [
 ];
 
 function run(command, commandArgs, options = {}) {
-  return spawnSync(command, commandArgs, {
+  const startedAt = Date.now();
+  const result = spawnSync(command, commandArgs, {
     cwd: process.cwd(),
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: commandTimeoutMs,
     windowsHide: true,
     ...options,
   });
+  const timedOut = result.error?.code === 'ETIMEDOUT';
+  return {
+    ...result,
+    timedOut,
+    timeoutMs: commandTimeoutMs,
+    durationMs: Date.now() - startedAt,
+  };
 }
 
 function parseJson(value) {
@@ -96,7 +178,8 @@ function check(condition, message) {
 }
 
 function outputOf(result) {
-  return `${result.stdout || ''}\n${result.stderr || ''}`;
+  const timeoutMessage = result.timedOut ? `\ncommand timed out after ${result.timeoutMs}ms` : '';
+  return `${result.stdout || ''}\n${result.stderr || ''}${timeoutMessage}`;
 }
 
 function assertIncludes(text, needle, label) {
@@ -123,6 +206,20 @@ function assertBashEnvFileContract(paths) {
   assertIncludes(apply, 'DRY-RUN gh variable set OPEN_CHECK_PACKAGE_ID --body <redacted>', 'bash apply');
   assertIncludes(apply, 'DRY-RUN gh variable set MARKETING_CHECK_CARD_NEWS_ID --body <redacted>', 'bash apply');
   assertIncludes(vercel, 'DRY-RUN vercel env add $key $target --value <redacted>', 'bash Vercel');
+}
+
+function assertNodeCommandTimeoutContract(paths) {
+  const apply = readFileSync(paths.nodeApply, 'utf8');
+  const vercel = readFileSync(paths.nodeVercel, 'utf8');
+  for (const [label, text] of [
+    ['node apply', apply],
+    ['node Vercel', vercel],
+  ]) {
+    assertIncludes(text, 'OPERATIONAL_APPLY_COMMAND_TIMEOUT_MS', label);
+    assertIncludes(text, 'timeout: commandTimeoutMs', label);
+    assertIncludes(text, 'Command timed out after', label);
+    assertIncludes(text, 'process.exit(124)', label);
+  }
 }
 
 function main() {
@@ -165,6 +262,7 @@ function main() {
   writeFilledEnvFile(paths.envFile);
   writeNoisyEnvFile(paths.noisyEnvFile);
   assertBashEnvFileContract(paths);
+  assertNodeCommandTimeoutContract(paths);
 
   const discovery = run(process.execPath, [
     'scripts/discover-operational-readiness-inputs.mjs',
@@ -234,14 +332,16 @@ function main() {
 
   return {
     status: 'pass',
-    passed: 8,
+    passed: 9,
     failed: 0,
+    commandTimeoutMs,
     checks: [
       { id: 'generate-apply-scripts', status: 'pass' },
       { id: 'operational-inputs-discovery-env-pass', status: 'pass' },
       { id: 'operational-inputs-env-file-pass', status: 'pass' },
       { id: 'operational-inputs-env-file-quality-warn', status: 'pass' },
       { id: 'bash-apply-env-file-contract', status: 'pass' },
+      { id: 'node-apply-command-timeout-contract', status: 'pass' },
       { id: 'node-apply-syntax', status: 'pass' },
       { id: 'node-apply-dry-run', status: 'pass' },
       { id: 'node-vercel-dry-run', status: 'pass' },
@@ -258,6 +358,7 @@ try {
     status: 'fail',
     passed: 0,
     failed: 1,
+    commandTimeoutMs,
     checks: [{
       id: 'operational-apply-scripts',
       status: 'fail',

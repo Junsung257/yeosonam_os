@@ -106,7 +106,9 @@ export default function PromptsPage() {
                 <th>VER</th>
                 <th>최종 메모</th>
                 <th>수정일</th>
-                <th></th>
+                <th>
+                  <span className="sr-only">작업</span>
+                </th>
               </tr>
             </thead>
             <tbody>

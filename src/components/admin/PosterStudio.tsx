@@ -51,11 +51,15 @@ export default function PosterStudio({
   const isA4 = format === 'A4';
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/30 backdrop-blur-sm"
+        onClick={onClose}
+        aria-label={isA4 ? '포스터 스튜디오 닫기' : '모바일 프리뷰 닫기'}
+      />
       <div
         className={`relative w-full ${isA4 ? 'max-w-[900px]' : 'max-w-[500px]'} bg-admin-surface-2 shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col`}
-        onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
@@ -80,6 +84,7 @@ export default function PosterStudio({
               </button>
             )}
             <button
+              aria-label={isA4 ? '포스터 스튜디오 닫기' : '모바일 프리뷰 닫기'}
               onClick={onClose}
               className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition"
             >

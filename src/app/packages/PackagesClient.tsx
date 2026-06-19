@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
+import { Phone, Search } from 'lucide-react';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -11,7 +12,9 @@ import PackageCard from '@/components/customer/PackageCard';
 import { REGIONS, matchesRegion, resolveLegacyFilterLabel } from '@/lib/regions';
 import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -25,6 +28,11 @@ const swrFetcher = (url: string) => fetch(url).then((r) => r.json());
 const INITIAL_VISIBLE_COUNT = 18;
 const VISIBLE_STEP = 18;
 const consultTelHref = getConsultTelHref();
+const PACKAGES_STICKY_HANDOFF_SUMMARY_ID = 'packages-sticky-handoff-summary';
+const PACKAGES_STICKY_PHONE_DESCRIPTION_ID = 'packages-sticky-phone-description';
+const PACKAGES_STICKY_GROUP_DESCRIPTION_ID = 'packages-sticky-group-description';
+const PACKAGES_STICKY_KAKAO_DESCRIPTION_ID = 'packages-sticky-kakao-description';
+const PACKAGES_FILTER_READINESS_SUMMARY_ID = 'packages-filter-readiness-summary';
 
 interface Package {
   id: string;
@@ -73,6 +81,10 @@ const INTENT_OPTIONS = [
 
 type IntentId = typeof INTENT_OPTIONS[number]['id'];
 
+function normalizeIntentId(value: string | null): IntentId | null {
+  return INTENT_OPTIONS.some(opt => opt.id === value) ? (value as IntentId) : null;
+}
+
 const MONTH_FILTER_OPTIONS = Array.from({ length: 6 }, (_, index) => {
   const date = new Date();
   date.setMonth(date.getMonth() + index);
@@ -101,6 +113,18 @@ const CATEGORY_SUMMARY_LABELS: Record<string, string> = {
   golf: '해외골프',
   cruise: '크루즈',
   theme: '테마여행',
+};
+
+const INTENT_HANDOFF_LABELS: Record<IntentId, string> = {
+  family: '부모님/가족',
+  budget: '예산 맞춤',
+  no_shopping: '쇼핑 없는 상품',
+  consult: '상담 추천',
+};
+
+const INTENT_PARTY_TYPE: Partial<Record<IntentId, string>> = {
+  family: 'family',
+  no_shopping: 'family',
 };
 
 function matchesFilter(pkg: Package, filter: string): boolean {
@@ -202,9 +226,13 @@ export default function PackagesClient() {
   const searchParamsString = rawSearchParams?.toString() ?? '';
   const searchParams = useMemo(() => new URLSearchParams(searchParamsString), [searchParamsString]);
   const [activeReasonId, setActiveReasonId] = useState<string | null>(null);
-  const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(null);
+  const intentFromQuery = normalizeIntentId(searchParams.get('intent'));
+  const [selectedIntent, setSelectedIntent] = useState<IntentId | null>(intentFromQuery);
   const [showMoreFilters, setShowMoreFilters] = useState(false);
   const trackedRecommendViewsRef = useRef<Set<string>>(new Set());
+  const moreFiltersToggleRef = useRef<HTMLButtonElement | null>(null);
+  const moreFiltersFirstControlRef = useRef<HTMLSelectElement | null>(null);
+  const moreFiltersWasOpenRef = useRef(false);
 
   const destination = searchParams.get('destination') || '';
   const rawFilter = searchParams.get('filter') || '';
@@ -256,6 +284,27 @@ export default function PackagesClient() {
     () => compareIds.map(id => initialPackages.find(p => p.id === id)).filter(Boolean),
     [compareIds, initialPackages],
   );
+  const compareStatusId = 'packages-compare-selection-status';
+  const compareHelpId = 'packages-compare-help';
+  const compareHandoffSummaryId = 'packages-compare-handoff-summary';
+  const packageFilterGroupTitleId = 'packages-filter-title';
+  const packageFilterGroupDescriptionId = 'packages-filter-group-description';
+  const packageFilterHelpId = 'packages-filter-help';
+  const packageFilterSummaryId = 'packages-filter-summary';
+  const packageMobileAppliedFilterSummaryId = 'packages-mobile-applied-filter-summary';
+  const packageResultSummaryId = 'packages-result-summary';
+  const packageFilterReadinessSummaryId = PACKAGES_FILTER_READINESS_SUMMARY_ID;
+  const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageMobileAppliedFilterSummaryId} ${packageFilterReadinessSummaryId} ${packageResultSummaryId}`;
+  const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
+  const compareActionDescriptionIds = `${compareDescriptionIds} ${compareHandoffSummaryId}`;
+  const compareStatusText = compareIds.length === 0
+    ? '비교 상품이 선택되지 않았습니다.'
+    : compareIds.length === 1
+      ? '비교 상품 1개가 선택되었습니다. 하나 더 선택하면 비교할 수 있습니다.'
+      : '비교 상품 2개가 선택되었습니다. 비교하기를 열 수 있습니다.';
+  const compareHelpText = compareIds.length >= 2
+    ? '선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 비교 모달에서 확인할 수 있습니다.'
+    : '비교할 상품을 최대 2개까지 선택할 수 있습니다. 이미 2개를 고른 뒤 다른 상품을 누르면 가장 오래된 선택이 교체됩니다.';
 
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
@@ -284,6 +333,10 @@ export default function PackagesClient() {
     setActiveFilter(filter || FILTER_OPTIONS[0]);
   }, [filter]);
 
+  useEffect(() => {
+    setSelectedIntent(intentFromQuery);
+  }, [intentFromQuery]);
+
   const trackScoreSignal = useCallback((input: {
     packageId?: string;
     signalType: 'recommend_badge_view' | 'recommend_reason_open' | 'comparison_open' | 'intent_chip_select' | 'lead_sheet_open';
@@ -311,7 +364,12 @@ export default function PackagesClient() {
 
   const handleIntentSelect = useCallback((intent: IntentId) => {
     const nextIntent = selectedIntent === intent ? null : intent;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextIntent) params.set('intent', nextIntent);
+    else params.delete('intent');
+    const qs = params.toString();
     setSelectedIntent(nextIntent);
+    router.push(qs ? `/packages?${qs}` : '/packages');
     trackScoreSignal({
       signalType: 'intent_chip_select',
       groupKey: `intent:${intent}:${nextIntent ? 'on' : 'off'}`,
@@ -319,6 +377,8 @@ export default function PackagesClient() {
     });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: 'intent',
+      filter_value: intent,
       page_url: '/packages',
       metadata: { filterName: 'intent', value: intent, state: nextIntent ? 'on' : 'off', selectedIntent: nextIntent, hub },
     });
@@ -327,12 +387,27 @@ export default function PackagesClient() {
     if (intent === 'consult') {
       trackEngagement({
         event_type: ANALYTICS_EVENTS.kakaoClicked,
+        cta_type: 'packages_intent_consult_chip',
         page_url: '/packages',
+        intent: nextIntent ?? intent,
+        budget: formatBudgetSummary(priceMin, priceMax),
+        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
         metadata: { source: 'packages_intent_consult_chip', selectedIntent: nextIntent, hub },
       });
-      window.open('https://pf.kakao.com/_xcFxkBG/chat', '_blank', 'noopener,noreferrer');
+      void openKakaoChannel({
+        intent: INTENT_HANDOFF_LABELS[nextIntent ?? intent] ?? intent,
+        budget: formatBudgetSummary(priceMin, priceMax),
+        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
+        escalationSummary: [
+          q ? `검색어: ${q}` : null,
+          month ? `출발월: ${formatMonthSummary(month)}` : null,
+          `출발지: ${HUB_SUMMARY_LABELS[hub]}`,
+        ].filter(Boolean).join('\n'),
+      });
     }
-  }, [hub, selectedIntent, trackScoreSignal]);
+  }, [activeFilter, destination, hub, month, priceMax, priceMin, q, router, searchParams, selectedIntent, trackScoreSignal]);
 
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
@@ -374,9 +449,146 @@ export default function PackagesClient() {
     return items;
   }, [activeFilter, category, filteredPackages.length, hub, month, priceMax, priceMin, selectedIntentInfo, urgency]);
 
+  const selectedProductNames = useMemo(
+    () => comparePackages
+      .map((pkg) => pkg?.display_title || pkg?.products?.display_name || pkg?.title)
+      .filter((name): name is string => Boolean(name))
+      .slice(0, 2),
+    [comparePackages],
+  );
+
+  const handoffBudget = useMemo(() => formatBudgetSummary(priceMin, priceMax), [priceMax, priceMin]);
+  const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null);
+  const handoffIntent = selectedIntent ? INTENT_HANDOFF_LABELS[selectedIntent] : null;
+  const handoffPartyType = selectedIntent ? INTENT_PARTY_TYPE[selectedIntent] ?? null : null;
+  const primaryFilterChecklist = [
+    { label: '출발월', complete: Boolean(month) },
+    { label: '출발지', complete: Boolean(hub) },
+    { label: '여행 목적', complete: Boolean(selectedIntent) },
+    { label: '예산', complete: Boolean(handoffBudget) },
+  ];
+  const primaryFilterReadyCount = primaryFilterChecklist.filter((item) => item.complete).length;
+  const primaryFilterMissingLabels = primaryFilterChecklist
+    .filter((item) => !item.complete)
+    .map((item) => item.label);
+  const primaryFilterReadinessText = primaryFilterMissingLabels.length > 0
+    ? `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 보완하면 좋은 조건: ${primaryFilterMissingLabels.join(', ')}.`
+    : `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 상담과 비교에 필요한 핵심 조건이 준비되었습니다.`;
+  const packageHandoffPreviewItems = useMemo(() => [
+    handoffIntent ? { label: '목적', value: handoffIntent } : null,
+    { label: '출발지', value: HUB_SUMMARY_LABELS[hub] },
+    handoffDestination ? { label: '지역', value: handoffDestination } : null,
+    handoffBudget ? { label: '예산', value: handoffBudget } : null,
+    selectedProductNames.length > 0 ? { label: '비교 상품', value: selectedProductNames.join(' / ') } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item)), [handoffBudget, handoffDestination, handoffIntent, hub, selectedProductNames]);
+  const packageHandoffPreviewText = packageHandoffPreviewItems.length > 0
+    ? `견적 문의 전달 조건: ${packageHandoffPreviewItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${primaryFilterReadinessText}`
+    : `견적 문의 전달 조건이 아직 없습니다. ${primaryFilterReadinessText}`;
+  const compareHandoffSummaryText = selectedProductNames.length > 0
+    ? `비교 선택 상품이 상담 전달에 포함됩니다: ${selectedProductNames.join(' / ')}. ${primaryFilterReadinessText}`
+    : `비교 상품 ${compareIds.length}개가 선택되었습니다. ${primaryFilterReadinessText}`;
+  const stickyHandoffItems = useMemo(
+    () => filterSummaryItems
+      .filter((item) => item.label !== '결과')
+      .slice(0, 4),
+    [filterSummaryItems],
+  );
+  const stickyPhoneDescriptionIds = stickyHandoffItems.length > 0
+    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
+  const stickyGroupDescriptionIds = stickyHandoffItems.length > 0
+    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
+  const stickyKakaoDescriptionIds = stickyHandoffItems.length > 0
+    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
+  const handoffSummary = useMemo(() => [
+    q ? `검색어: ${q}` : null,
+    ...filterSummaryItems
+      .filter((item) => item.label !== '결과')
+      .map((item) => `${item.label}: ${item.value}`),
+    selectedProductNames.length > 0 ? `비교 선택: ${selectedProductNames.join(' / ')}` : null,
+  ].filter(Boolean).join('\n'), [filterSummaryItems, q, selectedProductNames]);
+
+  const groupInquiryHref = useMemo(() => {
+    return buildGroupInquiryHandoffHref({
+      source: 'packages',
+      intent: selectedIntent ?? undefined,
+      partyType: handoffPartyType ?? undefined,
+      query: q || handoffSummary || '패키지 목록 상담',
+      destination: handoffDestination,
+      budget: handoffBudget,
+      selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
+    });
+  }, [handoffBudget, handoffDestination, handoffPartyType, handoffSummary, q, selectedIntent, selectedProductNames]);
+
+  const openPackagesKakao = useCallback((source: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: source,
+      page_url: '/packages',
+      intent: selectedIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      metadata: { source, selectedIntent, hub, selectedProductNames },
+    });
+    void openKakaoChannel({
+      intent: handoffIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames,
+      escalationSummary: handoffSummary,
+    });
+  }, [handoffBudget, handoffDestination, handoffIntent, handoffPartyType, handoffSummary, hub, selectedIntent, selectedProductNames]);
+
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
+  const mobileAppliedFilterItems = useMemo(
+    () => filterSummaryItems
+      .filter((item) => item.label !== '결과')
+      .slice(0, 4),
+    [filterSummaryItems],
+  );
+  const packageAppliedFilterSummaryText = filterSummaryItems.map((item) => `${item.label} ${item.value}`).join(', ');
+  const packageMobileAppliedFilterSummaryText = mobileAppliedFilterItems.length > 0
+    ? `모바일 적용 조건 ${mobileAppliedFilterItems.length}개: ${mobileAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. 결과 ${filteredPackages.length}개.`
+    : `모바일 적용 조건 없음. 결과 ${filteredPackages.length}개.`;
+  const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다. ${primaryFilterReadinessText}`;
+  const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
+  const packageEmptyStateSummaryId = 'packages-empty-state-summary';
+  const emptyStateAppliedFilterItems = filterSummaryItems
+    .filter((item) => item.label !== '결과')
+    .slice(0, 5);
+  const zeroResultRelaxTargets = [
+    month ? '출발월' : null,
+    selectedIntentInfo ? '여행 목적' : null,
+    handoffBudget ? '예산' : null,
+    activeFilter !== FILTER_OPTIONS[0] ? '지역' : null,
+    hub !== DEFAULT_DEPARTURE_HUB ? '출발지' : null,
+    q ? '검색어' : null,
+    category ? '테마' : null,
+    urgency ? '상태' : null,
+  ].filter((item): item is string => Boolean(item));
+  const packageZeroResultRecoveryText = zeroResultRelaxTargets.length > 0
+    ? `먼저 ${zeroResultRelaxTargets.slice(0, 3).join(', ')} 조건을 넓히면 더 많은 상품을 볼 수 있습니다.`
+    : '조건을 조금 더 알려주시면 상담에서 맞는 상품을 바로 찾아드릴 수 있습니다.';
+  const packageEmptyStateSummaryText = emptyStateAppliedFilterItems.length > 0
+    ? `조건에 맞는 상품이 없습니다. 적용 조건: ${emptyStateAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${packageZeroResultRecoveryText}`
+    : `조건에 맞는 상품이 없습니다. ${packageZeroResultRecoveryText}`;
+  const packageFilterNextActionText = filteredPackages.length === 0
+    ? packageZeroResultRecoveryText
+    : primaryFilterMissingLabels.length > 0
+      ? `${primaryFilterMissingLabels[0]} 조건을 추가하면 상담 전달 정확도가 올라갑니다.`
+      : compareIds.length > 0
+        ? '선택한 비교 상품을 견적 문의에 함께 전달할 수 있습니다.'
+        : filteredPackages.length <= 3
+          ? '후보가 적다면 더 많은 필터를 넓혀 다른 상품도 확인해 보세요.'
+          : '마음에 드는 상품 2개를 비교하거나 바로 상담으로 넘겨보세요.';
+  const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
 
   useEffect(() => {
     for (const pkg of visiblePackages) {
@@ -405,6 +617,18 @@ export default function PackagesClient() {
     return map;
   }, [initialPackages]);
 
+  const visiblePackageTrackingById = useMemo(() => {
+    const map = new Map<string, { productName: string; rank: number; price: number | null }>();
+    visiblePackages.forEach((pkg, index) => {
+      map.set(pkg.id, {
+        productName: pkg.display_title || pkg.products?.display_name || pkg.title,
+        rank: index + 1,
+        price: minPriceByPkgId.get(pkg.id) ?? pkg.price ?? null,
+      });
+    });
+    return map;
+  }, [minPriceByPkgId, visiblePackages]);
+
   const catalogGroupSizeMap = useMemo(() => {
     const map = new Map<string, number>();
     for (const p of initialPackages) {
@@ -415,20 +639,33 @@ export default function PackagesClient() {
   }, [initialPackages]);
 
   const trackClick = useCallback((id: string) => {
-    fetch('/api/tracking/click', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ package_id: id, source: 'list' }),
-    }).catch(() => {});
-  }, []);
+    const tracking = visiblePackageTrackingById.get(id);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageCardClicked,
+      page_url: '/packages',
+      event_source: 'list',
+      product_id: id,
+      product_name: tracking?.productName ?? id,
+      intent: selectedIntent,
+      metadata: {
+        source: 'list',
+        rank: tracking?.rank ?? null,
+        price: tracking?.price ?? null,
+        selectedIntent,
+        hub,
+      },
+    });
+  }, [hub, selectedIntent, visiblePackageTrackingById]);
 
   const trackPackageFilter = useCallback((filterName: string, value: string) => {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: filterName,
+      filter_value: value,
       page_url: '/packages',
-      metadata: { filterName, value, selectedIntent, hub },
+      metadata: { filterName, value, selectedIntent, hub, resultCount: filteredPackages.length },
     });
-  }, [hub, selectedIntent]);
+  }, [filteredPackages.length, hub, selectedIntent]);
 
   const currentBudgetValue = useMemo(() => {
     const matched = BUDGET_FILTER_OPTIONS.find(opt => opt.min === priceMin && opt.max === priceMax);
@@ -463,11 +700,18 @@ export default function PackagesClient() {
   const handlePurposeFilterChange = useCallback((value: string) => {
     if (!value) {
       setSelectedIntent(null);
+      updatePackageQuery({ intent: null });
       trackPackageFilter('intent', 'all');
       return;
     }
     if (value !== selectedIntent) handleIntentSelect(value as IntentId);
-  }, [handleIntentSelect, selectedIntent, trackPackageFilter]);
+  }, [handleIntentSelect, selectedIntent, trackPackageFilter, updatePackageQuery]);
+
+  const handleRegionFilterChange = useCallback((value: string) => {
+    setActiveFilter(value);
+    updatePackageQuery({ filter: value === FILTER_OPTIONS[0] ? null : value });
+    trackPackageFilter('region', value);
+  }, [trackPackageFilter, updatePackageQuery]);
 
   const hasActivePackageFilters = Boolean(
     destination ||
@@ -491,16 +735,56 @@ export default function PackagesClient() {
     router.push('/packages');
   }, [router, trackPackageFilter]);
 
+  const handleMoreFiltersToggle = useCallback(() => {
+    setShowMoreFilters((current) => {
+      const next = !current;
+      trackPackageFilter('more_filters_panel', next ? 'open' : 'closed');
+      return next;
+    });
+  }, [trackPackageFilter]);
+
+  const handleMoreFiltersEscape = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    setShowMoreFilters(false);
+    trackPackageFilter('more_filters_panel', 'closed_escape');
+  }, [trackPackageFilter]);
+
+  useEffect(() => {
+    if (showMoreFilters) {
+      moreFiltersWasOpenRef.current = true;
+      const focusTimer = window.setTimeout(() => moreFiltersFirstControlRef.current?.focus(), 0);
+      return () => window.clearTimeout(focusTimer);
+    }
+    if (moreFiltersWasOpenRef.current) {
+      moreFiltersWasOpenRef.current = false;
+      window.setTimeout(() => moreFiltersToggleRef.current?.focus(), 0);
+    }
+    return undefined;
+  }, [showMoreFilters]);
+
+  const handleLoadMore = useCallback(() => {
+    const nextVisibleCount = Math.min(visibleCount + VISIBLE_STEP, filteredPackages.length);
+    setVisibleCount(nextVisibleCount);
+    trackPackageFilter('list_visible_count', String(nextVisibleCount));
+  }, [filteredPackages.length, trackPackageFilter, visibleCount]);
+
   const listTopRef = useRef<HTMLDivElement>(null);
   if (isLoading) return <Loading />;
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white pb-36 md:pb-0">
       <GlobalNav />
       <h1 className="sr-only">여소남 패키지 여행 상품</h1>
-      <a href={consultTelHref || '/group-inquiry'} className="sr-only">
+      <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
       </a>
+      <p id={compareStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {compareStatusText}
+      </p>
+      <p id={compareHelpId} className="sr-only">
+        {compareHelpText}
+      </p>
 
       <div className="md:border-b md:border-[#F2F4F6]">
         <div className="max-w-7xl mx-auto px-4 md:px-8 pt-4 md:pt-6 pb-[5px] md:pb-0">
@@ -542,9 +826,23 @@ export default function PackagesClient() {
 
       <div className="sticky top-14 md:top-16 z-20 border-b border-[#EEF2F6] bg-white/95 backdrop-blur-md supports-[backdrop-filter]:bg-white/80">
         <div className="max-w-7xl mx-auto px-4 py-2.5 md:px-8 w-full max-w-full min-w-0">
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+          <h2 id={packageFilterGroupTitleId} className="sr-only">패키지 검색 필터</h2>
+          <p id={packageFilterHelpId} className="sr-only">
+            필터를 변경하면 현재 조건과 상품 결과 수가 바로 갱신됩니다.
+          </p>
+          <p id={packageFilterGroupDescriptionId} className="sr-only">
+            {packageFilterGroupDescriptionText}
+          </p>
+          <div
+            className="flex items-center gap-2 overflow-x-auto no-scrollbar"
+            role="group"
+            aria-labelledby={packageFilterGroupTitleId}
+            aria-describedby={packageFilterDescriptionIds}
+          >
             <select
               aria-label="출발월"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={month}
               onChange={e => handleMonthFilterChange(e.target.value)}
@@ -556,6 +854,8 @@ export default function PackagesClient() {
             </select>
             <select
               aria-label="출발지"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={hub}
               onChange={e => {
@@ -570,6 +870,8 @@ export default function PackagesClient() {
             </select>
             <select
               aria-label="여행 목적"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={selectedIntent ?? ''}
               onChange={e => handlePurposeFilterChange(e.target.value)}
@@ -581,6 +883,8 @@ export default function PackagesClient() {
             </select>
             <select
               aria-label="예산"
+              aria-describedby={packageFilterDescriptionIds}
+              aria-controls="packages-list"
               className="h-[36px] shrink-0 rounded-full border border-[#E5E7EB] bg-white px-3 text-[13px] font-bold text-text-primary"
               value={currentBudgetValue === 'custom' ? '' : currentBudgetValue}
               onChange={e => handleBudgetFilterChange(e.target.value)}
@@ -591,9 +895,12 @@ export default function PackagesClient() {
             </select>
             <button
               type="button"
-              onClick={() => setShowMoreFilters(v => !v)}
+              ref={moreFiltersToggleRef}
+              data-testid="packages-more-filters-toggle"
+              onClick={handleMoreFiltersToggle}
               aria-expanded={showMoreFilters}
               aria-controls="package-more-filters"
+              aria-describedby={packageFilterDescriptionIds}
               className={`h-[36px] shrink-0 rounded-full border px-3.5 text-[13px] font-bold transition ${
                 showMoreFilters
                   ? 'border-brand bg-brand text-white'
@@ -603,10 +910,20 @@ export default function PackagesClient() {
               더 많은 필터
             </button>
           </div>
-          <div id="package-more-filters" className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}>
+          <div
+            id="package-more-filters"
+            role="region"
+            aria-label="추가 패키지 필터"
+            aria-describedby={packageFilterDescriptionIds}
+            className={`${showMoreFilters ? 'mt-2 flex' : 'hidden'} items-center gap-2.5 overflow-x-auto no-scrollbar pb-1`}
+          >
             <div className="relative shrink-0">
               <select
+                ref={moreFiltersFirstControlRef}
                 aria-label="정렬 순서"
+                aria-describedby={packageFilterDescriptionIds}
+                aria-controls="packages-list"
+                onKeyDown={handleMoreFiltersEscape}
                 className="h-[34px] text-[13px] border border-[#E5E7EB] rounded-full pl-3 pr-7 bg-white text-text-primary appearance-none cursor-pointer font-medium"
                 value={sortBy}
                 onChange={e => {
@@ -631,26 +948,57 @@ export default function PackagesClient() {
                 key={f}
                 type="button"
                 aria-pressed={activeFilter === f}
+                aria-describedby={packageFilterDescriptionIds}
+                aria-controls="packages-list"
                 className={`shrink-0 h-[34px] px-3.5 text-[13px] font-medium rounded-full border transition card-touch ${
                   activeFilter === f
                     ? 'bg-brand text-white border-brand shadow-sm'
                     : 'bg-white text-text-body border-[#E5E7EB] hover:border-brand/40 hover:text-brand'
                 }`}
-                onClick={() => {
-                  setActiveFilter(f);
-                  trackPackageFilter('region', f);
-                }}
+                onKeyDown={handleMoreFiltersEscape}
+                onClick={() => handleRegionFilterChange(f)}
               >
                 {f}
               </button>
             ))}
           </div>
+          <div
+            id={packageMobileAppliedFilterSummaryId}
+            data-testid="packages-mobile-applied-filter-summary"
+            aria-label={packageMobileAppliedFilterSummaryText}
+            className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          >
+            <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
+              적용 조건 {mobileAppliedFilterItems.length}
+            </span>
+            <span className="shrink-0 rounded-full border border-[#DCE5F0] bg-white px-2.5 py-1 text-[11px] font-bold text-text-primary">
+              결과 {filteredPackages.length}개
+            </span>
+            {mobileAppliedFilterItems.map((item) => (
+              <span
+                key={`mobile:${item.label}:${item.value}`}
+                className="shrink-0 rounded-full border border-[#E5E7EB] bg-white px-2.5 py-1 text-[11px] font-semibold text-text-secondary"
+              >
+                {item.label} {item.value}
+              </span>
+            ))}
+            {hasActivePackageFilters && (
+              <button
+                type="button"
+                onClick={resetPackageFilters}
+                aria-describedby={packageFilterDescriptionIds}
+                className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-2.5 py-1 text-[11px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
+              >
+                초기화
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
-      <section className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8" aria-label="현재 검색 조건">
+      <section className="px-4 pt-3 md:max-w-7xl md:mx-auto md:px-8" aria-label="현재 검색 조건" aria-describedby={packageResultSummaryId}>
         <div className="rounded-[18px] border border-[#E5E7EB] bg-[#F8FAFC] p-3 md:flex md:items-center md:justify-between md:gap-4">
-          <div className="flex items-center justify-between gap-3 md:shrink-0">
+          <div id={packageFilterSummaryId} className="flex items-center justify-between gap-3 md:shrink-0">
             <p className="text-[13px] font-bold text-text-primary">현재 조건</p>
             <span className="text-[12px] font-semibold text-brand">{filteredPackages.length}개 상품</span>
           </div>
@@ -669,11 +1017,75 @@ export default function PackagesClient() {
               <button
                 type="button"
                 onClick={resetPackageFilters}
+                aria-describedby={packageFilterDescriptionIds}
                 className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-3 py-1.5 text-[12px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
               >
                 조건 초기화
               </button>
             )}
+          </div>
+        </div>
+        <div
+          data-testid="packages-filter-readiness-summary"
+          aria-label={primaryFilterReadinessText}
+          className="mt-2 rounded-[14px] border border-[#DCE5F0] bg-white px-3 py-2"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="shrink-0 text-[12px] font-extrabold text-text-primary">
+              핵심 조건 준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+            </span>
+            <span className="min-w-0 truncate text-right text-[12px] font-semibold text-text-secondary">
+              {primaryFilterMissingLabels.length > 0
+                ? `보완 추천: ${primaryFilterMissingLabels.join(', ')}`
+                : '상담 전달 준비 완료'}
+            </span>
+          </div>
+          <div
+            className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar"
+            data-testid="packages-filter-readiness-chips"
+          >
+            {primaryFilterChecklist.map((item) => (
+              <span
+                key={`primary-filter:${item.label}`}
+                className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-bold ${
+                  item.complete
+                    ? 'border-brand/20 bg-brand-light text-brand'
+                    : 'border-[#E5E7EB] bg-[#F8FAFC] text-text-secondary'
+                }`}
+              >
+                {item.complete ? '완료' : '추천'} · {item.label}
+              </span>
+            ))}
+          </div>
+          <p
+            data-testid="packages-filter-next-action"
+            className="mt-2 text-[12px] font-semibold leading-5 text-text-secondary"
+          >
+            {packageFilterNextActionText}
+          </p>
+        </div>
+        <div
+          data-testid="packages-handoff-preview"
+          aria-label={packageHandoffPreviewText}
+          className="mt-2 rounded-[14px] border border-[#DCE5F0] bg-white px-3 py-2"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="shrink-0 text-[12px] font-extrabold text-text-primary">견적 문의에 전달</span>
+            <span className="min-w-0 truncate text-right text-[12px] font-semibold text-brand">
+              {selectedProductNames.length > 0 ? `비교 ${selectedProductNames.length}개 포함` : '조건 기반 상담'}
+            </span>
+          </div>
+          <div className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+            {packageHandoffPreviewItems.map((item) => (
+              <span
+                key={`handoff:${item.label}:${item.value}`}
+                className="shrink-0 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-body"
+              >
+                <span className="text-text-secondary">{item.label}</span>
+                <span className="mx-1 text-[#CBD5E1]">/</span>
+                {item.value}
+              </span>
+            ))}
           </div>
         </div>
       </section>
@@ -707,7 +1119,26 @@ export default function PackagesClient() {
         )}
       </div>
 
-      <div ref={listTopRef} />
+      <p
+        id={packageResultSummaryId}
+        data-testid="packages-result-summary"
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {packageResultSummaryText}
+      </p>
+      <p
+        id={packageFilterReadinessSummaryId}
+        className="sr-only"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {primaryFilterReadinessText}
+      </p>
+
+      <div ref={listTopRef} id="packages-list" aria-describedby={packageResultSummaryId} />
       {filteredPackages.length === 0 ? (
         <div className="text-center py-20 px-6">
           {urgency === '1' ? (
@@ -721,33 +1152,57 @@ export default function PackagesClient() {
             </>
           ) : (
             <div className="flex flex-col items-center gap-4 py-16 px-6">
-              <svg className="w-14 h-14 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 15.803z" />
-              </svg>
+              <Search className="h-14 w-14 text-slate-200" aria-hidden="true" strokeWidth={1.4} />
               <div className="text-center space-y-1">
                 <p className="text-[15px] font-semibold text-text-primary">
                   {activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '조건에 맞는 상품이 없습니다'}
                 </p>
                 <p className="text-[13px] text-text-secondary">필터를 초기화하거나 직접 문의해 보세요</p>
               </div>
+              <div
+                id={packageEmptyStateSummaryId}
+                data-testid="packages-empty-state-summary"
+                aria-label={packageEmptyStateSummaryText}
+                className="w-full max-w-md rounded-lg border border-[#E5E7EB] bg-white p-3 text-left"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13px] font-extrabold text-text-primary">적용 조건</p>
+                  <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-secondary">
+                    결과 0개
+                  </span>
+                </div>
+                {emptyStateAppliedFilterItems.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {emptyStateAppliedFilterItems.map((item) => (
+                      <span key={`${item.label}-${item.value}`} className="rounded-full bg-brand-light px-2.5 py-1 text-[12px] font-bold text-brand">
+                        {item.label} {item.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-3 text-[12px] font-semibold leading-relaxed text-text-secondary">
+                  {packageZeroResultRecoveryText}
+                </p>
+              </div>
               <div className="flex items-center gap-2 mt-1">
                 {hasActivePackageFilters && (
                   <button
                     type="button"
                     onClick={resetPackageFilters}
+                    aria-describedby={packageFilterDescriptionIds}
                     className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
                   >
                     조건 초기화
                   </button>
                 )}
-                {consultTelHref && (
-                  <a
-                    href={consultTelHref}
-                    className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
-                  >
-                    📞 직접 문의
-                  </a>
-                )}
+                <Link
+                  href={groupInquiryHref}
+                  data-testid="packages-empty-state-group-inquiry"
+                  aria-describedby={emptyStateInquiryDescriptionIds}
+                  className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
+                >
+                  조건 유지하고 상담
+                </Link>
               </div>
             </div>
           )}
@@ -764,6 +1219,7 @@ export default function PackagesClient() {
             <div key={pkg.id} className="relative">
               <button
                 type="button"
+                data-testid="packages-compare-toggle"
                 onClick={(e) => { e.preventDefault(); toggleCompare(pkg.id); }}
                 className={`absolute top-2 right-2 z-10 w-8 h-8 flex items-center justify-center rounded-full border-2 transition-all ${
                   compareIds.includes(pkg.id)
@@ -772,6 +1228,7 @@ export default function PackagesClient() {
                 }`}
                 aria-pressed={compareIds.includes(pkg.id)}
                 aria-label={compareIds.includes(pkg.id) ? `비교 해제: ${pkg.display_title || pkg.title}` : `비교 추가: ${pkg.display_title || pkg.title}`}
+                aria-describedby={compareDescriptionIds}
               >
                 {compareIds.includes(pkg.id) ? (
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -809,7 +1266,8 @@ export default function PackagesClient() {
         <div className="px-4 pb-6 md:max-w-7xl md:mx-auto md:px-8">
           <button
             type="button"
-            onClick={() => setVisibleCount(v => Math.min(v + VISIBLE_STEP, filteredPackages.length))}
+            onClick={handleLoadMore}
+            aria-describedby={packageResultSummaryId}
             className="w-full h-11 rounded-full border border-[#D1DCE8] bg-white text-[14px] font-semibold text-text-primary hover:border-brand/60 hover:text-brand transition"
           >
             상품 더 보기 ({visiblePackages.length}/{filteredPackages.length})
@@ -819,47 +1277,135 @@ export default function PackagesClient() {
 
       {/* 플로팅 CTA — 모바일 전용 */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-xl z-50 border-t border-gray-100 safe-area-bottom">
-        <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex items-center gap-3">
+        <div className="max-w-lg mx-auto px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <p id={PACKAGES_STICKY_PHONE_DESCRIPTION_ID} className="sr-only">
+            현재 패키지 목록 조건을 기준으로 전화 상담을 시작합니다.
+          </p>
+          <p id={PACKAGES_STICKY_GROUP_DESCRIPTION_ID} className="sr-only">
+            현재 패키지 목록 조건과 비교 선택 상품을 단체 견적 문의로 이어갑니다.
+          </p>
+          <p id={PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} className="sr-only">
+            현재 패키지 목록 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
+          </p>
+          {stickyHandoffItems.length > 0 && (
+            <div
+              id={PACKAGES_STICKY_HANDOFF_SUMMARY_ID}
+              className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
+              aria-label="상담 전달 조건"
+              data-testid="packages-sticky-handoff-summary"
+            >
+              <span
+                data-testid="packages-sticky-filter-readiness"
+                className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand"
+              >
+                준비 {primaryFilterReadyCount}/{primaryFilterChecklist.length}
+              </span>
+              {stickyHandoffItems.map((item) => (
+                <span key={`${item.label}:${item.value}`} className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-text-body shadow-sm">
+                  <span className="text-text-secondary">{item.label}</span>
+                  <span className="mx-1 text-[#CBD5E1]">/</span>
+                  {item.value}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-3">
           {consultTelHref ? (
             <a
               href={consultTelHref}
+              aria-label="전화 상담"
+              aria-describedby={stickyPhoneDescriptionIds}
+              onClick={() => {
+                trackEngagement({
+                  event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+                  cta_type: 'packages_mobile_phone',
+                  page_url: '/packages',
+                  intent: selectedIntent,
+                  budget: handoffBudget,
+                  destination: handoffDestination,
+                  party_type: handoffPartyType,
+                  selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+                  metadata: { source: 'packages_mobile_phone', selectedIntent, hub },
+                });
+              }}
               className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0"
             >
-              <span className="text-lg">📞</span>
+              <Phone className="h-5 w-5 text-text-primary" aria-hidden="true" />
             </a>
           ) : null}
-          <a href="https://pf.kakao.com/_xcFxkBG/chat" target="_blank" rel="noopener" referrerPolicy="no-referrer-when-downgrade"
+          <Link
+            href={groupInquiryHref}
+            aria-describedby={stickyGroupDescriptionIds}
             onClick={() => {
               trackEngagement({
-                event_type: ANALYTICS_EVENTS.kakaoClicked,
+                event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+                cta_type: 'packages_mobile_group_inquiry',
                 page_url: '/packages',
-                metadata: { source: 'packages_mobile_bottom_cta', selectedIntent, hub },
+                intent: selectedIntent,
+                budget: handoffBudget,
+                destination: handoffDestination,
+                party_type: handoffPartyType,
+                selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+                metadata: { source: 'packages_mobile_group_inquiry', selectedIntent, hub },
               });
             }}
-            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-base flex items-center justify-center gap-2 shadow-lg active:scale-[0.98] transition-all">
-            💬 카카오톡 상담
-          </a>
+            className="flex-1 bg-brand h-12 rounded-full text-white font-bold text-[14px] flex items-center justify-center shadow-lg active:scale-[0.98] transition-all"
+          >
+            견적 문의
+          </Link>
+          <button
+            type="button"
+            data-testid="packages-sticky-kakao"
+            aria-describedby={stickyKakaoDescriptionIds}
+            onClick={() => openPackagesKakao('packages_mobile_bottom_cta')}
+            className="flex-1 bg-[#FEE500] h-12 rounded-full text-[#3C1E1E] font-bold text-[14px] flex items-center justify-center shadow-lg active:scale-[0.98] transition-all"
+          >
+            카톡 상담
+          </button>
         </div>
       </div>
 
       {/* ── 비교 플로팅 버튼 ── */}
+      </div>
+
       {compareIds.length > 0 && (
-        <div className="fixed bottom-20 md:bottom-[88px] left-1/2 -translate-x-1/2 z-40">
-          <div className="bg-white shadow-[0_8px_32px_rgba(0,0,0,0.12)] border border-gray-200 rounded-full px-4 py-2 flex items-center gap-3">
+        <div className="fixed bottom-32 md:bottom-[88px] left-1/2 z-40 w-[min(calc(100vw-2rem),680px)] -translate-x-1/2">
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_8px_32px_rgba(0,0,0,0.12)]">
+            <p
+              id={compareHandoffSummaryId}
+              data-testid="packages-compare-handoff-summary"
+              className="min-w-[220px] flex-1 text-[11px] font-semibold leading-4 text-text-secondary"
+            >
+              {compareHandoffSummaryText}
+            </p>
             <span className="text-[13px] font-medium text-text-secondary whitespace-nowrap">
               {compareIds.length}개 선택됨
             </span>
             <button
               type="button"
               onClick={clearCompare}
+              aria-describedby={compareActionDescriptionIds}
               className="text-[12px] font-medium text-text-body hover:text-danger transition"
             >
               해제
             </button>
             <div className="w-px h-4 bg-gray-200" />
+            <Link
+              href={groupInquiryHref}
+              data-testid="packages-compare-group-inquiry"
+              aria-describedby={compareActionDescriptionIds}
+              className="px-3 py-1.5 text-[13px] font-bold text-brand transition hover:text-brand-dark"
+            >
+              상담 전달
+            </Link>
             <button
               type="button"
+              data-testid="packages-compare-open"
               disabled={compareIds.length < 2}
+              aria-haspopup="dialog"
+              aria-expanded={compareOpen}
+              aria-controls="packages-compare-dialog"
+              aria-describedby={compareActionDescriptionIds}
               onClick={() => {
                 setCompareOpen(true);
                 trackScoreSignal({
@@ -883,6 +1429,8 @@ export default function PackagesClient() {
         <SimpleCompareModal
           a={comparePackages[0]!}
           b={comparePackages[1]!}
+          groupInquiryHref={groupInquiryHref}
+          handoffSummaryText={compareHandoffSummaryText}
           onClose={() => { setCompareOpen(false); }}
         />
       )}
@@ -894,19 +1442,61 @@ export default function PackagesClient() {
 function SimpleCompareModal({
   a,
   b,
+  groupInquiryHref,
+  handoffSummaryText,
   onClose,
 }: {
   a: Package;
   b: Package;
+  groupInquiryHref: string;
+  handoffSummaryText: string;
   onClose: () => void;
 }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
   useEffect(() => {
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.body.style.overflow = 'hidden';
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
     document.addEventListener('keydown', onKey);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = '';
       document.removeEventListener('keydown', onKey);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [onClose]);
 
@@ -925,18 +1515,38 @@ function SimpleCompareModal({
     { label: '출발공항', va: a.departure_airport || '-', vb: b.departure_airport || '-' },
     { label: '평점', va: a.avg_rating ? `★ ${Number(a.avg_rating).toFixed(1)}` : '-', vb: b.avg_rating ? `★ ${Number(b.avg_rating).toFixed(1)}` : '-' },
   ];
+  const compareDialogHandoffSummaryId = 'package-compare-dialog-handoff-summary';
+  const compareDialogDescriptionIds = `package-compare-description ${compareDialogHandoffSummaryId}`;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-end md:items-center md:justify-center">
-      <button type="button" className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="닫기" onClick={onClose} />
-      <div className="relative w-full max-h-[85vh] md:max-w-lg bg-white rounded-t-[24px] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
+    <div
+      id="packages-compare-dialog"
+      className="fixed inset-0 z-[200] flex items-end md:items-center md:justify-center"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="package-compare-title"
+      aria-describedby={compareDialogDescriptionIds}
+      data-testid="packages-compare-dialog"
+    >
+      <button type="button" className="absolute inset-0 bg-black/45 backdrop-blur-sm" aria-label="상품 비교 닫기" onClick={onClose} />
+      <div ref={dialogRef} className="relative w-full max-h-[85vh] md:max-w-lg bg-white rounded-t-[24px] md:rounded-2xl shadow-2xl flex flex-col overflow-hidden">
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 shrink-0">
-          <h2 className="text-[16px] font-bold text-text-primary">상품 비교</h2>
-          <button type="button" aria-label="Close comparison" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
+          <h2 id="package-compare-title" className="text-[16px] font-bold text-text-primary">상품 비교</h2>
+          <button type="button" ref={closeButtonRef} data-testid="packages-compare-close" aria-label="상품 비교 닫기" onClick={onClose} className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-gray-100 text-text-body">
             <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M6 18L18 6"/></svg>
           </button>
         </div>
         <div className="overflow-y-auto px-4 py-4 space-y-3">
+          <p id="package-compare-description" className="sr-only">
+            선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 같은 기준으로 비교합니다.
+          </p>
+          <p
+            id={compareDialogHandoffSummaryId}
+            data-testid="package-compare-dialog-handoff-summary"
+            className="rounded-xl bg-brand-light px-3 py-2 text-[12px] font-semibold leading-5 text-brand"
+          >
+            {handoffSummaryText}
+          </p>
           <div className="grid grid-cols-2 gap-3 mb-2">
             <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {a.display_title || a.title}
@@ -962,6 +1572,14 @@ function SimpleCompareModal({
           </Link>
           <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
             상세보기
+          </Link>
+          <Link
+            href={groupInquiryHref}
+            data-testid="package-compare-dialog-group-inquiry"
+            aria-describedby={compareDialogHandoffSummaryId}
+            className="col-span-2 text-center py-2.5 rounded-xl bg-brand text-white text-[13px] font-bold hover:bg-brand-dark transition"
+          >
+            비교 상품으로 상담 전달
           </Link>
         </div>
       </div>

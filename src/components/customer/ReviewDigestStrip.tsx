@@ -5,6 +5,8 @@ import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 
+const REVIEW_DIGEST_KAKAO_DESCRIPTION_ID = 'review-digest-kakao-description';
+
 interface DigestQuote {
   text: string;
   rating: number;
@@ -18,6 +20,12 @@ interface DigestPayload {
   generated_at: string | null;
 }
 
+interface ReviewDigestStripProps {
+  packageId: string;
+  productTitle?: string | null;
+  internalCode?: string | null;
+}
+
 /**
  * 패키지 hero 직하 — 실제 다녀온 분들의 1줄 후기 carousel.
  *
@@ -26,7 +34,7 @@ interface DigestPayload {
  *   변경: fetch 정상 응답 + 0건 → "리뷰 모집 중" strip 으로 노출(카톡 상담 유도).
  *         fetch 실패 (네트워크/500) → 조용히 숨김 (silent fail 차단은 cron 쪽에서).
  */
-export default function ReviewDigestStrip({ packageId }: { packageId: string }) {
+export default function ReviewDigestStrip({ packageId, productTitle, internalCode }: ReviewDigestStripProps) {
   const [data, setData] = useState<DigestPayload | null>(null);
   const [fetched, setFetched] = useState(false);
 
@@ -45,10 +53,16 @@ export default function ReviewDigestStrip({ packageId }: { packageId: string }) 
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       product_id: packageId,
+      cta_type: 'review_digest_empty_state',
       page_url: typeof window !== 'undefined' ? window.location.pathname : undefined,
-      metadata: { source: 'review_digest_empty_state' },
+      metadata: { source: 'review_digest_empty_state', internal_code: internalCode ?? null },
     });
-    void openKakaoChannel();
+    void openKakaoChannel({
+      internalCode: internalCode ?? undefined,
+      productTitle: productTitle ?? undefined,
+      intent: '후기 없는 상품 상담',
+      selected_products: [productTitle ?? packageId],
+    });
   };
 
   // fetch 자체가 실패하면 (네트워크/500) 조용히 숨김 — 빈 데이터인지 장애인지 구분 못함.
@@ -58,9 +72,14 @@ export default function ReviewDigestStrip({ packageId }: { packageId: string }) 
   if (quotes.length === 0) {
     return (
       <section className="px-4 py-3 relative z-10">
+        <p id={REVIEW_DIGEST_KAKAO_DESCRIPTION_ID} className="sr-only">
+          후기가 아직 없는 상품의 포함 비용, 불포함 비용, 출발 가능 여부를 카카오톡 상담에서 확인합니다.
+        </p>
         <button
           type="button"
           onClick={handleKakaoClick}
+          data-testid="review-digest-kakao"
+          aria-describedby={REVIEW_DIGEST_KAKAO_DESCRIPTION_ID}
           className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm text-left active:scale-[0.99] transition-transform"
         >
           <div className="flex items-center justify-between gap-3">

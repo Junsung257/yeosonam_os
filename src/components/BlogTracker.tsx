@@ -192,6 +192,7 @@ export default function BlogTracker({ contentCreativeId }: { contentCreativeId: 
       if (cta.isKakao) {
         trackEngagement({
           event_type: ANALYTICS_EVENTS.kakaoClicked,
+          cta_type: 'blog_cta',
           page_url: window.location.pathname,
           metadata: {
             source: 'blog_cta',

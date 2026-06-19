@@ -31,6 +31,9 @@ export default function CommandPalette({ bookings, onSelect }: CommandPalettePro
   const [query, setQuery] = useState('');
   const [focusIdx, setFocusIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const commandPaletteTitleId = 'booking-command-palette-title';
+  const commandPaletteDescriptionId = 'booking-command-palette-description';
+  const commandPaletteResultsId = 'booking-command-palette-results';
 
   // Ctrl+K / Cmd+K
   useEffect(() => {
@@ -63,6 +66,9 @@ export default function CommandPalette({ bookings, onSelect }: CommandPalettePro
       );
     })
     .slice(0, 10);
+  const resultSummary = query.trim()
+    ? `검색 결과 ${filtered.length}건이 있습니다. 위아래 방향키로 이동하고 Enter로 선택합니다.`
+    : `최근 예약 ${filtered.length}건을 보여주고 있습니다. 예약명, 고객명, 전화번호로 검색할 수 있습니다.`;
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setFocusIdx(i => Math.min(i + 1, filtered.length - 1)); }
@@ -81,13 +87,23 @@ export default function CommandPalette({ bookings, onSelect }: CommandPalettePro
       {/* Overlay */}
       <button
         type="button"
-        aria-label="Close command palette"
+        aria-label="예약 검색 패널 닫기"
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={() => setOpen(false)}
       />
 
       {/* Panel */}
-      <div className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl ring-1 ring-gray-900/10 overflow-hidden">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={commandPaletteTitleId}
+        aria-describedby={commandPaletteDescriptionId}
+        className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl ring-1 ring-gray-900/10 overflow-hidden"
+      >
+        <h2 id={commandPaletteTitleId} className="sr-only">예약 빠른 검색</h2>
+        <p id={commandPaletteDescriptionId} className="sr-only">
+          예약번호, 고객명, 상품명, 전화번호로 예약을 검색하고 선택합니다.
+        </p>
         {/* Search Input */}
         <div className="flex items-center gap-3 px-4 py-3.5 border-b border-gray-100">
           <svg className="w-5 h-5 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -96,13 +112,19 @@ export default function CommandPalette({ bookings, onSelect }: CommandPalettePro
           <input ref={inputRef} type="text" value={query}
             onChange={e => { setQuery(e.target.value); setFocusIdx(0); }}
             onKeyDown={handleKeyDown}
+            aria-label="예약 검색어"
+            aria-controls={commandPaletteResultsId}
+            aria-describedby={commandPaletteDescriptionId}
             placeholder="고객명, 예약번호, 상품명 검색..."
             className="flex-1 text-base text-gray-900 placeholder-gray-400 focus:outline-none bg-transparent" />
           <kbd className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded font-mono">ESC</kbd>
         </div>
+        <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+          {resultSummary}
+        </p>
 
         {/* Results */}
-        <div className="max-h-80 overflow-y-auto py-1.5">
+        <div id={commandPaletteResultsId} className="max-h-80 overflow-y-auto py-1.5">
           {filtered.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-8">
               {query ? '검색 결과 없음' : '예약 데이터를 입력해 검색하세요'}

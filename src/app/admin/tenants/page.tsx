@@ -229,7 +229,12 @@ export default function TenantsPage() {
       {/* 등록/수정 슬라이드 패널 */}
       {panel && (
         <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setPanel(false)} />
+          <button
+            type="button"
+            className="absolute inset-0 bg-slate-900/30"
+            onClick={() => setPanel(false)}
+            aria-label="테넌트 패널 닫기"
+          />
           <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
             <div className="p-6">
               <div className="flex items-center justify-between mb-5">

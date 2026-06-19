@@ -1,5 +1,9 @@
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
+import {
+  buildGroupInquiryHandoffHref,
+  GROUP_INQUIRY_PRODUCT_LABEL,
+} from '../src/lib/group-inquiry-handoff';
 
 dotenv.config({ path: '.env.local' });
 dotenv.config();
@@ -578,6 +582,23 @@ function ensureMinimumArticleDepth(markdown: string, destination?: string | null
   return `${markdown.trim()}\n\n## 예약 전 추가 확인 포인트\n\n${keyword}을 준비할 때는 일정표만 보지 말고 이동 시간, 현지 결제 방식, 취소 조건을 함께 확인해야 합니다. 같은 목적지라도 출발일, 항공 시간, 숙소 위치에 따라 실제 체감 일정이 달라질 수 있습니다.\n\n- 항공 도착 시간이 늦으면 첫날 일정은 여유 있게 잡습니다.\n- 부모님이나 아이 동반 여행은 이동 시간이 긴 코스를 하루에 몰지 않습니다.\n- 현지 추가 비용, 선택 관광, 기사·가이드 비용은 예약 전에 분리해서 확인합니다.\n- 우기·성수기·연휴에는 교통 지연과 가격 변동 가능성을 함께 봅니다.\n- 상담 시 원하는 일정 강도와 피하고 싶은 조건을 먼저 말하면 상품 비교가 훨씬 빨라집니다.\n`;
 }
 
+function buildBlogQualityInquiryHref(destination?: string | null, slug?: string | null): string {
+  const href = buildGroupInquiryHandoffHref({
+    source: 'blog_quality_backfill',
+    intent: 'blog_consult',
+    partyType: 'blog_reader',
+    query: `${destination || '여행'} 상담`,
+    destination,
+    selectedProducts: [GROUP_INQUIRY_PRODUCT_LABEL],
+  });
+  const params = new URLSearchParams(href.split('?')[1] || '');
+  params.set('utm_source', 'blog');
+  params.set('utm_medium', 'article');
+  params.set('utm_campaign', 'blog_quality_backfill');
+  if (slug) params.set('utm_content', slug);
+  return `/group-inquiry?${params.toString()}`;
+}
+
 function ensureInternalFunnelLinks(markdown: string, destination?: string | null, slug?: string | null): string {
   const links = [...markdown.matchAll(/\[[^\]]+]\(([^)]+)\)/g)]
     .map((match) => match[1] || '')
@@ -587,7 +608,7 @@ function ensureInternalFunnelLinks(markdown: string, destination?: string | null
   if (internal.length >= 3 && cta.length >= 2) return markdown;
 
   const destinationQuery = destination ? `?destination=${encodeURIComponent(destination)}` : '';
-  const slugUtm = slug ? `&utm_content=${encodeURIComponent(slug)}` : '';
+  const inquiryHref = buildBlogQualityInquiryHref(destination, slug);
   const block = [
     '',
     '---',
@@ -595,7 +616,7 @@ function ensureInternalFunnelLinks(markdown: string, destination?: string | null
     '## 여행 상품과 함께 확인하기',
     '',
     `- [현재 판매 중인 여행상품 보기](/packages${destinationQuery})`,
-    `- [내 일정에 맞는 상품 상담하기](/group-inquiry?utm_source=blog&utm_medium=article&utm_campaign=blog_quality_backfill${slugUtm})`,
+    `- [내 일정에 맞는 상품 상담하기](${inquiryHref})`,
     '- [다른 여행 가이드 더 보기](/blog)',
     '',
   ].join('\n');

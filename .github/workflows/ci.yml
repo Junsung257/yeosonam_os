@@ -39,6 +39,9 @@ jobs:
       - name: Marketing automation readiness
         run: npm run verify:marketing-automation:ci
 
+      - name: Readiness automation contracts
+        run: npm run verify:readiness-contracts -- --json
+
       - name: TypeScript strict check
         run: npx tsc --strict --noEmit
         env:
@@ -47,8 +50,8 @@ jobs:
       - name: ESLint
         run: npm run lint
 
-      - name: a11y lint (jsx-a11y strict)
-        run: npx eslint src --no-eslintrc --config eslint-a11y.config.js --format=compact 2>&1 || true
+      - name: a11y lint
+        run: npm run lint:a11y:ci
 
       - name: Type coverage
         run: node scripts/check-type-coverage.js
@@ -79,6 +82,12 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: 'dummy-anon-key-for-ci'
           SUPABASE_SERVICE_ROLE_KEY: 'dummy-service-role-key-for-ci'
           NEXT_PUBLIC_BASE_URL: 'https://example.com'
+
+      - name: Unit tests
+        run: npm run test -- --run
+
+      - name: Bundle budget
+        run: npm run check:bundle:ci
 
       # Visual regression 은 dummy supabase env 라 실제 데이터 fetch 못 함 → continue-on-error.
       # Vercel Preview 환경에서는 real secrets 라 정상 검증. CI 빌드 통과만 보장. (2026-05-15 박제)
@@ -141,11 +150,11 @@ jobs:
           npm install -g @lhci/cli@latest
           lhci autorun || true
 
-      - name: Bundle analysis
+      - name: Next build output size
         continue-on-error: true
         run: |
-          SIZE=$(du -sh build/ | cut -f1)
-          echo "Bundle size: $SIZE"
+          SIZE=$(du -sh .next/ | cut -f1)
+          echo "Next build output size: $SIZE"
 
   # Security checks
   # 2026-05-15 — mail-flood-stop v4 고정:
@@ -168,7 +177,7 @@ jobs:
 
       - name: Trivy scan
         continue-on-error: true
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@476e4fdcdc675b65ce75e8c3440b48d7a494f0e5
         with:
           scan-type: 'fs'
           scan-ref: '.'

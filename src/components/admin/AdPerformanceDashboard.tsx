@@ -124,12 +124,27 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
     isWinner: r.isWinner,
   }));
 
+  const openFilePicker = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    input.onchange = e => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files) handleFiles(files);
+    };
+    input.click();
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        onClick={onClose}
+        aria-label="성과 대시보드 닫기"
+      />
       <div
         className="relative w-full max-w-3xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
-        onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
@@ -143,7 +158,7 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
                 초기화
               </button>
             )}
-            <button onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
+            <button aria-label="성과 대시보드 닫기" onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
           </div>
@@ -152,19 +167,19 @@ export default function AdPerformanceDashboard({ onClose }: AdPerformanceDashboa
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
           {/* ── CSV 드롭존 ────────────────────────────── */}
           <div
+            role="button"
+            tabIndex={0}
+            aria-label="Meta Ads CSV 파일 선택"
             onDragEnter={e => { e.preventDefault(); setDragActive(true); }}
             onDragLeave={e => { e.preventDefault(); setDragActive(false); }}
             onDragOver={e => e.preventDefault()}
             onDrop={handleDrop}
-            onClick={() => {
-              const input = document.createElement('input');
-              input.type = 'file';
-              input.accept = '.csv';
-              input.onchange = e => {
-                const files = (e.target as HTMLInputElement).files;
-                if (files) handleFiles(files);
-              };
-              input.click();
+            onClick={openFilePicker}
+            onKeyDown={e => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                openFilePicker();
+              }
             }}
             className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition ${
               dragActive ? 'border-[#005d90] bg-blue-50' : 'border-admin-border-strong bg-admin-bg hover:border-slate-400'

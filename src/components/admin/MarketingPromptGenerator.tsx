@@ -212,11 +212,15 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
   const duration = pkg.duration ? `${pkg.duration}일` : '-';
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/20 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-50 flex justify-end">
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/20 backdrop-blur-sm"
+        onClick={onClose}
+        aria-label="마케팅 프롬프트 생성기 닫기"
+      />
       <div
         className="relative w-full max-w-2xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
-        onClick={e => e.stopPropagation()}
       >
         {/* 헤더 */}
         <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
@@ -224,7 +228,7 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
             <h2 className="text-admin-lg font-semibold text-admin-text-2">마케팅 프롬프트 생성기</h2>
             <p className="text-[11px] text-admin-muted mt-0.5">상품 데이터 → AI 지시서 자동 조립</p>
           </div>
-          <button onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
+          <button aria-label="마케팅 프롬프트 생성기 닫기" onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
@@ -269,6 +273,7 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
             <span className="text-[10px] text-admin-muted-2">{prompt.length.toLocaleString()}자</span>
           </div>
           <textarea
+            aria-label="생성된 마케팅 프롬프트"
             readOnly
             value={prompt}
             className="w-full h-[calc(100%-2rem)] bg-admin-bg border border-admin-border-mid rounded-lg p-4 text-admin-xs text-admin-text-2 font-mono leading-relaxed resize-none focus:ring-1 focus:ring-[#005d90] focus:border-[#005d90]"

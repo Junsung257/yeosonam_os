@@ -2,8 +2,21 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 
-const CATEGORIES = [
+const CATEGORY_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
+  source: 'category_icons',
+  query: '카테고리에서 단체 맞춤 견적 상담',
+});
+
+type CategoryLink = {
+  icon: string;
+  label: string;
+  href: string;
+  testId?: string;
+};
+
+const CATEGORIES: CategoryLink[] = [
   { icon: '🔥', label: '마감특가', href: '/packages?urgency=1' },
   { icon: '🌴', label: '동남아', href: '/destinations/region/southeast-asia' },
   { icon: '🏯', label: '일본', href: '/destinations/region/japan' },
@@ -12,7 +25,7 @@ const CATEGORIES = [
   { icon: '💍', label: '허니문', href: '/packages?category=honeymoon' },
   { icon: '⛳', label: '해외골프', href: '/packages?category=golf' },
   { icon: '👨‍👩‍👧', label: '단독맞춤', href: '/private-tour' },
-  { icon: '👥', label: '단체·맞춤', href: '/group-inquiry' },
+  { icon: '👥', label: '단체·맞춤', href: CATEGORY_GROUP_INQUIRY_HREF, testId: 'category-group-inquiry' },
 ];
 
 function isLinkActive(href: string, pathname: string | null): boolean {
@@ -40,6 +53,7 @@ export default function CategoryIcons({ className = '' }: Props) {
               <Link
                 key={cat.label}
                 href={cat.href}
+                data-testid={cat.testId}
                 className="flex flex-col items-center gap-1.5 group shrink-0 snap-start w-[72px] card-touch"
               >
                 <div
