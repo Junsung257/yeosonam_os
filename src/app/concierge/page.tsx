@@ -638,6 +638,7 @@ export default function ConciergePage() {
     { label: '동행', complete: Boolean(intentSummary.party_type) },
     { label: '지역', complete: Boolean(intentSummary.destination) },
     { label: '예산', complete: Boolean(intentSummary.budget) },
+    { label: '상품', complete: selectedProductCount > 0 },
   ];
   const handoffReadyCount = handoffChecklist.filter((item) => item.complete).length;
   const handoffMissingLabels = handoffChecklist.filter((item) => !item.complete).map((item) => item.label);
@@ -1113,6 +1114,9 @@ export default function ConciergePage() {
               cartCount={cart.length}
               cartTotal={cartTotal}
               summaryItems={summaryItems}
+              handoffReadinessText={handoffReadinessText}
+              handoffReadyCount={handoffReadyCount}
+              handoffTotalCount={handoffChecklist.length}
               groupInquiryHref={groupInquiryHref}
               sharing={sharing}
               checkoutOpen={checkoutOpen}
@@ -1180,6 +1184,9 @@ export default function ConciergePage() {
             cartCount={cart.length}
             cartTotal={cartTotal}
             summaryItems={summaryItems}
+            handoffReadinessText={handoffReadinessText}
+            handoffReadyCount={handoffReadyCount}
+            handoffTotalCount={handoffChecklist.length}
             groupInquiryHref={groupInquiryHref}
             sharing={sharing}
             checkoutOpen={checkoutOpen}
@@ -1766,6 +1773,9 @@ function CartActions({
   cartCount,
   cartTotal,
   summaryItems,
+  handoffReadinessText,
+  handoffReadyCount,
+  handoffTotalCount,
   groupInquiryHref,
   sharing,
   checkoutOpen,
@@ -1778,6 +1788,9 @@ function CartActions({
   cartCount: number;
   cartTotal: number;
   summaryItems: SummaryItem[];
+  handoffReadinessText: string;
+  handoffReadyCount: number;
+  handoffTotalCount: number;
   groupInquiryHref: string;
   sharing: boolean;
   checkoutOpen: boolean;
@@ -1791,13 +1804,15 @@ function CartActions({
   const cartKakaoDescriptionId = `concierge-cart-kakao-description-${surface}`;
   const cartGroupInquiryDescriptionId = `concierge-cart-group-inquiry-description-${surface}`;
   const cartCheckoutDescriptionId = `concierge-cart-checkout-description-${surface}`;
-  const cartShareDescriptionIds = `${cartShareDescriptionId} ${cartActionSummaryId}`;
-  const cartKakaoDescriptionIds = `${cartKakaoDescriptionId} ${cartActionSummaryId}`;
-  const cartGroupInquiryDescriptionIds = `${cartGroupInquiryDescriptionId} ${cartActionSummaryId}`;
-  const cartCheckoutDescriptionIds = `${cartCheckoutDescriptionId} ${cartActionSummaryId}`;
+  const cartReadinessSummaryId = `concierge-cart-readiness-summary-${surface}`;
+  const cartShareDescriptionIds = `${cartShareDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartKakaoDescriptionIds = `${cartKakaoDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartGroupInquiryDescriptionIds = `${cartGroupInquiryDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartCheckoutDescriptionIds = `${cartCheckoutDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
   const cartActionSummaryText = [
     cartCount > 0 ? `선택한 구성은 ${cartCount}개 상품입니다.` : '선택한 상품이 없습니다.',
     cartTotal > 0 ? `총 금액은 ${money(cartTotal)}입니다.` : null,
+    handoffReadinessText,
     summaryItems.length > 0 ? `상담 전달 조건은 ${summaryItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.` : null,
   ].filter(Boolean).join(' ');
 
@@ -1832,6 +1847,22 @@ function CartActions({
           <MessageCircle size={16} />
           상담
         </button>
+      </div>
+      <div
+        id={cartReadinessSummaryId}
+        data-testid="concierge-cart-readiness-summary"
+        aria-label={handoffReadinessText}
+        className="mb-4 rounded-[14px] border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-2.5"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-extrabold text-text-secondary">상담 준비</p>
+            <p className="mt-0.5 text-[12px] font-semibold leading-5 text-text-primary">{handoffReadinessText}</p>
+          </div>
+          <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-brand ring-1 ring-[#E5ECF3]">
+            {handoffReadyCount}/{handoffTotalCount}
+          </span>
+        </div>
       </div>
       {summaryItems.length > 0 && (
         <div
