@@ -87,6 +87,54 @@ function waitForChildExit(child, timeoutMs = 10000) {
   });
 }
 
+function isProcessAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function lingeringNextDevServerPids(server) {
+  if (process.platform === 'win32') return [];
+  const root = server.root || process.cwd();
+  const port = String(server.port || '');
+  const result = spawnSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' });
+  return String(result.stdout || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) =>
+      line.includes(root) &&
+      (!port || line.includes(port)) &&
+      (/\bnpm\b.*\brun\b.*\bdev\b/.test(line) || /\bnext\b.*\bdev\b/.test(line) || line.includes('start-server.js'))
+    )
+    .map((line) => Number(line.split(/\s+/, 1)[0]))
+    .filter((pid) => Number.isInteger(pid) && pid > 0 && pid !== process.pid && pid !== server.child.pid);
+}
+
+async function stopLingeringNextDevServers(server) {
+  const pids = lingeringNextDevServerPids(server);
+  if (pids.length === 0) return;
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 'SIGTERM');
+    } catch {
+      // Process may already have exited.
+    }
+  }
+  await sleep(500);
+  for (const pid of pids) {
+    if (!isProcessAlive(pid)) continue;
+    try {
+      process.kill(pid, 'SIGKILL');
+    } catch {
+      // Best effort cleanup.
+    }
+  }
+}
+
 export async function stopProcessTree(server, { keepServer = false, timeoutMs = 10000 } = {}) {
   if (!server?.child?.pid || keepServer) return;
   server.markStopping();
@@ -111,6 +159,7 @@ export async function stopProcessTree(server, { keepServer = false, timeoutMs = 
     }
     await waitForChildExit(server.child, 3000);
   } finally {
+    await stopLingeringNextDevServers(server);
     server.closeLogs?.();
   }
 }
@@ -154,6 +203,8 @@ export function startNextServer({
     child,
     outLog,
     errLog,
+    port,
+    root: process.cwd(),
     markStopping() {
       expectedStop = true;
     },
