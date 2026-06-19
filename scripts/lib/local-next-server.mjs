@@ -69,17 +69,49 @@ function serverCommand(script, port) {
   };
 }
 
-export function stopProcessTree(server, { keepServer = false } = {}) {
+function waitForChildExit(child, timeoutMs = 10000) {
+  if (!child || child.exitCode !== null || child.signalCode) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.off?.('exit', onExit);
+      resolve(false);
+    }, timeoutMs);
+
+    function onExit() {
+      clearTimeout(timer);
+      resolve(true);
+    }
+
+    child.once('exit', onExit);
+  });
+}
+
+export async function stopProcessTree(server, { keepServer = false, timeoutMs = 10000 } = {}) {
   if (!server?.child?.pid || keepServer) return;
   server.markStopping();
-  if (process.platform === 'win32') {
-    spawnSync('taskkill', ['/pid', String(server.child.pid), '/T', '/F'], { stdio: 'ignore' });
-    return;
-  }
   try {
-    process.kill(-server.child.pid, 'SIGTERM');
-  } catch {
-    server.child.kill('SIGTERM');
+    if (process.platform === 'win32') {
+      spawnSync('taskkill', ['/pid', String(server.child.pid), '/T', '/F'], { stdio: 'ignore' });
+      await waitForChildExit(server.child, Math.min(timeoutMs, 1000));
+      return;
+    }
+    try {
+      process.kill(-server.child.pid, 'SIGTERM');
+    } catch {
+      server.child.kill('SIGTERM');
+    }
+    const stopped = await waitForChildExit(server.child, timeoutMs);
+    if (stopped) return;
+
+    try {
+      process.kill(-server.child.pid, 'SIGKILL');
+    } catch {
+      server.child.kill('SIGKILL');
+    }
+    await waitForChildExit(server.child, 3000);
+  } finally {
+    server.closeLogs?.();
   }
 }
 
@@ -124,6 +156,12 @@ export function startNextServer({
     errLog,
     markStopping() {
       expectedStop = true;
+    },
+    closeLogs() {
+      child.stdout.unpipe(out);
+      child.stderr.unpipe(err);
+      out.end();
+      err.end();
     },
   };
 }

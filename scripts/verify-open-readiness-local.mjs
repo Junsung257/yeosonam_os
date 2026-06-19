@@ -93,5 +93,5 @@ try {
   console.error(`[open-readiness-local] ${err instanceof Error ? err.message : String(err)}`);
   process.exitCode = 1;
 } finally {
-  if (server) stopProcessTree(server, { keepServer });
+  if (server) await stopProcessTree(server, { keepServer });
 }
