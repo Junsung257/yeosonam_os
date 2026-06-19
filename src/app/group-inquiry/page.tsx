@@ -380,9 +380,16 @@ export default function GroupInquiryPage() {
   const rfqConditionSummaryId = 'group-inquiry-rfq-condition-summary';
   const rfqContactHelpId = 'group-inquiry-rfq-contact-help';
   const rfqSubmitDescriptionId = 'group-inquiry-rfq-submit-description';
+  const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
+  const intentChipStatusId = 'group-inquiry-intent-chip-status';
   const rfqConditionSummaryText = FIELD_GROUPS
     .map((field) => `${field.label} ${getSummaryValue(extractedSummary, field.key)}`)
     .join(', ');
+  const intentChipStatusText = loading
+    ? 'AI가 선택한 빠른 시작 조건을 정리하고 있습니다.'
+    : selectedIntent
+      ? `${selectedIntent.label} 조건이 선택되어 상담 전달 조건에 반영되었습니다.`
+      : '빠른 시작 조건을 선택하면 AI 상담이 바로 시작됩니다.';
   const rfqContactDescriptionIds = `${rfqConditionSummaryId} ${rfqContactHelpId}`;
   const contactNameDescriptionIds = contactErrors.contactName
     ? `${rfqContactDescriptionIds} contact-name-error`
@@ -402,6 +409,7 @@ export default function GroupInquiryPage() {
   ].filter(Boolean).join(' ');
 
   async function sendMessage(messageOverride?: string, chip?: IntentChip) {
+    if (loading) return;
     const text = (messageOverride ?? input).trim();
 
     if (!text) {
@@ -794,17 +802,31 @@ export default function GroupInquiryPage() {
           <div className="rounded-lg border border-[#E5E7EB] bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2">
               <Sparkles className="h-4 w-4 text-brand" aria-hidden="true" />
-              <h2 className="text-sm font-bold text-gray-950">빠른 시작</h2>
+              <h2 id="group-inquiry-intent-chip-title" className="text-sm font-bold text-gray-950">빠른 시작</h2>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <p id={intentChipGroupDescriptionId} className="sr-only">
+              빠른 시작 칩을 선택하면 해당 상담 조건이 메시지로 전송되고, 목적과 여행 유형이 상담 전달 조건에 반영됩니다.
+            </p>
+            <p id={intentChipStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+              {intentChipStatusText}
+            </p>
+            <div
+              className="grid gap-2 sm:grid-cols-2"
+              role="group"
+              aria-labelledby="group-inquiry-intent-chip-title"
+              aria-describedby={`${intentChipGroupDescriptionId} ${intentChipStatusId}`}
+            >
               {INTENT_CHIPS.map((chip) => {
                 const selected = selectedIntent?.intent === chip.intent;
+                const intentChipDescriptionId = `group-inquiry-intent-chip-${chip.intent}-description`;
                 return (
                   <button
                     key={chip.intent}
                     type="button"
                     data-testid="group-inquiry-intent-chip"
                     aria-pressed={selected}
+                    aria-busy={loading && selected}
+                    aria-describedby={`${intentChipGroupDescriptionId} ${intentChipDescriptionId} ${intentChipStatusId}`}
                     onClick={() => void sendMessage(chip.prompt, chip)}
                     disabled={loading}
                     className={`group flex min-h-14 items-center justify-between gap-3 rounded-lg border px-3 py-3 text-left text-sm font-bold transition disabled:opacity-50 ${
@@ -813,6 +835,9 @@ export default function GroupInquiryPage() {
                         : 'border-[#E5E7EB] bg-white text-gray-800 hover:border-brand/50 hover:bg-brand-light/40'
                     }`}
                   >
+                    <span id={intentChipDescriptionId} className="sr-only">
+                      {chip.label} 조건으로 AI 상담을 시작합니다. 여행 유형은 {PARTY_LABELS[chip.partyType] ?? chip.partyType}이고{chip.budget ? ` 예산은 ${chip.budget}` : ''}{chip.destination ? ` 목적지는 ${chip.destination}` : ''}입니다.
+                    </span>
                     <span>{chip.label}</span>
                     <ArrowRight className={`h-4 w-4 shrink-0 ${selected ? 'text-white' : 'text-gray-400 group-hover:text-brand'}`} aria-hidden="true" />
                   </button>
@@ -1079,6 +1104,8 @@ export default function GroupInquiryPage() {
               <button
                 type="submit"
                 disabled={loading}
+                aria-busy={loading}
+                aria-describedby={loading ? 'group-inquiry-message-help group-inquiry-status' : 'group-inquiry-message-help'}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-brand text-white hover:bg-[#1B64DA] disabled:opacity-50"
                 aria-label="메시지 보내기"
               >

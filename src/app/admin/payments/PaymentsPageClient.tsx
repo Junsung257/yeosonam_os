@@ -1259,12 +1259,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     matchBtnDisabled = matchMode === 'single' ? !singleBookingId : (multiSelected.size === 0);
   }
 
-  const renderTransactionActions = (tx: BankTransaction, layout: 'table' | 'card' = 'table') => {
+  const getTransactionKindLabel = (tx: BankTransaction) =>
+    tx.is_refund ? '환불' : tx.is_fee ? '수수료' : tx.transaction_type;
+
+  const getTransactionNextActionLabel = (tx: BankTransaction) => {
     const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
     const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
     const isPayout = tx.transaction_type === '출금' && !tx.is_refund;
-    const compact = layout === 'card';
-    const nextActionLabel = isOpen
+    return isOpen
       ? isPayout
         ? '출금 묶기'
         : tx.is_refund
@@ -1273,6 +1275,14 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       : isMatched
         ? '매칭 취소'
         : '제외';
+  };
+
+  const renderTransactionActions = (tx: BankTransaction, layout: 'table' | 'card' = 'table', contextDescriptionId?: string) => {
+    const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
+    const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
+    const isPayout = tx.transaction_type === '출금' && !tx.is_refund;
+    const compact = layout === 'card';
+    const nextActionLabel = getTransactionNextActionLabel(tx);
     const groupClass = compact
       ? 'mt-3 grid grid-cols-2 gap-2'
       : 'flex items-center gap-1.5 justify-end';
@@ -1286,12 +1296,16 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       ? 'px-3 py-2 rounded border border-admin-border-strong bg-white text-admin-muted text-admin-sm font-mono hover:bg-admin-bg transition-colors text-center'
       : 'px-2 py-1 rounded border border-admin-border-strong bg-white text-admin-muted text-[11px] font-mono hover:bg-admin-bg transition-colors whitespace-nowrap';
     const paymentActionDescriptionId = `admin-payment-row-actions-${layout}-${tx.id}`;
-    const paymentActionDescriptionIds = `${paymentActionDescriptionId} admin-payment-action-result-description`;
+    const paymentActionDescriptionIds = [
+      paymentActionDescriptionId,
+      contextDescriptionId,
+      'admin-payment-action-result-description',
+    ].filter(Boolean).join(' ');
 
     return (
       <div className={groupClass} aria-label={`${tx.counterparty_name || '거래'} 다음 액션`} role="group">
         <p id={paymentActionDescriptionId} className="sr-only">
-          {tx.counterparty_name || '거래'} 거래의 현재 매칭 상태는 {tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
+          {tx.counterparty_name || '거래'} {getTransactionKindLabel(tx)} {tx.amount.toLocaleString()}원 거래의 현재 매칭 상태는 {MATCH_LABELS[tx.match_status] || tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
         </p>
         {compact ? (
           <div className="col-span-2 flex items-center justify-between rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
@@ -1751,11 +1765,27 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         <div className="space-y-3 md:hidden">
           {filtered.map(tx => {
             const stale = (tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') && hoursSince(tx.created_at) >= 24;
+            const paymentMobileSummaryId = `admin-payment-mobile-summary-${tx.id}`;
+            const paymentMobileSummaryText = [
+              `${getTransactionKindLabel(tx)} ${tx.amount.toLocaleString()}원`,
+              `상태 ${MATCH_LABELS[tx.match_status] || tx.match_status}`,
+              `거래처 ${tx.counterparty_name || '없음'}`,
+              `수신 ${fmtTs(tx.received_at)}`,
+              tx.bookings
+                ? `예약 ${fmtBookingAnchor(tx.bookings)}${tx.bookings.package_title ? `, ${tx.bookings.package_title}` : ''}`
+                : '연결된 예약 없음',
+              `다음 액션 ${getTransactionNextActionLabel(tx)}`,
+              stale ? `${Math.round(hoursSince(tx.created_at))}시간 경과` : null,
+            ].filter(Boolean).join('. ');
             return (
               <article
                 key={`mobile-${tx.id}`}
+                aria-describedby={paymentMobileSummaryId}
                 className={`rounded-admin-md border bg-white p-4 shadow-admin-xs ${tx.match_status === 'error' ? 'border-red-200 bg-red-50' : 'border-admin-border-mid'}`}
               >
+                <p id={paymentMobileSummaryId} className="sr-only">
+                  {paymentMobileSummaryText}
+                </p>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -1787,6 +1817,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     <input
                       type="checkbox"
                       checked={checkedTxIds.has(tx.id)}
+                      aria-describedby={paymentMobileSummaryId}
                       onChange={e => {
                         const next = new Set(checkedTxIds);
                         e.target.checked ? next.add(tx.id) : next.delete(tx.id);
@@ -1811,7 +1842,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   </p>
                 </div>
 
-                {renderTransactionActions(tx, 'card')}
+                {renderTransactionActions(tx, 'card', paymentMobileSummaryId)}
               </article>
             );
           })}

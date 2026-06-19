@@ -1971,54 +1971,69 @@ export default function AdminPage({
             <Link href="/admin/jarvis?tab=actions" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {pendingActions.slice(0, 6).map((act: any) => (
-              <div key={act.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
-                <div className="flex items-center gap-1.5 mb-1">
-                  <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
-                    { operations: 'bg-blue-50 text-blue-600', sales: 'bg-purple-50 text-purple-600',
-                      marketing: 'bg-pink-50 text-pink-600', finance: 'bg-emerald-50 text-emerald-600',
-                      products: 'bg-cyan-50 text-cyan-600', system: 'bg-admin-surface-2 text-admin-muted',
-                    }[act.agent_type as string] || 'bg-admin-surface-2 text-admin-muted'
-                  }`}>
-                    {{ operations: '운영', sales: '영업', marketing: '마케팅', finance: '재무', products: '상품', system: '시스템' }[act.agent_type as string] || act.agent_type}
-                  </span>
-                  {act.priority !== 'normal' && (
+            {pendingActions.slice(0, 6).map((act: any) => {
+              const agentActionSummaryId = `admin-dashboard-agent-action-summary-${act.id}`;
+              const agentTypeLabel = { operations: '운영', sales: '영업', marketing: '마케팅', finance: '재무', products: '상품', system: '시스템' }[act.agent_type as string] || act.agent_type || '미분류';
+              const priorityLabel = { low: '낮음', normal: '보통', high: '높음', critical: '긴급' }[act.priority as string] || act.priority || '보통';
+              const agentActionDescriptionIds = `${agentActionSummaryId} admin-dashboard-status`;
+              return (
+                <article
+                  key={act.id}
+                  aria-describedby={agentActionSummaryId}
+                  className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160"
+                >
+                  <p id={agentActionSummaryId} className="sr-only">
+                    자비스 결재 대기 항목입니다. 분류는 {agentTypeLabel}, 우선순위는 {priorityLabel}, 작업 유형은 {act.action_type || '미지정'}입니다. 요약: {act.summary || '요약 없음'}.
+                  </p>
+                  <div className="flex items-center gap-1.5 mb-1">
                     <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
-                      act.priority === 'critical' ? 'bg-red-50 text-red-600' :
-                      act.priority === 'high' ? 'bg-orange-50 text-orange-600' : 'bg-admin-bg text-admin-muted'
+                      { operations: 'bg-blue-50 text-blue-600', sales: 'bg-purple-50 text-purple-600',
+                        marketing: 'bg-pink-50 text-pink-600', finance: 'bg-emerald-50 text-emerald-600',
+                        products: 'bg-cyan-50 text-cyan-600', system: 'bg-admin-surface-2 text-admin-muted',
+                      }[act.agent_type as string] || 'bg-admin-surface-2 text-admin-muted'
                     }`}>
-                      {{ low: '낮음', high: '높음', critical: '긴급' }[act.priority as string] || act.priority}
+                      {agentTypeLabel}
                     </span>
-                  )}
-                </div>
-                <p className="text-admin-sm font-medium text-admin-text-2 truncate">{act.summary}</p>
-                <p className="text-[11px] text-admin-muted-2 mt-0.5">{act.action_type}</p>
-                <div className="mt-2 flex gap-1">
-                  <button
-                    type="button"
-                    aria-label={`${act.summary} 승인`}
-                    aria-busy={actionProcessingId === act.id}
-                    aria-describedby="admin-dashboard-status"
-                    onClick={() => { void handleAgentAction(act, 'approve'); }}
-                    disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition"
-                  >
-                    승인
-                  </button>
-                  <button
-                    type="button"
-                    aria-label={`${act.summary} 반려`}
-                    aria-busy={actionProcessingId === act.id}
-                    aria-describedby="admin-dashboard-status"
-                    onClick={() => { void handleAgentAction(act, 'reject'); }}
-                    disabled={actionProcessingId === act.id}
-                    className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition"
-                  >
-                    반려
-                  </button>
-                </div>
-              </div>
-            ))}
+                    {act.priority !== 'normal' && (
+                      <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
+                        act.priority === 'critical' ? 'bg-red-50 text-red-600' :
+                        act.priority === 'high' ? 'bg-orange-50 text-orange-600' : 'bg-admin-bg text-admin-muted'
+                      }`}>
+                        {priorityLabel}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-admin-sm font-medium text-admin-text-2 truncate">{act.summary}</p>
+                  <p className="text-[11px] text-admin-muted-2 mt-0.5">{act.action_type}</p>
+                  <div className="mt-2 flex gap-1" role="group" aria-label={`${act.summary || '자비스 결재'} 처리`}>
+                    <button
+                      type="button"
+                      data-testid="admin-dashboard-agent-action-approve"
+                      aria-label={`${act.summary} 승인`}
+                      aria-busy={actionProcessingId === act.id}
+                      aria-describedby={agentActionDescriptionIds}
+                      onClick={() => { void handleAgentAction(act, 'approve'); }}
+                      disabled={actionProcessingId === act.id}
+                      className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition"
+                    >
+                      승인
+                    </button>
+                    <button
+                      type="button"
+                      data-testid="admin-dashboard-agent-action-reject"
+                      aria-label={`${act.summary} 반려`}
+                      aria-busy={actionProcessingId === act.id}
+                      aria-describedby={agentActionDescriptionIds}
+                      onClick={() => { void handleAgentAction(act, 'reject'); }}
+                      disabled={actionProcessingId === act.id}
+                      className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition"
+                    >
+                      반려
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2031,40 +2046,55 @@ export default function AdminPage({
             <Link href="/admin/packages" className="text-admin-xs text-blue-600 hover:underline">전체 보기</Link>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
-            {pendingPackages.slice(0, 6).map(pkg => (
-              <div key={pkg.id} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160">
-                <p className="text-admin-sm font-medium text-admin-text-2 truncate">{pkg.title}</p>
-                <div className="flex items-center gap-2 mt-1">
-                  {pkg.destination && <span className="text-[11px] text-admin-muted">{pkg.destination}</span>}
-                  {pkg.price && <span className="text-[11px] text-admin-muted">₩{pkg.price.toLocaleString()}</span>}
-                  <span className={`ml-auto px-1.5 py-0.5 text-[10px] rounded font-medium ${
-                    pkg.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
-                    pkg.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
-                  }`}>{Math.round(pkg.confidence * 100)}%</span>
-                </div>
-                <div className="mt-2 flex gap-1">
-                  <button type="button" onClick={() => setSelectedPackage(pkg)}
-                    aria-label={`${pkg.title} 상세 보기`}
-                    className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-1 rounded text-[11px] hover:bg-admin-bg transition">
-                    상세
-                  </button>
-                  <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
-                    aria-label={`${pkg.title} 승인`}
-                    aria-busy={processingId === pkg.id}
-                    aria-describedby="admin-dashboard-status"
-                    className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
-                    승인
-                  </button>
-                  <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
-                    aria-label={`${pkg.title} 반려`}
-                    aria-busy={processingId === pkg.id}
-                    aria-describedby="admin-dashboard-status"
-                    className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
-                    반려
-                  </button>
-                </div>
-              </div>
-            ))}
+            {pendingPackages.slice(0, 6).map(pkg => {
+              const pendingPackageSummaryId = `admin-dashboard-pending-package-summary-${pkg.id}`;
+              const pendingPackageDescriptionIds = `${pendingPackageSummaryId} admin-dashboard-status`;
+              return (
+                <article
+                  key={pkg.id}
+                  aria-describedby={pendingPackageSummaryId}
+                  className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160"
+                >
+                  <p id={pendingPackageSummaryId} className="sr-only">
+                    승인 대기 상품입니다. 상품명은 {pkg.title}, 목적지는 {pkg.destination || '미지정'}, 가격은 {pkg.price ? `${pkg.price.toLocaleString()}원` : '미지정'}, 추출 신뢰도는 {Math.round(pkg.confidence * 100)}%입니다.
+                  </p>
+                  <p className="text-admin-sm font-medium text-admin-text-2 truncate">{pkg.title}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    {pkg.destination && <span className="text-[11px] text-admin-muted">{pkg.destination}</span>}
+                    {pkg.price && <span className="text-[11px] text-admin-muted">₩{pkg.price.toLocaleString()}</span>}
+                    <span className={`ml-auto px-1.5 py-0.5 text-[10px] rounded font-medium ${
+                      pkg.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
+                      pkg.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
+                    }`}>{Math.round(pkg.confidence * 100)}%</span>
+                  </div>
+                  <div className="mt-2 flex gap-1" role="group" aria-label={`${pkg.title} 승인 대기 상품 처리`}>
+                    <button type="button" onClick={() => setSelectedPackage(pkg)}
+                      data-testid="admin-dashboard-package-detail"
+                      aria-label={`${pkg.title} 상세 보기`}
+                      aria-describedby={pendingPackageSummaryId}
+                      className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-1 rounded text-[11px] hover:bg-admin-bg transition">
+                      상세
+                    </button>
+                    <button type="button" onClick={() => { void handleAction(pkg.id, 'approve'); }} disabled={processingId === pkg.id}
+                      data-testid="admin-dashboard-package-approve"
+                      aria-label={`${pkg.title} 승인`}
+                      aria-busy={processingId === pkg.id}
+                      aria-describedby={pendingPackageDescriptionIds}
+                      className="flex-1 bg-brand text-white py-1 rounded text-[11px] hover:bg-blue-700 disabled:bg-slate-300 transition">
+                      승인
+                    </button>
+                    <button type="button" onClick={() => { void handleAction(pkg.id, 'reject'); }} disabled={processingId === pkg.id}
+                      data-testid="admin-dashboard-package-reject"
+                      aria-label={`${pkg.title} 반려`}
+                      aria-busy={processingId === pkg.id}
+                      aria-describedby={pendingPackageDescriptionIds}
+                      className="flex-1 bg-white border border-admin-border-strong text-admin-muted py-1 rounded text-[11px] hover:bg-admin-bg transition">
+                      반려
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
       )}
@@ -2206,6 +2236,11 @@ export default function AdminPage({
       {/* 상세 슬라이드 패널 */}
       {selectedPackage && (
         <div className="fixed inset-0 z-50 flex justify-end">
+          {(() => {
+            const selectedPackageSummaryId = `admin-dashboard-selected-package-summary-${selectedPackage.id}`;
+            const selectedPackageDescriptionIds = `${selectedPackageSummaryId} admin-dashboard-status`;
+            return (
+              <>
           <button
             type="button"
             aria-label="상품 상세 닫기"
@@ -2232,6 +2267,9 @@ export default function AdminPage({
             </div>
 
             <div className="px-5 py-4 space-y-4 text-admin-sm">
+              <p id={selectedPackageSummaryId} className="sr-only">
+                선택된 승인 대기 상품입니다. 상품명은 {selectedPackage.title}, 목적지는 {selectedPackage.destination || '미지정'}, 가격은 {selectedPackage.price ? `${selectedPackage.price.toLocaleString()}원` : '미지정'}, 추출 신뢰도는 {Math.round(selectedPackage.confidence * 100)}%입니다.
+              </p>
               <div className="grid grid-cols-2 gap-2">
                 {selectedPackage.destination && <div><span className="text-admin-muted">목적지</span><p className="text-admin-text-2 font-medium">{selectedPackage.destination}</p></div>}
                 {selectedPackage.duration && <div><span className="text-admin-muted">기간</span><p className="text-admin-text-2 font-medium">{selectedPackage.duration}일</p></div>}
@@ -2269,15 +2307,19 @@ export default function AdminPage({
                     type="button"
                     onClick={() => { void handleAction(selectedPackage.id, 'approve'); }}
                     disabled={processingId === selectedPackage.id}
+                    data-testid="admin-dashboard-selected-package-approve"
+                    aria-label={`${selectedPackage.title} 승인`}
                     aria-busy={processingId === selectedPackage.id}
-                    aria-describedby="admin-dashboard-status"
+                    aria-describedby={selectedPackageDescriptionIds}
                     className="flex-1 bg-brand text-white py-2 rounded text-admin-sm hover:bg-blue-700 disabled:bg-slate-300 transition">승인</button>
                   <button
                     type="button"
                     onClick={() => { void handleAction(selectedPackage.id, 'reject'); }}
                     disabled={processingId === selectedPackage.id}
+                    data-testid="admin-dashboard-selected-package-reject"
+                    aria-label={`${selectedPackage.title} 반려`}
                     aria-busy={processingId === selectedPackage.id}
-                    aria-describedby="admin-dashboard-status"
+                    aria-describedby={selectedPackageDescriptionIds}
                     className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">반려</button>
                 </>
               )}
@@ -2285,6 +2327,9 @@ export default function AdminPage({
                 className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">닫기</button>
             </div>
           </div>
+              </>
+            );
+          })()}
         </div>
       )}
     </div>
