@@ -857,6 +857,13 @@ function BookingWorkQueue({
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const activeItems = items.filter(item => item.count > 0);
   const priorityItem = activeItems[0];
+  const urgentItems = activeItems.filter(item => ['unpaid', 'prep', 'deposit', 'land'].includes(item.key));
+  const clearItemsCount = items.length - activeItems.length;
+  const queueHealthItems = [
+    { label: '활성 큐', value: `${activeItems.length}/${items.length}`, tone: activeItems.length > 0 ? 'warn' : 'good' },
+    { label: '긴급 큐', value: `${urgentItems.length}개`, tone: urgentItems.length > 0 ? 'danger' : 'good' },
+    { label: '정리됨', value: `${clearItemsCount}개`, tone: clearItemsCount === items.length ? 'good' : 'neutral' },
+  ] as const;
   const selectedQueueItem = activeKey ? items.find(item => item.key === activeKey) : undefined;
   const queueSummaryId = 'admin-booking-work-queue-summary';
   const queueLeadId = 'admin-booking-work-queue-lead';
@@ -864,7 +871,7 @@ function BookingWorkQueue({
     ? `현재 선택: ${selectedQueueItem.label} ${selectedQueueItem.count}건.`
     : '큐를 선택하면 해당 예약만 필터링됩니다.';
   const queueSummaryText = total > 0
-    ? `오늘 처리할 예약 업무가 ${total}건 있습니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
+    ? `오늘 처리할 예약 업무가 ${total}건 있습니다. 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개입니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
     : '오늘 처리할 예약 업무가 없습니다. 큐 버튼으로 각 예약 필터의 최신 상태를 확인할 수 있습니다.';
   const queueLeadText = priorityItem
     ? `우선 처리: ${priorityItem.label} ${priorityItem.count}건. ${selectedQueueSummary}`
@@ -893,6 +900,30 @@ function BookingWorkQueue({
       >
         {queueLeadText}
       </p>
+      <div
+        className="mb-3 grid grid-cols-3 gap-2"
+        data-testid="admin-booking-queue-health"
+        aria-label={`예약 큐 상태: 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개, 정리됨 ${clearItemsCount}개`}
+      >
+        {queueHealthItems.map(item => (
+          <div
+            key={item.label}
+            data-testid="admin-booking-queue-health-item"
+            className={`rounded-admin-sm border px-2.5 py-2 ${
+              item.tone === 'danger'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : item.tone === 'warn'
+                  ? 'border-amber-200 bg-amber-50 text-amber-800'
+                  : item.tone === 'good'
+                    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                    : 'border-admin-border-mid bg-admin-bg text-admin-text-2'
+            }`}
+          >
+            <p className="text-[10px] font-semibold text-current/65">{item.label}</p>
+            <p className="mt-0.5 text-[14px] font-black tabular-nums">{item.value}</p>
+          </div>
+        ))}
+      </div>
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
         {items.map(item => {
           const itemDescriptionId = `admin-booking-queue-${item.key}-description`;
