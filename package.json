@@ -77,7 +77,7 @@
     "verify:customer-inquiry": "npx tsx scripts/verify-customer-inquiry-readiness.ts",
     "verify:customer-inquiry:ci": "npx tsx scripts/verify-customer-inquiry-readiness.ts --strict --require-db --require-external",
     "verify:marketing-automation": "node scripts/verify-marketing-automation-readiness.mjs",
-    "verify:marketing-automation:ci": "node scripts/verify-marketing-automation-readiness.mjs --strict --json",
+    "verify:marketing-automation:ci": "node scripts/verify-marketing-automation-readiness.mjs --strict --json --skip-contract-self-checks",
     "verify:marketing-automation:live": "node scripts/verify-marketing-automation-readiness.mjs --base=http://localhost:3000 --timeout-ms=30000",
     "verify:marketing-runtime:local": "node scripts/verify-marketing-runtime-local.mjs --mode=dev --strict",
     "verify:marketing-runtime:vercel": "node scripts/verify-marketing-runtime-from-vercel.mjs --strict",

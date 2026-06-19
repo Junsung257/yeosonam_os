@@ -1,6 +1,7 @@
 'use client';
 
 import type { AnchorHTMLAttributes, ReactNode } from 'react';
+import { useId } from 'react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 
@@ -23,8 +24,15 @@ export default function TrackedKakaoLink({
   target = '_blank',
   rel = 'noopener noreferrer',
   referrerPolicy = 'no-referrer-when-downgrade',
+  'aria-describedby': ariaDescribedBy,
   ...props
 }: TrackedKakaoLinkProps) {
+  const kakaoDescriptionId = `${useId()}-kakao-description`;
+  const kakaoDescription = target === '_blank'
+    ? '여소남 카카오톡 채널 상담창을 새 탭으로 엽니다.'
+    : '여소남 카카오톡 채널 상담창을 엽니다.';
+  const describedBy = [ariaDescribedBy, kakaoDescriptionId].filter(Boolean).join(' ');
+
   return (
     <a
       {...props}
@@ -32,6 +40,7 @@ export default function TrackedKakaoLink({
       target={target}
       rel={rel}
       referrerPolicy={referrerPolicy}
+      aria-describedby={describedBy}
       onClick={() => {
         trackEngagement({
           event_type: ANALYTICS_EVENTS.kakaoClicked,
@@ -45,6 +54,9 @@ export default function TrackedKakaoLink({
       }}
     >
       {children}
+      <span id={kakaoDescriptionId} className="sr-only">
+        {kakaoDescription}
+      </span>
     </a>
   );
 }

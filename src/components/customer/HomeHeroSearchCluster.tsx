@@ -211,7 +211,18 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
     },
     [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset],
   );
+  const packageSearchActionId = 'home-hero-package-search-action';
+  const packageSearchSummaryId = 'home-hero-package-search-summary';
+  const groupInquiryActionId = 'home-hero-group-inquiry-action';
   const groupInquirySummaryId = 'home-hero-group-inquiry-summary';
+  const packageSearchDescriptionIds = `${packageSearchActionId} ${packageSearchSummaryId}`;
+  const groupInquiryDescriptionIds = `${groupInquiryActionId} ${groupInquirySummaryId}`;
+  const packageSearchSummary = useMemo(() => {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
+    const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
+    const budget = budgetPreset === 'any' ? '예산 미정' : budgetLabel;
+    return `${hubSlotLabel(hub)} 출발, ${when}, ${destination}, ${budget} 조건으로 패키지 목록을 엽니다.`;
+  }, [hub, monthParam, whenDisplayLabel, whereMode, whereCity, whereRegion, budgetLabel, budgetPreset]);
   const groupInquirySummary = useMemo(() => {
     const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
     const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
@@ -345,6 +356,9 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   if (!expanded) {
     return (
       <div className="space-y-4">
+        <p id={groupInquiryActionId} className="sr-only">
+          선택한 출발지, 일정, 목적지, 예산을 단체 견적 문의서에 미리 채웁니다.
+        </p>
         <p id={groupInquirySummaryId} className="sr-only">
           {groupInquirySummary}
         </p>
@@ -368,7 +382,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           <Link
             href={groupInquiryHref}
             data-testid="home-hero-group-inquiry"
-            aria-describedby={groupInquirySummaryId}
+            aria-describedby={groupInquiryDescriptionIds}
             onClick={() => trackGroupInquiryClick('home_hero_compact')}
             className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40`}
           >
@@ -388,6 +402,15 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
   return (
     <div className="space-y-4">
+      <p id={packageSearchActionId} className="sr-only">
+        선택한 조건으로 패키지 목록 페이지를 엽니다.
+      </p>
+      <p id={packageSearchSummaryId} className="sr-only">
+        {packageSearchSummary}
+      </p>
+      <p id={groupInquiryActionId} className="sr-only">
+        선택한 출발지, 일정, 목적지, 예산을 단체 견적 문의서에 미리 채웁니다.
+      </p>
       <p id={groupInquirySummaryId} className="sr-only">
         {groupInquirySummary}
       </p>
@@ -428,6 +451,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
 
         <Link
           href={resultsHref}
+          aria-describedby={packageSearchDescriptionIds}
           onClick={() => trackPackageSearchClick('home_hero_sentence_search')}
           className="mt-4 flex w-full items-center justify-center rounded-xl bg-brand text-white text-[15px] font-bold py-3.5 shadow-md shadow-brand/25 hover:bg-brand-dark transition-colors card-touch"
         >
@@ -448,7 +472,7 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         <Link
           href={groupInquiryHref}
           data-testid="home-hero-group-inquiry"
-          aria-describedby={groupInquirySummaryId}
+          aria-describedby={groupInquiryDescriptionIds}
           onClick={() => trackGroupInquiryClick('home_hero_expanded')}
           className={`${pillBase} bg-white text-text-primary border border-[#E5E7EB] hover:border-brand/40 hover:bg-[#F8FAFF]`}
         >

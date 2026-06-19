@@ -146,6 +146,11 @@ export default function GroupLandingClient() {
   const [privacyConsent, setPrivacyConsent] = useState(false);
   const [kakaoOpening, setKakaoOpening] = useState(false);
   const [kakaoStatus, setKakaoStatus] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
+  const kakaoActionDescriptionId = 'group-landing-kakao-action-description';
+  const kakaoStatusId = 'group-landing-kakao-status';
+  const kakaoDescriptionIds = kakaoStatus
+    ? `${kakaoActionDescriptionId} ${kakaoStatusId}`
+    : kakaoActionDescriptionId;
   const submitErrorRef = useRef<HTMLDivElement | null>(null);
   const kakaoStatusRef = useRef<HTMLDivElement | null>(null);
 
@@ -691,6 +696,9 @@ export default function GroupLandingClient() {
 
           {/* 제출 버튼 */}
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+            <p id={kakaoActionDescriptionId} className="sr-only">
+              현재 입력한 단체 여행 조건을 상담 문구로 정리해 카카오톡 상담창을 엽니다.
+            </p>
             <button
               type="submit"
               data-testid="group-landing-submit"
@@ -707,7 +715,7 @@ export default function GroupLandingClient() {
               onClick={() => void handleKakaoConsult()}
               disabled={kakaoOpening}
               aria-busy={kakaoOpening}
-              aria-describedby={kakaoStatus ? 'group-landing-kakao-status' : undefined}
+              aria-describedby={kakaoDescriptionIds}
               className="w-full sm:w-auto bg-yellow-400 hover:bg-yellow-300 text-slate-900 font-bold py-4 px-6 rounded-2xl text-base transition"
             >
               {kakaoOpening ? '카톡 여는 중...' : '카톡 상담'}
@@ -717,7 +725,7 @@ export default function GroupLandingClient() {
           {kakaoStatus && (
             <div
               ref={kakaoStatusRef}
-              id="group-landing-kakao-status"
+              id={kakaoStatusId}
               data-testid="group-landing-kakao-status"
               role={kakaoStatus.tone === 'error' ? 'alert' : 'status'}
               aria-live={kakaoStatus.tone === 'error' ? 'assertive' : 'polite'}

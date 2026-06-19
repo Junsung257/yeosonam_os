@@ -1279,7 +1279,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 리뷰 1줄 요약 strip (PR-F, cron review-digest 산출물) ═══ */}
       <div ref={el => { sectionRefs.current['후기'] = el; }} data-section="후기" className="scroll-mt-[108px]">
-        <ReviewDigestStrip packageId={pkg.id} />
+        <ReviewDigestStrip
+          packageId={pkg.id}
+          productTitle={selectedProductName}
+          internalCode={pkg.products?.internal_code || ((pkg as unknown as Record<string, unknown>).internal_code as string | undefined)}
+        />
       </div>
 
       {/* ═══ 가격 카드 (플로팅) ═══ */}

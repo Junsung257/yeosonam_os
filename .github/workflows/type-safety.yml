@@ -30,6 +30,8 @@ jobs:
       - name: Run TypeScript strict check
         id: tsc
         continue-on-error: true
+        env:
+          NODE_OPTIONS: --max-old-space-size=8192
         run: |
           set -o pipefail
           npx tsc --strict --noEmit 2>&1 | tee tsc-strict-output.txt
@@ -43,8 +45,12 @@ jobs:
         id: parse
         if: always()
         run: |
-          TSC_ERRORS=$(grep -c "error TS" tsc-strict-output.txt || echo "0")
-          echo "tsc_errors=$TSC_ERRORS" >> "$GITHUB_OUTPUT"
+          if [[ -f tsc-strict-output.txt ]]; then
+            TSC_ERRORS=$(grep -c "error TS" tsc-strict-output.txt || true)
+          else
+            TSC_ERRORS=0
+          fi
+          echo "tsc_errors=${TSC_ERRORS:-0}" >> "$GITHUB_OUTPUT"
 
       - name: Post results to PR
         if: github.event_name == 'pull_request'
