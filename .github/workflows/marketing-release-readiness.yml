@@ -92,9 +92,23 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p .tmp
-          npx vercel link --yes --project "$VERCEL_PROJECT_NAME" --scope "$VERCEL_SCOPE" --token "$VERCEL_TOKEN"
-          npx vercel env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN" --scope "$VERCEL_SCOPE"
-          node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+          link_args=(link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN")
+          pull_args=(env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN")
+          if [[ -n "${VERCEL_SCOPE:-}" ]]; then
+            link_args+=(--scope "$VERCEL_SCOPE")
+            pull_args+=(--scope "$VERCEL_SCOPE")
+          fi
+
+          if npx vercel "${link_args[@]}" && npx vercel "${pull_args[@]}"; then
+            node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+            echo "VERCEL_ENV_PULL_STATUS=success" >> "$GITHUB_ENV"
+          elif [[ -n "${VERCEL_SCOPE:-}" ]] && npx vercel link --yes --project "$VERCEL_PROJECT_NAME" --token "$VERCEL_TOKEN" && npx vercel env pull .tmp/vercel-readiness.env --yes --environment=production --token "$VERCEL_TOKEN"; then
+            node scripts/export-env-file-to-github-env.mjs .tmp/vercel-readiness.env --json
+            echo "VERCEL_ENV_PULL_STATUS=success_without_scope" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Vercel env pull failed; continuing with workflow-provided readiness environment variables."
+            echo "VERCEL_ENV_PULL_STATUS=failed" >> "$GITHUB_ENV"
+          fi
 
       - name: Run marketing release readiness
         run: |

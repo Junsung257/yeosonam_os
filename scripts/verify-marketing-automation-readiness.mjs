@@ -921,6 +921,9 @@ async function staticChecks() {
     'actions/upload-artifact@v4',
     'OPEN_CHECK_BLOG_AUDIT_LIMIT',
     'OPEN_CHECK_BLOG_AUDIT_HARD_TIMEOUT_MS',
+    'success_without_scope',
+    'Vercel env pull failed; continuing with workflow-provided readiness environment variables.',
+    'VERCEL_ENV_PULL_STATUS=failed',
   ]);
   requireIncludes('ci:local-release-readiness-wired', '.github/workflows/local-release-readiness.yml', [
     'Local Release Readiness',
@@ -986,6 +989,9 @@ async function staticChecks() {
     'LOCAL_RELEASE_COMMAND_TIMEOUT_KILL_GRACE_MS',
     '--command-timeout-ms="${LOCAL_RELEASE_COMMAND_TIMEOUT_MS}"',
     '--command-timeout-kill-grace-ms="${LOCAL_RELEASE_COMMAND_TIMEOUT_KILL_GRACE_MS}"',
+    'success_without_scope',
+    'Vercel env pull failed; continuing with workflow-provided readiness environment variables.',
+    'VERCEL_ENV_PULL_STATUS=failed',
   ]);
   requireIncludes('ci:marketing-release-readiness-wired', '.github/workflows/marketing-release-readiness.yml', [
     'Marketing Release Readiness',
@@ -1048,6 +1054,9 @@ async function staticChecks() {
     'GOOGLE_ADS_DEVELOPER_TOKEN',
     'SLACK_WEBHOOK_URL',
     'CRON_SECRET',
+    'success_without_scope',
+    'Vercel env pull failed; continuing with workflow-provided readiness environment variables.',
+    'VERCEL_ENV_PULL_STATUS=failed',
   ]);
   requireIncludes('ci:full-project-readiness-wired', '.github/workflows/full-readiness.yml', [
     'Full Project Readiness',
@@ -1106,6 +1115,9 @@ async function staticChecks() {
     'GOOGLE_ADS_DEVELOPER_TOKEN',
     'SLACK_WEBHOOK_URL',
     'CRON_SECRET',
+    'success_without_scope',
+    'Vercel env pull failed; continuing with workflow-provided readiness environment variables.',
+    'VERCEL_ENV_PULL_STATUS=failed',
   ]);
   requireIncludes('script:runtime-env-workflow-wiring', 'scripts/verify-runtime-env-workflow-wiring.mjs', [
     'runtime-env-readiness.json',
