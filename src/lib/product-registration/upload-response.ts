@@ -9,6 +9,7 @@ import { calculateProductRegistrationTrustScore } from '@/lib/product-registrati
 import {
   buildLearningEngineEvidenceFromRuntime,
   scoreCentralLearningEngine,
+  summarizeLearningRuntimeEventEvidence,
 } from '@/lib/product-registration/learning-engine-scorecard';
 import type { ImprovementLedgerEvent } from '@/lib/product-registration/improvement-ledger';
 import { mineProductRegistrationPatterns } from '@/lib/product-registration/pattern-mining';
@@ -167,18 +168,25 @@ export async function buildUploadResponsePayload(input: {
     minFailedOrReviewNeeded: 10,
     minRepeatedBlockers: 5,
   });
+  const runtimeEventEvidence = summarizeLearningRuntimeEventEvidence(improvementEvents);
+  const improvementLedgerReady = improvementEvents.length > 0
+    && improvementEventsSaved >= improvementEvents.length
+    && !input.improvementEventsSaveError;
   const learningScore = scoreCentralLearningEngine(buildLearningEngineEvidenceFromRuntime({
     microEventsCaptured: improvementEvents.length,
+    microEventsPersisted: improvementEventsSaved,
     macroCandidatesGenerated: macroMining.candidates.length,
     promotionReadyCandidates: macroMining.candidates.filter(candidate => candidate.promotionReady).length,
     hasAutoQARunner: true,
     hasRenderAuditors: true,
-    hasImprovementLedger: improvementEvents.length === 0
-      ? !input.improvementEventsSaveError
-      : improvementEventsSaved >= improvementEvents.length && !input.improvementEventsSaveError,
+    hasImprovementLedger: improvementLedgerReady,
     hasPatternMining: true,
     hasPromotionWorkflow: true,
     routeBoundaryClean: true,
+    ...runtimeEventEvidence,
+    mobileA4AuditVerified: (runtimeEventEvidence.renderAuditPassEvents ?? 0) > 0,
+    priceAndDateRegressionVerified: false,
+    liveSampleVerificationReady: false,
     fullRegressionVerified: false,
     operatorReportAvailable: true,
   }));

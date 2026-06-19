@@ -47,6 +47,7 @@ export type CentralLearningEngineScore = {
 
 export type LearningEngineRuntimeEvidence = {
   microEventsCaptured: number;
+  microEventsPersisted?: number;
   macroCandidatesGenerated: number;
   promotionReadyCandidates: number;
   hasAutoQARunner: boolean;
@@ -56,7 +57,24 @@ export type LearningEngineRuntimeEvidence = {
   hasPromotionWorkflow?: boolean;
   routeBoundaryClean: boolean;
   fullRegressionVerified: boolean;
+  sourceEvidenceEvents?: number;
+  comparedFieldEvents?: number;
+  renderAuditPassEvents?: number;
+  distinctRawTextHashes?: number;
+  distinctDetectedFormats?: number;
+  mobileA4AuditVerified?: boolean;
+  priceAndDateRegressionVerified?: boolean;
+  liveSampleVerificationReady?: boolean;
   operatorReportAvailable: boolean;
+};
+
+type LearningRuntimeEventEvidence = {
+  rawTextHash?: string | null;
+  detectedFormat?: string | null;
+  evidenceSpans?: unknown[];
+  comparedFields?: unknown[];
+  packagesAudit?: { status?: string | null } | null;
+  a4Audit?: { status?: string | null } | null;
 };
 
 function statusForScore(score: number): LearningEngineScoreStatus {
@@ -141,24 +159,73 @@ export function buildLearningEngineEvidenceFromRuntime(
   micro: MicroLearningEngineEvidence;
   macro: MacroLearningEngineEvidence;
 } {
+  const microEventsPersisted = runtime.microEventsPersisted ?? runtime.microEventsCaptured;
+  const durableLedgerReady = runtime.hasImprovementLedger
+    && runtime.microEventsCaptured > 0
+    && microEventsPersisted >= runtime.microEventsCaptured;
+  const sourceComparisonEvidenceReady = (runtime.sourceEvidenceEvents ?? 0) > 0
+    || (runtime.comparedFieldEvents ?? 0) > 0;
+  const renderEvidenceReady = (runtime.renderAuditPassEvents ?? 0) > 0
+    && runtime.mobileA4AuditVerified === true;
+  const distinctRawTextHashes = runtime.distinctRawTextHashes ?? 0;
+  const distinctDetectedFormats = runtime.distinctDetectedFormats ?? 0;
+  const regressionEvidenceReady = runtime.fullRegressionVerified
+    && runtime.mobileA4AuditVerified === true
+    && runtime.priceAndDateRegressionVerified === true
+    && runtime.liveSampleVerificationReady === true;
+
   return {
     micro: {
       triggerCoverageReady: runtime.hasAutoQARunner && runtime.routeBoundaryClean,
-      sourceComparisonReady: runtime.hasAutoQARunner && runtime.hasImprovementLedger,
+      sourceComparisonReady: runtime.hasAutoQARunner && durableLedgerReady && sourceComparisonEvidenceReady,
       autoRepairDisciplineReady: runtime.hasAutoQARunner,
-      customerRenderAuditReady: runtime.hasRenderAuditors,
-      improvementLedgerReady: runtime.hasImprovementLedger && runtime.microEventsCaptured > 0,
-      safetyGatesReady: runtime.fullRegressionVerified,
+      customerRenderAuditReady: runtime.hasRenderAuditors && renderEvidenceReady,
+      improvementLedgerReady: durableLedgerReady,
+      safetyGatesReady: regressionEvidenceReady,
     },
     macro: {
-      ledgerCoverageReady: runtime.microEventsCaptured >= 50,
-      patternMiningReady: runtime.hasPatternMining && runtime.macroCandidatesGenerated > 0,
+      ledgerCoverageReady: durableLedgerReady
+        && runtime.microEventsCaptured >= 50
+        && distinctRawTextHashes >= 3,
+      patternMiningReady: runtime.hasPatternMining
+        && runtime.macroCandidatesGenerated > 0
+        && distinctDetectedFormats > 0,
       canonicalizationReady: runtime.hasPatternMining,
       promotionGateReady: Boolean(runtime.hasPromotionWorkflow)
         && runtime.promotionReadyCandidates > 0
-        && runtime.fullRegressionVerified,
-      regressionEvidenceReady: runtime.fullRegressionVerified,
+        && distinctRawTextHashes >= 3
+        && regressionEvidenceReady,
+      regressionEvidenceReady,
       operatorVisibilityReady: runtime.operatorReportAvailable,
     },
+  };
+}
+
+export function summarizeLearningRuntimeEventEvidence(
+  events: LearningRuntimeEventEvidence[],
+): Pick<
+  LearningEngineRuntimeEvidence,
+  | 'sourceEvidenceEvents'
+  | 'comparedFieldEvents'
+  | 'renderAuditPassEvents'
+  | 'distinctRawTextHashes'
+  | 'distinctDetectedFormats'
+> {
+  return {
+    sourceEvidenceEvents: events.filter(event => (event.evidenceSpans?.length ?? 0) > 0).length,
+    comparedFieldEvents: events.filter(event => (event.comparedFields?.length ?? 0) > 0).length,
+    renderAuditPassEvents: events.filter(event =>
+      event.packagesAudit?.status === 'pass' && event.a4Audit?.status === 'pass',
+    ).length,
+    distinctRawTextHashes: new Set(
+      events
+        .map(event => event.rawTextHash?.trim())
+        .filter((hash): hash is string => Boolean(hash)),
+    ).size,
+    distinctDetectedFormats: new Set(
+      events
+        .map(event => event.detectedFormat?.trim())
+        .filter((format): format is string => Boolean(format)),
+    ).size,
   };
 }

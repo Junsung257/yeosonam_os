@@ -1,6 +1,6 @@
 # Product Registration Current SSOT
 
-Last updated: 2026-06-12
+Last updated: 2026-06-20
 
 This is the current operating contract for supplier upload registration, customer mobile landing, and A4 poster readiness.
 
@@ -176,6 +176,8 @@ Important implementation truth:
 - Fixture candidate scaffolds may be generated with `--scaffold`, but they are review artifacts only. They must not be treated as golden corpus fixtures until the safe excerpt is replaced by the full reviewed supplier source and exact expected customer output is filled.
 - Any repeated failure must become a fixture candidate, regression test, or explicit error-registry entry before it can be called resolved.
 - The final customer-ready claim still requires actual mobile landing and A4 proof according to `docs/product-mobile-landing-quality-runbook.md`.
+- The learning-engine score must not become production-ready from event counts alone. It also requires persisted ledger parity, source evidence or compared-field evidence, passing `/packages` and A4 render audits, at least three independent raw-source hashes for macro promotion, full regression proof, price/date regression proof, and live-sample/mobile-A4 verification proof.
+- A score below production-ready is not a failed engine. It means the engine may collect evidence, propose candidates, and run bounded repairs, but it must not claim autonomous completion or promotion safety.
 
 Therefore, when a new supplier shape fails, the correct action is not to write another high-level plan. The agent must compare the failure against this SSOT, add or update the smallest durable artifact, patch the deterministic engine, and run the required verification.
 
