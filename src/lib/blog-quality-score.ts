@@ -83,6 +83,11 @@ const PENALTY: Record<BlogQualityIssueSeverity, number> = {
 };
 
 const CRITICAL_QUALITY_GATES = new Set([
+  'fact_integrity',
+  'answer_extractability',
+  'source_coverage',
+  'commerce_fit',
+  'distribution_integrity',
   'render_integrity',
   'structure_integrity',
   'intent_quality',

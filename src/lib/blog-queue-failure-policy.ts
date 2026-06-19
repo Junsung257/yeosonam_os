@@ -1,6 +1,11 @@
 type BlogQueueFailureCode =
   | 'duplicate_content'
   | 'context_missing'
+  | 'product_data_missing'
+  | 'fact_integrity'
+  | 'answer_extractability'
+  | 'source_coverage'
+  | 'distribution_integrity'
   | 'keyword_density'
   | 'structure_integrity'
   | 'intent_quality'
@@ -21,6 +26,11 @@ export interface BlogQueueFailureDecision {
 const SELF_HEAL_BLOCKED_CODES = new Set<BlogQueueFailureCode>([
   'duplicate_content',
   'context_missing',
+  'product_data_missing',
+  'fact_integrity',
+  'answer_extractability',
+  'source_coverage',
+  'distribution_integrity',
   'keyword_density',
   'structure_integrity',
   'intent_quality',
@@ -50,6 +60,26 @@ export function classifyBlogQueueFailure(reason: string, qa?: unknown): BlogQueu
 
   if (/컨텍스트\s*부족|관광지\+상품\s*0|context\s+missing|insufficient\s+context/i.test(text)) {
     return { code: 'context_missing', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
+  if (/needs_product_data|missing_product_id|missing_price|missing_destination|missing_title/i.test(text)) {
+    return { code: 'product_data_missing', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'fact_integrity') || /fact_integrity|unsupported_money_claim|unsupported_product_claim/i.test(text)) {
+    return { code: 'fact_integrity', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'answer_extractability') || /answer_extractability|answer extractability/i.test(text)) {
+    return { code: 'answer_extractability', retryable: true, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'source_coverage') || /source_coverage|needs_source_review|trusted source/i.test(text)) {
+    return { code: 'source_coverage', retryable: false, selfHealAllowed: false, skipped: false };
+  }
+
+  if (hasFailedGate(qa, 'distribution_integrity') || /distribution_integrity|full blog body/i.test(text)) {
+    return { code: 'distribution_integrity', retryable: false, selfHealAllowed: false, skipped: true };
   }
 
   if (/linked_blog_id|orphan_linked_blog|invalid_linked_draft|linked draft/i.test(text)) {

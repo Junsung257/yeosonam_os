@@ -43,6 +43,13 @@ export interface PublishDistributionOptions {
   skipStatusUpdate?: boolean;
 }
 
+function isLikelyFullBlogBody(text: string): boolean {
+  const headingCount = (text.match(/^#{1,3}\s+/gm) ?? []).length;
+  const faqCount = (text.match(/\bQ\.|자주 묻는 질문|FAQ/gi) ?? []).length;
+  const tableCount = (text.match(/^\|.+\|$/gm) ?? []).length;
+  return text.length > 1400 && (headingCount >= 3 || faqCount >= 2 || tableCount >= 3);
+}
+
 export async function publishDistribution(
   row: ScheduledDistributionRow,
   options: PublishDistributionOptions = {},
@@ -172,6 +179,12 @@ async function publishDistributionProvider(
     if (!text.trim()) {
       return { status: 'failed', error: 'Threads body is empty' };
     }
+    if (isLikelyFullBlogBody(text)) {
+      return {
+        status: 'failed',
+        error: 'distribution_integrity: full blog body must not be republished to external social channels; use teaser plus canonical URL',
+      };
+    }
 
     try {
       const gate = options.precomputedGate ?? await evaluateThreadsDistribution({
@@ -281,6 +294,15 @@ async function publishDistributionProvider(
 
     try {
       const queuePayload = (row.payload ?? {}) as Record<string, unknown>;
+      const proposedBody = typeof queuePayload.blog_html === 'string'
+        ? queuePayload.blog_html
+        : (typeof queuePayload.body === 'string' ? queuePayload.body : '');
+      if (isLikelyFullBlogBody(proposedBody)) {
+        return {
+          status: 'failed',
+          error: 'distribution_integrity: blog_body distribution accepts queue inputs, not duplicated full article bodies',
+        };
+      }
       await supabaseAdmin.from('blog_topic_queue').insert({
         tenant_id: row.tenant_id,
         topic: (queuePayload.topic as string) ?? '자동 생성 블로그',

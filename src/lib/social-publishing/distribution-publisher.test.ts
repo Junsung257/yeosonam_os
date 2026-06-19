@@ -130,4 +130,27 @@ describe('publishDistribution', () => {
       error_message: 'provider error',
     }));
   });
+
+  it('blocks full blog body republication to Threads', async () => {
+    const fullBlogBody = [
+      '# 다낭 패키지',
+      '',
+      '본문 '.repeat(500),
+      '## 가격과 출발 조건',
+      '내용',
+      '## 포함사항',
+      '내용',
+      '## 자주 묻는 질문',
+      'Q. 가격은 얼마인가요?',
+      'Q. 바로 예약해도 되나요?',
+    ].join('\n');
+
+    const result = await publishDistribution(row({
+      payload: { main: fullBlogBody },
+    }));
+
+    expect(result.status).toBe('failed');
+    expect(result.error).toContain('distribution_integrity');
+    expect(vi.mocked(publishToThreads)).not.toHaveBeenCalled();
+  });
 });
