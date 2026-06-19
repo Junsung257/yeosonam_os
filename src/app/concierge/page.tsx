@@ -686,6 +686,10 @@ export default function ConciergePage() {
   const resultBundleSummaryText = resultHandoffProductNames.length > 0
     ? `상위 추천 ${resultHandoffProductNames.length}개 상품을 상담 조건과 함께 전달합니다. 선택 상품은 ${resultHandoffProductNames.join(', ')}입니다.`
     : resultSummaryText;
+  const resultBundleHandoffItems = [
+    ...summaryItems,
+    resultHandoffProductNames.length > 0 ? { label: '상품', value: `${resultHandoffProductNames.length}개` } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item?.value));
   const resultBundleGroupInquiryHref = buildGroupInquiryHandoffHref({
     source: 'concierge_results_bundle',
     intent: intentSummary.intent ?? undefined,
@@ -920,6 +924,22 @@ export default function ConciergePage() {
                     <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-secondary">
                       {resultHandoffProductNames.slice(0, 3).join(' · ')} 조건을 상담원에게 바로 넘깁니다.
                     </p>
+                    {resultBundleHandoffItems.length > 0 && (
+                      <div
+                        className="mt-2 flex flex-wrap gap-1.5"
+                        data-testid="concierge-result-bundle-handoff-summary"
+                      >
+                        {resultBundleHandoffItems.slice(0, 5).map((item) => (
+                          <span
+                            key={`${item.label}-${item.value}`}
+                            className="inline-flex max-w-full items-center gap-1 rounded-full bg-[#F8FAFC] px-2 py-1 text-[11px] font-bold text-text-secondary ring-1 ring-[#E5ECF3]"
+                          >
+                            <span className="text-text-tertiary">{item.label}</span>
+                            <span className="max-w-[8rem] truncate text-text-primary">{item.value}</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
                     <button
