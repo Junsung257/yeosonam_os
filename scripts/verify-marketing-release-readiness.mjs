@@ -111,7 +111,7 @@ function run(id, command, args, options = {}) {
   const startedAt = process.hrtime.bigint();
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
-    env: process.env,
+    env: { ...process.env, ...(options.env || {}) },
     encoding: 'utf8',
     maxBuffer: 50 * 1024 * 1024,
     windowsHide: true,
@@ -235,10 +235,19 @@ if (!skipRuntime) {
 }
 
 if (!skipBuild) {
+  const isolatedRuntimeBuildEnv = {
+    // This release gate may start a local dev probe first. That probe uses
+    // NEXT_DIST_DIR=.next-dev-${port}, so it cannot rewrite the production
+    // .next build that the following checks inspect. Keep the normal guards
+    // active everywhere else, but avoid blocking this CI path on that isolated
+    // probe process if the OS leaves a child around for a few seconds.
+    NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER: '1',
+    BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER: '1',
+  };
   const [buildCommand, buildArgs] = npmRun('build');
-  checks.push(run('build', buildCommand, buildArgs));
+  checks.push(run('build', buildCommand, buildArgs, { env: isolatedRuntimeBuildEnv }));
   const [bundleCommand, bundleArgs] = npmRun('check:bundle');
-  checks.push(run('bundle-budget', bundleCommand, bundleArgs));
+  checks.push(run('bundle-budget', bundleCommand, bundleArgs, { env: isolatedRuntimeBuildEnv }));
 }
 
 const failed = checks.filter((check) => check.status === 'fail').length;
