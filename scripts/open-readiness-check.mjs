@@ -460,13 +460,18 @@ function checkVercelLogs(level) {
     { timeout: 120000 },
   );
   const output = `${result.stdout || ''}\n${result.stderr || ''}`;
-  if (!result.ok && /login|auth|token|unauthorized|forbidden|No existing credentials/i.test(output || result.message)) {
+  if (
+    !result.ok &&
+    /login|auth|token|unauthorized|forbidden|No existing credentials|do not have access|specified account|scope-not-accessible/i.test(
+      output || result.message,
+    )
+  ) {
     addCheck(`vercel:${level}-logs`, 'blocked', {
       ms: result.ms,
       target: VERCEL_LOG_TARGET,
       exitStatus: result.status ?? null,
       signal: result.signal ?? '',
-      notes: 'Vercel token unavailable; skipping recent log verification',
+      notes: 'Vercel token or scope unavailable; skipping recent log verification',
     });
     return;
   }

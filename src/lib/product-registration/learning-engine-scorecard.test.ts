@@ -4,6 +4,7 @@ import {
   scoreCentralLearningEngine,
   scoreMacroLearningEngine,
   scoreMicroLearningEngine,
+  summarizeLearningRuntimeEventEvidence,
   type MacroLearningEngineEvidence,
   type MicroLearningEngineEvidence,
 } from './learning-engine-scorecard';
@@ -65,6 +66,7 @@ describe('learning engine scorecard', () => {
   it('builds score evidence from runtime capabilities and ledger counts', () => {
     const evidence = buildLearningEngineEvidenceFromRuntime({
       microEventsCaptured: 50,
+      microEventsPersisted: 50,
       macroCandidatesGenerated: 3,
       promotionReadyCandidates: 1,
       hasAutoQARunner: true,
@@ -73,6 +75,14 @@ describe('learning engine scorecard', () => {
       hasPatternMining: true,
       hasPromotionWorkflow: true,
       routeBoundaryClean: true,
+      sourceEvidenceEvents: 10,
+      comparedFieldEvents: 50,
+      renderAuditPassEvents: 50,
+      distinctRawTextHashes: 50,
+      distinctDetectedFormats: 2,
+      mobileA4AuditVerified: true,
+      priceAndDateRegressionVerified: true,
+      liveSampleVerificationReady: true,
       fullRegressionVerified: true,
       operatorReportAvailable: true,
     });
@@ -86,6 +96,7 @@ describe('learning engine scorecard', () => {
   it('does not grant macro promotion points without a promotion workflow', () => {
     const evidence = buildLearningEngineEvidenceFromRuntime({
       microEventsCaptured: 50,
+      microEventsPersisted: 50,
       macroCandidatesGenerated: 3,
       promotionReadyCandidates: 1,
       hasAutoQARunner: true,
@@ -94,6 +105,14 @@ describe('learning engine scorecard', () => {
       hasPatternMining: true,
       hasPromotionWorkflow: false,
       routeBoundaryClean: true,
+      sourceEvidenceEvents: 10,
+      comparedFieldEvents: 50,
+      renderAuditPassEvents: 50,
+      distinctRawTextHashes: 50,
+      distinctDetectedFormats: 2,
+      mobileA4AuditVerified: true,
+      priceAndDateRegressionVerified: true,
+      liveSampleVerificationReady: true,
       fullRegressionVerified: true,
       operatorReportAvailable: true,
     });
@@ -104,5 +123,60 @@ describe('learning engine scorecard', () => {
     expect(score.blockers).toEqual(expect.arrayContaining([
       expect.stringContaining('macro_promotion_gate'),
     ]));
+  });
+
+  it('does not treat event counts alone as production-ready learning evidence', () => {
+    const evidence = buildLearningEngineEvidenceFromRuntime({
+      microEventsCaptured: 50,
+      microEventsPersisted: 50,
+      macroCandidatesGenerated: 3,
+      promotionReadyCandidates: 1,
+      hasAutoQARunner: true,
+      hasRenderAuditors: true,
+      hasImprovementLedger: true,
+      hasPatternMining: true,
+      hasPromotionWorkflow: true,
+      routeBoundaryClean: true,
+      fullRegressionVerified: true,
+      operatorReportAvailable: true,
+    });
+    const score = scoreCentralLearningEngine(evidence);
+
+    expect(score.productionReady).toBe(false);
+    expect(score.blockers).toEqual(expect.arrayContaining([
+      expect.stringContaining('micro_source_compare'),
+      expect.stringContaining('micro_render_audit'),
+      expect.stringContaining('macro_ledger_coverage'),
+      expect.stringContaining('macro_regression_evidence'),
+    ]));
+  });
+
+  it('summarizes durable source and render evidence from improvement events', () => {
+    const summary = summarizeLearningRuntimeEventEvidence([
+      {
+        rawTextHash: 'hash-1',
+        detectedFormat: 'weekday_table',
+        evidenceSpans: [{ field: 'price' }],
+        comparedFields: ['price_dates'],
+        packagesAudit: { status: 'pass' },
+        a4Audit: { status: 'pass' },
+      },
+      {
+        rawTextHash: 'hash-2',
+        detectedFormat: 'weekday_table',
+        evidenceSpans: [],
+        comparedFields: ['itinerary'],
+        packagesAudit: { status: 'fail' },
+        a4Audit: { status: 'pass' },
+      },
+    ]);
+
+    expect(summary).toEqual({
+      sourceEvidenceEvents: 1,
+      comparedFieldEvents: 2,
+      renderAuditPassEvents: 1,
+      distinctRawTextHashes: 2,
+      distinctDetectedFormats: 1,
+    });
   });
 });
