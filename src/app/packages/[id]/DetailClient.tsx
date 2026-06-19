@@ -965,9 +965,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const stickyReservationLabel = selectedDate
     ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
     : '예약 문의';
+  const stickyNextActionText = detailHandoffMissingLabels.length > 0
+    ? `${detailHandoffMissingLabels[0]} 조건을 확인하면 상담 전달이 더 정확해집니다.`
+    : selectedDate
+      ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 출발 조건으로 예약 문의를 진행하세요.`
+      : `${firstScreenDepartureLabel} 기준으로 카톡 상담 또는 예약 문의를 진행하세요.`;
   const stickyCtaRegionDescriptionText = [
     '상품 상세 하단 고정 상담 영역입니다.',
     `현재 표시 가격은 ${stickyPriceSummaryText}입니다.`,
+    stickyNextActionText,
     '카카오톡 상담, 단체 견적, 예약 문의 순서로 바로 이동할 수 있습니다.',
     detailCtaSummaryText,
   ].join(' ');
@@ -2633,6 +2639,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           );
         })()}
         <div className="max-w-lg md:max-w-3xl mx-auto px-4 md:px-6 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
+          <p
+            data-testid="package-detail-sticky-next-action"
+            className="mb-2 rounded-2xl border border-brand/15 bg-brand-light px-3 py-2 text-[12px] font-extrabold leading-5 text-brand"
+          >
+            {stickyNextActionText}
+          </p>
           {stickyHandoffItems.length > 0 && (
             <div
               className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-100 bg-slate-50 px-2.5 py-2 no-scrollbar"
