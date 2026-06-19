@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent a
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Phone } from 'lucide-react';
+import { Phone, Search } from 'lucide-react';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -554,6 +554,27 @@ export default function PackagesClient() {
     : `모바일 적용 조건 없음. 결과 ${filteredPackages.length}개.`;
   const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다. ${primaryFilterReadinessText}`;
   const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
+  const packageEmptyStateSummaryId = 'packages-empty-state-summary';
+  const emptyStateAppliedFilterItems = filterSummaryItems
+    .filter((item) => item.label !== '결과')
+    .slice(0, 5);
+  const zeroResultRelaxTargets = [
+    month ? '출발월' : null,
+    selectedIntentInfo ? '여행 목적' : null,
+    handoffBudget ? '예산' : null,
+    activeFilter !== FILTER_OPTIONS[0] ? '지역' : null,
+    hub !== DEFAULT_DEPARTURE_HUB ? '출발지' : null,
+    q ? '검색어' : null,
+    category ? '테마' : null,
+    urgency ? '상태' : null,
+  ].filter((item): item is string => Boolean(item));
+  const packageZeroResultRecoveryText = zeroResultRelaxTargets.length > 0
+    ? `먼저 ${zeroResultRelaxTargets.slice(0, 3).join(', ')} 조건을 넓히면 더 많은 상품을 볼 수 있습니다.`
+    : '조건을 조금 더 알려주시면 상담에서 맞는 상품을 바로 찾아드릴 수 있습니다.';
+  const packageEmptyStateSummaryText = emptyStateAppliedFilterItems.length > 0
+    ? `조건에 맞는 상품이 없습니다. 적용 조건: ${emptyStateAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${packageZeroResultRecoveryText}`
+    : `조건에 맞는 상품이 없습니다. ${packageZeroResultRecoveryText}`;
+  const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
 
   useEffect(() => {
     for (const pkg of visiblePackages) {
@@ -1092,14 +1113,37 @@ export default function PackagesClient() {
             </>
           ) : (
             <div className="flex flex-col items-center gap-4 py-16 px-6">
-              <svg className="w-14 h-14 text-slate-200" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 15.803 7.5 7.5 0 0016.803 15.803z" />
-              </svg>
+              <Search className="h-14 w-14 text-slate-200" aria-hidden="true" strokeWidth={1.4} />
               <div className="text-center space-y-1">
                 <p className="text-[15px] font-semibold text-text-primary">
                   {activeFilter !== '전체' ? `'${activeFilter}' 상품이 없습니다` : '조건에 맞는 상품이 없습니다'}
                 </p>
                 <p className="text-[13px] text-text-secondary">필터를 초기화하거나 직접 문의해 보세요</p>
+              </div>
+              <div
+                id={packageEmptyStateSummaryId}
+                data-testid="packages-empty-state-summary"
+                aria-label={packageEmptyStateSummaryText}
+                className="w-full max-w-md rounded-lg border border-[#E5E7EB] bg-white p-3 text-left"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[13px] font-extrabold text-text-primary">적용 조건</p>
+                  <span className="rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-secondary">
+                    결과 0개
+                  </span>
+                </div>
+                {emptyStateAppliedFilterItems.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {emptyStateAppliedFilterItems.map((item) => (
+                      <span key={`${item.label}-${item.value}`} className="rounded-full bg-brand-light px-2.5 py-1 text-[12px] font-bold text-brand">
+                        {item.label} {item.value}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <p className="mt-3 text-[12px] font-semibold leading-relaxed text-text-secondary">
+                  {packageZeroResultRecoveryText}
+                </p>
               </div>
               <div className="flex items-center gap-2 mt-1">
                 {hasActivePackageFilters && (
@@ -1114,10 +1158,11 @@ export default function PackagesClient() {
                 )}
                 <Link
                   href={groupInquiryHref}
-                  aria-describedby={packageResultSummaryId}
+                  data-testid="packages-empty-state-group-inquiry"
+                  aria-describedby={emptyStateInquiryDescriptionIds}
                   className="px-4 py-2 text-[13px] font-medium text-white bg-brand rounded-full hover:bg-brand-dark transition"
                 >
-                  직접 문의
+                  조건 유지하고 상담
                 </Link>
               </div>
             </div>

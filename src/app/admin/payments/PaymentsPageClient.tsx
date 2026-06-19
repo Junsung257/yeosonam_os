@@ -133,6 +133,18 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
     const bal = getBalance(b);
     return bal === tx.amount && nameSim(b.customers?.name, tx.counterparty_name) >= 0.7;
   }, [tx]);
+  const getCandidateMatchReason = useCallback((b: BookingFull) => {
+    const balance = getBalance(b);
+    const diff = balance - tx.amount;
+    const absoluteDiff = Math.abs(diff);
+    const nameScore = nameSim(b.customers?.name, tx.counterparty_name);
+    const amountReason = absoluteDiff <= 500
+      ? '금액 거의 일치'
+      : diff > 0
+        ? `거래보다 미수금 ${absoluteDiff.toLocaleString('ko-KR')}원 큼`
+        : `거래가 미수금보다 ${absoluteDiff.toLocaleString('ko-KR')}원 큼`;
+    return `${amountReason}, 이름 유사도 ${Math.round(nameScore * 100)}%`;
+  }, [tx.amount, tx.counterparty_name]);
 
   const filtered = useMemo(() => {
     const q = query.toLowerCase();
@@ -209,6 +221,8 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
         {filtered.map((b, i) => {
           const rec = isRecommended(b);
           const bal = getBalance(b);
+          const candidateMatchReason = getCandidateMatchReason(b);
+          const candidateReasonId = `${comboboxBaseId}-candidate-reason-${b.id}`;
           const isFocused = i === focusedIdx;
           const isChecked = multiSelected.has(b.id);
           return (
@@ -218,6 +232,7 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
                 role="option"
                 aria-selected={multiMode ? isChecked : isFocused}
                 aria-label={`${b.customers?.name || '이름 없음'} 예약${b.booking_no ? ` ${b.booking_no}` : ''}${b.package_title ? `, ${b.package_title}` : ''}, 미수금 ${fmt만(bal)}${rec ? ', 추천 후보' : ''}${multiMode && isChecked ? ', 선택됨' : ''}`}
+                aria-describedby={candidateReasonId}
                 type="button"
                 onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
                 onMouseEnter={() => setFocusedIdx(i)}
@@ -243,6 +258,13 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
                       </div>
                       <div className="text-[11px] text-admin-muted mt-0.5">
                         판매가: {fmt만(b.total_price || 0)} / 미수금: {fmt만(bal)}
+                      </div>
+                      <div
+                        id={candidateReasonId}
+                        data-testid="admin-payment-match-candidate-reason"
+                        className="mt-1 text-[11px] font-semibold text-admin-muted-2"
+                      >
+                        근거: {candidateMatchReason}
                       </div>
                     </div>
                   </div>

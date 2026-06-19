@@ -381,9 +381,22 @@ export default function GroupInquiryPage() {
   ];
   const rfqReadinessReadyCount = rfqReadinessChecklist.filter((item) => item.complete).length;
   const rfqReadinessMissingLabels = rfqReadinessChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const contactReadinessChecklist = [
+    { label: '이름', complete: contactName.trim().length > 0 },
+    { label: '연락처', complete: contactPhone.trim().length > 0 },
+    { label: '개인정보 동의', complete: privacyConsent },
+  ];
+  const contactReadyCount = contactReadinessChecklist.filter((item) => item.complete).length;
+  const contactMissingLabels = contactReadinessChecklist.filter((item) => !item.complete).map((item) => item.label);
   const rfqReadinessSummaryText = rfqReadinessMissingLabels.length > 0
     ? `견적 요청 준비 ${rfqReadinessReadyCount}/${rfqReadinessChecklist.length}. 보완이 필요한 조건은 ${rfqReadinessMissingLabels.join(', ')}입니다.`
     : `견적 요청 준비 ${rfqReadinessReadyCount}/${rfqReadinessChecklist.length}. 바로 견적 요청을 보낼 수 있습니다.`;
+  const submitMissingLabels = [...rfqReadinessMissingLabels, ...contactMissingLabels];
+  const submitReadyCount = rfqReadinessReadyCount + contactReadyCount;
+  const submitTotalCount = rfqReadinessChecklist.length + contactReadinessChecklist.length;
+  const submitReadinessSummaryText = submitMissingLabels.length > 0
+    ? `제출 준비 ${submitReadyCount}/${submitTotalCount}. 보완 필요: ${submitMissingLabels.join(', ')}.`
+    : `제출 준비 ${submitReadyCount}/${submitTotalCount}. 바로 견적 요청을 보낼 수 있습니다.`;
   const stickyHandoffItems = [
     { label: '목적', value: selectedIntent?.label },
     { label: '지역', value: getSummaryValue(extractedSummary, 'destination') },
@@ -393,6 +406,7 @@ export default function GroupInquiryPage() {
   const rfqConditionSummaryId = 'group-inquiry-rfq-condition-summary';
   const rfqContactHelpId = 'group-inquiry-rfq-contact-help';
   const rfqSubmitDescriptionId = 'group-inquiry-rfq-submit-description';
+  const submitReadinessSummaryId = 'group-inquiry-submit-readiness-summary';
   const handoffContextDescriptionId = 'group-inquiry-handoff-context-description';
   const handoffReadinessSummaryId = 'group-inquiry-handoff-readiness-summary';
   const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
@@ -414,7 +428,7 @@ export default function GroupInquiryPage() {
     : selectedIntent
       ? `${selectedIntent.label} 조건이 선택되어 상담 전달 조건에 반영되었습니다.`
       : '빠른 시작 조건을 선택하면 AI 상담이 바로 시작됩니다.';
-  const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${rfqConditionSummaryId} ${rfqContactHelpId}`;
+  const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${rfqConditionSummaryId} ${submitReadinessSummaryId} ${rfqContactHelpId}`;
   const contactNameDescriptionIds = contactErrors.contactName
     ? `${rfqContactDescriptionIds} contact-name-error`
     : rfqContactDescriptionIds;
@@ -428,6 +442,7 @@ export default function GroupInquiryPage() {
     handoffContextDescriptionId,
     handoffReadinessSummaryId,
     rfqConditionSummaryId,
+    submitReadinessSummaryId,
     rfqSubmitDescriptionId,
     contactErrors.submit ? 'group-inquiry-submit-error' : null,
     contactErrors.summary ? 'group-inquiry-summary-error' : null,
@@ -1061,6 +1076,47 @@ export default function GroupInquiryPage() {
                 {contactErrors.privacyConsent && (
                   <p id="privacy-consent-error" className="mt-1 text-xs font-semibold text-red-600">
                     {contactErrors.privacyConsent}
+                  </p>
+                )}
+              </div>
+
+              <div
+                id={submitReadinessSummaryId}
+                data-testid="group-inquiry-submit-readiness-summary"
+                aria-label={submitReadinessSummaryText}
+                className="mt-4 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] p-3"
+              >
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-extrabold text-gray-950">
+                    제출 준비 {submitReadyCount}/{submitTotalCount}
+                  </p>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                    submitMissingLabels.length > 0 ? 'bg-white text-gray-500 ring-1 ring-gray-200' : 'bg-brand-light text-brand'
+                  }`}
+                  >
+                    {submitMissingLabels.length > 0 ? '보완 필요' : '바로 제출 가능'}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                  {contactReadinessChecklist.map((item) => (
+                    <span
+                      key={item.label}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-xs font-bold ${
+                        item.complete ? 'bg-white text-brand ring-1 ring-brand/20' : 'bg-white text-gray-500 ring-1 ring-gray-200'
+                      }`}
+                    >
+                      {item.complete && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {item.label}
+                    </span>
+                  ))}
+                </div>
+                {submitMissingLabels.length > 0 ? (
+                  <p className="mt-2 text-xs font-semibold text-gray-500">
+                    남은 항목: {submitMissingLabels.join(', ')}
+                  </p>
+                ) : (
+                  <p className="mt-2 text-xs font-semibold text-brand">
+                    조건과 연락처가 준비되어 바로 견적 요청을 보낼 수 있습니다.
                   </p>
                 )}
               </div>
