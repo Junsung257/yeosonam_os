@@ -1353,9 +1353,19 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </p>
           </div>
         ) : (
-          <span className="rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1 text-[11px] font-black text-admin-text-2">
-            Next: {nextActionLabel}
-          </span>
+          <div
+            data-testid="admin-payment-desktop-next-action-summary"
+            aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
+            className="max-w-[210px] rounded-admin-sm border border-admin-border bg-admin-bg px-2.5 py-1.5 text-left"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-admin-muted">다음 액션</span>
+              <span className="text-[11px] font-black text-admin-text-2">{nextActionLabel}</span>
+            </div>
+            <p className="mt-0.5 truncate text-[10px] font-semibold text-admin-muted">
+              {nextActionReason}
+            </p>
+          </div>
         )}
         {isOpen && (
           <>

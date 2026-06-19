@@ -512,9 +512,10 @@ export default function ConciergePage() {
     });
   }
 
-  async function openKakaoConsult(source: string, focusedProduct?: MockSearchResult) {
+  async function openKakaoConsult(source: string, focusedProduct?: MockSearchResult, handoffProducts: string[] = []) {
     const selectedProductNames = [
       ...(focusedProduct ? [focusedProduct.product_name] : []),
+      ...handoffProducts,
       ...cart.map((item) => item.product_name),
     ].filter((name, index, all) => all.indexOf(name) === index);
     const escalationSummary = [
@@ -533,6 +534,7 @@ export default function ConciergePage() {
         selectedProductNames,
       },
       ...intentSummary,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : intentSummary.selected_products,
     });
     const copied = await openKakaoChannel({
       productTitle: focusedProduct?.product_name,
@@ -678,6 +680,20 @@ export default function ConciergePage() {
   const resultBriefSummaryText = resultBriefItems.length > 0
     ? `AI 추천 브리핑입니다. 상위 ${resultBriefItems.length}개 상품 기준으로 추천 이유, 주의할 점, 추가 비용 가능성, 다음 액션을 정리했습니다. ${resultBriefItems.map((item) => `${item.rank}순위 ${item.name}, ${item.price}, 다음 액션 ${item.action}`).join(' ')}`
     : resultSummaryText;
+  const resultHandoffProductNames = resultBriefItems.map((item) => item.name);
+  const resultBundleSummaryId = 'concierge-result-bundle-summary';
+  const resultBundleSummaryText = resultHandoffProductNames.length > 0
+    ? `상위 추천 ${resultHandoffProductNames.length}개 상품을 상담 조건과 함께 전달합니다. 선택 상품은 ${resultHandoffProductNames.join(', ')}입니다.`
+    : resultSummaryText;
+  const resultBundleGroupInquiryHref = buildGroupInquiryHandoffHref({
+    source: 'concierge_results_bundle',
+    intent: intentSummary.intent ?? undefined,
+    partyType: intentSummary.party_type ?? undefined,
+    query: query.trim() || activePrompt?.query || 'AI 추천 결과 단체 견적',
+    destination: intentSummary.destination,
+    budget: intentSummary.budget || (resultBriefItems[0] ? `상위 추천 ${resultBriefItems[0].price}부터` : null),
+    selectedProducts: resultHandoffProductNames.length > 0 ? resultHandoffProductNames : undefined,
+  });
   const intentPromptGroupLabelId = 'concierge-intent-prompt-group-label';
   const intentPromptGroupDescriptionId = 'concierge-intent-prompt-group-description';
   const intentPromptDescriptionId = (intent: string) => `concierge-intent-prompt-description-${intent}`;
@@ -887,6 +903,57 @@ export default function ConciergePage() {
                 >
                   상담으로 확인
                 </button>
+              </div>
+              <div
+                id={resultBundleSummaryId}
+                data-testid="concierge-result-bundle-handoff"
+                aria-label={resultBundleSummaryText}
+                className="rounded-[20px] border border-[#D1DCE8] bg-white p-4 shadow-card"
+              >
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div className="min-w-0">
+                    <p className="flex items-center gap-1.5 text-[13px] font-extrabold text-text-primary">
+                      <ClipboardList size={16} aria-hidden="true" />
+                      상위 추천 묶어서 상담
+                    </p>
+                    <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-text-secondary">
+                      {resultHandoffProductNames.slice(0, 3).join(' · ')} 조건을 상담원에게 바로 넘깁니다.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+                    <button
+                      type="button"
+                      data-testid="concierge-result-bundle-kakao"
+                      onClick={() => openKakaoConsult('results_bundle', undefined, resultHandoffProductNames)}
+                      aria-describedby={`${resultSummaryId} ${resultBundleSummaryId}`}
+                      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-[#FEE500] px-4 text-[13px] font-bold text-[#3C1E1E]"
+                    >
+                      <MessageCircle size={16} aria-hidden="true" />
+                      카톡
+                    </button>
+                    <Link
+                      href={resultBundleGroupInquiryHref}
+                      data-testid="concierge-result-bundle-group-inquiry"
+                      onClick={() => {
+                        trackEngagement({
+                          event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                          source: 'concierge_results_bundle_group_inquiry',
+                          page_url: '/concierge',
+                          ...intentSummary,
+                          selected_products: resultHandoffProductNames,
+                          metadata: {
+                            action: 'group_inquiry_handoff',
+                            selectedProductNames: resultHandoffProductNames,
+                          },
+                        });
+                      }}
+                      aria-describedby={`${resultSummaryId} ${resultBundleSummaryId}`}
+                      className="inline-flex h-10 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-4 text-[13px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                    >
+                      견적
+                    </Link>
+                  </div>
+                </div>
               </div>
               <RecommendationBrief
                 items={resultBriefItems}

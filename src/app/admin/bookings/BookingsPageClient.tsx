@@ -1748,6 +1748,15 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   } as Partial<Record<BookingActiveTab, BookingWorkQueueKey>>)[activeTab];
 
   // ── 필터 + 정렬 ─────────────────────────────────────────────────────────────
+  const selectedBookingsForBulk = useMemo(
+    () => bookings.filter(b => selected.has(b.id)),
+    [bookings, selected],
+  );
+  const bulkCancelableCount = selectedBookingsForBulk.filter(b => b.status !== 'cancelled').length;
+  const bulkRestorableCount = selectedBookingsForBulk.filter(b => b.status === 'cancelled').length;
+  const bulkActionSummaryId = 'admin-booking-bulk-action-summary';
+  const bulkActionSummaryText = `선택 ${selected.size}건. 취소 가능 ${bulkCancelableCount}건, 복구 가능 ${bulkRestorableCount}건. 출발지역과 랜드사는 선택 예약에 일괄 적용됩니다.`;
+
   const filtered = useMemo(() => {
     let list = [...bookings];
 
@@ -2897,9 +2906,22 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
 
       {/* 다중 선택 툴바 */}
       {selected.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm">
+        <div
+          data-testid="admin-booking-bulk-action-toolbar"
+          role="region"
+          aria-label="선택 예약 일괄 작업"
+          aria-describedby={bulkActionSummaryId}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm"
+        >
           <span className="font-bold text-blue-300 whitespace-nowrap">{selected.size}건 선택됨</span>
           <div className="w-px h-4 bg-white/20 mx-1" />
+          <span
+            id={bulkActionSummaryId}
+            data-testid="admin-booking-bulk-action-summary"
+            className="max-w-[260px] truncate rounded bg-white/10 px-2 py-1 text-[11px] font-semibold text-slate-100"
+          >
+            {bulkActionSummaryText}
+          </span>
           {bulkField === 'departing_location_id' ? (
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">출발지역:</span>

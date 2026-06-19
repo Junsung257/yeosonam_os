@@ -2619,6 +2619,15 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   {item.value}
                 </span>
               ))}
+              {decisionGuide.consultationQuestions[0] && (
+                <span
+                  data-testid="package-detail-sticky-consultation-question"
+                  aria-label={`상담 때 먼저 확인할 질문: ${decisionGuide.consultationQuestions[0]}`}
+                  className="shrink-0 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[11px] font-extrabold text-amber-700"
+                >
+                  질문 / {decisionGuide.consultationQuestions[0]}
+                </span>
+              )}
             </div>
           )}
           <div className="grid gap-2 md:flex md:items-center md:gap-2.5">

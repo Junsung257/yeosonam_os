@@ -657,6 +657,7 @@ const PackageRow = React.memo(function PackageRow({
     ? pkg.attraction_preview_names
     : getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 3);
   const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
+  const nextOperationReason = getPackageNextOperationReason(pkg, expired);
 
   return (
     <tr
@@ -895,12 +896,21 @@ const PackageRow = React.memo(function PackageRow({
 
       <td className="px-3 py-2" onClick={e => e.stopPropagation()}>
         <div className="flex flex-col gap-1.5">
-          <div className="flex items-center justify-between gap-2 rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1">
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-admin-muted-2">Next</span>
-            <span className="text-[11px] font-black text-admin-text-2">{nextOperationLabel}</span>
+          <div
+            data-testid="admin-package-desktop-next-action-summary"
+            aria-label={`다음 액션 ${nextOperationLabel}. ${nextOperationReason}`}
+            className="rounded-admin-sm border border-admin-border bg-admin-bg px-2.5 py-1.5 text-left"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[10px] font-bold text-admin-muted">다음 액션</span>
+              <span className="text-[11px] font-black text-admin-text-2">{nextOperationLabel}</span>
+            </div>
+            <p className="mt-0.5 line-clamp-1 text-[10px] font-semibold text-admin-muted">
+              {nextOperationReason}
+            </p>
           </div>
           <p id={rowActionDescriptionId} className="sr-only">
-            {pkg.title} 상품의 다음 운영 액션은 {nextOperationLabel}입니다. 검수, 수정, 발행, 더보기 순서로 처리할 수 있습니다.
+            {pkg.title} 상품의 다음 운영 액션은 {nextOperationLabel}입니다. 근거는 {nextOperationReason}입니다. 검수, 수정, 발행, 더보기 순서로 처리할 수 있습니다.
           </p>
           <div role="group" aria-label={`${pkg.title} 핵심 상품 관리 액션`} className="grid grid-cols-4 gap-1">
             <button
