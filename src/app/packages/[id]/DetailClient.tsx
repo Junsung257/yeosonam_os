@@ -1132,16 +1132,39 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const showReservationPhoneError = reservationSubmitAttempted && reservationPhoneMissing;
   const showReservationConsentError = reservationSubmitAttempted && reservationConsentMissing;
   const reservationFormReady = !reservationNameMissing && !reservationPhoneMissing && !reservationConsentMissing && !isSubmitting;
-  const reservationSubmitChecklist = [
-    { label: '이름', complete: !reservationNameMissing },
-    { label: '연락처', complete: !reservationPhoneMissing },
-    { label: '개인정보 동의', complete: !reservationConsentMissing },
+  const reservationSubmitChecklist: Array<{ label: string; value?: string | null; complete: boolean }> = [
+    { label: '이름', value: null, complete: !reservationNameMissing },
+    { label: '연락처', value: null, complete: !reservationPhoneMissing },
+    { label: '개인정보 동의', value: null, complete: !reservationConsentMissing },
   ];
+  const reservationConditionDepartureValue = (selectedDate ?? selectedTier?.period_label ?? formData.date) || firstScreenDepartureLabel;
+  const reservationConditionChecklist: Array<{ label: string; value?: string | null; complete: boolean }> = [
+    { label: '상품', value: selectedProductName, complete: Boolean(selectedProductName) },
+    { label: '출발 조건', value: reservationConditionDepartureValue, complete: Boolean(reservationConditionDepartureValue) },
+    { label: '예상 가격', value: stickyPriceSummaryText, complete: Boolean(stickyPriceSummaryText) },
+  ];
+  const reservationConditionReadyCount = reservationConditionChecklist.filter((item) => item.complete).length;
   const reservationSubmitReadyCount = reservationSubmitChecklist.filter((item) => item.complete).length;
   const reservationSubmitMissingLabels = reservationSubmitChecklist.filter((item) => !item.complete).map((item) => item.label);
   const reservationSubmitReadinessText = reservationSubmitMissingLabels.length > 0
-    ? `문의 접수 준비 ${reservationSubmitReadyCount}/${reservationSubmitChecklist.length}. 남은 항목: ${reservationSubmitMissingLabels.join(', ')}.`
-    : `문의 접수 준비 ${reservationSubmitReadyCount}/${reservationSubmitChecklist.length}. 바로 문의를 접수할 수 있습니다.`;
+    ? `문의 조건 ${reservationConditionReadyCount}/${reservationConditionChecklist.length}, 연락 준비 ${reservationSubmitReadyCount}/${reservationSubmitChecklist.length}. 남은 항목: ${reservationSubmitMissingLabels.join(', ')}.`
+    : `문의 조건 ${reservationConditionReadyCount}/${reservationConditionChecklist.length}, 연락 준비 ${reservationSubmitReadyCount}/${reservationSubmitChecklist.length}. 바로 문의를 접수할 수 있습니다.`;
+  const reservationReadinessGroups = [
+    {
+      title: '문의 조건',
+      testId: 'package-detail-reservation-condition-readiness',
+      readyCount: reservationConditionReadyCount,
+      totalCount: reservationConditionChecklist.length,
+      items: reservationConditionChecklist,
+    },
+    {
+      title: '연락 준비',
+      testId: 'package-detail-reservation-contact-readiness',
+      readyCount: reservationSubmitReadyCount,
+      totalCount: reservationSubmitChecklist.length,
+      items: reservationSubmitChecklist,
+    },
+  ];
   const reservationFormHint = reservationNameMissing
     ? '이름을 입력하면 문의 접수 버튼이 준비됩니다.'
     : reservationPhoneMissing
@@ -2974,11 +2997,11 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     id={reservationSubmitReadinessId}
                     data-testid="package-detail-reservation-submit-readiness"
                     aria-label={reservationSubmitReadinessText}
-                    className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2"
+                    className="rounded-xl border border-slate-100 bg-slate-50 p-3"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-[12px] font-extrabold text-slate-900">
-                        문의 접수 준비 {reservationSubmitReadyCount}/{reservationSubmitChecklist.length}
+                        문의 접수 준비
                       </p>
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
                         reservationFormReady ? 'bg-emerald-50 text-emerald-700' : 'bg-white text-slate-500 ring-1 ring-slate-200'
@@ -2986,17 +3009,34 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                         {reservationFormReady ? '바로 접수 가능' : `남은 항목 ${reservationSubmitMissingLabels.length}개`}
                       </span>
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {reservationSubmitChecklist.map((item) => (
-                        <span
-                          key={item.label}
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold ${
-                            item.complete ? 'bg-white text-brand ring-1 ring-brand/20' : 'bg-white text-slate-500 ring-1 ring-slate-200'
-                          }`}
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {reservationReadinessGroups.map((group) => (
+                        <div
+                          key={group.title}
+                          data-testid={group.testId}
+                          className="rounded-lg bg-white px-2.5 py-2 ring-1 ring-slate-100"
                         >
-                          {item.complete && <Check className="h-3 w-3" aria-hidden="true" />}
-                          {item.label}
-                        </span>
+                          <div className="mb-1.5 flex items-center justify-between gap-2">
+                            <p className="text-[11px] font-extrabold text-slate-800">{group.title}</p>
+                            <span className="text-[11px] font-bold text-slate-500">{group.readyCount}/{group.totalCount}</span>
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {group.items.map((item) => (
+                              <span
+                                key={`${group.title}-${item.label}`}
+                                className={`inline-flex max-w-full items-center gap-1 rounded-full px-2 py-1 text-[11px] font-bold ${
+                                  item.complete ? 'bg-brand/5 text-brand ring-1 ring-brand/20' : 'bg-slate-50 text-slate-500 ring-1 ring-slate-200'
+                                }`}
+                              >
+                                {item.complete && <Check className="h-3 w-3 shrink-0" aria-hidden="true" />}
+                                <span className="truncate">{item.label}</span>
+                                {item.value && (
+                                  <span className="max-w-[7rem] truncate text-slate-500">{item.value}</span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       ))}
                     </div>
                   </div>
