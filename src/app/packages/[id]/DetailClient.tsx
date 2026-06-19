@@ -379,6 +379,7 @@ function createDecisionGuide({
   const goodFor: string[] = [];
   const cautions: string[] = [];
   const proofs: string[] = [];
+  const consultationQuestions: string[] = [];
 
   if (/노쇼핑|쇼핑\s*없|쇼핑\s*0|NO\s*SHOPPING/i.test(text)) {
     goodFor.push('쇼핑 부담을 줄이고 일정에 집중하고 싶은 분');
@@ -419,10 +420,31 @@ function createDecisionGuide({
   if (airlineName) proofs.push(airlineName);
   if (pkg.inclusions?.length) proofs.push(`포함 ${pkg.inclusions.length}개 항목`);
 
+  consultationQuestions.push(
+    departureLabel && !departureLabel.includes('확인')
+      ? `${departureLabel} 기준 좌석과 항공 확정 여부를 확인해 주세요`
+      : '가능한 출발일과 좌석 상태를 먼저 확인해 주세요',
+  );
+  if (pkg.excludes?.length) {
+    consultationQuestions.push('불포함 항목과 개인 경비 예상 범위를 알려주세요');
+  } else if (pkg.inclusions?.length) {
+    consultationQuestions.push('포함 항목 중 현지에서 추가 비용이 생길 수 있는 조건을 알려주세요');
+  }
+  if (pkg.optional_tours?.length || pkg.surcharges?.length) {
+    consultationQuestions.push('선택 관광, 성수기, 객실 조건에 따른 추가 요금을 확인해 주세요');
+  }
+  if (pkg.min_participants || pkg.min_people) {
+    consultationQuestions.push(`최소 출발 인원 ${pkg.min_participants ?? pkg.min_people}명 충족 여부를 확인해 주세요`);
+  }
+  if (consultationQuestions.length < 3) {
+    consultationQuestions.push('예약 전 취소 규정과 최종 결제 일정을 확인해 주세요');
+  }
+
   return {
     goodFor: Array.from(new Set(goodFor)).slice(0, 3),
     cautions: Array.from(new Set(cautions)).slice(0, 3),
     proofs: Array.from(new Set(proofs)).slice(0, 4),
+    consultationQuestions: Array.from(new Set(consultationQuestions)).slice(0, 3),
   };
 }
 
@@ -1866,6 +1888,27 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               ))}
             </div>
           )}
+
+          <div
+            data-testid="package-detail-consultation-question-list"
+            aria-label={`상담 때 확인할 질문 ${decisionGuide.consultationQuestions.length}개: ${decisionGuide.consultationQuestions.join(', ')}`}
+            className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-[12px] font-extrabold text-slate-900">상담 때 확인할 질문</p>
+              <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-extrabold text-brand">
+                {decisionGuide.consultationQuestions.length}개 준비
+              </span>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {decisionGuide.consultationQuestions.map(item => (
+                <li key={item} className="flex gap-2 text-[13px] font-semibold leading-relaxed text-slate-700">
+                  <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-slate-400" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </section>
 

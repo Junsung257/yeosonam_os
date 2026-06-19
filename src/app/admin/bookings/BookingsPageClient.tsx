@@ -2196,6 +2196,18 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               !isTrash && b.status === 'confirmed' ? { label: '결제완료', run: () => patchStatus(b.id, 'completed'), primary: true } :
               !isTrash && b.status === 'cancelled' ? { label: '복구', run: () => handleRestoreBooking(b), primary: false } :
               { label: '상세', run: () => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }, primary: false };
+            const mobileNextActionReason =
+              !isTrash && b.status === 'pending'
+                ? '예약 접수 상태라 확정 처리가 우선입니다.'
+                : !isTrash && b.status === 'confirmed' && balance > 0
+                  ? `잔금 ${fmtK(Math.max(0, balance))} 확인 후 결제 완료 처리`
+                  : !isTrash && b.status === 'confirmed'
+                    ? '입금 확인 후 결제 완료 처리'
+                    : !isTrash && b.status === 'cancelled'
+                      ? '취소 이력 보존 상태에서 복구 가능'
+                      : isTrash
+                        ? '휴지통 예약은 상세에서 복구 또는 삭제 확인'
+                        : '상세 패널에서 예약 메모와 결제 이력 확인';
             const mobileCardSummaryId = `admin-booking-mobile-card-summary-${b.id}`;
             const mobileActionGroupId = `admin-booking-mobile-actions-${b.id}`;
             const mobileBalanceLabel = b.status === 'cancelled' ? '환불잔액' : '잔금';
@@ -2206,6 +2218,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               `출발일은 ${fmtDateKo(b.departure_date)}`,
               `${mobileBalanceLabel}은 ${fmtK(mobileBalanceValue)}`,
               `다음 액션은 ${nextAction.label}`,
+              `다음 액션 근거는 ${mobileNextActionReason}`,
             ].join(', ');
 
             return (
@@ -2246,9 +2259,18 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   </div>
                 </div>
 
-                <div className="mt-3 flex items-center justify-between rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
-                  <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
-                  <span className="text-[12px] font-black text-admin-text-2">{nextAction.label}</span>
+                <div
+                  data-testid="admin-booking-mobile-next-action-summary"
+                  aria-label={`다음 액션 ${nextAction.label}. ${mobileNextActionReason}`}
+                  className="mt-3 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+                    <span className="text-[12px] font-black text-admin-text-2">{nextAction.label}</span>
+                  </div>
+                  <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
+                    {mobileNextActionReason}
+                  </p>
                 </div>
 
                 <div
@@ -2322,7 +2344,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <SortTh label="출금액"      field="total_paid_out" sortField={sortField} sortDir={sortDir} onSort={handleSort} className="text-right min-w-[160px]" />
                 <SortTh label="잔금"        field="balance"       sortField={sortField} sortDir={sortDir} onSort={handleSort} className="sticky right-[280px] z-30 bg-white text-right min-w-[160px]" />
                 <th className="sticky right-[140px] z-30 bg-white text-center px-3 py-2 text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">상태</th>
-                <th className="sticky right-0 z-30 bg-white px-3 py-2 text-right text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[140px]">다음 액션</th>
+                <th className="sticky right-0 z-30 bg-white px-3 py-2 text-right text-admin-sm text-admin-text-2 font-semibold whitespace-nowrap min-w-[220px]">다음 액션</th>
               </tr>
             </thead>
 
@@ -2361,6 +2383,24 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 const bookingActionDescriptionId = `admin-booking-row-actions-${b.id}`;
                 const bookingActionDescriptionIds = `${bookingActionDescriptionId} admin-booking-action-result-description`;
                 const bookingDeleteDescriptionIds = `${bookingActionDescriptionIds} admin-booking-delete-description`;
+                const desktopNextActionLabel =
+                  !isTrash && b.status === 'pending' ? '예약확정' :
+                  !isTrash && b.status === 'confirmed' ? '결제완료' :
+                  !isTrash && b.status === 'cancelled' ? '복구' :
+                  isTrash ? '복구 확인' :
+                  '상세 확인';
+                const desktopNextActionReason =
+                  !isTrash && b.status === 'pending'
+                    ? '예약 접수 상태라 확정 처리가 우선입니다.'
+                    : !isTrash && b.status === 'confirmed' && balance > 0
+                      ? `잔금 ${fmtK(Math.max(0, balance))} 확인 후 결제 완료 처리`
+                      : !isTrash && b.status === 'confirmed'
+                        ? '입금 확인 후 결제 완료 처리'
+                        : !isTrash && b.status === 'cancelled'
+                          ? '취소 이력 보존 상태에서 복구 가능'
+                          : isTrash
+                            ? '휴지통 예약은 복구 후 상세 확인'
+                            : '상세 패널에서 예약 메모와 결제 이력 확인';
 
                 const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : isMissing ? 'bg-yellow-50/70 hover:bg-yellow-50' : isDepositUnpaid ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-admin-bg';
                 const rowBorder  = isLandBomb ? 'outline outline-2 outline-red-400 outline-offset-[-1px]' : '';
@@ -2745,10 +2785,23 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     </td>
 
                     {/* 액션 (sticky right) */}
-                    <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[140px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                    <td className="sticky right-0 z-10 bg-inherit px-3 min-w-[220px] whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                      <div
+                        data-testid="admin-booking-desktop-next-action-summary"
+                        aria-label={`다음 액션 ${desktopNextActionLabel}. ${desktopNextActionReason}`}
+                        className="mb-1.5 rounded-admin-sm border border-admin-border bg-white/80 px-2.5 py-1.5 text-left shadow-admin-xs"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-bold text-admin-muted">다음 액션</span>
+                          <span className="text-[11px] font-black text-admin-text-2">{desktopNextActionLabel}</span>
+                        </div>
+                        <p className="mt-0.5 max-w-[190px] truncate text-[10px] font-semibold text-admin-muted">
+                          {desktopNextActionReason}
+                        </p>
+                      </div>
                       <div className="flex gap-1.5 justify-end opacity-100 md:opacity-80 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity duration-150">
                         <p id={bookingActionDescriptionId} className="sr-only">
-                          {b.customers?.name || b.booking_no || '예약'} 예약의 현재 상태는 {STATUS_LABELS[b.status] || b.status}입니다. 이 행에서 예약 확정, 완료 처리, 수정, 취소, 복구, 삭제 작업을 처리할 수 있습니다.
+                          {b.customers?.name || b.booking_no || '예약'} 예약의 현재 상태는 {STATUS_LABELS[b.status] || b.status}입니다. 다음 권장 액션은 {desktopNextActionLabel}이며 근거는 {desktopNextActionReason}입니다. 이 행에서 예약 확정, 완료 처리, 수정, 취소, 복구, 삭제 작업을 처리할 수 있습니다.
                         </p>
                         {!isTrash && b.status === 'pending' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}

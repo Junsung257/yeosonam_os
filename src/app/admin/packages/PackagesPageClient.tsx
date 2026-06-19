@@ -358,6 +358,28 @@ function getPackageNextOperationLabel(pkg: Package, expired: boolean): string {
   return '수정';
 }
 
+function getPackageNextOperationReason(pkg: Package, expired: boolean): string {
+  const hasPrice = Boolean(pkg.price) || Boolean(pkg.price_tiers?.length);
+  const missingCoreFields = [
+    !pkg.destination ? '목적지' : null,
+    !hasPrice ? '가격' : null,
+    !pkg.product_summary && !pkg.product_highlights?.length ? '요약' : null,
+  ].filter(Boolean) as string[];
+
+  if (expired) return '판매 기간이 만료되어 노출 전 기한 연장이 먼저 필요합니다.';
+  if (pkg.status === 'pending_review') return '신규 등록 또는 자동 생성 상품이라 내용 검수가 우선입니다.';
+  if (pkg.status === 'pending') return '승인 대기 상태라 운영자가 승인 또는 거부를 결정해야 합니다.';
+  if (pkg.status === 'approved' && missingCoreFields.length > 0) {
+    return `승인 상품이지만 ${missingCoreFields.slice(0, 2).join(', ')} 확인이 필요해 발행 전 점검합니다.`;
+  }
+  if (pkg.status === 'approved') return '승인된 상품이라 고객 상세 화면과 발행 자료를 확인합니다.';
+  if (missingCoreFields.length > 0) {
+    return `${missingCoreFields.slice(0, 2).join(', ')} 정보가 비어 있어 수정 후 고객 노출 품질을 맞춥니다.`;
+  }
+  if (isDeadlineSoon(pkg)) return '마감이 임박해 판매 상태와 잔여 가능일을 확인합니다.';
+  return '상품 정보가 운영 기준을 유지하도록 최신 상태를 확인합니다.';
+}
+
 function getPackagePriceRangeLabel(minPrice?: number | null, maxPrice?: number | null): string {
   if (!minPrice) return '-';
   if (!maxPrice || minPrice === maxPrice) return `${minPrice.toLocaleString()}원`;
@@ -2283,6 +2305,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               const dday = getDDayInfo(pkg);
               const expired = isExpired(pkg);
               const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
+              const mobilePackageActionReason = getPackageNextOperationReason(pkg, expired);
               const mobileCardSummaryId = `admin-package-mobile-card-summary-${pkg.id}`;
               const mobileActionDescriptionId = `admin-package-mobile-actions-${pkg.id}`;
               const mobileActionStatusDescriptionId = `${mobileCardSummaryId} ${mobileActionDescriptionId} admin-package-bulk-status`;
@@ -2296,6 +2319,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 region ? `출발 지역은 ${region}` : null,
                 expired ? '판매 기간이 만료되었습니다' : dday ? `출발 또는 마감 상태는 ${dday.label}` : null,
                 `다음 액션은 ${nextOperationLabel}`,
+                `다음 액션 근거는 ${mobilePackageActionReason}`,
               ].filter(Boolean).join(', ');
 
               return (
@@ -2354,13 +2378,22 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     </div>
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
-                    <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
-                    <span className="text-[12px] font-black text-admin-text-2">{nextOperationLabel}</span>
+                  <div
+                    data-testid="admin-package-mobile-next-action-summary"
+                    aria-label={`다음 액션 ${nextOperationLabel}. ${mobilePackageActionReason}`}
+                    className="mt-3 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+                      <span className="text-[12px] font-black text-admin-text-2">{nextOperationLabel}</span>
+                    </div>
+                    <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
+                      {mobilePackageActionReason}
+                    </p>
                   </div>
 
                   <p id={mobileActionDescriptionId} className="sr-only">
-                    {pkg.title}의 다음 액션은 {nextOperationLabel}입니다. 상태는 {STATUS_LABEL[pkg.status] ?? pkg.status}이며 모바일 버튼에서 검수, 수정, 발행 또는 더보기를 실행할 수 있습니다.
+                    {pkg.title}의 다음 액션은 {nextOperationLabel}입니다. 근거는 {mobilePackageActionReason} 상태는 {STATUS_LABEL[pkg.status] ?? pkg.status}이며 모바일 버튼에서 검수, 수정, 발행 또는 더보기를 실행할 수 있습니다.
                   </p>
 
                   <div role="group" aria-label={`${pkg.title} 모바일 처리 작업`} aria-describedby={mobileActionStatusDescriptionId} className="mt-3 grid grid-cols-4 gap-2">

@@ -1295,12 +1295,25 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         : '제외';
   };
 
+  const getTransactionNextActionReason = (tx: BankTransaction) => {
+    const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
+    const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
+    const isPayout = tx.transaction_type === '출금' && !tx.is_refund;
+    if (isOpen && isPayout) return '랜드사 송금 또는 환불 출금을 예약 원장에 묶어야 합니다.';
+    if (isOpen && tx.is_refund) return '고객 환불 거래라 예약 입금액 차감 여부 확인이 필요합니다.';
+    if (isOpen && tx.match_status === 'review') return '자동 후보가 있어 금액과 예약명을 확인한 뒤 확정합니다.';
+    if (isOpen) return '예약과 아직 연결되지 않은 입금이라 수동 또는 명령 매칭이 필요합니다.';
+    if (isMatched) return '이미 매칭된 거래라 오류 시 매칭 취소로 원복합니다.';
+    return '업무 대상이 아니면 휴지통으로 제외합니다.';
+  };
+
   const renderTransactionActions = (tx: BankTransaction, layout: 'table' | 'card' = 'table', contextDescriptionId?: string) => {
     const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
     const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
     const isPayout = tx.transaction_type === '출금' && !tx.is_refund;
     const compact = layout === 'card';
     const nextActionLabel = getTransactionNextActionLabel(tx);
+    const nextActionReason = getTransactionNextActionReason(tx);
     const groupClass = compact
       ? 'mt-3 grid grid-cols-2 gap-2'
       : 'flex items-center gap-1.5 justify-end';
@@ -1323,12 +1336,21 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     return (
       <div className={groupClass} aria-label={`${tx.counterparty_name || '거래'} 다음 액션`} role="group">
         <p id={paymentActionDescriptionId} className="sr-only">
-          {tx.counterparty_name || '거래'} {getTransactionKindLabel(tx)} {tx.amount.toLocaleString()}원 거래의 현재 매칭 상태는 {MATCH_LABELS[tx.match_status] || tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
+          {tx.counterparty_name || '거래'} {getTransactionKindLabel(tx)} {tx.amount.toLocaleString()}원 거래의 현재 매칭 상태는 {MATCH_LABELS[tx.match_status] || tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 근거는 {nextActionReason} 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
         </p>
         {compact ? (
-          <div className="col-span-2 flex items-center justify-between rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2">
-            <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
-            <span className="text-[12px] font-black text-admin-text-2">{nextActionLabel}</span>
+          <div
+            data-testid="admin-payment-mobile-next-action-summary"
+            aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
+            className="col-span-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+              <span className="text-[12px] font-black text-admin-text-2">{nextActionLabel}</span>
+            </div>
+            <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
+              {nextActionReason}
+            </p>
           </div>
         ) : (
           <span className="rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1 text-[11px] font-black text-admin-text-2">
@@ -1784,6 +1806,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           {filtered.map(tx => {
             const stale = (tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') && hoursSince(tx.created_at) >= 24;
             const paymentMobileSummaryId = `admin-payment-mobile-summary-${tx.id}`;
+            const paymentMobileNextActionReason = getTransactionNextActionReason(tx);
             const paymentMobileSummaryText = [
               `${getTransactionKindLabel(tx)} ${tx.amount.toLocaleString()}원`,
               `상태 ${MATCH_LABELS[tx.match_status] || tx.match_status}`,
@@ -1793,6 +1816,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 ? `예약 ${fmtBookingAnchor(tx.bookings)}${tx.bookings.package_title ? `, ${tx.bookings.package_title}` : ''}`
                 : '연결된 예약 없음',
               `다음 액션 ${getTransactionNextActionLabel(tx)}`,
+              `다음 액션 근거 ${paymentMobileNextActionReason}`,
               stale ? `${Math.round(hoursSince(tx.created_at))}시간 경과` : null,
             ].filter(Boolean).join('. ');
             return (

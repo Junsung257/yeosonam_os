@@ -472,6 +472,16 @@ export default function PackagesClient() {
   const primaryFilterReadinessText = primaryFilterMissingLabels.length > 0
     ? `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 보완하면 좋은 조건: ${primaryFilterMissingLabels.join(', ')}.`
     : `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 상담과 비교에 필요한 핵심 조건이 준비되었습니다.`;
+  const packageHandoffPreviewItems = useMemo(() => [
+    handoffIntent ? { label: '목적', value: handoffIntent } : null,
+    { label: '출발지', value: HUB_SUMMARY_LABELS[hub] },
+    handoffDestination ? { label: '지역', value: handoffDestination } : null,
+    handoffBudget ? { label: '예산', value: handoffBudget } : null,
+    selectedProductNames.length > 0 ? { label: '비교 상품', value: selectedProductNames.join(' / ') } : null,
+  ].filter((item): item is { label: string; value: string } => Boolean(item)), [handoffBudget, handoffDestination, handoffIntent, hub, selectedProductNames]);
+  const packageHandoffPreviewText = packageHandoffPreviewItems.length > 0
+    ? `견적 문의 전달 조건: ${packageHandoffPreviewItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${primaryFilterReadinessText}`
+    : `견적 문의 전달 조건이 아직 없습니다. ${primaryFilterReadinessText}`;
   const stickyHandoffItems = useMemo(
     () => filterSummaryItems
       .filter((item) => item.label !== '결과')
@@ -993,6 +1003,30 @@ export default function PackagesClient() {
               ? `보완 추천: ${primaryFilterMissingLabels.join(', ')}`
               : '상담 전달 준비 완료'}
           </span>
+        </div>
+        <div
+          data-testid="packages-handoff-preview"
+          aria-label={packageHandoffPreviewText}
+          className="mt-2 rounded-[14px] border border-[#DCE5F0] bg-white px-3 py-2"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <span className="shrink-0 text-[12px] font-extrabold text-text-primary">견적 문의에 전달</span>
+            <span className="min-w-0 truncate text-right text-[12px] font-semibold text-brand">
+              {selectedProductNames.length > 0 ? `비교 ${selectedProductNames.length}개 포함` : '조건 기반 상담'}
+            </span>
+          </div>
+          <div className="mt-2 flex gap-1.5 overflow-x-auto no-scrollbar">
+            {packageHandoffPreviewItems.map((item) => (
+              <span
+                key={`handoff:${item.label}:${item.value}`}
+                className="shrink-0 rounded-full border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-bold text-text-body"
+              >
+                <span className="text-text-secondary">{item.label}</span>
+                <span className="mx-1 text-[#CBD5E1]">/</span>
+                {item.value}
+              </span>
+            ))}
+          </div>
         </div>
       </section>
 
