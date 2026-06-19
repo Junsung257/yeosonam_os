@@ -688,6 +688,26 @@ const markerContracts = [
     ],
   },
   {
+    label: 'things-to-do index uses destination fallback when regional covers are missing',
+    file: 'src/app/things-to-do/page.tsx',
+    markers: [
+      'DestinationImageFallback',
+      'fallback={<DestinationImageFallback title={`${r.region} 가볼만한 곳`} destination={r.region} compact />}',
+      '<DestinationImageFallback title={`${r.region} 가볼만한 곳`} destination={r.region} compact />',
+    ],
+  },
+  {
+    label: 'things-to-do region cards use destination fallback for attractions and packages',
+    file: 'src/app/things-to-do/[region]/page.tsx',
+    markers: [
+      'DestinationImageFallback',
+      'fallback={<DestinationImageFallback title={a.name} destination={data.region} compact />}',
+      '<DestinationImageFallback title={a.name} destination={data.region} compact />',
+      'fallback={<DestinationImageFallback title={p.title} destination={data.region} compact />}',
+      '<DestinationImageFallback title={p.title} destination={data.region} compact />',
+    ],
+  },
+  {
     label: 'travel detail info cards expose controlled disclosure regions',
     file: 'src/components/customer/TravelFitnessCard.tsx',
     markers: [

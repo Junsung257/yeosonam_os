@@ -658,7 +658,7 @@ export default function ConciergePage() {
   const resultSummaryText = loading
     ? '여행 조건에 맞는 추천 상품을 비교하고 있습니다.'
     : results.length > 0
-      ? `추천 결과 ${results.length}건이 준비되었습니다. 비교표에서 가격과 주의할 점을 확인한 뒤 담기, 상세 보기, 카톡 상담을 선택할 수 있습니다.`
+      ? `추천 결과 ${results.length}건이 준비되었습니다. 비교표에서 가격과 주의할 점을 확인한 뒤 상세 보기, 견적, 담기, 카톡 상담을 선택할 수 있습니다.`
       : searchError
         ? searchError
         : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
@@ -896,8 +896,48 @@ export default function ConciergePage() {
               <ResultComparisonTable
                 results={results}
                 summaryId={resultSummaryId}
+                getGroupInquiryHref={(item) => buildGroupInquiryHandoffHref({
+                  source: 'concierge_comparison',
+                  intent: intentSummary.intent ?? undefined,
+                  partyType: intentSummary.party_type ?? undefined,
+                  query: query.trim() || activePrompt?.query || `${item.product_name} 단체 견적`,
+                  destination: intentSummary.destination,
+                  budget: intentSummary.budget || `예상가 ${money(item.price)}`,
+                  selectedProducts: [item.product_name],
+                })}
                 onAdd={(item) => addToCart(item)}
+                onViewDetail={(item) => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                    source: 'concierge_comparison_detail',
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    page_url: '/concierge',
+                    metadata: {
+                      action: 'view_detail_from_comparison',
+                      apiName: item.api_name,
+                      productType: item.product_type,
+                    },
+                    ...intentSummary,
+                  });
+                }}
                 onConsult={(item) => openKakaoConsult('comparison_table', item)}
+                onGroupInquiry={(item) => {
+                  trackEngagement({
+                    event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+                    source: 'concierge_comparison_group_inquiry',
+                    product_id: item.product_id,
+                    product_name: item.product_name,
+                    page_url: '/concierge',
+                    ...intentSummary,
+                    selected_products: [item.product_name],
+                    metadata: {
+                      action: 'group_inquiry_from_comparison',
+                      apiName: item.api_name,
+                      productType: item.product_type,
+                    },
+                  });
+                }}
               />
               <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {results.map((item, index) => (
@@ -1181,13 +1221,19 @@ export default function ConciergePage() {
 function ResultComparisonTable({
   results,
   summaryId,
+  getGroupInquiryHref,
   onAdd,
+  onViewDetail,
   onConsult,
+  onGroupInquiry,
 }: {
   results: MockSearchResult[];
   summaryId: string;
+  getGroupInquiryHref: (item: MockSearchResult) => string;
   onAdd: (item: MockSearchResult) => void | Promise<void>;
+  onViewDetail: (item: MockSearchResult) => void;
   onConsult: (item: MockSearchResult) => void;
+  onGroupInquiry: (item: MockSearchResult) => void;
 }) {
   if (results.length < 2) return null;
 
@@ -1238,6 +1284,8 @@ function ResultComparisonTable({
               const insight = getResultInsight(item);
               const category = resolveCategory(item);
               const categoryLabel = category === 'DYNAMIC' ? '실시간 조건' : '고정 패키지';
+              const detailHref = category === 'FIXED' ? `/packages/${encodeURIComponent(item.product_id)}` : null;
+              const groupInquiryHref = getGroupInquiryHref(item);
 
               return (
                 <tr key={item.product_id} className="align-top">
@@ -1255,7 +1303,28 @@ function ResultComparisonTable({
                   <td className="max-w-[150px] px-3 py-3 font-bold text-text-primary">{insight.action}</td>
                   <td className="max-w-[220px] px-3 py-3 leading-5 text-text-secondary">{insight.extraCost}</td>
                   <td className="px-4 py-3">
-                    <div className="flex justify-end gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {detailHref && (
+                        <Link
+                          href={detailHref}
+                          onClick={() => onViewDetail(item)}
+                          aria-label={`${item.product_name} 비교표에서 상세 보기`}
+                          aria-describedby={summaryId}
+                          className="inline-flex h-9 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[12px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                        >
+                          상세
+                        </Link>
+                      )}
+                      <Link
+                        href={groupInquiryHref}
+                        onClick={() => onGroupInquiry(item)}
+                        data-testid="concierge-comparison-group-inquiry"
+                        aria-label={`${item.product_name} 비교표에서 단체 견적 문의`}
+                        aria-describedby={summaryId}
+                        className="inline-flex h-9 items-center justify-center rounded-full border border-[#D1DCE8] bg-white px-3 text-[12px] font-bold text-text-primary hover:border-brand/60 hover:text-brand"
+                      >
+                        견적
+                      </Link>
                       <button
                         type="button"
                         onClick={() => {

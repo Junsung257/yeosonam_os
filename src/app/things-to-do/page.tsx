@@ -8,7 +8,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { supabaseAdmin, isSupabaseConfigured } from '@/lib/supabase';
 import { pickAttractionPhotoUrl } from '@/lib/image-url';
-import { SafeCoverImg } from '@/components/customer/SafeRemoteImage';
+import { DestinationImageFallback, SafeCoverImg } from '@/components/customer/SafeRemoteImage';
 import { shouldSkipPublicDbReadsForResourceSaver } from '@/lib/cron-resource-saver';
 
 export const revalidate = 86400; // 1d
@@ -126,9 +126,11 @@ export default async function ThingsToDoIndexPage() {
                   alt={r.region}
                   loading="lazy"
                   className="h-full w-full object-cover"
-                  fallback={<div className="h-full w-full bg-neutral-200" aria-hidden />}
+                  fallback={<DestinationImageFallback title={`${r.region} 가볼만한 곳`} destination={r.region} compact />}
                 />
-              ) : null}
+              ) : (
+                <DestinationImageFallback title={`${r.region} 가볼만한 곳`} destination={r.region} compact />
+              )}
             </div>
             <div className="p-3">
               <div className="font-semibold">{r.region}</div>
