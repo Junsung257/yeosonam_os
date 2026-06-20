@@ -1,4 +1,6 @@
 import type React from 'react';
+import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -51,6 +53,50 @@ function getStringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : [];
+}
+
+type LocalDetailFixturePackage = Record<string, any>;
+
+function findPackageInFixturePayload(payload: unknown, id: string): LocalDetailFixturePackage | null {
+  const rows = Array.isArray(payload)
+    ? payload
+    : Array.isArray((payload as { data?: unknown } | null)?.data)
+      ? (payload as { data: unknown[] }).data
+      : [];
+
+  return rows.find((row): row is LocalDetailFixturePackage => {
+    return Boolean(row && typeof row === 'object' && (row as { id?: unknown }).id === id);
+  }) ?? null;
+}
+
+async function loadLocalDetailFixturePackage(id: string): Promise<LocalDetailFixturePackage | null> {
+  if (process.env.VERCEL_ENV === 'production') return null;
+  const fixtureFile = getNonEmptyString(process.env.PACKAGE_DETAIL_FIXTURE_FILE);
+  const candidateFiles = [
+    fixtureFile,
+    path.join(process.cwd(), 'api_test.json'),
+    process.env.TEMP ? path.join(process.env.TEMP, 'yeosonam-os-dev-link', 'api_test.json') : null,
+  ].filter((file): file is string => Boolean(file));
+
+  for (const candidateFile of candidateFiles) {
+    try {
+      const absolutePath = path.isAbsolute(candidateFile)
+        ? candidateFile
+        : path.join(process.cwd(), candidateFile);
+      const payload = JSON.parse((await readFile(absolutePath)).toString('utf8')) as unknown;
+      const matchedPackage = findPackageInFixturePayload(payload, id);
+      if (matchedPackage) return matchedPackage;
+    } catch {
+      continue;
+    }
+  }
+
+  try {
+    const payload = (await import('../../../../api_test.json')).default as unknown;
+    return findPackageInFixturePayload(payload, id);
+  } catch {
+    return null;
+  }
 }
 
 function buildPackageSeoTitle(input: {
@@ -166,6 +212,33 @@ export async function generateMetadata({
   if (!id || !isUuid(id)) {
     notFound();
   }
+  const fixtureData = await loadLocalDetailFixturePackage(id);
+  if (fixtureData) {
+    if (fixtureData.audit_status === 'blocked' || !isCustomerVisibleStatus(fixtureData.status)) {
+      notFound();
+    }
+    const title = String(fixtureData.title || fixtureData.destination || 'Yeosonam package travel');
+    const seoTitle = buildPackageSeoTitle({
+      title,
+      productType: getNonEmptyString(fixtureData.product_type),
+      price: typeof fixtureData.price === 'number' ? fixtureData.price : null,
+      id,
+    });
+    const destination = String(fixtureData.destination || 'Package');
+    const description = getNonEmptyString(fixtureData.product_summary) || `${destination} ${title} - Yeosonam package travel`;
+
+    return {
+      title: { absolute: `${seoTitle} | Yeosonam` },
+      description,
+      robots: { index: false, follow: true },
+      openGraph: {
+        title: seoTitle,
+        description,
+        url: canonical,
+      },
+      alternates: { canonical },
+    };
+  }
   if (!isSupabaseConfigured) {
     return buildPackageNoindexMetadata(id, canonical);
   }
@@ -239,22 +312,25 @@ export default async function PackageDetailPage({
   const { id: rawId } = await params;
   const id = getRouteParam(rawId);
   if (!id || !isUuid(id)) notFound();
-  const sbOrNull = getPackageReadClient();
-  if (!sbOrNull) notFound();
-  const sb = sbOrNull;
-  const skipNonCriticalDbReads = shouldSkipPublicDbReadsForResourceSaver();
+  const fixturePkg = await loadLocalDetailFixturePackage(id);
+  const sb = fixturePkg ? null : getPackageReadClient();
+  if (!fixturePkg && !sb) notFound();
+  const skipNonCriticalDbReads = fixturePkg ? true : shouldSkipPublicDbReadsForResourceSaver();
+  const canRunOptionalDbReads = Boolean(sb) && !skipNonCriticalDbReads && !fixturePkg;
 
   // ACL: 고객 노출 페이지에서는 내부필드(net_price/selling_price/margin_rate) SELECT 금지.
   // 어드민 UI는 /api/packages GET으로 별도 조회하며 거기서는 원가 정보가 유지된다.
-  const pkgResult = await runSupabaseQueryWithTimeout(
-    sb.from('travel_packages')
-      .select(DETAIL_FIELDS)
-      .eq('id', id)
-      .single(),
-    { label: 'package.detail.primary', timeoutMs: 2500 },
-  ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
+  const pkgResult = fixturePkg
+    ? { data: fixturePkg, error: null }
+    : await runSupabaseQueryWithTimeout(
+        sb!.from('travel_packages')
+          .select(DETAIL_FIELDS)
+          .eq('id', id)
+          .single(),
+        { label: 'package.detail.primary', timeoutMs: 2500 },
+      ).catch(() => ({ data: null, error: new Error('package detail query timed out') }));
 
-  const pkg = pkgResult.data;
+  const pkg = pkgResult.data as Record<string, any> | null;
 
   // 존재하지 않는 패키지 → 404
   if (!pkg) {
@@ -280,7 +356,9 @@ export default async function PackageDetailPage({
   // 2026-05-15 박제: category + mrt_gid 추가 — attraction-matcher 가 accommodation/mrt_product
   //   카테고리를 매칭 후보에서 제외하는데 SELECT 에 누락돼 있어 호텔/투어가 잘못 매칭되던 사고.
   //   mrt_gid 는 동일 fuzzy 점수일 때 MRT canonical 우선 선택용.
-  let matchQuery = sb.from('attractions')
+  let lightAttractions: AttractionData[] = [];
+  if (sb && canRunOptionalDbReads) {
+    let matchQuery = sb.from('attractions')
     .select('name, country, region, aliases, category, mrt_gid');
 
   if (pkg && pkg.destination) {
@@ -298,14 +376,13 @@ export default async function PackageDetailPage({
 
   // C6 박제 (2026-05-15): JP=793 + TW=160 + 인접 region 매칭이 1200 한계에 근접 → 2000 으로 확장.
   //   light SELECT (id 제외 9컬럼) 이라 payload 부담 작음. Step B 의 relevantAttractions 가 진짜 페이로드.
-  const matchResult = skipNonCriticalDbReads
-    ? { data: [] }
-    : await runOptionalSupabaseQuery(
-        matchQuery.limit(600),
-        { data: [] },
-        { label: 'package.attractions.match-light', timeoutMs: 1200 },
-      );
-  const lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
+    const matchResult = await runOptionalSupabaseQuery(
+      matchQuery.limit(600),
+      { data: [] },
+      { label: 'package.attractions.match-light', timeoutMs: 1200 },
+    );
+    lightAttractions = (matchResult.data ?? []) as unknown as AttractionData[];
+  }
 
   // 매칭된 관광지 이름 목록만 추출 (서버사이드 1회)
   const matchedNames = new Set<string>();
@@ -351,7 +428,7 @@ export default async function PackageDetailPage({
     // 2026-05-16 박제: .or() 합성으로 id + name 동시 매칭 시 한글 name 의 PostgREST OR 절
     //   파싱 실패 (공백/따옴표 escape 비표준) → 0건 반환되어 모든 attraction 카드 미표출.
     //   두 번 fetch + 합집합으로 단순화.
-    if (idsFromItinerary.size > 0 && !skipNonCriticalDbReads) {
+    if (idsFromItinerary.size > 0 && sb && canRunOptionalDbReads) {
       const { data } = await runOptionalSupabaseQuery(
         sb.from('attractions').select(SELECT).in('id', Array.from(idsFromItinerary)),
         { data: [] },
@@ -359,9 +436,9 @@ export default async function PackageDetailPage({
       );
       for (const a of ((data ?? []) as DetailRow[])) merged.set(a.id, a);
     }
-    if (false && matchedNames.size > 0 && !skipNonCriticalDbReads) {
+    if (false && matchedNames.size > 0 && sb && canRunOptionalDbReads) {
       const { data } = await runOptionalSupabaseQuery(
-        sb.from('attractions').select(SELECT).in('name', Array.from(matchedNames)),
+        sb!.from('attractions').select(SELECT).in('name', Array.from(matchedNames)),
         { data: [] },
         { label: 'package.attractions.detail-by-name', timeoutMs: 1200 },
       );
@@ -374,7 +451,7 @@ export default async function PackageDetailPage({
 
   const parserVersion = String((pkg as { parser_version?: string } | null)?.parser_version ?? '');
   const writeTimeProcessed = parserVersion.includes(POSTPROCESS_VERSION);
-  const pkgBase = pkg
+  const pkgBase: Record<string, any> | null = pkg
     ? {
         ...pkg,
         products: Array.isArray(pkg.products) ? pkg.products[0] ?? null : pkg.products,
@@ -382,7 +459,7 @@ export default async function PackageDetailPage({
     : null;
   let productPriceRows: Array<{ target_date: string | null; adult_selling_price: number | null; note: string | null }> = [];
   const priceProductCode = pkgBase?.products?.internal_code ?? (pkgBase as { internal_code?: string | null } | null)?.internal_code ?? null;
-  if (priceProductCode) {
+  if (priceProductCode && sb && canRunOptionalDbReads) {
     const { data: priceRows } = await sb
       .from('product_prices')
       .select('target_date, adult_selling_price, note')
@@ -391,10 +468,10 @@ export default async function PackageDetailPage({
       .order('adult_selling_price', { ascending: true, nullsFirst: false });
     productPriceRows = (priceRows ?? []) as typeof productPriceRows;
   }
-  const normalizedPkg = pkgBase
+  const normalizedPkg: Record<string, any> | null = pkgBase
     ? (() => {
-        const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow(pkgBase);
-        return { ...processed, product_prices: productPriceRows };
+        const processed = writeTimeProcessed ? pkgBase : postProcessPackageRow(pkgBase as any);
+        return { ...(processed as Record<string, any>), product_prices: productPriceRows };
       })()
     : null;
 
@@ -402,7 +479,7 @@ export default async function PackageDetailPage({
   let relatedBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string }[] = [];
   // 관련 블로그 글 조회 (2) — 같은 destination의 정보성 글 (여행 준비물/날씨/가이드 등)
   let destinationBlogPosts: { slug: string; seo_title: string | null; og_image_url: string | null; angle_type: string; seo_description: string | null }[] = [];
-  if (pkg?.destination && !skipNonCriticalDbReads) {
+  if (pkg?.destination && sb && canRunOptionalDbReads) {
     const [productScoped, destinationScoped] = await Promise.all([
       sb.from('content_creatives')
         .select('slug, seo_title, og_image_url, angle_type')
@@ -467,7 +544,7 @@ export default async function PackageDetailPage({
   let climateData: Awaited<ReturnType<typeof resolveDestinationClimate>> = null;
   let representativeMonth = new Date().getMonth() + 1;
   let departureDistribution: Record<number, number> = {};
-  if (pkg?.destination) {
+  if (pkg?.destination && sb && canRunOptionalDbReads) {
     climateData = await resolveDestinationClimate(pkg.destination);
 
     // 출발일 평균월 산출 — price_dates 우선, 없으면 price_tiers.departure_dates
@@ -510,7 +587,7 @@ export default async function PackageDetailPage({
     } | null;
   };
   let scoreRows: ScoreRow[] = [];
-  {
+  if (sb && canRunOptionalDbReads) {
     const { data: sc } = await sb
       .from('package_scores')
       .select('departure_date, rank_in_group, group_size, effective_price, list_price, shopping_count, hotel_avg_grade, meal_count, free_option_count, is_direct_flight, breakdown')
@@ -535,7 +612,7 @@ export default async function PackageDetailPage({
       .filter(r => r.group_size >= 2 && r.departure_date)
       .map(r => `${pkg?.destination ?? ''}|${r.departure_date}`);
     const uniqueGroupKeys = Array.from(new Set(groupKeys)).slice(0, 20);
-    if (uniqueGroupKeys.length > 0) {
+    if (uniqueGroupKeys.length > 0 && sb && canRunOptionalDbReads) {
       const { data } = await sb
         .from('package_scores')
         .select(`departure_date, rank_in_group, list_price, effective_price, hotel_avg_grade, shopping_count, free_option_count, is_direct_flight, breakdown, package_id, group_key, travel_packages!inner(title)`)
@@ -567,7 +644,7 @@ export default async function PackageDetailPage({
     nextDepartureDate: string | null;
   } = { bookings: 0, interest: 0, todayViews: 0, nextDepartureBookings: 0, nextDepartureDate: null };
 
-  if (pkg?.destination) {
+  if (pkg?.destination && sb && canRunOptionalDbReads) {
     const since30d = new Date(Date.now() - 30 * 86400000).toISOString();
     const since24h = new Date(Date.now() - 86400000).toISOString();
     const todayStr = new Date().toISOString().slice(0, 10);
@@ -657,7 +734,7 @@ export default async function PackageDetailPage({
 
   // 4-level 약관 해소 (mobile surface) — 출발일 가장 이른 날짜 기준으로 날짜 병기
   let initialNotices: NoticeBlock[] = [];
-  if (normalizedPkg && !skipNonCriticalDbReads) {
+  if (normalizedPkg && canRunOptionalDbReads) {
     const rawPriceDates = (normalizedPkg as { price_dates?: { date: string }[] }).price_dates ?? [];
     const earliestDate = rawPriceDates.map(d => d.date).filter(Boolean).sort()[0] ?? null;
     const resolved = await resolveTermsForPackage(
@@ -677,7 +754,7 @@ export default async function PackageDetailPage({
   type CatalogSibling = { id: string; title: string; display_title: string | null; destination: string | null; product_highlights: string[] | null };
   let catalogSiblings: CatalogSibling[] = [];
   const currentCatalogId = (pkg as { catalog_id?: string | null }).catalog_id;
-  if (currentCatalogId && !skipNonCriticalDbReads) {
+  if (currentCatalogId && sb && canRunOptionalDbReads) {
     const { data: siblings } = await runOptionalSupabaseQuery(
       sb
         .from('travel_packages')
@@ -726,7 +803,7 @@ export default async function PackageDetailPage({
     };
   })() : null;
   let lpHeroImageUrl: string | null = null;
-  if (normalizedPkg) {
+  if (normalizedPkg && sb && canRunOptionalDbReads) {
     try {
       lpHeroImageUrl = await resolveLpHeroPhotoUrl(sb, normalizedPkg as { destination?: string | null; itinerary_data?: unknown });
     } catch {
