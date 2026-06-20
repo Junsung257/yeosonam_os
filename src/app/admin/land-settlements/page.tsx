@@ -5,14 +5,14 @@
  * 어필리에이터 정산(/admin/settlements) 과 별개 — 랜드사 송금/환불 묶음 추적용.
  *
  * - 묶음 history (pending / confirmed / reversed)
- * - confirm(회계 마감) / reverse(잘못 묶었을 때 되돌림) 액션
+ * - 확정(회계 마감) / 되돌림(잘못 묶었을 때 복원) 액션
  * - 묶인 booking 펼치기
  * - CSV 다운로드 (UTF-8 BOM, Excel 호환)
  *
  * 정책: reverse 는 reversed 제외 모든 status 허용. confirm 은 pending → confirmed 단방향.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { LAND_SETTLEMENT_STATUS_COLOR } from '@/lib/status-colors';
 import { fmtNum as fmtKRW, fmtDateISO, fmtDateTime, fmtMonthDay } from '@/lib/admin-utils';
 import { PageHeader } from '@/components/admin/patterns';
@@ -67,6 +67,14 @@ export default function LandSettlementsPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<{ kind: 'ok' | 'err'; msg: string } | null>(null);
+  const [reverseTarget, setReverseTarget] = useState<Settlement | null>(null);
+  const [reverseReason, setReverseReason] = useState('');
+  const reverseCancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!reverseTarget) return;
+    requestAnimationFrame(() => reverseCancelRef.current?.focus());
+  }, [reverseTarget]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -114,20 +122,17 @@ export default function LandSettlementsPage() {
 
   const handleReverse = useCallback(
     async (s: Settlement) => {
-      const reason = window.prompt('Reverse 사유 (선택):', '');
-      if (reason === null) return;
-      if (!window.confirm(`정말 ${s.land_operator_name ?? '랜드사'} 정산 ${fmtKRW(s.total_amount)}을 되돌릴까요?\n묶인 ${s.bookings.length}건 booking 의 정산금이 차감되고 거래는 미매칭 상태로 복원됩니다.`)) {
-        return;
-      }
       setBusy(s.id);
       try {
         const res = await fetch('/api/payments/settlement-reverse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ settlementId: s.id, reason: reason || null }),
+          body: JSON.stringify({ settlementId: s.id, reason: reverseReason.trim() || null }),
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? 'reverse 실패');
+        setReverseTarget(null);
+        setReverseReason('');
         showToast('ok', `↩ ${s.land_operator_name ?? '랜드사'} 정산 reverse 완료`);
         await load();
       } catch (err: any) {
@@ -136,7 +141,7 @@ export default function LandSettlementsPage() {
         setBusy(null);
       }
     },
-    [load, showToast],
+    [load, reverseReason, showToast],
   );
 
   return (
@@ -221,12 +226,83 @@ export default function LandSettlementsPage() {
                   expanded={expandedId === s.id}
                   onToggle={() => setExpandedId(expandedId === s.id ? null : s.id)}
                   onConfirm={() => handleConfirm(s)}
-                  onReverse={() => handleReverse(s)}
+                  onReverse={() => {
+                    setReverseTarget(s);
+                    setReverseReason('');
+                  }}
                   busy={busy === s.id}
                 />
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {reverseTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="랜드사 정산 되돌림 확인 닫기"
+            className="absolute inset-0 bg-black/50 cursor-default"
+            onClick={() => setReverseTarget(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="land-settlement-reverse-title"
+            aria-describedby="land-settlement-reverse-description land-settlement-reverse-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-warning/30 bg-admin-surface p-5 shadow-admin-lg"
+          >
+            <h2 id="land-settlement-reverse-title" className="text-admin-lg font-bold text-admin-text-2">
+              랜드사 정산 되돌림
+            </h2>
+            <p id="land-settlement-reverse-description" className="mt-1 text-admin-sm leading-6 text-admin-muted">
+              묶인 예약의 정산금이 차감되고 은행 거래는 미매칭 상태로 복원됩니다.
+            </p>
+            <div id="land-settlement-reverse-summary" className="mt-4 rounded-admin-sm border border-warning/30 bg-warning/10 p-3 text-admin-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-admin-muted">랜드사</span>
+                <span className="font-semibold text-admin-text-2">{reverseTarget.land_operator_name ?? '랜드사'}</span>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
+                <span className="text-admin-muted">실 출금액</span>
+                <span className="admin-num font-semibold text-admin-text-2">{fmtKRW(reverseTarget.total_amount)}</span>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
+                <span className="text-admin-muted">영향 예약</span>
+                <span className="admin-num font-semibold text-admin-text-2">{reverseTarget.bookings.length}건</span>
+              </div>
+            </div>
+            <label htmlFor="land-settlement-reverse-reason" className="mt-4 block text-admin-xs font-semibold text-admin-muted">
+              되돌림 사유 (선택)
+            </label>
+            <textarea
+              id="land-settlement-reverse-reason"
+              value={reverseReason}
+              onChange={event => setReverseReason(event.target.value)}
+              rows={3}
+              className="mt-1 w-full resize-none rounded-admin-sm border border-admin-border-strong px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-warning/30"
+              placeholder="예: 잘못 묶인 예약이 있어 정산을 되돌립니다."
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={reverseCancelRef}
+                type="button"
+                onClick={() => setReverseTarget(null)}
+                className="rounded-admin-sm border border-admin-border-strong px-3 py-2 text-admin-xs font-semibold text-admin-muted hover:bg-admin-bg"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReverse(reverseTarget)}
+                disabled={busy === reverseTarget.id}
+                className="rounded-admin-sm bg-warning px-4 py-2 text-admin-xs font-bold text-white hover:bg-warning/90 disabled:opacity-50"
+              >
+                {busy === reverseTarget.id ? '처리 중...' : '되돌림 실행'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
