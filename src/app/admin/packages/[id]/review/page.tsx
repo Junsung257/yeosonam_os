@@ -95,6 +95,11 @@ interface QualityData {
   } | null;
 }
 
+type ReviewNotice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 const SEVERITY_BG: Record<string, string> = {
   critical: 'bg-red-50 border-red-300',
   high: 'bg-amber-50 border-amber-300',
@@ -277,6 +282,7 @@ export default function PackageReviewPage() {
   const [noticeEdits, setNoticeEdits] = useState<Record<string, NoticeEdit>>({});
   const [noticeSaving, setNoticeSaving] = useState(false);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+  const [reviewNotice, setReviewNotice] = useState<ReviewNotice | null>(null);
   // N4 박제 (2026-05-16 트립박스 표준): 호텔 마스터 검색 inline
   const [hotelSearchQ, setHotelSearchQ] = useState<string>('');
   const [hotelResults, setHotelResults] = useState<HotelSearchResult[]>([]);
@@ -331,8 +337,8 @@ export default function PackageReviewPage() {
         body: JSON.stringify({ packageId: pkg.id, [rootKey]: rootVal }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || '저장 실패'); return; }
-      alert(`호텔 적용 완료: ${hotel.name}`);
+      if (!res.ok) { setReviewNotice({ tone: 'error', message: data.error || '저장 실패' }); return; }
+      setReviewNotice({ tone: 'success', message: `호텔 적용 완료: ${hotel.name}` });
       setHotelSearchOpen(null);
       load();
     } finally { setSaving(false); }
@@ -396,15 +402,15 @@ export default function PackageReviewPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(`저장 실패: ${json.error || 'unknown'}`);
+        setReviewNotice({ tone: 'error', message: `저장 실패: ${json.error || 'unknown'}` });
         return;
       }
       // 자동으로 extractions_corrections 에 정정 적립됨 (PATCH hook)
-      alert('정정 저장 완료. Reflexion 메모리에 자동 적립됨 (다음 등록부터 자동 회피).');
+      setReviewNotice({ tone: 'success', message: '정정 저장 완료. Reflexion 메모리에 자동 적립됨 (다음 등록부터 자동 회피).' });
       setEditingField(null);
       load();
     } catch (e) {
-      alert(`오류: ${e instanceof Error ? e.message : String(e)}`);
+      setReviewNotice({ tone: 'error', message: `오류: ${e instanceof Error ? e.message : String(e)}` });
     } finally {
       setSaving(false);
     }
@@ -558,6 +564,20 @@ export default function PackageReviewPage() {
             className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">고객 페이지 ↗</a>
         </div>
       </div>
+
+      {reviewNotice && (
+        <div
+          role={reviewNotice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={reviewNotice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`mb-4 rounded-admin-md border px-4 py-3 text-admin-sm ${
+            reviewNotice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          {reviewNotice.message}
+        </div>
+      )}
 
       {/* 종합 정보 */}
       <div className={`rounded-admin-md border p-4 mb-4 ${overallConf == null ? 'bg-admin-bg border-admin-border-mid' : overallConf < 0.7 ? 'bg-red-50 border-red-200' : 'bg-emerald-50 border-emerald-200'}`}>
