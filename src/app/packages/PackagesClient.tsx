@@ -34,6 +34,9 @@ const PACKAGES_STICKY_PHONE_DESCRIPTION_ID = 'packages-sticky-phone-description'
 const PACKAGES_STICKY_GROUP_DESCRIPTION_ID = 'packages-sticky-group-description';
 const PACKAGES_STICKY_KAKAO_DESCRIPTION_ID = 'packages-sticky-kakao-description';
 const PACKAGES_FILTER_READINESS_SUMMARY_ID = 'packages-filter-readiness-summary';
+const srStatusProps = (enabled: boolean) => (
+  enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
+);
 
 interface Package {
   id: string;
@@ -306,6 +309,7 @@ export default function PackagesClient() {
     : compareIds.length === 1
       ? '비교 상품 1개가 선택되었습니다. 하나 더 선택하면 비교할 수 있습니다.'
       : '비교 상품 2개가 선택되었습니다. 비교하기를 열 수 있습니다.';
+  const compareStatusLive = compareIds.length > 0;
   const compareHelpText = compareIds.length >= 2
     ? '선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 비교 모달에서 확인할 수 있습니다.'
     : '비교할 상품을 최대 2개까지 선택할 수 있습니다. 이미 2개를 고른 뒤 다른 상품을 누르면 가장 오래된 선택이 교체됩니다.';
@@ -421,12 +425,12 @@ export default function PackagesClient() {
   const handoffDestination = destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null);
   const handoffIntent = selectedIntent ? INTENT_HANDOFF_LABELS[selectedIntent] : null;
   const handoffPartyType = selectedIntent ? INTENT_PARTY_TYPE[selectedIntent] ?? null : null;
-  const primaryFilterChecklist = [
+  const primaryFilterChecklist = useMemo(() => [
     { label: '출발월', complete: Boolean(month) },
     { label: '출발지', complete: Boolean(hub) },
     { label: '여행 목적', complete: Boolean(selectedIntent) },
     { label: '예산', complete: Boolean(handoffBudget) },
-  ];
+  ], [handoffBudget, hub, month, selectedIntent]);
   const primaryFilterReadyCount = primaryFilterChecklist.filter((item) => item.complete).length;
   const primaryFilterMissingLabels = primaryFilterChecklist
     .filter((item) => !item.complete)
@@ -434,6 +438,10 @@ export default function PackagesClient() {
   const primaryFilterReadinessText = primaryFilterMissingLabels.length > 0
     ? `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 보완하면 좋은 조건: ${primaryFilterMissingLabels.join(', ')}.`
     : `핵심 조건 준비 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}. 상담과 비교에 필요한 핵심 조건이 준비되었습니다.`;
+  const hasActivePackageFilter = Boolean(
+    q || month || destination || selectedIntent || category || urgency || priceMin || priceMax || hub !== DEFAULT_DEPARTURE_HUB,
+  );
+  const filterReadinessLive = hasActivePackageFilter;
   const packageHandoffPreviewItems = useMemo(() => [
     handoffIntent ? { label: '목적', value: handoffIntent } : null,
     { label: '출발지', value: HUB_SUMMARY_LABELS[hub] },
@@ -499,6 +507,7 @@ export default function PackagesClient() {
     ? `모바일 적용 조건 ${mobileAppliedFilterItems.length}개: ${mobileAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. 결과 ${filteredPackages.length}개.`
     : `모바일 적용 조건 없음. 결과 ${filteredPackages.length}개.`;
   const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다. ${primaryFilterReadinessText}`;
+  const packageResultSummaryLive = hasActivePackageFilter || compareIds.length > 0;
   const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
   const packageEmptyStateSummaryId = 'packages-empty-state-summary';
   const emptyStateAppliedFilterItems = filterSummaryItems
@@ -976,11 +985,10 @@ export default function PackagesClient() {
   return (
     <div className="min-h-screen bg-white pb-36 md:pb-0">
       <GlobalNav />
-      <h1 className="sr-only">여소남 패키지 여행 상품</h1>
       <a href={consultTelHref || groupInquiryHref} className="sr-only">
         여행 상품 문의
       </a>
-      <p id={compareStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={compareStatusId} className="sr-only" {...srStatusProps(compareStatusLive)}>
         {compareStatusText}
       </p>
       <p id={compareHelpId} className="sr-only">
@@ -1324,17 +1332,14 @@ export default function PackagesClient() {
         id={packageResultSummaryId}
         data-testid="packages-result-summary"
         className="sr-only"
-        aria-live="polite"
-        aria-atomic="true"
+        {...srStatusProps(packageResultSummaryLive)}
       >
         {packageResultSummaryText}
       </p>
       <p
         id={packageFilterReadinessSummaryId}
         className="sr-only"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
+        {...srStatusProps(filterReadinessLive)}
       >
         {primaryFilterReadinessText}
       </p>
