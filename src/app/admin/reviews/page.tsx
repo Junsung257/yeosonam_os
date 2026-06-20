@@ -24,6 +24,11 @@ interface ReviewRow {
   created_at: string;
 }
 
+type ReviewNotice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 function StarRating({ rating }: { rating: number }) {
   return (
     <span className="text-amber-400 font-mono text-admin-sm">
@@ -72,6 +77,7 @@ export default function ReviewsAdminPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [notice, setNotice] = useState<ReviewNotice | null>(null);
 
   const fetchReviews = useCallback(async () => {
     setLoading(true);
@@ -102,13 +108,14 @@ export default function ReviewsAdminPage() {
       });
       const json = await res.json() as { ok?: boolean; analyzed?: number; failed?: number; error?: string };
       if (!json.ok) {
-        alert(`분석 실패: ${json.error ?? '알 수 없는 오류'}`);
+        setNotice({ tone: 'error', message: `분석 실패: ${json.error ?? '알 수 없는 오류'}` });
       } else {
-        alert(`분석 완료: ${json.analyzed}건 처리, ${json.failed ?? 0}건 실패`);
+        const failed = json.failed ?? 0;
+        setNotice({ tone: failed > 0 ? 'error' : 'success', message: `분석 완료: ${json.analyzed}건 처리, ${failed}건 실패` });
         await fetchReviews();
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : '오류');
+      setNotice({ tone: 'error', message: e instanceof Error ? e.message : '오류' });
     } finally {
       setTriggering(false);
     }
@@ -147,6 +154,20 @@ export default function ReviewsAdminPage() {
           </>
         }
       />
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm ${
+            notice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       {/* KPI 카드 */}
       <div className="grid grid-cols-3 gap-3">
