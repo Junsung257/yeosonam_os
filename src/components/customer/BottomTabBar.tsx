@@ -4,9 +4,10 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
+import { getKakaoChannelChatUrl, openKakaoChannel } from '@/lib/kakaoChannel';
 import { trackEngagement } from '@/lib/tracker';
 
-const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
+const KAKAO_URL = getKakaoChannelChatUrl();
 const KAKAO_TAB_DESCRIPTION_ID = 'bottom-tab-kakao-description';
 
 interface Tab {
@@ -61,12 +62,20 @@ export default function BottomTabBar() {
 
   if (excluded) return null;
 
-  const trackKakaoClick = () => {
+  const openBottomTabKakao = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       cta_type: 'bottom_tab_bar',
       page_url: pathname ?? '/',
-      metadata: { source: 'bottom_tab_bar' },
+      intent: 'general_consult',
+      selected_products: ['하단 탭 카카오톡 빠른 상담'],
+      metadata: { source: 'bottom_tab_bar', handoff_channel: 'clipboard' },
+    });
+    void openKakaoChannel({
+      intent: 'general_consult',
+      selectedProducts: ['하단 탭 카카오톡 빠른 상담'],
+      escalationSummary: '모바일 하단 탭에서 카카오톡 빠른 상담을 시작했습니다. 현재 보고 있던 페이지 기준으로 상담을 이어가 주세요.',
     });
   };
 
@@ -94,7 +103,7 @@ export default function BottomTabBar() {
                 target="_blank"
                 rel="noopener noreferrer"
                 referrerPolicy="no-referrer-when-downgrade"
-                onClick={trackKakaoClick}
+                onClick={openBottomTabKakao}
                 data-testid="bottom-tab-kakao"
                 className="flex flex-col items-center gap-0.5 -mt-4 card-touch"
                 aria-describedby={KAKAO_TAB_DESCRIPTION_ID}

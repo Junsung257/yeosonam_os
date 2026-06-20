@@ -8,13 +8,14 @@ import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
 import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
+import { getKakaoChannelChatUrl, openKakaoChannel } from '@/lib/kakaoChannel';
 function isFocusOutside(e: React.FocusEvent<HTMLElement>): boolean {
   const next = e.relatedTarget as Node | null;
   if (!next) return true;
   return !e.currentTarget.contains(next);
 }
 
-const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
+const KAKAO_URL = getKakaoChannelChatUrl();
 const KAKAO_NAV_DESCRIPTION_ID = 'global-nav-kakao-description';
 const GROUP_INQUIRY_NAV_HREF = buildGroupInquiryHandoffHref({
   source: 'global_nav',
@@ -125,12 +126,20 @@ export default function GlobalNav() {
     closeTimerRef.current = setTimeout(() => setOpenMenu(null), 120);
   }
 
-  function trackKakaoClick(source: string) {
+  function openNavKakaoConsult(source: string, event: React.MouseEvent<HTMLAnchorElement>) {
+    event.preventDefault();
     trackEngagement({
       event_type: ANALYTICS_EVENTS.kakaoClicked,
       cta_type: source,
       page_url: pathname ?? '/',
-      metadata: { source },
+      intent: 'general_consult',
+      selected_products: ['카카오톡 빠른 상담'],
+      metadata: { source, handoff_channel: 'clipboard' },
+    });
+    void openKakaoChannel({
+      intent: 'general_consult',
+      selectedProducts: ['카카오톡 빠른 상담'],
+      escalationSummary: '상단/모바일 메뉴에서 카카오톡 빠른 상담을 시작했습니다. 현재 보고 있던 페이지 기준으로 상담을 이어가 주세요.',
     });
   }
 
@@ -349,7 +358,7 @@ export default function GlobalNav() {
             target="_blank"
             rel="noopener"
             referrerPolicy="no-referrer-when-downgrade"
-            onClick={() => trackKakaoClick('global_nav_desktop')}
+            onClick={(event) => openNavKakaoConsult('global_nav_desktop', event)}
             aria-describedby={KAKAO_NAV_DESCRIPTION_ID}
             className="bg-[#FEE500] text-[#3C1E1E] font-bold px-4 py-2 rounded-full hover:shadow-md transition flex-shrink-0"
           >
@@ -509,7 +518,7 @@ export default function GlobalNav() {
                 target="_blank"
                 rel="noopener"
                 referrerPolicy="no-referrer-when-downgrade"
-                onClick={() => trackKakaoClick('global_nav_mobile_drawer')}
+                onClick={(event) => openNavKakaoConsult('global_nav_mobile_drawer', event)}
                 aria-describedby={KAKAO_NAV_DESCRIPTION_ID}
                 className="w-full bg-[#FEE500] text-[#3C1E1E] font-bold text-sm py-3 rounded-full text-center"
               >
