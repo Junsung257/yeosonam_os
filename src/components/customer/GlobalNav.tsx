@@ -18,7 +18,10 @@ const KAKAO_URL = 'https://pf.kakao.com/_xcFxkBG/chat';
 const KAKAO_NAV_DESCRIPTION_ID = 'global-nav-kakao-description';
 const GROUP_INQUIRY_NAV_HREF = buildGroupInquiryHandoffHref({
   source: 'global_nav',
-  query: '내비게이션에서 단체 맞춤 견적 상담',
+  intent: 'group_trip',
+  partyType: 'group',
+  query: '상단 메뉴에서 단체 맞춤 견적 상담',
+  selectedProducts: ['상단 메뉴 단체 맞춤 견적'],
 });
 const GROUP_INQUIRY_NAV_SUMMARY_ID = 'global-nav-group-inquiry-summary';
 const DESKTOP_OVERSEAS_TRIGGER_ID = 'global-nav-overseas-trigger';

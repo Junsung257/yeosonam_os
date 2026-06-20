@@ -6,7 +6,10 @@ import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 
 const CATEGORY_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
   source: 'category_icons',
+  intent: 'group_trip',
+  partyType: 'group',
   query: '카테고리에서 단체 맞춤 견적 상담',
+  selectedProducts: ['카테고리 단체 맞춤 견적'],
 });
 
 type CategoryLink = {

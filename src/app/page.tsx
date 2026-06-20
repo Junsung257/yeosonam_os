@@ -22,7 +22,10 @@ import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 const PKG_COUNT_DISCLOSE_MIN = 6;
 const HOME_FOOTER_GROUP_INQUIRY_HREF = buildGroupInquiryHandoffHref({
   source: 'home_footer',
+  intent: 'group_trip',
+  partyType: 'group',
   query: '홈 하단에서 단체 맞춤 견적 상담',
+  selectedProducts: ['홈 하단 단체 맞춤 견적'],
 });
 
 // Build-safe: home data depends on live Supabase rows, so render on demand instead of blocking deploy prerender.

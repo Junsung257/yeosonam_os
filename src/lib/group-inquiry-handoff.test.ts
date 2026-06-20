@@ -34,4 +34,22 @@ describe('handoff href builders', () => {
     expect(url.searchParams.get('party_type')).toBe('group');
     expect(url.searchParams.get('selected_products')).toBeTruthy();
   });
+
+  it('preserves explicit group inquiry entry context', () => {
+    const href = buildGroupInquiryHandoffHref({
+      source: 'global_nav',
+      intent: 'group_trip',
+      partyType: 'group',
+      query: 'Header group inquiry',
+      selectedProducts: ['Header group quote'],
+    });
+    const url = new URL(href, 'https://example.com');
+
+    expect(url.pathname).toBe('/group-inquiry');
+    expect(url.searchParams.get('source')).toBe('global_nav');
+    expect(url.searchParams.get('intent')).toBe('group_trip');
+    expect(url.searchParams.get('party_type')).toBe('group');
+    expect(url.searchParams.get('query')).toBe('Header group inquiry');
+    expect(url.searchParams.get('selected_products')).toBe('Header group quote');
+  });
 });
