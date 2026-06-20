@@ -35,6 +35,12 @@ const SEARCH_CACHE_HEADERS = { 'Cache-Control': 'public, s-maxage=60, stale-whil
 const PACKAGE_QUERY_TIMEOUT_MS = 3500;
 const OPTIONAL_QUERY_TIMEOUT_MS = 1200;
 const PERSONALIZATION_TIMEOUT_MS = 900;
+const CATEGORY_MATCH_ALIASES: Record<string, string[]> = {
+  honeymoon: ['honeymoon', '허니문', '신혼', '신혼여행'],
+  golf: ['golf', '골프', '해외골프', '골프여행'],
+  cruise: ['cruise', '크루즈'],
+  theme: ['theme', '테마', '테마여행', '기획전'],
+};
 
 function emptySearchPayload(hub: DepartureHubId = 'all', filterForClient = '', degradedReason?: string) {
   return {
@@ -88,6 +94,32 @@ function packageMatchesBudget(pkg: any, priceMin: string, priceMax: string, mont
   return true;
 }
 
+function normalizeCategoryText(value: string): string {
+  return value.toLocaleLowerCase('ko-KR').replace(/[\s_-]+/g, '');
+}
+
+function packageMatchesCategory(pkg: any, category: string): boolean {
+  if (!category) return true;
+  const aliases = CATEGORY_MATCH_ALIASES[category] ?? [category];
+  const normalizedAliases = aliases.map(normalizeCategoryText);
+  const packageText = [
+    pkg.title,
+    pkg.display_title,
+    pkg.hero_tagline,
+    pkg.destination,
+    pkg.country,
+    pkg.category,
+    pkg.product_type,
+    pkg.trip_style,
+    ...(pkg.product_tags ?? []),
+    ...(pkg.product_highlights ?? []),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizeCategoryText);
+
+  return normalizedAliases.some(alias => packageText.some(value => value.includes(alias)));
+}
+
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
     return NextResponse.json(emptySearchPayload('all', '', 'supabase_unconfigured'), {
@@ -113,7 +145,7 @@ export async function GET(request: NextRequest) {
 
     const urgencyOn = urgency === '1';
     const hubOr = departureHubSupabaseOr(hub);
-    const hasFocusedFilters = Boolean(month || priceMin || priceMax);
+    const hasFocusedFilters = Boolean(month || priceMin || priceMax || category);
     const fetchLimit = urgencyOn || hasFocusedFilters ? 200 : 50;
 
     let query = sb
@@ -137,10 +169,6 @@ export async function GET(request: NextRequest) {
 
     if (hubOr && !urgencyOn) {
       query = query.or(hubOr);
-    }
-
-    if (category) {
-      query = query.eq('category', category);
     }
 
     if (q) {
@@ -181,6 +209,10 @@ export async function GET(request: NextRequest) {
 
     if (priceMin || priceMax) {
       aliveRaw = aliveRaw.filter((p: any) => packageMatchesBudget(p, priceMin, priceMax, month, today));
+    }
+
+    if (category) {
+      aliveRaw = aliveRaw.filter((p: any) => packageMatchesCategory(p, category));
     }
 
     aliveRaw = aliveRaw.slice(0, 50);
