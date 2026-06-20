@@ -732,6 +732,7 @@ const PackageRow = React.memo(function PackageRow({
   minPrice,
   maxPrice,
   inlineEditPkgId,
+  isSelected,
   activeVendors,
   allVendors,
   copyDropdownId,
@@ -763,6 +764,7 @@ const PackageRow = React.memo(function PackageRow({
   minPrice: number | undefined;
   maxPrice: number;
   inlineEditPkgId: string | null;
+  isSelected: boolean;
   activeVendors: { id: string; name: string; is_active: boolean }[];
   allVendors: { id: string; name: string; is_active: boolean }[];
   copyDropdownId: string | null;
@@ -865,7 +867,9 @@ const PackageRow = React.memo(function PackageRow({
 
   return (
     <tr
-      className={`group border-b border-admin-border-mid hover:bg-admin-bg ${expired ? 'opacity-60' : ''} ${isChecked ? 'bg-blue-50' : ''}`}
+      id={`admin-package-row-${pkg.id}`}
+      aria-current={isSelected ? 'true' : undefined}
+      className={`group border-b border-admin-border-mid hover:bg-admin-bg ${expired ? 'opacity-60' : ''} ${isChecked ? 'bg-blue-50' : ''} ${isSelected ? 'bg-blue-50 ring-2 ring-inset ring-blue-300' : ''}`}
     >
       <td className="px-3 py-2 w-8" onClick={e => e.stopPropagation()}>
         <input
@@ -1449,6 +1453,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     searchParams?.get('status') ?? null,
     searchParams?.get('queue') ?? null,
   );
+  const openedPackageParamRef = useRef<string | null>(null);
   const [packages, setPackages] = useState<Package[]>(initialPackages ?? []);
   const [loading, setLoading] = useState(!initialPackages?.length);
   const [packageListLoadError, setPackageListLoadError] = useState('');
@@ -2040,6 +2045,49 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     }
     setSelected(pkg);
   }, []);
+
+  useEffect(() => {
+    const packageId = searchParams?.get('id');
+    if (!packageId || openedPackageParamRef.current === packageId) return;
+
+    const scrollToPackageRow = () => {
+      const targets = [
+        document.getElementById(`admin-package-row-${packageId}`),
+        document.getElementById(`admin-package-mobile-row-${packageId}`),
+      ].filter((element): element is HTMLElement => Boolean(element));
+      const visibleTarget = targets.find(element => element.getClientRects().length > 0) ?? targets[0];
+      visibleTarget?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+
+    const localPackage = packages.find(pkg => pkg.id === packageId);
+    if (localPackage) {
+      openedPackageParamRef.current = packageId;
+      void openSelectedDetail(localPackage);
+      window.setTimeout(scrollToPackageRow, 0);
+      return;
+    }
+
+    if (loading) return;
+    let cancelled = false;
+    openedPackageParamRef.current = packageId;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/packages?id=${encodeURIComponent(packageId)}`);
+        const json = await res.json();
+        if (!cancelled && res.ok && json.package) {
+          const fullPkg = json.package as Package;
+          setPackages(prev => prev.some(pkg => pkg.id === fullPkg.id) ? prev : [fullPkg, ...prev]);
+          await openSelectedDetail(fullPkg);
+          window.setTimeout(scrollToPackageRow, 0);
+        }
+      } catch {
+        if (!cancelled) openedPackageParamRef.current = null;
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [loading, openSelectedDetail, packages, searchParams]);
 
   useEffect(() => {
     if (!selected?.id) { setPackageAlerts([]); return; }
@@ -2843,6 +2891,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               const mobileActionDescriptionId = `admin-package-mobile-actions-${pkg.id}`;
               const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId}`;
               const mobileActionStatusDescriptionId = `${mobileCardDescriptionIds} ${mobileActionDescriptionId} admin-package-bulk-status`;
+              const isPackageSelected = selected?.id === pkg.id;
               const region = pkg.products?.departure_region
                 ?? (pkg.departure_airport ? pkg.departure_airport.replace(/\(.*\)/, '').trim() : undefined);
               const mobileCardSummaryText = [
@@ -2860,7 +2909,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               return (
                 <article
                   key={`mobile-${pkg.id}`}
-                  className={`p-4 ${expired ? 'opacity-65' : ''} ${checkedIds.has(pkg.id) ? 'bg-blue-50' : 'bg-white'}`}
+                  id={`admin-package-mobile-row-${pkg.id}`}
+                  aria-current={isPackageSelected ? 'true' : undefined}
+                  className={`p-4 ${expired ? 'opacity-65' : ''} ${checkedIds.has(pkg.id) || isPackageSelected ? 'bg-blue-50' : 'bg-white'} ${isPackageSelected ? 'ring-2 ring-inset ring-blue-300' : ''}`}
                   aria-describedby={mobileCardDescriptionIds}
                 >
                   <p id={mobileCardSummaryId} className="sr-only">
@@ -3163,6 +3214,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     minPrice={minPrice}
                     maxPrice={maxPrice}
                     inlineEditPkgId={inlineEditPkgId}
+                    isSelected={selected?.id === pkg.id}
                     activeVendors={activeVendors}
                     allVendors={allVendors}
                     copyDropdownId={copyDropdownId}
