@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -50,6 +50,7 @@ interface IntentPrompt {
   party_type: string;
   budget: string | null;
   destination: string | null;
+  source?: string | null;
   selected_products?: string[] | null;
 }
 
@@ -103,6 +104,7 @@ function buildConciergeHandoffPrompt(searchParams: SearchParamReader): IntentPro
     party_type: partyType || 'group',
     budget,
     destination,
+    source: source || null,
     selected_products: selectedProducts.length > 0 ? selectedProducts : null,
   };
 }
@@ -412,6 +414,7 @@ export default function ConciergePage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const customerNameRef = useRef<HTMLInputElement>(null);
   const cartSheetReturnFocusRef = useRef<HTMLButtonElement | null>(null);
+  const handoffAutoSearchStartedRef = useRef(false);
   const sessionId = getOrCreateSessionId();
 
   const cartTotal = useMemo(() => cart.reduce((sum, item) => sum + item.price * item.quantity, 0), [cart]);
@@ -479,7 +482,7 @@ export default function ConciergePage() {
     window.requestAnimationFrame(() => trigger?.focus());
   }
 
-  async function performSearch(rawQuery: string, prompt: IntentPrompt | null = null) {
+  const performSearch = useCallback(async (rawQuery: string, prompt: IntentPrompt | null = null) => {
     const normalized = rawQuery.trim();
     if (!normalized) {
       setSearchError('찾고 싶은 여행 조건을 한 문장으로 입력해 주세요.');
@@ -499,7 +502,11 @@ export default function ConciergePage() {
     });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.aiPromptStarted,
-      source: prompt ? 'concierge_intent_prompt' : 'concierge_manual_search',
+      source: prompt?.source === 'packages'
+        ? 'packages_handoff_auto_search'
+        : prompt
+          ? 'concierge_intent_prompt'
+          : 'concierge_manual_search',
       page_url: '/concierge',
       ...decisionMetadata,
       metadata: decisionMetadata,
@@ -535,7 +542,13 @@ export default function ConciergePage() {
       window.clearTimeout(timeoutId);
       setLoading(false);
     }
-  }
+  }, [cart]);
+
+  useEffect(() => {
+    if (!urlPrompt || handoffAutoSearchStartedRef.current) return;
+    handoffAutoSearchStartedRef.current = true;
+    void performSearch(urlPrompt.query, urlPrompt);
+  }, [performSearch, urlPrompt]);
 
   async function handleSearch(event: React.FormEvent) {
     event.preventDefault();
