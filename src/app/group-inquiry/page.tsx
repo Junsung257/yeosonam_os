@@ -69,6 +69,9 @@ const FIELD_GROUPS = [
 
 const KAKAO_ACTION_DESCRIPTION_ID = 'group-inquiry-kakao-action-description';
 const KAKAO_STATUS_ID = 'group-inquiry-kakao-status';
+const srStatusProps = (enabled: boolean) => (
+  enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
+);
 
 const INTENT_CHIPS: IntentChip[] = [
   {
@@ -466,6 +469,9 @@ export default function GroupInquiryPage() {
     : selectedIntent
       ? `${selectedIntent.label} 조건이 선택되어 상담 전달 조건에 반영되었습니다.`
       : '빠른 시작 조건을 선택하면 AI 상담이 바로 시작됩니다.';
+  const handoffReadinessLive = Boolean(rfqReady || selectedIntent || selectedProducts.length > 0 || handoffSource || messages.length > 1);
+  const intentChipStatusLive = Boolean(loading || selectedIntent);
+  const messageListLive = Boolean(loading || messages.length > 1);
   const rfqContactDescriptionIds = `${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${rfqConditionSummaryId} ${submitReadinessSummaryId} ${rfqContactHelpId}`;
   const contactNameDescriptionIds = contactErrors.contactName
     ? `${rfqContactDescriptionIds} contact-name-error`
@@ -765,10 +771,14 @@ export default function GroupInquiryPage() {
       <p id={handoffContextDescriptionId} className="sr-only">
         {handoffContextSummaryText}
       </p>
-      <p id={handoffReadinessSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={handoffReadinessSummaryId} className="sr-only" {...srStatusProps(handoffReadinessLive)}>
         {rfqReadinessSummaryText}
       </p>
-      <p id="group-inquiry-status" className="sr-only" aria-live="polite" aria-atomic="true">
+      <p
+        id="group-inquiry-status"
+        className="sr-only"
+        {...(statusMessage ? { 'aria-live': 'polite' as const, 'aria-atomic': true } : {})}
+      >
         {statusMessage}
       </p>
       <p id={KAKAO_ACTION_DESCRIPTION_ID} className="sr-only">
@@ -935,7 +945,7 @@ export default function GroupInquiryPage() {
             <p id={intentChipGroupDescriptionId} className="sr-only">
               빠른 시작 칩을 선택하면 해당 상담 조건이 메시지로 전송되고, 목적과 여행 유형이 상담 전달 조건에 반영됩니다.
             </p>
-            <p id={intentChipStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            <p id={intentChipStatusId} className="sr-only" {...srStatusProps(intentChipStatusLive)}>
               {intentChipStatusText}
             </p>
             <div
@@ -975,7 +985,7 @@ export default function GroupInquiryPage() {
           </div>
         )}
 
-        <div className="space-y-4" aria-live="polite">
+        <div className="space-y-4" {...(messageListLive ? { 'aria-live': 'polite' as const } : {})}>
           {messages.map((message, index) => (
             <div
               key={`${message.role}-${index}`}
