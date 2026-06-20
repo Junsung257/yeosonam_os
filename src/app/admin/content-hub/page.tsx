@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import useSWR from 'swr';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 // html-to-image: 내보내기 시점에만 동적 로드
 import { useToast } from '@/components/ui/Toast';
 import {
@@ -47,12 +47,14 @@ const RATIO_SIZE: Record<ImageRatio, { w: number; h: number; label: string }> = 
 
 export default function ContentHubPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialPackageId = searchParams?.get('pkg') ?? searchParams?.get('package_id') ?? '';
   // ── Step 관리 ──────────────────────────────────────────
   const [step, setStep] = useState<1 | 2 | 3>(1);
 
   // ── Step 1: 설정 ──────────────────────────────────────
   const [packages, setPackages] = useState<Package[]>([]);
-  const [selectedPkgId, setSelectedPkgId] = useState('');
+  const [selectedPkgId, setSelectedPkgId] = useState(initialPackageId);
   const [selectedAngles, setSelectedAngles] = useState<Set<AngleType>>(new Set(['emotional', 'value']));
   const [selectedChannels, setSelectedChannels] = useState<Set<Channel>>(new Set(['instagram_card']));
   const [ratio, setRatio] = useState<ImageRatio>('1:1');
@@ -80,6 +82,11 @@ export default function ContentHubPage() {
 
   // 슬라이드 캡처 ref
   const slideCanvasRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const packageId = searchParams?.get('pkg') ?? searchParams?.get('package_id') ?? '';
+    if (packageId) setSelectedPkgId(packageId);
+  }, [searchParams]);
 
   // 감사(2026-05-11 Phase 5-B'): limit 200 → 100 + lite=1 + useSWR (재진입 dedup).
   // 클라이언트 status 필터링은 4개 status OR 라 SQL .in() 으로도 줄일 수 있으나

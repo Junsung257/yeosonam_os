@@ -177,7 +177,7 @@ export default function TmpPipelinePage() {
                     <td className="py-3 px-4">
                       <Badge status={row.cardNewsStatus} map={CN_STATUS_MAP} />
                       {row.cardNewsId && (
-                        <Link href={`/admin/content-hub?id=${row.cardNewsId}`}
+                        <Link href={`/admin/marketing/card-news/${encodeURIComponent(row.cardNewsId)}`}
                           className="ml-1 text-xs text-blue-500 hover:underline">보기</Link>
                       )}
                     </td>
