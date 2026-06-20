@@ -94,6 +94,37 @@ function formatDuration(pkg: PackageCardData): string | null {
   return null;
 }
 
+function cleanPipeLabel(value?: string | null): string | null {
+  const label = value?.split('|')[0]?.trim();
+  return label || null;
+}
+
+function countDepartureOptions(pkg: PackageCardData): number {
+  const dates = new Set<string>();
+  pkg.price_dates?.forEach((item) => {
+    if (item?.date) dates.add(item.date);
+  });
+  pkg.price_tiers?.forEach((tier) => {
+    tier.departure_dates?.forEach((date) => {
+      if (date) dates.add(date);
+    });
+  });
+  return dates.size;
+}
+
+function countConfirmedDepartureOptions(pkg: PackageCardData): number {
+  return pkg.price_dates?.filter((item) => item?.date && item.confirmed).length ?? 0;
+}
+
+function buildTravelMeta(pkg: PackageCardData, duration: string | null, nextDate: string | null, airlineName: string | null): string[] {
+  return [
+    nextDate ? `${nextDate} 출발` : '출발일 확인',
+    duration,
+    pkg.departure_airport ? `${pkg.departure_airport} 출발` : null,
+    airlineName,
+  ].filter((item): item is string => Boolean(item)).slice(0, 4);
+}
+
 function todayKst(): string {
   const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' });
   return fmt.format(new Date());
@@ -122,6 +153,8 @@ function findNextDeparture(pkg: PackageCardData): string | null {
 }
 
 function ProductTypeBadge({ type }: { type: string }) {
+  const label = cleanPipeLabel(type);
+  if (!label) return null;
   const cls =
     type.includes('실속') ? 'bg-orange-50 text-orange-700' :
     type.includes('프리미엄') || type.includes('고품격') ? 'bg-brand-light text-brand' :
@@ -129,7 +162,7 @@ function ProductTypeBadge({ type }: { type: string }) {
     'bg-brand-light text-brand';
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cls}`}>
-      {type.split('|')[0]}
+      {label}
     </span>
   );
 }
@@ -484,13 +517,24 @@ function CardBody({
   const showComparisonTrust = !hasReviews && Boolean(comparisonLabel || comparisonSummary);
   const safeComparisonReasons = (comparisonReasons ?? []).slice(0, 3);
   const availableSeats = Math.max(0, (pkg.seats_held ?? 0) - (pkg.seats_confirmed ?? 0));
+  const departureOptionCount = countDepartureOptions(pkg);
+  const confirmedDepartureCount = countConfirmedDepartureOptions(pkg);
+  const travelMetaItems = buildTravelMeta(pkg, duration, nextDate, airlineName);
+  const themeLabel = cleanPipeLabel(pkg.product_type) ?? (pkg.is_airtel ? '에어텔' : pkg.product_highlights?.[0] ?? null);
   const proofItems = [
-    nextDate ? `출발 ${nextDate}` : null,
-    duration,
+    departureOptionCount > 0 ? `출발일 ${departureOptionCount}개` : nextDate ? `출발 ${nextDate}` : null,
+    confirmedDepartureCount > 0 ? `확정 ${confirmedDepartureCount}회` : null,
     airlineName,
     hasReviews ? `후기 ${Number(pkg.avg_rating).toFixed(1)}(${pkg.review_count})` : null,
-    availableSeats > 0 ? `잔여 ${availableSeats}석` : null,
-  ].filter((item): item is string => Boolean(item)).slice(0, 3);
+    availableSeats > 5 ? `잔여 ${availableSeats}석` : null,
+  ].filter((item): item is string => Boolean(item)).slice(0, 4);
+  const trustBadges = [
+    hasComparisonSignal ? (comparisonLabel || '조건 비교 완료') : null,
+    confirmedDepartureCount > 0 ? '확정 출발 포함' : null,
+    hasReviews ? `후기 ${Number(pkg.avg_rating).toFixed(1)}` : null,
+    availableSeats > 5 ? `잔여 ${availableSeats}석` : null,
+    rankBadge ?? null,
+  ].filter((item): item is string => Boolean(item)).slice(0, 4);
   const proofSummaryText = proofItems.length > 0
     ? `검증 근거: ${proofItems.join(', ')}`
     : '검증 근거: 상세에서 출발일과 포함 조건 확인';
@@ -513,21 +557,19 @@ function CardBody({
   ];
   const cardDecisionSummaryText = `${title} 카드 판단 요약: 가격 ${priceDecisionLabel}, 출발 ${departureDecisionLabel}, 다음 액션 ${cardNextActionLabel}. 이유: ${cardNextActionReason} ${proofSummaryText}`;
   return (
-    <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
-      {/* 목적지 + 일정 메타 */}
-      <div className="flex items-center gap-1.5 text-micro text-text-secondary font-medium min-w-0 truncate">
-        {pkg.destination && <span className="text-brand font-bold truncate max-w-[140px]">{pkg.destination}</span>}
-        {duration && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{duration}</span></>}
-        {nextDate && <><span className="flex-shrink-0">·</span><span className="flex-shrink-0">{nextDate} 출발</span></>}
+    <div
+      data-testid="package-card-hierarchy"
+      className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}
+    >
+      <div className="flex items-center gap-1.5 text-micro font-bold min-w-0">
+        {pkg.destination && <span className="text-brand truncate max-w-[150px]">{pkg.destination}</span>}
+        {themeLabel && (
+          <>
+            {pkg.destination && <span className="shrink-0 text-text-tertiary">·</span>}
+            <span className="truncate text-text-secondary">{themeLabel}</span>
+          </>
+        )}
       </div>
-
-      {/* 상품 타입 배지 */}
-      {(pkg.product_type || pkg.is_airtel) && (
-        <div className="flex gap-1.5 mt-2 flex-wrap">
-          {pkg.product_type && <ProductTypeBadge type={pkg.product_type} />}
-          {pkg.is_airtel && <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-light text-brand">에어텔</span>}
-        </div>
-      )}
 
       {/* 핵심 추천 사유 */}
       {primaryReason && (
@@ -537,9 +579,29 @@ function CardBody({
       )}
 
       {/* 상품명 */}
-      <h2 className="mt-1.5 text-[15px] md:text-[17px] font-bold text-text-primary leading-snug line-clamp-2 tracking-[-0.02em]">
+      <h2 className="mt-1.5 text-[15px] md:text-[17px] font-bold text-text-primary leading-snug line-clamp-2">
         {title}
       </h2>
+
+      <div
+        data-testid="package-card-travel-meta"
+        className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-text-secondary"
+      >
+        {travelMetaItems.map((item) => (
+          <span key={item} className="min-w-0 max-w-full rounded-full bg-bg-section px-2 py-0.5 truncate">
+            {item}
+          </span>
+        ))}
+      </div>
+
+      {(pkg.product_type || pkg.is_airtel) && (
+        <div className="flex gap-1.5 mt-2 flex-wrap">
+          {pkg.product_type && <ProductTypeBadge type={pkg.product_type} />}
+          {pkg.is_airtel && themeLabel !== '에어텔' && (
+            <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-brand-light text-brand">에어텔</span>
+          )}
+        </div>
+      )}
 
       {showComparisonTrust && (
         <div className="mt-2 rounded-lg border border-blue-100 bg-blue-50/70 px-3 py-2">
@@ -606,7 +668,7 @@ function CardBody({
         </div>
       )}
 
-      {/* 가격 + 평점 + 잔여석 + CTA */}
+      {/* 가격 + CTA */}
       <div className="mt-3 md:mt-4 flex items-end justify-between gap-2">
         <div className="min-w-0 flex flex-col gap-1">
           <div className="flex items-baseline gap-0.5 flex-wrap">
@@ -622,24 +684,31 @@ function CardBody({
             <span className="text-body text-text-secondary">가격 문의</span>
           )}
           </div>
-          <div className="flex items-center gap-1.5 flex-wrap min-h-[20px]">
-            {hasReviews && (
-              <span className="text-micro text-amber-500 font-semibold tabular-nums">
-                ★ {Number(pkg.avg_rating).toFixed(1)}
-                <span className="text-text-secondary font-normal ml-0.5">({pkg.review_count})</span>
-              </span>
-            )}
-            {rankBadge && (
-              <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-success-light text-success">
-                {rankBadge}
-              </span>
-            )}
-            <SeatBadge pkg={pkg} />
-          </div>
         </div>
         <span className="inline-flex h-8 min-w-[76px] shrink-0 items-center justify-center rounded-full bg-brand px-3 text-[12px] font-bold text-white shadow-sm transition-colors group-hover:bg-[#1B64DA]">
           상세 보기
         </span>
+      </div>
+
+      <div
+        data-testid="package-card-trust-badges"
+        className="mt-2 flex min-h-[22px] flex-wrap items-center gap-1.5"
+      >
+        {trustBadges.length > 0 ? (
+          trustBadges.map((badge) => (
+            <span
+              key={badge}
+              className="max-w-full rounded-full bg-success-light px-2 py-0.5 text-[10px] font-extrabold text-success truncate"
+            >
+              {badge}
+            </span>
+          ))
+        ) : (
+          <span className="rounded-full bg-bg-section px-2 py-0.5 text-[10px] font-bold text-text-secondary">
+            상세 조건 확인
+          </span>
+        )}
+        <SeatBadge pkg={pkg} />
       </div>
 
       <div
@@ -670,11 +739,11 @@ function CardBody({
         id={decisionSummaryId}
         data-testid="package-card-decision-summary"
         aria-label={cardDecisionSummaryText}
-        className="mt-2 rounded-[12px] border border-border-subtle bg-bg-section p-1.5"
+        className="mt-2.5 border-t border-border-subtle pt-2"
       >
         <div className="grid grid-cols-3 gap-1.5">
           {cardDecisionItems.map((item) => (
-            <span key={`${item.label}-${item.value}`} className="min-w-0 rounded-[10px] bg-white px-2 py-1">
+            <span key={`${item.label}-${item.value}`} className="min-w-0">
               <span className="block text-[10px] font-bold text-text-tertiary">{item.label}</span>
               <span className="mt-0.5 block truncate text-[11px] font-black text-text-primary">{item.value}</span>
             </span>
@@ -682,7 +751,7 @@ function CardBody({
         </div>
         <p
           data-testid="package-card-next-action-reason"
-          className="mt-1.5 rounded-[10px] bg-white px-2 py-1 text-[10px] font-bold leading-4 text-text-secondary"
+          className="mt-1.5 text-[10px] font-bold leading-4 text-text-secondary"
         >
           {cardNextActionReason}
         </p>
