@@ -460,6 +460,16 @@ type PaymentTab = 'review' | 'matched' | 'unmatched' | 'outflow';
 type OutflowSubTab = 'unmatched' | 'matched' | 'all';
 type PaymentQueueKey = 'review' | 'unmatched' | 'stale' | 'outflow' | 'trash';
 
+function getPaymentQueueForTransaction(tx: BankTransaction): PaymentQueueKey | undefined {
+  const isOutflow = tx.transaction_type === '출금' || tx.is_refund;
+  if (isOutflow) return 'outflow';
+  if (tx.match_status === 'review') return hoursSince(tx.created_at) >= 24 ? 'stale' : 'review';
+  if (tx.match_status === 'unmatched' || tx.match_status === 'error') {
+    return hoursSince(tx.created_at) >= 24 ? 'stale' : 'unmatched';
+  }
+  return undefined;
+}
+
 function PaymentOpsQueue({
   activeKey,
   counts,
@@ -1145,6 +1155,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     }
     openMatchModal(tx);
     if (bookingId) setSingleBookingId(bookingId);
+    setActivePaymentQueue(getPaymentQueueForTransaction(tx));
+    if (tx.transaction_type === '출금' || tx.is_refund) {
+      setOutflowSubTab(tx.match_status === 'auto' || tx.match_status === 'manual' ? 'matched' : 'unmatched');
+    }
   // eslint-disable-next-line
   }, [searchParams, transactions]);
 
