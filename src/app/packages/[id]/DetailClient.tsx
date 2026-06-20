@@ -5,7 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import nextDynamic from 'next/dynamic';
 import { useSearchParams, useRouter } from 'next/navigation';
-import { Check, Home, Hotel } from 'lucide-react';
+import { Check, Home, Hotel, Sparkles } from 'lucide-react';
 import { matchAttractions, normalizeDays } from '@/lib/attraction-matcher';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { normalizeOptionalTourName, groupOptionalToursByRegion } from '@/lib/itinerary-render';
@@ -23,7 +23,7 @@ import { filterTiersByDepartureDays } from '@/lib/expand-date-range';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
-import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
+import { buildConciergeHandoffHref, buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 import { getEffectivePriceDates, type PriceDate } from '@/lib/price-dates';
 import DepartureCalendar from '@/components/customer/DepartureCalendar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -930,6 +930,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     budget: handoffBudget,
     selectedProducts: [selectedProductName],
   });
+  const conciergeHandoffHref = buildConciergeHandoffHref({
+    source: 'package_detail',
+    intent: handoffIntent,
+    partyType: handoffPartyType ?? undefined,
+    query: departureHandoffLabel
+      ? `${selectedProductName} ${departureHandoffLabel} 출발 조건 AI 상담`
+      : `${selectedProductName} 조건 AI 상담`,
+    destination: pkg.destination,
+    budget: handoffBudget,
+    selectedProducts: [selectedProductName],
+  });
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
   const todayForDeparture = new Date().toISOString().slice(0, 10);
@@ -958,10 +969,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const detailStickyPriceCaveatId = 'package-detail-sticky-price-caveat';
   const detailFirstScreenDecisionSummaryId = 'package-detail-first-screen-decision-summary';
   const detailKakaoDescriptionId = 'package-detail-kakao-description';
+  const detailAiConsultDescriptionId = 'package-detail-ai-consult-description';
   const detailGroupInquiryDescriptionId = 'package-detail-group-inquiry-description';
   const detailReservationDescriptionId = 'package-detail-reservation-description';
   const detailStickyCtaDescriptionIds = `${detailStickyCtaRegionDescriptionId} ${detailCtaSummaryId} ${detailHandoffReadinessSummaryId} ${detailStickyPriceCaveatId}`;
   const detailKakaoDescriptionIds = `${detailKakaoDescriptionId} ${detailStickyCtaDescriptionIds}`;
+  const detailAiConsultDescriptionIds = `${detailAiConsultDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailGroupInquiryDescriptionIds = `${detailGroupInquiryDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailHandoffChecklist = [
@@ -1014,6 +1027,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     : '예약 문의';
   const detailInlineReservationLabel = `${selectedProductName} ${firstScreenDepartureLabel} 기준 ${firstScreenPriceLabel} 예약 문의 폼 열기`;
   const stickyKakaoActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 기준 카카오톡 상담 열기`;
+  const stickyAiConsultActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 조건으로 AI 상담 시작하기`;
   const stickyGroupInquiryActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 기준 맞춤 견적 문의하기`;
   const stickyReservationActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 기준 예약 문의 폼 열기`;
   const stickyNextActionText = detailHandoffMissingLabels.length > 0
@@ -1031,6 +1045,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     ? `카톡 전달 조건: ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
     : `카톡 전달 조건: ${selectedProductName} 상품 기준으로 상담을 시작합니다.`;
   const stickyKakaoDecisionSummaryText = `카톡 상담 판단 요약: ${stickyNextActionText} ${stickyPriceCaveatText} ${stickyKakaoHandoffPreviewText}`;
+  const stickyAiConsultHandoffPreviewText = stickyHandoffItems.length > 0
+    ? `AI 상담 전달 조건: ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
+    : `AI 상담 전달 조건: ${selectedProductName} 상품 기준으로 상담을 시작합니다.`;
+  const stickyAiConsultDecisionSummaryText = `AI 상담 판단 요약: ${stickyNextActionText} ${stickyPriceCaveatText} ${stickyAiConsultHandoffPreviewText}`;
   const stickyGroupInquiryHandoffPreviewText = stickyHandoffItems.length > 0
     ? `단체 견적 전달 조건: ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
     : `단체 견적 전달 조건: ${selectedProductName} 상품 기준으로 견적 문의를 시작합니다.`;
@@ -1040,7 +1058,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     `현재 표시 가격은 ${stickyPriceSummaryText}입니다.`,
     stickyPriceCaveatText,
     stickyNextActionText,
-    '카카오톡 상담, 단체 견적, 예약 문의 순서로 바로 이동할 수 있습니다.',
+    '카카오톡 상담, AI 상담, 단체 견적, 예약 문의 순서로 바로 이동할 수 있습니다.',
     detailCtaSummaryText,
   ].join(' ');
   const detailFlowSteps: DetailFlowStep[] = [
@@ -1298,6 +1316,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       </p>
       <p id={detailKakaoDescriptionId} className="sr-only">
         현재 상품과 선택한 출발 조건을 상담 문구로 정리해 카카오톡 상담창으로 이어갑니다.
+      </p>
+      <p id={detailAiConsultDescriptionId} className="sr-only">
+        현재 상품과 선택한 출발 조건을 AI 상담 화면으로 넘겨 추천 이유, 주의할 점, 다음 액션을 이어서 확인합니다.
       </p>
       <p id={detailGroupInquiryDescriptionId} className="sr-only">
         현재 상품과 선택한 출발 조건을 단체 맞춤 견적 문의로 이어갑니다.
@@ -2816,7 +2837,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
           <div
             data-testid="package-detail-sticky-action-grid"
-            className="grid grid-cols-[0.9fr_0.9fr_1.2fr] gap-2 md:flex md:items-center md:gap-2.5"
+            className="grid grid-cols-[0.8fr_0.95fr_0.8fr_1.2fr] gap-2 md:flex md:items-center md:gap-2.5"
           >
           {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
           <button
@@ -2907,6 +2928,45 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <span className="text-base leading-none" aria-hidden="true">💬</span>
             <span className="text-xs font-extrabold md:sr-only">카톡</span>
           </button>
+
+          <Link
+            href={conciergeHandoffHref}
+            onClick={() => {
+              trackEngagement({
+                event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+                product_id: id,
+                product_name: pkg.title,
+                cta_type: 'detail_sticky_ai_consult',
+                page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
+                intent: handoffIntent,
+                budget: handoffBudget,
+                destination: pkg.destination ?? null,
+                party_type: handoffPartyType,
+                selected_products: [selectedProductName],
+                next_action: stickyNextActionText,
+                metadata: {
+                  source: 'detail_sticky_ai_consult',
+                  selectedDate,
+                  productType: pkg.product_type ?? null,
+                  selectedTier: selectedTier?.period_label ?? null,
+                  readiness: detailHandoffReadinessText,
+                  ready_count: detailHandoffReadyCount,
+                  missing_fields: detailHandoffMissingLabels,
+                  decision_summary: stickyAiConsultDecisionSummaryText,
+                  handoff_preview: stickyAiConsultHandoffPreviewText,
+                  next_action: stickyNextActionText,
+                },
+              });
+            }}
+            className="flex h-11 w-full shrink-0 items-center justify-center gap-1.5 rounded-full border border-brand/25 bg-brand-light px-2.5 text-xs font-extrabold text-brand shadow-sm transition-all active:scale-[0.98] md:w-auto md:px-3"
+            aria-label={stickyAiConsultActionLabel}
+            aria-describedby={detailAiConsultDescriptionIds}
+            data-testid="package-detail-sticky-ai-consult"
+            data-analytics-id="mobile_sticky_ai_consult"
+          >
+            <Sparkles className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            <span>AI</span>
+          </Link>
 
           <Link
             href={groupInquiryHref}

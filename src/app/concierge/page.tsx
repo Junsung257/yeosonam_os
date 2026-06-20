@@ -109,7 +109,7 @@ function buildConciergeHandoffPrompt(searchParams: SearchParamReader): IntentPro
   ].filter(Boolean).join(' ');
 
   return {
-    label: source === 'packages' ? '\ud328\ud0a4\uc9c0 \uc870\uac74 \uc0c1\ub2f4' : '\uc0c1\ub2f4 \uc870\uac74',
+    label: source === 'packages' || source === 'package_detail' ? '\ud328\ud0a4\uc9c0 \uc870\uac74 \uc0c1\ub2f4' : '\uc0c1\ub2f4 \uc870\uac74',
     query: query || fallbackQuery || '\ud328\ud0a4\uc9c0 \uc870\uac74 AI \uc0c1\ub2f4',
     intent: intent || 'package_search',
     party_type: partyType || 'group',
@@ -533,11 +533,14 @@ function ConciergePageContent() {
       activePromptLabel: prompt?.label,
       selectedProductCount: nextIntentSummary.selected_products?.length ?? 0,
     });
+    const promptSource = prompt?.source;
     trackEngagement({
       event_type: ANALYTICS_EVENTS.aiPromptStarted,
-      source: prompt?.source === 'packages'
+      source: promptSource === 'packages'
         ? 'packages_handoff_auto_search'
-        : prompt
+        : promptSource === 'package_detail'
+          ? 'package_detail_handoff_auto_search'
+          : prompt
           ? 'concierge_intent_prompt'
           : 'concierge_manual_search',
       page_url: '/concierge',
