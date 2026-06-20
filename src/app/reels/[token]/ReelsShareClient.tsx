@@ -24,6 +24,10 @@ interface Props {
 export default function ReelsShareClient({ reel }: Props) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [sharing, setSharing] = useState(false);
+  const [shareNotice, setShareNotice] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
 
   const photos: ReelPhoto[] = Array.isArray(reel.photos) ? reel.photos : [];
   const shareUrl =
@@ -32,6 +36,7 @@ export default function ReelsShareClient({ reel }: Props) {
       : `https://yeosonam.com/reels/${reel.share_token}`;
 
   const handleShare = async () => {
+    setShareNotice(null);
     setSharing(true);
     try {
       if (navigator.share) {
@@ -40,15 +45,20 @@ export default function ReelsShareClient({ reel }: Props) {
           text: '여소남과 함께한 여행 순간을 공유합니다 ✈️',
           url: shareUrl,
         });
+        setShareNotice({ tone: 'success', message: '공유 화면을 열었습니다.' });
       } else {
         // Web Share API 미지원 시 클립보드 복사 fallback
         await navigator.clipboard.writeText(shareUrl);
-        alert('링크가 클립보드에 복사되었습니다!');
+        setShareNotice({ tone: 'success', message: '링크가 클립보드에 복사되었습니다.' });
       }
     } catch (err) {
       // 사용자가 공유를 취소한 경우 무시
       if (err instanceof Error && err.name !== 'AbortError') {
         console.error('공유 실패:', err);
+        setShareNotice({
+          tone: 'error',
+          message: '공유에 실패했습니다. 잠시 후 다시 시도해주세요.',
+        });
       }
     } finally {
       setSharing(false);
@@ -191,6 +201,19 @@ export default function ReelsShareClient({ reel }: Props) {
           </svg>
           {sharing ? '공유 중...' : '인스타에 공유하기'}
         </button>
+
+        {shareNotice && (
+          <p
+            role={shareNotice.tone === 'error' ? 'alert' : 'status'}
+            className={`rounded-xl border px-3 py-2 text-center text-xs font-medium ${
+              shareNotice.tone === 'error'
+                ? 'border-red-400/40 bg-red-500/15 text-red-100'
+                : 'border-white/15 bg-white/10 text-white'
+            }`}
+          >
+            {shareNotice.message}
+          </p>
+        )}
 
         {/* 여소남 홈 링크 */}
         <a

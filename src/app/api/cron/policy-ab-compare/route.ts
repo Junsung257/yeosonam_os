@@ -124,7 +124,7 @@ async function handle(req: NextRequest) {
   });
   if (insErr) console.error('[policy-ab insert]', sanitizeDbError(insErr));
 
-  // winner 판정 시 admin alert (활성 전환 추천)
+  // winner 판정 시 admin notice (활성 전환 추천)
   if (winner && winner !== active.id) {
     const winnerVersion = winner === challenger.policy.id ? challenger.policy.version : active.version;
     // 신뢰도 95%+ 시 critical (즉시 Slack 푸시 + 강조)

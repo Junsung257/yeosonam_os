@@ -81,6 +81,10 @@ export default function ItineraryPage() {
   const [pkg, setPkg] = useState<PackageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState(false);
+  const [imageNotice, setImageNotice] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [tab, setTab] = useState<'overview' | 'schedule' | 'info'>('overview');
   const [viewMode, setViewMode] = useState<'card' | 'table'>('card');
@@ -130,6 +134,7 @@ export default function ItineraryPage() {
   }, [id]);
 
   const handleGenerateImage = async () => {
+    setImageNotice(null);
     setGenerating(true);
     try {
       // 인쇄형(table) → Puppeteer API / 모바일형(card) → html2canvas
@@ -179,8 +184,12 @@ export default function ItineraryPage() {
           link.click();
         });
       }
+      setImageNotice({ tone: 'success', message: '이미지 파일 저장을 시작했습니다.' });
     } catch (err) {
-      alert('이미지 생성 실패: ' + (err instanceof Error ? err.message : '오류'));
+      setImageNotice({
+        tone: 'error',
+        message: `이미지 생성 실패: ${err instanceof Error ? err.message : '오류'}`,
+      });
     } finally {
       setGenerating(false);
     }
@@ -696,9 +705,23 @@ export default function ItineraryPage() {
               </div>
             )}
           </div>
+          {imageNotice && (
+            <p
+              id="itinerary-image-notice"
+              role={imageNotice.tone === 'error' ? 'alert' : 'status'}
+              className={`rounded-lg border px-3 py-2 text-xs font-medium ${
+                imageNotice.tone === 'error'
+                  ? 'border-red-200 bg-red-50 text-red-700'
+                  : 'border-blue-100 bg-blue-50 text-blue-700'
+              }`}
+            >
+              {imageNotice.message}
+            </p>
+          )}
           <button
             onClick={handleGenerateImage}
             disabled={generating}
+            aria-describedby={imageNotice ? 'itinerary-image-notice' : undefined}
             className="w-full bg-blue-600 text-white py-3 rounded-xl text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
           >
             {generating ? (

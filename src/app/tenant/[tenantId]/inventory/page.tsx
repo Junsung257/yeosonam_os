@@ -42,6 +42,11 @@ function fmt(n: number) { return n.toLocaleString('ko-KR'); }
 const getRouteParam = (value: string | string[] | undefined) =>
   (Array.isArray(value) ? value[0] : value ?? '').trim();
 
+type InventoryNotice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 export default function TenantInventoryPage() {
   const params   = useParams();
   const tenantId = getRouteParam(params?.tenantId);
@@ -58,6 +63,7 @@ export default function TenantInventoryPage() {
   const [dayModal,  setDayModal]  = useState<DayModal | null>(null);
   const [modalForm, setModalForm] = useState({ total_seats: 0, status: 'OPEN', price_override: '' });
   const [saving,    setSaving]    = useState(false);
+  const [notice,    setNotice]    = useState<InventoryNotice | null>(null);
 
   // 상품 목록 로드
   useEffect(() => {
@@ -122,37 +128,50 @@ export default function TenantInventoryPage() {
   // 전월 일괄 복사
   async function copyPrevMonth() {
     if (!tenantId || !selectedProduct) return;
+    setNotice(null);
 
-    const prevMonth = viewMonth === 0 ? 11 : viewMonth - 1;
-    const prevYear  = viewMonth === 0 ? viewYear - 1 : viewYear;
-    const from = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;
-    const to   = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${getDaysInMonth(prevYear, prevMonth)}`;
-    const res  = await fetch(`/api/tenant/inventory?product_id=${encodeURIComponent(selectedProduct)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
-    const { blocks: prevBlocks }: { blocks: InventoryBlock[] } = await res.json();
-    if (!prevBlocks.length) { alert('전월 재고 데이터가 없습니다.'); return; }
+    try {
+      const prevMonth = viewMonth === 0 ? 11 : viewMonth - 1;
+      const prevYear  = viewMonth === 0 ? viewYear - 1 : viewYear;
+      const from = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-01`;
+      const to   = `${prevYear}-${String(prevMonth + 1).padStart(2, '0')}-${getDaysInMonth(prevYear, prevMonth)}`;
+      const res  = await fetch(`/api/tenant/inventory?product_id=${encodeURIComponent(selectedProduct)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`);
+      const { blocks: prevBlocks }: { blocks: InventoryBlock[] } = await res.json();
+      if (!prevBlocks.length) {
+        setNotice({ tone: 'error', message: '전월 재고 데이터가 없습니다.' });
+        return;
+      }
 
-    const newBlocks = prevBlocks.map(b => {
-      const day = b.date.slice(8);
-      const maxDay = getDaysInMonth(viewYear, viewMonth);
-      const dayNum = parseInt(day);
-      if (dayNum > maxDay) return null;
-      return {
-        tenant_id:     tenantId,
-        product_id:    selectedProduct,
-        date:          `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${day}`,
-        total_seats:   b.total_seats,
-        booked_seats:  0,
-        status:        b.status,
-        price_override: b.price_override,
-      };
-    }).filter(Boolean);
+      const newBlocks = prevBlocks.map(b => {
+        const day = b.date.slice(8);
+        const maxDay = getDaysInMonth(viewYear, viewMonth);
+        const dayNum = parseInt(day);
+        if (dayNum > maxDay) return null;
+        return {
+          tenant_id:     tenantId,
+          product_id:    selectedProduct,
+          date:          `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${day}`,
+          total_seats:   b.total_seats,
+          booked_seats:  0,
+          status:        b.status,
+          price_override: b.price_override,
+        };
+      }).filter(Boolean);
 
-    await fetch('/api/tenant/inventory', {
-      method:  'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ blocks: newBlocks }),
-    });
-    await loadBlocks();
+      await fetch('/api/tenant/inventory', {
+        method:  'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ blocks: newBlocks }),
+      });
+      await loadBlocks();
+      setNotice({ tone: 'success', message: '전월 재고를 현재 월로 복사했습니다.' });
+    } catch (err) {
+      console.error('[TenantInventoryPage] copy previous month failed:', err);
+      setNotice({
+        tone: 'error',
+        message: '재고 복사에 실패했습니다. 잠시 후 다시 시도해주세요.',
+      });
+    }
   }
 
   // 달력 생성
@@ -199,6 +218,19 @@ export default function TenantInventoryPage() {
           </button>
         </div>
       </div>
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          className={`rounded-xl border px-4 py-3 text-sm font-medium ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       {/* 달력 */}
       <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
