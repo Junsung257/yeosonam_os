@@ -358,6 +358,12 @@ function inferAdminQueueKey(metadata: Record<string, unknown> | undefined, surfa
   if (href) {
     if (href.includes('filter=unpaid')) return 'bookings_unpaid';
     if (href.includes('filter=unmatched')) return 'payments_unmatched';
+    if (href.includes('filter=outstanding')) return 'payments_outstanding';
+    if (href.includes('filter=review')) return 'payments_review';
+    if (href.includes('/admin/land-settlements')) return 'land_settlements';
+    if (href.includes('/admin/ledger')) return 'finance_ledger';
+    if (href.includes('mode=upcoming')) return 'bookings_upcoming';
+    if (href.includes('status=pending,confirmed')) return 'bookings_active';
     if (href.includes('/admin/packages')) return 'packages_pending_review';
     if (href.includes('/admin/jarvis')) return 'ai_action_review';
     if (href.includes('/admin/bookings')) return 'bookings_queue';
