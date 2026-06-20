@@ -142,6 +142,53 @@ describe('readSupplierDocumentLikeHuman', () => {
     expect(prices).toEqual([849000, 1069000, 1259000, 1299000]);
   });
 
+  it('recovers broken Korean month/day rows followed by one package price', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '노옵션 노팁 황산 서체 4일 PKG',
+        '출 발 일 자',
+        '년 월 일 월 일 화26410~529',
+        '여 행 경 비',
+        '월     일414,21,28',
+        '월 일 55,12,19,26',
+        '인 849,000/',
+      ].join('\n'),
+      durationDays: 4,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual(
+      expect.arrayContaining([
+        '2026-04-14:849000',
+        '2026-04-21:849000',
+        '2026-04-28:849000',
+        '2026-05-05:849000',
+        '2026-05-12:849000',
+        '2026-05-19:849000',
+        '2026-05-26:849000',
+      ]),
+    );
+  });
+
+  it('recovers nearby Korean travel days with one product price', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '[청주공항-청도 3일]',
+        '여행일 23일, 24일',
+        '3월',
+        '2026년',
+        '상품가 [특가] 299,000원/인',
+      ].join('\n'),
+      durationDays: 3,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual([
+      '2026-03-23:299000',
+      '2026-03-24:299000',
+    ]);
+  });
+
   it('ignores surcharge dates when building independent product-price evidence', () => {
     const result = readSupplierDocumentLikeHuman({
       rawText: [

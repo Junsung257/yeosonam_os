@@ -13,8 +13,15 @@ type HeaderFlightSegment = {
   day_pair: [number, number];
 };
 
-const DAY_LINE_RE = /^\s*(?:제\s*)?(?:DAY\s*)?(\d+)\s*(?:일|일차|day)?\s*$/i;
-const INLINE_DAY_LINE_RE = /^\s*(?:제\s*)?(?:DAY\s*)?(\d{1,2})\s*(?:일|일차|day)?\s+(.+)$/i;
+const DAY_LINE_RE = /^\s*(?:제\s*)?(?:DAY\s*)?(\d+)\s*(?:일차|일|day)?\s*$/i;
+const JE_DAY_LINE_RE = /^\s*제\s*(\d{1,2})\s*(?:일차|일)\s*$/;
+const REVERSED_DAY_LINE_RE = /^\s*일\s*(\d{1,2})\s*$/;
+const SPACED_JE_DAY_LINE_RE = /^\s*제\s*일\s*(\d{1,2})(?:\s*차)?\s*$/;
+const JE_INLINE_DAY_LINE_RE = /^\s*제\s*(\d{1,2})\s*(?:일차|일)\s+(.+)$/;
+const INLINE_DAY_LINE_RE = /^\s*(?:제\s*)?(?:DAY\s*)?(\d{1,2})\s*(?:일차|일|day)?\s+(.+)$/i;
+const REVERSED_INLINE_DAY_LINE_RE = /^\s*일\s*(\d{1,2})\s+(.+)$/;
+const SPACED_JE_INLINE_DAY_LINE_RE = /^\s*제\s*일\s*(\d{1,2})(?:\s*차)?\s*(.+)$/;
+const EXPLICIT_DAY_PREFIX_RE = /^\s*제\s*(\d{1,2})\s*(?:일차|일)\s*(.*)$/;
 const FLIGHT_CODE_RE = /\b([A-Z]{2}\d{2,4})\b/;
 const FLIGHT_CODE_GLOBAL_RE = /\b([A-Z]{2}\d{2,4})\b/g;
 const TIME_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/;
@@ -37,14 +44,32 @@ function inferDurationBound(rawText: string): number | null {
 
 function matchDayHeader(line: string): { day: number; tail: string } | null {
   const trimmed = line.trim();
+  const explicitPrefix = trimmed.match(EXPLICIT_DAY_PREFIX_RE);
+  if (explicitPrefix) {
+    const tail = (explicitPrefix[2] ?? '').trim();
+    if (/\d{1,3}(?:,\d{3})+/.test(tail)) return null;
+    return { day: Number(explicitPrefix[1]), tail };
+  }
   const exact = trimmed.match(DAY_LINE_RE);
   if (exact) return { day: Number(exact[1]), tail: '' };
+  const jeExact = trimmed.match(JE_DAY_LINE_RE);
+  if (jeExact) return { day: Number(jeExact[1]), tail: '' };
+  const reversedExact = trimmed.match(REVERSED_DAY_LINE_RE);
+  if (reversedExact) return { day: Number(reversedExact[1]), tail: '' };
+  const spacedJeExact = trimmed.match(SPACED_JE_DAY_LINE_RE);
+  if (spacedJeExact) return { day: Number(spacedJeExact[1]), tail: '' };
 
-  const inline = trimmed.match(INLINE_DAY_LINE_RE);
+  const inline = trimmed.match(JE_INLINE_DAY_LINE_RE)
+    ?? trimmed.match(INLINE_DAY_LINE_RE)
+    ?? trimmed.match(REVERSED_INLINE_DAY_LINE_RE)
+    ?? trimmed.match(SPACED_JE_INLINE_DAY_LINE_RE);
   if (!inline) return null;
   const tail = inline[2].trim();
   if (/\d{1,3}(?:,\d{3})+/.test(tail)) return null;
-  if (/^\s*(?:제\s*)?\d{1,2}\s*(?:일|일차)\b/u.test(trimmed) && /[\p{Script=Hangul}A-Za-z]/u.test(tail)) {
+  if (/^\s*(?:제\s*)?\d{1,2}\s*(?:일차|일)\b/u.test(trimmed) && /[\p{Script=Hangul}A-Za-z]/u.test(tail)) {
+    return { day: Number(inline[1]), tail };
+  }
+  if (/^\s*제\s*일\s*\d{1,2}/u.test(trimmed) && /[\p{Script=Hangul}A-Za-z]/u.test(tail)) {
     return { day: Number(inline[1]), tail };
   }
   if (!/(?:\d{1,2}:\d{2}|[A-Z]{2}\d{2,4}|[:：]|공항|출발|도착|호텔|조\s*[:：]|중\s*[:：]|석\s*[:：]|▶)/.test(tail)) {

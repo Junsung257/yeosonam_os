@@ -15,6 +15,9 @@ This audit records the current evidence after hardening the supplier upload engi
 - Flight candidate merging now combines adjacent, stacked, inline, and loose OCR rows so one partial extractor does not discard a better extractor result.
 - Return rows such as `다낭출발 부산 향발` preserve the departure city instead of collapsing both airports to Busan.
 - Price recovery can now use source-backed human-reader price/date pairs when deterministic price tiers fail, but it rejects bare document issue dates and supports departure context such as `출 발 일 26년 4/29 판 매 가`.
+- Korean day-line OCR/PDF schedules now recover reversed or split day markers such as `일1`, `제2일차`, and `제 일3치앙마이`.
+- Catalog split recovery now drops title-only fragments when sibling sections contain customer schedule evidence, preventing false products with no itinerary.
+- Human-reader price recovery now handles broken supplier rows such as `월 일 55,12,19,26` followed by `인 849,000/`, and nearby Korean travel-day rows such as `3월 / 여행일 23일, 24일 / 상품가 299,000원/인`.
 
 ## Current Offline Audit Metrics
 
@@ -33,6 +36,18 @@ itinerary day sequence: 7
 price source audit failed: 0
 ```
 
+After the follow-up itinerary and price-pattern hardening pass:
+
+```text
+products: 124
+publishableOffline: 50
+customerReadyOffline: 0
+product_prices missing: 19
+itinerary missing: 7
+destination code unresolved: 12
+mobile/A4 live verification: not run in this offline audit
+```
+
 ## Interpretation
 
 This is not a customer-ready completion proof. `customerReadyOffline=0` means the current batch still has mobile/A4 review blockers, especially missing itineraries and media/review warnings.
@@ -41,7 +56,7 @@ The important completed improvement is that price/date and flight evidence failu
 
 ## Remaining Work
 
-- Reduce `itinerary missing` by adding source-backed OCR/PDF day-block reconstruction rules only where day boundaries can be proven.
-- Classify the remaining 21 price-missing products into true no-price sources, shared matrix mapping cases, and parser-rule candidates.
+- Reduce the remaining `itinerary missing` 7 cases by adding source-backed OCR/PDF day-block reconstruction rules only where day boundaries can be proven.
+- Classify the remaining 19 price-missing products into true no-price sources, shared matrix mapping cases, and parser-rule candidates.
+- Add golf weekday/month matrix recovery for supplier tables that combine `1,349,-` price cells with month/weekday grids.
 - Run live mobile/A4 browser verification only after DB resource pressure is normal and the offline source audit has no customer-critical blockers.
-

@@ -205,7 +205,8 @@ function extractHwpWithExternalTool(filePath: string): string | null {
   return null;
 }
 
-function normalizeExtractedText(text: string): string {
+function normalizeExtractedText(text: unknown): string {
+  if (typeof text !== 'string') return '';
   return text
     .replace(/\r/g, '')
     .replace(/[ \t]+\n/g, '\n')
