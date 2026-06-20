@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, use } from 'react';
+import { useState, useEffect, useCallback, use, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -49,7 +49,9 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   const [isNew, setIsNew] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [operators, setOperators] = useState<LandOperator[]>([]);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const [tpl, setTpl] = useState<TermsTemplate>({
     name: '',
     tier: 1,
@@ -92,6 +94,11 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   }, [encodedId, id, isNew]);
 
   useEffect(() => { if (id) loadData(); }, [id, loadData]);
+
+  useEffect(() => {
+    if (!deleteConfirmOpen) return;
+    requestAnimationFrame(() => deleteCancelRef.current?.focus());
+  }, [deleteConfirmOpen]);
 
   const updateField = <K extends keyof TermsTemplate>(key: K, value: TermsTemplate[K]) => {
     setTpl(prev => ({ ...prev, [key]: value }));
@@ -159,7 +166,6 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   };
 
   const softDelete = async () => {
-    if (!confirm('비활성화(soft delete)합니다. 기존 예약 스냅샷은 유지됩니다. 계속?')) return;
     const res = await fetch(`/api/terms-templates/${encodedId}`, { method: 'DELETE' });
     if (res.ok) { alert('비활성화 완료'); router.push('/admin/terms-templates'); }
   };
@@ -189,7 +195,14 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
         </div>
         <div className="flex gap-2">
           {!isNew && (
-            <button onClick={softDelete} className="px-3 py-2 border border-red-300 text-red-600 rounded text-sm">
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={deleteConfirmOpen}
+              aria-controls="terms-template-delete-confirm-dialog"
+              className="px-3 py-2 border border-red-300 text-red-600 rounded text-sm"
+            >
               비활성화
             </button>
           )}
@@ -390,6 +403,77 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
           {saving ? '저장 중...' : '저장'}
         </button>
       </div>
+
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="약관 템플릿 비활성화 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setDeleteConfirmOpen(false)}
+          />
+          <div
+            id="terms-template-delete-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="terms-template-delete-confirm-title"
+            aria-describedby="terms-template-delete-confirm-description terms-template-delete-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Terms template</p>
+              <h2 id="terms-template-delete-confirm-title" className="text-lg font-bold text-admin-text">
+                약관 템플릿을 비활성화할까요?
+              </h2>
+              <p id="terms-template-delete-confirm-description" className="text-sm leading-6 text-admin-muted">
+                기존 예약 스냅샷은 유지됩니다. 새 예약에 적용되는 약관 후보에서 제외할지 확인하세요.
+              </p>
+            </div>
+
+            <dl
+              id="terms-template-delete-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">이름</dt>
+                <dd className="font-semibold text-admin-text">{tpl.name || '-'}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">Tier</dt>
+                <dd className="font-semibold text-admin-text">T{tpl.tier}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">범위</dt>
+                <dd className="max-w-[13rem] truncate font-semibold text-admin-text">
+                  {tpl.scope.all ? '전체' : tpl.scope.land_operator_id || '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">Notice</dt>
+                <dd className="font-semibold text-admin-text">{tpl.notices.length}개</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={deleteCancelRef}
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={softDelete}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                비활성화
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
