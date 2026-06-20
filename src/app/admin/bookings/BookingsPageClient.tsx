@@ -1109,7 +1109,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   // 대시보드 KPI 카드에서 drilldown으로 진입 시 ?mode= / ?filter= 쿼리파라미터로 초기 상태 설정
   // - ?mode=recognized → lifecycleTab='done' (출발 완료, IFRS 15 매출 인식)
   // - ?mode=new        → lifecycleTab='active' + 생성일 desc 정렬 (신규예약, 영업)
-  // - ?filter=outstanding → activeTab='unpaid_risk' (잔금 미납 D-7)
+  // - ?filter=unpaid|outstanding → activeTab='unpaid_risk' (잔금 미납 D-7)
   // - ?status=pending,confirmed → lifecycleTab='active' (진행 예약)
   // - ?id=<uuid>       → 해당 예약 drawer 자동 오픈
   // - ?dq=missing_total_price|missing_total_cost|missing_operator|missing_region|missing_margin_calc|payment_status_mismatch
@@ -1124,7 +1124,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   })();
   const initialActiveTab = (() => {
     const f = searchParams?.get('filter');
-    if (f === 'outstanding') return 'unpaid_risk' as const;
+    if (f === 'outstanding' || f === 'unpaid') return 'unpaid_risk' as const;
     return '' as const;
   })();
   const dqFilter = searchParams?.get('dq') ?? null; // 데이터 품질 모니터 진입점

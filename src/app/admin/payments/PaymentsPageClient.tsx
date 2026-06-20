@@ -703,13 +703,13 @@ function PaymentFocusBar({
 
 export default function PaymentsPageClient({ initialTransactions, initialTrashTxs, initialBookings, initialErp }: PaymentsClientProps = {}) {
   // 대시보드 KPI 카드 drilldown 진입점:
-  //   ?filter=outstanding → unmatched 탭 (미매칭 입금 대사 = 미수금 운영 뷰)
+  //   ?filter=unmatched|outstanding → unmatched 탭 (미매칭 입금 대사 = 미수금 운영 뷰)
   //   ?tab=outflow|matched|unmatched|review → 명시적 탭 진입
   const searchParams = useSearchParams();
   const initialTab: PaymentTab = (() => {
     const filter = searchParams?.get('filter');
     const tabParam = searchParams?.get('tab');
-    if (filter === 'outstanding') return 'unmatched';
+    if (filter === 'outstanding' || filter === 'unmatched') return 'unmatched';
     if (tabParam === 'matched' || tabParam === 'unmatched' || tabParam === 'outflow' || tabParam === 'review') {
       return tabParam;
     }
