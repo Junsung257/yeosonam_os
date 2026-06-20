@@ -57,6 +57,7 @@ export default function BlogRankingsPage() {
   const [movers, setMovers] = useState<{ ups: Mover[]; downs: Mover[] } | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [running, setRunning] = useState(false);
+  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   const fetchAll = useCallback(async () => {
     const [sumRes, movRes, alertRes, visibilityRes] = await Promise.all([
@@ -86,8 +87,9 @@ export default function BlogRankingsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       await fetchAll();
+      setNotice({ tone: 'success', message: '순위 추적이 완료되었습니다.' });
     } catch (error) {
-      alert(`실패: ${(error as Error).message}`);
+      setNotice({ tone: 'error', message: `실패: ${(error as Error).message}` });
     } finally {
       setRunning(false);
     }
@@ -115,6 +117,20 @@ export default function BlogRankingsPage() {
           </>
         }
       />
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm ${
+            notice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       <section className="admin-card p-4">
         <div className="grid gap-3 md:grid-cols-3">

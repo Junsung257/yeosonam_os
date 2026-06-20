@@ -102,6 +102,7 @@ export default function BlogAdsPage() {
   const [fCampaignSlug, setFCampaignSlug] = useState('');
   const [fDkiHeadline, setFDkiHeadline] = useState('');
   const [fDkiSubtitle, setFDkiSubtitle] = useState('');
+  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -152,7 +153,7 @@ export default function BlogAdsPage() {
 
   async function createMapping() {
     if (!fBlog || !fKeyword.trim()) {
-      alert('블로그와 광고 키워드는 필수입니다.');
+      setNotice({ tone: 'error', message: '블로그와 광고 키워드는 필수입니다.' });
       return;
     }
     const res = await fetch('/api/blog/ad-mapping', {
@@ -169,7 +170,7 @@ export default function BlogAdsPage() {
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      alert(`실패: ${err.error || res.status}`);
+      setNotice({ tone: 'error', message: `실패: ${err.error || res.status}` });
       return;
     }
     setFBlog('');
@@ -178,6 +179,7 @@ export default function BlogAdsPage() {
     setFDkiHeadline('');
     setFDkiSubtitle('');
     setFormOpen(false);
+    setNotice({ tone: 'success', message: '광고 매핑이 생성되었습니다.' });
     fetchData();
   }
 
@@ -218,6 +220,20 @@ export default function BlogAdsPage() {
           </>
         }
       />
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm ${
+            notice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       <section className="admin-card p-4">
         <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
