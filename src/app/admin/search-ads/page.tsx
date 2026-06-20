@@ -63,6 +63,7 @@ function SearchAdsContent() {
   const [platform, setPlatform] = useState<Platform>('naver');
   const [tierFilter, setTierFilter] = useState<KeywordTier | 'all'>('all');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [editingBid, setEditingBid] = useState<string | null>(null);
   const [editBidValue, setEditBidValue] = useState('');
   const [syncing, setSyncing] = useState(false);
@@ -88,12 +89,16 @@ function SearchAdsContent() {
   const optimizerDialogRef = useRef<HTMLDivElement | null>(null);
   const optimizerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
   const optimizerApplyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement | null>(null);
+  const deleteCancelButtonRef = useRef<HTMLButtonElement | null>(null);
   const extractorTitleId = 'search-ads-extractor-title';
   const extractorDescriptionId = 'search-ads-extractor-description';
   const extractorStatusId = 'search-ads-extractor-status';
   const optimizerTitleId = 'search-ads-optimizer-title';
   const optimizerDescriptionId = 'search-ads-optimizer-description';
   const optimizerStatusId = 'search-ads-optimizer-status';
+  const deleteTitleId = 'search-ads-delete-title';
+  const deleteDescriptionId = 'search-ads-delete-description';
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info'),
@@ -249,12 +254,68 @@ function SearchAdsContent() {
     };
   }, [optimizerOpen, recommendations.length]);
 
+  useEffect(() => {
+    if (!deleteConfirmOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    deleteCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      deleteDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDeleteConfirmOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [deleteConfirmOpen]);
+
   // 필터링
   const filtered = useMemo(() => {
     let result = keywords.filter(k => k.platform === platform);
     if (tierFilter !== 'all') result = result.filter(k => k.tier === tierFilter);
     return result;
   }, [keywords, platform, tierFilter]);
+  const selectedKeywords = useMemo(
+    () => keywords.filter(k => selectedIds.has(k.id)),
+    [keywords, selectedIds],
+  );
+  const deletePreviewKeywords = selectedKeywords.slice(0, 5);
+  const selectedSpend = selectedKeywords.reduce((sum, keyword) => sum + keyword.spend, 0);
+  const selectedBidTotal = selectedKeywords.reduce((sum, keyword) => sum + keyword.bid, 0);
 
   // KPI
   const totalKeywords = filtered.length;
@@ -435,11 +496,12 @@ function SearchAdsContent() {
   }, [keywords, selectedIds, showToast]);
 
   const bulkDelete = useCallback(() => {
-    if (!confirm(`${selectedIds.size}개 키워드를 삭제하시겠습니까?`)) return;
+    if (selectedIds.size === 0) return;
     const updated = keywords.filter(k => !selectedIds.has(k.id));
     setKeywords(updated);
     saveKeywords(updated);
     setSelectedIds(new Set());
+    setDeleteConfirmOpen(false);
     showToast('삭제 완료');
   }, [keywords, selectedIds, showToast]);
 
@@ -625,7 +687,16 @@ function SearchAdsContent() {
             <button onClick={() => bulkAdjust(10)} className="px-2 py-1 text-[10px] bg-emerald-50 text-emerald-700 rounded border border-emerald-200 hover:bg-emerald-100">+10%</button>
             <button onClick={() => bulkAdjust(-10)} className="px-2 py-1 text-[10px] bg-amber-50 text-amber-700 rounded border border-amber-200 hover:bg-amber-100">-10%</button>
             <button onClick={() => bulkAdjust(20)} className="px-2 py-1 text-[10px] bg-blue-50 text-blue-700 rounded border border-blue-200 hover:bg-blue-100">+20%</button>
-            <button onClick={bulkDelete} className="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100">삭제</button>
+            <button
+              type="button"
+              onClick={() => setDeleteConfirmOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={deleteConfirmOpen}
+              aria-controls="search-ads-delete-dialog"
+              className="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded border border-red-200 hover:bg-red-100"
+            >
+              삭제
+            </button>
           </div>
         )}
       </div>
@@ -700,6 +771,76 @@ function SearchAdsContent() {
           </tbody>
         </table>
       </div>
+
+      {deleteConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={deleteDialogRef}
+            id="search-ads-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deleteTitleId}
+            aria-describedby={deleteDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={deleteTitleId} className="text-admin-sm font-semibold text-admin-text-2">선택 키워드 삭제</p>
+              <p id={deleteDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                삭제하면 이 화면의 로컬 키워드 목록에서 제거됩니다. 외부 광고 계정 반영 전 마지막 확인입니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">선택</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">{selectedKeywords.length}개</p>
+                </div>
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">입찰 합계</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">₩{selectedBidTotal.toLocaleString()}</p>
+                </div>
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">누적 지출</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">₩{selectedSpend.toLocaleString()}</p>
+                </div>
+              </div>
+              <div className="max-h-52 overflow-y-auto rounded border border-admin-border-mid">
+                {deletePreviewKeywords.map(keyword => (
+                  <div key={keyword.id} className="flex items-center justify-between gap-3 border-b border-admin-border last:border-b-0 px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-admin-xs font-medium text-admin-text-2">{keyword.keyword}</p>
+                      <p className="text-[10px] text-admin-muted">{keyword.platform} · {keyword.matchType} · {TIER_LABELS[keyword.tier]}</p>
+                    </div>
+                    <p className="shrink-0 text-[11px] text-admin-muted">₩{keyword.bid.toLocaleString()}</p>
+                  </div>
+                ))}
+                {selectedKeywords.length > deletePreviewKeywords.length && (
+                  <div className="px-3 py-2 text-[11px] text-admin-muted">
+                    외 {selectedKeywords.length - deletePreviewKeywords.length}개 키워드가 함께 삭제됩니다.
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={deleteCancelButtonRef}
+                type="button"
+                onClick={() => setDeleteConfirmOpen(false)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={bulkDelete}
+                className="rounded bg-red-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-red-700"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── 키워드 추출 드로어 ─────────────────────────── */}
       {extractorOpen && (
