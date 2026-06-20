@@ -19,6 +19,7 @@ This audit records the current evidence after hardening the supplier upload engi
 - Catalog split recovery now drops title-only fragments when sibling sections contain customer schedule evidence, preventing false products with no itinerary.
 - Human-reader price recovery now handles broken supplier rows such as `월 일 55,12,19,26` followed by `인 849,000/`, and nearby Korean travel-day rows such as `3월 / 여행일 23일, 24일 / 상품가 299,000원/인`.
 - Golf weekday/month matrix rows now recover date-scoped prices from tables such as `3/1~3/18` with `월,화,수 1,349,- 1,409,-`, using the product title to choose the 정통/품격 column.
+- Destination resolution now includes constrained aliases for `나가사키`, `칠채산`, `황하석림`, `바단지린`, and `란주` so clear supplier catalog destinations do not remain `UNK`.
 
 ## Current Offline Audit Metrics
 
@@ -49,6 +50,17 @@ destination code unresolved: 12
 mobile/A4 live verification: not run in this offline audit
 ```
 
+After the constrained destination alias hardening pass:
+
+```text
+products: 124
+publishableOffline: 61
+customerReadyOffline: 0
+product_prices missing: 9
+destination code unresolved: 8
+mobile/A4 live verification: not run in this offline audit
+```
+
 After the golf weekday/month matrix hardening pass:
 
 ```text
@@ -71,5 +83,5 @@ The important completed improvement is that price/date and flight evidence failu
 
 - Reduce the remaining `itinerary missing` 7 cases by adding source-backed OCR/PDF day-block reconstruction rules only where day boundaries can be proven.
 - Classify the remaining 9 price-missing products into true no-price sources, shared matrix mapping cases, and parser-rule candidates.
-- Continue destination-code hardening for the remaining 12 destination unresolved blockers.
+- Continue destination-code hardening for the remaining 8 destination unresolved blockers. Do not add broad `화산` global mapping until raw route evidence proves it is the Xian/Huashan product context, because that can collide with non-Xian phrases such as volcano/waterfall descriptions.
 - Run live mobile/A4 browser verification only after DB resource pressure is normal and the offline source audit has no customer-critical blockers.

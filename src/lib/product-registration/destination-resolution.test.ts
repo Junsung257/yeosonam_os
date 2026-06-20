@@ -47,6 +47,9 @@ describe('upload destination resolution Korean aliases', () => {
   it('resolves modern Korean destination aliases from existing destination strings', () => {
     const cases = [
       ['시즈오카 BX시내숙박 명문골프 3박4일', 'FSZ'],
+      ['나가사키 전세기 오션팰리스 연장', 'NGS'],
+      ['황하석림, 바단지린, 칠채산', 'XIY'],
+      ['란주, 황하석림, 바단지린, 칠채산', 'XIY'],
       ['청도 색골프 2박3일 BX', 'TAO'],
       ['북해도 3박4일 온천 2박 시내 1박 도야 오타루 삿포로', 'CTS'],
       ['토야마 온천3박 알펜루트 쿠로베열차', 'TOY'],
