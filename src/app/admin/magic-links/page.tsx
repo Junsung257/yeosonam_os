@@ -12,7 +12,7 @@
  * 발송 (알림톡/SMS) 은 아직 미연동 — 발급 후 "복사해서 카카오톡 등으로 수동 공유" 안내.
  */
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ActionType =
   | 'booking_portal'
@@ -104,6 +104,12 @@ export default function AdminMagicLinksPage() {
   const [tokens, setTokens] = useState<TokenRow[]>([]);
   const [loadingList, setLoadingList] = useState(false);
   const [metrics, setMetrics] = useState<Metrics | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<TokenRow | null>(null);
+  const [revokeReason, setRevokeReason] = useState('');
+  const [revokeError, setRevokeError] = useState('');
+  const [revoking, setRevoking] = useState(false);
+  const revokeModalRef = useRef<HTMLDivElement | null>(null);
+  const revokeCancelRef = useRef<HTMLButtonElement | null>(null);
 
   // action_type 변경 시 default TTL
   useEffect(() => {
@@ -131,6 +137,60 @@ export default function AdminMagicLinksPage() {
       .then((m) => setMetrics(m as Metrics))
       .catch(() => {});
   }, []);
+
+  useEffect(() => {
+    if (!revokeTarget || !revokeModalRef.current) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => revokeCancelRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      revokeModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const closeModal = () => {
+      if (revoking) return;
+      setRevokeTarget(null);
+      setRevokeReason('');
+      setRevokeError('');
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [revokeTarget, revoking]);
 
   const mint = async () => {
     setError(null);
@@ -174,20 +234,57 @@ export default function AdminMagicLinksPage() {
     }
   };
 
-  const revoke = async (tokenId: string) => {
-    if (!confirm('이 매직링크를 폐기하시겠어요? 폐기 후 사용자가 클릭해도 동작하지 않습니다.')) return;
-    const reason = prompt('폐기 사유 (선택, 200자 이내)') ?? '';
-    const res = await fetch('/api/admin/magic-links/revoke', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tokenId, reason: reason || undefined }),
-    });
-    if (res.ok) {
+  const openRevokeModal = (token: TokenRow) => {
+    setRevokeTarget(token);
+    setRevokeReason('');
+    setRevokeError('');
+  };
+
+  const closeRevokeModal = () => {
+    if (revoking) return;
+    setRevokeTarget(null);
+    setRevokeReason('');
+    setRevokeError('');
+  };
+
+  const revoke = async () => {
+    if (!revokeTarget) return;
+    const reason = revokeReason.trim().slice(0, 200);
+    setRevoking(true);
+    setRevokeError('');
+    try {
+      const res = await fetch('/api/admin/magic-links/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tokenId: revokeTarget.id, reason: reason || undefined }),
+      });
+      if (!res.ok) {
+        setRevokeError('폐기에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+        return;
+      }
       loadList(filterBookingId);
-    } else {
-      alert('폐기 실패');
+      setMetrics(prev => prev ? { ...prev, revokedCount: prev.revokedCount + 1 } : prev);
+      setRevokeTarget(null);
+      setRevokeReason('');
+      setRevokeError('');
+    } catch {
+      setRevokeError('폐기에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setRevoking(false);
     }
   };
+
+  const revokeTitleId = 'magic-link-revoke-title';
+  const revokeDescriptionId = 'magic-link-revoke-description';
+  const revokeSummaryId = 'magic-link-revoke-summary';
+  const revokeStatusId = 'magic-link-revoke-status';
+  const revokeErrorId = 'magic-link-revoke-error';
+  const revokeDescriptionIds = revokeError
+    ? `${revokeDescriptionId} ${revokeSummaryId} ${revokeStatusId} ${revokeErrorId}`
+    : `${revokeDescriptionId} ${revokeSummaryId} ${revokeStatusId}`;
+  const revokeSummaryText = revokeTarget
+    ? `${ACTION_LABELS[revokeTarget.action_type] ?? revokeTarget.action_type} 매직링크를 폐기합니다. 예약 ${revokeTarget.booking_id?.slice(0, 8) ?? '없음'}, 만료일 ${new Date(revokeTarget.expires_at).toLocaleDateString('ko-KR')}. 폐기 후 고객이 클릭해도 동작하지 않습니다.`
+    : '폐기할 매직링크를 선택하세요.';
 
   return (
     <div className="max-w-5xl mx-auto p-6 space-y-6">
@@ -484,7 +581,11 @@ export default function AdminMagicLinksPage() {
                     <td className="py-2 text-right">
                       {!t.revoked_at && !t.used_at && (
                         <button
-                          onClick={() => revoke(t.id)}
+                          type="button"
+                          onClick={() => openRevokeModal(t)}
+                          aria-haspopup="dialog"
+                          aria-expanded={revokeTarget?.id === t.id}
+                          aria-controls="magic-link-revoke-dialog"
                           className="text-xs text-red-600 hover:underline"
                         >
                           폐기
@@ -498,6 +599,121 @@ export default function AdminMagicLinksPage() {
           </table>
         </div>
       </section>
+
+      {revokeTarget && (
+        <>
+          <button
+            type="button"
+            aria-label="매직링크 폐기 모달 닫기"
+            className="fixed inset-0 z-50 cursor-default bg-black/40"
+            onClick={closeRevokeModal}
+            disabled={revoking}
+          />
+          <div className="fixed inset-0 z-[51] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+            <div
+              id="magic-link-revoke-dialog"
+              ref={revokeModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={revokeTitleId}
+              aria-describedby={revokeDescriptionIds}
+              data-testid="magic-link-revoke-dialog"
+              tabIndex={-1}
+              className="pointer-events-auto w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+            >
+              <div>
+                <h2 id={revokeTitleId} className="text-lg font-bold text-gray-900">
+                  매직링크 폐기
+                </h2>
+                <p id={revokeDescriptionId} className="mt-1 text-sm leading-6 text-gray-600">
+                  폐기 후 고객이 해당 링크를 클릭해도 더 이상 동작하지 않습니다. 필요한 경우 사유를 남겨 감사 기록에 보관하세요.
+                </p>
+                <p
+                  id={revokeStatusId}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {revoking ? '매직링크 폐기를 처리하고 있습니다.' : '매직링크 폐기 확인창이 열렸습니다.'}
+                </p>
+              </div>
+
+              <div
+                id={revokeSummaryId}
+                data-testid="magic-link-revoke-summary"
+                aria-label={revokeSummaryText}
+                className="mt-4 rounded-xl border border-red-100 bg-red-50 px-3 py-3 text-sm text-red-900"
+              >
+                <div className="flex justify-between gap-3">
+                  <span className="font-semibold text-red-700">액션</span>
+                  <span className="truncate text-right font-bold">{ACTION_LABELS[revokeTarget.action_type] ?? revokeTarget.action_type}</span>
+                </div>
+                <div className="mt-1 flex justify-between gap-3">
+                  <span className="font-semibold text-red-700">예약</span>
+                  <span className="font-mono text-right">{revokeTarget.booking_id?.slice(0, 8) ?? '없음'}</span>
+                </div>
+                <div className="mt-1 flex justify-between gap-3">
+                  <span className="font-semibold text-red-700">만료</span>
+                  <span className="text-right">{new Date(revokeTarget.expires_at).toLocaleDateString('ko-KR')}</span>
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <label htmlFor="magic-link-revoke-reason" className="block text-sm font-bold text-gray-800">
+                  폐기 사유
+                </label>
+                <textarea
+                  id="magic-link-revoke-reason"
+                  value={revokeReason}
+                  onChange={event => setRevokeReason(event.target.value.slice(0, 200))}
+                  disabled={revoking}
+                  rows={3}
+                  maxLength={200}
+                  aria-describedby={revokeDescriptionIds}
+                  className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                  placeholder="예: 고객 요청으로 폐기"
+                />
+                <p className="mt-1 text-xs text-gray-500">{revokeReason.length}/200</p>
+              </div>
+
+              {revokeError && (
+                <p
+                  id={revokeErrorId}
+                  role="alert"
+                  data-testid="magic-link-revoke-error"
+                  className="mt-3 rounded-xl border border-red-200 bg-white px-3 py-2 text-xs font-bold text-red-700"
+                >
+                  {revokeError}
+                </p>
+              )}
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  ref={revokeCancelRef}
+                  onClick={closeRevokeModal}
+                  disabled={revoking}
+                  className="min-h-[40px] rounded-xl border border-gray-200 bg-white px-4 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  data-testid="magic-link-revoke-confirm"
+                  onClick={revoke}
+                  disabled={revoking}
+                  aria-busy={revoking}
+                  aria-describedby={revokeDescriptionIds}
+                  className="min-h-[40px] rounded-xl bg-red-600 px-4 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {revoking ? '폐기 중...' : '폐기 확정'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
