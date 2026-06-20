@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { generateCreativeId, injectRagContext } from '@/lib/ad-brain';
 
 // ── 타입 ─────────────────────────────────────────────────
@@ -187,6 +187,62 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
     );
   }, [basePrompt, pkg.destination, creativeId]);
   const [copied, setCopied] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const copyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const promptGeneratorTitleId = 'marketing-prompt-generator-title';
+  const promptGeneratorDescriptionId = 'marketing-prompt-generator-description';
+  const promptGeneratorSummaryId = 'marketing-prompt-generator-summary';
+  const promptGeneratorStatusId = 'marketing-prompt-generator-status';
+
+  useEffect(() => {
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => {
+      copyButtonRef.current?.focus();
+    }, 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.setTimeout(() => {
+        if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+      }, 0);
+    };
+  }, [onClose]);
 
   const handleCopy = async () => {
     try {
@@ -220,21 +276,26 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
         aria-label="마케팅 프롬프트 생성기 닫기"
       />
       <div
-        className="relative w-full max-w-2xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
+        ref={dialogRef}
+        className="relative flex h-dvh max-h-dvh w-full max-w-2xl flex-col bg-white shadow-admin-lg border-l border-admin-border-mid"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={promptGeneratorTitleId}
+        aria-describedby={`${promptGeneratorDescriptionId} ${promptGeneratorSummaryId} ${promptGeneratorStatusId}`}
       >
         {/* 헤더 */}
         <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-admin-lg font-semibold text-admin-text-2">마케팅 프롬프트 생성기</h2>
-            <p className="text-[11px] text-admin-muted mt-0.5">상품 데이터 → AI 지시서 자동 조립</p>
+            <h2 id={promptGeneratorTitleId} className="text-admin-lg font-semibold text-admin-text-2">마케팅 프롬프트 생성기</h2>
+            <p id={promptGeneratorDescriptionId} className="text-[11px] text-admin-muted mt-0.5">상품 데이터 → AI 지시서 자동 조립</p>
           </div>
-          <button aria-label="마케팅 프롬프트 생성기 닫기" onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
+          <button type="button" aria-label="마케팅 프롬프트 생성기 닫기" onClick={onClose} className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
         {/* 상품 요약 카드 */}
-        <div className="px-5 py-3 border-b border-admin-border-mid bg-admin-bg">
+        <div id={promptGeneratorSummaryId} className="px-5 py-3 border-b border-admin-border-mid bg-admin-bg">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white text-[11px] font-bold shrink-0">
               AD
@@ -281,19 +342,23 @@ export default function MarketingPromptGenerator({ pkg, onClose }: MarketingProm
         </div>
 
         {/* 하단 액션 */}
-        <div className="bg-white border-t border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
-          <p className="text-[11px] text-admin-muted-2">
+        <div className="bg-white border-t border-admin-border-mid px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 flex items-center justify-between flex-shrink-0">
+          <p id={promptGeneratorStatusId} role="status" aria-live="polite" aria-atomic="true" className="text-[11px] text-admin-muted-2">
             {copied ? '클립보드에 복사되었습니다' : 'AI 채팅에 붙여넣기 하세요'}
           </p>
           <div className="flex gap-2">
             <button
+              type="button"
               onClick={onClose}
               className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition"
             >
               닫기
             </button>
             <button
+              type="button"
+              ref={copyButtonRef}
               onClick={handleCopy}
+              aria-describedby={promptGeneratorStatusId}
               className={`px-5 py-2 text-admin-sm rounded font-medium transition ${
                 copied
                   ? 'bg-emerald-600 text-white'

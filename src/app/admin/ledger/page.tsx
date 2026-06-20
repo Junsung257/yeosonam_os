@@ -55,6 +55,11 @@ interface AnomalyItem {
   kind:  'duplicate' | 'large' | 'tiny';
 }
 
+interface HardDeleteTarget {
+  ids: string[];
+  items: BankTx[];
+}
+
 // ─── 포맷 유틸 ────────────────────────────────────────────────────────────────
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
@@ -163,7 +168,16 @@ export default function LedgerPage() {
   const [capitalForm, setCapitalForm] = useState({ amount: '', note: '', date: new Date().toISOString().slice(0, 10) });
   const [showCapForm, setShowCapForm] = useState(false);
   const [toast,      setToast]      = useState<{ msg: string; ok: boolean } | null>(null);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<HardDeleteTarget | null>(null);
+  const [hardDeleting, setHardDeleting] = useState(false);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const hardDeleteModalRef = useRef<HTMLDivElement | null>(null);
+  const hardDeleteCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const hardDeleteTriggerRef = useRef<HTMLElement | null>(null);
+  const ledgerActionResultRef = useRef<HTMLParagraphElement | null>(null);
+  const hardDeleteTitleId = 'ledger-hard-delete-title';
+  const hardDeleteDescriptionId = 'ledger-hard-delete-description';
+  const hardDeleteStatusId = 'ledger-hard-delete-status';
 
   // ── 데이터 로드 (SWR) ──────────────────────────────────────────────────
   const { data: txData, isLoading: txLoading, mutate: mutateTxs } =
@@ -296,16 +310,84 @@ export default function LedgerPage() {
   };
 
   // ── 영구 삭제 ─────────────────────────────────────────────────────────
-  const handleHardDelete = async (ids: string[]) => {
-    if (!confirm(`${ids.length}건을 영구 삭제합니다. 복원 불가능합니다.`)) return;
-    setTrashTxs(prev => prev.filter(t => !ids.includes(t.id)));
-    await fetch('/api/bank-transactions', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'hard_delete_bulk', ids }),
+  const openHardDeleteModal = (ids: string[], trigger?: HTMLElement | null) => {
+    if (ids.length === 0) return;
+    hardDeleteTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setHardDeleteTarget({
+      ids,
+      items: trashTxs.filter(t => ids.includes(t.id)),
     });
-    showToast(`${ids.length}건 영구 삭제됨`, false);
   };
+
+  const closeHardDeleteModal = () => {
+    setHardDeleteTarget(null);
+    window.setTimeout(() => {
+      hardDeleteTriggerRef.current?.focus();
+    }, 0);
+  };
+
+  const handleConfirmHardDelete = async () => {
+    if (!hardDeleteTarget) return;
+    const { ids } = hardDeleteTarget;
+    setHardDeleting(true);
+    try {
+      setTrashTxs(prev => prev.filter(t => !ids.includes(t.id)));
+      await fetch('/api/bank-transactions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'hard_delete_bulk', ids }),
+      });
+      setSelected(new Set());
+      setHardDeleteTarget(null);
+      window.setTimeout(() => ledgerActionResultRef.current?.focus(), 0);
+      showToast(`${ids.length}건 영구 삭제됨`, false);
+    } finally {
+      setHardDeleting(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hardDeleteTarget) return;
+
+    const focusTimer = window.setTimeout(() => hardDeleteCancelButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      hardDeleteModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!hardDeleting) closeHardDeleteModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [hardDeleteTarget, hardDeleting]);
 
   // ── 자본금 추가 ───────────────────────────────────────────────────────
   const handleAddCapital = async () => {
@@ -359,6 +441,9 @@ export default function LedgerPage() {
 
   return (
     <div className="space-y-5 pb-20">
+      <p id="ledger-action-result" ref={ledgerActionResultRef} tabIndex={-1} className="sr-only">
+        원장 작업 결과가 화면에 반영되었습니다.
+      </p>
 
       {/* ── 경고 배너 (가용 자산 마이너스) ──────────────────────────────────── */}
       {!loading && isAssetWarning && (
@@ -598,7 +683,10 @@ export default function LedgerPage() {
                 <RotateCcw className="w-3.5 h-3.5" /> 복원
               </button>
               <button
-                onClick={() => handleHardDelete([...selected])}
+                onClick={event => openHardDeleteModal([...selected], event.currentTarget)}
+                aria-haspopup="dialog"
+                aria-expanded={Boolean(hardDeleteTarget)}
+                aria-controls="ledger-hard-delete-dialog"
                 className="flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition"
               >
                 <Trash2 className="w-3.5 h-3.5" /> 영구삭제
@@ -721,9 +809,12 @@ export default function LedgerPage() {
                             <RotateCcw className="w-3.5 h-3.5" />
                           </button>
                           <button
-                            onClick={() => handleHardDelete([tx.id])}
+                            onClick={event => openHardDeleteModal([tx.id], event.currentTarget)}
                             title="영구 삭제"
                             aria-label="거래 영구 삭제"
+                            aria-haspopup="dialog"
+                            aria-expanded={hardDeleteTarget?.ids.includes(tx.id) ?? false}
+                            aria-controls="ledger-hard-delete-dialog"
                             className="p-1.5 rounded-lg text-admin-muted-2 hover:text-red-600 hover:bg-red-50 transition"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -762,6 +853,116 @@ export default function LedgerPage() {
           </div>
         )}
       </div>
+
+      {/* ── 영구 삭제 확인 모달 ───────────────────────────────────────────── */}
+      {hardDeleteTarget && (() => {
+        const hardDeleteSummaryId = 'ledger-hard-delete-summary';
+        const totalAmount = hardDeleteTarget.items.reduce((sum, tx) => sum + tx.amount, 0);
+        const incomeCount = hardDeleteTarget.items.filter(tx => tx.transaction_type === '입금').length;
+        const expenseCount = hardDeleteTarget.items.filter(tx => tx.transaction_type === '출금').length;
+        const hiddenCount = Math.max(0, hardDeleteTarget.ids.length - hardDeleteTarget.items.length);
+        const sampleNames = hardDeleteTarget.items
+          .slice(0, 3)
+          .map(tx => tx.counterparty_name || tx.memo || '거래처 없음')
+          .join(', ');
+        const statusText = hardDeleting
+          ? '선택한 원장 거래를 영구 삭제하고 있습니다.'
+          : '원장 영구 삭제 확인창이 열렸습니다. 복원할 수 없는 작업입니다.';
+        const summaryText = `${hardDeleteTarget.ids.length}건, 합계 ${fmtW(totalAmount)}를 영구 삭제합니다. 삭제 후 복원할 수 없습니다.`;
+
+        return (
+          <>
+            <button
+              type="button"
+              aria-label="원장 영구 삭제 확인 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !hardDeleting && closeHardDeleteModal()}
+              disabled={hardDeleting}
+            />
+            <div className="fixed inset-0 z-[121] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+              <div
+                id="ledger-hard-delete-dialog"
+                ref={hardDeleteModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={hardDeleteTitleId}
+                aria-describedby={`${hardDeleteDescriptionId} ${hardDeleteSummaryId} ${hardDeleteStatusId}`}
+                data-testid="ledger-hard-delete-dialog"
+                tabIndex={-1}
+                className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+              >
+                <div className="space-y-1">
+                  <h2 id={hardDeleteTitleId} className="text-admin-lg font-bold text-admin-text">
+                    원장 거래 영구 삭제
+                  </h2>
+                  <p id={hardDeleteDescriptionId} className="text-admin-sm text-admin-muted">
+                    휴지통 거래를 완전히 삭제합니다. 이 작업은 실행 취소나 복원이 불가능합니다.
+                  </p>
+                  <p id={hardDeleteStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                    {statusText}
+                  </p>
+                </div>
+
+                <div
+                  id={hardDeleteSummaryId}
+                  data-testid="ledger-hard-delete-summary"
+                  aria-label={summaryText}
+                  className="mt-4 rounded-admin-md border border-red-200 bg-red-50 px-3 py-3 text-admin-sm font-semibold text-red-800"
+                >
+                  {summaryText}
+                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-admin-sm">
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">삭제 건수</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">{hardDeleteTarget.ids.length}건</dd>
+                  </div>
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">합계 금액</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">{fmtW(totalAmount)}</dd>
+                  </div>
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">입금/출금</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">입금 {incomeCount} · 출금 {expenseCount}</dd>
+                  </div>
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">확인 거래처</dt>
+                    <dd className="mt-1 truncate font-semibold text-admin-text-2">{sampleNames || '선택 거래'}</dd>
+                  </div>
+                </dl>
+
+                {hiddenCount > 0 && (
+                  <p className="mt-3 rounded-admin-md border border-amber-200 bg-amber-50 px-3 py-2 text-admin-xs font-semibold text-amber-800">
+                    현재 목록에서 찾지 못한 선택 항목 {hiddenCount}건도 함께 삭제 요청에 포함됩니다.
+                  </p>
+                )}
+
+                <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    ref={hardDeleteCancelButtonRef}
+                    onClick={closeHardDeleteModal}
+                    disabled={hardDeleting}
+                    className="rounded-admin-md border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg disabled:opacity-60"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="ledger-hard-delete-confirm"
+                    onClick={handleConfirmHardDelete}
+                    disabled={hardDeleting}
+                    aria-busy={hardDeleting}
+                    className="rounded-admin-md bg-red-600 px-4 py-2 text-admin-sm font-bold text-white hover:bg-red-700 disabled:bg-red-300"
+                  >
+                    {hardDeleting ? '처리 중...' : '영구 삭제'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
 
       {/* ── AI 스마트 클리닝 슬라이드 오버 패널 ────────────────────────────── */}
       {showAI && (

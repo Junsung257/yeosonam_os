@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, ChevronLeft, Users, Calendar, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import type { LeadFormData } from '@/lib/submitPipeline';
 import type { PriceDate } from '@/lib/price-dates';
@@ -37,6 +37,10 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
   const [termsExpanded, setTermsExpanded] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const sheetTitleId = 'lead-bottom-sheet-title';
+  const sheetDescriptionId = 'lead-bottom-sheet-description';
 
   // 열릴 때마다 초기화
   useEffect(() => {
@@ -55,19 +59,55 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
     }
   }, [open, defaultDate]);
 
-  // ESC 닫기
+  // Dialog keyboard and page lock
   useEffect(() => {
     if (!open) return;
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [open, onClose]);
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      sheetRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
 
-  // body scroll lock
-  useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handler);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handler);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [open, onClose]);
 
   const canNext = useCallback(() => {
     if (step === 0) return !!desiredDate;
@@ -114,7 +154,17 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
       />
 
       {/* Sheet */}
-      <div className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[90dvh] md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-md md:rounded-2xl">
+      <div
+        ref={sheetRef}
+        className="fixed inset-x-0 bottom-0 z-50 flex flex-col bg-white rounded-t-2xl shadow-2xl max-h-[90dvh] md:inset-auto md:top-1/2 md:left-1/2 md:-translate-x-1/2 md:-translate-y-1/2 md:w-full md:max-w-md md:rounded-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={sheetTitleId}
+        aria-describedby={sheetDescriptionId}
+      >
+        <p id={sheetDescriptionId} className="sr-only">
+          출발일, 인원, 연락처와 필수 동의를 입력해 카카오 상담을 신청합니다.
+        </p>
         {/* Handle bar (모바일) */}
         <div className="flex justify-center pt-3 pb-1 md:hidden">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
@@ -125,14 +175,19 @@ export default function LeadBottomSheet({ open, onClose, onSubmit, defaultDate =
           <button
             onClick={() => step > 0 ? setStep(s => s - 1) : onClose()}
             className="p-1 rounded-full hover:bg-gray-100 transition"
-            aria-label="뒤로"
+            aria-label={step > 0 ? '이전 단계로' : '상담 신청 닫기'}
           >
             {step > 0 ? <ChevronLeft size={20} /> : <X size={20} />}
           </button>
-          <div className="text-sm font-semibold text-gray-700">
+          <h2 id={sheetTitleId} className="text-sm font-semibold text-gray-700">
             {success ? '신청 완료' : `상담 신청 (${step + 1}/${TOTAL_STEPS})`}
-          </div>
-          <button onClick={onClose} className="p-1 rounded-full hover:bg-gray-100 transition">
+          </h2>
+          <button
+            ref={closeButtonRef}
+            onClick={onClose}
+            className="p-1 rounded-full hover:bg-gray-100 transition"
+            aria-label="상담 신청 닫기"
+          >
             <X size={20} />
           </button>
         </div>

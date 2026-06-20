@@ -36,9 +36,9 @@ export default function Loading() {
           <div className="h-8 bg-blue-100 rounded-lg w-52" />
           <div className="h-6 bg-blue-100/50 rounded-lg w-40" />
           {/* 하이라이트 칩 */}
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-2 pt-1">
             {[80, 96, 72, 80].map((w, i) => (
-              <div key={i} className="h-6 bg-brand-light rounded-full shrink-0" style={{ width: w }} />
+              <div key={i} className="h-6 bg-brand-light rounded-full" style={{ width: w }} />
             ))}
           </div>
         </div>
@@ -77,7 +77,7 @@ export default function Loading() {
       </div>
 
       {/* 하단 고정 액션 바 */}
-      <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t border-gray-100 safe-area-bottom px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex gap-2 max-w-lg md:max-w-3xl mx-auto shadow-[0_-16px_40px_rgba(15,23,42,0.08)]">
+      <div className="fixed bottom-0 left-0 right-[calc(100vw-100%)] z-50 bg-white border-t border-gray-100 safe-area-bottom px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 flex gap-2 max-w-lg md:max-w-3xl mx-auto shadow-[0_-16px_40px_rgba(15,23,42,0.08)]">
         <div className="flex-1 h-11 bg-bg-section rounded-full" />
         <div className="h-11 w-20 bg-[#FEE500]/50 rounded-full shrink-0" />
         <div className="h-11 w-28 bg-blue-100 rounded-full shrink-0" />

@@ -532,13 +532,37 @@ function ResultPanel({
     : result.branch === 'C'
       ? '예약 후보가 없어 새 예약 생성이 필요합니다. 입력한 고객명과 랜드사 정보를 확인하세요.'
       : '예약 후보가 없습니다. 입력을 수정하거나 비슷한 고객 후보를 확인하세요.';
+  const createBookingDecisionSummaryId = 'payments-command-create-booking-decision-summary';
+  const createBookingCustomerLabel = result.parsed.customerName ?? '입력한 이름';
+  const createBookingDepartureLabel = result.parsed.date ?? '출발일 미정';
+  const createBookingOperatorLabel = result.operators?.[0]?.name ?? result.parsed.operatorAlias ?? '랜드사 미정';
+  const createBookingDecisionSummaryText = `생성 전 확인: ${createBookingCustomerLabel} 고객, ${createBookingDepartureLabel}, ${createBookingOperatorLabel} 기준으로 새 예약을 만들고${hasTransactionContext ? ' 현재 거래에 바로 매칭합니다' : ' 거래 매칭 없이 예약만 생성합니다'}. 상세 가격과 인원은 생성 후 어드민에서 수정합니다.`;
+
+  const commandNextActionSummaryId = 'payments-command-next-action-summary';
+  const topBooking = result.bookings[0];
+  const topBookingLabel = topBooking
+    ? `${topBooking.customer_name ?? '이름 없음'} ${topBooking.booking_no}`
+    : null;
+  const commandNextActionSummaryText = topBooking
+    ? `추천 다음 행동: ${topBookingLabel} 후보를 먼저 확인하세요. 매칭 점수는 ${Math.round(topBooking.score * 100)}점이며, 확정 버튼으로 현재 결제 명령을 연결할 수 있습니다.`
+    : result.branch === 'C'
+      ? `추천 다음 행동: ${createBookingCustomerLabel} 고객 예약을 새로 생성하세요. ${hasTransactionContext ? '생성 후 현재 거래에 바로 매칭됩니다.' : '거래 매칭 없이 예약만 생성됩니다.'}`
+      : '추천 다음 행동: 입력 명령을 보완하거나 비슷한 고객 후보로 다시 검색하세요.';
 
   return (
-    <div className="space-y-3" role="region" aria-labelledby={branchTitleId} aria-describedby={summaryId}>
+    <div className="space-y-3" role="region" aria-labelledby={branchTitleId} aria-describedby={`${summaryId} ${commandNextActionSummaryId}`}>
       <p id={summaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {resultSummaryText}
       </p>
       <BranchHeader branch={result.branch} parsed={result.parsed} info={info} titleId={branchTitleId} />
+      <p
+        id={commandNextActionSummaryId}
+        data-testid="payments-command-next-action-summary"
+        aria-label={commandNextActionSummaryText}
+        className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2 text-[11px] font-bold leading-5 text-admin-text-2"
+      >
+        {commandNextActionSummaryText}
+      </p>
 
       {result.bookings.length > 0 && (
         <div>
@@ -548,12 +572,15 @@ function ResultPanel({
           <Command.Group>
             {result.bookings.map((b, idx) => {
               const bookingDescriptionId = `payments-command-booking-${b.id}-description`;
+              const bookingDecisionSummaryId = `payments-command-booking-${b.id}-decision-summary`;
               const bookingName = b.customer_name ?? '이름 없음';
+              const bookingBalance = Math.max(0, b.total_price - b.paid_amount);
+              const bookingDecisionSummaryText = `결정 요약: ${bookingName} ${b.booking_no} 예약에 결제 명령을 매칭합니다. 잔금 ${fmtKRW(bookingBalance)}, 매칭 점수 ${Math.round(b.score * 100)}점입니다.`;
               return (
                 <Command.Item
                   key={b.id}
                   value={`${b.booking_no}_${b.customer_name ?? ''}_${b.id}`}
-                  aria-describedby={bookingDescriptionId}
+                  aria-describedby={`${bookingDescriptionId} ${bookingDecisionSummaryId}`}
                   // Enter 1-click 자동 확정은 분기 A 의 top-1 후보에만 허용.
                   // 분기 B/D 에서는 click 만 받음 — 디바운스 직후 들어오는 의도치 않은 Enter 차단.
                   onSelect={() => {
@@ -583,6 +610,13 @@ function ResultPanel({
                       판매가 {fmtKRW(b.total_price)} · 수금 {fmtKRW(b.paid_amount)} · 잔금{' '}
                       {fmtKRW(Math.max(0, b.total_price - b.paid_amount))} · 매칭 점수 {Math.round(b.score * 100)}점
                     </div>
+                    <div
+                      id={bookingDecisionSummaryId}
+                      data-testid="payments-command-booking-decision-summary"
+                      className="mt-1 rounded border border-admin-border bg-white px-2 py-1 text-[11px] font-semibold text-admin-text-2"
+                    >
+                      {bookingDecisionSummaryText}
+                    </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <ScoreBar score={b.score} />
@@ -590,7 +624,7 @@ function ResultPanel({
                       type="button"
                       disabled={confirming === b.id}
                       aria-label={`${bookingName} ${b.booking_no} 결제 매칭 확정`}
-                      aria-describedby={bookingDescriptionId}
+                      aria-describedby={`${bookingDescriptionId} ${bookingDecisionSummaryId}`}
                       onClick={e => {
                         e.stopPropagation();
                         onConfirm(b);
@@ -623,12 +657,19 @@ function ResultPanel({
               {result.operators?.[0] ? '' : (result.parsed.operatorAlias ? ' (텍스트만)' : '')}
             </span>
           </div>
+          <p
+            id={createBookingDecisionSummaryId}
+            data-testid="payments-command-create-booking-decision-summary"
+            className="mb-2 rounded border border-amber-200 bg-white px-2 py-1.5 text-[11px] font-semibold leading-5 text-amber-900"
+          >
+            {createBookingDecisionSummaryText}
+          </p>
           <button
             type="button"
             data-testid="payments-command-create-booking"
             onClick={onCreateAndMatch}
             disabled={creatingNew || !result.parsed.customerName}
-            aria-describedby={summaryId}
+            aria-describedby={`${summaryId} ${createBookingDecisionSummaryId}`}
             className="inline-block text-xs px-3 py-1.5 bg-amber-600 text-white rounded hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed transition"
           >
             {creatingNew

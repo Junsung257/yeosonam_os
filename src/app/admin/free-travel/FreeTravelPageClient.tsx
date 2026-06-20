@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { maskPhone } from '@/lib/pii-mask';
 
@@ -78,6 +78,20 @@ interface ReservationItem {
 const STATUS_LABEL: Record<string, string> = {
   new: '신규', contacted: '연락 완료', booked: '예약 완료', cancelled: '취소',
 };
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+}
 const STATUS_COLOR: Record<string, string> = {
   new: 'bg-blue-50 text-blue-700',
   contacted: 'bg-yellow-50 text-yellow-700',
@@ -151,9 +165,68 @@ export default function FreeTravelPageClient({
   const [bookedBy, setBookedBy]   = useState('');
   const [notes, setNotes]         = useState('');
   const [saving, setSaving]       = useState(false);
+  const bookingModalRef = useRef<HTMLDivElement | null>(null);
+  const bookingModalFirstInputRef = useRef<HTMLInputElement | null>(null);
+  const bookingModalReturnFocusRef = useRef<HTMLElement | null>(null);
+  const bookingModalTitleId = 'free-travel-booking-modal-title';
+  const bookingModalDescriptionId = 'free-travel-booking-modal-description';
+  const bookingModalStatusId = 'free-travel-booking-modal-status';
   const [experiments, setExperiments] = useState<ExperimentsPayload | null>(null);
   const [experimentDays, setExperimentDays] = useState<7 | 30 | 90>(30);
   const [experimentMaxRows, setExperimentMaxRows] = useState<5000 | 10000 | 20000 | 30000 | 50000>(20000);
+  const bookingModalOpen = bookingModal !== null;
+
+  const closeBookingModal = useCallback(() => {
+    setBookingModal(null);
+    setMrtRef('');
+    setBookedBy('');
+    setNotes('');
+    requestAnimationFrame(() => bookingModalReturnFocusRef.current?.focus());
+  }, []);
+
+  const openBookingModal = useCallback((session: Session, trigger: HTMLElement) => {
+    bookingModalReturnFocusRef.current = trigger;
+    setBookingModal(session);
+    setMrtRef('');
+    setBookedBy('');
+    setNotes('');
+  }, []);
+
+  useEffect(() => {
+    if (!bookingModalOpen) return undefined;
+    const dialog = bookingModalRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => bookingModalFirstInputRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !saving) {
+        event.preventDefault();
+        closeBookingModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [bookingModalOpen, closeBookingModal, saving]);
 
   // 뮤테이션(상태변경/예약) 후 수동 새로고침용 — 초기 자동 실행 없음
   const loadSessions = useCallback(async () => {
@@ -234,7 +307,7 @@ export default function FreeTravelPageClient({
         const e = await res.json() as { error?: string };
         throw new Error(e.error ?? '처리 실패');
       }
-      setBookingModal(null); setMrtRef(''); setBookedBy(''); setNotes('');
+      closeBookingModal();
       loadSessions();
     } catch (e) {
       alert(e instanceof Error ? e.message : '오류');
@@ -446,7 +519,7 @@ export default function FreeTravelPageClient({
                   </select>
                   {!s.mrt_booking_ref && (
                     <button
-                      onClick={() => { setBookingModal(s); setMrtRef(''); setBookedBy(''); setNotes(''); }}
+                      onClick={event => openBookingModal(s, event.currentTarget)}
                       className="text-xs bg-blue-600 text-white rounded px-2 py-1 hover:bg-blue-700"
                     >
                       예약번호 입력
@@ -784,15 +857,33 @@ export default function FreeTravelPageClient({
 
       {/* ── 예약번호 입력 모달 ── */}
       {bookingModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-admin-lg shadow-2xl w-full max-w-md p-6">
-            <h3 className="text-lg font-bold mb-1">MRT 예약번호 기록</h3>
-            <p className="text-sm text-admin-muted mb-4">{bookingModal.destination} · {fmtDate(bookingModal.date_from)}~{fmtDate(bookingModal.date_to)}</p>
+        <div className="fixed inset-0 z-50 flex h-dvh items-center justify-center overflow-y-auto bg-black/50 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div
+            ref={bookingModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={bookingModalTitleId}
+            aria-describedby={`${bookingModalDescriptionId} ${bookingModalStatusId}`}
+            tabIndex={-1}
+            className="bg-white rounded-admin-lg shadow-2xl w-full max-w-md p-6"
+          >
+            <h3 id={bookingModalTitleId} className="text-lg font-bold mb-1">MRT 예약번호 기록</h3>
+            <p id={bookingModalDescriptionId} className="text-sm text-admin-muted mb-4">
+              {bookingModal.destination} · {fmtDate(bookingModal.date_from)}~{fmtDate(bookingModal.date_to)}
+            </p>
+            <p id={bookingModalStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              {saving ? 'MRT 예약번호를 저장하고 있습니다.' : 'MRT 예약번호를 입력하면 예약 완료로 기록됩니다.'}
+            </p>
 
             <div className="space-y-3">
               <div>
                 <label htmlFor="free-travel-mrt-ref" className="text-xs font-medium text-admin-muted">MRT 예약번호 *</label>
-                <input id="free-travel-mrt-ref" value={mrtRef} onChange={e => setMrtRef(e.target.value)}
+                <input
+                  ref={bookingModalFirstInputRef}
+                  id="free-travel-mrt-ref"
+                  value={mrtRef}
+                  onChange={e => setMrtRef(e.target.value)}
+                  aria-describedby={bookingModalStatusId}
                   placeholder="예) MRT-2026-XXXXX"
                   className="mt-1 w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none" />
               </div>
@@ -811,8 +902,8 @@ export default function FreeTravelPageClient({
             </div>
 
             <div className="flex gap-2 mt-5">
-              <button onClick={() => setBookingModal(null)} className="flex-1 border border-admin-border-strong rounded-lg py-2 text-sm hover:bg-admin-bg">취소</button>
-              <button onClick={handleBookManual} disabled={!mrtRef.trim() || saving}
+              <button type="button" onClick={closeBookingModal} disabled={saving} className="flex-1 border border-admin-border-strong rounded-lg py-2 text-sm hover:bg-admin-bg disabled:opacity-50">취소</button>
+              <button type="button" onClick={handleBookManual} disabled={!mrtRef.trim() || saving} aria-busy={saving}
                 className="flex-1 bg-blue-600 text-white rounded-lg py-2 text-sm font-medium hover:bg-blue-700 disabled:opacity-50">
                 {saving ? '저장 중...' : '예약 기록'}
               </button>

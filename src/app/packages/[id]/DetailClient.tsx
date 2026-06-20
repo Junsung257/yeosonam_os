@@ -576,6 +576,24 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     reservationTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLButtonElement ? document.activeElement : null);
     const handoffIntent = formatProductTypeLabel(pkg?.product_type) ?? pkg?.product_type ?? null;
     const handoffPartyType = inferPartyTypeForHandoff(handoffIntent, pkg?.product_type);
+    const inquiryProductName = pkg?.products?.display_name || pkg?.title || id;
+    const inquiryBudget = selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null;
+    const inquiryDeparture = selectedDate || selectedTier?.period_label || null;
+    const inquiryChecklist = [
+      { label: '상품', complete: Boolean(inquiryProductName) },
+      { label: '지역', complete: Boolean(pkg?.destination) },
+      { label: '출발', complete: Boolean(inquiryDeparture) },
+      { label: '가격', complete: Boolean(inquiryBudget) },
+    ];
+    const inquiryReadyCount = inquiryChecklist.filter((item) => item.complete).length;
+    const inquiryMissingLabels = inquiryChecklist.filter((item) => !item.complete).map((item) => item.label);
+    const inquiryHandoffPreviewText = `예약 문의 열기 전달 조건: 상품 ${inquiryProductName}${inquiryDeparture ? `, 출발 ${inquiryDeparture}` : ''}${inquiryBudget ? `, 예산 ${inquiryBudget}` : ''}.`;
+    const inquiryDecisionSummaryText = inquiryMissingLabels.length > 0
+      ? `예약 문의 열기 판단 요약: ${source}에서 ${inquiryMissingLabels.join(', ')} 조건 보완 후 상담 전달 정확도가 높아집니다. ${inquiryHandoffPreviewText}`
+      : `예약 문의 열기 판단 요약: ${source}에서 상품, 지역, 출발, 가격 조건을 예약 문의로 바로 넘길 수 있습니다. ${inquiryHandoffPreviewText}`;
+    const inquiryNextActionText = inquiryMissingLabels.length > 0
+      ? `${inquiryMissingLabels[0]} 조건을 확인한 뒤 예약 문의를 이어가세요.`
+      : '예약 문의 폼에서 출발일과 연락처를 확인해 접수하세요.';
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
       product_id: id,
@@ -587,11 +605,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       destination: pkg?.destination ?? null,
       party_type: handoffPartyType,
       selected_products: [pkg?.products?.display_name || pkg?.title || id],
+      next_action: inquiryNextActionText,
       metadata: {
         source,
         selectedDate,
         productType: pkg?.product_type ?? null,
         selectedTier: selectedTier?.period_label ?? null,
+        ready_count: inquiryReadyCount,
+        missing_fields: inquiryMissingLabels,
+        decision_summary: inquiryDecisionSummaryText,
+        handoff_preview: inquiryHandoffPreviewText,
+        next_action: inquiryNextActionText,
       },
     });
     fetch('/api/tracking/score-signal', {
@@ -928,10 +952,12 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const detailStickyCtaRegionTitleId = 'package-detail-sticky-cta-title';
   const detailStickyCtaRegionDescriptionId = 'package-detail-sticky-cta-description';
   const detailStickyPriceDescriptionId = 'package-detail-sticky-price-description';
+  const detailStickyPriceCaveatId = 'package-detail-sticky-price-caveat';
+  const detailFirstScreenDecisionSummaryId = 'package-detail-first-screen-decision-summary';
   const detailKakaoDescriptionId = 'package-detail-kakao-description';
   const detailGroupInquiryDescriptionId = 'package-detail-group-inquiry-description';
   const detailReservationDescriptionId = 'package-detail-reservation-description';
-  const detailStickyCtaDescriptionIds = `${detailStickyCtaRegionDescriptionId} ${detailCtaSummaryId} ${detailHandoffReadinessSummaryId}`;
+  const detailStickyCtaDescriptionIds = `${detailStickyCtaRegionDescriptionId} ${detailCtaSummaryId} ${detailHandoffReadinessSummaryId} ${detailStickyPriceCaveatId}`;
   const detailKakaoDescriptionIds = `${detailKakaoDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailGroupInquiryDescriptionIds = `${detailGroupInquiryDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailStickyCtaDescriptionIds}`;
@@ -948,35 +974,6 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const detailHandoffReadinessText = detailHandoffMissingLabels.length > 0
     ? `상담 전달 준비 ${detailHandoffReadyCount}/${detailHandoffChecklist.length}. 보완하면 좋은 조건: ${detailHandoffMissingLabels.join(', ')}.`
     : `상담 전달 준비 ${detailHandoffReadyCount}/${detailHandoffChecklist.length}. 상품, 지역, 출발, 가격 조건을 상담으로 바로 넘길 수 있습니다.`;
-  const detailCtaSummaryText = [
-    `${selectedProductName} 상품 상담 CTA입니다.`,
-    `출발 기준은 ${firstScreenDepartureLabel}입니다.`,
-    `가격 기준은 ${firstScreenPriceLabel}입니다.`,
-    detailHandoffReadinessText,
-    stickyHandoffItems.length > 0
-      ? `상담 전달 조건은 ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
-      : null,
-  ].filter(Boolean).join(' ');
-  const stickyPriceSummaryText = selectedTier
-    ? `${selectedDate ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])}` : selectedTier.period_label} 출발, 1인 ${(selectedTier.adult_price || 0).toLocaleString()}원`
-    : displayPrice && displayPrice < Infinity
-      ? `최저가 ${(displayPrice as number).toLocaleString()}원부터`
-      : '가격은 상담 시 확인';
-  const stickyReservationLabel = selectedDate
-    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
-    : '예약 문의';
-  const stickyNextActionText = detailHandoffMissingLabels.length > 0
-    ? `${detailHandoffMissingLabels[0]} 조건을 확인하면 상담 전달이 더 정확해집니다.`
-    : selectedDate
-      ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 출발 조건으로 예약 문의를 진행하세요.`
-      : `${firstScreenDepartureLabel} 기준으로 카톡 상담 또는 예약 문의를 진행하세요.`;
-  const stickyCtaRegionDescriptionText = [
-    '상품 상세 하단 고정 상담 영역입니다.',
-    `현재 표시 가격은 ${stickyPriceSummaryText}입니다.`,
-    stickyNextActionText,
-    '카카오톡 상담, 단체 견적, 예약 문의 순서로 바로 이동할 수 있습니다.',
-    detailCtaSummaryText,
-  ].join(' ');
   const decisionGuide = createDecisionGuide({
     pkg,
     days,
@@ -986,6 +983,55 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     minPrice,
     productTypeLabel,
   });
+  const stickyConsultationQuestionText = decisionGuide.consultationQuestions[0] ?? null;
+  const detailCtaSummaryText = [
+    `${selectedProductName} 상품 상담 CTA입니다.`,
+    `출발 기준은 ${firstScreenDepartureLabel}입니다.`,
+    `가격 기준은 ${firstScreenPriceLabel}입니다.`,
+    detailHandoffReadinessText,
+    stickyConsultationQuestionText ? `상담 때 먼저 확인할 질문은 ${stickyConsultationQuestionText}입니다.` : null,
+    stickyHandoffItems.length > 0
+      ? `상담 전달 조건은 ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}입니다.`
+      : null,
+  ].filter(Boolean).join(' ');
+  const stickyPriceSummaryText = selectedTier
+    ? `${selectedDate ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])}` : selectedTier.period_label} 출발, 1인 ${(selectedTier.adult_price || 0).toLocaleString()}원`
+    : displayPrice && displayPrice < Infinity
+      ? `최저가 ${(displayPrice as number).toLocaleString()}원부터`
+      : '가격은 상담 시 확인';
+  const stickyPriceCaveatText = selectedTier
+    ? '선택한 출발일 기준 가격입니다. 항공 좌석, 객실 등급, 유류할증료와 옵션 비용은 상담에서 최종 확인합니다.'
+    : '표시 가격은 최저가 기준입니다. 출발일, 항공 좌석, 객실 등급에 따라 최종가가 달라질 수 있습니다.';
+  const stickyReservationLabel = selectedDate
+    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
+    : '예약 문의';
+  const stickyNextActionText = detailHandoffMissingLabels.length > 0
+    ? `${detailHandoffMissingLabels[0]} 조건을 확인하면 상담 전달이 더 정확해집니다.`
+    : selectedDate
+      ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 출발 조건으로 예약 문의를 진행하세요.`
+      : `${firstScreenDepartureLabel} 기준으로 카톡 상담 또는 예약 문의를 진행하세요.`;
+  const detailFirstScreenDecisionItems = [
+    { label: '가격', value: firstScreenPriceLabel },
+    { label: '출발', value: firstScreenDepartureLabel },
+    { label: '질문', value: stickyConsultationQuestionText ?? '포함/불포함 확인' },
+  ];
+  const detailFirstScreenDecisionSummaryText = `첫 화면 상담 판단 요약: ${detailFirstScreenDecisionItems.map((item) => `${item.label} ${item.value}`).join(', ')}. 다음 액션은 ${stickyNextActionText}`;
+  const stickyKakaoHandoffPreviewText = stickyHandoffItems.length > 0
+    ? `카톡 전달 조건: ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
+    : `카톡 전달 조건: ${selectedProductName} 상품 기준으로 상담을 시작합니다.`;
+  const stickyKakaoDecisionSummaryText = `카톡 상담 판단 요약: ${stickyNextActionText} ${stickyPriceCaveatText} ${stickyKakaoHandoffPreviewText}`;
+  const stickyGroupInquiryHandoffPreviewText = stickyHandoffItems.length > 0
+    ? `단체 견적 전달 조건: ${stickyHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
+    : `단체 견적 전달 조건: ${selectedProductName} 상품 기준으로 견적 문의를 시작합니다.`;
+  const stickyGroupInquiryDecisionSummaryText = `단체 견적 판단 요약: ${stickyNextActionText} ${stickyPriceCaveatText} ${stickyGroupInquiryHandoffPreviewText}`;
+  const stickyCtaRegionDescriptionText = [
+    '상품 상세 하단 고정 상담 영역입니다.',
+    `현재 표시 가격은 ${stickyPriceSummaryText}입니다.`,
+    stickyPriceCaveatText,
+    stickyNextActionText,
+    '카카오톡 상담, 단체 견적, 예약 문의 순서로 바로 이동할 수 있습니다.',
+    detailCtaSummaryText,
+  ].join(' ');
   const detailFlowSteps: DetailFlowStep[] = [
     {
       title: '가격/포함/불포함',
@@ -1077,10 +1123,21 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             privacyConsent: reservationConsent,
           },
           tracking: {
+            sessionId: getSessionId(),
             landingUrl: window.location.href,
             utmSource: new URLSearchParams(window.location.search).get('utm_source') || null,
             utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || null,
             utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || null,
+            intent: handoffIntent,
+            budget: handoffBudget,
+            destination: pkg.destination ?? null,
+            party_type: handoffPartyType,
+            selected_products: [selectedProductName],
+            ready_count: reservationSubmitReadyCount,
+            missing_fields: reservationSubmitMissingLabels,
+            decision_summary: reservationSubmitDecisionSummaryText,
+            handoff_preview: reservationSubmitHandoffPreviewText,
+            next_action: reservationSubmitNextActionText,
           },
           submittedAt: new Date().toISOString(),
         }),
@@ -1155,6 +1212,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const reservationSubmitReadinessText = reservationSubmitMissingLabels.length > 0
     ? `문의 조건 ${reservationConditionReadyCount}/${reservationConditionChecklist.length}, 연락 준비 ${reservationSubmitReadyCount}/${reservationSubmitChecklist.length}. 남은 항목: ${reservationSubmitMissingLabels.join(', ')}.`
     : `문의 조건 ${reservationConditionReadyCount}/${reservationConditionChecklist.length}, 연락 준비 ${reservationSubmitReadyCount}/${reservationSubmitChecklist.length}. 바로 문의를 접수할 수 있습니다.`;
+  const reservationSubmitHandoffItems = [
+    { label: '상품', value: selectedProductName },
+    { label: '출발', value: reservationConditionDepartureValue },
+    { label: '가격', value: stickyPriceSummaryText },
+  ].filter((item): item is { label: string; value: string } => Boolean(item.value));
+  const reservationSubmitHandoffPreviewText = `문의 전달 조건: ${reservationSubmitHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`;
+  const reservationSubmitDecisionSummaryId = 'reservation-submit-decision-summary';
+  const reservationSubmitDecisionSummaryText = reservationFormReady
+    ? `다음 처리: ${reservationConditionDepartureValue} 기준으로 문의를 접수하고 담당자가 입력한 연락처로 출발 가능일과 인원을 확인합니다. ${reservationSubmitHandoffPreviewText}`
+    : `다음 처리 전 ${reservationSubmitMissingLabels.join(', ')}을(를) 입력하면 문의 접수가 가능합니다. ${reservationSubmitHandoffPreviewText}`;
+  const reservationSubmitNextActionText = reservationFormReady
+    ? `${reservationConditionDepartureValue} 기준으로 예약 문의를 접수하세요.`
+    : `${reservationSubmitMissingLabels[0] ?? '필수 정보'}을(를) 입력한 뒤 예약 문의를 접수하세요.`;
   const reservationReadinessGroups = [
     {
       title: '문의 조건',
@@ -1193,8 +1263,8 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     ? `${reservationFieldHintId} ${reservationSubmitReadinessId} reservation-consent-error`
     : `${reservationFieldHintId} ${reservationSubmitReadinessId}`;
   const reservationSubmitDescriptionIds = reservationSubmitError
-    ? `reservation-form-hint ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId} ${reservationSubmitReadinessId} reservation-submit-error`
-    : `reservation-form-hint ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId} ${reservationSubmitReadinessId}`;
+    ? `reservation-form-hint ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId} ${reservationSubmitReadinessId} ${reservationSubmitDecisionSummaryId} reservation-submit-error`
+    : `reservation-form-hint ${reservationContextSummaryId} ${detailHandoffReadinessSummaryId} ${reservationSubmitReadinessId} ${reservationSubmitDecisionSummaryId}`;
   const reservationContextItems = [
     { label: '상품', value: selectedProductName },
     { label: '출발', value: selectedDate ?? selectedTier?.period_label ?? (formData.date || firstScreenDepartureLabel) },
@@ -1347,6 +1417,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             <button
               type="button"
               onClick={(event) => openInquiryForm('detail_first_screen_summary', event.currentTarget)}
+              aria-describedby={`${detailCtaSummaryId} ${detailFirstScreenDecisionSummaryId}`}
               className="shrink-0 rounded-xl bg-slate-950 px-4 py-3 text-[13px] font-extrabold text-white shadow-[0_10px_22px_rgba(15,23,42,0.18)] active:scale-[0.98] transition"
             >
               예약 문의
@@ -1374,6 +1445,19 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 ? `보완 추천: ${detailHandoffMissingLabels.join(', ')}`
                 : '바로 상담 가능'}
             </span>
+          </div>
+          <div
+            id={detailFirstScreenDecisionSummaryId}
+            data-testid="package-detail-first-screen-decision-summary"
+            aria-label={detailFirstScreenDecisionSummaryText}
+            className="mt-2 grid grid-cols-3 gap-2 rounded-xl border border-slate-200 bg-white p-2"
+          >
+            {detailFirstScreenDecisionItems.map((item) => (
+              <div key={`${item.label}-${item.value}`} className="min-w-0 rounded-lg bg-slate-50 px-2 py-1.5">
+                <p className="text-[10px] font-extrabold text-slate-400">{item.label}</p>
+                <p className="mt-0.5 truncate text-[11px] font-black text-slate-900">{item.value}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -2448,12 +2532,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             destination: pkg.destination ?? null,
             party_type: handoffPartyType,
             selected_products: [selectedProductName],
+            next_action: stickyNextActionText,
             metadata: {
               source: 'detail_faq_kakao',
               selectedDate,
               productType: pkg.product_type ?? null,
               selectedTier: selectedTier?.period_label ?? null,
               destination: pkg.destination ?? null,
+              next_action: stickyNextActionText,
             },
           });
           void openKakaoChannel({
@@ -2610,7 +2696,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
       {/* ═══ 플로팅 하단바 — 가격 + 카톡 + 예약 문의 (Jiwonnote 분석 P3) ═══ */}
       <div
-        className="fixed bottom-0 left-0 right-0 bg-white z-50 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]"
+        className="fixed bottom-0 left-0 right-[calc(100vw-100%)] bg-white z-50 border-t border-slate-200 safe-area-bottom shadow-[0_-16px_40px_rgba(15,23,42,0.12)]"
         role="region"
         aria-labelledby={detailStickyCtaRegionTitleId}
         aria-describedby={detailStickyCtaDescriptionIds}
@@ -2645,6 +2731,14 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           >
             {stickyNextActionText}
           </p>
+          <p
+            id={detailStickyPriceCaveatId}
+            data-testid="package-detail-sticky-price-caveat"
+            aria-label={stickyPriceCaveatText}
+            className="mb-2 rounded-2xl border border-amber-100 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-5 text-amber-800"
+          >
+            {stickyPriceCaveatText}
+          </p>
           {stickyHandoffItems.length > 0 && (
             <div
               className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-slate-100 bg-slate-50 px-2.5 py-2 no-scrollbar"
@@ -2665,13 +2759,13 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   {item.value}
                 </span>
               ))}
-              {decisionGuide.consultationQuestions[0] && (
+              {stickyConsultationQuestionText && (
                 <span
                   data-testid="package-detail-sticky-consultation-question"
-                  aria-label={`상담 때 먼저 확인할 질문: ${decisionGuide.consultationQuestions[0]}`}
+                  aria-label={`상담 때 먼저 확인할 질문: ${stickyConsultationQuestionText}`}
                   className="shrink-0 rounded-full border border-amber-100 bg-amber-50 px-2.5 py-1 text-[11px] font-extrabold text-amber-700"
                 >
-                  질문 / {decisionGuide.consultationQuestions[0]}
+                  질문 / {stickyConsultationQuestionText}
                 </span>
               )}
             </div>
@@ -2731,11 +2825,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 destination: pkg.destination ?? null,
                 party_type: handoffPartyType,
                 selected_products: [selectedProductName],
+                next_action: stickyNextActionText,
                 metadata: {
                   source: 'detail_mobile_sticky_kakao',
                   selectedDate,
                   productType: pkg.product_type ?? null,
                   selectedTier: selectedTier?.period_label ?? null,
+                  readiness: detailHandoffReadinessText,
+                  decision_summary: stickyKakaoDecisionSummaryText,
+                  handoff_preview: stickyKakaoHandoffPreviewText,
+                  next_action: stickyNextActionText,
                 },
               });
               trackLead({
@@ -2756,7 +2855,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                   productId: id,
                   channel: 'kakao_channel',
                   form: { name: '카카오문의', phone: '-', desiredDate: selectedTier?.departure_dates?.[0] || null, adults: 1, children: 0, privacyConsent: true },
-                  tracking: { landingUrl: window.location.href, utmSource: new URLSearchParams(window.location.search).get('utm_source'), utmMedium: new URLSearchParams(window.location.search).get('utm_medium'), utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') },
+                  tracking: {
+                    sessionId: getSessionId(),
+                    landingUrl: window.location.href,
+                    utmSource: new URLSearchParams(window.location.search).get('utm_source'),
+                    utmMedium: new URLSearchParams(window.location.search).get('utm_medium'),
+                    utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign'),
+                    intent: handoffIntent,
+                    budget: handoffBudget,
+                    destination: pkg.destination ?? null,
+                    party_type: handoffPartyType,
+                    selected_products: [selectedProductName],
+                    ready_count: detailHandoffReadyCount,
+                    missing_fields: detailHandoffMissingLabels,
+                    decision_summary: stickyKakaoDecisionSummaryText,
+                    handoff_preview: stickyKakaoHandoffPreviewText,
+                    next_action: stickyNextActionText,
+                  },
                   submittedAt: new Date().toISOString(),
                 }),
               }).catch(() => {});
@@ -2795,11 +2910,18 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 destination: pkg.destination ?? null,
                 party_type: handoffPartyType,
                 selected_products: [selectedProductName],
+                next_action: stickyNextActionText,
                 metadata: {
                   source: 'detail_sticky_group_inquiry',
                   selectedDate,
                   productType: pkg.product_type ?? null,
                   selectedTier: selectedTier?.period_label ?? null,
+                  readiness: detailHandoffReadinessText,
+                  ready_count: detailHandoffReadyCount,
+                  missing_fields: detailHandoffMissingLabels,
+                  decision_summary: stickyGroupInquiryDecisionSummaryText,
+                  handoff_preview: stickyGroupInquiryHandoffPreviewText,
+                  next_action: stickyNextActionText,
                 },
               });
             }}
@@ -3056,6 +3178,25 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     reservationFormReady ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-50 text-slate-500'
                   }`} aria-live="polite" aria-atomic="true">
                     {reservationFormHint}
+                  </p>
+                  <p
+                    id={reservationSubmitDecisionSummaryId}
+                    data-testid="package-detail-reservation-submit-decision-summary"
+                    aria-label={reservationSubmitDecisionSummaryText}
+                    className={`rounded-xl border px-3 py-2 text-[11px] font-bold leading-relaxed ${
+                      reservationFormReady
+                        ? 'border-emerald-100 bg-emerald-50 text-emerald-700'
+                        : 'border-slate-100 bg-slate-50 text-slate-600'
+                    }`}
+                  >
+                    {reservationSubmitDecisionSummaryText}
+                  </p>
+                  <p
+                    data-testid="package-detail-reservation-handoff-preview"
+                    aria-label={reservationSubmitHandoffPreviewText}
+                    className="rounded-xl bg-blue-50 px-3 py-2 text-[11px] font-bold leading-relaxed text-blue-800"
+                  >
+                    {reservationSubmitHandoffPreviewText}
                   </p>
                   <button onClick={handleSubmit} disabled={isSubmitting}
                     aria-busy={isSubmitting}

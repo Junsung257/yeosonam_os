@@ -152,6 +152,102 @@ function fmtDateKo(s?: string | null): string {
   return `${yy}-${mm}-${dd} (${DAYS_KO[d.getDay()]})`;
 }
 
+function getDepartureDays(date?: string | null): number | null {
+  if (!date) return null;
+  const departure = new Date(date.slice(0, 10));
+  if (Number.isNaN(departure.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.ceil((departure.getTime() - today.getTime()) / 86400000);
+}
+
+function buildBookingActionDecisionMetadata(booking: Booking) {
+  const balanceDue = Math.max(0, (booking.total_price || 0) - (booking.paid_amount || 0));
+  const netCashflow = (booking.paid_amount || 0) - (booking.total_paid_out || 0);
+  const departureDays = getDepartureDays(booking.departure_date);
+  const missingFields = [
+    !booking.customers?.phone ? '연락처' : null,
+    !booking.departure_date ? '출발일' : null,
+    !booking.departure_region ? '출발지역' : null,
+    !booking.product_id && !booking.package_title ? '상품' : null,
+  ].filter((item): item is string => Boolean(item));
+
+  const isNearDeparture = departureDays !== null && departureDays >= 0 && departureDays <= 7;
+  let operationRisk = '정상 처리';
+  let nextAction = '상세 확인';
+  let nextActionReason = '예약 조건을 확인하고 필요한 다음 작업을 선택합니다.';
+
+  if (booking.status === 'cancelled' && netCashflow > 5000) {
+    operationRisk = '환불 지연';
+    nextAction = '환불 확인';
+    nextActionReason = '취소 예약에 환불 잔액이 남아 있습니다.';
+  } else if (isNearDeparture && balanceDue > 0) {
+    operationRisk = '수금 지연';
+    nextAction = '잔금 확인';
+    nextActionReason = '출발 7일 이내 예약에 미수금이 남아 있습니다.';
+  } else if (isNearDeparture && !booking.has_sent_docs && booking.status !== 'cancelled') {
+    operationRisk = '안내 누락';
+    nextAction = '확정 안내';
+    nextActionReason = '출발 전 안내 자료 발송 여부를 확인해야 합니다.';
+  } else if (missingFields.length > 0 && !['cancelled', 'completed'].includes(booking.status)) {
+    operationRisk = '데이터 누락';
+    nextAction = '정보 보강';
+    nextActionReason = `${missingFields.join(', ')} 정보가 비어 있습니다.`;
+  } else if (booking.status === 'pending') {
+    operationRisk = '예약 미확정';
+    nextAction = '예약 확정';
+    nextActionReason = '입금과 상품 조건을 확인한 뒤 확정 처리합니다.';
+  } else if (booking.status === 'confirmed') {
+    operationRisk = '출발 준비';
+    nextAction = '결제 완료';
+    nextActionReason = '잔금, 출발 안내, 랜드 정산 상태를 점검합니다.';
+  } else if (booking.status === 'completed' && !booking.settlement_confirmed_at) {
+    operationRisk = '정산 지연';
+    nextAction = '정산 확인';
+    nextActionReason = '완료 예약의 마감 정산 여부를 확인합니다.';
+  }
+
+  return {
+    bookingId: booking.id,
+    status: booking.status,
+    departure_days: departureDays,
+    balance_due: balanceDue,
+    paid_amount: booking.paid_amount || 0,
+    total_price: booking.total_price || 0,
+    net_cashflow: netCashflow,
+    has_phone: Boolean(booking.customers?.phone),
+    missing_fields: missingFields,
+    operation_risk: operationRisk,
+    next_action: nextAction,
+    next_action_reason: nextActionReason,
+    decision_summary: `예약 판단 요약: ${STATUS_LABELS[booking.status] || booking.status}, 출발 ${departureDays === null ? '미정' : `D${departureDays >= 0 ? '-' : '+'}${Math.abs(departureDays)}`}, 미수금 ${fmtK(balanceDue)}, 다음 액션 ${nextAction}. ${nextActionReason}`,
+  };
+}
+
+function buildBulkBookingActionDecisionMetadata(bookings: Booking[]) {
+  const statusCounts = bookings.reduce<Record<string, number>>((acc, booking) => {
+    acc[booking.status] = (acc[booking.status] || 0) + 1;
+    return acc;
+  }, {});
+  const totalBalanceDue = bookings.reduce((sum, booking) => sum + Math.max(0, (booking.total_price || 0) - (booking.paid_amount || 0)), 0);
+  const nearDepartureCount = bookings.filter((booking) => {
+    const days = getDepartureDays(booking.departure_date);
+    return days !== null && days >= 0 && days <= 7;
+  }).length;
+  const missingDataCount = bookings.filter((booking) => (
+    !booking.customers?.phone || !booking.departure_date || !booking.departure_region
+  )).length;
+
+  return {
+    count: bookings.length,
+    status_counts: statusCounts,
+    total_balance_due: totalBalanceDue,
+    near_departure_count: nearDepartureCount,
+    missing_data_count: missingDataCount,
+    decision_summary: `선택 ${bookings.length}건, 미수금 ${fmtK(totalBalanceDue)}, 출발 7일 이내 ${nearDepartureCount}건, 데이터 보강 필요 ${missingDataCount}건입니다.`,
+  };
+}
+
 // 마진율 컬러 배지
 function MarginBadge({ rate }: { rate: number }) {
   const cls =
@@ -611,39 +707,54 @@ function SmartProductSelect({
               {departureDate ? `출발일 ±60일 내 활성 상품 없음` : '활성 상품 없음'}
             </div>
           )}
-          {!loading && hits.map((p, index) => (
-            <button
-              key={p.internal_code}
-              id={`${productSearchBaseId}-option-${p.internal_code}`}
-              role="option"
-              aria-selected={index === focusedProductIdx}
-              aria-label={`${p.display_name}, 상품 코드 ${p.internal_code}${p.departure_date ? `, 출발 ${p.departure_date.slice(0, 10)}` : ''}${p.supplier_name ? `, 랜드사 ${p.supplier_name}` : ''}, 판가 ${p.selling_price?.toLocaleString()}원`}
-              type="button"
-              onMouseEnter={() => setFocusedProductIdx(index)}
-              onMouseDown={e => { e.preventDefault(); onCommit(p); }}
-              className={`w-full text-left px-4 py-2 hover:bg-admin-bg transition-colors border-b border-admin-border last:border-0 ${
-                index === focusedProductIdx ? 'bg-admin-bg' : ''
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] font-mono text-admin-muted">{p.internal_code}</span>
-                {p.departure_date && (
+          {!loading && hits.map((p, index) => {
+            const productDecisionId = `${productSearchBaseId}-decision-${p.internal_code}`;
+            const productDepartureLabel = p.departure_date ? p.departure_date.slice(0, 10) : '출발일 미정';
+            const productSupplierLabel = p.supplier_name || '랜드사 미지정';
+            const productPriceLabel = p.selling_price ? `${p.selling_price.toLocaleString()}원` : '판가 미정';
+            const productDecisionText = `선택 요약: ${p.display_name} 연결, ${productDepartureLabel}, ${productSupplierLabel}, 판가 ${productPriceLabel}.`;
+            return (
+              <button
+                key={p.internal_code}
+                id={`${productSearchBaseId}-option-${p.internal_code}`}
+                role="option"
+                aria-selected={index === focusedProductIdx}
+                aria-label={`${p.display_name}, 상품 코드 ${p.internal_code}${p.departure_date ? `, 출발 ${p.departure_date.slice(0, 10)}` : ''}${p.supplier_name ? `, 랜드사 ${p.supplier_name}` : ''}, 판가 ${p.selling_price?.toLocaleString()}원`}
+                aria-describedby={productDecisionId}
+                type="button"
+                onMouseEnter={() => setFocusedProductIdx(index)}
+                onMouseDown={e => { e.preventDefault(); onCommit(p); }}
+                className={`w-full text-left px-4 py-2 hover:bg-admin-bg transition-colors border-b border-admin-border last:border-0 ${
+                  index === focusedProductIdx ? 'bg-admin-bg' : ''
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-mono text-admin-muted">{p.internal_code}</span>
+                  {p.departure_date && (
+                    <span className="text-[11px] text-admin-muted">
+                      출발 {p.departure_date.slice(0, 10)}
+                    </span>
+                  )}
+                </div>
+                <p className="text-admin-sm font-semibold text-admin-text-2 mt-0.5 truncate">{p.display_name}</p>
+                <div className="flex items-center gap-3 mt-1">
+                  {p.supplier_name && (
+                    <span className="text-[11px] text-blue-600 font-medium">{p.supplier_name}</span>
+                  )}
                   <span className="text-[11px] text-admin-muted">
-                    출발 {p.departure_date.slice(0, 10)}
+                    원가 {p.net_price?.toLocaleString()}원 / 판가 {p.selling_price?.toLocaleString()}원
                   </span>
-                )}
-              </div>
-              <p className="text-admin-sm font-semibold text-admin-text-2 mt-0.5 truncate">{p.display_name}</p>
-              <div className="flex items-center gap-3 mt-1">
-                {p.supplier_name && (
-                  <span className="text-[11px] text-blue-600 font-medium">{p.supplier_name}</span>
-                )}
-                <span className="text-[11px] text-admin-muted">
-                  원가 {p.net_price?.toLocaleString()}원 / 판가 {p.selling_price?.toLocaleString()}원
-                </span>
-              </div>
-            </button>
-          ))}
+                </div>
+                <p
+                  id={productDecisionId}
+                  data-testid="admin-booking-product-candidate-decision-summary"
+                  className="mt-1 rounded-admin-sm border border-admin-border bg-white px-2 py-1 text-[11px] font-semibold text-admin-text-2"
+                >
+                  {productDecisionText}
+                </p>
+              </button>
+            );
+          })}
         </div>,
         document.body
       )}
@@ -843,16 +954,18 @@ function BookingWorkQueue({
     key: BookingWorkQueueKey;
     label: string;
     helper: string;
+    reason: string;
+    operationRisk: string;
     count: number;
     target: string;
     tone: string;
   }[] = [
-    { key: 'unpaid', label: '잔금 미수', helper: '출발 7일 이내', count: counts.unpaid, target: '출발 임박 예약 중 잔금 미수 건만 보여줍니다.', tone: 'border-red-200 bg-red-50 text-red-700' },
-    { key: 'prep', label: '확정서 미발송', helper: '준비물 확인 필요', count: counts.prep, target: '확정서나 준비물 안내가 필요한 예약만 보여줍니다.', tone: 'border-rose-200 bg-rose-50 text-rose-700' },
-    { key: 'deposit', label: '계약금 미입금', helper: '첫 결제 대기', count: counts.deposit, target: '계약금이나 첫 결제가 아직 없는 예약만 보여줍니다.', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
-    { key: 'land', label: '랜드사 미송금', helper: '출발 전 송금', count: counts.land, target: '출발 전 랜드사 송금이 필요한 예약만 보여줍니다.', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
-    { key: 'settlement', label: '정산 대기', helper: '출발 후 7일+', count: counts.settlement, target: '출발 완료 후 정산 대기 예약만 보여줍니다.', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
-    { key: 'refund', label: '환불 대기', helper: '취소건 잔액', count: counts.refund, target: '취소 후 환불 처리가 필요한 예약만 보여줍니다.', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
+    { key: 'unpaid', label: '잔금 미수', helper: '출발 7일 이내', reason: '출발 전 수금', operationRisk: '수금 지연', count: counts.unpaid, target: '출발 임박 예약 중 잔금 미수 건만 보여줍니다.', tone: 'border-red-200 bg-red-50 text-red-700' },
+    { key: 'prep', label: '확정서 미발송', helper: '준비물 확인 필요', reason: '확정 안내 누락', operationRisk: '안내 누락', count: counts.prep, target: '확정서나 준비물 안내가 필요한 예약만 보여줍니다.', tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { key: 'deposit', label: '계약금 미입금', helper: '첫 결제 대기', reason: '예약 확정 전', operationRisk: '예약 미확정', count: counts.deposit, target: '계약금이나 첫 결제가 아직 없는 예약만 보여줍니다.', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'land', label: '랜드사 미송금', helper: '출발 전 송금', reason: '좌석/객실 확보', operationRisk: '좌석/객실 리스크', count: counts.land, target: '출발 전 랜드사 송금이 필요한 예약만 보여줍니다.', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { key: 'settlement', label: '정산 대기', helper: '출발 후 7일+', reason: '마감 정산 지연', operationRisk: '정산 지연', count: counts.settlement, target: '출발 완료 후 정산 대기 예약만 보여줍니다.', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { key: 'refund', label: '환불 대기', helper: '취소건 잔액', reason: '환불 SLA 위험', operationRisk: '환불 지연', count: counts.refund, target: '취소 후 환불 처리가 필요한 예약만 보여줍니다.', tone: 'border-blue-200 bg-blue-50 text-blue-700' },
   ];
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const activeItems = items.filter(item => item.count > 0);
@@ -868,13 +981,13 @@ function BookingWorkQueue({
   const queueSummaryId = 'admin-booking-work-queue-summary';
   const queueLeadId = 'admin-booking-work-queue-lead';
   const selectedQueueSummary = selectedQueueItem
-    ? `현재 선택: ${selectedQueueItem.label} ${selectedQueueItem.count}건.`
+    ? `현재 선택: ${selectedQueueItem.label} ${selectedQueueItem.count}건. 운영 리스크: ${selectedQueueItem.operationRisk}.`
     : '큐를 선택하면 해당 예약만 필터링됩니다.';
   const queueSummaryText = total > 0
-    ? `오늘 처리할 예약 업무가 ${total}건 있습니다. 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개입니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
+    ? `오늘 처리할 예약 업무가 ${total}건 있습니다. 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개입니다. ${activeItems.map(item => `${item.label} ${item.count}건, 운영 리스크 ${item.operationRisk}, 이유 ${item.reason}`).join(', ')}을 우선 확인하세요.`
     : '오늘 처리할 예약 업무가 없습니다. 큐 버튼으로 각 예약 필터의 최신 상태를 확인할 수 있습니다.';
   const queueLeadText = priorityItem
-    ? `우선 처리: ${priorityItem.label} ${priorityItem.count}건. ${selectedQueueSummary}`
+    ? `우선 처리: ${priorityItem.label} ${priorityItem.count}건. 운영 리스크: ${priorityItem.operationRisk}. 이유: ${priorityItem.reason}. ${selectedQueueSummary}`
     : '대기 중인 예약 작업이 없습니다.';
 
   return (
@@ -946,11 +1059,25 @@ function BookingWorkQueue({
               } ${item.tone}`}
             >
               <span id={itemDescriptionId} className="sr-only">
-                {item.target} 현재 {item.count}건입니다.
+                {item.target} 현재 {item.count}건입니다. 운영 리스크는 {item.operationRisk}, 처리 이유는 {item.reason}입니다.
               </span>
               <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
               <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
               <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+              <span className="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  className="inline-flex max-w-full rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black text-admin-text ring-1 ring-black/5"
+                  data-testid="admin-booking-queue-risk"
+                >
+                  리스크: {item.operationRisk}
+                </span>
+                <span
+                  className="inline-flex max-w-full rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
+                  data-testid="admin-booking-queue-reason"
+                >
+                  {item.reason}
+                </span>
+              </span>
             </button>
           );
         })}
@@ -1045,9 +1172,26 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     refund: '', penalty: '', reason: '',
   });
   const [cancelling, setCancelling]     = useState(false);
+  const [bulkCancelTarget, setBulkCancelTarget] = useState<Booking[] | null>(null);
+  const [bulkCancelReason, setBulkCancelReason] = useState('관리자 일괄 취소');
+  const [restoreTarget, setRestoreTarget] = useState<{ mode: 'single' | 'bulk'; bookings: Booking[] } | null>(null);
   const cancelModalRef = useRef<HTMLDivElement | null>(null);
   const cancelModalCloseRef = useRef<HTMLButtonElement | null>(null);
   const cancelRefundInputRef = useRef<HTMLInputElement | null>(null);
+  const cancelStartedAtRef = useRef<number | null>(null);
+  const bulkCancelModalRef = useRef<HTMLDivElement | null>(null);
+  const bulkCancelCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bulkCancelReasonRef = useRef<HTMLTextAreaElement | null>(null);
+  const bulkCancelTriggerRef = useRef<HTMLElement | null>(null);
+  const bulkCancelModalTitleId = 'admin-booking-bulk-cancel-title';
+  const bulkCancelModalDescriptionId = 'admin-booking-bulk-cancel-description';
+  const bulkCancelModalStatusId = 'admin-booking-bulk-cancel-status';
+  const restoreModalRef = useRef<HTMLDivElement | null>(null);
+  const restoreCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const restoreTriggerRef = useRef<HTMLElement | null>(null);
+  const restoreModalTitleId = 'admin-booking-restore-title';
+  const restoreModalDescriptionId = 'admin-booking-restore-description';
+  const restoreModalStatusId = 'admin-booking-restore-status';
 
   const openCancelModal = useCallback((b: Booking) => {
     // 기본값: 환불액=입금액 (전액 환불 가정), 위약금=0, 사유 비움
@@ -1057,16 +1201,35 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       reason:  '',
     });
     setCancelTarget(b);
+    cancelStartedAtRef.current = performance.now();
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
       page_url: '/admin/bookings',
       metadata: {
         surface: 'bookings_row_action',
         action: 'cancel_modal_opened',
-        bookingId: b.id,
-        status: b.status,
+        ...buildBookingActionDecisionMetadata(b),
       },
     });
+  }, []);
+
+  const closeCancelModal = useCallback(() => {
+    cancelStartedAtRef.current = null;
+    setCancelTarget(null);
+  }, []);
+
+  const closeBulkCancelModal = useCallback(() => {
+    setBulkCancelTarget(null);
+    window.setTimeout(() => {
+      bulkCancelTriggerRef.current?.focus();
+    }, 0);
+  }, []);
+
+  const closeRestoreModal = useCallback(() => {
+    setRestoreTarget(null);
+    window.setTimeout(() => {
+      restoreTriggerRef.current?.focus();
+    }, 0);
   }, []);
 
   useEffect(() => {
@@ -1082,7 +1245,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     ).filter(element => !element.getAttribute('aria-hidden'));
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        if (!cancelling) setCancelTarget(null);
+        if (!cancelling) closeCancelModal();
         return;
       }
       if (event.key !== 'Tab') return;
@@ -1113,7 +1276,97 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       window.removeEventListener('keydown', onKey);
       if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
-  }, [cancelTarget, cancelling]);
+  }, [cancelTarget, cancelling, closeCancelModal]);
+
+  useEffect(() => {
+    if (!bulkCancelTarget) return;
+
+    const focusTimer = window.setTimeout(() => {
+      bulkCancelCancelButtonRef.current?.focus();
+    }, 0);
+    const getFocusableElements = () => Array.from(
+      bulkCancelModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (processing !== 'bulk-cancel') closeBulkCancelModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [bulkCancelTarget, closeBulkCancelModal, processing]);
+
+  useEffect(() => {
+    if (!restoreTarget) return;
+
+    const focusTimer = window.setTimeout(() => {
+      restoreCancelButtonRef.current?.focus();
+    }, 0);
+    const getFocusableElements = () => Array.from(
+      restoreModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!processing) closeRestoreModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [closeRestoreModal, processing, restoreTarget]);
 
   // ── Drawer / 가상화 ──────────────────────────────────────────────────────────
   // ?id=<uuid> 진입 시 해당 예약 drawer 자동 오픈 (Cmd+K / 대시보드 drilldown 진입점)
@@ -1137,6 +1390,26 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     toastTimerRef.current = setTimeout(() => setToast(null), 2500);
   }, []);
 
+  const openBulkCancelModal = useCallback((targets: Booking[], trigger?: HTMLElement | null) => {
+    bulkCancelTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setBulkCancelReason('관리자 일괄 취소');
+    setBulkCancelTarget(targets);
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.adminActionCompleted,
+      page_url: '/admin/bookings',
+      metadata: {
+        surface: 'bookings_bulk_cancel',
+        action: 'bulk_cancel_modal_opened',
+        ...buildBulkBookingActionDecisionMetadata(targets),
+      },
+    });
+  }, []);
+
+  const openRestoreModal = useCallback((targets: Booking[], trigger?: HTMLElement | null, mode: 'single' | 'bulk' = 'single') => {
+    restoreTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setRestoreTarget({ mode, bookings: targets });
+  }, []);
+
   useEffect(() => {
     if (!drawerBookingId || trackedDrawerOpenRef.current === drawerBookingId) return;
     trackedDrawerOpenRef.current = drawerBookingId;
@@ -1152,8 +1425,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     });
   }, [drawerBookingId]);
 
-  // 일괄 취소: 1건이면 모달, 다건이면 공통 사유 prompt + 각 예약 paid_amount 만큼 자동 환불
-  const handleBulkCancel = useCallback(async () => {
+  // 일괄 취소: 1건이면 정밀 모달, 다건이면 공통 사유 모달 + 각 예약 paid_amount 만큼 자동 환불
+  const handleBulkCancel = useCallback((trigger?: HTMLElement | null) => {
     const targets = bookings.filter(b => selected.has(b.id) && b.status !== 'cancelled');
     if (targets.length === 0) {
       showToast('취소 대상 없음 (이미 모두 취소 상태)', 'err');
@@ -1164,82 +1437,114 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       openCancelModal(targets[0]);
       return;
     }
-    const reason = window.prompt(
-      `${targets.length}건 일괄 취소\n\n각 예약은 다음과 같이 처리됩니다:\n  · 환불액 = 해당 예약의 입금액 (전액 환불 가정)\n  · 위약금 = 0원\n  · 공통 사유 = (아래 입력)\n\n개별 환불·위약금이 다르면 한 건씩 처리하세요.\n\n취소 사유를 입력하세요:`,
-      '관리자 일괄 취소'
-    );
-    if (reason === null) return;
-    if (!confirm(`${targets.length}건을 정말 취소 처리하시겠습니까?`)) return;
+    openBulkCancelModal(targets, trigger);
+  }, [bookings, selected, openCancelModal, openBulkCancelModal, showToast]);
 
+  const handleConfirmBulkCancel = useCallback(async () => {
+    if (!bulkCancelTarget) return;
+    const targets = bulkCancelTarget;
+    if (targets.length === 0) {
+      closeBulkCancelModal();
+      return;
+    }
+    const reason = bulkCancelReason.trim() || '관리자 일괄 취소';
     setProcessing('bulk-cancel');
     let ok = 0, fail = 0;
-    for (const b of targets) {
-      try {
-        const res = await fetch(`/api/bookings/${b.id}/cancel`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            refund_amount: b.paid_amount ?? 0,
-            penalty_fee:   0,
-            reason:        reason.trim() || '관리자 일괄 취소',
-          }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          ok++;
-          setBookings(prev => prev.map(x => x.id === b.id
-            ? { ...x, ...(data.booking || {}), status: 'cancelled' as const }
-            : x));
-        } else { fail++; }
-      } catch { fail++; }
+    try {
+      for (const b of targets) {
+        try {
+          const res = await fetch(`/api/bookings/${b.id}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              refund_amount: b.paid_amount ?? 0,
+              penalty_fee:   0,
+              reason,
+            }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            ok++;
+            setBookings(prev => prev.map(x => x.id === b.id
+              ? { ...x, ...(data.booking || {}), status: 'cancelled' as const }
+              : x));
+          } else { fail++; }
+        } catch { fail++; }
+      }
+      setSelected(new Set());
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: {
+          surface: 'bookings_bulk_cancel',
+          action: 'bulk_cancel',
+          ok,
+          fail,
+          ...buildBulkBookingActionDecisionMetadata(targets),
+        },
+      });
+      setBulkCancelTarget(null);
+      window.setTimeout(() => tableContainerRef.current?.focus(), 0);
+      showToast(`일괄 취소 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
+    } finally {
+      setProcessing(null);
     }
-    setProcessing(null);
-    setSelected(new Set());
-    trackEngagement({
-      event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'bookings_bulk_cancel', action: 'bulk_cancel', count: targets.length, ok, fail },
-    });
-    showToast(`일괄 취소 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
-  }, [bookings, selected, openCancelModal, showToast]);
+  }, [bulkCancelReason, bulkCancelTarget, closeBulkCancelModal, showToast]);
 
   // 일괄 복구
-  const handleBulkRestore = useCallback(async () => {
+  const handleBulkRestore = useCallback((trigger?: HTMLElement | null) => {
     const targets = bookings.filter(b => selected.has(b.id) && b.status === 'cancelled');
     if (targets.length === 0) {
       showToast('복구 대상 없음 (선택한 예약 중 취소 상태가 없음)', 'err');
       return;
     }
-    if (!confirm(`${targets.length}건의 취소된 예약을 복구하시겠습니까?\n\n취소 사유·환불액 이력은 그대로 보존되며,\nstatus만 입금액 유무에 따라 자동 결정됩니다.`)) return;
+    openRestoreModal(targets, trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null), 'bulk');
+  }, [bookings, selected, showToast, openRestoreModal]);
 
-    setProcessing('bulk-restore');
-    let ok = 0, fail = 0;
-    for (const b of targets) {
-      try {
-        const res = await fetch(`/api/bookings/${b.id}/restore`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ reason: '관리자 일괄 복구' }),
-        });
-        if (res.ok) {
-          const data = await res.json();
-          ok++;
-          setBookings(prev => prev.map(x => x.id === b.id
-            ? { ...x, ...(data.booking || {}), status: data.restored_to ?? 'pending' }
-            : x));
-        } else { fail++; }
-      } catch { fail++; }
+  const handleConfirmRestore = useCallback(async () => {
+    if (!restoreTarget) return;
+    const targets = restoreTarget.bookings;
+    if (targets.length === 0) {
+      closeRestoreModal();
+      return;
     }
-    setProcessing(null);
-    setSelected(new Set());
-    showToast(`일괄 복구 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
-    trackEngagement({
-      event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'bookings_bulk_restore', action: 'bulk_restore', count: targets.length, ok, fail },
-    });
-  }, [bookings, selected, showToast]);
+    if (restoreTarget.mode === 'bulk' || targets.length > 1) {
+      setProcessing('bulk-restore');
+      let ok = 0, fail = 0;
+      for (const b of targets) {
+        try {
+          const res = await fetch(`/api/bookings/${b.id}/restore`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: '관리자 일괄 복구' }),
+          });
+          if (res.ok) {
+            const data = await res.json();
+            ok++;
+            setBookings(prev => prev.map(x => x.id === b.id
+              ? { ...x, ...(data.booking || {}), status: data.restored_to ?? 'pending' }
+              : x));
+          } else { fail++; }
+        } catch { fail++; }
+      }
+      setProcessing(null);
+      setSelected(new Set());
+      showToast(`일괄 복구 완료 — 성공 ${ok}건${fail ? ` · 실패 ${fail}건` : ''}`, fail ? 'err' : 'ok');
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: {
+          surface: 'bookings_bulk_restore',
+          action: 'bulk_restore',
+          ok,
+          fail,
+          ...buildBulkBookingActionDecisionMetadata(targets),
+        },
+      });
+      setRestoreTarget(null);
+      window.setTimeout(() => tableContainerRef.current?.focus(), 0);
+      return;
+    }
 
-  const handleRestoreBooking = useCallback(async (b: Booking) => {
-    if (!confirm(`'${b.customers?.name ?? b.booking_no}' 예약을 복구하시겠습니까?\n\n복구 시 status는 입금액 유무에 따라 자동 결정되며,\n취소 사유·환불액·위약금 이력은 그대로 보존됩니다.`)) return;
+    const b = targets[0];
     setProcessing(b.id);
     try {
       const res = await fetch(`/api/bookings/${b.id}/restore`, {
@@ -1255,18 +1560,29 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       const newStatus = data.restored_to ?? 'pending';
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
-        metadata: { surface: 'bookings_restore', action: 'restore', bookingId: b.id, status: newStatus },
+        metadata: {
+          surface: 'bookings_restore',
+          action: 'restore',
+          restored_status: newStatus,
+          ...buildBookingActionDecisionMetadata(b),
+        },
       });
       setBookings(prev => prev.map(x => x.id === b.id
         ? { ...x, ...(data.booking || {}), status: newStatus }
         : x));
       showToast(`복구 완료 — ${newStatus}`);
+      setRestoreTarget(null);
+      window.setTimeout(() => tableContainerRef.current?.focus(), 0);
     } catch {
       showToast('네트워크 오류 — 다시 시도해주세요', 'err');
     } finally {
       setProcessing(null);
     }
-  }, [showToast]);
+  }, [closeRestoreModal, restoreTarget, showToast]);
+
+  const handleRestoreBooking = useCallback((b: Booking, trigger?: HTMLElement | null) => {
+    openRestoreModal([b], trigger, 'single');
+  }, [openRestoreModal]);
 
   const handleCancelBooking = useCallback(async () => {
     if (!cancelTarget) return;
@@ -1290,11 +1606,22 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       setBookings(prev => prev.map(b => b.id === cancelTarget.id
         ? { ...b, ...(data.booking || {}), status: 'cancelled' as const }
         : b));
+      const cancelStartedAt = cancelStartedAtRef.current;
+      const cancelTimeToCompleteMs =
+        typeof cancelStartedAt === 'number' ? Math.max(0, Math.round(performance.now() - cancelStartedAt)) : null;
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
-        metadata: { surface: 'bookings_cancel', action: 'cancel', bookingId: cancelTarget.id },
+        time_to_complete_ms: cancelTimeToCompleteMs,
+        metadata: {
+          surface: 'bookings_cancel',
+          action: 'cancel',
+          refund_amount: Number(cancelForm.refund) || 0,
+          penalty_fee: Number(cancelForm.penalty) || 0,
+          has_reason: cancelForm.reason.trim().length > 0,
+          ...buildBookingActionDecisionMetadata(cancelTarget),
+        },
       });
-      setCancelTarget(null);
+      closeCancelModal();
       showToast(`예약 취소 완료 — ${cancelTarget.customers?.name ?? cancelTarget.booking_no ?? ''}`);
     } catch (e) {
       console.error('[cancel] client error:', e);
@@ -1302,7 +1629,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
     } finally {
       setCancelling(false);
     }
-  }, [cancelTarget, cancelForm, showToast]);
+  }, [cancelTarget, cancelForm, showToast, closeCancelModal]);
 
   // [1] 안정적 cancelEdit
   const cancelEdit = useCallback(() => setEditingCell(null), []);
@@ -1588,7 +1915,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       setBookings(prev => prev.map(b => b.id === id ? { ...b, status } : b));
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
-        metadata: { surface: 'bookings_status', action: 'status_change', bookingId: id, status },
+        metadata: {
+          surface: 'bookings_status',
+          action: 'status_change',
+          next_status: status,
+          ...(current ? buildBookingActionDecisionMetadata(current) : { bookingId: id }),
+        },
       });
     } catch (e) { showToast(e instanceof Error ? e.message : '처리 실패', 'err'); }
     finally { setProcessing(null); }
@@ -1610,8 +1942,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       metadata: {
         surface: 'bookings_row_action',
         action: 'delete_queued',
-        count: ids.length,
         bookingIds: ids,
+        ...buildBulkBookingActionDecisionMetadata(targets),
       },
     });
     if (undoTimerRef.current) {
@@ -1645,7 +1977,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
         page_url: '/admin/bookings',
-        metadata: { surface: 'bookings_trash', action: 'restore_from_trash', bookingId: id },
+        metadata: {
+          surface: 'bookings_trash',
+          action: 'restore_from_trash',
+          ...(bookingsRef.current.find(b => b.id === id)
+            ? buildBookingActionDecisionMetadata(bookingsRef.current.find(b => b.id === id) as Booking)
+            : { bookingId: id }),
+        },
       });
       load();
     } finally { setProcessing(null); }
@@ -1676,8 +2014,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       metadata: {
         surface: 'bookings_row_action',
         action: 'alimtalk_sent',
-        bookingId: b.id,
-        status: b.status,
+        ...buildBookingActionDecisionMetadata(b),
       },
     });
     showToast('알림톡 발송 완료');
@@ -1731,6 +2068,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
       settlement: settlementPendingCnt,
       refund: refundPendingCnt,
     };
+    const queueDecisionContext: Record<BookingWorkQueueKey, { operationRisk: string; reason: string }> = {
+      unpaid: { operationRisk: '수금 지연', reason: '출발 전 수금' },
+      prep: { operationRisk: '안내 누락', reason: '확정 안내 누락' },
+      deposit: { operationRisk: '예약 미확정', reason: '예약 확정 전' },
+      land: { operationRisk: '좌석/객실 리스크', reason: '좌석/객실 확보' },
+      settlement: { operationRisk: '정산 지연', reason: '마감 정산 지연' },
+      refund: { operationRisk: '환불 지연', reason: '환불 SLA 위험' },
+    };
 
     setRawSearch('');
     setSearchQuery('');
@@ -1765,6 +2110,8 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         action: 'select_queue',
         queue,
         count: queueCounts[queue],
+        operation_risk: queueDecisionContext[queue].operationRisk,
+        reason: queueDecisionContext[queue].reason,
         has_waiting_work: queueCounts[queue] > 0,
       },
     });
@@ -1785,7 +2132,25 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   );
   const bulkCancelableCount = selectedBookingsForBulk.filter(b => b.status !== 'cancelled').length;
   const bulkRestorableCount = selectedBookingsForBulk.filter(b => b.status === 'cancelled').length;
+  const bulkMissingRouteCount = selectedBookingsForBulk.filter(b => !b.departing_location_id || !b.land_operator_id).length;
+  const bulkUnpaidBalanceCount = selectedBookingsForBulk.filter(b => b.status !== 'cancelled' && ((b.total_price || 0) - (b.paid_amount || 0)) > 0).length;
+  const bulkRefundPendingCount = selectedBookingsForBulk.filter(b => b.status === 'cancelled' && ((b.paid_amount || 0) - (b.total_paid_out || 0)) > 5000).length;
   const bulkActionSummaryId = 'admin-booking-bulk-action-summary';
+  const bulkNextActionId = 'admin-booking-bulk-next-action';
+  const bulkActionDescriptionIds = `${bulkActionSummaryId} ${bulkNextActionId}`;
+  const bulkNextActionText = bulkField === 'departing_location_id'
+    ? '선택 예약에 적용할 출발지역을 고르면 일괄 저장됩니다.'
+    : bulkField === 'land_operator_id'
+      ? '선택 예약에 적용할 랜드사를 고르면 일괄 저장됩니다.'
+      : bulkRefundPendingCount > 0
+        ? `취소 예약 ${bulkRefundPendingCount}건은 환불 정산 여부를 먼저 확인하세요.`
+        : bulkMissingRouteCount > 0
+          ? `출발지역 또는 랜드사 누락 ${bulkMissingRouteCount}건을 먼저 보강하세요.`
+          : bulkUnpaidBalanceCount > 0
+            ? `잔금 남은 예약 ${bulkUnpaidBalanceCount}건은 취소/삭제 전 입금 상태를 확인하세요.`
+            : bulkRestorableCount > bulkCancelableCount
+              ? `취소 예약 ${bulkRestorableCount}건은 복구 여부를 먼저 결정하세요.`
+              : '상태를 확인한 뒤 취소, 복구, 삭제 중 필요한 일괄 작업을 선택하세요.';
   const bulkActionSummaryText = `선택 ${selected.size}건. 취소 가능 ${bulkCancelableCount}건, 복구 가능 ${bulkRestorableCount}건. 출발지역과 랜드사는 선택 예약에 일괄 적용됩니다.`;
 
   const filtered = useMemo(() => {
@@ -2249,14 +2614,30 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                         ? '휴지통 예약은 상세에서 복구 또는 삭제 확인'
                         : '상세 패널에서 예약 메모와 결제 이력 확인';
             const mobileCardSummaryId = `admin-booking-mobile-card-summary-${b.id}`;
+            const mobileDecisionSummaryId = `admin-booking-mobile-decision-summary-${b.id}`;
+            const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId}`;
             const mobileActionGroupId = `admin-booking-mobile-actions-${b.id}`;
             const mobileBalanceLabel = b.status === 'cancelled' ? '환불잔액' : '잔금';
             const mobileBalanceValue = b.status === 'cancelled' ? netCashflow : Math.max(0, balance);
+            const mobileStatusLabel = STATUS_LABELS[b.status] || b.status;
+            const mobileBalanceText = fmtK(mobileBalanceValue);
+            const mobileOperationRiskLabel = isTrash
+              ? '휴지통 확인'
+              : b.status === 'cancelled' && netCashflow > 5000
+                ? '환불 대기'
+                : b.status === 'confirmed' && balance > 0
+                  ? '잔금 미수'
+                  : b.status === 'completed' && ((b.total_cost || 0) - (b.total_paid_out || 0)) > 5000
+                    ? '정산 대기'
+                    : b.status === 'pending'
+                      ? '확정 대기'
+                      : '상세 확인';
             const mobileCardSummaryText = [
               `${b.customers?.name ?? b.booking_no ?? '고객명 미입력'} 예약`,
-              `현재 상태는 ${STATUS_LABELS[b.status] || b.status}`,
+              `현재 상태는 ${mobileStatusLabel}`,
               `출발일은 ${fmtDateKo(b.departure_date)}`,
-              `${mobileBalanceLabel}은 ${fmtK(mobileBalanceValue)}`,
+              `${mobileBalanceLabel}은 ${mobileBalanceText}`,
+              `운영 사유는 ${mobileOperationRiskLabel}`,
               `다음 액션은 ${nextAction.label}`,
               `다음 액션 근거는 ${mobileNextActionReason}`,
             ].join(', ');
@@ -2265,7 +2646,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <article
                 key={b.id}
                 className="rounded-admin-md border border-admin-border-mid bg-white p-4 shadow-admin-xs"
-                aria-describedby={mobileCardSummaryId}
+                aria-describedby={mobileCardDescriptionIds}
               >
                 <p id={mobileCardSummaryId} className="sr-only">
                   {mobileCardSummaryText}
@@ -2300,14 +2681,38 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 </div>
 
                 <div
+                  id={mobileDecisionSummaryId}
+                  data-testid="admin-booking-mobile-decision-summary"
+                  className="mt-3 grid grid-cols-3 gap-2 rounded-admin-sm border border-admin-border bg-white p-2"
+                  aria-label={`예약 결정 요약: 상태 ${mobileStatusLabel}, ${mobileBalanceLabel} ${mobileBalanceText}, 다음 액션 ${nextAction.label}`}
+                >
+                  {[
+                    { label: '상태', value: mobileStatusLabel },
+                    { label: mobileBalanceLabel, value: mobileBalanceText },
+                    { label: '다음', value: nextAction.label },
+                  ].map((item) => (
+                    <div key={`${item.label}-${item.value}`} className="min-w-0 rounded bg-admin-bg px-2 py-1.5">
+                      <p className="text-[10px] font-bold text-admin-muted">{item.label}</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div
                   data-testid="admin-booking-mobile-next-action-summary"
-                  aria-label={`다음 액션 ${nextAction.label}. ${mobileNextActionReason}`}
+                  aria-label={`다음 액션 ${nextAction.label}. 운영 사유 ${mobileOperationRiskLabel}. ${mobileNextActionReason}`}
                   className="mt-3 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
                     <span className="text-[12px] font-black text-admin-text-2">{nextAction.label}</span>
                   </div>
+                  <p
+                    data-testid="admin-booking-mobile-risk-summary"
+                    className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
+                  >
+                    운영 사유: {mobileOperationRiskLabel}
+                  </p>
                   <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
                     {mobileNextActionReason}
                   </p>
@@ -2318,16 +2723,23 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                   className="mt-2 flex gap-2"
                   role="group"
                   aria-label={`${b.customers?.name || b.booking_no || '예약'} 모바일 예약 작업`}
-                  aria-describedby={mobileCardSummaryId}
+                  aria-describedby={mobileCardDescriptionIds}
                 >
                   <button
                     type="button"
                     data-testid="admin-booking-mobile-next-action"
                     disabled={processing === b.id}
                     aria-label={`${b.customers?.name || b.booking_no || '예약'} ${nextAction.label}`}
-                    aria-describedby={mobileCardSummaryId}
+                    aria-describedby={mobileCardDescriptionIds}
                     aria-busy={processing === b.id}
-                    onClick={e => { e.stopPropagation(); nextAction.run(); }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (!isTrash && b.status === 'cancelled') {
+                        handleRestoreBooking(b, e.currentTarget);
+                        return;
+                      }
+                      nextAction.run();
+                    }}
                     className={`min-h-[42px] flex-1 rounded-admin-md px-3 text-admin-sm font-bold transition disabled:opacity-50 ${nextAction.primary ? 'bg-brand text-white hover:bg-[#1B64DA]' : 'border border-admin-border-strong bg-white text-admin-text-2 hover:bg-admin-bg'}`}
                   >
                     {nextAction.label}
@@ -2336,7 +2748,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     type="button"
                     data-testid="admin-booking-mobile-detail-action"
                     aria-label={`${b.customers?.name || b.booking_no || '예약'} 상세 패널 열기`}
-                    aria-describedby={mobileCardSummaryId}
+                    aria-describedby={mobileCardDescriptionIds}
                     onClick={() => { lastClickedRowRef.current = b.id; setDrawerBookingId(b.id); }}
                     className="min-h-[42px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg"
                   >
@@ -2421,8 +2833,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 const hasBusanRec     = busanRec.has(b.id);
                 const isEditing       = (field: string) => editingCell?.id === b.id && editingCell.field === field;
                 const bookingActionDescriptionId = `admin-booking-row-actions-${b.id}`;
-                const bookingActionDescriptionIds = `${bookingActionDescriptionId} admin-booking-action-result-description`;
-                const bookingDeleteDescriptionIds = `${bookingActionDescriptionIds} admin-booking-delete-description`;
+                const bookingActionImpactId = `admin-booking-row-action-impact-${b.id}`;
                 const desktopNextActionLabel =
                   !isTrash && b.status === 'pending' ? '예약확정' :
                   !isTrash && b.status === 'confirmed' ? '결제완료' :
@@ -2441,6 +2852,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           : isTrash
                             ? '휴지통 예약은 복구 후 상세 확인'
                             : '상세 패널에서 예약 메모와 결제 이력 확인';
+                const desktopActionImpactText =
+                  isTrash
+                    ? '처리 영향: 목록으로 복구한 뒤 예약 상태와 결제 이력을 다시 확인합니다.'
+                    : b.status === 'pending'
+                      ? '처리 영향: 확정 후 결제, 서류, 랜드사 송금 관리 대상이 됩니다.'
+                      : b.status === 'confirmed' && balance > 0
+                        ? `처리 영향: 잔금 ${fmtK(Math.max(0, balance))} 확인 전에는 완료 처리보다 결제 확인이 우선입니다.`
+                        : b.status === 'confirmed'
+                          ? '처리 영향: 완료 처리 후 사후 정산과 후기 관리 대상으로 넘어갑니다.'
+                          : b.status === 'cancelled'
+                            ? '처리 영향: 복구하면 취소 이력은 보존하고 활성 예약으로 되돌립니다.'
+                            : '처리 영향: 상세 패널에서 메모, 결제, 정산 이력을 확인합니다.';
+                const bookingActionDescriptionIds = `${bookingActionDescriptionId} ${bookingActionImpactId} admin-booking-action-result-description`;
+                const bookingDeleteDescriptionIds = `${bookingActionDescriptionIds} admin-booking-delete-description`;
 
                 const rowBg      = isSel ? 'bg-blue-50' : isLandBomb ? 'bg-red-50 hover:bg-red-100' : isRisk ? 'bg-orange-50 hover:bg-orange-100' : isMissing ? 'bg-yellow-50/70 hover:bg-yellow-50' : isDepositUnpaid ? 'bg-amber-50/50 hover:bg-amber-50' : 'hover:bg-admin-bg';
                 const rowBorder  = isLandBomb ? 'outline outline-2 outline-red-400 outline-offset-[-1px]' : '';
@@ -2839,9 +3264,17 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                           {desktopNextActionReason}
                         </p>
                       </div>
+                      <p
+                        id={bookingActionImpactId}
+                        data-testid="admin-booking-desktop-action-impact-summary"
+                        aria-label={desktopActionImpactText}
+                        className="mb-1.5 max-w-[210px] truncate rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1 text-left text-[10px] font-bold text-admin-text-2"
+                      >
+                        {desktopActionImpactText}
+                      </p>
                       <div className="flex gap-1.5 justify-end opacity-100 md:opacity-80 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity duration-150">
                         <p id={bookingActionDescriptionId} className="sr-only">
-                          {b.customers?.name || b.booking_no || '예약'} 예약의 현재 상태는 {STATUS_LABELS[b.status] || b.status}입니다. 다음 권장 액션은 {desktopNextActionLabel}이며 근거는 {desktopNextActionReason}입니다. 이 행에서 예약 확정, 완료 처리, 수정, 취소, 복구, 삭제 작업을 처리할 수 있습니다.
+                          {b.customers?.name || b.booking_no || '예약'} 예약의 현재 상태는 {STATUS_LABELS[b.status] || b.status}입니다. 다음 권장 액션은 {desktopNextActionLabel}이며 근거는 {desktopNextActionReason}입니다. {desktopActionImpactText} 이 행에서 예약 확정, 완료 처리, 수정, 취소, 복구, 삭제 작업을 처리할 수 있습니다.
                         </p>
                         {!isTrash && b.status === 'pending' && (
                           <button type="button" onClick={() => patchStatus(b.id, 'confirmed')} disabled={processing === b.id}
@@ -2879,10 +3312,13 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                                 className="text-[11px] text-amber-700 border border-amber-200 bg-amber-50 px-2.5 py-1.5 rounded-lg hover:bg-amber-100 disabled:opacity-50 whitespace-nowrap font-semibold">취소</button>
                             )}
                             {isCancelled && (
-                              <button type="button" onClick={() => handleRestoreBooking(b)} disabled={processing === b.id}
+                              <button type="button" onClick={event => handleRestoreBooking(b, event.currentTarget)} disabled={processing === b.id}
                                 data-testid="admin-booking-restore-action"
                                 aria-busy={processing === b.id}
                                 aria-describedby={bookingActionDescriptionIds}
+                                aria-haspopup="dialog"
+                                aria-expanded={restoreTarget?.mode === 'single' && restoreTarget.bookings.some(item => item.id === b.id)}
+                                aria-controls="admin-booking-restore-dialog"
                                 aria-label={`${b.customers?.name || b.booking_no || '예약'} 복구`}
                                 title="예약 복구 — 취소 이력은 보존하고 활성 상태로 되돌림"
                                 className="text-[11px] text-emerald-700 border border-emerald-200 bg-emerald-50 px-2.5 py-1.5 rounded-lg hover:bg-emerald-100 disabled:opacity-50 whitespace-nowrap font-semibold">↺ 복구</button>
@@ -2941,18 +3377,27 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
           data-testid="admin-booking-bulk-action-toolbar"
           role="region"
           aria-label="선택 예약 일괄 작업"
-          aria-describedby={bulkActionSummaryId}
-          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm"
+          aria-describedby={bulkActionDescriptionIds}
+          className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 flex max-w-[calc(100vw-2rem)] flex-wrap items-center gap-2 px-5 py-3 bg-slate-800 text-white rounded-lg text-admin-sm"
         >
           <span className="font-bold text-blue-300 whitespace-nowrap">{selected.size}건 선택됨</span>
           <div className="w-px h-4 bg-white/20 mx-1" />
-          <span
-            id={bulkActionSummaryId}
-            data-testid="admin-booking-bulk-action-summary"
-            className="max-w-[260px] truncate rounded bg-white/10 px-2 py-1 text-[11px] font-semibold text-slate-100"
-          >
-            {bulkActionSummaryText}
-          </span>
+          <div className="min-w-[240px] max-w-[360px] rounded bg-white/10 px-2 py-1">
+            <p
+              id={bulkActionSummaryId}
+              data-testid="admin-booking-bulk-action-summary"
+              className="truncate text-[11px] font-semibold text-slate-100"
+            >
+              {bulkActionSummaryText}
+            </p>
+            <p
+              id={bulkNextActionId}
+              data-testid="admin-booking-bulk-next-action"
+              className="mt-0.5 truncate text-[11px] font-medium text-white"
+            >
+              {bulkNextActionText}
+            </p>
+          </div>
           {bulkField === 'departing_location_id' ? (
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-admin-muted-2 whitespace-nowrap">출발지역:</span>
@@ -2989,14 +3434,20 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               <button type="button" onClick={() => setBulkField('land_operator_id')} className="text-[11px] hover:bg-white/10 px-3 py-1.5 rounded-lg transition whitespace-nowrap">랜드사</button>
               <div className="w-px h-4 bg-white/20 mx-1" />
               {cancelableCnt > 0 && (
-                <button type="button" onClick={handleBulkCancel} disabled={processing === 'bulk-cancel'}
+                <button type="button" onClick={event => handleBulkCancel(event.currentTarget)} disabled={processing === 'bulk-cancel'}
+                  aria-haspopup="dialog"
+                  aria-expanded={cancelableCnt > 1 ? Boolean(bulkCancelTarget) : Boolean(cancelTarget)}
+                  aria-controls={cancelableCnt > 1 ? 'admin-booking-bulk-cancel-dialog' : 'admin-booking-cancel-dialog'}
                   title="환불액·위약금·사유를 입력하고 정식 취소 처리 (status=cancelled, 데이터 보존)"
                   className="text-[11px] bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold disabled:opacity-50">
                   취소 {cancelableCnt > 1 && `(${cancelableCnt})`}
                 </button>
               )}
               {restorableCnt > 0 && (
-                <button type="button" onClick={handleBulkRestore} disabled={processing === 'bulk-restore'}
+                <button type="button" onClick={event => handleBulkRestore(event.currentTarget)} disabled={processing === 'bulk-restore'}
+                  aria-haspopup="dialog"
+                  aria-expanded={restoreTarget?.mode === 'bulk'}
+                  aria-controls="admin-booking-restore-dialog"
                   title="취소된 예약을 활성으로 복구 (취소 이력 보존, status 자동 결정)"
                   className="text-[11px] bg-emerald-500/20 hover:bg-emerald-500/40 text-emerald-300 px-3 py-1.5 rounded-lg transition whitespace-nowrap font-semibold disabled:opacity-50">
                   ↺ 복구 {restorableCnt > 1 && `(${restorableCnt})`}
@@ -3035,6 +3486,281 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         </div>
       )}
 
+      {/* 일괄 취소 확인 모달 — prompt/confirm 대신 대상·환불 합계·공통 사유를 확인 */}
+      {bulkCancelTarget && (() => {
+        const bulkCancelBookings = bulkCancelTarget;
+        const bulkCancelCount = bulkCancelBookings.length;
+        const bulkCancelDecisionSummaryId = 'admin-booking-bulk-cancel-decision-summary';
+        const bulkCancelSubmitSummaryId = 'admin-booking-bulk-cancel-submit-summary';
+        const bulkCancelPreviewId = 'admin-booking-bulk-cancel-preview';
+        const bulkCancelTotalRefund = bulkCancelBookings.reduce((sum, booking) => sum + (booking.paid_amount || 0), 0);
+        const bulkCancelTotalPaidOut = bulkCancelBookings.reduce((sum, booking) => sum + (booking.total_paid_out || 0), 0);
+        const bulkCancelNetCash = -bulkCancelTotalPaidOut;
+        const bulkCancelReasonReady = Boolean(bulkCancelReason.trim());
+        const bulkCancelProcessing = processing === 'bulk-cancel';
+        const bulkCancelDecisionSummaryText = `일괄 취소 대상 ${bulkCancelCount}건, 전액 환불 합계 ${bulkCancelTotalRefund.toLocaleString()}원, 위약금 0원, 순현금 영향 ${bulkCancelNetCash >= 0 ? '+' : ''}${bulkCancelNetCash.toLocaleString()}원.`;
+        const bulkCancelSubmitSummaryText = bulkCancelReasonReady
+          ? `공통 사유 "${bulkCancelReason.trim()}"로 ${bulkCancelCount}건을 취소 처리합니다.`
+          : '일괄 취소 확정 전 공통 사유를 입력하세요.';
+        const bulkCancelStatusText = bulkCancelProcessing ? '일괄 취소 처리 중입니다.' : '일괄 취소 확인창이 열렸습니다. 사유를 확인한 뒤 취소 확정을 진행할 수 있습니다.';
+
+        return (
+          <>
+            <button
+              type="button"
+              aria-label="일괄 취소 확인 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !bulkCancelProcessing && closeBulkCancelModal()}
+              disabled={bulkCancelProcessing}
+            />
+            <div className="fixed inset-0 z-[121] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+              <div
+                id="admin-booking-bulk-cancel-dialog"
+                ref={bulkCancelModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={bulkCancelModalTitleId}
+                aria-describedby={`${bulkCancelModalDescriptionId} ${bulkCancelDecisionSummaryId} ${bulkCancelSubmitSummaryId} ${bulkCancelModalStatusId}`}
+                data-testid="admin-booking-bulk-cancel-dialog"
+                tabIndex={-1}
+                className="pointer-events-auto w-full max-w-xl rounded-admin-lg bg-white p-6 shadow-2xl"
+              >
+                <div className="space-y-1">
+                  <h2 id={bulkCancelModalTitleId} className="text-admin-lg font-bold text-admin-text">
+                    예약 일괄 취소
+                  </h2>
+                  <p id={bulkCancelModalDescriptionId} className="text-admin-sm text-admin-muted">
+                    선택한 예약을 취소 상태로 변경합니다. 각 예약은 입금액 전액 환불, 위약금 0원 기준으로 처리됩니다.
+                  </p>
+                  <p
+                    id={bulkCancelModalStatusId}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="sr-only"
+                  >
+                    {bulkCancelStatusText}
+                  </p>
+                </div>
+
+                <div
+                  id={bulkCancelDecisionSummaryId}
+                  data-testid="admin-booking-bulk-cancel-decision-summary"
+                  aria-label={bulkCancelDecisionSummaryText}
+                  className="mt-4 rounded-admin-md border border-amber-200 bg-amber-50 px-3 py-2 text-admin-sm font-semibold text-amber-900"
+                >
+                  <span>대상 {bulkCancelCount}건</span>
+                  <span className="mx-2 text-amber-500">·</span>
+                  <span>환불 {fmtK(bulkCancelTotalRefund)}</span>
+                  <span className="mx-2 text-amber-500">·</span>
+                  <span>위약금 0원</span>
+                </div>
+
+                <div
+                  id={bulkCancelPreviewId}
+                  className="mt-4 space-y-2 rounded-admin-md bg-admin-bg p-3"
+                >
+                  {bulkCancelBookings.slice(0, 4).map((booking) => (
+                    <div key={booking.id} className="flex items-center justify-between gap-3 text-admin-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-admin-text-2">
+                          {booking.customers?.name || booking.booking_no || '예약'}
+                        </p>
+                        <p className="truncate text-admin-xs text-admin-muted">
+                          {booking.booking_no || booking.id.slice(0, 8)} · {fmtDateKo(booking.departure_date)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-admin-sm border border-admin-border bg-white px-2 py-1 text-admin-xs font-bold text-admin-text-2">
+                        환불 {fmtK(booking.paid_amount || 0)}
+                      </span>
+                    </div>
+                  ))}
+                  {bulkCancelCount > 4 && (
+                    <p className="text-admin-xs font-semibold text-admin-muted">
+                      외 {bulkCancelCount - 4}건을 함께 취소합니다.
+                    </p>
+                  )}
+                </div>
+
+                <label className="mt-4 block">
+                  <span className="mb-1 block text-admin-xs font-semibold text-admin-text-2">공통 취소 사유</span>
+                  <textarea
+                    ref={bulkCancelReasonRef}
+                    rows={3}
+                    data-testid="admin-booking-bulk-cancel-reason"
+                    value={bulkCancelReason}
+                    onChange={event => setBulkCancelReason(event.target.value)}
+                    aria-label="일괄 취소 공통 사유"
+                    aria-describedby={`${bulkCancelDecisionSummaryId} ${bulkCancelSubmitSummaryId}`}
+                    className="w-full rounded-admin-md border border-admin-border-strong px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </label>
+
+                <p
+                  id={bulkCancelSubmitSummaryId}
+                  data-testid="admin-booking-bulk-cancel-submit-summary"
+                  aria-label={bulkCancelSubmitSummaryText}
+                  className={`mt-3 rounded-admin-md border px-3 py-2 text-admin-xs font-bold ${
+                    bulkCancelReasonReady
+                      ? 'border-red-200 bg-red-50 text-red-700'
+                      : 'border-amber-200 bg-amber-50 text-amber-800'
+                  }`}
+                >
+                  {bulkCancelSubmitSummaryText}
+                </p>
+
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    ref={bulkCancelCancelButtonRef}
+                    onClick={() => !bulkCancelProcessing && closeBulkCancelModal()}
+                    disabled={bulkCancelProcessing}
+                    className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="admin-booking-bulk-cancel-confirm"
+                    onClick={handleConfirmBulkCancel}
+                    disabled={bulkCancelProcessing || !bulkCancelReasonReady}
+                    aria-busy={bulkCancelProcessing}
+                    aria-describedby={`${bulkCancelDecisionSummaryId} ${bulkCancelSubmitSummaryId} ${bulkCancelModalStatusId}`}
+                    className="min-h-[40px] rounded-admin-md bg-red-600 px-4 text-admin-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {bulkCancelProcessing ? '취소 처리 중...' : '일괄 취소 확정'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* 복구 확인 모달 — 취소 이력 보존 여부와 대상 요약을 확인한 뒤 /api/bookings/:id/restore 호출 */}
+      {restoreTarget && (() => {
+        const restoreBookings = restoreTarget.bookings;
+        const firstRestore = restoreBookings[0];
+        const restoreCount = restoreBookings.length;
+        const restoreDecisionSummaryId = 'admin-booking-restore-decision-summary';
+        const restorePreviewId = 'admin-booking-restore-preview';
+        const restoreNetCashflowTotal = restoreBookings.reduce(
+          (sum, booking) => sum + ((booking.paid_amount || 0) - (booking.total_paid_out || 0)),
+          0,
+        );
+        const restoreTitle = restoreTarget.mode === 'bulk' || restoreCount > 1 ? '예약 일괄 복구' : '예약 복구';
+        const restoreDescription = restoreCount > 1
+          ? `${restoreCount}건의 취소 예약을 활성 상태로 되돌립니다. 취소 이력과 결제 기록은 보존됩니다.`
+          : `${firstRestore?.customers?.name || firstRestore?.booking_no || '선택 예약'}을 활성 상태로 되돌립니다. 취소 이력과 결제 기록은 보존됩니다.`;
+        const restoreDecisionSummaryText = `복구 대상 ${restoreCount}건, 환불잔액 합계 ${fmtK(restoreNetCashflowTotal)}, 처리 후 목록 포커스 복귀.`;
+        const restoreStatusText = processing ? '복구 처리 중입니다.' : '복구 확인창이 열렸습니다. 취소하거나 복구를 확정할 수 있습니다.';
+
+        return (
+          <>
+            <button
+              type="button"
+              aria-label="예약 복구 확인 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !processing && closeRestoreModal()}
+              disabled={Boolean(processing)}
+            />
+            <div className="fixed inset-0 z-[121] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+              <div
+                id="admin-booking-restore-dialog"
+                ref={restoreModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={restoreModalTitleId}
+                aria-describedby={`${restoreModalDescriptionId} ${restoreDecisionSummaryId} ${restoreModalStatusId}`}
+                data-testid="admin-booking-restore-dialog"
+                tabIndex={-1}
+                className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+              >
+                <div className="space-y-1">
+                  <h2 id={restoreModalTitleId} className="text-admin-lg font-bold text-admin-text">
+                    {restoreTitle}
+                  </h2>
+                  <p id={restoreModalDescriptionId} className="text-admin-sm text-admin-muted">
+                    {restoreDescription}
+                  </p>
+                  <p
+                    id={restoreModalStatusId}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="sr-only"
+                  >
+                    {restoreStatusText}
+                  </p>
+                </div>
+
+                <div
+                  id={restoreDecisionSummaryId}
+                  data-testid="admin-booking-restore-decision-summary"
+                  aria-label={restoreDecisionSummaryText}
+                  className="mt-4 rounded-admin-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-admin-sm font-semibold text-emerald-900"
+                >
+                  <span>복구 대상 {restoreCount}건</span>
+                  <span className="mx-2 text-emerald-500">·</span>
+                  <span>환불잔액 {fmtK(restoreNetCashflowTotal)}</span>
+                  <span className="mx-2 text-emerald-500">·</span>
+                  <span>취소 이력 보존</span>
+                </div>
+
+                <div
+                  id={restorePreviewId}
+                  className="mt-4 space-y-2 rounded-admin-md bg-admin-bg p-3"
+                >
+                  {restoreBookings.slice(0, 3).map((booking) => (
+                    <div key={booking.id} className="flex items-center justify-between gap-3 text-admin-sm">
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-admin-text-2">
+                          {booking.customers?.name || booking.booking_no || '예약'}
+                        </p>
+                        <p className="truncate text-admin-xs text-admin-muted">
+                          {booking.booking_no || booking.id.slice(0, 8)} · {fmtDateKo(booking.departure_date)}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-admin-sm border border-admin-border bg-white px-2 py-1 text-admin-xs font-bold text-admin-text-2">
+                        {STATUS_LABELS[booking.status] || booking.status}
+                      </span>
+                    </div>
+                  ))}
+                  {restoreCount > 3 && (
+                    <p className="text-admin-xs font-semibold text-admin-muted">
+                      외 {restoreCount - 3}건을 함께 복구합니다.
+                    </p>
+                  )}
+                </div>
+
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    ref={restoreCancelButtonRef}
+                    onClick={() => !processing && closeRestoreModal()}
+                    disabled={Boolean(processing)}
+                    className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="admin-booking-restore-confirm"
+                    onClick={handleConfirmRestore}
+                    disabled={Boolean(processing)}
+                    aria-busy={Boolean(processing)}
+                    aria-describedby={`${restoreModalDescriptionId} ${restoreDecisionSummaryId} ${restoreModalStatusId}`}
+                    className="min-h-[40px] rounded-admin-md bg-emerald-600 px-4 text-admin-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    {processing ? '복구 중...' : '복구 확정'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {/* 취소 처리 모달 — 환불액·위약금·사유 입력 후 /api/bookings/:id/cancel 호출 */}
       {cancelTarget && (() => {
         const refundN  = Number(cancelForm.refund) || 0;
@@ -3042,13 +3768,28 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
         const paid     = cancelTarget.paid_amount ?? 0;
         const paidOut  = cancelTarget.total_paid_out ?? 0;
         const netCash  = paid - paidOut - refundN;
+        const cancelDecisionSummaryId = `admin-booking-cancel-decision-summary-${cancelTarget.id}`;
+        const cancelReasonStateLabel = cancelForm.reason.trim() ? '사유 입력됨' : '사유 미입력';
+        const cancelDecisionSummaryText = `취소 결정 요약: 환불 ${refundN.toLocaleString()}원, 위약금 ${penaltyN.toLocaleString()}원, 순현금 영향 ${netCash >= 0 ? '+' : ''}${netCash.toLocaleString()}원, ${cancelReasonStateLabel}.`;
+        const cancelSubmitDecisionSummaryId = `admin-booking-cancel-submit-decision-${cancelTarget.id}`;
+        const cancelSubmitChecklist = [
+          { label: '환불액 확인', complete: cancelForm.refund.trim().length > 0 },
+          { label: '위약금 확인', complete: cancelForm.penalty.trim().length > 0 },
+          { label: '취소 사유', complete: Boolean(cancelForm.reason.trim()) },
+        ];
+        const cancelSubmitReadyCount = cancelSubmitChecklist.filter((item) => item.complete).length;
+        const cancelSubmitMissingLabels = cancelSubmitChecklist.filter((item) => !item.complete).map((item) => item.label);
+        const cancelSubmitDecisionSummaryText = cancelSubmitMissingLabels.length > 0
+          ? `취소 확정 전 ${cancelSubmitMissingLabels.join(', ')}을(를) 확인하세요.`
+          : `취소 확정 시 환불 ${refundN.toLocaleString()}원, 위약금 ${penaltyN.toLocaleString()}원, 사유 입력 완료 상태로 처리합니다.`;
+        const cancelConfirmDescriptionIds = `${cancelDecisionSummaryId} ${cancelSubmitDecisionSummaryId}`;
         return (
           <>
             <button
               type="button"
               aria-label="예약 취소 모달 닫기"
               className="fixed inset-0 z-[120] bg-black/40 cursor-default"
-              onClick={() => !cancelling && setCancelTarget(null)}
+              onClick={() => !cancelling && closeCancelModal()}
               disabled={cancelling}
             />
             <div className="fixed inset-0 z-[121] flex items-center justify-center p-4 pointer-events-none">
@@ -3058,7 +3799,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               role="dialog"
               aria-modal="true"
               aria-labelledby="booking-cancel-title"
-              aria-describedby="booking-cancel-description"
+              aria-describedby={`booking-cancel-description ${cancelDecisionSummaryId} ${cancelSubmitDecisionSummaryId}`}
               data-testid="admin-booking-cancel-dialog"
               className="pointer-events-auto bg-white rounded-admin-lg shadow-2xl w-full max-w-lg p-6 space-y-4"
             >
@@ -3069,7 +3810,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                     환불액, 위약금, 취소 사유를 확인한 뒤 예약 상태를 취소로 변경합니다.
                   </p>
                 </div>
-                <button type="button" ref={cancelModalCloseRef} onClick={() => !cancelling && setCancelTarget(null)}
+                <button type="button" ref={cancelModalCloseRef} onClick={() => !cancelling && closeCancelModal()}
                   data-testid="admin-booking-cancel-close"
                   aria-label="예약 취소 모달 닫기"
                   disabled={cancelling}
@@ -3129,6 +3870,18 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <span className="text-admin-muted ml-2">(입금 {paid.toLocaleString()} − 출금 {paidOut.toLocaleString()} − 환불 {refundN.toLocaleString()})</span>
               </div>
 
+              <div
+                id={cancelDecisionSummaryId}
+                data-testid="admin-booking-cancel-decision-summary"
+                className={`rounded-admin-md border px-3 py-2 text-admin-xs font-semibold ${
+                  cancelForm.reason.trim()
+                    ? 'border-admin-border-mid bg-admin-bg text-admin-text-2'
+                    : 'border-amber-200 bg-amber-50 text-amber-800'
+                }`}
+              >
+                {cancelDecisionSummaryText}
+              </div>
+
               {/* 사유 */}
               <label className="block">
                 <span className="text-admin-xs font-semibold text-admin-text-2 mb-1 block">취소 사유</span>
@@ -3142,11 +3895,29 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               </label>
 
               {/* 액션 */}
+              <p
+                id={cancelSubmitDecisionSummaryId}
+                data-testid="admin-booking-cancel-submit-decision-summary"
+                aria-label={cancelSubmitDecisionSummaryText}
+                className={`rounded-admin-md border px-3 py-2 text-admin-xs font-bold ${
+                  cancelSubmitMissingLabels.length > 0
+                    ? 'border-amber-200 bg-amber-50 text-amber-800'
+                    : 'border-red-200 bg-red-50 text-red-700'
+                }`}
+              >
+                <span className="font-black">
+                  {cancelSubmitMissingLabels.length > 0
+                    ? `취소 준비 ${cancelSubmitReadyCount}/${cancelSubmitChecklist.length}`
+                    : '취소 확정 준비 완료'}
+                </span>
+                <span className="ml-1">{cancelSubmitDecisionSummaryText}</span>
+              </p>
               <div className="flex gap-2 justify-end pt-2 border-t border-admin-border">
-                <button type="button" onClick={() => !cancelling && setCancelTarget(null)}
+                <button type="button" onClick={() => !cancelling && closeCancelModal()}
                   className="px-4 py-2 text-admin-sm text-admin-text-2 hover:bg-admin-surface-2 rounded-lg">닫기</button>
                 <button type="button" data-testid="admin-booking-cancel-confirm" onClick={handleCancelBooking} disabled={cancelling}
                   aria-busy={cancelling}
+                  aria-describedby={cancelConfirmDescriptionIds}
                   className="px-4 py-2 text-admin-sm bg-red-600 text-white font-semibold rounded-lg hover:bg-red-700 disabled:opacity-50">
                   {cancelling ? '처리 중...' : '취소 처리 확정'}
                 </button>

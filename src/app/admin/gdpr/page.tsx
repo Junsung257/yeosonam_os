@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PageHeader, FormRow } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -25,6 +25,21 @@ interface DeleteResult {
   };
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+}
+
 export default function GdprPage() {
   const [customerId, setCustomerId] = useState('');
   const [adminNote, setAdminNote] = useState('');
@@ -32,18 +47,67 @@ export default function GdprPage() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<DeleteResult | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const confirmTitleId = 'gdpr-delete-confirm-title';
+  const confirmDescriptionId = 'gdpr-delete-confirm-description';
+  const confirmTargetId = 'gdpr-delete-confirm-target';
+  const confirmStatusId = 'gdpr-delete-confirm-status';
 
-  const handleDeleteRequest = () => {
+  const closeConfirmDialog = useCallback(() => {
+    setShowConfirm(false);
+    requestAnimationFrame(() => deleteTriggerRef.current?.focus());
+  }, []);
+
+  const handleDeleteRequest = (trigger?: HTMLButtonElement) => {
     if (!customerId.trim()) {
       setErrorMsg('고객 ID를 입력하세요.');
       return;
     }
+    if (trigger) deleteTriggerRef.current = trigger;
     setErrorMsg(null);
     setShowConfirm(true);
   };
 
+  useEffect(() => {
+    if (!showConfirm) return undefined;
+    const dialog = confirmDialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => cancelButtonRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeConfirmDialog();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closeConfirmDialog, showConfirm]);
+
   const handleConfirmDelete = async () => {
-    setShowConfirm(false);
+    closeConfirmDialog();
     setLoading(true);
     setResult(null);
     setErrorMsg(null);
@@ -107,7 +171,7 @@ export default function GdprPage() {
         <Button
           variant="danger"
           size="lg"
-          onClick={handleDeleteRequest}
+          onClick={event => handleDeleteRequest(event.currentTarget)}
           disabled={loading}
           className="w-full"
         >
@@ -117,28 +181,44 @@ export default function GdprPage() {
 
       {/* 확인 다이얼로그 */}
       {showConfirm && (
-        <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
-          <div className="admin-scope bg-admin-surface rounded-admin-lg p-6 max-w-sm w-full shadow-admin-xl border border-admin-border-mid space-y-4">
+        <div className="fixed inset-0 z-50 flex h-dvh items-center justify-center overflow-y-auto bg-slate-900/40 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <div
+            ref={confirmDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmTitleId}
+            aria-describedby={`${confirmDescriptionId} ${confirmTargetId} ${confirmStatusId}`}
+            tabIndex={-1}
+            className="admin-scope bg-admin-surface rounded-admin-lg p-6 max-w-sm w-full shadow-admin-xl border border-admin-border-mid space-y-4"
+          >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 bg-danger-light rounded-full flex items-center justify-center flex-shrink-0 text-danger">
                 <AlertTriangle size={20} />
               </div>
               <div>
-                <h3 className="font-semibold text-admin-text text-admin-base">정말로 삭제하시겠습니까?</h3>
-                <p className="text-admin-xs text-admin-muted mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
+                <h3 id={confirmTitleId} className="font-semibold text-admin-text text-admin-base">정말로 삭제하시겠습니까?</h3>
+                <p id={confirmDescriptionId} className="text-admin-xs text-admin-muted mt-0.5">이 작업은 되돌릴 수 없습니다.</p>
               </div>
             </div>
-            <div className="bg-admin-surface-2 rounded-admin-sm px-3 py-2">
+            <div id={confirmTargetId} className="bg-admin-surface-2 rounded-admin-sm px-3 py-2">
               <p className="text-admin-xs text-admin-muted">삭제 대상</p>
               <p className="text-admin-sm font-mono text-admin-text-2 break-all mt-0.5">{customerId}</p>
             </div>
+            <p id={confirmStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              삭제 확인창이 열렸습니다. 취소 또는 삭제 확인을 선택하세요.
+            </p>
             <p className="text-admin-sm text-admin-muted">
               conversations, customers, bookings, booking_companions, agent_tasks 의 개인정보가 모두 익명화됩니다.
             </p>
             <div className="flex gap-2">
-              <Button variant="secondary" onClick={() => setShowConfirm(false)} className="flex-1">
+              <button
+                ref={cancelButtonRef}
+                type="button"
+                onClick={closeConfirmDialog}
+                className="inline-flex h-9 flex-1 items-center justify-center rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3.5 py-0 text-admin-base font-medium text-admin-text transition-colors duration-160 hover:border-admin-border-strong hover:bg-admin-surface-2 focus-visible:outline-none focus-visible:shadow-admin-focus"
+              >
                 취소
-              </Button>
+              </button>
               <Button variant="danger" onClick={handleConfirmDelete} className="flex-1">
                 삭제 확인
               </Button>

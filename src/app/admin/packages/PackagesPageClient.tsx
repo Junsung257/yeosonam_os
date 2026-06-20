@@ -358,13 +358,22 @@ function getPackageNextOperationLabel(pkg: Package, expired: boolean): string {
   return '수정';
 }
 
-function getPackageNextOperationReason(pkg: Package, expired: boolean): string {
+function getPackageMissingCoreFields(pkg: Package): string[] {
   const hasPrice = Boolean(pkg.price) || Boolean(pkg.price_tiers?.length);
-  const missingCoreFields = [
+  const days = (pkg as { itinerary_data?: { days?: unknown[] } }).itinerary_data?.days;
+  const hasItinerary = pkg.has_itinerary_data === true || (Array.isArray(days) && days.length > 0);
+
+  return [
     !pkg.destination ? '목적지' : null,
     !hasPrice ? '가격' : null,
     !pkg.product_summary && !pkg.product_highlights?.length ? '요약' : null,
+    !hasItinerary ? '일정' : null,
+    !pkg.airline ? '항공' : null,
   ].filter(Boolean) as string[];
+}
+
+function getPackageNextOperationReason(pkg: Package, expired: boolean): string {
+  const missingCoreFields = getPackageMissingCoreFields(pkg);
 
   if (expired) return '판매 기간이 만료되어 노출 전 기한 연장이 먼저 필요합니다.';
   if (pkg.status === 'pending_review') return '신규 등록 또는 자동 생성 상품이라 내용 검수가 우선입니다.';
@@ -378,6 +387,90 @@ function getPackageNextOperationReason(pkg: Package, expired: boolean): string {
   }
   if (isDeadlineSoon(pkg)) return '마감이 임박해 판매 상태와 잔여 가능일을 확인합니다.';
   return '상품 정보가 운영 기준을 유지하도록 최신 상태를 확인합니다.';
+}
+
+function getPackageActionImpactText(pkg: Package, expired: boolean): string {
+  if (expired) return '처리 영향: 판매 연장 후 고객 노출 가능 여부와 마감 안내를 다시 확인합니다.';
+  if (pkg.status === 'pending_review') return '처리 영향: 검수 완료 전까지 공개 노출과 상담 추천을 보류합니다.';
+  if (pkg.status === 'pending') return '처리 영향: 승인 또는 거부 결정이 공개 전환과 운영 큐 정리에 반영됩니다.';
+  if (pkg.status === 'approved') return '처리 영향: 발행 확인 후 공개 목록, 상세 CTA, 마케팅 자료에 고객이 접근합니다.';
+  if (isDeadlineSoon(pkg)) return '처리 영향: 마감 임박 상품은 잔여 좌석과 노출 중단 판단을 먼저 맞춥니다.';
+  return '처리 영향: 수정 내용이 가격, 일정, 이미지, 상담 문구 품질에 반영됩니다.';
+}
+
+function getPackageOperationRiskLabel(pkg: Package, expired: boolean): string {
+  if (expired) return '판매 기한 만료';
+  if (pkg.status === 'pending_review') return '고객 노출 전 검수';
+  if (pkg.status === 'pending') return '승인 판단 대기';
+  if (pkg.status === 'approved') return '채널 정리 누락';
+  if (isDeadlineSoon(pkg)) return '마감 노출 오류';
+  if (getPackageMissingCoreFields(pkg).length > 0) return '상세 전환 저하';
+  return '운영 품질 유지';
+}
+
+function buildPackageActionDecisionMetadata(
+  pkg: Package,
+  options: { action?: string; source?: string; expired?: boolean } = {},
+): Record<string, unknown> {
+  const expired = options.expired ?? isExpired(pkg);
+  const missingFields = getPackageMissingCoreFields(pkg);
+  const nextAction = getPackageNextOperationLabel(pkg, expired);
+  const nextActionReason = getPackageNextOperationReason(pkg, expired);
+  const impactSummary = getPackageActionImpactText(pkg, expired);
+  const hasPrice = Boolean(pkg.price) || Boolean(pkg.price_tiers?.length);
+  const days = (pkg as { itinerary_data?: { days?: unknown[] } }).itinerary_data?.days;
+  const hasItinerary = pkg.has_itinerary_data === true || (Array.isArray(days) && days.length > 0);
+
+  return {
+    packageId: pkg.id,
+    status: pkg.status,
+    destination: pkg.destination ?? null,
+    action_intent: options.action ?? nextAction,
+    source: options.source,
+    operation_risk: getPackageOperationRiskLabel(pkg, expired),
+    next_action: nextAction,
+    next_action_reason: nextActionReason,
+    impact_summary: impactSummary,
+    decision_summary: `${nextAction}: ${nextActionReason}`,
+    missing_fields: missingFields,
+    missing_field_count: missingFields.length,
+    ready_for_publish: pkg.status === 'approved' && missingFields.length === 0 && !expired,
+    has_price: hasPrice,
+    has_itinerary: hasItinerary,
+    has_deadline_risk: expired || isDeadlineSoon(pkg),
+    price_tier_count: pkg.price_tiers?.length ?? 0,
+  };
+}
+
+function buildBulkPackageActionDecisionMetadata(pkgs: Package[], action: string): Record<string, unknown> {
+  const statusCounts = pkgs.reduce<Record<string, number>>((acc, pkg) => {
+    acc[pkg.status] = (acc[pkg.status] ?? 0) + 1;
+    return acc;
+  }, {});
+  const missingFieldCount = pkgs.reduce((sum, pkg) => sum + getPackageMissingCoreFields(pkg).length, 0);
+  const deadlineRiskCount = pkgs.filter(pkg => isExpired(pkg) || isDeadlineSoon(pkg)).length;
+  const readyForPublishCount = pkgs.filter(pkg => {
+    const expired = isExpired(pkg);
+    return pkg.status === 'approved' && getPackageMissingCoreFields(pkg).length === 0 && !expired;
+  }).length;
+  const actionLabel = action === 'bulk_approve' ? '일괄 승인'
+    : action === 'bulk_archive' ? '일괄 아카이브'
+      : action === 'bulk_restore' ? '일괄 복원'
+        : '일괄 수정';
+
+  return {
+    selected_count: pkgs.length,
+    status_counts: statusCounts,
+    missing_field_count: missingFieldCount,
+    deadline_risk_count: deadlineRiskCount,
+    ready_for_publish_count: readyForPublishCount,
+    operation_risk: deadlineRiskCount > 0 ? '마감 노출 오류'
+      : missingFieldCount > 0 ? '상세 전환 저하'
+        : '운영 큐 정리',
+    next_action: actionLabel,
+    next_action_reason: `${pkgs.length}개 선택 상품의 상태와 누락 필드를 한 번에 정리합니다.`,
+    decision_summary: `${actionLabel}: ${pkgs.length}개 선택, 누락 필드 ${missingFieldCount}개, 마감 리스크 ${deadlineRiskCount}건`,
+  };
 }
 
 function getPackagePriceRangeLabel(minPrice?: number | null, maxPrice?: number | null): string {
@@ -405,11 +498,11 @@ function PackageOpsQueue({
   onQueueSelect: (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => void;
 }) {
   type QueueTone = 'amber' | 'blue' | 'emerald' | 'red';
-  const cards: Array<{ id: 'review' | 'copy' | 'publish' | 'deadline'; label: string; count: number; detail: string; target: string; tone: QueueTone }> = [
-    { id: 'review' as const, label: '검수', count: pendingCount, detail: '신규 등록 확인', target: '신규 등록 또는 검수 대기 상품만 보여줍니다.', tone: 'amber' },
-    { id: 'copy' as const, label: '수정', count: reviewCount + gapCount, detail: '카피/필드 보완', target: '카피나 필드 보완이 필요한 상품만 보여줍니다.', tone: 'blue' },
-    { id: 'publish' as const, label: '발행', count: readyCount, detail: '승인 상품 점검', target: '승인 후 고객 노출 전 점검이 필요한 상품만 보여줍니다.', tone: 'emerald' },
-    { id: 'deadline' as const, label: '마감 대응', count: deadlineCount, detail: 'D-3 이내 상품', target: '마감 임박으로 판매 상태 확인이 필요한 상품만 보여줍니다.', tone: 'red' },
+  const cards: Array<{ id: 'review' | 'copy' | 'publish' | 'deadline'; label: string; count: number; detail: string; target: string; reason: string; operationRisk: string; tone: QueueTone }> = [
+    { id: 'review' as const, label: '검수', count: pendingCount, detail: '신규 등록 확인', target: '신규 등록 또는 검수 대기 상품만 보여줍니다.', reason: '신규 상품은 고객 노출 전 핵심 정보 확인이 먼저입니다.', operationRisk: '고객 노출 전 검수', tone: 'amber' },
+    { id: 'copy' as const, label: '수정', count: reviewCount + gapCount, detail: '카피/필드 보완', target: '카피나 필드 보완이 필요한 상품만 보여줍니다.', reason: '누락 필드와 카피 품질이 상세 전환에 직접 영향을 줍니다.', operationRisk: '상세 전환 저하', tone: 'blue' },
+    { id: 'publish' as const, label: '발행', count: readyCount, detail: '승인 상품 점검', target: '승인 후 고객 노출 전 점검이 필요한 상품만 보여줍니다.', reason: '승인된 상품은 미리보기와 판매 채널 정리가 다음 단계입니다.', operationRisk: '채널 정리 누락', tone: 'emerald' },
+    { id: 'deadline' as const, label: '마감 대응', count: deadlineCount, detail: 'D-3 이내 상품', target: '마감 임박으로 판매 상태 확인이 필요한 상품만 보여줍니다.', reason: '마감 임박 상품은 예약 가능 상태와 노출 중단 판단이 급합니다.', operationRisk: '마감 노출 오류', tone: 'red' },
   ] as const;
   const total = cards.reduce((sum, card) => sum + card.count, 0);
   const activeCards = cards.filter(card => card.count > 0);
@@ -425,13 +518,13 @@ function PackageOpsQueue({
   const packageQueueSummaryId = 'admin-package-queue-summary';
   const packageQueueLeadId = 'admin-package-queue-lead';
   const selectedQueueSummary = selectedQueueCard
-    ? `현재 선택: ${selectedQueueCard.label} ${selectedQueueCard.count}건.`
+    ? `현재 선택: ${selectedQueueCard.label} ${selectedQueueCard.count}건. 운영 리스크: ${selectedQueueCard.operationRisk}. 이유: ${selectedQueueCard.reason}`
     : '큐를 선택하면 해당 상품만 필터링됩니다.';
   const packageQueueSummaryText = total > 0
-    ? `상품 액션 큐에 처리할 작업이 ${total}건 있습니다. 활성 큐 ${activeCards.length}/${cards.length}, 긴급 큐 ${urgentCards.length}개입니다. ${activeCards.map(card => `${card.label} ${card.count}건`).join(', ')}을 우선 확인하세요.`
+    ? `상품 액션 큐에 처리할 작업이 ${total}건 있습니다. 활성 큐 ${activeCards.length}/${cards.length}, 긴급 큐 ${urgentCards.length}개입니다. ${activeCards.map(card => `${card.label} ${card.count}건, 운영 리스크 ${card.operationRisk}, 이유 ${card.reason}`).join(', ')}을 우선 확인하세요.`
     : '상품 액션 큐에 대기 중인 작업이 없습니다. 각 큐에서 최신 상품 상태를 확인할 수 있습니다.';
   const packageQueueLeadText = priorityCard
-    ? `우선 처리: ${priorityCard.label} ${priorityCard.count}건. ${selectedQueueSummary}`
+    ? `우선 처리: ${priorityCard.label} ${priorityCard.count}건. 운영 리스크: ${priorityCard.operationRisk}. 이유: ${priorityCard.reason} ${selectedQueueSummary}`
     : '대기 중인 상품 작업이 없습니다.';
   const toneClass: Record<QueueTone, string> = {
     amber: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -506,7 +599,7 @@ function PackageOpsQueue({
               }`}
             >
               <span id={cardDescriptionId} className="sr-only">
-                {card.target} 현재 {card.count}건입니다.
+                {card.target} 현재 {card.count}건입니다. 운영 리스크는 {card.operationRisk}, 처리 이유는 {card.reason}입니다.
               </span>
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -514,6 +607,20 @@ function PackageOpsQueue({
                   <p className="mt-0.5 text-[11px] text-current/60">{card.detail}</p>
                 </div>
                 <span className="text-[24px] font-black leading-none tabular-nums">{card.count}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  data-testid="admin-package-queue-risk"
+                  className="inline-flex max-w-full rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black text-admin-text ring-1 ring-black/5"
+                >
+                  리스크: {card.operationRisk}
+                </span>
+                <span
+                  data-testid="admin-package-queue-reason"
+                  className="inline-flex max-w-full rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
+                >
+                  {card.reason}
+                </span>
               </div>
               <p className="mt-3 text-[11px] font-semibold text-current/70">{card.count > 0 ? `${card.label} 화면 보기` : '확인'}</p>
             </button>
@@ -648,15 +755,14 @@ const PackageRow = React.memo(function PackageRow({
         metadata: {
           surface: 'packages_row_action',
           action: action,
-          packageId: pkg.id,
-          status: pkg.status,
+          ...buildPackageActionDecisionMetadata(pkg, { action, source: action === 'more_menu_opened' ? 'row_primary_action' : undefined }),
           source: action === 'more_menu_opened' ? 'row_primary_action' : undefined,
         },
       });
     }
 
     onSetCopyDropdownId(willOpen ? pkg.id : null);
-  }, [copyDropdownId, onSetCopyDropdownId, pkg.id, pkg.status]);
+  }, [copyDropdownId, onSetCopyDropdownId, pkg]);
 
   const handleRowClick = () => {
     trackEngagement({
@@ -665,8 +771,10 @@ const PackageRow = React.memo(function PackageRow({
       metadata: {
         surface: 'packages_row_action',
         action: 'row_clicked',
-        packageId: pkg.id,
-        status: pkg.status,
+        ...buildPackageActionDecisionMetadata(pkg, {
+          action: pkg.status === 'pending_review' ? 'review_opened' : 'detail_opened',
+          source: 'row',
+        }),
         nextAction: pkg.status === 'pending_review' ? 'review_opened' : 'detail_opened',
       },
     });
@@ -683,12 +791,16 @@ const PackageRow = React.memo(function PackageRow({
 
   const coverage = getCoverage(pkg.id);
   const rowActionDescriptionId = `admin-package-row-actions-${pkg.id}`;
-  const rowActionStatusDescriptionId = `${rowActionDescriptionId} admin-package-bulk-status`;
+  const packageActionImpactId = `admin-package-row-action-impact-${pkg.id}`;
+  const rowActionStatusDescriptionId = `${rowActionDescriptionId} ${packageActionImpactId} admin-package-bulk-status`;
   const attractionPreview = (pkg.attraction_preview_names && pkg.attraction_preview_names.length > 0)
     ? pkg.attraction_preview_names
     : getAttractionPreviewNamesFromItinerary(pkg.itinerary_data, 3);
   const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
   const nextOperationReason = getPackageNextOperationReason(pkg, expired);
+  const packageActionImpactText = getPackageActionImpactText(pkg, expired);
+  const copyMenuDescriptionId = `admin-package-copy-menu-description-${pkg.id}`;
+  const copyMenuDecisionText = '채널별 복사 문구를 생성해 고객 안내, 광고, 상담 메시지에 바로 붙여넣을 수 있습니다.';
 
   return (
     <tr
@@ -940,8 +1052,16 @@ const PackageRow = React.memo(function PackageRow({
               {nextOperationReason}
             </p>
           </div>
+          <p
+            id={packageActionImpactId}
+            data-testid="admin-package-desktop-action-impact-summary"
+            aria-label={packageActionImpactText}
+            className="rounded-admin-sm border border-blue-100 bg-blue-50 px-2.5 py-1.5 text-[10px] font-black leading-snug text-blue-800"
+          >
+            {packageActionImpactText}
+          </p>
           <p id={rowActionDescriptionId} className="sr-only">
-            {pkg.title} 상품의 다음 운영 액션은 {nextOperationLabel}입니다. 근거는 {nextOperationReason}입니다. 검수, 수정, 발행, 더보기 순서로 처리할 수 있습니다.
+            {pkg.title} 상품의 다음 운영 액션은 {nextOperationLabel}입니다. 근거는 {nextOperationReason}입니다. {packageActionImpactText} 검수, 수정, 발행, 더보기 순서로 처리할 수 있습니다.
           </p>
           <div role="group" aria-label={`${pkg.title} 핵심 상품 관리 액션`} className="grid grid-cols-4 gap-1">
             <button
@@ -955,9 +1075,7 @@ const PackageRow = React.memo(function PackageRow({
                     metadata: {
                       surface: 'packages_row_action',
                       action: 'review_opened',
-                      packageId: pkg.id,
-                      status: pkg.status,
-                      source: 'row_primary_action',
+                      ...buildPackageActionDecisionMetadata(pkg, { action: 'review_opened', source: 'row_primary_action' }),
                     },
                   });
                   onSetApprovalTarget(pkg);
@@ -997,9 +1115,7 @@ const PackageRow = React.memo(function PackageRow({
                   metadata: {
                     surface: 'packages_row_action',
                     action: 'customer_preview_opened',
-                    packageId: pkg.id,
-                    status: pkg.status,
-                    source: 'row_primary_action',
+                    ...buildPackageActionDecisionMetadata(pkg, { action: 'customer_preview_opened', source: 'row_primary_action' }),
                   },
                 });
                 window.open(`/packages/${pkg.id}`, '_blank');
@@ -1046,9 +1162,7 @@ const PackageRow = React.memo(function PackageRow({
                   metadata: {
                     surface: 'packages_row_action',
                     action: 'customer_preview_opened',
-                    packageId: pkg.id,
-                    status: pkg.status,
-                    source: 'row_publish_group',
+                    ...buildPackageActionDecisionMetadata(pkg, { action: 'customer_preview_opened', source: 'row_publish_group' }),
                   },
                 });
                 window.open(`/packages/${pkg.id}`, '_blank');
@@ -1126,8 +1240,18 @@ const PackageRow = React.memo(function PackageRow({
                 id={`admin-package-copy-menu-${pkg.id}`}
                 role="menu"
                 data-testid="admin-package-copy-menu"
-                className="absolute right-0 top-full mt-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs z-50 py-1 min-w-[120px]"
+                aria-describedby={copyMenuDescriptionId}
+                className="absolute right-0 top-full mt-1 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs z-50 py-1 min-w-[180px]"
               >
+                <div
+                  id={copyMenuDescriptionId}
+                  role="none"
+                  data-testid="admin-package-copy-menu-decision-summary"
+                  className="mx-2 mb-1 rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1.5 text-[10px] font-semibold leading-snug text-admin-muted"
+                >
+                  <span className="font-black text-admin-text-2">복사 기준</span>
+                  <span className="ml-1">{copyMenuDecisionText}</span>
+                </div>
                 {PLATFORMS.map((p, index) => (
                   <button key={p.key} type="button"
                     ref={index === 0 ? firstCopyMenuItemRef : undefined}
@@ -1199,9 +1323,7 @@ const PackageRow = React.memo(function PackageRow({
                   metadata: {
                     surface: 'packages_row_action',
                     action: 'review_opened',
-                    packageId: pkg.id,
-                    status: pkg.status,
-                    source: 'row_button',
+                    ...buildPackageActionDecisionMetadata(pkg, { action: 'review_opened', source: 'row_button' }),
                   },
                 });
                 onSetApprovalTarget(pkg);
@@ -1394,9 +1516,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   const trackPackageActionCompleted = useCallback((
     action: string,
-    pkg: Pick<Package, 'id' | 'title' | 'status' | 'destination'>,
+    pkg: Pick<Package, 'id' | 'title' | 'status' | 'destination'> & Partial<Package>,
     metadata: Record<string, unknown> = {},
   ) => {
+    const decisionMetadata = 'created_at' in pkg
+      ? buildPackageActionDecisionMetadata(pkg as Package, { action, source: 'admin_packages' })
+      : { packageId: pkg.id };
+
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
       page_url: '/admin/packages',
@@ -1407,6 +1533,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         action: action,
         status: pkg.status,
         destination: pkg.destination ?? null,
+        ...decisionMetadata,
         ...metadata,
       },
     });
@@ -1594,7 +1721,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       });
       if (!res.ok) throw new Error((await res.json()).error ?? '알 수 없는 오류');
       showToast('success', '성공적으로 배포되었습니다!');
-      trackPackageActionCompleted('approval_approved', { id, title, status: 'active', destination: undefined }, { selectedCopyType: copyType });
+      const originalPkg = packages.find(p => p.id === id);
+      trackPackageActionCompleted(
+        'approval_approved',
+        originalPkg ? { ...originalPkg, title, status: 'active', product_summary: summary } : { id, title, status: 'active', destination: undefined },
+        { selectedCopyType: copyType },
+      );
     } catch (err) {
       // 3. 실패 시 롤백
       setPackages(prevPackages);
@@ -1615,7 +1747,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       if (!res.ok) throw new Error((await res.json()).error);
       showToast('success', '반려 처리되었습니다.');
       const pkg = packages.find(p => p.id === id);
-      trackPackageActionCompleted('approval_rejected', pkg ?? { id, title: id, status: 'draft', destination: undefined });
+      trackPackageActionCompleted(
+        'approval_rejected',
+        pkg ? { ...pkg, status: 'draft' } : { id, title: id, status: 'draft', destination: undefined },
+      );
     } catch (err) {
       setPackages(prevPackages);
       showToast('error', `반려 실패: ${err instanceof Error ? err.message : '다시 시도해주세요.'}`);
@@ -1722,8 +1857,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       metadata: {
         surface: 'packages_detail_drawer',
         action: 'detail_opened',
-        packageId: pkg.id,
-        status: pkg.status,
+        ...buildPackageActionDecisionMetadata(pkg, { action: 'detail_opened', source: 'detail_drawer' }),
       },
     });
     // lite 응답에는 itinerary_data가 없을 수 있으므로 상세 조회 후 열기
@@ -1794,7 +1928,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject' | 'delete' | 'extend') => {
     const actionLabel = action === 'approve' ? '승인' : action === 'reject' ? '비활성/거부' : action === 'delete' ? '삭제' : '판매 연장';
-    const packageTitle = packages.find(pkg => pkg.id === packageId)?.title ?? '선택한 상품';
+    const targetPackage = packages.find(pkg => pkg.id === packageId);
+    const packageTitle = targetPackage?.title ?? '선택한 상품';
     setActionLoading(packageId + action);
     setBulkStatusMessage(`${packageTitle} ${actionLabel} 처리 중입니다.`);
     try {
@@ -1819,7 +1954,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin/packages',
-          metadata: { surface: 'packages_row_action', action: action, packageId },
+          metadata: {
+            surface: 'packages_row_action',
+            action: action,
+            ...(targetPackage
+              ? buildPackageActionDecisionMetadata(targetPackage, { action, source: 'row_or_detail_action' })
+              : { packageId }),
+          },
         });
         setBulkStatusMessage(`${packageTitle} ${actionLabel}을 완료했습니다.`);
       } else {
@@ -1883,7 +2024,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const bulkArchivableCount = selectedPackagesForBulk.filter(pkg => pkg.status !== 'archived' && pkg.status !== 'INACTIVE').length;
   const bulkRestorableCount = selectedPackagesForBulk.filter(pkg => pkg.status === 'archived' || pkg.status === 'INACTIVE').length;
   const bulkActionSummaryId = 'admin-package-bulk-action-summary';
-  const bulkActionSummaryText = `선택 ${checkedIds.size}건. 승인 가능 ${bulkApprovableCount}건, 아카이브 가능 ${bulkArchivableCount}건, 복원 가능 ${bulkRestorableCount}건. 랜드사와 커미션은 선택 상품에 일괄 적용됩니다.`;
+  const bulkNextActionText = bulkRestorableCount > 0
+    ? `복원 대상 ${bulkRestorableCount}건을 먼저 확인하세요.`
+    : bulkApprovableCount > 0
+      ? `승인 가능 ${bulkApprovableCount}건은 일괄 승인 전 검수 상태를 확인하세요.`
+      : bulkArchivableCount > 0
+        ? `운영 종료 상품은 아카이브로 정리할 수 있습니다.`
+        : '랜드사와 커미션만 일괄 수정할 수 있습니다.';
+  const bulkActionSummaryText = `선택 ${checkedIds.size}건. 승인 가능 ${bulkApprovableCount}건, 아카이브 가능 ${bulkArchivableCount}건, 복원 가능 ${bulkRestorableCount}건. ${bulkNextActionText} 랜드사와 커미션은 선택 상품에 일괄 적용됩니다.`;
   const bulkActionDescriptionIds = `${bulkActionSummaryId} admin-package-bulk-status`;
 
   const handleHeaderSort = (field: string) => {
@@ -1944,6 +2092,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (checkedIds.size === 0) return;
     if (action === 'bulk_archive' && !confirm(`${checkedIds.size}개 상품을 아카이브하시겠습니까?`)) return;
     const count = checkedIds.size;
+    const selectedPackages = packages.filter(pkg => checkedIds.has(pkg.id));
     const actionLabel = action === 'bulk_approve' ? '승인' : action === 'bulk_archive' ? '아카이브' : '복원';
     setBulkStatusMessage(`${count}개 상품 ${actionLabel} 처리 중입니다.`);
     setBulkLoading(true);
@@ -1957,7 +2106,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin/packages',
-          metadata: { surface: 'packages_bulk_action', action: action, count: checkedIds.size },
+          metadata: {
+            surface: 'packages_bulk_action',
+            action: action,
+            count: checkedIds.size,
+            ...buildBulkPackageActionDecisionMetadata(selectedPackages, action),
+          },
         });
       }
       setBulkStatusMessage(res.ok ? `${count}개 상품 ${actionLabel}을 완료했습니다.` : `${count}개 상품 ${actionLabel}에 실패했습니다.`);
@@ -1978,6 +2132,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (bulkCommission !== '') fields.commission_rate = Number(bulkCommission);
     if (Object.keys(fields).length === 0) return;
     const count = checkedIds.size;
+    const selectedPackages = packages.filter(pkg => checkedIds.has(pkg.id));
     setBulkStatusMessage(`${count}개 상품 일괄 수정 처리 중입니다.`);
     setBulkLoading(true);
     try {
@@ -1987,11 +2142,17 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         body: JSON.stringify({ action: 'bulk_update', packageIds: Array.from(checkedIds), fields }),
       });
       if (res.ok) {
-        trackEngagement({
-          event_type: ANALYTICS_EVENTS.adminActionCompleted,
-          page_url: '/admin/packages',
-          metadata: { surface: 'packages_bulk_edit', action: 'bulk_update', count: checkedIds.size, fields: Object.keys(fields) },
-        });
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        page_url: '/admin/packages',
+        metadata: {
+          surface: 'packages_bulk_edit',
+          action: 'bulk_update',
+          count: checkedIds.size,
+          fields: Object.keys(fields),
+          ...buildBulkPackageActionDecisionMetadata(selectedPackages, 'bulk_update'),
+        },
+      });
       }
       setBulkStatusMessage(res.ok ? `${count}개 상품 일괄 수정을 완료했습니다.` : `${count}개 상품 일괄 수정에 실패했습니다.`);
       setBulkEditOpen(false);
@@ -2015,8 +2176,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       metadata: {
         surface: 'packages_row_action',
         action: 'edit_opened',
-        packageId: pkg.id,
-        status: pkg.status,
+        ...buildPackageActionDecisionMetadata(pkg, { action: 'edit_opened', source: 'row_primary_action' }),
       },
     });
     setEditPkg(pkg);
@@ -2052,7 +2212,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
         page_url: '/admin/packages',
-        metadata: { surface: 'packages_single_edit', action: 'update', packageId: editPkg.id, fields: Object.keys(updateData) },
+        metadata: {
+          surface: 'packages_single_edit',
+          action: 'update',
+          fields: Object.keys(updateData),
+          ...buildPackageActionDecisionMetadata(editPkg, { action: 'update', source: 'single_edit_modal' }),
+        },
       });
       setEditPkg(null);
       load();
@@ -2100,6 +2265,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       deadline: deadlineCount,
       gaps: gapCount,
     };
+    const queueDecisionContext = {
+      review: { operationRisk: '고객 노출 전 검수', reason: '신규 상품은 고객 노출 전 핵심 정보 확인이 먼저입니다.' },
+      copy: { operationRisk: '상세 전환 저하', reason: '누락 필드와 카피 품질이 상세 전환에 직접 영향을 줍니다.' },
+      publish: { operationRisk: '채널 정리 누락', reason: '승인된 상품은 미리보기와 판매 채널 정리가 다음 단계입니다.' },
+      deadline: { operationRisk: '마감 노출 오류', reason: '마감 임박 상품은 예약 가능 상태와 노출 중단 판단이 급합니다.' },
+      gaps: { operationRisk: '상세 전환 저하', reason: '누락 필드와 카피 품질이 상세 전환에 직접 영향을 줍니다.' },
+    };
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
       page_url: '/admin/packages',
@@ -2108,6 +2280,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         action: 'queue_opened',
         queue,
         count: queueCounts[queue],
+        operation_risk: queueDecisionContext[queue].operationRisk,
+        reason: queueDecisionContext[queue].reason,
         has_waiting_work: queueCounts[queue] > 0,
       },
     });
@@ -2252,6 +2426,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             >
               {bulkActionSummaryText}
             </p>
+            <p
+              data-testid="admin-package-bulk-next-action"
+              className="mt-1 text-[11px] font-black text-blue-800"
+            >
+              {bulkNextActionText}
+            </p>
           </div>
           <button
             type="button"
@@ -2367,18 +2547,34 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               const expired = isExpired(pkg);
               const nextOperationLabel = getPackageNextOperationLabel(pkg, expired);
               const mobilePackageActionReason = getPackageNextOperationReason(pkg, expired);
+              const mobilePackageStatusLabel = STATUS_LABEL[pkg.status] ?? pkg.status;
+              const mobilePackagePriceLabel = getPackagePriceRangeLabel(minPrice, maxPrice);
+              const mobilePackageOperationRiskLabel = expired
+                ? '기간 만료'
+                : !minPrice && !maxPrice
+                  ? '가격 누락'
+                  : pkg.status === 'pending_review'
+                    ? '검수 대기'
+                    : pkg.status === 'pending'
+                      ? '승인 대기'
+                      : pkg.status === 'approved'
+                        ? '발행 가능'
+                        : '상세 확인';
               const mobileCardSummaryId = `admin-package-mobile-card-summary-${pkg.id}`;
+              const mobileDecisionSummaryId = `admin-package-mobile-decision-summary-${pkg.id}`;
               const mobileActionDescriptionId = `admin-package-mobile-actions-${pkg.id}`;
-              const mobileActionStatusDescriptionId = `${mobileCardSummaryId} ${mobileActionDescriptionId} admin-package-bulk-status`;
+              const mobileCardDescriptionIds = `${mobileCardSummaryId} ${mobileDecisionSummaryId}`;
+              const mobileActionStatusDescriptionId = `${mobileCardDescriptionIds} ${mobileActionDescriptionId} admin-package-bulk-status`;
               const region = pkg.products?.departure_region
                 ?? (pkg.departure_airport ? pkg.departure_airport.replace(/\(.*\)/, '').trim() : undefined);
               const mobileCardSummaryText = [
                 `${pkg.title} 상품`,
-                `현재 상태는 ${STATUS_LABEL[pkg.status] ?? pkg.status}`,
-                `가격은 ${getPackagePriceRangeLabel(minPrice, maxPrice)}`,
+                `현재 상태는 ${mobilePackageStatusLabel}`,
+                `가격은 ${mobilePackagePriceLabel}`,
                 pkg.commission_rate != null ? `마진은 ${pkg.commission_rate}%` : null,
                 region ? `출발 지역은 ${region}` : null,
                 expired ? '판매 기간이 만료되었습니다' : dday ? `출발 또는 마감 상태는 ${dday.label}` : null,
+                `운영 사유는 ${mobilePackageOperationRiskLabel}`,
                 `다음 액션은 ${nextOperationLabel}`,
                 `다음 액션 근거는 ${mobilePackageActionReason}`,
               ].filter(Boolean).join(', ');
@@ -2387,7 +2583,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <article
                   key={`mobile-${pkg.id}`}
                   className={`p-4 ${expired ? 'opacity-65' : ''} ${checkedIds.has(pkg.id) ? 'bg-blue-50' : 'bg-white'}`}
-                  aria-describedby={mobileCardSummaryId}
+                  aria-describedby={mobileCardDescriptionIds}
                 >
                   <p id={mobileCardSummaryId} className="sr-only">
                     {mobileCardSummaryText}
@@ -2429,7 +2625,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-admin-sm font-black text-admin-text-2">
-                        {getPackagePriceRangeLabel(minPrice, maxPrice)}
+                        {mobilePackagePriceLabel}
                       </p>
                       {pkg.commission_rate != null && (
                         <p className={`mt-1 text-[11px] ${marginColor(pkg.commission_rate / 100)}`}>
@@ -2440,21 +2636,47 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   </div>
 
                   <div
+                    id={mobileDecisionSummaryId}
+                    data-testid="admin-package-mobile-decision-summary"
+                    aria-label={`상품 결정 요약: 상태 ${mobilePackageStatusLabel}, 가격 ${mobilePackagePriceLabel}, 다음 액션 ${nextOperationLabel}`}
+                    className="mt-3 grid grid-cols-3 gap-2 rounded-admin-sm border border-admin-border bg-white p-2"
+                  >
+                    <div className="rounded-admin-sm bg-admin-bg px-2 py-1.5">
+                      <p className="text-[10px] font-bold text-admin-muted-2">상태</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{mobilePackageStatusLabel}</p>
+                    </div>
+                    <div className="rounded-admin-sm bg-admin-bg px-2 py-1.5">
+                      <p className="text-[10px] font-bold text-admin-muted-2">가격</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{mobilePackagePriceLabel}</p>
+                    </div>
+                    <div className="rounded-admin-sm bg-admin-bg px-2 py-1.5">
+                      <p className="text-[10px] font-bold text-admin-muted-2">다음</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{nextOperationLabel}</p>
+                    </div>
+                  </div>
+
+                  <div
                     data-testid="admin-package-mobile-next-action-summary"
-                    aria-label={`다음 액션 ${nextOperationLabel}. ${mobilePackageActionReason}`}
+                    aria-label={`다음 액션 ${nextOperationLabel}. 운영 사유 ${mobilePackageOperationRiskLabel}. ${mobilePackageActionReason}`}
                     className="mt-3 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
                       <span className="text-[12px] font-black text-admin-text-2">{nextOperationLabel}</span>
                     </div>
+                    <p
+                      data-testid="admin-package-mobile-risk-summary"
+                      className="mt-1 inline-flex rounded-full bg-white px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
+                    >
+                      운영 사유: {mobilePackageOperationRiskLabel}
+                    </p>
                     <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
                       {mobilePackageActionReason}
                     </p>
                   </div>
 
                   <p id={mobileActionDescriptionId} className="sr-only">
-                    {pkg.title}의 다음 액션은 {nextOperationLabel}입니다. 근거는 {mobilePackageActionReason} 상태는 {STATUS_LABEL[pkg.status] ?? pkg.status}이며 모바일 버튼에서 검수, 수정, 발행 또는 더보기를 실행할 수 있습니다.
+                    {pkg.title}의 다음 액션은 {nextOperationLabel}입니다. 운영 사유는 {mobilePackageOperationRiskLabel}이고 근거는 {mobilePackageActionReason} 상태는 {STATUS_LABEL[pkg.status] ?? pkg.status}이며 모바일 버튼에서 검수, 수정, 발행 또는 더보기를 실행할 수 있습니다.
                   </p>
 
                   <div role="group" aria-label={`${pkg.title} 모바일 처리 작업`} aria-describedby={mobileActionStatusDescriptionId} className="mt-3 grid grid-cols-4 gap-2">
@@ -2485,9 +2707,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                             metadata: {
                               surface: 'packages_row_action',
                               action: 'review_opened',
-                              packageId: pkg.id,
-                              status: pkg.status,
-                              source: 'mobile_card',
+                              ...buildPackageActionDecisionMetadata(pkg, { action: 'review_opened', source: 'mobile_card' }),
                             },
                           });
                           setApprovalTarget(pkg);
@@ -2523,9 +2743,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                             metadata: {
                               surface: 'packages_row_action',
                               action: 'customer_preview_opened',
-                              packageId: pkg.id,
-                              status: pkg.status,
-                              source: 'mobile_card',
+                              ...buildPackageActionDecisionMetadata(pkg, { action: 'customer_preview_opened', source: 'mobile_card' }),
                             },
                           });
                           window.open(`/packages/${pkg.id}`, '_blank');
@@ -2577,7 +2795,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                         data-testid="admin-package-mobile-publish-action"
                         aria-label={`${pkg.title} 모바일 발행 미리보기`}
                         aria-describedby={mobileActionStatusDescriptionId}
-                        onClick={e => { e.stopPropagation(); window.open(`/packages/${pkg.id}`, '_blank'); }}
+                        onClick={e => {
+                          e.stopPropagation();
+                          trackEngagement({
+                            event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                            page_url: '/admin/packages',
+                            metadata: {
+                              surface: 'packages_row_action',
+                              action: 'customer_preview_opened',
+                              ...buildPackageActionDecisionMetadata(pkg, { action: 'customer_preview_opened', source: 'mobile_card_secondary' }),
+                            },
+                          });
+                          window.open(`/packages/${pkg.id}`, '_blank');
+                        }}
                         className="rounded-admin-sm border border-orange-300 px-2 py-2 text-[11px] font-bold text-orange-600"
                       >
                         발행
@@ -2896,6 +3126,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             aria-labelledby="packages-detail-panel-title"
             className="fixed inset-y-0 right-0 z-50 w-full max-w-2xl bg-white border-l border-admin-border-mid flex flex-col"
           >
+            {(() => {
+              const selectedExpired = isExpired(selected);
+              const selectedNextOperationLabel = getPackageNextOperationLabel(selected, selectedExpired);
+              const selectedNextOperationReason = getPackageNextOperationReason(selected, selectedExpired);
+              const selectedPackageStatusLabel = STATUS_LABEL[selected.status] ?? selected.status;
+              const selectedPackagePriceLabel = selected.price ? `${selected.price.toLocaleString()}원` : '가격 미정';
+              const detailActionSummaryId = `admin-package-detail-action-summary-${selected.id}`;
+              const detailActionSummaryText = `상세 결정 요약: 상태 ${selectedPackageStatusLabel}, 가격 ${selectedPackagePriceLabel}, 다음 액션 ${selectedNextOperationLabel}. 근거는 ${selectedNextOperationReason}`;
+              return (
+                <>
             <div className="p-6 border-b border-admin-border-mid flex items-start justify-between">
               <div>
                 <h2 id="packages-detail-panel-title" className="text-admin-lg font-bold text-admin-text-2">{selected.title}</h2>
@@ -3042,7 +3282,15 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               )}
             </div>
 
-            <div className="p-4 border-t border-admin-border-mid flex gap-2 justify-end flex-wrap">
+            <div className="p-4 border-t border-admin-border-mid">
+              <p
+                id={detailActionSummaryId}
+                data-testid="admin-package-detail-action-summary"
+                className="mb-3 rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2 text-admin-xs font-semibold text-admin-text-2"
+              >
+                {detailActionSummaryText}
+              </p>
+              <div className="flex gap-2 justify-end flex-wrap">
               <button
                 type="button"
                 onClick={() => handleSectionBackfill(false)}
@@ -3101,17 +3349,20 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               >A4 인쇄</a>
               <button
                 onClick={e => { setSelected(null); openSingleEdit(selected, e); }}
+                aria-describedby={detailActionSummaryId}
                 className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg"
               >수정</button>
               <button
                 onClick={() => handleAction(selected.id, 'delete')}
                 disabled={!!actionLoading}
+                aria-describedby={detailActionSummaryId}
                 className="px-3 py-1.5 text-red-500 border border-red-200 rounded-lg text-admin-sm hover:bg-red-50 disabled:opacity-50"
               >삭제</button>
               {isExpired(selected) && (
                 <button
                   onClick={() => handleAction(selected.id, 'extend')}
                   disabled={!!actionLoading}
+                  aria-describedby={detailActionSummaryId}
                   className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-admin-sm hover:bg-blue-700 disabled:opacity-50"
                 >판매 연장 (+30일)</button>
               )}
@@ -3120,11 +3371,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   <button
                     onClick={() => handleAction(selected.id, 'reject')}
                     disabled={!!actionLoading}
+                    aria-describedby={detailActionSummaryId}
                     className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg disabled:opacity-50"
                   >거부</button>
                   <button
                     onClick={() => handleAction(selected.id, 'approve')}
                     disabled={!!actionLoading}
+                    aria-describedby={detailActionSummaryId}
                     className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-admin-sm font-medium hover:bg-green-700 disabled:opacity-50"
                   >승인</button>
                 </>
@@ -3133,6 +3386,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <button
                   onClick={() => handleAction(selected.id, 'reject')}
                   disabled={!!actionLoading}
+                  aria-describedby={detailActionSummaryId}
                   className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 rounded-lg text-admin-sm hover:bg-admin-bg disabled:opacity-50"
                 >비활성화</button>
               )}
@@ -3140,10 +3394,15 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 <button
                   onClick={() => handleAction(selected.id, 'approve')}
                   disabled={!!actionLoading}
+                  aria-describedby={detailActionSummaryId}
                   className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-admin-sm font-medium hover:bg-green-700 disabled:opacity-50"
                 >다시 승인</button>
               )}
+              </div>
             </div>
+                </>
+              );
+            })()}
           </div>
         </>
       )}

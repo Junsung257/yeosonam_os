@@ -180,7 +180,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
     [checked],
   );
   const diff = txAmountAbs - bundledTotal;
-  const canSubmit = checked.size > 0 && Math.abs(diff) <= FEE_TOLERANCE && !submitting;
+  const canSubmit = Boolean(selectedOpId) && checked.size > 0 && Math.abs(diff) <= FEE_TOLERANCE && !submitting;
 
   const toggleBooking = useCallback(
     (b: UnsettledBooking) => {
@@ -241,6 +241,27 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
       : Math.abs(diff) <= 50000
         ? 'text-amber-600'
         : 'text-red-600';
+  const settlementDescriptionId = 'settlement-bundle-description';
+  const settlementDecisionSummaryId = 'settlement-bundle-decision-summary';
+  const settlementSubmitReadinessId = 'settlement-bundle-submit-readiness-summary';
+  const settlementStatusId = 'settlement-bundle-status';
+  const settlementDescriptionIds = `${settlementDescriptionId} ${settlementDecisionSummaryId} ${settlementSubmitReadinessId} ${settlementStatusId}`;
+  const selectedOperatorName = operators.find(o => o.id === selectedOpId)?.name ?? '랜드사 미선택';
+  const settlementDiffLabel = `${diff >= 0 ? '+' : ''}${fmtKRW(diff)}`;
+  const settlementDecisionSummaryText = checked.size > 0
+    ? `묶기 전 확인: ${selectedOperatorName}, 선택 예약 ${checked.size}건, 출금 ${fmtKRW(txAmountAbs)}, 묶음 합계 ${fmtKRW(bundledTotal)}, 차액 ${settlementDiffLabel}. 확정하면 선택 예약의 랜드사 정산으로 반영됩니다.`
+    : `묶기 전 확인: ${selectedOperatorName}, 아직 선택된 예약이 없습니다. 정산할 예약을 선택하면 합계와 차액을 확인할 수 있습니다.`;
+
+  const settlementSubmitChecklist = [
+    { label: '랜드사 선택', complete: Boolean(selectedOpId) },
+    { label: '예약 선택', complete: checked.size > 0 },
+    { label: '차액 허용범위', complete: Math.abs(diff) <= FEE_TOLERANCE },
+  ];
+  const settlementSubmitReadyCount = settlementSubmitChecklist.filter((item) => item.complete).length;
+  const settlementSubmitMissingLabels = settlementSubmitChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const settlementSubmitReadinessText = settlementSubmitMissingLabels.length > 0
+    ? `묶기 준비 ${settlementSubmitReadyCount}/${settlementSubmitChecklist.length}. 보완 필요: ${settlementSubmitMissingLabels.join(', ')}.`
+    : `묶기 준비 완료. ${selectedOperatorName} 정산 ${checked.size}건을 차액 ${settlementDiffLabel} 상태로 확정할 수 있습니다.`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -256,6 +277,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
         role="dialog"
         aria-modal="true"
         aria-labelledby="settlement-bundle-title"
+        aria-describedby={settlementDescriptionIds}
       >
         <div className="px-5 py-4 border-b border-admin-border-mid flex items-center justify-between">
           <div>
@@ -264,6 +286,9 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
               {transaction.is_refund ? '환불' : '출금'} {fmtKRW(txAmountAbs)} ·{' '}
               {transaction.counterparty_name ?? '거래처 미상'} ·{' '}
               {fmtDate(transaction.received_at)}
+            </p>
+            <p id={settlementDescriptionId} className="sr-only">
+              출금 거래를 선택한 랜드사의 미정산 예약과 묶습니다. 선택한 예약, 묶음 합계, 차액을 확인한 뒤 확정하세요.
             </p>
           </div>
           <button
@@ -392,8 +417,27 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
             aria-label="정산 묶음 메모"
           />
           {error && <div className="text-xs text-red-600 mb-2">{error}</div>}
+          <p
+            id={settlementDecisionSummaryId}
+            data-testid="settlement-bundle-decision-summary"
+            className="mb-2 rounded border border-admin-border-mid bg-white px-3 py-2 text-[11px] font-medium leading-5 text-admin-text-2"
+          >
+            {settlementDecisionSummaryText}
+          </p>
+          <p
+            id={settlementSubmitReadinessId}
+            data-testid="settlement-bundle-submit-readiness-summary"
+            aria-label={settlementSubmitReadinessText}
+            className={`mb-2 rounded border px-3 py-2 text-[11px] font-bold leading-5 ${
+              settlementSubmitMissingLabels.length > 0
+                ? 'border-amber-200 bg-amber-50 text-amber-800'
+                : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+            }`}
+          >
+            {settlementSubmitReadinessText}
+          </p>
           <div className="flex justify-between items-center">
-            <div className="text-[11px] text-admin-muted">
+            <div id={settlementStatusId} className="text-[11px] text-admin-muted" role="status" aria-live="polite">
               {Math.abs(diff) <= FEE_TOLERANCE
                 ? '✅ 합계 일치 — 묶기 가능'
                 : `허용 오차 ±${fmtKRW(FEE_TOLERANCE)} 초과`}
@@ -410,6 +454,7 @@ export default function SettlementBundleModal({ transaction, onClose, onSettled 
                 type="button"
                 onClick={handleSubmit}
                 disabled={!canSubmit}
+                aria-describedby={settlementDescriptionIds}
                 className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {submitting ? '묶는 중…' : '묶기'}

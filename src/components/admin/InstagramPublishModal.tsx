@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 interface Props {
   cardNewsId: string;
@@ -34,6 +34,64 @@ export default function InstagramPublishModal({
   });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const captionRef = useRef<HTMLTextAreaElement | null>(null);
+  const modalTitleId = 'instagram-publish-modal-title';
+  const modalDescriptionId = 'instagram-publish-modal-description';
+  const imageStatusId = 'instagram-publish-image-status';
+  const tabListId = 'instagram-publish-mode-tabs';
+  const captionHelpId = 'instagram-publish-caption-help';
+  const errorId = 'instagram-publish-error';
+
+  useEffect(() => {
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => {
+      captionRef.current?.focus();
+    }, 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.setTimeout(() => {
+        if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+      }, 0);
+    };
+  }, [onClose]);
 
   const imageCount = slideImageUrls?.length ?? 0;
   const imageCountValid = imageCount >= 2 && imageCount <= 10;
@@ -88,19 +146,33 @@ export default function InstagramPublishModal({
         aria-label="인스타그램 발행 모달 닫기"
       />
       <div className="fixed inset-0 z-[61] flex items-center justify-center p-4 pointer-events-none">
-        <div className="pointer-events-auto bg-white rounded-admin-md w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]">
+        <div
+          ref={dialogRef}
+          className="pointer-events-auto bg-white rounded-admin-md w-full max-w-lg shadow-2xl flex flex-col max-h-[90vh]"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={modalTitleId}
+          aria-describedby={`${modalDescriptionId} ${imageStatusId}`}
+        >
           {/* 헤더 */}
           <div className="px-5 py-4 border-b border-admin-border-mid flex items-center justify-between">
-            <h3 className="text-base font-bold text-admin-text">인스타그램 발행</h3>
+            <div>
+              <h3 id={modalTitleId} className="text-base font-bold text-admin-text">인스타그램 발행</h3>
+              <p id={modalDescriptionId} className="sr-only">
+                카드뉴스 슬라이드를 인스타그램에 즉시 발행하거나 예약 발행으로 저장합니다.
+              </p>
+            </div>
             <button
+              type="button"
               onClick={onClose}
               className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none"
+              aria-label="인스타그램 발행 모달 닫기"
             >×</button>
           </div>
 
           {/* 이미지 프리뷰 */}
           <div className="px-5 pt-4">
-            <div className="flex items-center gap-2 mb-3">
+            <div id={imageStatusId} className="flex items-center gap-2 mb-3">
               <span className="text-xs font-semibold text-admin-muted uppercase">슬라이드</span>
               <span className={`text-xs ${imageCountValid ? 'text-admin-muted' : 'text-red-600 font-semibold'}`}>
                 {imageCount}장
@@ -126,15 +198,19 @@ export default function InstagramPublishModal({
 
           {/* 탭 */}
           <div className="px-5 pt-4">
-            <div className="flex gap-1 bg-admin-surface-2 rounded-lg p-1">
+            <div id={tabListId} className="flex gap-1 bg-admin-surface-2 rounded-lg p-1" role="group" aria-label="인스타그램 발행 방식">
               <button
+                type="button"
                 onClick={() => setTab('now')}
+                aria-pressed={tab === 'now'}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
                   tab === 'now' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'
                 }`}
               >즉시 발행</button>
               <button
+                type="button"
                 onClick={() => setTab('scheduled')}
+                aria-pressed={tab === 'scheduled'}
                 className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
                   tab === 'scheduled' ? 'bg-white shadow-admin-xs text-admin-text-2' : 'text-admin-muted'
                 }`}
@@ -153,30 +229,38 @@ export default function InstagramPublishModal({
                   value={scheduledAt}
                   onChange={e => setScheduledAt(e.target.value)}
                   min={toLocalInput(new Date(Date.now() + 10 * 60 * 1000))}
+                  aria-describedby="instagram-scheduled-at-help"
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm"
                 />
-                <p className="text-[11px] text-admin-muted-2 mt-1">
+                <p id="instagram-scheduled-at-help" className="text-[11px] text-admin-muted-2 mt-1">
                   크론이 15분마다 확인해 도래 후 보통 15분 이내 발행됩니다. 실 발행 시각 오차 ±15분.
                 </p>
               </div>
             )}
 
             <div>
-              <label className="text-xs font-semibold text-admin-muted uppercase block mb-1">
+              <label htmlFor="instagram-caption" className="text-xs font-semibold text-admin-muted uppercase block mb-1">
                 캡션 <span className={`ml-1 ${captionCount > captionLimit ? 'text-red-600' : 'text-admin-muted-2'}`}>
                   {captionCount}/{captionLimit}
                 </span>
               </label>
               <textarea
+                id="instagram-caption"
+                ref={captionRef}
                 value={caption}
                 onChange={e => setCaption(e.target.value)}
                 placeholder="인스타 피드에 표시될 캡션 + 해시태그"
+                aria-describedby={error ? `${captionHelpId} ${errorId}` : captionHelpId}
+                aria-invalid={captionCount > captionLimit}
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-sm h-48 resize-none focus:ring-1 focus:ring-[#005d90]"
               />
+              <p id={captionHelpId} className="sr-only">
+                인스타그램 캡션은 최대 2200자까지 입력할 수 있습니다.
+              </p>
             </div>
 
             {error && (
-              <div className="px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+              <div id={errorId} role="alert" className="px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
                 {error}
               </div>
             )}
@@ -185,12 +269,15 @@ export default function InstagramPublishModal({
           {/* 하단 버튼 */}
           <div className="px-5 py-4 border-t border-admin-border-mid flex gap-3">
             <button
+              type="button"
               onClick={onClose}
               className="flex-1 border border-admin-border-mid text-sm text-admin-muted py-2.5 rounded-lg hover:bg-admin-bg"
             >취소</button>
             <button
+              type="button"
               onClick={handleSubmit}
               disabled={submitting || !imageCountValid || !caption.trim() || captionCount > captionLimit}
+              aria-busy={submitting}
               className="flex-1 bg-blue-600 text-white text-sm font-medium py-2.5 rounded-lg hover:bg-blue-900 disabled:opacity-50"
             >
               {submitting

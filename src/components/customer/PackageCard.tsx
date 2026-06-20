@@ -177,6 +177,7 @@ export default function PackageCard({
   const hasComparisonSignal = Boolean(comparisonLabel || comparisonSummary);
   const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
   const reasonPanelId = `package-card-reasons-${pkg.id}`;
+  const decisionSummaryId = `package-card-decision-summary-${pkg.id}`;
 
   useEffect(() => {
     if (!isRecommended && !hasComparisonSignal) return;
@@ -250,6 +251,7 @@ export default function PackageCard({
         onClick={handleClick}
         data-testid="package-card-link"
         aria-label={`${title} 상세 보기`}
+        aria-describedby={decisionSummaryId}
         className="block card-touch w-full min-w-0 max-w-full"
       >
         <div className="flex md:flex-col gap-3 md:gap-0 py-4 md:py-0 border-b md:border-b-0 border-admin-border last:border-b-0 md:bg-white md:rounded-[16px] md:shadow-card md:overflow-hidden md:hover:shadow-card-hover md:transition-shadow w-full min-w-0 max-w-full">
@@ -273,6 +275,7 @@ export default function PackageCard({
             comparisonGroupSize={comparisonGroupSize}
             hotelGradeLabel={hotelGradeLabel}
             catalogGroupCount={catalogGroupCount}
+            decisionSummaryId={decisionSummaryId}
           />
         </div>
       </Link>
@@ -295,6 +298,7 @@ export default function PackageCard({
       onClick={handleClick}
       data-testid="package-card-link"
       aria-label={`${title} 상세 보기`}
+      aria-describedby={decisionSummaryId}
       className="group block bg-white rounded-[16px] overflow-hidden shadow-card md:hover:shadow-card-hover md:hover:-translate-y-1 transition-all duration-200 card-touch"
     >
       <CardImage
@@ -317,6 +321,7 @@ export default function PackageCard({
         comparisonGroupSize={comparisonGroupSize}
         hotelGradeLabel={hotelGradeLabel}
         catalogGroupCount={catalogGroupCount}
+        decisionSummaryId={decisionSummaryId}
       />
     </Link>
     <RecommendationReasonOverlay
@@ -458,7 +463,7 @@ function RecommendationReasonOverlay({
 function CardBody({
   pkg, title, airlineName, duration, nextDate, minPrice, compact = false,
   rankBadge, primaryReason, lossAversionText, comparisonLabel, comparisonSummary, comparisonReasons,
-  comparisonRank, comparisonGroupSize, hotelGradeLabel, catalogGroupCount,
+  comparisonRank, comparisonGroupSize, hotelGradeLabel, catalogGroupCount, decisionSummaryId,
 }: {
   pkg: PackageCardData; title: string; airlineName: string | null;
   duration: string | null; nextDate: string | null; minPrice: number;
@@ -471,9 +476,11 @@ function CardBody({
   comparisonGroupSize?: number | null;
   hotelGradeLabel?: string | null;
   catalogGroupCount?: number;
+  decisionSummaryId: string;
 }) {
   const hasCatalogGroup = (catalogGroupCount ?? 0) >= 2;
   const hasReviews = pkg.avg_rating != null && pkg.review_count != null && pkg.review_count > 0;
+  const hasComparisonSignal = Boolean(comparisonLabel || comparisonSummary);
   const showComparisonTrust = !hasReviews && Boolean(comparisonLabel || comparisonSummary);
   const safeComparisonReasons = (comparisonReasons ?? []).slice(0, 3);
   const availableSeats = Math.max(0, (pkg.seats_held ?? 0) - (pkg.seats_confirmed ?? 0));
@@ -487,6 +494,24 @@ function CardBody({
   const proofSummaryText = proofItems.length > 0
     ? `검증 근거: ${proofItems.join(', ')}`
     : '검증 근거: 상세에서 출발일과 포함 조건 확인';
+  const priceDecisionLabel = minPrice > 0 ? `${minPrice.toLocaleString('ko-KR')}원~` : '가격 문의';
+  const departureDecisionLabel = nextDate ?? '출발일 확인';
+  const cardNextActionLabel =
+    minPrice <= 0 ? '가격 상담'
+    : hasComparisonSignal ? '비교 후 상담'
+    : nextDate ? '일정 확인'
+    : '포함 조건 확인';
+  const cardNextActionReason =
+    minPrice <= 0 ? '가격이 확정되지 않아 상담으로 조건 확인이 먼저입니다.'
+    : hasComparisonSignal ? '비슷한 조건의 상품이 있어 비교 후 상담하면 선택이 쉬워집니다.'
+    : nextDate ? '출발 가능일이 있어 일정과 포함 조건을 바로 확인할 수 있습니다.'
+    : '출발일 정보가 부족해 상세 포함 조건 확인이 먼저입니다.';
+  const cardDecisionItems = [
+    { label: '가격', value: priceDecisionLabel },
+    { label: '출발', value: departureDecisionLabel },
+    { label: '다음', value: cardNextActionLabel },
+  ];
+  const cardDecisionSummaryText = `${title} 카드 판단 요약: 가격 ${priceDecisionLabel}, 출발 ${departureDecisionLabel}, 다음 액션 ${cardNextActionLabel}. 이유: ${cardNextActionReason} ${proofSummaryText}`;
   return (
     <div className={`flex-1 min-w-0 ${compact ? 'p-3 md:p-5' : 'p-4 md:p-5'}`}>
       {/* 목적지 + 일정 메타 */}
@@ -639,6 +664,28 @@ function CardBody({
             상세 확인
           </span>
         )}
+      </div>
+
+      <div
+        id={decisionSummaryId}
+        data-testid="package-card-decision-summary"
+        aria-label={cardDecisionSummaryText}
+        className="mt-2 rounded-[12px] border border-border-subtle bg-bg-section p-1.5"
+      >
+        <div className="grid grid-cols-3 gap-1.5">
+          {cardDecisionItems.map((item) => (
+            <span key={`${item.label}-${item.value}`} className="min-w-0 rounded-[10px] bg-white px-2 py-1">
+              <span className="block text-[10px] font-bold text-text-tertiary">{item.label}</span>
+              <span className="mt-0.5 block truncate text-[11px] font-black text-text-primary">{item.value}</span>
+            </span>
+          ))}
+        </div>
+        <p
+          data-testid="package-card-next-action-reason"
+          className="mt-1.5 rounded-[10px] bg-white px-2 py-1 text-[10px] font-bold leading-4 text-text-secondary"
+        >
+          {cardNextActionReason}
+        </p>
       </div>
     </div>
   );

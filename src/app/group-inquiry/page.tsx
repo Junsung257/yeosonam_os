@@ -397,6 +397,14 @@ export default function GroupInquiryPage() {
   const submitReadinessSummaryText = submitMissingLabels.length > 0
     ? `제출 준비 ${submitReadyCount}/${submitTotalCount}. 보완 필요: ${submitMissingLabels.join(', ')}.`
     : `제출 준비 ${submitReadyCount}/${submitTotalCount}. 바로 견적 요청을 보낼 수 있습니다.`;
+  const stickyNextActionId = 'group-inquiry-sticky-next-action';
+  const stickyNextActionText = loading
+    ? 'AI가 입력한 조건을 정리하고 있습니다.'
+    : rfqReadinessMissingLabels.length > 0
+      ? `다음으로 ${rfqReadinessMissingLabels[0]} 조건을 알려주세요.`
+      : requiredReady
+        ? '필수 조건이 준비되었습니다. 추가 요청사항을 남기거나 연락처 입력으로 넘어갈 수 있습니다.'
+        : '목적지, 인원, 예산 중 아는 내용부터 알려주세요.';
   const stickyHandoffItems = [
     { label: '목적', value: selectedIntent?.label },
     { label: '지역', value: getSummaryValue(extractedSummary, 'destination') },
@@ -407,6 +415,7 @@ export default function GroupInquiryPage() {
   const rfqContactHelpId = 'group-inquiry-rfq-contact-help';
   const rfqSubmitDescriptionId = 'group-inquiry-rfq-submit-description';
   const submitReadinessSummaryId = 'group-inquiry-submit-readiness-summary';
+  const submitDecisionSummaryId = 'group-inquiry-submit-decision-summary';
   const handoffContextDescriptionId = 'group-inquiry-handoff-context-description';
   const handoffReadinessSummaryId = 'group-inquiry-handoff-readiness-summary';
   const intentChipGroupDescriptionId = 'group-inquiry-intent-chip-group-description';
@@ -423,6 +432,35 @@ export default function GroupInquiryPage() {
   const rfqConditionSummaryText = FIELD_GROUPS
     .map((field) => `${field.label} ${getSummaryValue(extractedSummary, field.key)}`)
     .join(', ');
+  const submitDecisionItems = [
+    { label: '상품', value: selectedProducts.length > 0 ? `${selectedProducts.length}개` : GROUP_INQUIRY_PRODUCT_LABEL },
+    { label: '목적지', value: getSummaryValue(extractedSummary, 'destination') },
+    { label: '예산', value: getSummaryValue(extractedSummary, 'budget') },
+  ];
+  const selectedProductsPreviewText = selectedProducts.length > 0
+    ? `${selectedProducts.slice(0, 3).join(', ')}${selectedProducts.length > 3 ? ` 외 ${selectedProducts.length - 3}개` : ''}`
+    : GROUP_INQUIRY_PRODUCT_LABEL;
+  const submitHandoffDecisionText = selectedProducts.length > 0
+    ? `연결 상품: ${selectedProductsPreviewText}. 상담원이 이 후보를 기준으로 단체 가능 여부와 추가 옵션을 확인합니다.`
+    : `연결 상품은 ${GROUP_INQUIRY_PRODUCT_LABEL}로 접수되며, 상담원이 조건에 맞는 후보를 찾아 안내합니다.`;
+  const submitDecisionSummaryText = `최종 제출 요약: ${submitDecisionItems.map((item) => `${item.label} ${item.value}`).join(', ')}. ${submitHandoffDecisionText} ${submitReadinessSummaryText}`;
+  const submitHandoffPreviewText = `상담 전달 미리보기: ${handoffContextSummaryText} 정리 조건은 ${rfqConditionSummaryText}입니다. 연락처 이름 ${contactName.trim() ? '입력됨' : '미입력'}, 전화번호 ${contactPhone.trim() ? '입력됨' : '미입력'}, 개인정보 동의 ${privacyConsent ? '완료' : '미완료'}.`;
+  const groupInquiryDecisionMetadata = {
+    handoff_source: handoffSource,
+    selected_intent_label: selectedIntent?.label ?? null,
+    rfq_ready_count: rfqReadinessReadyCount,
+    contact_ready_count: contactReadyCount,
+    ready_count: submitReadyCount,
+    missing_fields: submitMissingLabels,
+    decision_summary: submitDecisionSummaryText,
+    handoff_decision: submitHandoffDecisionText,
+    handoff_preview: submitHandoffPreviewText,
+    next_action: stickyNextActionText,
+    condition_summary: rfqConditionSummaryText,
+    has_contact_name: contactName.trim().length > 0,
+    has_contact_phone: contactPhone.trim().length > 0,
+    privacy_consent: privacyConsent,
+  };
   const intentChipStatusText = loading
     ? 'AI가 선택한 빠른 시작 조건을 정리하고 있습니다.'
     : selectedIntent
@@ -443,6 +481,7 @@ export default function GroupInquiryPage() {
     handoffReadinessSummaryId,
     rfqConditionSummaryId,
     submitReadinessSummaryId,
+    submitDecisionSummaryId,
     rfqSubmitDescriptionId,
     contactErrors.submit ? 'group-inquiry-submit-error' : null,
     contactErrors.summary ? 'group-inquiry-summary-error' : null,
@@ -513,7 +552,13 @@ export default function GroupInquiryPage() {
           destination: nextState.extracted.destination ?? null,
           party_type: chip?.partyType ?? selectedIntent?.partyType ?? null,
           selected_products: selectedProducts.length > 0 ? selectedProducts : null,
+          ready_count: submitReadyCount,
+          missing_fields: submitMissingLabels,
+          decision_summary: submitDecisionSummaryText,
+          handoff_preview: submitHandoffPreviewText,
+          next_action: stickyNextActionText,
           metadata: {
+            ...groupInquiryDecisionMetadata,
             source: 'group_inquiry_ai_ready',
             handoff_source: handoffSource,
             collected_fields: FIELD_GROUPS.filter((field) => field.keys.some((key) => hasValue(nextState.extracted[key]))).map((field) => field.key),
@@ -627,18 +672,23 @@ export default function GroupInquiryPage() {
         page_url: window.location.pathname,
         intent: selectedIntent?.intent ?? null,
         budget: getSummaryValue(extractedSummary, 'budget'),
-        destination: extractedSummary.destination ?? null,
-        party_type: selectedIntent?.partyType ?? null,
-        selected_products: rfqSelectedProducts,
-        metadata: {
-          source: 'group_inquiry_rfq_submit',
-          outcome: 'rfq_created',
+      destination: extractedSummary.destination ?? null,
+      party_type: selectedIntent?.partyType ?? null,
+      selected_products: rfqSelectedProducts,
+      ready_count: submitReadyCount,
+      missing_fields: submitMissingLabels,
+      decision_summary: submitDecisionSummaryText,
+      handoff_preview: submitHandoffPreviewText,
+      next_action: stickyNextActionText,
+      metadata: {
+        source: 'group_inquiry_rfq_submit',
+        outcome: 'rfq_created',
           rfq_id: rfqId,
-          handoff_source: handoffSource,
           adult_count: extractedSummary.adult_count ?? null,
           child_count: extractedSummary.child_count ?? null,
           budget_per_person: extractedSummary.budget_per_person ?? null,
           total_budget: extractedSummary.total_budget ?? null,
+          ...groupInquiryDecisionMetadata,
         },
       });
 
@@ -668,7 +718,15 @@ export default function GroupInquiryPage() {
       destination: extractedSummary.destination ?? null,
       party_type: selectedIntent?.partyType ?? null,
       selected_products: kakaoSelectedProducts,
-      metadata: { source, handoff_source: handoffSource },
+      ready_count: submitReadyCount,
+      missing_fields: submitMissingLabels,
+      decision_summary: submitDecisionSummaryText,
+      handoff_preview: submitHandoffPreviewText,
+      next_action: stickyNextActionText,
+      metadata: {
+        source,
+        ...groupInquiryDecisionMetadata,
+      },
     });
 
     try {
@@ -1140,6 +1198,25 @@ export default function GroupInquiryPage() {
                     조건과 연락처가 준비되어 바로 견적 요청을 보낼 수 있습니다.
                   </p>
                 )}
+                <div
+                  id={submitDecisionSummaryId}
+                  data-testid="group-inquiry-submit-decision-summary"
+                  aria-label={submitDecisionSummaryText}
+                  className="mt-3 grid grid-cols-3 gap-2 rounded-lg border border-[#E5E7EB] bg-white p-2"
+                >
+                  {submitDecisionItems.map((item) => (
+                    <div key={`${item.label}-${item.value}`} className="min-w-0 rounded-md bg-[#F8FAFC] px-2 py-1.5">
+                      <p className="text-[10px] font-extrabold text-gray-500">{item.label}</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-gray-950">{item.value}</p>
+                    </div>
+                  ))}
+                  <p
+                    data-testid="group-inquiry-submit-handoff-decision"
+                    className="col-span-3 rounded-md bg-blue-50 px-2.5 py-2 text-xs font-bold leading-relaxed text-blue-800"
+                  >
+                    {submitHandoffDecisionText}
+                  </p>
+                </div>
               </div>
 
               {contactErrors.submit && (
@@ -1202,7 +1279,7 @@ export default function GroupInquiryPage() {
               <div
                 className="mb-2 flex items-center gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-[#F8FAFC] px-2.5 py-2 no-scrollbar"
                 aria-label="상담 전달 조건"
-                aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId}`}
+                aria-describedby={`${handoffContextDescriptionId} ${handoffReadinessSummaryId} ${stickyNextActionId}`}
                 data-testid="group-inquiry-sticky-handoff-summary"
               >
                 <span
@@ -1222,6 +1299,13 @@ export default function GroupInquiryPage() {
                 ))}
               </div>
             )}
+            <p
+              id={stickyNextActionId}
+              data-testid="group-inquiry-sticky-next-action"
+              className="mb-2 rounded-2xl border border-brand/15 bg-brand-light px-3 py-2 text-xs font-extrabold leading-5 text-brand"
+            >
+              {stickyNextActionText}
+            </p>
             <label htmlFor="group-inquiry-message" className="sr-only">
               단체여행 견적 문의 메시지
             </label>
@@ -1237,7 +1321,7 @@ export default function GroupInquiryPage() {
                 onKeyDown={handleKeyDown}
                 disabled={loading}
                 aria-invalid={Boolean(inputError)}
-                aria-describedby={inputError ? `${handoffContextDescriptionId} group-inquiry-message-error` : `${handoffContextDescriptionId} group-inquiry-message-help`}
+                aria-describedby={inputError ? `${handoffContextDescriptionId} ${stickyNextActionId} group-inquiry-message-error` : `${handoffContextDescriptionId} ${stickyNextActionId} group-inquiry-message-help`}
                 placeholder="예: 부산 출발, 성인 20명, 1인 100만원대, 베트남 다낭"
                 rows={2}
                 className="min-h-14 flex-1 resize-none rounded-lg border border-[#E5E7EB] px-4 py-3 text-sm leading-relaxed outline-none focus:border-brand focus:ring-2 focus:ring-brand/20 disabled:opacity-50"
@@ -1246,7 +1330,7 @@ export default function GroupInquiryPage() {
                 type="submit"
                 disabled={loading}
                 aria-busy={loading}
-                aria-describedby={loading ? `${handoffContextDescriptionId} group-inquiry-message-help group-inquiry-status` : `${handoffContextDescriptionId} group-inquiry-message-help`}
+                aria-describedby={loading ? `${handoffContextDescriptionId} ${stickyNextActionId} group-inquiry-message-help group-inquiry-status` : `${handoffContextDescriptionId} ${stickyNextActionId} group-inquiry-message-help`}
                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-brand text-white hover:bg-[#1B64DA] disabled:opacity-50"
                 aria-label="메시지 보내기"
               >

@@ -43,20 +43,60 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
   const [copied, setCopied]       = useState(false);
   const [showQr, setShowQr]       = useState(false);
   const qrRef = useRef<HTMLDivElement>(null);
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const drawerTitleId = 'campaign-link-builder-title';
+  const drawerDescriptionId = 'campaign-link-builder-description';
 
-  // ESC 닫기
+  // Dialog keyboard and page lock
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, [open, onClose]);
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      drawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
 
-  // Body scroll lock
-  useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', h);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', h);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [open, onClose]);
 
   // 최종 URL 실시간 생성
   const finalUrl = (() => {
@@ -125,22 +165,29 @@ export default function CampaignLinkBuilder({ open, onClose }: Props) {
 
       {/* 우측 사이드 드로어 */}
       <aside
+        ref={drawerRef}
         className={`fixed inset-y-0 right-0 z-50 flex flex-col bg-white shadow-2xl
           w-full max-w-[540px] transition-transform duration-300 ease-out
           ${open ? 'translate-x-0' : 'translate-x-full'}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={drawerTitleId}
+        aria-describedby={drawerDescriptionId}
       >
         {/* ── 헤더 ── */}
         <div className="flex items-center justify-between px-7 py-5 border-b border-admin-border shrink-0">
           <div>
-            <h2 className="text-xl font-bold text-admin-text flex items-center gap-2">
+            <h2 id={drawerTitleId} className="text-xl font-bold text-admin-text flex items-center gap-2">
               <Link2 className="w-5 h-5 text-blue-600" />
               캠페인 링크 빌더
             </h2>
-            <p className="text-sm text-admin-muted mt-0.5">3초 만에 UTM 링크 & QR 코드 생성</p>
+            <p id={drawerDescriptionId} className="text-sm text-admin-muted mt-0.5">3초 만에 UTM 링크 & QR 코드 생성</p>
           </div>
           <button
+            ref={closeButtonRef}
             onClick={onClose}
             className="p-2 rounded-lg hover:bg-admin-surface-2 transition text-admin-muted-2 hover:text-admin-text-2"
+            aria-label="캠페인 링크 빌더 닫기"
           >
             <X size={20} />
           </button>

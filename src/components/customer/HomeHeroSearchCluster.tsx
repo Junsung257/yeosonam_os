@@ -218,8 +218,10 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const groupInquiryActionId = 'home-hero-group-inquiry-action';
   const groupInquirySummaryId = 'home-hero-group-inquiry-summary';
   const groupInquiryReadinessId = 'home-hero-group-inquiry-readiness';
+  const groupInquiryHandoffSummaryId = 'home-hero-group-inquiry-handoff-summary';
+  const groupInquiryNextStepId = 'home-hero-group-inquiry-next-step';
   const packageSearchDescriptionIds = `${packageSearchActionId} ${packageSearchSummaryId}`;
-  const groupInquiryDescriptionIds = `${groupInquiryActionId} ${groupInquirySummaryId} ${groupInquiryReadinessId}`;
+  const groupInquiryDescriptionIds = `${groupInquiryActionId} ${groupInquirySummaryId} ${groupInquiryReadinessId} ${groupInquiryHandoffSummaryId} ${groupInquiryNextStepId}`;
   const packageSearchSummary = useMemo(() => {
     const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '목적지 미정';
     const when = whenDisplayLabel || (monthParam ? '선택한 시기' : '일정 미정');
@@ -245,6 +247,21 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
   const groupInquiryReadinessText = groupInquiryMissingLabels.length > 0
     ? `단체 견적 전달 준비 ${groupInquiryReadyCount}/${groupInquiryReadinessChecklist.length}. 보완하면 좋은 조건: ${groupInquiryMissingLabels.join(', ')}.`
     : `단체 견적 전달 준비 ${groupInquiryReadyCount}/${groupInquiryReadinessChecklist.length}. 바로 견적 문의로 넘길 수 있습니다.`;
+  const groupInquiryNextStepText = groupInquiryMissingLabels.length > 0
+    ? `다음 입력: ${groupInquiryMissingLabels[0]}을(를) 정하면 견적 문의가 더 정확해집니다.`
+    : '다음 행동: 단체 견적 버튼으로 현재 조건을 그대로 넘길 수 있습니다.';
+  const groupInquiryHandoffItems = useMemo(() => {
+    const destination = whereMode === 'city' ? whereCity : whereMode === 'region' ? whereRegion : '';
+    return [
+      { label: '출발지', value: hubSlotLabel(hub) },
+      whenDisplayLabel || monthParam ? { label: '일정', value: whenDisplayLabel || '선택한 시기' } : null,
+      destination ? { label: '목적지', value: destination } : null,
+      budgetPreset !== 'any' ? { label: '예산', value: budgetLabel } : null,
+    ].filter((item): item is { label: string; value: string } => Boolean(item));
+  }, [budgetLabel, budgetPreset, hub, monthParam, whenDisplayLabel, whereCity, whereMode, whereRegion]);
+  const groupInquiryHandoffSummaryText = groupInquiryHandoffItems.length > 0
+    ? `견적 문의 전달 조건: ${groupInquiryHandoffItems.map((item) => `${item.label} ${item.value}`).join(', ')}.`
+    : '견적 문의 전달 조건은 출발지부터 정리됩니다.';
 
   useEffect(() => {
     if (step === null) return;
@@ -387,6 +404,12 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
         <p id={groupInquiryReadinessId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
           {groupInquiryReadinessText}
         </p>
+        <p id={groupInquiryHandoffSummaryId} className="sr-only">
+          {groupInquiryHandoffSummaryText}
+        </p>
+        <p id={groupInquiryNextStepId} className="sr-only">
+          {groupInquiryNextStepText}
+        </p>
         <button
           type="button"
           onClick={() => setExpanded(true)}
@@ -435,6 +458,26 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
             {groupInquiryMissingLabels.length > 0 ? `보완: ${groupInquiryMissingLabels.join(', ')}` : '바로 문의 가능'}
           </span>
         </div>
+        <p
+          data-testid="home-hero-group-inquiry-next-step"
+          aria-label={groupInquiryNextStepText}
+          className="mx-auto max-w-[min(100%,28rem)] rounded-full bg-blue-50 px-3 py-1.5 text-center text-[11px] font-bold text-blue-700"
+        >
+          {groupInquiryNextStepText}
+        </p>
+        <div
+          data-testid="home-hero-group-inquiry-handoff-summary"
+          aria-label={groupInquiryHandoffSummaryText}
+          className="mx-auto flex max-w-full gap-1.5 overflow-x-auto rounded-2xl border border-[#E5E7EB] bg-white px-2.5 py-2 shadow-sm no-scrollbar"
+        >
+          {groupInquiryHandoffItems.map((item) => (
+            <span key={`compact-${item.label}-${item.value}`} className="shrink-0 rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-extrabold text-text-body">
+              <span className="text-text-secondary">{item.label}</span>
+              <span className="mx-1 text-[#CBD5E1]">/</span>
+              {item.value}
+            </span>
+          ))}
+        </div>
       </div>
     );
   }
@@ -458,6 +501,12 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
       </p>
       <p id={groupInquiryReadinessId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {groupInquiryReadinessText}
+      </p>
+      <p id={groupInquiryHandoffSummaryId} className="sr-only">
+        {groupInquiryHandoffSummaryText}
+      </p>
+      <p id={groupInquiryNextStepId} className="sr-only">
+        {groupInquiryNextStepText}
       </p>
       <div className="rounded-2xl border border-[#E5E7EB] bg-white px-4 py-4 shadow-[0_12px_40px_rgba(49,130,246,0.08)]">
         <p className="text-[16px] md:text-[17px] leading-[1.75] text-text-primary tracking-[-0.03em]">
@@ -513,6 +562,26 @@ export default function HomeHeroSearchCluster({ children }: { children?: ReactNo
           <span className="min-w-0 truncate text-right font-medium">
             {groupInquiryMissingLabels.length > 0 ? `보완: ${groupInquiryMissingLabels.join(', ')}` : '바로 문의 가능'}
           </span>
+        </div>
+        <p
+          data-testid="home-hero-group-inquiry-next-step"
+          aria-label={groupInquiryNextStepText}
+          className="mt-2 rounded-xl bg-blue-50 px-3 py-2 text-[11px] font-bold leading-5 text-blue-700"
+        >
+          {groupInquiryNextStepText}
+        </p>
+        <div
+          data-testid="home-hero-group-inquiry-handoff-summary"
+          aria-label={groupInquiryHandoffSummaryText}
+          className="mt-2 flex gap-1.5 overflow-x-auto rounded-xl border border-[#E5E7EB] bg-white px-2.5 py-2 no-scrollbar"
+        >
+          {groupInquiryHandoffItems.map((item) => (
+            <span key={`expanded-${item.label}-${item.value}`} className="shrink-0 rounded-full bg-[#F8FAFC] px-2.5 py-1 text-[11px] font-extrabold text-text-body">
+              <span className="text-text-secondary">{item.label}</span>
+              <span className="mx-1 text-[#CBD5E1]">/</span>
+              {item.value}
+            </span>
+          ))}
         </div>
       </div>
 

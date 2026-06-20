@@ -29,6 +29,7 @@ const INITIAL_VISIBLE_COUNT = 18;
 const VISIBLE_STEP = 18;
 const consultTelHref = getConsultTelHref();
 const PACKAGES_STICKY_HANDOFF_SUMMARY_ID = 'packages-sticky-handoff-summary';
+const PACKAGES_STICKY_NEXT_ACTION_ID = 'packages-sticky-next-action';
 const PACKAGES_STICKY_PHONE_DESCRIPTION_ID = 'packages-sticky-phone-description';
 const PACKAGES_STICKY_GROUP_DESCRIPTION_ID = 'packages-sticky-group-description';
 const PACKAGES_STICKY_KAKAO_DESCRIPTION_ID = 'packages-sticky-kakao-description';
@@ -287,16 +288,19 @@ export default function PackagesClient() {
   const compareStatusId = 'packages-compare-selection-status';
   const compareHelpId = 'packages-compare-help';
   const compareHandoffSummaryId = 'packages-compare-handoff-summary';
+  const compareNextActionId = 'packages-compare-next-action';
+  const compareCtaReadinessId = 'packages-compare-cta-readiness';
   const packageFilterGroupTitleId = 'packages-filter-title';
   const packageFilterGroupDescriptionId = 'packages-filter-group-description';
   const packageFilterHelpId = 'packages-filter-help';
   const packageFilterSummaryId = 'packages-filter-summary';
   const packageMobileAppliedFilterSummaryId = 'packages-mobile-applied-filter-summary';
   const packageResultSummaryId = 'packages-result-summary';
+  const packageListDecisionSummaryId = 'packages-list-decision-summary';
   const packageFilterReadinessSummaryId = PACKAGES_FILTER_READINESS_SUMMARY_ID;
   const packageFilterDescriptionIds = `${packageFilterHelpId} ${packageFilterGroupDescriptionId} ${packageMobileAppliedFilterSummaryId} ${packageFilterReadinessSummaryId} ${packageResultSummaryId}`;
   const compareDescriptionIds = `${compareStatusId} ${compareHelpId}`;
-  const compareActionDescriptionIds = `${compareDescriptionIds} ${compareHandoffSummaryId}`;
+  const compareActionDescriptionIds = `${compareDescriptionIds} ${compareHandoffSummaryId} ${compareNextActionId} ${compareCtaReadinessId}`;
   const compareStatusText = compareIds.length === 0
     ? '비교 상품이 선택되지 않았습니다.'
     : compareIds.length === 1
@@ -305,6 +309,9 @@ export default function PackagesClient() {
   const compareHelpText = compareIds.length >= 2
     ? '선택한 두 상품의 가격, 목적지, 일정, 항공, 출발공항, 평점을 비교 모달에서 확인할 수 있습니다.'
     : '비교할 상품을 최대 2개까지 선택할 수 있습니다. 이미 2개를 고른 뒤 다른 상품을 누르면 가장 오래된 선택이 교체됩니다.';
+  const compareNextActionText = compareIds.length >= 2
+    ? '다음: 두 상품 차이를 확인한 뒤 선택 상품 그대로 상담에 전달합니다.'
+    : '다음: 비교할 상품을 하나 더 선택하면 상세 비교와 상담 전달이 쉬워집니다.';
 
   const navigateWithHub = useCallback(
     (nextHub: DepartureHubId) => {
@@ -361,53 +368,6 @@ export default function PackagesClient() {
       }),
     }).catch(() => {});
   }, [initialPackages, recommendedIds, selectedIntent]);
-
-  const handleIntentSelect = useCallback((intent: IntentId) => {
-    const nextIntent = selectedIntent === intent ? null : intent;
-    const params = new URLSearchParams(searchParams.toString());
-    if (nextIntent) params.set('intent', nextIntent);
-    else params.delete('intent');
-    const qs = params.toString();
-    setSelectedIntent(nextIntent);
-    router.push(qs ? `/packages?${qs}` : '/packages');
-    trackScoreSignal({
-      signalType: 'intent_chip_select',
-      groupKey: `intent:${intent}:${nextIntent ? 'on' : 'off'}`,
-      intent: nextIntent ?? intent,
-    });
-    trackEngagement({
-      event_type: ANALYTICS_EVENTS.packageFilterApplied,
-      filter_name: 'intent',
-      filter_value: intent,
-      page_url: '/packages',
-      metadata: { filterName: 'intent', value: intent, state: nextIntent ? 'on' : 'off', selectedIntent: nextIntent, hub },
-    });
-    if (intent === 'budget') setSortBy('price_asc');
-    if (selectedIntent === 'budget' && intent === 'budget') setSortBy('recommended');
-    if (intent === 'consult') {
-      trackEngagement({
-        event_type: ANALYTICS_EVENTS.kakaoClicked,
-        cta_type: 'packages_intent_consult_chip',
-        page_url: '/packages',
-        intent: nextIntent ?? intent,
-        budget: formatBudgetSummary(priceMin, priceMax),
-        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
-        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
-        metadata: { source: 'packages_intent_consult_chip', selectedIntent: nextIntent, hub },
-      });
-      void openKakaoChannel({
-        intent: INTENT_HANDOFF_LABELS[nextIntent ?? intent] ?? intent,
-        budget: formatBudgetSummary(priceMin, priceMax),
-        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
-        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
-        escalationSummary: [
-          q ? `검색어: ${q}` : null,
-          month ? `출발월: ${formatMonthSummary(month)}` : null,
-          `출발지: ${HUB_SUMMARY_LABELS[hub]}`,
-        ].filter(Boolean).join('\n'),
-      });
-    }
-  }, [activeFilter, destination, hub, month, priceMax, priceMin, q, router, searchParams, selectedIntent, trackScoreSignal]);
 
   const filteredPackages = useMemo(() => {
     let list = [...initialPackages];
@@ -487,6 +447,9 @@ export default function PackagesClient() {
   const compareHandoffSummaryText = selectedProductNames.length > 0
     ? `비교 선택 상품이 상담 전달에 포함됩니다: ${selectedProductNames.join(' / ')}. ${primaryFilterReadinessText}`
     : `비교 상품 ${compareIds.length}개가 선택되었습니다. ${primaryFilterReadinessText}`;
+  const compareCtaReadinessText = selectedProductNames.length > 0
+    ? `견적 CTA 준비: ${selectedProductNames.join(' / ')} 상품과 핵심 조건 ${primaryFilterReadyCount}/${primaryFilterChecklist.length}개가 함께 전달됩니다.`
+    : `견적 CTA 준비: 선택 상품 ${compareIds.length}개입니다. 상품을 하나 더 고르면 비교표와 상담 전달 판단이 쉬워집니다.`;
   const stickyHandoffItems = useMemo(
     () => filterSummaryItems
       .filter((item) => item.label !== '결과')
@@ -494,14 +457,14 @@ export default function PackagesClient() {
     [filterSummaryItems],
   );
   const stickyPhoneDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
-    : `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
+    ? `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_PHONE_DESCRIPTION_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
   const stickyGroupDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
-    : `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
+    ? `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_GROUP_DESCRIPTION_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
   const stickyKakaoDescriptionIds = stickyHandoffItems.length > 0
-    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${packageFilterReadinessSummaryId}`
-    : `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${packageFilterReadinessSummaryId}`;
+    ? `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_HANDOFF_SUMMARY_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`
+    : `${PACKAGES_STICKY_KAKAO_DESCRIPTION_ID} ${PACKAGES_STICKY_NEXT_ACTION_ID} ${packageFilterReadinessSummaryId}`;
   const handoffSummary = useMemo(() => [
     q ? `검색어: ${q}` : null,
     ...filterSummaryItems
@@ -521,28 +484,6 @@ export default function PackagesClient() {
       selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
     });
   }, [handoffBudget, handoffDestination, handoffPartyType, handoffSummary, q, selectedIntent, selectedProductNames]);
-
-  const openPackagesKakao = useCallback((source: string) => {
-    trackEngagement({
-      event_type: ANALYTICS_EVENTS.kakaoClicked,
-      cta_type: source,
-      page_url: '/packages',
-      intent: selectedIntent,
-      budget: handoffBudget,
-      destination: handoffDestination,
-      party_type: handoffPartyType,
-      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
-      metadata: { source, selectedIntent, hub, selectedProductNames },
-    });
-    void openKakaoChannel({
-      intent: handoffIntent,
-      budget: handoffBudget,
-      destination: handoffDestination,
-      party_type: handoffPartyType,
-      selected_products: selectedProductNames,
-      escalationSummary: handoffSummary,
-    });
-  }, [handoffBudget, handoffDestination, handoffIntent, handoffPartyType, handoffSummary, hub, selectedIntent, selectedProductNames]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
@@ -588,7 +529,113 @@ export default function PackagesClient() {
         : filteredPackages.length <= 3
           ? '후보가 적다면 더 많은 필터를 넓혀 다른 상품도 확인해 보세요.'
           : '마음에 드는 상품 2개를 비교하거나 바로 상담으로 넘겨보세요.';
+  const firstVisiblePackageTitle = visiblePackages[0]?.display_title || visiblePackages[0]?.products?.display_name || visiblePackages[0]?.title || null;
+  const packageListNextActionDetailText = filteredPackages.length === 0
+    ? packageZeroResultRecoveryText
+    : firstVisiblePackageTitle
+      ? `첫 후보는 ${firstVisiblePackageTitle}입니다. 조건이 맞으면 상세를 열고, 망설여지면 비교에 담아 보세요.`
+      : packageFilterNextActionText;
+  const packageListDecisionSummaryText = `목록 판단 요약: 결과 ${filteredPackages.length}개, 비교 선택 ${compareIds.length}개, 다음 액션 ${packageFilterNextActionText}. ${packageListNextActionDetailText}`;
+  const packageListDescriptionIds = `${packageResultSummaryId} ${packageFilterReadinessSummaryId} ${packageListDecisionSummaryId}`;
   const emptyStateInquiryDescriptionIds = `${packageEmptyStateSummaryId} ${packageResultSummaryId} ${packageFilterReadinessSummaryId}`;
+  const packageCtaDecisionMetadata = useMemo(() => ({
+    selectedIntent,
+    hub,
+    result_count: filteredPackages.length,
+    visible_count: visiblePackages.length,
+    compare_count: compareIds.length,
+    ready_count: primaryFilterReadyCount,
+    missing_fields: primaryFilterMissingLabels,
+    decision_summary: packageListDecisionSummaryText,
+    next_action: packageFilterNextActionText,
+    result_summary: packageResultSummaryText,
+    applied_filters: packageAppliedFilterSummaryText,
+    handoff_preview: packageHandoffPreviewText,
+  }), [
+    compareIds.length,
+    filteredPackages.length,
+    hub,
+    packageAppliedFilterSummaryText,
+    packageFilterNextActionText,
+    packageHandoffPreviewText,
+    packageListDecisionSummaryText,
+    packageResultSummaryText,
+    primaryFilterMissingLabels,
+    primaryFilterReadyCount,
+    selectedIntent,
+    visiblePackages.length,
+  ]);
+
+  const trackCompareGroupInquiry = useCallback((source: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: source,
+      page_url: '/packages',
+      intent: selectedIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: primaryFilterReadyCount,
+      missing_fields: primaryFilterMissingLabels,
+      decision_summary: packageListDecisionSummaryText,
+      handoff_preview: packageHandoffPreviewText,
+      next_action: compareNextActionText,
+      result_summary: packageResultSummaryText,
+      applied_filters: packageAppliedFilterSummaryText,
+      metadata: {
+        source,
+        compare_ids: compareIds,
+        compare_count: compareIds.length,
+        selectedIntent,
+        hub,
+        next_action: compareNextActionText,
+        cta_readiness: compareCtaReadinessText,
+      },
+    });
+  }, [compareCtaReadinessText, compareIds, compareNextActionText, handoffBudget, handoffDestination, handoffPartyType, hub, packageAppliedFilterSummaryText, packageHandoffPreviewText, packageListDecisionSummaryText, packageResultSummaryText, primaryFilterMissingLabels, primaryFilterReadyCount, selectedIntent, selectedProductNames]);
+
+  const openPackagesKakao = useCallback((source: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.kakaoClicked,
+      cta_type: source,
+      page_url: '/packages',
+      intent: selectedIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: packageCtaDecisionMetadata.next_action,
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source,
+        selectedProductNames,
+        ...packageCtaDecisionMetadata,
+      },
+    });
+    void openKakaoChannel({
+      intent: handoffIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames,
+      escalationSummary: handoffSummary,
+    });
+  }, [
+    handoffBudget,
+    handoffDestination,
+    handoffIntent,
+    handoffPartyType,
+    handoffSummary,
+    packageCtaDecisionMetadata,
+    selectedIntent,
+    selectedProductNames,
+  ]);
 
   useEffect(() => {
     for (const pkg of visiblePackages) {
@@ -647,6 +694,8 @@ export default function PackagesClient() {
       product_id: id,
       product_name: tracking?.productName ?? id,
       intent: selectedIntent,
+      rank: tracking?.rank ?? null,
+      price: tracking?.price ?? null,
       metadata: {
         source: 'list',
         rank: tracking?.rank ?? null,
@@ -663,9 +712,161 @@ export default function PackagesClient() {
       filter_name: filterName,
       filter_value: value,
       page_url: '/packages',
-      metadata: { filterName, value, selectedIntent, hub, resultCount: filteredPackages.length },
+      intent: selectedIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      ready_count: primaryFilterReadyCount,
+      missing_fields: primaryFilterMissingLabels,
+      decision_summary: packageListDecisionSummaryText,
+      handoff_preview: packageHandoffPreviewText,
+      next_action: packageFilterNextActionText,
+      result_summary: packageResultSummaryText,
+      applied_filters: packageAppliedFilterSummaryText,
+      metadata: {
+        filterName,
+        value,
+        selectedIntent,
+        hub,
+        resultCount: filteredPackages.length,
+        ready_count: primaryFilterReadyCount,
+        missing_fields: primaryFilterMissingLabels,
+        decision_summary: packageListDecisionSummaryText,
+        next_action: packageFilterNextActionText,
+        result_summary: packageResultSummaryText,
+        applied_filters: packageAppliedFilterSummaryText,
+        handoff_preview: packageHandoffPreviewText,
+      },
     });
-  }, [filteredPackages.length, hub, selectedIntent]);
+  }, [
+    filteredPackages.length,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    hub,
+    packageAppliedFilterSummaryText,
+    packageFilterNextActionText,
+    packageHandoffPreviewText,
+    packageListDecisionSummaryText,
+    packageResultSummaryText,
+    primaryFilterMissingLabels,
+    primaryFilterReadyCount,
+    selectedIntent,
+  ]);
+
+  const handleIntentSelect = useCallback((intent: IntentId) => {
+    const nextIntent = selectedIntent === intent ? null : intent;
+    const params = new URLSearchParams(searchParams.toString());
+    if (nextIntent) params.set('intent', nextIntent);
+    else params.delete('intent');
+    const qs = params.toString();
+    setSelectedIntent(nextIntent);
+    router.push(qs ? `/packages?${qs}` : '/packages');
+    trackScoreSignal({
+      signalType: 'intent_chip_select',
+      groupKey: `intent:${intent}:${nextIntent ? 'on' : 'off'}`,
+      intent: nextIntent ?? intent,
+    });
+    const nextFilterChecklist = primaryFilterChecklist.map((item) => (
+      item.label === '여행 목적' ? { ...item, complete: Boolean(nextIntent) } : item
+    ));
+    const nextMissingFields = nextFilterChecklist
+      .filter((item) => !item.complete)
+      .map((item) => item.label);
+    const nextReadyCount = nextFilterChecklist.length - nextMissingFields.length;
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.packageFilterApplied,
+      filter_name: 'intent',
+      filter_value: intent,
+      page_url: '/packages',
+      intent: nextIntent ?? null,
+      budget: formatBudgetSummary(priceMin, priceMax),
+      destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+      party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
+      ready_count: nextReadyCount,
+      missing_fields: nextMissingFields,
+      decision_summary: packageListDecisionSummaryText,
+      handoff_preview: packageHandoffPreviewText,
+      next_action: packageFilterNextActionText,
+      result_summary: packageResultSummaryText,
+      applied_filters: packageAppliedFilterSummaryText,
+      metadata: {
+        filterName: 'intent',
+        value: intent,
+        state: nextIntent ? 'on' : 'off',
+        selectedIntent: nextIntent,
+        hub,
+        resultCount: filteredPackages.length,
+        ready_count: nextReadyCount,
+        missing_fields: nextMissingFields,
+        decision_summary: packageListDecisionSummaryText,
+        next_action: packageFilterNextActionText,
+        result_summary: packageResultSummaryText,
+        applied_filters: packageAppliedFilterSummaryText,
+        handoff_preview: packageHandoffPreviewText,
+      },
+    });
+    if (intent === 'budget') setSortBy('price_asc');
+    if (selectedIntent === 'budget' && intent === 'budget') setSortBy('recommended');
+    if (intent === 'consult') {
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.kakaoClicked,
+        cta_type: 'packages_intent_consult_chip',
+        page_url: '/packages',
+        intent: nextIntent ?? intent,
+        budget: formatBudgetSummary(priceMin, priceMax),
+        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
+        ready_count: nextReadyCount,
+        missing_fields: nextMissingFields,
+        decision_summary: packageListDecisionSummaryText,
+        handoff_preview: packageHandoffPreviewText,
+        next_action: packageFilterNextActionText,
+        result_summary: packageResultSummaryText,
+        applied_filters: packageAppliedFilterSummaryText,
+        metadata: {
+          source: 'packages_intent_consult_chip',
+          selectedIntent: nextIntent,
+          hub,
+          ready_count: nextReadyCount,
+          missing_fields: nextMissingFields,
+          decision_summary: packageListDecisionSummaryText,
+          next_action: packageFilterNextActionText,
+          handoff_preview: packageHandoffPreviewText,
+        },
+      });
+      void openKakaoChannel({
+        intent: INTENT_HANDOFF_LABELS[nextIntent ?? intent] ?? intent,
+        budget: formatBudgetSummary(priceMin, priceMax),
+        destination: destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null),
+        party_type: INTENT_PARTY_TYPE[nextIntent ?? intent] ?? null,
+        escalationSummary: [
+          q ? `검색어: ${q}` : null,
+          month ? `출발월: ${formatMonthSummary(month)}` : null,
+          `출발지: ${HUB_SUMMARY_LABELS[hub]}`,
+        ].filter(Boolean).join('\n'),
+      });
+    }
+  }, [
+    activeFilter,
+    destination,
+    filteredPackages.length,
+    hub,
+    month,
+    packageAppliedFilterSummaryText,
+    packageFilterNextActionText,
+    packageHandoffPreviewText,
+    packageListDecisionSummaryText,
+    packageResultSummaryText,
+    priceMax,
+    priceMin,
+    primaryFilterChecklist,
+    q,
+    router,
+    searchParams,
+    selectedIntent,
+    trackScoreSignal,
+  ]);
 
   const currentBudgetValue = useMemo(() => {
     const matched = BUDGET_FILTER_OPTIONS.find(opt => opt.min === priceMin && opt.max === priceMax);
@@ -1138,7 +1339,37 @@ export default function PackagesClient() {
         {primaryFilterReadinessText}
       </p>
 
-      <div ref={listTopRef} id="packages-list" aria-describedby={packageResultSummaryId} />
+      <section
+        id={packageListDecisionSummaryId}
+        data-testid="packages-list-decision-summary"
+        aria-label={packageListDecisionSummaryText}
+        className="mx-4 mb-3 rounded-[16px] border border-[#DCE5F0] bg-white p-3 md:mx-auto md:max-w-7xl md:px-4"
+      >
+        <div className="grid grid-cols-3 gap-2">
+          {[
+            { label: '결과', value: `${filteredPackages.length}개` },
+            { label: '비교', value: compareIds.length > 0 ? `${compareIds.length}개 선택` : '선택 없음' },
+            { label: '다음', value: primaryFilterMissingLabels.length > 0 ? primaryFilterMissingLabels[0] : compareIds.length > 0 ? '견적 전달' : '비교/상담' },
+          ].map((item) => (
+            <div key={item.label} className="min-w-0 rounded-[12px] bg-[#F8FAFC] px-2.5 py-2">
+              <p className="text-[10px] font-bold text-text-secondary">{item.label}</p>
+              <p className="mt-0.5 truncate text-[12px] font-extrabold text-text-primary">{item.value}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-[12px] font-semibold leading-5 text-text-secondary">
+          {packageFilterNextActionText}
+        </p>
+        <p
+          data-testid="packages-list-next-action-detail"
+          aria-label={packageListNextActionDetailText}
+          className="mt-2 rounded-[12px] bg-[#EFF6FF] px-3 py-2 text-[12px] font-bold leading-5 text-[#1D4ED8]"
+        >
+          {packageListNextActionDetailText}
+        </p>
+      </section>
+
+      <div ref={listTopRef} id="packages-list" aria-describedby={packageListDescriptionIds} />
       {filteredPackages.length === 0 ? (
         <div className="text-center py-20 px-6">
           {urgency === '1' ? (
@@ -1309,6 +1540,13 @@ export default function PackagesClient() {
               ))}
             </div>
           )}
+          <p
+            id={PACKAGES_STICKY_NEXT_ACTION_ID}
+            data-testid="packages-sticky-next-action"
+            className="mb-2 rounded-2xl border border-[#E5E7EB] bg-white px-3 py-2 text-[12px] font-extrabold leading-snug text-text-primary"
+          >
+            {packageFilterNextActionText}
+          </p>
           <div className="flex items-center gap-3">
           {consultTelHref ? (
             <a
@@ -1325,7 +1563,17 @@ export default function PackagesClient() {
                   destination: handoffDestination,
                   party_type: handoffPartyType,
                   selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
-                  metadata: { source: 'packages_mobile_phone', selectedIntent, hub },
+                  ready_count: packageCtaDecisionMetadata.ready_count,
+                  missing_fields: packageCtaDecisionMetadata.missing_fields,
+                  decision_summary: packageCtaDecisionMetadata.decision_summary,
+                  handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+                  next_action: packageCtaDecisionMetadata.next_action,
+                  result_summary: packageCtaDecisionMetadata.result_summary,
+                  applied_filters: packageCtaDecisionMetadata.applied_filters,
+                  metadata: {
+                    source: 'packages_mobile_phone',
+                    ...packageCtaDecisionMetadata,
+                  },
                 });
               }}
               className="w-12 h-12 flex items-center justify-center rounded-full border border-gray-200 hover:bg-gray-50 shrink-0"
@@ -1346,7 +1594,17 @@ export default function PackagesClient() {
                 destination: handoffDestination,
                 party_type: handoffPartyType,
                 selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
-                metadata: { source: 'packages_mobile_group_inquiry', selectedIntent, hub },
+                ready_count: packageCtaDecisionMetadata.ready_count,
+                missing_fields: packageCtaDecisionMetadata.missing_fields,
+                decision_summary: packageCtaDecisionMetadata.decision_summary,
+                handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+                next_action: packageCtaDecisionMetadata.next_action,
+                result_summary: packageCtaDecisionMetadata.result_summary,
+                applied_filters: packageCtaDecisionMetadata.applied_filters,
+                metadata: {
+                  source: 'packages_mobile_group_inquiry',
+                  ...packageCtaDecisionMetadata,
+                },
               });
             }}
             className="flex-1 bg-brand h-12 rounded-full text-white font-bold text-[14px] flex items-center justify-center shadow-lg active:scale-[0.98] transition-all"
@@ -1378,6 +1636,21 @@ export default function PackagesClient() {
             >
               {compareHandoffSummaryText}
             </p>
+            <p
+              id={compareNextActionId}
+              data-testid="packages-compare-next-action"
+              className="w-full rounded-xl bg-brand-light/60 px-3 py-2 text-[11px] font-bold leading-4 text-brand md:w-auto md:max-w-[260px]"
+            >
+              {compareNextActionText}
+            </p>
+            <p
+              id={compareCtaReadinessId}
+              data-testid="packages-compare-cta-readiness"
+              aria-label={compareCtaReadinessText}
+              className="w-full rounded-xl border border-[#DCE5F0] bg-[#F8FAFC] px-3 py-2 text-[11px] font-bold leading-4 text-text-primary md:w-auto md:max-w-[280px]"
+            >
+              {compareCtaReadinessText}
+            </p>
             <span className="text-[13px] font-medium text-text-secondary whitespace-nowrap">
               {compareIds.length}개 선택됨
             </span>
@@ -1394,6 +1667,7 @@ export default function PackagesClient() {
               href={groupInquiryHref}
               data-testid="packages-compare-group-inquiry"
               aria-describedby={compareActionDescriptionIds}
+              onClick={() => trackCompareGroupInquiry('packages_compare_group_inquiry')}
               className="px-3 py-1.5 text-[13px] font-bold text-brand transition hover:text-brand-dark"
             >
               상담 전달
@@ -1431,6 +1705,8 @@ export default function PackagesClient() {
           b={comparePackages[1]!}
           groupInquiryHref={groupInquiryHref}
           handoffSummaryText={compareHandoffSummaryText}
+          nextActionText={compareNextActionText}
+          onGroupInquiryClick={() => trackCompareGroupInquiry('packages_compare_dialog_group_inquiry')}
           onClose={() => { setCompareOpen(false); }}
         />
       )}
@@ -1444,12 +1720,16 @@ function SimpleCompareModal({
   b,
   groupInquiryHref,
   handoffSummaryText,
+  nextActionText,
+  onGroupInquiryClick,
   onClose,
 }: {
   a: Package;
   b: Package;
   groupInquiryHref: string;
   handoffSummaryText: string;
+  nextActionText: string;
+  onGroupInquiryClick: () => void;
   onClose: () => void;
 }) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -1457,6 +1737,7 @@ function SimpleCompareModal({
 
   useEffect(() => {
     const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
     const getFocusableElements = () => Array.from(
@@ -1494,7 +1775,7 @@ function SimpleCompareModal({
     document.addEventListener('keydown', onKey);
     return () => {
       window.clearTimeout(focusTimer);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       document.removeEventListener('keydown', onKey);
       if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
@@ -1516,7 +1797,8 @@ function SimpleCompareModal({
     { label: '평점', va: a.avg_rating ? `★ ${Number(a.avg_rating).toFixed(1)}` : '-', vb: b.avg_rating ? `★ ${Number(b.avg_rating).toFixed(1)}` : '-' },
   ];
   const compareDialogHandoffSummaryId = 'package-compare-dialog-handoff-summary';
-  const compareDialogDescriptionIds = `package-compare-description ${compareDialogHandoffSummaryId}`;
+  const compareDialogNextActionId = 'package-compare-dialog-next-action';
+  const compareDialogDescriptionIds = `package-compare-description ${compareDialogHandoffSummaryId} ${compareDialogNextActionId}`;
 
   return (
     <div
@@ -1547,6 +1829,13 @@ function SimpleCompareModal({
           >
             {handoffSummaryText}
           </p>
+          <p
+            id={compareDialogNextActionId}
+            data-testid="package-compare-dialog-next-action"
+            className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-[12px] font-bold leading-5 text-blue-700"
+          >
+            {nextActionText}
+          </p>
           <div className="grid grid-cols-2 gap-3 mb-2">
             <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {a.display_title || a.title}
@@ -1576,7 +1865,8 @@ function SimpleCompareModal({
           <Link
             href={groupInquiryHref}
             data-testid="package-compare-dialog-group-inquiry"
-            aria-describedby={compareDialogHandoffSummaryId}
+            aria-describedby={`${compareDialogHandoffSummaryId} ${compareDialogNextActionId}`}
+            onClick={onGroupInquiryClick}
             className="col-span-2 text-center py-2.5 rounded-xl bg-brand text-white text-[13px] font-bold hover:bg-brand-dark transition"
           >
             비교 상품으로 상담 전달

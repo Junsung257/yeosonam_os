@@ -68,6 +68,20 @@ const CHANNEL_LABEL: Record<string, string> = {
 
 const fmtNum  = (n?: number) => (n ?? 0).toLocaleString();
 const fmtDate = (s?: string) => s ? s.slice(0, 10) : '-';
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+}
 
 /** 총매출 포맷: 0이면 null 반환 (흐리게 처리용) */
 function fmtSales(n?: number): string | null {
@@ -125,6 +139,11 @@ export default function CustomersPage() {
     grantGradeFilter?: string;
     grantMinDays?: number;
   } | null>(null);
+  const confirmModalRef = useRef<HTMLDivElement | null>(null);
+  const confirmModalReturnFocusRef = useRef<HTMLElement | null>(null);
+  const confirmModalTitleId = 'customers-bulk-confirm-title';
+  const confirmModalDescriptionId = 'customers-bulk-confirm-description';
+  const confirmModalStatusId = 'customers-bulk-confirm-status';
 
   // ── ⋮ 메뉴 ────────────────────────────────────────────────────────────────
   const [openMenuId, setOpenMenuId]     = useState<string | null>(null);
@@ -181,6 +200,13 @@ export default function CustomersPage() {
   const [saving, setSaving]       = useState(false);
   const [phoneDupe, setPhoneDupe] = useState<Customer | null>(null);
   const [checkingPhone, setCheckingPhone] = useState(false);
+  const customerCreateButtonRef = useRef<HTMLButtonElement | null>(null);
+  const customerFormPanelRef = useRef<HTMLDivElement | null>(null);
+  const customerFormFirstInputRef = useRef<HTMLInputElement | null>(null);
+  const customerFormTitleId = 'customer-create-panel-title';
+  const customerFormDescriptionId = 'customer-create-panel-description';
+  const customerFormStatusId = 'customer-create-panel-status';
+  const customerFormDuplicateId = 'customer-create-panel-duplicate';
 
   // ── 토스트 ────────────────────────────────────────────────────────────────
   const [toast, setToast]   = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
@@ -191,6 +217,102 @@ export default function CustomersPage() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(null), 2500);
   }
+
+  const confirmModalOpen = confirmModal !== null;
+
+  const openConfirmModal = useCallback((
+    next: NonNullable<typeof confirmModal>,
+    trigger: HTMLElement,
+  ) => {
+    confirmModalReturnFocusRef.current = trigger;
+    setConfirmModal(next);
+  }, []);
+
+  const closeConfirmModal = useCallback(() => {
+    closeConfirmModal();
+    requestAnimationFrame(() => confirmModalReturnFocusRef.current?.focus());
+  }, []);
+
+  const closeCustomerForm = useCallback(() => {
+    setShowForm(false);
+    setPhoneDupe(null);
+    requestAnimationFrame(() => customerCreateButtonRef.current?.focus());
+  }, []);
+
+  useEffect(() => {
+    if (!confirmModalOpen) return undefined;
+    const panel = confirmModalRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => {
+      const [firstFocusable] = getFocusableElements(panel);
+      firstFocusable?.focus();
+    });
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeConfirmModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(panel);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closeConfirmModal, confirmModalOpen]);
+
+  useEffect(() => {
+    if (!showForm) return undefined;
+    const panel = customerFormPanelRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => customerFormFirstInputRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeCustomerForm();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(panel);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closeCustomerForm, showForm]);
 
   // ─── 목록 로드 (SWR) ────────────────────────────────────────────────────────
   // 감사(2026-05-11): useEffect fetch → useSWR + dedup 30s + keepPreviousData.
@@ -367,7 +489,7 @@ export default function CustomersPage() {
       prev.map(c => selectedIds.has(c.id) ? { ...c, mileage: (c.mileage ?? 0) + (confirmModal?.grantAmount ?? 1000) } : c)
     );
     setSelectedIds(new Set());
-    setConfirmModal(null);
+    closeConfirmModal();
     showToast(`${grantedCount}명 마일리지 ${(confirmModal?.grantAmount ?? 1000).toLocaleString()}P 지급 완료`);
   }
 
@@ -390,7 +512,7 @@ export default function CustomersPage() {
       prev.map(c => selectedIds.has(c.id) ? { ...c, mileage: 0 } : c)
     );
     setSelectedIds(new Set());
-    setConfirmModal(null);
+    closeConfirmModal();
     showToast(`${ids.length}명 마일리지 초기화 완료`);
   }
 
@@ -482,9 +604,8 @@ export default function CustomersPage() {
     });
     const data = await res.json();
     if (data.customer) {
-      setShowForm(false);
+      closeCustomerForm();
       setForm({ name: '', phone: '', email: '', passport_no: '', passport_expiry: '', birth_date: '', memo: '', gender: '' });
-      setPhoneDupe(null);
       showToast('고객 등록 완료');
       setPage(1);
       mutateList();
@@ -517,6 +638,17 @@ export default function CustomersPage() {
     );
   }
 
+  const confirmModalTitle = confirmModal?.type === 'mileage-reset' ? '마일리지 일괄 초기화'
+    : confirmModal?.type === 'bulk-grant-mileage' ? '마일리지 조건부 지급'
+    : '일괄 삭제';
+  const confirmModalStatusText = confirmModal
+    ? `선택된 고객 ${confirmModal.count}명에게 ${confirmModalTitle} 작업을 실행하기 전 확인 중입니다.`
+    : '';
+  const customerFormStatusText = saving ? '신규 고객 정보를 저장하고 있습니다.'
+    : checkingPhone ? '전화번호 중복 여부를 확인하고 있습니다.'
+    : phoneDupe ? `이미 등록된 번호입니다. ${phoneDupe.name} 고객 정보를 불러올 수 있습니다.`
+    : '필수 항목인 이름을 입력한 뒤 등록할 수 있습니다.';
+
   // ─── 렌더 ─────────────────────────────────────────────────────────────────
 
   return (
@@ -531,7 +663,9 @@ export default function CustomersPage() {
             <h1 className="text-admin-lg font-bold text-admin-text-2">고객 관리</h1>
             <p className="text-admin-sm text-admin-muted mt-0.5">전체 {totalCount.toLocaleString()}명</p>
           </div>
-          <button onClick={() => { setShowForm(true); setPhoneDupe(null); }}
+          <button
+            ref={customerCreateButtonRef}
+            onClick={() => { setShowForm(true); setPhoneDupe(null); }}
             className="bg-blue-600 text-white px-4 py-2 rounded text-admin-sm font-medium hover:bg-blue-700">
             + 고객 등록
           </button>
@@ -815,21 +949,21 @@ export default function CustomersPage() {
           <div className="w-px h-5 bg-slate-500 flex-shrink-0" />
           <button
             type="button"
-            onClick={() => setConfirmModal({ type: 'mileage-reset', count: selectedIds.size })}
+            onClick={event => openConfirmModal({ type: 'mileage-reset', count: selectedIds.size }, event.currentTarget)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
             마일리지 초기화
           </button>
           <button
             type="button"
-            onClick={() => setConfirmModal({ type: 'bulk-grant-mileage', count: selectedIds.size, grantAmount: 1000, grantReason: '프로모션 지급' })}
+            onClick={event => openConfirmModal({ type: 'bulk-grant-mileage', count: selectedIds.size, grantAmount: 1000, grantReason: '프로모션 지급' }, event.currentTarget)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
             마일리지 지급
           </button>
           <button
             type="button"
-            onClick={() => setConfirmModal({ type: 'bulk-delete', count: selectedIds.size })}
+            onClick={event => openConfirmModal({ type: 'bulk-delete', count: selectedIds.size }, event.currentTarget)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-400
               text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
             일괄 삭제
@@ -846,19 +980,37 @@ export default function CustomersPage() {
 
       {/* 확인 모달 */}
       {confirmModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
           <button
             type="button"
             className="absolute inset-0 bg-black/50 cursor-default"
-            onClick={() => setConfirmModal(null)}
+            onClick={closeConfirmModal}
             aria-label="확인 모달 닫기"
           />
-          <div className="relative bg-white rounded w-full max-w-sm p-6">
-            <h3 className="text-admin-lg font-bold text-admin-text-2 mb-2">
-              {confirmModal.type === 'mileage-reset' ? '마일리지 일괄 초기화'
-                : confirmModal.type === 'bulk-grant-mileage' ? '마일리지 조건부 지급'
-                : '일괄 삭제'}
+          <div
+            ref={confirmModalRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmModalTitleId}
+            aria-describedby={`${confirmModalDescriptionId} ${confirmModalStatusId}`}
+            tabIndex={-1}
+            className="relative bg-white rounded w-full max-w-sm p-6"
+          >
+            <h3 id={confirmModalTitleId} className="text-admin-lg font-bold text-admin-text-2 mb-2">
+              {confirmModalTitle}
             </h3>
+            <p id={confirmModalDescriptionId} className="sr-only">
+              선택된 고객에게 적용할 일괄 작업을 최종 확인합니다.
+            </p>
+            <p
+              id={confirmModalStatusId}
+              role="status"
+              aria-live="polite"
+              aria-atomic="true"
+              className="sr-only"
+            >
+              {confirmModalStatusText}
+            </p>
 
             {confirmModal.type === 'bulk-grant-mileage' ? (
               <>
@@ -928,11 +1080,12 @@ export default function CustomersPage() {
             )}
 
             <div className="flex gap-3">
-              <button onClick={() => setConfirmModal(null)}
+              <button type="button" onClick={closeConfirmModal}
                 className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded text-admin-sm font-medium hover:bg-admin-bg transition bg-white">
                 취소
               </button>
               <button
+                type="button"
                 onClick={confirmModal.type === 'mileage-reset' ? handleBulkMileageReset
                   : confirmModal.type === 'bulk-grant-mileage' ? handleBulkMileageGrant
                   : handleBulkDelete}
@@ -958,7 +1111,7 @@ export default function CustomersPage() {
             aria-label="고객 상세 드로어 닫기"
           />
 
-          <div className="fixed right-0 top-0 h-full w-[520px] bg-white z-40 flex flex-col border-l border-admin-border-mid">
+          <div className="fixed inset-y-0 right-0 h-dvh max-h-dvh w-full max-w-[520px] bg-white z-40 flex flex-col border-l border-admin-border-mid">
 
             {/* 드로어 헤더 */}
             <div className="px-5 py-4 border-b border-admin-border-mid bg-white flex items-center justify-between flex-shrink-0">
@@ -1252,18 +1405,45 @@ export default function CustomersPage() {
           <button
             type="button"
             className="fixed inset-0 bg-black/40 z-50 cursor-default"
-            onClick={() => { setShowForm(false); setPhoneDupe(null); }}
+            onClick={closeCustomerForm}
             aria-label="신규 고객 등록 패널 닫기"
           />
-          <div className="fixed right-0 top-0 h-full w-full max-w-md bg-white z-50 flex flex-col border-l border-admin-border-mid">
+          <div
+            ref={customerFormPanelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={customerFormTitleId}
+            aria-describedby={`${customerFormDescriptionId} ${customerFormStatusId}`}
+            tabIndex={-1}
+            className="fixed inset-y-0 right-0 h-dvh max-h-dvh w-full max-w-md bg-white z-50 flex flex-col border-l border-admin-border-mid"
+          >
             <div className="px-6 py-4 border-b border-admin-border-mid flex items-center justify-between">
-              <h2 className="text-admin-lg font-bold text-admin-text-2">신규 고객 등록</h2>
-              <button type="button" onClick={() => { setShowForm(false); setPhoneDupe(null); }} className="text-admin-muted-2 hover:text-admin-muted text-xl" aria-label="신규 고객 등록 패널 닫기">✕</button>
+              <div>
+                <h2 id={customerFormTitleId} className="text-admin-lg font-bold text-admin-text-2">신규 고객 등록</h2>
+                <p id={customerFormDescriptionId} className="sr-only">
+                  이름, 연락처, 여권 정보를 입력해 신규 고객을 등록합니다.
+                </p>
+                <p
+                  id={customerFormStatusId}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {customerFormStatusText}
+                </p>
+              </div>
+              <button type="button" onClick={closeCustomerForm} className="text-admin-muted-2 hover:text-admin-muted text-xl" aria-label="신규 고객 등록 패널 닫기">✕</button>
             </div>
-            <form onSubmit={handleSubmit} className="p-6 space-y-4 flex-1 overflow-y-auto">
+            <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto px-6 py-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
               <div>
                 <label htmlFor="new-customer-name" className="block text-[11px] font-semibold text-admin-muted mb-1">이름 *</label>
-                <input id="new-customer-name" required value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
+                <input
+                  ref={customerFormFirstInputRef}
+                  id="new-customer-name"
+                  required
+                  value={form.name}
+                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
                   className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
                   placeholder="홍길동" />
               </div>
@@ -1273,12 +1453,14 @@ export default function CustomersPage() {
                 <div className="relative">
                   <input id="new-customer-phone" value={form.phone}
                     onChange={e => { setForm(p => ({ ...p, phone: e.target.value })); checkPhone(e.target.value); }}
+                    aria-describedby={phoneDupe ? `${customerFormStatusId} ${customerFormDuplicateId}` : customerFormStatusId}
+                    aria-invalid={phoneDupe ? 'true' : undefined}
                     className={`w-full border rounded px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-blue-300 ${phoneDupe ? 'border-orange-400 bg-orange-50' : 'border-admin-border-mid'}`}
                     placeholder="010-0000-0000" />
                   {checkingPhone && <span className="absolute right-3 top-2.5 text-[11px] text-admin-muted-2">확인 중...</span>}
                 </div>
                 {phoneDupe && (
-                  <div className="mt-2 bg-orange-50 border border-orange-300 rounded p-3">
+                  <div id={customerFormDuplicateId} role="alert" className="mt-2 bg-orange-50 border border-orange-300 rounded p-3">
                     <p className="text-[11px] font-semibold text-orange-700 mb-1.5">이미 등록된 번호입니다</p>
                     <p className="text-admin-sm text-admin-text-2 font-medium">{phoneDupe.name}</p>
                     <p className="text-[11px] text-admin-muted mb-2">{maskPhone(phoneDupe.phone ?? null, 'cs_agent')} · {phoneDupe.grade} · {fmtNum(phoneDupe.mileage)}P</p>
@@ -1353,11 +1535,11 @@ export default function CustomersPage() {
               </div>
 
               <div className="flex gap-3 pt-2">
-                <button type="button" onClick={() => { setShowForm(false); setPhoneDupe(null); }}
+                <button type="button" onClick={closeCustomerForm}
                   className="flex-1 border border-admin-border-strong text-admin-text-2 py-2.5 rounded text-admin-sm font-medium hover:bg-admin-bg bg-white">
                   취소
                 </button>
-                <button type="submit" disabled={saving || !!phoneDupe}
+                <button type="submit" disabled={saving || !!phoneDupe} aria-busy={saving}
                   className="flex-1 bg-blue-600 text-white py-2.5 rounded text-admin-sm font-semibold hover:bg-blue-700 disabled:opacity-50">
                   {saving ? '저장 중...' : '등록'}
                 </button>

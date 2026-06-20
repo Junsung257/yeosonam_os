@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 // html-to-image, jszip: 내보내기 시점에만 동적 로드
 import MetaAutoPublisher from './MetaAutoPublisher';
 import { useToast } from '@/components/ui/Toast';
@@ -54,12 +54,71 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
   const [parseError, setParseError] = useState('');
   const [exporting, setExporting] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const jsonInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const metaOpenRef = useRef(false);
   const captureRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const studioTitleId = 'card-news-studio-title';
+  const studioDescriptionId = 'card-news-studio-description';
+  const studioStatusId = 'card-news-studio-status';
+  const studioJsonErrorId = 'card-news-studio-json-error';
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패/.test(msg) ? 'error' : 'success'),
     [_t],
   );
+
+  useEffect(() => {
+    metaOpenRef.current = metaOpen;
+  }, [metaOpen]);
+
+  useEffect(() => {
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    jsonInputRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (metaOpenRef.current) return;
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [onClose]);
 
   // ── JSON 파싱 + Pexels 자동 매핑 ──────────────────────
   const handleParse = useCallback(async () => {
@@ -183,14 +242,26 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
   const activeSlide = slides[activeIdx];
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-admin-surface-2">
+    <div
+      ref={dialogRef}
+      className="fixed inset-0 z-50 flex h-dvh max-h-dvh flex-col bg-admin-surface-2"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={studioTitleId}
+      aria-describedby={`${studioDescriptionId} ${studioStatusId}`}
+    >
       {/* ── 상단 툴바 ──────────────────────────────── */}
-      <div className="bg-white border-b border-admin-border-mid px-4 py-2 flex items-center justify-between flex-shrink-0">
+      <div className="bg-white border-b border-admin-border-mid px-4 pt-[max(0.5rem,env(safe-area-inset-top))] pb-2 flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button aria-label="카드뉴스 스튜디오 닫기" onClick={onClose} className="text-admin-muted-2 hover:text-admin-muted transition p-1">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+          <button type="button" aria-label="카드뉴스 스튜디오 닫기" onClick={onClose} className="text-admin-muted-2 hover:text-admin-muted transition p-1">
+            <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
           </button>
-          <h2 className="text-admin-md font-semibold text-admin-text-2">카드뉴스 스튜디오</h2>
+          <div>
+            <h2 id={studioTitleId} className="text-admin-md font-semibold text-admin-text-2">카드뉴스 스튜디오</h2>
+            <p id={studioDescriptionId} className="sr-only">
+              AI 카드뉴스 JSON을 붙여넣고 슬라이드 이미지를 매핑한 뒤 ZIP 또는 Meta 게시로 이어지는 제작 패널입니다.
+            </p>
+          </div>
           {slides.length > 0 && (
             <span className="text-[11px] text-admin-muted-2 bg-admin-surface-2 px-2 py-0.5 rounded">{slides.length}장</span>
           )}
@@ -199,6 +270,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
           {slides.length > 0 && (
             <>
               <button
+                type="button"
                 onClick={handleExportZip}
                 disabled={exporting}
                 className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
@@ -206,6 +278,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
                 {exporting ? '생성 중...' : `ZIP 다운로드`}
               </button>
               <button
+                type="button"
                 onClick={() => setMetaOpen(true)}
                 className="px-4 py-1.5 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 transition font-medium"
               >
@@ -213,14 +286,21 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
               </button>
             </>
           )}
-          <button onClick={onClose} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
+          <button type="button" onClick={onClose} className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
             닫기
           </button>
         </div>
       </div>
 
       {/* ── 메인 영역 ──────────────────────────────── */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="min-h-0 flex-1 flex overflow-hidden pb-[max(0rem,env(safe-area-inset-bottom))]">
+        <p id={studioStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+          {parsing
+            ? '카드뉴스 JSON과 Pexels 이미지를 매핑 중입니다.'
+            : exporting
+              ? '카드뉴스 ZIP 파일을 생성 중입니다.'
+              : parseError || (slides.length > 0 ? `카드뉴스 슬라이드 ${slides.length}장이 준비되었습니다.` : '카드뉴스 JSON 입력 대기 중입니다.')}
+        </p>
 
         {/* 좌측: JSON 입력 */}
         <div className="w-80 bg-white border-r border-admin-border-mid flex flex-col flex-shrink-0">
@@ -229,19 +309,25 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
             <p className="text-[10px] text-admin-muted-2 mt-0.5">AI가 출력한 JSON을 붙여넣으세요</p>
           </div>
           <textarea
+            ref={jsonInputRef}
             aria-label="카드뉴스 JSON 입력"
+            aria-describedby={parseError ? `${studioDescriptionId} ${studioJsonErrorId}` : studioDescriptionId}
+            aria-invalid={parseError ? 'true' : undefined}
             value={jsonInput}
             onChange={e => setJsonInput(e.target.value)}
             placeholder={`[\n  {\n    "concept_name": "가성비",\n    "slides": [\n      {\n        "slide_num": 1,\n        "type": "hook",\n        "image_hint": "beach sunset",\n        "hook_copy": "제목",\n        "main_text": "본문"\n      }\n    ]\n  }\n]`}
             className="flex-1 px-3 py-2 text-[11px] font-mono text-admin-text-2 border-none resize-none focus:ring-0 bg-admin-bg"
           />
           {parseError && (
-            <div className="px-3 py-2 bg-red-50 border-t border-red-200 text-[11px] text-red-600">{parseError}</div>
+            <div id={studioJsonErrorId} role="alert" className="px-3 py-2 bg-red-50 border-t border-red-200 text-[11px] text-red-600">{parseError}</div>
           )}
           <div className="px-3 py-2 border-t border-admin-border-mid">
             <button
+              type="button"
               onClick={handleParse}
               disabled={parsing || !jsonInput.trim()}
+              aria-busy={parsing}
+              aria-describedby={studioStatusId}
               className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition font-medium"
             >
               {parsing ? 'Pexels 이미지 매핑 중...' : '렌더링 시작'}
@@ -268,6 +354,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
               <div className="absolute top-2 right-2 flex gap-1">
                 {activeSlide.pexelsResults.length > 1 && (
                   <button
+                    type="button"
                     onClick={() => handleReroll(activeIdx)}
                     className="px-2 py-1 bg-white/90 border border-admin-border-mid rounded text-[11px] text-admin-muted hover:bg-white shadow-admin-xs"
                   >
@@ -275,6 +362,7 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={() => handleClearBg(activeIdx)}
                   className="px-2 py-1 bg-white/90 border border-admin-border-mid rounded text-[11px] text-admin-muted hover:bg-white shadow-admin-xs"
                 >
@@ -302,8 +390,11 @@ export default function CardNewsStudio({ onClose, initialJson }: CardNewsStudioP
             </div>
             {slides.map((slide, idx) => (
               <button
+                type="button"
                 key={idx}
                 onClick={() => setActiveIdx(idx)}
+                aria-pressed={idx === activeIdx}
+                aria-label={`${idx + 1}번 슬라이드 선택: ${slide.hook_copy || slide.conceptName || '제목 없음'}`}
                 className={`w-full p-1.5 border-b border-admin-border text-left transition ${
                   idx === activeIdx ? 'bg-blue-50 border-l-2 border-l-[#005d90]' : 'hover:bg-admin-bg'
                 }`}

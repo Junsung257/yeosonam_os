@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
@@ -89,6 +89,21 @@ function scoreLabel(score: number): { label: string; color: string } {
   return { label: '보통', color: 'bg-gray-100 text-gray-500' };
 }
 
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+}
+
 export default function ApplicationsPage() {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,6 +112,7 @@ export default function ApplicationsPage() {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState('');
   const [rejectTarget, setRejectTarget] = useState<string | null>(null);
+  const [approveTarget, setApproveTarget] = useState<string | null>(null);
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
   const [showChecklist, setShowChecklist] = useState<string | null>(null);
   const [approveSuccess, setApproveSuccess] = useState<{
@@ -104,6 +120,44 @@ export default function ApplicationsPage() {
     affiliateId: string;
     pin: string;
   } | null>(null);
+  const approveSuccessRef = useRef<HTMLDivElement | null>(null);
+  const checklistDialogRef = useRef<HTMLDivElement | null>(null);
+  const checklistFirstInputRef = useRef<HTMLInputElement | null>(null);
+  const checklistReturnFocusRef = useRef<HTMLElement | null>(null);
+  const approveDialogRef = useRef<HTMLDivElement | null>(null);
+  const approveCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const approveReturnFocusRef = useRef<HTMLElement | null>(null);
+  const rejectDialogRef = useRef<HTMLDivElement | null>(null);
+  const rejectTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const rejectReturnFocusRef = useRef<HTMLElement | null>(null);
+  const checklistTitleId = 'application-review-checklist-title';
+  const checklistDescriptionId = 'application-review-checklist-description';
+  const checklistStatusId = 'application-review-checklist-status';
+  const approveTitleId = 'application-approve-confirm-title';
+  const approveDescriptionId = 'application-approve-confirm-description';
+  const approveStatusId = 'application-approve-confirm-status';
+  const rejectTitleId = 'application-reject-title';
+  const rejectDescriptionId = 'application-reject-description';
+  const rejectStatusId = 'application-reject-status';
+  const checklistOpen = showChecklist !== null;
+  const approveOpen = approveTarget !== null;
+  const rejectOpen = rejectTarget !== null;
+
+  const closeChecklist = useCallback((restoreFocus = true) => {
+    setShowChecklist(null);
+    if (restoreFocus) requestAnimationFrame(() => checklistReturnFocusRef.current?.focus());
+  }, []);
+
+  const closeApproveDialog = useCallback(() => {
+    setApproveTarget(null);
+    requestAnimationFrame(() => approveReturnFocusRef.current?.focus());
+  }, []);
+
+  const closeRejectDialog = useCallback(() => {
+    setRejectTarget(null);
+    setRejectReason('');
+    requestAnimationFrame(() => rejectReturnFocusRef.current?.focus());
+  }, []);
 
   const load = async () => {
     try {
@@ -126,7 +180,6 @@ export default function ApplicationsPage() {
   });
 
   const handleApprove = async (id: string) => {
-    if (!confirm('이 신청을 승인하시겠습니까? 파트너 계정이 자동 생성됩니다.')) return;
     setProcessingId(id);
     try {
       const res = await fetch('/api/admin/applications', {
@@ -144,6 +197,8 @@ export default function ApplicationsPage() {
           pin: typeof aff.pin === 'string' ? aff.pin : '',
         });
       }
+      setApproveTarget(null);
+      requestAnimationFrame(() => approveSuccessRef.current?.focus());
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : '처리 실패');
@@ -163,8 +218,7 @@ export default function ApplicationsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
-      setRejectTarget(null);
-      setRejectReason('');
+      closeRejectDialog();
       load();
     } catch (err) {
       alert(err instanceof Error ? err.message : '처리 실패');
@@ -173,7 +227,116 @@ export default function ApplicationsPage() {
     }
   };
 
-  const openChecklist = (app: Application) => {
+  useEffect(() => {
+    if (!checklistOpen) return undefined;
+    const dialog = checklistDialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => checklistFirstInputRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeChecklist();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [checklistOpen, closeChecklist]);
+
+  useEffect(() => {
+    if (!rejectOpen) return undefined;
+    const dialog = rejectDialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => rejectTextareaRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeRejectDialog();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [closeRejectDialog, rejectOpen]);
+
+  useEffect(() => {
+    if (!approveOpen) return undefined;
+    const dialog = approveDialogRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => approveCancelButtonRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeApproveDialog();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [approveOpen, closeApproveDialog]);
+
+  const openChecklist = (app: Application, trigger?: HTMLElement) => {
+    checklistReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setChecklist({
       channel_valid: true,
       follower_quality: (app.follower_count || 0) >= 1000,
@@ -183,10 +346,25 @@ export default function ApplicationsPage() {
     setShowChecklist(app.id);
   };
 
+  const openApproveDialog = (id: string, trigger?: HTMLElement | null) => {
+    approveReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setApproveTarget(id);
+  };
+
+  const openRejectDialog = (id: string, trigger?: HTMLElement) => {
+    rejectReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setRejectTarget(id);
+  };
+
   return (
       <div className="space-y-4">
         {approveSuccess && (
-          <div className="rounded-admin-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div
+            ref={approveSuccessRef}
+            tabIndex={-1}
+            aria-live="polite"
+            className="rounded-admin-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-900 flex flex-col gap-2 md:flex-row md:items-center md:justify-between focus:outline-none focus:shadow-admin-focus"
+          >
             <div>
               <p className="font-semibold">승인 완료</p>
               <p className="text-xs mt-1 font-mono">
@@ -321,19 +499,19 @@ export default function ApplicationsPage() {
                   {app.status === 'PENDING' && (
                     <div className="flex gap-2">
                       <button
-                        onClick={() => {
-                          openChecklist(app);
-                        }}
+                        onClick={event => openChecklist(app, event.currentTarget)}
                         disabled={processingId === app.id}
                         className="px-3 py-1.5 bg-blue-50 text-blue-600 border border-blue-200 rounded-lg text-xs font-medium disabled:opacity-50 hover:bg-blue-100"
                       >심사</button>
                       <button
-                        onClick={() => handleApprove(app.id)}
+                        onClick={event => openApproveDialog(app.id, event.currentTarget)}
                         disabled={processingId === app.id}
+                        aria-haspopup="dialog"
+                        aria-controls={approveTarget === app.id ? 'application-approve-confirm-dialog' : undefined}
                         className="px-3 py-1.5 bg-green-600 text-white rounded-lg text-xs font-medium disabled:opacity-50"
                       >승인</button>
                       <button
-                        onClick={() => setRejectTarget(app.id)}
+                        onClick={event => openRejectDialog(app.id, event.currentTarget)}
                         disabled={processingId === app.id}
                         className="px-3 py-1.5 bg-red-50 text-red-600 border border-red-200 rounded-lg text-xs font-medium disabled:opacity-50"
                       >거절</button>
@@ -376,11 +554,25 @@ export default function ApplicationsPage() {
           const app = applications.find(a => a.id === showChecklist);
           if (!app) return null;
           const allChecked = Object.values(checklist).every(Boolean);
+          const checklistStatusText = allChecked
+            ? '모든 심사 항목이 체크되었습니다. 승인 진행을 선택할 수 있습니다.'
+            : '모든 심사 항목을 체크해야 승인 진행을 선택할 수 있습니다.';
           return (
-          <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
-            <div className="admin-scope bg-admin-surface rounded-admin-md shadow-admin-xl border border-admin-border-mid p-6 max-w-md w-full">
-              <h3 className="text-admin-h3 text-admin-text mb-1">심사 체크리스트</h3>
-              <p className="text-xs text-admin-muted mb-4">{app.name} · {CHANNEL_LABELS[app.channel_type] || app.channel_type}</p>
+          <div className="fixed inset-0 z-50 flex h-dvh items-center justify-center overflow-y-auto bg-slate-900/40 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div
+              ref={checklistDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={checklistTitleId}
+              aria-describedby={`${checklistDescriptionId} ${checklistStatusId}`}
+              tabIndex={-1}
+              className="admin-scope bg-admin-surface rounded-admin-md shadow-admin-xl border border-admin-border-mid p-6 max-w-md w-full"
+            >
+              <h3 id={checklistTitleId} className="text-admin-h3 text-admin-text mb-1">심사 체크리스트</h3>
+              <p id={checklistDescriptionId} className="text-xs text-admin-muted mb-4">{app.name} · {CHANNEL_LABELS[app.channel_type] || app.channel_type}</p>
+              <p id={checklistStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {checklistStatusText}
+              </p>
               <div className="space-y-2 mb-4">
                 {[
                   { key: 'channel_valid', label: '채널 URL 유효함 (접속 가능)' },
@@ -391,6 +583,7 @@ export default function ApplicationsPage() {
                   <label key={key} className="flex items-start gap-2 cursor-pointer">
                     <input
                       type="checkbox"
+                      ref={key === 'channel_valid' ? checklistFirstInputRef : undefined}
                       checked={checklist[key] || false}
                       onChange={(e) => setChecklist(prev => ({ ...prev, [key]: e.target.checked }))}
                       className="mt-0.5"
@@ -400,13 +593,14 @@ export default function ApplicationsPage() {
                 ))}
               </div>
               <div className="flex gap-2 justify-end">
-                <Button variant="ghost" onClick={() => setShowChecklist(null)}>닫기</Button>
+                <Button variant="ghost" onClick={() => closeChecklist()}>닫기</Button>
                 <Button
                   variant="primary"
                   disabled={!allChecked}
                   onClick={() => {
-                    setShowChecklist(null);
-                    handleApprove(app.id);
+                    const returnTarget = checklistReturnFocusRef.current;
+                    closeChecklist(false);
+                    openApproveDialog(app.id, returnTarget);
                   }}
                 >
                   {allChecked ? '✅ 체크 완료 — 승인 진행' : '모든 항목 체크 필요'}
@@ -417,23 +611,93 @@ export default function ApplicationsPage() {
           );
         })()}
 
+        {/* 승인 확인 모달 */}
+        {approveTarget && (() => {
+          const app = applications.find(a => a.id === approveTarget);
+          if (!app) return null;
+          const approveStatusText = processingId === approveTarget
+            ? '파트너 계정을 생성하며 신청을 승인하는 중입니다.'
+            : '승인하면 파트너 계정과 추천 코드가 자동 생성됩니다.';
+          return (
+          <div className="fixed inset-0 z-50 flex h-dvh items-center justify-center overflow-y-auto bg-slate-900/40 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div
+              id="application-approve-confirm-dialog"
+              ref={approveDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={approveTitleId}
+              aria-describedby={`${approveDescriptionId} ${approveStatusId}`}
+              tabIndex={-1}
+              className="admin-scope w-full max-w-sm rounded-admin-md border border-admin-border-mid bg-admin-surface p-6 shadow-admin-xl"
+            >
+              <h3 id={approveTitleId} className="text-admin-h3 text-admin-text">파트너 신청 승인</h3>
+              <p id={approveDescriptionId} className="mt-2 text-admin-sm leading-6 text-admin-muted">
+                {app.name} 신청을 승인합니다. 승인 즉시 파트너 계정, 추천 코드, 미리보기 허브 연결 정보가 생성됩니다.
+              </p>
+              <p id={approveStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {approveStatusText}
+              </p>
+              <div className="mt-4 rounded-admin-sm border border-green-200 bg-green-50 px-3 py-2 text-admin-xs text-green-800">
+                채널 {CHANNEL_LABELS[app.channel_type] || app.channel_type} · 팔로워 {(app.follower_count || 0).toLocaleString()}명 · 영향력 {scoreLabel(influenceScore(app)).label}
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  ref={approveCancelButtonRef}
+                  onClick={closeApproveDialog}
+                  disabled={processingId === approveTarget}
+                  className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-sm font-medium text-admin-text-2 hover:bg-admin-surface-2 focus:outline-none focus:shadow-admin-focus disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApprove(approveTarget)}
+                  disabled={processingId === approveTarget}
+                  aria-busy={processingId === approveTarget}
+                  className="rounded-admin-sm bg-green-600 px-3 py-2 text-admin-sm font-semibold text-white hover:bg-green-700 focus:outline-none focus:shadow-admin-focus disabled:opacity-50"
+                >
+                  승인 확정
+                </button>
+              </div>
+            </div>
+          </div>
+          );
+        })()}
+
         {/* 거절 사유 모달 */}
         {rejectTarget && (
-          <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-50 p-4">
-            <div className="admin-scope bg-admin-surface rounded-admin-md shadow-admin-xl border border-admin-border-mid p-6 max-w-sm w-full">
-              <h3 className="text-admin-h3 text-admin-text mb-3">거절 사유</h3>
+          <div className="fixed inset-0 z-50 flex h-dvh items-center justify-center overflow-y-auto bg-slate-900/40 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <div
+              ref={rejectDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={rejectTitleId}
+              aria-describedby={`${rejectDescriptionId} ${rejectStatusId}`}
+              tabIndex={-1}
+              className="admin-scope bg-admin-surface rounded-admin-md shadow-admin-xl border border-admin-border-mid p-6 max-w-sm w-full"
+            >
+              <h3 id={rejectTitleId} className="text-admin-h3 text-admin-text mb-2">거절 사유</h3>
+              <p id={rejectDescriptionId} className="text-xs text-admin-muted mb-3">
+                선택한 신청을 거절합니다. 사유는 선택 입력이며 파트너 심사 기록에 남습니다.
+              </p>
+              <p id={rejectStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {processingId === rejectTarget ? '거절 처리 중입니다.' : '거절 사유 입력창이 열렸습니다.'}
+              </p>
               <textarea
+                ref={rejectTextareaRef}
                 value={rejectReason}
                 onChange={e => setRejectReason(e.target.value)}
                 rows={3}
+                aria-describedby={`${rejectDescriptionId} ${rejectStatusId}`}
                 placeholder="거절 사유를 입력하세요 (선택)"
                 className="w-full border border-admin-border-mid rounded-admin-sm px-3 py-2 text-admin-sm bg-admin-surface text-admin-text mb-4 resize-none focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
               />
               <div className="flex gap-2 justify-end">
-                <Button variant="ghost" onClick={() => { setRejectTarget(null); setRejectReason(''); }}>
+                <Button variant="ghost" onClick={closeRejectDialog}>
                   취소
                 </Button>
-                <Button variant="danger" onClick={handleReject} disabled={processingId === rejectTarget}>
+                <Button variant="danger" onClick={handleReject} disabled={processingId === rejectTarget} aria-busy={processingId === rejectTarget}>
                   거절 확정
                 </Button>
               </div>

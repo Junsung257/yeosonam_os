@@ -67,6 +67,26 @@ When `verify:all` is run locally without `--json`, it also prints the top
 attention items and generated operational artifact paths directly in the
 terminal.
 
+UI/UX masterplan readiness is covered by the structured gate:
+
+```bash
+npm run verify:ux-masterplan
+```
+
+For browser-backed mobile/tablet/desktop route checks, run the opt-in UX smoke
+gate. It captures screenshot evidence, checks blank screens, detects horizontal
+overflow, and fails on unexpected console/page errors across `/`, `/packages`,
+`/packages/[id]`, `/concierge`, `/group-inquiry`, `/admin`, `/admin/bookings`,
+`/admin/packages`, and `/admin/payments`.
+
+```bash
+npm run verify:ux-smoke
+npm run verify:all -- --include-ux-smoke --json --report=.tmp/full-readiness-report.json
+```
+
+`verify:all` does not run the browser UX smoke stage by default; use
+`--include-ux-smoke` only when a local browser/dev-server check is intended.
+
 For marketing-only release readiness, run the single gate:
 
 ```bash

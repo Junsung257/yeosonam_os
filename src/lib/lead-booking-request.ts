@@ -23,6 +23,15 @@ export interface LandingBookingTracking {
   utmTerm?: string | null;
   referrer?: string | null;
   landingUrl?: string | null;
+  intent?: string | null;
+  budget?: string | null;
+  destination?: string | null;
+  party_type?: string | null;
+  selected_products?: string[] | null;
+  ready_count?: number | null;
+  missing_fields?: string[] | null;
+  decision_summary?: string | null;
+  handoff_preview?: string | null;
 }
 
 export interface CreateLandingBookingRequestInput {
@@ -186,6 +195,40 @@ async function resolveAffiliateCommission(input: {
       source: 'landing_lead',
       referral_code: input.affiliateRef,
     } satisfies Record<string, unknown>,
+    };
+}
+
+function normalizeTrackingText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function normalizeTrackingList(value: string[] | null | undefined, maxItems = 12, maxLength = 80): string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+
+  for (const item of value ?? []) {
+    const text = item.trim().slice(0, maxLength);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    normalized.push(text);
+    if (normalized.length >= maxItems) break;
+  }
+
+  return normalized;
+}
+
+function buildLandingBookingHandoffContext(tracking: LandingBookingTracking | null | undefined) {
+  return {
+    intent: normalizeTrackingText(tracking?.intent),
+    budget: normalizeTrackingText(tracking?.budget),
+    destination: normalizeTrackingText(tracking?.destination),
+    party_type: normalizeTrackingText(tracking?.party_type),
+    selected_products: normalizeTrackingList(tracking?.selected_products),
+    ready_count: typeof tracking?.ready_count === 'number' ? tracking.ready_count : null,
+    missing_fields: normalizeTrackingList(tracking?.missing_fields),
+    decision_summary: normalizeTrackingText(tracking?.decision_summary),
+    handoff_preview: normalizeTrackingText(tracking?.handoff_preview),
   };
 }
 
@@ -232,7 +275,21 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
     childPrice,
   });
 
+  const handoffContext = buildLandingBookingHandoffContext(input.tracking);
+  const trackingNotes = [
+    handoffContext.intent ? `상담의도: ${handoffContext.intent}` : null,
+    handoffContext.budget ? `예산조건: ${handoffContext.budget}` : null,
+    handoffContext.destination ? `목적지: ${handoffContext.destination}` : null,
+    handoffContext.party_type ? `고객유형: ${handoffContext.party_type}` : null,
+    handoffContext.selected_products.length ? `선택상품: ${handoffContext.selected_products.join(', ')}` : null,
+    typeof handoffContext.ready_count === 'number' ? `문의준비도: ${handoffContext.ready_count}` : null,
+    handoffContext.missing_fields.length ? `보완필드: ${handoffContext.missing_fields.join(', ')}` : null,
+    handoffContext.decision_summary ? `판단요약: ${handoffContext.decision_summary}` : null,
+    handoffContext.handoff_preview ? `전달미리보기: ${handoffContext.handoff_preview}` : null,
+  ].filter(Boolean);
+
   const notes = [
+    ...trackingNotes,
     '[랜딩 예약 요청]',
     '고객이 상품 랜딩에서 예약 문의 후 카카오 채널로 이동했습니다.',
     `희망 출발일: ${input.form.desiredDate || '미정'}`,
@@ -309,6 +366,18 @@ export async function createLandingBookingRequest(input: CreateLandingBookingReq
       desired_date: input.form.desiredDate || null,
       total_people: totalPeople,
       source: input.channel ?? 'landing',
+      product_id: packageRow.id,
+      package_title: packageRow.title ?? null,
+      handoff_context: handoffContext,
+      intent: handoffContext.intent,
+      budget: handoffContext.budget,
+      destination: handoffContext.destination,
+      party_type: handoffContext.party_type,
+      selected_products: handoffContext.selected_products,
+      ready_count: handoffContext.ready_count,
+      missing_fields: handoffContext.missing_fields,
+      decision_summary: handoffContext.decision_summary,
+      handoff_preview: handoffContext.handoff_preview,
       next_manual_step: '좌석/가능 여부 확인 후 고객에게 카카오로 안내',
     });
 

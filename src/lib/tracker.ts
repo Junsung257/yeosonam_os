@@ -297,8 +297,8 @@ export type EngagementEventType =
   | 'scroll_75'
   | 'scroll_90';
 
-export function trackEngagement(params: {
-  event_type: EngagementEventType | string;
+type TrackEngagementParams = {
+  event_type: EngagementEventType;
   product_id?: string;
   product_name?: string;
   source?: string;
@@ -316,17 +316,123 @@ export function trackEngagement(params: {
   destination?: string | null;
   party_type?: string | null;
   selected_products?: string[] | null;
+  ready_count?: number | null;
+  missing_fields?: string[] | null;
+  decision_summary?: string | null;
+  handoff_preview?: string | null;
+  next_action?: string | null;
+  next_action_reason?: string | null;
+  result_summary?: string | null;
+  applied_filters?: string | null;
   recommended_rank?: number | null;
+  rank?: number | null;
+  price?: number | null;
+  task_flow?: string | null;
+  queue_key?: string | null;
+  command_source?: string | null;
+  action_stage?: 'navigation' | 'completed' | null;
+  click_count?: number | null;
+  time_to_complete_ms?: number | null;
   metadata?: Record<string, unknown>;
-}): void {
+};
+
+function asText(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function inferAdminTaskFlow(surface: string | null, action: string | null, pageUrl: string | null): string | null {
+  const source = `${pageUrl ?? ''} ${surface ?? ''} ${action ?? ''}`;
+  if (source.includes('payments')) return 'payment_operations';
+  if (source.includes('bookings')) return 'booking_operations';
+  if (source.includes('packages')) return 'package_operations';
+  if (source.includes('today_work') || source.includes('operator_command') || pageUrl === '/admin') return 'dashboard_triage';
+  if (source.includes('jarvis') || source.includes('ai')) return 'ai_operations';
+  return null;
+}
+
+function inferAdminQueueKey(metadata: Record<string, unknown> | undefined, surface: string | null, pageUrl: string | null): string | null {
+  const explicitQueue = asText(metadata?.queue) ?? asText(metadata?.queue_key) ?? asText(metadata?.filter);
+  if (explicitQueue) return explicitQueue;
+
+  const href = asText(metadata?.href);
+  if (href) {
+    if (href.includes('filter=unpaid')) return 'bookings_unpaid';
+    if (href.includes('filter=unmatched')) return 'payments_unmatched';
+    if (href.includes('/admin/packages')) return 'packages_pending_review';
+    if (href.includes('/admin/jarvis')) return 'ai_action_review';
+    if (href.includes('/admin/bookings')) return 'bookings_queue';
+    if (href.includes('/admin/payments')) return 'payments_queue';
+  }
+
+  if (surface?.includes('bulk')) return 'bulk_selection';
+  if (surface?.includes('work_queue')) return surface;
+  if (surface?.includes('command')) return surface;
+  if (pageUrl?.includes('/admin/bookings')) return 'bookings_current_filter';
+  if (pageUrl?.includes('/admin/packages')) return 'packages_current_filter';
+  if (pageUrl?.includes('/admin/payments')) return 'payments_current_filter';
+  if (pageUrl === '/admin') return 'dashboard_today_work';
+  return null;
+}
+
+function inferAdminCommandSource(surface: string | null, metadata: Record<string, unknown> | undefined): string | null {
+  const explicitSource = asText(metadata?.source) ?? asText(metadata?.command_source);
+  if (explicitSource) return explicitSource;
+  if (!surface) return null;
+  if (surface.includes('today_work')) return 'today_work_queue';
+  if (surface.includes('command')) return 'command_bar';
+  if (surface.includes('work_queue')) return 'work_queue';
+  if (surface.includes('row')) return 'table_row';
+  if (surface.includes('mobile')) return 'mobile_card';
+  if (surface.includes('drawer')) return 'detail_drawer';
+  if (surface.includes('modal')) return 'modal';
+  if (surface.includes('bulk')) return 'bulk_action';
+  return surface;
+}
+
+function inferAdminActionStage(action: string | null, surface: string | null): 'navigation' | 'completed' | null {
+  const source = `${surface ?? ''} ${action ?? ''}`;
+  if (!source.trim()) return null;
+  if (/(opened|_open|clicked|select|toggle|drawer|menu|queue_opened|command_opened)/.test(source)) return 'navigation';
+  if (/(copied|bulk|match|cancel|restore|approve|publish|delete|resync|import|create|settle|refund|retry|complete|save|update)/.test(source)) return 'completed';
+  return 'navigation';
+}
+
+function inferAdminClickCount(action: string | null, surface: string | null): number | null {
+  const source = `${surface ?? ''} ${action ?? ''}`;
+  if (!source.trim()) return null;
+  if (/(opened|open|select|selected|clicked|toggle|copied)/.test(source)) return 1;
+  if (/(bulk|match|cancel|restore|approve|publish|delete|resync|import|create|settle|refund|retry|complete)/.test(source)) return 2;
+  return 1;
+}
+
+function withAdminProductivityMetadata(params: TrackEngagementParams): TrackEngagementParams {
+  if (params.event_type !== 'admin_action_completed') return params;
+
+  const metadata = params.metadata;
+  const surface = asText(metadata?.surface);
+  const action = asText(metadata?.action);
+  const pageUrl = params.page_url ?? asText(metadata?.page_url);
+
+  return {
+    ...params,
+    task_flow: params.task_flow ?? inferAdminTaskFlow(surface, action, pageUrl),
+    queue_key: params.queue_key ?? inferAdminQueueKey(metadata, surface, pageUrl),
+    command_source: params.command_source ?? inferAdminCommandSource(surface, metadata),
+    action_stage: params.action_stage ?? inferAdminActionStage(action, surface),
+    click_count: params.click_count ?? inferAdminClickCount(action, surface),
+  };
+}
+
+export function trackEngagement(params: TrackEngagementParams): void {
   const { uid: visitor_uid } = getVisitorUid();
+  const enrichedParams = withAdminProductivityMetadata(params);
   post({
     type: 'engagement',
     session_id: getSessionId(),
     user_id: getSavedUserId(),
     visitor_uid,
-    cart_added: params.event_type === 'cart_added',
-    ...params,
+    cart_added: enrichedParams.event_type === 'cart_added',
+    ...enrichedParams,
   });
 }
 

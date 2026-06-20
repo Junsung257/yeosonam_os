@@ -123,6 +123,71 @@ interface Booking {
 
 const fmt만 = (n: number) => `${(n / 10000).toFixed(0)}만`;
 
+function buildDashboardPackageDecisionMetadata(pkg: TravelPackage | undefined, action: 'approve' | 'reject') {
+  const actionLabel = action === 'approve' ? '상품 승인' : '상품 반려';
+  if (!pkg) {
+    return {
+      operation_risk: '상품 식별 필요',
+      next_action: actionLabel,
+      next_action_reason: '대시보드 승인 대기 상품을 다시 조회해 처리 결과를 확인합니다.',
+      decision_summary: `${actionLabel}: 상품 정보를 다시 확인합니다.`,
+      missing_fields: ['상품'],
+      ready_for_publish: false,
+    };
+  }
+
+  const confidenceLabel = `${Math.round(pkg.confidence * 100)}%`;
+  const missingFields = [
+    !pkg.destination ? '목적지' : null,
+    !pkg.price ? '가격' : null,
+    !pkg.itinerary?.length ? '일정' : null,
+  ].filter(Boolean) as string[];
+  const operationRisk = pkg.confidence < 0.6 ? '낮은 추출 신뢰도'
+    : missingFields.length > 0 ? '핵심 정보 누락'
+      : '발행 전 최종 확인';
+  const nextActionReason = action === 'approve'
+    ? `신뢰도 ${confidenceLabel}, 누락 ${missingFields.length}개 기준으로 고객 노출 전 승인 판단을 완료합니다.`
+    : `신뢰도 ${confidenceLabel}, 누락 ${missingFields.length}개 기준으로 반려 후 보완 큐로 돌립니다.`;
+
+  return {
+    package_id: pkg.id,
+    package_title: pkg.title,
+    destination: pkg.destination ?? null,
+    confidence: pkg.confidence,
+    confidence_label: confidenceLabel,
+    operation_risk: operationRisk,
+    next_action: actionLabel,
+    next_action_reason: nextActionReason,
+    decision_summary: `${actionLabel}: ${nextActionReason}`,
+    missing_fields: missingFields,
+    missing_field_count: missingFields.length,
+    ready_for_publish: action === 'approve' && missingFields.length === 0 && pkg.confidence >= 0.8,
+  };
+}
+
+function buildDashboardAgentActionDecisionMetadata(act: any, action: 'approve' | 'reject') {
+  const agentTypeLabel = { operations: '운영', sales: '영업', marketing: '마케팅', finance: '재무', products: '상품', system: '시스템' }[act.agent_type as string] || act.agent_type || '미분류';
+  const priorityLabel = { low: '낮음', normal: '보통', high: '높음', critical: '긴급' }[act.priority as string] || act.priority || '보통';
+  const actionLabel = action === 'approve' ? '자비스 승인' : '자비스 반려';
+  const operationRisk = act.priority === 'critical' ? '긴급 승인 대기'
+    : act.priority === 'high' ? '높은 우선순위 대기'
+      : '자동화 결정 대기';
+  const nextActionReason = `${priorityLabel} 우선순위 ${agentTypeLabel} 제안을 ${action === 'approve' ? '실행 큐로 넘깁니다' : '보류하고 재검토합니다'}.`;
+
+  return {
+    action_id: act.id,
+    action_type: act.action_type ?? null,
+    agent_type: act.agent_type ?? null,
+    agent_type_label: agentTypeLabel,
+    priority: act.priority ?? null,
+    priority_label: priorityLabel,
+    operation_risk: operationRisk,
+    next_action: actionLabel,
+    next_action_reason: nextActionReason,
+    decision_summary: `${actionLabel}: ${nextActionReason}`,
+  };
+}
+
 // ── 서브 컴포넌트: TwoTrackKPI (V4 — IFRS 15 매출 인식 분리) ─────────────
 //
 // [확정매출] 출발일 기준 = 이미 확정된 우리 수익 (취소 불가)
@@ -400,17 +465,68 @@ function OwnerFinanceCommandCenter({
   const preTaxMargin = stats?.margin ?? 0;
   const cashLeft = customerPaid - landPayable;
   const totalTodo = (stats?.unpaidD7 ?? 0) + (unmatchedCount ?? 0) + pendingActionsCount + pendingPackagesCount;
+  const financeCommandTitleId = 'admin-owner-finance-title';
+  const financeCommandSummaryId = 'admin-owner-finance-summary';
+  const financeCommandPriorityId = 'admin-owner-finance-priority';
+  const financeRiskItems = [
+    cashLeft < 0
+      ? { label: '현금 부족', value: fmt만KRW(Math.abs(cashLeft)), action: '랜드사 송금 전 수납 상태 확인', tone: 'danger' as const }
+      : null,
+    receivable > 0
+      ? { label: '미수금', value: fmt만KRW(receivable), action: 'D-7 잔금 미수 예약부터 확인', tone: 'danger' as const }
+      : null,
+    landPayable > 0
+      ? { label: '송금 대기', value: fmt만KRW(landPayable), action: '출발 완료 건 정산 여부 확인', tone: 'warn' as const }
+      : null,
+    (unmatchedCount ?? 0) > 0
+      ? { label: '미매칭', value: `${unmatchedCount ?? 0}건`, action: '입금 자동매칭 후보 확인', tone: 'warn' as const }
+      : null,
+  ].filter((item): item is { label: string; value: string; action: string; tone: 'danger' | 'warn' } => Boolean(item));
+  const financePriority = financeRiskItems[0] ?? {
+    label: totalTodo > 0 ? '운영 대기' : '정상',
+    value: totalTodo > 0 ? `${totalTodo}건` : '0건',
+    action: totalTodo > 0 ? '오늘 처리할 일 순서대로 확인' : '수납과 정산 상태를 유지 점검',
+    tone: 'neutral' as const,
+  };
+  const financeCommandSummaryText = financeRiskItems.length > 0
+    ? `정산 우선순위는 ${financePriority.label} ${financePriority.value}입니다. 다음 액션은 ${financePriority.action}입니다. 확인 필요 항목은 ${financeRiskItems.map(item => `${item.label} ${item.value}`).join(', ')}입니다.`
+    : `정산 우선순위는 ${financePriority.label} ${financePriority.value}입니다. ${financePriority.action}하면 됩니다.`;
 
   return (
-    <section className="space-y-2">
+    <section aria-labelledby={financeCommandTitleId} aria-describedby={`${financeCommandSummaryId} ${financeCommandPriorityId}`} className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <h2 className="text-admin-base font-bold text-text-primary">정산 대시보드</h2>
+          <h2 id={financeCommandTitleId} className="text-admin-base font-bold text-text-primary">정산 대시보드</h2>
           <p className="mt-0.5 text-[11px] text-admin-muted-2">고객 수납, 랜드사 송금, 우리 수익을 한 화면에서 확인</p>
         </div>
         <Link href="/admin/payments" className="shrink-0 rounded-[8px] border border-admin-border-mid bg-white px-3 py-1.5 text-[11px] font-semibold text-admin-text-2 hover:bg-admin-bg">
           입금/정산
         </Link>
+      </div>
+      <p id={financeCommandSummaryId} className="sr-only">
+        {financeCommandSummaryText}
+      </p>
+
+      <div
+        id={financeCommandPriorityId}
+        data-testid="admin-owner-finance-priority"
+        aria-label={financeCommandSummaryText}
+        className={`rounded-admin-md border px-3 py-2.5 text-admin-xs font-semibold shadow-admin-xs ${
+          financePriority.tone === 'danger'
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : financePriority.tone === 'warn'
+              ? 'border-amber-200 bg-amber-50 text-amber-800'
+              : 'border-admin-border-mid bg-white text-admin-text-2'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="font-black" data-testid="admin-owner-finance-priority-label">
+            우선 확인: {financePriority.label} {financePriority.value}
+          </span>
+          <span className="text-current/70" data-testid="admin-owner-finance-priority-action">
+            {financePriority.action}
+          </span>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-12">
@@ -529,6 +645,8 @@ function TodayWorkQueue({
       detail: '출발 전 잔금 확인',
       count: stats?.unpaidD7 ?? 0,
       action: '알림 발송',
+      reason: '출발 전 잔금 리스크',
+      operationRisk: '수금 지연',
       target: '예약 관리의 출발 임박 미납 필터로 이동합니다.',
       tone: 'danger',
     },
@@ -538,6 +656,8 @@ function TodayWorkQueue({
       detail: '입금자명과 예약 연결',
       count: unmatchedCount ?? 0,
       action: '매칭하기',
+      reason: '예약 상태 흔들림 방지',
+      operationRisk: '상태 불일치',
       target: '결제 관리의 미매칭 입금 필터로 이동합니다.',
       tone: 'warn',
     },
@@ -547,6 +667,8 @@ function TodayWorkQueue({
       detail: '자동화 제안 검수',
       count: pendingActionsCount,
       action: '검토하기',
+      reason: '자동화 승인 지연 방지',
+      operationRisk: '승인 대기',
       target: '자비스 승인 대기 액션 화면으로 이동합니다.',
       tone: 'neutral',
     },
@@ -556,6 +678,8 @@ function TodayWorkQueue({
       detail: '등록 대기 상품 발행',
       count: pendingPackagesCount,
       action: '검수하기',
+      reason: '상담 가능한 상품 최신화',
+      operationRisk: '상품 최신성',
       target: '상품 관리의 검수 대기 목록으로 이동합니다.',
       tone: 'neutral',
     },
@@ -574,10 +698,10 @@ function TodayWorkQueue({
   const workQueueSummaryId = 'admin-today-work-summary';
   const workQueueLeadId = 'admin-today-work-lead';
   const workQueueSummaryText = total > 0
-    ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length}개입니다. ${activeRows.map(row => `${row.label} ${row.count}건`).join(', ')} 순서로 확인할 수 있습니다.`
+    ? `오늘 처리할 일이 ${total}건 있습니다. 활성 업무 ${activeRows.length}/${rows.length}, 위험 또는 주의 업무 ${urgentRows.length}개입니다. ${activeRows.map(row => `${row.label} ${row.count}건, 운영 리스크 ${row.operationRisk}, 이유 ${row.reason}`).join(', ')} 순서로 확인할 수 있습니다.`
     : '오늘 처리할 일이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
   const workQueueLeadText = priorityRow
-    ? `우선 처리: ${priorityRow.label} ${priorityRow.count}건. 다음 액션은 ${priorityRow.action}입니다.`
+    ? `우선 처리: ${priorityRow.label} ${priorityRow.count}건. 운영 리스크: ${priorityRow.operationRisk}. 이유: ${priorityRow.reason}. 다음 액션은 ${priorityRow.action}입니다.`
     : '대기 중인 운영 작업이 없습니다.';
   const toneClass = {
     danger: 'border-red-200 bg-red-50 text-red-700',
@@ -652,6 +776,11 @@ function TodayWorkQueue({
                     label: row.label,
                     href: row.href,
                     count: row.count,
+                    operation_risk: row.operationRisk,
+                    reason: row.reason,
+                    next_action: row.count > 0 ? row.action : '상태 확인',
+                    next_action_reason: row.count > 0 ? row.reason : '대기 항목 없이 최신 상태만 확인합니다.',
+                    decision_summary: `${row.label}: ${row.count}건, ${row.operationRisk}, ${row.count > 0 ? row.action : '상태 확인'}`,
                     has_waiting_work: row.count > 0,
                   },
                 });
@@ -659,7 +788,7 @@ function TodayWorkQueue({
               className={`group rounded-admin-md border p-3 transition-all duration-160 hover:border-admin-border-strong hover:shadow-admin-sm ${row.count > 0 ? toneClass[row.tone] : 'border-admin-border-mid bg-admin-bg text-admin-muted'}`}
             >
               <p id={rowDescriptionId} className="sr-only">
-                {row.target} 현재 {row.count}건이며 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
+                {row.target} 현재 {row.count}건이며 운영 리스크는 {row.operationRisk}, 처리 이유는 {row.reason}입니다. 다음 액션은 {row.count > 0 ? row.action : '상태 확인'}입니다.
               </p>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -671,6 +800,20 @@ function TodayWorkQueue({
               <div className="mt-3 flex items-center justify-between gap-2 text-[11px] font-semibold">
                 <span className="text-current/55">{row.count > 0 ? '다음 액션' : '대기 없음'}</span>
                 <span className="text-current group-hover:underline">{row.count > 0 ? row.action : '확인'}</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  data-testid="admin-today-work-queue-risk"
+                  className="inline-flex max-w-full rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black text-admin-text ring-1 ring-black/5"
+                >
+                  리스크: {row.operationRisk}
+                </span>
+                <span
+                  data-testid="admin-today-work-queue-reason"
+                  className="inline-flex max-w-full rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
+                >
+                  {row.reason}
+                </span>
               </div>
             </Link>
           );
@@ -698,6 +841,8 @@ function OperatorCommandBar({
       count: stats?.unpaidD7 ?? 0,
       helper: 'D-7 미납',
       target: '예약 관리의 출발 임박 미납 예약을 열어 잔금 알림을 처리합니다.',
+      reason: '출발 전 잔금 리스크가 가장 커서 먼저 확인합니다.',
+      operationRisk: '수금 지연',
       priority: 1,
     },
     {
@@ -706,6 +851,8 @@ function OperatorCommandBar({
       count: unmatchedCount ?? 0,
       helper: '미매칭',
       target: '결제 관리의 미매칭 입금을 열어 예약과 연결합니다.',
+      reason: '입금 연결이 늦어지면 예약 상태와 잔금 판단이 흔들립니다.',
+      operationRisk: '상태 불일치',
       priority: 2,
     },
     {
@@ -714,6 +861,8 @@ function OperatorCommandBar({
       count: pendingActionsCount,
       helper: '승인 대기',
       target: '자비스 승인 대기 액션을 열어 자동화 제안을 검토합니다.',
+      reason: '자동화 제안은 승인 또는 보류 결정을 먼저 내려야 다음 작업이 줄어듭니다.',
+      operationRisk: '승인 대기',
       priority: 3,
     },
     {
@@ -722,18 +871,24 @@ function OperatorCommandBar({
       count: pendingPackagesCount,
       helper: '발행 대기',
       target: '상품 관리 화면을 열어 발행 대기 상품을 검수합니다.',
+      reason: '발행 대기 상품을 정리하면 상담과 예약 연결 후보가 최신 상태가 됩니다.',
+      operationRisk: '상품 최신성',
       priority: 4,
     },
   ].sort((a, b) => (b.count > 0 ? 1 : 0) - (a.count > 0 ? 1 : 0) || a.priority - b.priority);
   const nextAction = actions.find(action => action.count > 0) ?? actions[0];
   const total = actions.reduce((sum, action) => sum + action.count, 0);
   const commandSummaryId = 'admin-operator-command-summary';
+  const commandNextActionReasonId = 'admin-operator-command-next-reason';
+  const commandNextActionReasonText = nextAction.count > 0
+    ? `${nextAction.label} ${nextAction.count}건 우선. 운영 리스크는 ${nextAction.operationRisk}. ${nextAction.reason}`
+    : '현재 대기 작업이 없어 각 업무 화면에서 최신 상태만 확인하면 됩니다.';
   const commandSummaryText = total > 0
-    ? `운영 커맨드에 오늘 처리 후보 ${total}건이 있습니다. 다음 우선순위는 ${nextAction.label} ${nextAction.count}건입니다.`
+    ? `운영 커맨드에 오늘 처리 후보 ${total}건이 있습니다. 다음 우선순위는 ${nextAction.label} ${nextAction.count}건입니다. ${commandNextActionReasonText}`
     : '운영 커맨드에 대기 중인 작업이 없습니다. 각 업무 화면에서 최신 상태를 확인할 수 있습니다.';
 
   return (
-    <section aria-labelledby="admin-operator-command-title" className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
+    <section aria-labelledby="admin-operator-command-title" aria-describedby={`${commandSummaryId} ${commandNextActionReasonId}`} className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="min-w-0 lg:w-[220px]">
           <p id="admin-operator-command-title" className="text-[11px] font-semibold uppercase tracking-wider text-admin-muted-2">Action queue</p>
@@ -743,6 +898,13 @@ function OperatorCommandBar({
           </div>
           <p className="mt-0.5 truncate text-[11px] text-admin-muted-2">
             다음: {nextAction.count > 0 ? nextAction.label : '대기 없음'}
+          </p>
+          <p
+            id={commandNextActionReasonId}
+            data-testid="admin-operator-command-next-reason"
+            className="mt-1 line-clamp-2 text-[11px] font-medium text-admin-text-2"
+          >
+            {commandNextActionReasonText}
           </p>
         </div>
         <p id={commandSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
@@ -769,21 +931,39 @@ function OperatorCommandBar({
                       label: action.label,
                       href: action.href,
                       count: action.count,
+                      operation_risk: action.operationRisk,
+                      reason: action.reason,
+                      next_action: action.count > 0 ? `${action.label} 열기` : '상태 확인',
+                      next_action_reason: action.count > 0 ? action.reason : '대기 항목 없이 최신 상태만 확인합니다.',
+                      decision_summary: `${action.label}: ${action.count}건, ${action.operationRisk}`,
+                      has_waiting_work: action.count > 0,
+                      priority: action.priority,
                     },
                   });
                 }}
-                className={`flex min-w-[148px] items-center justify-between gap-3 rounded-admin-md border px-3 py-2 transition-all duration-160 ${
+                className={`flex min-w-[184px] items-start justify-between gap-3 rounded-admin-md border px-3 py-2 transition-all duration-160 ${
                   isActive
                     ? 'border-admin-border-strong bg-admin-bg text-admin-text hover:shadow-admin-sm'
                   : 'border-admin-border bg-white text-admin-muted hover:border-admin-border-mid'
                 }`}
               >
                 <p id={actionDescriptionId} className="sr-only">
-                  {action.target} 현재 {action.count}건입니다.
+                  {action.target} 현재 {action.count}건입니다. 운영 리스크는 {action.operationRisk}, 처리 이유는 {action.reason}입니다.
                 </p>
-                <span className="min-w-0">
-                  <span className="block truncate text-[12px] font-bold">{action.label}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-center gap-1.5">
+                    <span className="block truncate text-[12px] font-bold">{action.label}</span>
+                    <span
+                      data-testid="admin-operator-command-risk"
+                      className="shrink-0 rounded-full bg-white px-1.5 py-0.5 text-[9px] font-black text-admin-text-2 ring-1 ring-black/5"
+                    >
+                      {action.operationRisk}
+                    </span>
+                  </span>
                   <span className="block truncate text-[11px] text-current/60">{action.helper}</span>
+                  <span data-testid="admin-operator-command-reason" className="mt-1 line-clamp-2 block text-[10px] font-semibold leading-4 text-current/65">
+                    이유: {action.reason}
+                  </span>
                 </span>
                 <span className={`rounded-full px-2 py-0.5 text-[11px] font-black tabular-nums ${
                   isActive ? 'bg-slate-950 text-white' : 'bg-admin-surface-2 text-admin-muted'
@@ -1692,6 +1872,60 @@ export default function AdminPage({
   // 상세 패널
   const [selectedPackage, setSelectedPackage] = useState<TravelPackage | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const selectedPackageDrawerRef = useRef<HTMLDivElement | null>(null);
+  const selectedPackageCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedPackage) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const getFocusableElements = () => Array.from(
+      selectedPackageDrawerRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => {
+      selectedPackageCloseButtonRef.current?.focus();
+    }, 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setSelectedPackage(null);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.setTimeout(() => {
+        if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+      }, 0);
+    };
+  }, [selectedPackage]);
 
   const loadAll = async (months = 6) => {
     setFetchErrors([]);
@@ -1795,6 +2029,8 @@ export default function AdminPage({
 
   const handleAction = async (packageId: string, action: 'approve' | 'reject') => {
     const actionLabel = action === 'approve' ? '승인' : '반려';
+    const targetPackage = pendingPackages.find(pkg => pkg.id === packageId)
+      ?? (selectedPackage?.id === packageId ? selectedPackage : undefined);
     setDashboardStatusMessage(`상품 ${actionLabel} 처리 중입니다.`);
     setProcessingId(packageId);
     try {
@@ -1807,7 +2043,12 @@ export default function AdminPage({
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin',
-          metadata: { surface: 'dashboard_pending_package', action: action, packageId },
+          metadata: {
+            surface: 'dashboard_pending_package',
+            action: action,
+            packageId,
+            ...buildDashboardPackageDecisionMetadata(targetPackage, action),
+          },
         });
         setSelectedPackage(null);
         await loadAll();
@@ -1832,7 +2073,13 @@ export default function AdminPage({
         trackEngagement({
           event_type: ANALYTICS_EVENTS.adminActionCompleted,
           page_url: '/admin',
-          metadata: { surface: 'dashboard_agent_action', action: action, actionId: act.id, actionType: act.action_type },
+          metadata: {
+            surface: 'dashboard_agent_action',
+            action: action,
+            actionId: act.id,
+            actionType: act.action_type,
+            ...buildDashboardAgentActionDecisionMetadata(act, action),
+          },
         });
         setPendingActions(prev => prev.filter(a => a.id !== act.id));
       }
@@ -2018,17 +2265,19 @@ export default function AdminPage({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingActions.slice(0, 6).map((act: any) => {
               const agentActionSummaryId = `admin-dashboard-agent-action-summary-${act.id}`;
+              const agentDecisionSummaryId = `admin-dashboard-agent-action-decision-${act.id}`;
               const agentTypeLabel = { operations: '운영', sales: '영업', marketing: '마케팅', finance: '재무', products: '상품', system: '시스템' }[act.agent_type as string] || act.agent_type || '미분류';
               const priorityLabel = { low: '낮음', normal: '보통', high: '높음', critical: '긴급' }[act.priority as string] || act.priority || '보통';
-              const agentActionDescriptionIds = `${agentActionSummaryId} admin-dashboard-status`;
+              const agentDecisionSummaryText = `다음 결정: ${priorityLabel} 우선순위 ${agentTypeLabel} 제안을 승인 또는 반려합니다.`;
+              const agentActionDescriptionIds = `${agentActionSummaryId} ${agentDecisionSummaryId} admin-dashboard-status`;
               return (
                 <article
                   key={act.id}
-                  aria-describedby={agentActionSummaryId}
+                  aria-describedby={`${agentActionSummaryId} ${agentDecisionSummaryId}`}
                   className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160"
                 >
                   <p id={agentActionSummaryId} className="sr-only">
-                    자비스 결재 대기 항목입니다. 분류는 {agentTypeLabel}, 우선순위는 {priorityLabel}, 작업 유형은 {act.action_type || '미지정'}입니다. 요약: {act.summary || '요약 없음'}.
+                    자비스 결재 대기 항목입니다. 분류는 {agentTypeLabel}, 우선순위는 {priorityLabel}, 작업 유형은 {act.action_type || '미지정'}입니다. 요약: {act.summary || '요약 없음'}. {agentDecisionSummaryText}
                   </p>
                   <div className="flex items-center gap-1.5 mb-1">
                     <span className={`px-1.5 py-0.5 text-[10px] rounded font-medium ${
@@ -2050,6 +2299,13 @@ export default function AdminPage({
                   </div>
                   <p className="text-admin-sm font-medium text-admin-text-2 truncate">{act.summary}</p>
                   <p className="text-[11px] text-admin-muted-2 mt-0.5">{act.action_type}</p>
+                  <p
+                    id={agentDecisionSummaryId}
+                    data-testid="admin-dashboard-agent-action-decision-summary"
+                    className="mt-2 rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1.5 text-[11px] font-semibold text-admin-text-2"
+                  >
+                    {agentDecisionSummaryText}
+                  </p>
                   <div className="mt-2 flex gap-1" role="group" aria-label={`${act.summary || '자비스 결재'} 처리`}>
                     <button
                       type="button"
@@ -2093,15 +2349,20 @@ export default function AdminPage({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
             {pendingPackages.slice(0, 6).map(pkg => {
               const pendingPackageSummaryId = `admin-dashboard-pending-package-summary-${pkg.id}`;
-              const pendingPackageDescriptionIds = `${pendingPackageSummaryId} admin-dashboard-status`;
+              const pendingPackageDecisionSummaryId = `admin-dashboard-pending-package-decision-${pkg.id}`;
+              const pendingPackageConfidenceLabel = `${Math.round(pkg.confidence * 100)}%`;
+              const pendingPackageDecisionSummaryText = pkg.confidence >= 0.8
+                ? `다음 결정: 신뢰도 ${pendingPackageConfidenceLabel}라 승인 전 상세만 빠르게 확인합니다.`
+                : `다음 결정: 신뢰도 ${pendingPackageConfidenceLabel}라 상세 확인 후 승인 또는 반려합니다.`;
+              const pendingPackageDescriptionIds = `${pendingPackageSummaryId} ${pendingPackageDecisionSummaryId} admin-dashboard-status`;
               return (
                 <article
                   key={pkg.id}
-                  aria-describedby={pendingPackageSummaryId}
+                  aria-describedby={`${pendingPackageSummaryId} ${pendingPackageDecisionSummaryId}`}
                   className="rounded-admin-md border border-admin-border-mid bg-admin-surface p-3 shadow-admin-xs hover:border-admin-border-strong hover:shadow-admin-sm transition-all duration-160"
                 >
                   <p id={pendingPackageSummaryId} className="sr-only">
-                    승인 대기 상품입니다. 상품명은 {pkg.title}, 목적지는 {pkg.destination || '미지정'}, 가격은 {pkg.price ? `${pkg.price.toLocaleString()}원` : '미지정'}, 추출 신뢰도는 {Math.round(pkg.confidence * 100)}%입니다.
+                    승인 대기 상품입니다. 상품명은 {pkg.title}, 목적지는 {pkg.destination || '미지정'}, 가격은 {pkg.price ? `${pkg.price.toLocaleString()}원` : '미지정'}, 추출 신뢰도는 {pendingPackageConfidenceLabel}입니다. {pendingPackageDecisionSummaryText}
                   </p>
                   <p className="text-admin-sm font-medium text-admin-text-2 truncate">{pkg.title}</p>
                   <div className="flex items-center gap-2 mt-1">
@@ -2110,13 +2371,35 @@ export default function AdminPage({
                     <span className={`ml-auto px-1.5 py-0.5 text-[10px] rounded font-medium ${
                       pkg.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
                       pkg.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
-                    }`}>{Math.round(pkg.confidence * 100)}%</span>
+                    }`}>{pendingPackageConfidenceLabel}</span>
                   </div>
+                  <p
+                    id={pendingPackageDecisionSummaryId}
+                    data-testid="admin-dashboard-pending-package-decision-summary"
+                    className="mt-2 rounded-admin-sm border border-admin-border bg-admin-bg px-2 py-1.5 text-[11px] font-semibold text-admin-text-2"
+                  >
+                    {pendingPackageDecisionSummaryText}
+                  </p>
                   <div className="mt-2 flex gap-1" role="group" aria-label={`${pkg.title} 승인 대기 상품 처리`}>
-                    <button type="button" onClick={() => setSelectedPackage(pkg)}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        trackEngagement({
+                          event_type: ANALYTICS_EVENTS.adminActionCompleted,
+                          page_url: '/admin',
+                          metadata: {
+                            surface: 'admin_dashboard_pending_package',
+                            action: 'pending_package_detail_opened',
+                            package_id: pkg.id,
+                            confidence: pkg.confidence,
+                            decision_summary: pendingPackageDecisionSummaryText,
+                          },
+                        });
+                        setSelectedPackage(pkg);
+                      }}
                       data-testid="admin-dashboard-package-detail"
                       aria-label={`${pkg.title} 상세 보기`}
-                      aria-describedby={pendingPackageSummaryId}
+                      aria-describedby={pendingPackageDescriptionIds}
                       className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-1 rounded text-[11px] hover:bg-admin-bg transition">
                       상세
                     </button>
@@ -2283,7 +2566,15 @@ export default function AdminPage({
         <div className="fixed inset-0 z-50 flex justify-end">
           {(() => {
             const selectedPackageSummaryId = `admin-dashboard-selected-package-summary-${selectedPackage.id}`;
-            const selectedPackageDescriptionIds = `${selectedPackageSummaryId} admin-dashboard-status`;
+            const selectedPackageDecisionSummaryId = `admin-dashboard-selected-package-decision-${selectedPackage.id}`;
+            const selectedPackageTitleId = `admin-dashboard-selected-package-title-${selectedPackage.id}`;
+            const selectedPackageConfidenceLabel = `${Math.round(selectedPackage.confidence * 100)}%`;
+            const selectedPackagePriceLabel = selectedPackage.price ? `${selectedPackage.price.toLocaleString()}원` : '가격 미지정';
+            const selectedPackageDestinationLabel = selectedPackage.destination || '목적지 미지정';
+            const selectedPackageDecisionSummaryText = selectedPackage.confidence >= 0.8
+              ? `승인 전 확인: ${selectedPackageDestinationLabel}, ${selectedPackagePriceLabel}, 신뢰도 ${selectedPackageConfidenceLabel}. 고객 노출 전 핵심 정보만 최종 확인합니다.`
+              : `승인 전 확인: ${selectedPackageDestinationLabel}, ${selectedPackagePriceLabel}, 신뢰도 ${selectedPackageConfidenceLabel}. 상세 검수 후 승인 또는 반려를 결정합니다.`;
+            const selectedPackageDescriptionIds = `${selectedPackageSummaryId} ${selectedPackageDecisionSummaryId} admin-dashboard-status`;
             return (
               <>
           <button
@@ -2292,17 +2583,25 @@ export default function AdminPage({
             className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => setSelectedPackage(null)}
           />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-admin-border-mid px-5 py-4 flex items-start justify-between">
+          <div
+            ref={selectedPackageDrawerRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={selectedPackageTitleId}
+            aria-describedby={selectedPackageDescriptionIds}
+            className="relative flex h-dvh max-h-dvh w-full max-w-lg flex-col bg-white shadow-admin-lg border-l border-admin-border-mid"
+          >
+            <div className="shrink-0 bg-white border-b border-admin-border-mid px-5 py-4 flex items-start justify-between">
               <div className="flex-1 pr-4">
-                <h2 className="text-admin-lg font-semibold text-admin-text-2 leading-snug">{selectedPackage.title}</h2>
+                <h2 id={selectedPackageTitleId} className="text-admin-lg font-semibold text-admin-text-2 leading-snug">{selectedPackage.title}</h2>
                 <span className={`px-2 py-0.5 text-[11px] rounded font-medium ${
                   selectedPackage.confidence >= 0.8 ? 'bg-emerald-50 text-emerald-700' :
                   selectedPackage.confidence >= 0.6 ? 'bg-amber-50 text-amber-700' : 'bg-red-50 text-red-600'
-                }`}>{Math.round(selectedPackage.confidence * 100)}%</span>
+                }`}>{selectedPackageConfidenceLabel}</span>
               </div>
               <button
                 type="button"
+                ref={selectedPackageCloseButtonRef}
                 aria-label="상품 상세 닫기"
                 onClick={() => setSelectedPackage(null)}
                 className="text-admin-muted-2 hover:text-admin-muted p-1"
@@ -2311,9 +2610,9 @@ export default function AdminPage({
               </button>
             </div>
 
-            <div className="px-5 py-4 space-y-4 text-admin-sm">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 space-y-4 text-admin-sm">
               <p id={selectedPackageSummaryId} className="sr-only">
-                선택된 승인 대기 상품입니다. 상품명은 {selectedPackage.title}, 목적지는 {selectedPackage.destination || '미지정'}, 가격은 {selectedPackage.price ? `${selectedPackage.price.toLocaleString()}원` : '미지정'}, 추출 신뢰도는 {Math.round(selectedPackage.confidence * 100)}%입니다.
+                선택된 승인 대기 상품입니다. 상품명은 {selectedPackage.title}, 목적지는 {selectedPackageDestinationLabel}, 가격은 {selectedPackagePriceLabel}, 추출 신뢰도는 {selectedPackageConfidenceLabel}입니다. {selectedPackageDecisionSummaryText}
               </p>
               <div className="grid grid-cols-2 gap-2">
                 {selectedPackage.destination && <div><span className="text-admin-muted">목적지</span><p className="text-admin-text-2 font-medium">{selectedPackage.destination}</p></div>}
@@ -2345,7 +2644,15 @@ export default function AdminPage({
               )}
             </div>
 
-            <div className="sticky bottom-0 bg-white border-t border-admin-border-mid px-5 py-3 flex gap-2">
+            <div className="shrink-0 bg-white border-t border-admin-border-mid px-5 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+              <p
+                id={selectedPackageDecisionSummaryId}
+                data-testid="admin-dashboard-selected-package-decision-summary"
+                className="mb-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2 text-[11px] font-semibold text-admin-text-2"
+              >
+                {selectedPackageDecisionSummaryText}
+              </p>
+              <div className="flex gap-2">
               {selectedPackage.status === 'pending' && (
                 <>
                   <button
@@ -2368,8 +2675,9 @@ export default function AdminPage({
                     className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">반려</button>
                 </>
               )}
-              <button onClick={() => setSelectedPackage(null)}
+              <button type="button" onClick={() => setSelectedPackage(null)}
                 className="flex-1 bg-white border border-admin-border-strong text-admin-text-2 py-2 rounded text-admin-sm hover:bg-admin-bg transition">닫기</button>
+              </div>
             </div>
           </div>
               </>

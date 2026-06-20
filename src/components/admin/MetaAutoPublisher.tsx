@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import dynamic from 'next/dynamic';
 
 const BarChart = dynamic(() => import('recharts').then(m => ({ default: m.BarChart })), { ssr: false });
@@ -58,6 +58,61 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
   const [killing, setKilling] = useState<string | null>(null);
   const [autoKill, setAutoKill] = useState(false);
   const [budget, setBudget] = useState(50000);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const budgetInputRef = useRef<HTMLInputElement | null>(null);
+  const metaPublisherTitleId = 'meta-auto-publisher-title';
+  const metaPublisherDescriptionId = 'meta-auto-publisher-description';
+  const metaPublisherStatusId = 'meta-auto-publisher-status';
+
+  useEffect(() => {
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
+
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => {
+      budgetInputRef.current?.focus();
+    }, 0);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+      window.setTimeout(() => {
+        if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+      }, 0);
+    };
+  }, [onClose]);
 
   // ── Auto-Publishing ────────────────────────────────────
   const publishToMeta = useCallback(async () => {
@@ -197,20 +252,34 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
         aria-label="Meta Ads 컨트롤 패널 닫기"
       />
       <div
-        className="relative w-full max-w-2xl bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col"
+        ref={dialogRef}
+        className="relative flex h-dvh max-h-dvh w-full max-w-2xl flex-col bg-white shadow-admin-lg border-l border-admin-border-mid"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={metaPublisherTitleId}
+        aria-describedby={`${metaPublisherDescriptionId} ${metaPublisherStatusId}`}
       >
         {/* 헤더 */}
         <div className="bg-blue-600 text-white px-5 py-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-admin-lg font-semibold">Meta Ads 컨트롤 센터</h2>
-            <p className="text-[11px] text-blue-200 mt-0.5">퍼블리싱 · 실시간 모니터링 · Kill Switch</p>
+            <h2 id={metaPublisherTitleId} className="text-admin-lg font-semibold">Meta Ads 컨트롤 센터</h2>
+            <p id={metaPublisherDescriptionId} className="text-[11px] text-blue-200 mt-0.5">퍼블리싱 · 실시간 모니터링 · Kill Switch</p>
           </div>
           <button type="button" onClick={onClose} className="p-1.5 text-white/60 hover:text-white transition" aria-label="Meta Ads 컨트롤 패널 닫기">
             <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-5">
+          <p id={metaPublisherStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+            {publishing
+              ? 'Meta 광고를 배포 중입니다.'
+              : syncing
+                ? 'Meta 성과 데이터를 동기화 중입니다.'
+                : killing
+                  ? '위험 캠페인을 중단 중입니다.'
+                  : publishResult?.msg || `활성 캠페인 ${activeCampaigns.length}개, 위험 캠페인 ${dangerCampaigns.length}개입니다.`}
+          </p>
 
           {/* ═══ 섹션 1: Auto-Publishing ═══ */}
           <section className="bg-white border border-admin-border-mid rounded-lg p-4">
@@ -219,7 +288,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             <div className="flex items-center gap-3 mb-3">
               <div className="flex items-center gap-1 border border-admin-border-mid rounded px-2 py-1.5">
                 <span className="text-[10px] text-admin-muted-2">일예산</span>
-                <input type="number" aria-label="일예산" value={budget} onChange={e => setBudget(parseInt(e.target.value) || 50000)}
+                <input ref={budgetInputRef} type="number" aria-label="일예산" value={budget} onChange={e => setBudget(parseInt(e.target.value) || 50000)}
                   step={10000} min={10000} className="w-20 border-none text-admin-sm text-right focus:ring-0 bg-transparent p-0" />
                 <span className="text-[10px] text-admin-muted-2">원</span>
               </div>
@@ -229,8 +298,11 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             </div>
 
             <button
+              type="button"
               onClick={publishToMeta}
               disabled={publishing}
+              aria-busy={publishing}
+              aria-describedby={metaPublisherStatusId}
               className="w-full py-3 bg-blue-600 text-white text-admin-base font-semibold rounded-lg hover:bg-blue-900 disabled:bg-slate-300 transition flex items-center justify-center gap-2"
             >
               {publishing ? (
@@ -241,7 +313,7 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
             </button>
 
             {publishResult && (
-              <div className={`mt-3 px-3 py-2 rounded text-admin-xs ${
+              <div role="status" aria-live="polite" className={`mt-3 px-3 py-2 rounded text-admin-xs ${
                 publishResult.ok ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'
               }`}>
                 {publishResult.msg}
@@ -256,8 +328,11 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
               <div className="flex items-center gap-2">
                 {lastSync && <span className="text-[10px] text-admin-muted-2">최근: {lastSync}</span>}
                 <button
+                  type="button"
                   onClick={fetchLiveInsights}
                   disabled={syncing}
+                  aria-busy={syncing}
+                  aria-describedby={metaPublisherStatusId}
                   className="px-3 py-1 bg-white border border-admin-border-strong text-admin-text-2 text-[11px] rounded hover:bg-admin-bg disabled:opacity-50 transition"
                 >
                   {syncing ? '동기화 중...' : '동기화'}
@@ -342,8 +417,11 @@ export default function MetaAutoPublisher({ onClose, creativeId, campaignName, s
                       </div>
                     </div>
                     <button
+                      type="button"
                       onClick={() => killCampaign(c.id)}
                       disabled={killing === c.id}
+                      aria-busy={killing === c.id}
+                      aria-describedby={metaPublisherStatusId}
                       className="px-3 py-1.5 bg-red-600 text-white text-admin-xs font-medium rounded hover:bg-red-700 disabled:bg-red-300 transition"
                     >
                       {killing === c.id ? '중단 중...' : '즉시 중단'}

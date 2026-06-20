@@ -70,7 +70,23 @@ type TrackingPayload =
       budget?: string | null;
       party_type?: string | null;
       selected_products?: string[] | null;
+      ready_count?: number | null;
+      missing_fields?: string[] | null;
+      decision_summary?: string | null;
+      handoff_preview?: string | null;
+      next_action?: string | null;
+      next_action_reason?: string | null;
+      result_summary?: string | null;
+      applied_filters?: string | null;
       recommended_rank?: number | null;
+      rank?: number | null;
+      price?: number | null;
+      task_flow?: string | null;
+      queue_key?: string | null;
+      command_source?: string | null;
+      action_stage?: string | null;
+      click_count?: number | null;
+      time_to_complete_ms?: number | null;
       metadata?: Record<string, unknown>;
       cart_added?: boolean;
       lead_time_days?: number;
@@ -169,6 +185,29 @@ function nonEmptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function nonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function nonNegativeInteger(value: unknown): number | null {
+  const normalized = nonNegativeFiniteNumber(value);
+  return normalized === null ? null : Math.round(normalized);
+}
+
+function normalizeStringList(value: unknown, maxItems = 12, maxLength = 80): string[] | null {
+  if (!Array.isArray(value)) return null;
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const item of value) {
+    const text = nonEmptyString(item)?.slice(0, maxLength);
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    normalized.push(text);
+    if (normalized.length >= maxItems) break;
+  }
+  return normalized.length > 0 ? normalized : null;
 }
 
 function isPaidTraffic(traffic?: {
@@ -317,6 +356,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // ── engagement ───────────────────────────────────────────
     case 'engagement': {
       const baseMetadata = normalizeMetadata(body.metadata);
+      const readyCount = nonNegativeInteger(body.ready_count);
+      const recommendedRank = nonNegativeInteger(body.recommended_rank);
+      const rank = nonNegativeInteger(body.rank);
+      const price = nonNegativeFiniteNumber(body.price);
+      const clickCount = nonNegativeInteger(body.click_count);
+      const timeToCompleteMs = nonNegativeInteger(body.time_to_complete_ms);
+      const selectedProducts = normalizeStringList(body.selected_products);
+      const missingFields = normalizeStringList(body.missing_fields);
       const metadata: Record<string, unknown> = {
         ...baseMetadata,
         ...(body.source ? { source: body.source } : {}),
@@ -325,9 +372,26 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
         ...(body.filter_value ? { filter_value: body.filter_value } : {}),
         ...(body.intent ? { intent: body.intent } : {}),
         ...(body.budget ? { budget: body.budget } : {}),
+        ...(body.destination ? { destination: body.destination } : {}),
         ...(body.party_type ? { party_type: body.party_type } : {}),
-        ...(body.selected_products ? { selected_products: body.selected_products } : {}),
-        ...(body.recommended_rank ? { recommended_rank: body.recommended_rank } : {}),
+        ...(selectedProducts ? { selected_products: selectedProducts } : {}),
+        ...(readyCount !== null ? { ready_count: readyCount } : {}),
+        ...(missingFields ? { missing_fields: missingFields } : {}),
+        ...(body.decision_summary ? { decision_summary: body.decision_summary } : {}),
+        ...(body.handoff_preview ? { handoff_preview: body.handoff_preview } : {}),
+        ...(body.next_action ? { next_action: body.next_action } : {}),
+        ...(body.next_action_reason ? { next_action_reason: body.next_action_reason } : {}),
+        ...(body.result_summary ? { result_summary: body.result_summary } : {}),
+        ...(body.applied_filters ? { applied_filters: body.applied_filters } : {}),
+        ...(recommendedRank !== null ? { recommended_rank: recommendedRank } : {}),
+        ...(rank !== null ? { rank } : {}),
+        ...(price !== null ? { price } : {}),
+        ...(body.task_flow ? { task_flow: body.task_flow } : {}),
+        ...(body.queue_key ? { queue_key: body.queue_key } : {}),
+        ...(body.command_source ? { command_source: body.command_source } : {}),
+        ...(body.action_stage ? { action_stage: body.action_stage } : {}),
+        ...(clickCount !== null ? { click_count: clickCount } : {}),
+        ...(timeToCompleteMs !== null ? { time_to_complete_ms: timeToCompleteMs } : {}),
       };
       const eventSource = nonEmptyString(body.event_source) ?? nonEmptyString(body.source) ?? nonEmptyString(baseMetadata.source);
 

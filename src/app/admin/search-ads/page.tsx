@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { useToast } from '@/components/ui/Toast';
 
@@ -82,6 +82,18 @@ function SearchAdsContent() {
   const [selectedPlanIds, setSelectedPlanIds] = useState<Set<string>>(new Set());
   const [adOsSummary, setAdOsSummary] = useState<SearchAdsReadinessSummary | null>(null);
   const [adOsError, setAdOsError] = useState<string | null>(null);
+  const extractorDialogRef = useRef<HTMLDivElement | null>(null);
+  const extractorSelectRef = useRef<HTMLSelectElement | null>(null);
+  const extractorCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const optimizerDialogRef = useRef<HTMLDivElement | null>(null);
+  const optimizerCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const optimizerApplyButtonRef = useRef<HTMLButtonElement | null>(null);
+  const extractorTitleId = 'search-ads-extractor-title';
+  const extractorDescriptionId = 'search-ads-extractor-description';
+  const extractorStatusId = 'search-ads-extractor-status';
+  const optimizerTitleId = 'search-ads-optimizer-title';
+  const optimizerDescriptionId = 'search-ads-optimizer-description';
+  const optimizerStatusId = 'search-ads-optimizer-status';
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|등록|조정|적용/.test(msg) ? 'success' : 'info'),
@@ -134,6 +146,108 @@ function SearchAdsContent() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!extractorOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    extractorSelectRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      extractorDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setExtractorOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [extractorOpen]);
+
+  useEffect(() => {
+    if (!optimizerOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (recommendations.length > 0) {
+      optimizerApplyButtonRef.current?.focus();
+    } else {
+      optimizerCloseButtonRef.current?.focus();
+    }
+
+    const getFocusableElements = () => Array.from(
+      optimizerDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setOptimizerOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [optimizerOpen, recommendations.length]);
 
   // 필터링
   const filtered = useMemo(() => {
@@ -348,6 +462,13 @@ function SearchAdsContent() {
     setOptimizerOpen(false);
     showToast('최적화 적용 완료');
   }, [keywords, recommendations, showToast]);
+
+  const extractorStatusText = extractedPreview.length > 0
+    ? `키워드 ${extractedPreview.length}개가 추출되었습니다.`
+    : '상품을 선택하면 검색광고 키워드를 추출합니다.';
+  const optimizerStatusText = recommendations.length > 0
+    ? `입찰 추천 ${recommendations.length}개가 준비되었습니다.`
+    : '현재 조건에서 최적화할 키워드가 없습니다.';
 
   return (
     <div className="space-y-4">
@@ -582,23 +703,36 @@ function SearchAdsContent() {
 
       {/* ── 키워드 추출 드로어 ─────────────────────────── */}
       {extractorOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh justify-end">
           <button
             type="button"
             className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => setExtractorOpen(false)}
+            tabIndex={-1}
+            aria-hidden="true"
             aria-label="키워드 추출기 닫기"
           />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col">
-            <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-admin-lg font-semibold text-admin-text-2">키워드 추출기</h2>
-              <button aria-label="키워드 추출기 닫기" onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div
+            ref={extractorDialogRef}
+            className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-dvh max-h-dvh flex flex-col"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={extractorTitleId}
+            aria-describedby={`${extractorDescriptionId} ${extractorStatusId}`}
+          >
+            <div className="bg-white border-b border-admin-border-mid px-5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 id={extractorTitleId} className="text-admin-lg font-semibold text-admin-text-2">키워드 추출기</h2>
+                <p id={extractorDescriptionId} className="sr-only">상품을 선택해 검색광고 키워드를 추출하고 등록 또는 draft 생성으로 이어지는 패널입니다.</p>
+                <p id={extractorStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">{extractorStatusText}</p>
+              </div>
+              <button ref={extractorCloseButtonRef} type="button" aria-label="키워드 추출기 닫기" onClick={() => setExtractorOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-4">
               {/* 상품 선택 */}
               <div>
                 <label htmlFor="search-ads-extractor-package" className="text-[11px] font-semibold text-admin-muted-2 uppercase block mb-1">상품 선택</label>
-                <select id="search-ads-extractor-package" value={selectedPkg?.id || ''} onChange={e => {
+                <select ref={extractorSelectRef} id="search-ads-extractor-package" aria-describedby={extractorStatusId} value={selectedPkg?.id || ''} onChange={e => {
                   const pkg = packages.find(p => p.id === e.target.value);
                   if (pkg) handleExtract(pkg);
                 }} className="w-full border border-admin-border-mid rounded px-3 py-1.5 text-admin-sm focus:ring-1 focus:ring-[#005d90]">
@@ -645,15 +779,15 @@ function SearchAdsContent() {
                   })()}
 
                   <div className="flex gap-2">
-                    <button onClick={() => handleAddExtracted(extractedPreview.filter(k => k.tier !== 'negative'))}
+                    <button type="button" onClick={() => handleAddExtracted(extractedPreview.filter(k => k.tier !== 'negative'))}
                       className="flex-1 py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                       키워드 등록 ({extractedPreview.filter(k => k.tier !== 'negative').length}개)
                     </button>
-                    <button onClick={handleAutoPlan} disabled={planning}
+                    <button type="button" onClick={handleAutoPlan} disabled={planning} aria-busy={planning} aria-describedby={extractorStatusId}
                       className="px-4 py-2 bg-emerald-600 text-white text-admin-sm rounded hover:bg-emerald-700 disabled:opacity-50 transition">
                       {planning ? 'Draft 생성 중...' : '광고 Draft'}
                     </button>
-                    <button onClick={() => handleAddExtracted(extractedPreview)}
+                    <button type="button" onClick={() => handleAddExtracted(extractedPreview)}
                       className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
                       제외 키워드 포함
                     </button>
@@ -667,19 +801,32 @@ function SearchAdsContent() {
 
       {/* ── AI 최적화 드로어 ───────────────────────────── */}
       {optimizerOpen && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh justify-end">
           <button
             type="button"
             className="absolute inset-0 bg-black/20 backdrop-blur-sm"
             onClick={() => setOptimizerOpen(false)}
+            tabIndex={-1}
+            aria-hidden="true"
             aria-label="AI 입찰 최적화 닫기"
           />
-          <div className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col">
-            <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
-              <h2 className="text-admin-lg font-semibold text-admin-text-2">AI 입찰 최적화</h2>
-              <button aria-label="AI 입찰 최적화 닫기" onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div
+            ref={optimizerDialogRef}
+            className="relative w-full max-w-lg bg-white shadow-admin-lg border-l border-admin-border-mid h-dvh max-h-dvh flex flex-col"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={optimizerTitleId}
+            aria-describedby={`${optimizerDescriptionId} ${optimizerStatusId}`}
+          >
+            <div className="bg-white border-b border-admin-border-mid px-5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h2 id={optimizerTitleId} className="text-admin-lg font-semibold text-admin-text-2">AI 입찰 최적화</h2>
+                <p id={optimizerDescriptionId} className="sr-only">검색광고 키워드의 입찰 추천을 확인하고 일괄 적용하는 패널입니다.</p>
+                <p id={optimizerStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">{optimizerStatusText}</p>
+              </div>
+              <button ref={optimizerCloseButtonRef} type="button" aria-label="AI 입찰 최적화 닫기" onClick={() => setOptimizerOpen(false)} className="p-1.5 text-admin-muted-2 hover:text-admin-muted"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             </div>
-            <div className="flex-1 overflow-y-auto p-5 space-y-3">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] space-y-3">
               {recommendations.length === 0 ? (
                 <div className="flex flex-col items-center gap-2 py-10">
                   <svg className="w-8 h-8 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" /></svg>
@@ -713,8 +860,8 @@ function SearchAdsContent() {
               )}
             </div>
             {recommendations.length > 0 && (
-              <div className="bg-white border-t border-admin-border-mid px-5 py-3 flex-shrink-0">
-                <button onClick={applyRecommendations} className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
+              <div className="bg-white border-t border-admin-border-mid px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] flex-shrink-0">
+                <button ref={optimizerApplyButtonRef} type="button" onClick={applyRecommendations} aria-describedby={optimizerStatusId} className="w-full py-2 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-700 transition font-medium">
                   {recommendations.filter(r => r.action !== 'maintain').length}개 추천 일괄 적용
                 </button>
               </div>

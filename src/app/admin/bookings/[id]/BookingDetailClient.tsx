@@ -182,6 +182,11 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelForm, setCancelForm] = useState({ refund: '', penalty: '', reason: '' });
   const [cancelling, setCancelling] = useState(false);
+  const cancelTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const cancelModalRef = useRef<HTMLDivElement | null>(null);
+  const cancelRefundInputRef = useRef<HTMLInputElement | null>(null);
+  const cancelBookingTitleId = 'cancel-booking-title';
+  const cancelBookingDescriptionId = 'cancel-booking-description';
 
   const timelineRef = useRef<HTMLDivElement>(null);
   const _skipInitialFetch = useRef(!!initialBooking);
@@ -235,17 +240,53 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
   useEffect(() => {
     if (!showCancelModal) return;
 
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+    const getFocusableElements = () => Array.from(
+      cancelModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    );
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setShowCancelModal(false);
+      if (event.key === 'Escape') {
+        setShowCancelModal(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
     };
 
+    const focusTimer = window.setTimeout(() => {
+      cancelRefundInputRef.current?.focus();
+    }, 0);
     window.addEventListener('keydown', onKeyDown);
     return () => {
+      window.clearTimeout(focusTimer);
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
+      window.setTimeout(() => {
+        const returnTarget = previousActiveElement?.isConnected ? previousActiveElement : cancelTriggerRef.current;
+        returnTarget?.focus();
+      }, 0);
     };
   }, [showCancelModal]);
 
@@ -924,6 +965,8 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
           {/* 예약 취소 */}
           {!isCancelled && (
             <button
+              ref={cancelTriggerRef}
+              type="button"
               onClick={() => setShowCancelModal(true)}
               className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 text-red-600 border border-red-200 hover:bg-red-100 transition"
             >
@@ -1023,9 +1066,16 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
             className="absolute inset-0 cursor-default"
             onClick={() => setShowCancelModal(false)}
           />
-          <div className="relative bg-white rounded-admin-lg shadow-admin-lg w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="cancel-booking-title">
-            <h2 id="cancel-booking-title" className="text-lg font-bold text-admin-text mb-1">예약 취소 및 환불 처리</h2>
-            <p className="text-sm text-admin-muted mb-5">
+          <div
+            ref={cancelModalRef}
+            className="relative bg-white rounded-admin-lg shadow-admin-lg w-full max-w-md p-6"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={cancelBookingTitleId}
+            aria-describedby={cancelBookingDescriptionId}
+          >
+            <h2 id={cancelBookingTitleId} className="text-lg font-bold text-admin-text mb-1">예약 취소 및 환불 처리</h2>
+            <p id={cancelBookingDescriptionId} className="text-sm text-admin-muted mb-5">
               취소 후 복구가 불가능합니다. 위약금/환불액을 정확히 입력하세요.
             </p>
 
@@ -1033,6 +1083,7 @@ export default function BookingJourneyPage({ params, initialBooking, initialLogs
               <div>
                 <label htmlFor="cancel-refund-amount" className="block text-xs font-medium text-admin-muted mb-1">환불액 (원)</label>
                 <input
+                  ref={cancelRefundInputRef}
                   id="cancel-refund-amount"
                   type="number"
                   min={0}

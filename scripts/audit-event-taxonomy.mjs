@@ -11,6 +11,8 @@
 import { readFileSync } from 'node:fs';
 import { relative } from 'node:path';
 
+const args = new Set(process.argv.slice(2));
+const jsonOutput = args.has('--json');
 const root = process.cwd();
 const taxonomyPath = 'docs/analytics-event-taxonomy.md';
 const taxonomy = readFileSync(taxonomyPath, 'utf8');
@@ -21,6 +23,7 @@ const trackedFiles = [
   'src/lib/tracker.ts',
   'src/app/concierge/page.tsx',
   'src/app/group-inquiry/page.tsx',
+  'src/app/group/GroupLandingClient.tsx',
   'src/app/packages/PackagesClient.tsx',
   'src/app/packages/[id]/DetailClient.tsx',
   'src/app/admin/AdminPageClient.tsx',
@@ -31,9 +34,14 @@ const trackedFiles = [
   'src/app/api/tracking/route.ts',
   'src/app/api/tracking/recommendation/route.ts',
   'src/app/api/tracking/guidebook/route.ts',
+  'src/components/BlogTracker.tsx',
+  'src/components/ChatWidget.tsx',
   'src/components/ProductCard.tsx',
+  'src/components/customer/BottomTabBar.tsx',
+  'src/components/customer/GlobalNav.tsx',
   'src/components/customer/PackageCard.tsx',
   'src/components/customer/HomeHeroSearchCluster.tsx',
+  'src/components/customer/ReviewDigestStrip.tsx',
   'src/components/customer/TrackedKakaoLink.tsx',
   'src/components/customer/RecommendationCard.tsx',
 ];
@@ -72,6 +80,21 @@ const analyticsEventMap = new Map(
   ),
 );
 const requiredEvents = Array.from(new Set([...requiredCurrentEvents, ...definedAnalyticsEvents]));
+const requiredKpiMarkers = [
+  '## UI/UX Masterplan KPI Measurement',
+  '`public_cta_click_rate_lift`',
+  '`ai_consult_start_rate_lift`',
+  '`admin_core_action_click_reduction`',
+  '`+20%` relative lift',
+  '`+30%` relative lift',
+  '`-30%` median click-count reduction',
+  'baseline window',
+  'comparison window',
+  '`task_flow`',
+  '`action_stage`',
+  '`click_count`',
+  '`time_to_complete_ms`',
+];
 
 const allowedOperationalTrackingEvents = new Set(['view', 'click', 'inquiry', 'booking']);
 const allowedTrackedOutcomes = new Set(['click', 'inquiry', 'booking', 'cancelled', 'rfq_created']);
@@ -123,6 +146,53 @@ const unknown = discovered.filter((event) => {
   if (allowedTrackedOutcomes.has(event.value)) return false;
   return !documented(event.value);
 });
+
+const checks = [
+  ...requiredKpiMarkers.map((marker) => ({
+    id: `kpi-contract:${marker}`,
+    name: `KPI contract marker ${marker}`,
+    status: taxonomy.includes(marker) ? 'pass' : 'fail',
+    source: taxonomyPath,
+  })),
+  ...requiredEvents.map((eventName) => ({
+    id: `taxonomy:${eventName}`,
+    name: `taxonomy ${eventName}`,
+    status: documented(eventName) ? 'pass' : 'fail',
+  })),
+  ...definedAnalyticsEvents.map((eventName) => ({
+    id: `canonical:${eventName}`,
+    name: `canonical ${eventName}`,
+    status: documented(eventName) ? 'pass' : 'fail',
+    source: analyticsEventsPath,
+  })),
+  ...discovered.map((event) => {
+    const failed = unknown.includes(event);
+    return {
+      id: `code:${event.value}:${relative(root, event.filePath)}`,
+      name: `${event.kind} ${event.value}`,
+      status: failed ? 'fail' : 'pass',
+      source: relative(root, event.filePath),
+    };
+  }),
+];
+const failedChecks = checks.filter((check) => check.status !== 'pass');
+const report = {
+  status: failedChecks.length > 0 ? 'fail' : 'pass',
+  passed: checks.length - failedChecks.length,
+  blocked: 0,
+  failed: failedChecks.length,
+  total: checks.length,
+  requiredEvents: requiredEvents.length,
+  canonicalEvents: definedAnalyticsEvents.length,
+  codeReferences: discovered.length,
+  checks,
+};
+
+if (jsonOutput) {
+  console.log(JSON.stringify(report, null, 2));
+  if (failedChecks.length > 0) process.exit(1);
+  process.exit(0);
+}
 
 for (const eventName of requiredEvents) {
   const label = documented(eventName) ? 'PASS' : 'FAIL';

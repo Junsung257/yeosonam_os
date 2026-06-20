@@ -80,11 +80,12 @@ export default function PairwiseCompareModal({ self, rivals, departureDate, open
       }
     };
     document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       window.clearTimeout(focusTimer);
       document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
   }, [open, onClose]);

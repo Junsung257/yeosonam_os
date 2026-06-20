@@ -85,6 +85,12 @@ export default function PackageTermsBottomSheet({
   const groups = useMemo(() => groupNoticesForPresentation(notices), [notices]);
   const sheetRef = useRef<HTMLDivElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const termsSheetDescriptionId = 'package-terms-sheet-description';
+  const termsDecisionSummaryId = 'package-terms-decision-summary';
+  const firstGroupTitle = groups[0]?.title ?? '약관';
+  const termsDecisionSummaryText = hasSpecialTerms
+    ? `확인 우선순위: 특약 상품입니다. ${groups.length}개 약관 묶음 중 ${firstGroupTitle}부터 확인하세요. 특약은 표준 취소 규정보다 우선 적용될 수 있습니다.`
+    : `확인 우선순위: ${groups.length}개 약관 묶음 중 ${firstGroupTitle}부터 확인하세요. 취소, 포함, 불포함 조건을 상담 전 확인하면 좋습니다.`;
 
   useEffect(() => {
     if (!open) return;
@@ -131,9 +137,11 @@ export default function PackageTermsBottomSheet({
   }, [open, onClose]);
 
   useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
   }, [open]);
 
@@ -154,7 +162,7 @@ export default function PackageTermsBottomSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="package-terms-sheet-title"
-        aria-describedby="package-terms-sheet-description"
+        aria-describedby={`${termsSheetDescriptionId} ${termsDecisionSummaryId}`}
       >
         <div className="flex justify-center pt-3 pb-1 shrink-0">
           <div className="w-10 h-1 bg-gray-300 rounded-full" />
@@ -182,8 +190,16 @@ export default function PackageTermsBottomSheet({
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
-          <p id="package-terms-sheet-description" className="sr-only">
+          <p id={termsSheetDescriptionId} className="sr-only">
             상품 약관과 취소 규정을 확인하고 각 항목을 펼쳐 자세한 내용을 볼 수 있습니다.
+          </p>
+          <p
+            id={termsDecisionSummaryId}
+            data-testid="package-terms-decision-summary"
+            aria-label={termsDecisionSummaryText}
+            className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-2.5 text-xs font-bold leading-relaxed text-blue-800"
+          >
+            {termsDecisionSummaryText}
           </p>
           {hasSpecialTerms && (
             <p className="text-xs font-bold text-red-700 bg-red-50 border border-red-100 rounded-xl px-3 py-2.5 leading-relaxed">

@@ -17,6 +17,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+const args = new Set(process.argv.slice(2));
+const jsonOutput = args.has('--json');
 const ROOT = process.cwd();
 
 // ─── 검증 룰 ───
@@ -58,27 +60,46 @@ const REQUIRED_CSS_CLASSES = [
 ];
 
 let failed = false;
+const checks = [];
 
 function check(label, file, required, content) {
   const missing = required.filter((k) => !content.includes(k));
+  checks.push({
+    id: label.replace(/\s+/g, '-').toLowerCase(),
+    name: label,
+    source: file,
+    status: missing.length === 0 ? 'pass' : 'fail',
+    required: required.length,
+    missing,
+  });
   if (missing.length === 0) {
-    console.log(`✅ ${label} (${required.length}개 모두 정의됨)`);
+    if (!jsonOutput) console.log(`✅ ${label} (${required.length}개 모두 정의됨)`);
   } else {
     failed = true;
-    console.log(`❌ ${label} — ${missing.length}개 누락:`);
-    missing.forEach((k) => console.log(`   • ${k}`));
-    console.log(`   👉 ${file} 가 다른 세션에 의해 덮어써졌을 가능성. 즉시 복구 필요.`);
+    if (!jsonOutput) {
+      console.log(`❌ ${label} — ${missing.length}개 누락:`);
+      missing.forEach((k) => console.log(`   • ${k}`));
+      console.log(`   👉 ${file} 가 다른 세션에 의해 덮어써졌을 가능성. 즉시 복구 필요.`);
+    }
   }
 }
 
-console.log('─── admin 토큰 무결성 검증 ───\n');
+if (!jsonOutput) console.log('─── admin 토큰 무결성 검증 ───\n');
 
 try {
   const tw = readFileSync(join(ROOT, 'tailwind.config.js'), 'utf-8');
   check('tailwind.config.js admin 토큰', 'tailwind.config.js', REQUIRED_TAILWIND_KEYS, tw);
 } catch (e) {
   failed = true;
-  console.log(`❌ tailwind.config.js 를 읽을 수 없습니다: ${e.message}`);
+  checks.push({
+    id: 'tailwind-config-read',
+    name: 'tailwind.config.js read',
+    source: 'tailwind.config.js',
+    status: 'fail',
+    missing: ['tailwind.config.js'],
+    error: e.message,
+  });
+  if (!jsonOutput) console.log(`❌ tailwind.config.js 를 읽을 수 없습니다: ${e.message}`);
 }
 
 try {
@@ -87,7 +108,28 @@ try {
   check('globals.css admin-scope 클래스', 'src/app/globals.css', REQUIRED_CSS_CLASSES, css);
 } catch (e) {
   failed = true;
-  console.log(`❌ globals.css 를 읽을 수 없습니다: ${e.message}`);
+  checks.push({
+    id: 'globals-css-read',
+    name: 'globals.css read',
+    source: 'src/app/globals.css',
+    status: 'fail',
+    missing: ['src/app/globals.css'],
+    error: e.message,
+  });
+  if (!jsonOutput) console.log(`❌ globals.css 를 읽을 수 없습니다: ${e.message}`);
+}
+
+const failedChecks = checks.filter((check) => check.status !== 'pass');
+if (jsonOutput) {
+  console.log(JSON.stringify({
+    status: failedChecks.length > 0 ? 'fail' : 'pass',
+    passed: checks.length - failedChecks.length,
+    blocked: 0,
+    failed: failedChecks.length,
+    total: checks.length,
+    checks,
+  }, null, 2));
+  process.exit(failedChecks.length > 0 ? 1 : 0);
 }
 
 console.log('');

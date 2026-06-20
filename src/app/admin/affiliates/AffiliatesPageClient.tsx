@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Leaderboard } from '@/components/affiliate/Leaderboard';
@@ -54,6 +54,13 @@ export default function AffiliatesPageClient({
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const affiliatePanelTitleId = 'affiliate-create-panel-title';
+  const affiliatePanelDescriptionId = 'affiliate-create-panel-description';
+  const affiliatePanelStatusId = 'affiliate-create-panel-status';
+  const affiliatePanelErrorId = 'affiliate-create-panel-error';
 
   const affiliates = initialAffiliates;
 
@@ -84,6 +91,64 @@ export default function AffiliatesPageClient({
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!showPanel) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    firstInputRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const closePanel = () => {
+      setShowPanel(false);
+      setError('');
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePanel();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [showPanel]);
+
+  const affiliatePanelStatusText = saving
+    ? '파트너 정보를 등록 중입니다.'
+    : error || '파트너 이름, 추천코드, 정산 유형을 입력해 신규 파트너를 등록합니다.';
 
   return (
     <div className="space-y-5">
@@ -209,27 +274,42 @@ export default function AffiliatesPageClient({
 
       {/* 등록 슬라이드 패널 */}
       {showPanel && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh justify-end">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/30 cursor-default"
             onClick={() => { setShowPanel(false); setError(''); }}
+            tabIndex={-1}
+            aria-hidden="true"
             aria-label="파트너 등록 패널 닫기"
           />
-          <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
-            <div className="p-6 space-y-4">
+          <div
+            ref={panelRef}
+            className="admin-scope relative w-full max-w-md bg-admin-surface h-dvh max-h-dvh overflow-y-auto border-l border-admin-border-mid shadow-admin-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={affiliatePanelTitleId}
+            aria-describedby={`${affiliatePanelDescriptionId} ${affiliatePanelStatusId}`}
+          >
+            <div className="p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))] space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-admin-h2 text-admin-text">파트너 신규 등록</h2>
+                <div>
+                  <h2 id={affiliatePanelTitleId} className="text-admin-h2 text-admin-text">파트너 신규 등록</h2>
+                  <p id={affiliatePanelDescriptionId} className="sr-only">어필리에이트 파트너의 연락처, 추천코드, 정산 유형을 등록하는 패널입니다.</p>
+                  <p id={affiliatePanelStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">{affiliatePanelStatusText}</p>
+                </div>
                 <button
+                  ref={closeButtonRef}
+                  type="button"
                   onClick={() => { setShowPanel(false); setError(''); }}
                   className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
                   aria-label="닫기"
                 >
-                  <X size={18} />
+                  <X aria-hidden="true" size={18} />
                 </button>
               </div>
               {error && (
-                <p className="text-admin-sm text-danger bg-danger-light px-3 py-2 rounded-admin-sm border border-danger/20">{error}</p>
+                <p id={affiliatePanelErrorId} role="alert" className="text-admin-sm text-danger bg-danger-light px-3 py-2 rounded-admin-sm border border-danger/20">{error}</p>
               )}
               <form onSubmit={handleSubmit} className="space-y-3">
                 {[
@@ -242,12 +322,15 @@ export default function AffiliatesPageClient({
                   <div key={f.key}>
                     <label htmlFor={`affiliate-${f.key}`} className="block text-admin-xs font-medium text-admin-text-2 mb-1.5">{f.label}</label>
                     <input
+                      ref={f.key === 'name' ? firstInputRef : undefined}
                       id={`affiliate-${f.key}`}
                       type={f.type}
                       placeholder={f.placeholder}
                       value={(form as Record<string, string>)[f.key]}
                       onChange={e => setForm(prev => ({ ...prev, [f.key]: e.target.value }))}
                       required={f.label.includes('*')}
+                      aria-invalid={error && f.label.includes('*') ? 'true' : undefined}
+                      aria-describedby={error && f.label.includes('*') ? `${affiliatePanelStatusId} ${affiliatePanelErrorId}` : affiliatePanelStatusId}
                       className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     />
                   </div>
@@ -280,6 +363,7 @@ export default function AffiliatesPageClient({
                     type="button"
                     variant="secondary"
                     onClick={() => { setShowPanel(false); setError(''); }}
+                    aria-describedby={affiliatePanelStatusId}
                     className="flex-1"
                   >
                     취소
@@ -288,6 +372,8 @@ export default function AffiliatesPageClient({
                     type="submit"
                     variant="primary"
                     disabled={saving}
+                    aria-busy={saving}
+                    aria-describedby={affiliatePanelStatusId}
                     className="flex-1"
                   >
                     {saving ? '등록 중…' : '등록하기'}

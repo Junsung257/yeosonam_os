@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import type { PosterFormat, PosterData } from '@/hooks/usePosterStudio';
 import YeosonamA4Template from './YeosonamA4Template';
 import type { AttractionInfo } from './YeosonamA4Template';
@@ -30,6 +30,14 @@ export default function PosterStudio({
   onUpdateField,
   onDownload,
 }: PosterStudioProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const downloadButtonRef = useRef<HTMLButtonElement | null>(null);
+  const posterTitleId = 'poster-studio-title';
+  const posterDescriptionId = 'poster-studio-description';
+  const posterStatusId = 'poster-studio-status';
+  const isA4 = format === 'A4';
+
   // 관광지 DB 로드 (1회)
   const [attractions, setAttractions] = useState<AttractionInfo[]>([]);
   useEffect(() => {
@@ -46,49 +54,121 @@ export default function PosterStudio({
       .catch(() => setResolvedNotices([]));
   }, [pkgId]);
 
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (isA4 && !downloading) {
+      downloadButtonRef.current?.focus();
+    } else {
+      closeButtonRef.current?.focus();
+    }
+
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), iframe, [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [downloading, isA4, onClose, open]);
+
   if (!open) return null;
 
-  const isA4 = format === 'A4';
+  const posterTitleText = isA4 ? '포스터 스튜디오' : '모바일 프리뷰';
+  const posterDescriptionText = isA4
+    ? 'A4 다중 페이지 포스터를 검수하고 JPG 또는 ZIP으로 다운로드하는 패널입니다.'
+    : '고객이 보는 모바일 상품 페이지를 iPhone 크기로 검수하는 패널입니다.';
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh justify-end">
       <button
         type="button"
         className="absolute inset-0 bg-black/30 backdrop-blur-sm"
         onClick={onClose}
+        tabIndex={-1}
+        aria-hidden="true"
         aria-label={isA4 ? '포스터 스튜디오 닫기' : '모바일 프리뷰 닫기'}
       />
       <div
-        className={`relative w-full ${isA4 ? 'max-w-[900px]' : 'max-w-[500px]'} bg-admin-surface-2 shadow-admin-lg border-l border-admin-border-mid h-full flex flex-col`}
+        ref={dialogRef}
+        className={`relative w-full ${isA4 ? 'max-w-[900px]' : 'max-w-[500px]'} bg-admin-surface-2 shadow-admin-lg border-l border-admin-border-mid h-dvh max-h-dvh flex flex-col`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={posterTitleId}
+        aria-describedby={`${posterDescriptionId} ${posterStatusId}`}
       >
         {/* 헤더 */}
-        <div className="bg-white border-b border-admin-border-mid px-5 py-3 flex items-center justify-between flex-shrink-0">
+        <div className="bg-white border-b border-admin-border-mid px-5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex items-center justify-between flex-shrink-0">
           <div>
-            <h2 className="text-admin-lg font-semibold text-admin-text-2">
-              {isA4 ? '포스터 스튜디오' : '모바일 프리뷰'}
+            <h2 id={posterTitleId} className="text-admin-lg font-semibold text-admin-text-2">
+              {posterTitleText}
             </h2>
-            <p className="text-[11px] text-admin-muted mt-0.5">
+            <p id={posterDescriptionId} className="text-[11px] text-admin-muted mt-0.5">
               {isA4
                 ? 'A4 다중 페이지 — 클릭하여 텍스트 수정 가능 | 자동 페이지 분할'
                 : 'iPhone 14 Pro (390×844) — 고객 뷰 검수'}
+            </p>
+            <p id={posterStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+              {downloading ? '포스터 다운로드 파일을 생성 중입니다.' : posterDescriptionText}
             </p>
           </div>
           <div className="flex items-center gap-2">
             {isA4 && (
               <button
+                ref={downloadButtonRef}
+                type="button"
                 onClick={onDownload}
                 disabled={downloading}
+                aria-busy={downloading}
+                aria-describedby={posterStatusId}
                 className="px-4 py-1.5 bg-blue-600 text-white text-admin-sm rounded hover:bg-blue-900 disabled:bg-slate-300 transition"
               >
                 {downloading ? '생성 중...' : '다운로드 (JPG/ZIP)'}
               </button>
             )}
             <button
+              ref={closeButtonRef}
+              type="button"
               aria-label={isA4 ? '포스터 스튜디오 닫기' : '모바일 프리뷰 닫기'}
               onClick={onClose}
               className="p-1.5 text-admin-muted-2 hover:text-admin-muted transition"
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M18 6 6 18M6 6l12 12" />
               </svg>
             </button>
@@ -96,7 +176,7 @@ export default function PosterStudio({
         </div>
 
         {/* 콘텐츠 */}
-        <div className="flex-1 overflow-y-auto p-6 flex justify-center">
+        <div className="min-h-0 flex-1 overflow-y-auto p-6 pb-[max(1.5rem,env(safe-area-inset-bottom))] flex justify-center">
           {isA4 ? (
             /* ═══ A4 포스터 (YeosonamA4Template) ═══ */
             <div id="a4-canvas-wrapper">

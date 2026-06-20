@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { fmtNum as fmt } from '@/lib/admin-utils';
 import { PageHeader, FormRow } from '@/components/admin/patterns';
@@ -52,6 +52,13 @@ export default function TenantsPage() {
   const [form,    setForm]    = useState(EMPTY_FORM);
   const [saving,  setSaving]  = useState(false);
   const [error,   setError]   = useState('');
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const tenantPanelTitleId = 'tenant-panel-title';
+  const tenantPanelDescriptionId = 'tenant-panel-description';
+  const tenantPanelStatusId = 'tenant-panel-status';
+  const tenantPanelErrorId = 'tenant-panel-error';
 
   const thisMonth = new Date().toISOString().slice(0, 7);
 
@@ -85,6 +92,60 @@ export default function TenantsPage() {
   }, [thisMonth]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!panel) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    firstInputRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      panelRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const closePanel = () => {
+      setPanel(false);
+      setError('');
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closePanel();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [panel]);
 
   function openCreate() {
     setForm({ ...EMPTY_FORM });
@@ -131,6 +192,10 @@ export default function TenantsPage() {
       setSaving(false);
     }
   }
+
+  const tenantPanelStatusText = saving
+    ? '테넌트 정보를 저장 중입니다.'
+    : error || (form.id ? '테넌트 정보를 수정합니다.' : '새 테넌트를 등록합니다.');
 
   return (
     <div className="space-y-5">
@@ -228,32 +293,50 @@ export default function TenantsPage() {
 
       {/* 등록/수정 슬라이드 패널 */}
       {panel && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh justify-end">
           <button
             type="button"
             className="absolute inset-0 bg-slate-900/30"
             onClick={() => setPanel(false)}
+            tabIndex={-1}
+            aria-hidden="true"
             aria-label="테넌트 패널 닫기"
           />
-          <div className="admin-scope relative w-full max-w-md bg-admin-surface h-full overflow-y-auto border-l border-admin-border-mid shadow-admin-xl">
-            <div className="p-6">
+          <div
+            ref={panelRef}
+            className="admin-scope relative w-full max-w-md bg-admin-surface h-dvh max-h-dvh overflow-y-auto border-l border-admin-border-mid shadow-admin-xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={tenantPanelTitleId}
+            aria-describedby={`${tenantPanelDescriptionId} ${tenantPanelStatusId}`}
+          >
+            <div className="p-6 pt-[max(1.5rem,env(safe-area-inset-top))] pb-[max(1.5rem,env(safe-area-inset-bottom))]">
               <div className="flex items-center justify-between mb-5">
-                <h3 className="text-admin-h2 text-admin-text">
-                  {form.id ? '테넌트 수정' : '새 테넌트 등록'}
-                </h3>
+                <div>
+                  <h3 id={tenantPanelTitleId} className="text-admin-h2 text-admin-text">
+                    {form.id ? '테넌트 수정' : '새 테넌트 등록'}
+                  </h3>
+                  <p id={tenantPanelDescriptionId} className="sr-only">테넌트 업체명, 연락처, 수수료율, 운영 상태를 등록하거나 수정하는 패널입니다.</p>
+                  <p id={tenantPanelStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">{tenantPanelStatusText}</p>
+                </div>
                 <button
+                  ref={closeButtonRef}
+                  type="button"
                   onClick={() => setPanel(false)}
                   className="p-1.5 rounded-admin-sm text-admin-muted hover:text-admin-text hover:bg-admin-surface-2 transition-colors"
                   aria-label="닫기"
                 >
-                  <X size={18} />
+                  <X aria-hidden="true" size={18} />
                 </button>
               </div>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <FormRow label="업체명" required>
                   <input
+                    ref={firstInputRef}
                     type="text" required value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
+                    aria-invalid={error ? 'true' : undefined}
+                    aria-describedby={error ? `${tenantPanelStatusId} ${tenantPanelErrorId}` : tenantPanelStatusId}
                     className="w-full h-9 border border-admin-border-mid rounded-admin-sm px-3 text-admin-base bg-admin-surface text-admin-text focus:outline-none focus:shadow-admin-focus focus:border-brand transition-colors"
                     placeholder="예: 가나다 투어"
                   />
@@ -310,13 +393,13 @@ export default function TenantsPage() {
                   />
                 </FormRow>
 
-                {error && <div className="p-2 bg-danger-light border border-danger/20 rounded-admin-sm text-admin-sm text-danger">{error}</div>}
+                {error && <div id={tenantPanelErrorId} role="alert" className="p-2 bg-danger-light border border-danger/20 rounded-admin-sm text-admin-sm text-danger">{error}</div>}
 
                 <div className="flex gap-2 pt-2">
-                  <Button type="button" variant="secondary" onClick={() => setPanel(false)} className="flex-1">
+                  <Button type="button" variant="secondary" onClick={() => setPanel(false)} aria-describedby={tenantPanelStatusId} className="flex-1">
                     취소
                   </Button>
-                  <Button type="submit" variant="primary" disabled={saving} className="flex-1">
+                  <Button type="submit" variant="primary" disabled={saving} aria-busy={saving} aria-describedby={tenantPanelStatusId} className="flex-1">
                     {saving ? '저장 중…' : (form.id ? '수정 저장' : '등록')}
                   </Button>
                 </div>

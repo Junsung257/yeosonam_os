@@ -230,6 +230,55 @@ export default function GroupLandingClient() {
     { label: '출발', value: form.departure_date || '미입력' },
   ];
   const aiHandoffFilledCount = aiHandoffSummary.filter((item) => item.value !== '미입력').length;
+  const aiHandoffMissingFields = aiHandoffSummary.filter((item) => item.value === '미입력').map((item) => item.label);
+  const aiHandoffReadinessId = 'group-landing-ai-handoff-readiness';
+  const aiHandoffDescriptionIds = `group-landing-ai-handoff-summary ${aiHandoffReadinessId}`;
+  const aiHandoffReadinessLabel = aiHandoffFilledCount >= 4 ? '상담 품질 충분' : '조건 보완 권장';
+  const aiHandoffNextActionText = aiHandoffMissingFields.length > 0
+    ? `AI 상담 전 ${aiHandoffMissingFields.join(', ')}을(를) 더 입력하면 추천 정확도가 올라갑니다.`
+    : 'AI 상담에 필요한 핵심 조건이 모두 준비되었습니다.';
+  const groupSubmitChecklist = [
+    ...REQUIRED_FIELDS.map((key) => ({
+      label: REQUIRED_FIELD_LABELS[key],
+      complete: Boolean(form[key].trim()),
+    })),
+    { label: '개인정보 동의', complete: privacyConsent },
+  ];
+  const groupSubmitReadyCount = groupSubmitChecklist.filter((item) => item.complete).length;
+  const groupSubmitMissingLabels = groupSubmitChecklist.filter((item) => !item.complete).map((item) => item.label);
+  const groupSubmitDecisionSummaryId = 'group-landing-submit-decision-summary';
+  const groupSubmitDecisionSummaryText = groupSubmitMissingLabels.length > 0
+    ? `견적 요청 전 ${groupSubmitMissingLabels.join(', ')}을(를) 입력하면 접수할 수 있습니다.`
+    : `견적 요청 시 ${form.destination}, ${form.pax_label}, ${form.budget_label} 기준으로 전담 견적을 접수합니다.`;
+  const groupSubmitConditionSummaryText = [
+    `단체명 ${form.group_name || '미입력'}`,
+    `성격 ${form.purpose || '미입력'}`,
+    `목적지 ${form.destination || '미입력'}`,
+    `출발일 ${form.departure_date || '미입력'}`,
+    `인원 ${form.pax_label || '미입력'}`,
+    `예산 ${form.budget_label || '미입력'}`,
+    `호텔 ${form.hotel_grade || '미정'}`,
+    `쇼핑 ${form.shopping || '미정'}`,
+  ].join(', ');
+  const groupSubmitHandoffPreviewText = `상담 전달 미리보기: ${groupSubmitConditionSummaryText}. 연락처 이름 ${form.contact_name.trim() ? '입력됨' : '미입력'}, 전화번호 ${form.contact_phone.trim() ? '입력됨' : '미입력'}, 개인정보 동의 ${privacyConsent ? '완료' : '미완료'}.`;
+  const groupLandingDecisionMetadata = {
+    pax_label: form.pax_label || null,
+    adult_count: parsePaxLabel(form.pax_label),
+    budget_per_person: parseBudgetLabel(form.budget_label),
+    ready_count: groupSubmitReadyCount,
+    missing_fields: groupSubmitMissingLabels,
+    decision_summary: groupSubmitDecisionSummaryText,
+    condition_summary: groupSubmitConditionSummaryText,
+    handoff_preview: groupSubmitHandoffPreviewText,
+    has_contact_name: form.contact_name.trim().length > 0,
+    has_contact_phone: form.contact_phone.trim().length > 0,
+    privacy_consent: privacyConsent,
+  };
+  const groupSubmitDescriptionIds = error
+    ? `${groupSubmitDecisionSummaryId} group-landing-submit-error`
+    : submitting
+      ? `${groupSubmitDecisionSummaryId} group-landing-status`
+      : groupSubmitDecisionSummaryId;
 
   function validateForm() {
     const nextErrors: Partial<Record<FieldErrorKey, string>> = {};
@@ -266,9 +315,15 @@ export default function GroupLandingClient() {
       budget: form.budget_label || null,
       destination: form.destination || null,
       party_type: 'group_landing',
+      selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+      ready_count: groupSubmitReadyCount,
+      missing_fields: groupSubmitMissingLabels,
+      decision_summary: groupSubmitDecisionSummaryText,
+      handoff_preview: groupSubmitHandoffPreviewText,
+      next_action: groupSubmitReadyCount >= groupSubmitChecklist.length ? 'kakao_consult_ready' : 'complete_missing_fields',
       metadata: {
         source: 'group_landing_form',
-        pax_label: form.pax_label || null,
+        ...groupLandingDecisionMetadata,
       },
     });
 
@@ -321,9 +376,17 @@ export default function GroupLandingClient() {
       destination: form.destination || null,
       party_type: 'group_landing',
       selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+      ready_count: aiHandoffFilledCount,
+      missing_fields: aiHandoffMissingFields,
+      decision_summary: aiHandoffReadinessLabel,
+      handoff_preview: groupSubmitHandoffPreviewText,
+      next_action: aiHandoffNextActionText,
       metadata: {
         source: 'group_landing_ai_handoff',
         pax_label: form.pax_label || null,
+        filled_count: aiHandoffFilledCount,
+        missing_fields: aiHandoffMissingFields,
+        readiness_label: aiHandoffReadinessLabel,
       },
     });
 
@@ -400,13 +463,16 @@ export default function GroupLandingClient() {
         destination: form.destination || null,
         party_type: 'group_landing',
         selected_products: [GROUP_INQUIRY_PRODUCT_LABEL],
+        ready_count: groupSubmitReadyCount,
+        missing_fields: groupSubmitMissingLabels,
+        decision_summary: groupSubmitDecisionSummaryText,
+        handoff_preview: groupSubmitHandoffPreviewText,
+        next_action: 'rfq_created',
         metadata: {
           source: 'group_landing_submit',
           outcome: 'rfq_created',
           rfq_id: data.rfq.id,
-          pax_label: form.pax_label,
-          adult_count: adultCount,
-          budget_per_person: parseBudgetLabel(form.budget_label),
+          ...groupLandingDecisionMetadata,
         },
       });
 
@@ -695,6 +761,21 @@ export default function GroupLandingClient() {
           )}
 
           {/* 제출 버튼 */}
+          <p
+            id={groupSubmitDecisionSummaryId}
+            data-testid="group-landing-submit-decision-summary"
+            aria-label={groupSubmitDecisionSummaryText}
+            className={`rounded-2xl border px-4 py-3 text-sm font-bold leading-relaxed ${
+              groupSubmitMissingLabels.length > 0
+                ? 'border-slate-200 bg-white text-slate-600'
+                : 'border-blue-100 bg-blue-50 text-brand'
+            }`}
+          >
+            <span className="font-black">
+              {groupSubmitMissingLabels.length > 0 ? `접수 준비 ${groupSubmitReadyCount}/${groupSubmitChecklist.length}` : '접수 준비 완료'}
+            </span>
+            <span className="ml-1">{groupSubmitDecisionSummaryText}</span>
+          </p>
           <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
             <p id={kakaoActionDescriptionId} className="sr-only">
               현재 입력한 단체 여행 조건을 상담 문구로 정리해 카카오톡 상담창을 엽니다.
@@ -704,7 +785,7 @@ export default function GroupLandingClient() {
               data-testid="group-landing-submit"
               disabled={submitting}
               aria-busy={submitting}
-              aria-describedby={error ? 'group-landing-submit-error' : submitting ? 'group-landing-status' : undefined}
+              aria-describedby={groupSubmitDescriptionIds}
               className="w-full bg-brand hover:bg-[#1B64DA] disabled:bg-slate-400 text-white font-bold py-4 px-6 rounded-2xl text-lg transition"
             >
               {submitting ? '전송 중...' : '견적 요청하기'}
@@ -753,7 +834,7 @@ export default function GroupLandingClient() {
             type="button"
             data-testid="group-landing-ai-handoff"
             onClick={handleContinueInAiConsult}
-            aria-describedby="group-landing-ai-handoff-summary"
+            aria-describedby={aiHandoffDescriptionIds}
             className="w-full rounded-2xl border border-brand/20 bg-white px-5 py-3.5 text-sm font-extrabold text-brand transition hover:border-brand/40 hover:bg-brand-light/40 focus:outline-none focus:ring-2 focus:ring-brand"
           >
             AI 상담에서 조건 이어가기
@@ -770,6 +851,14 @@ export default function GroupLandingClient() {
                 {aiHandoffFilledCount}/5 입력됨
               </span>
             </div>
+            <p
+              id={aiHandoffReadinessId}
+              data-testid="group-landing-ai-handoff-readiness"
+              className="mt-2 rounded-xl border border-brand/10 bg-brand-light/30 px-3 py-2 text-xs font-bold text-slate-700"
+            >
+              <span className="font-black text-brand">{aiHandoffReadinessLabel}</span>
+              <span className="ml-1">{aiHandoffNextActionText}</span>
+            </p>
             <dl className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-5">
               {aiHandoffSummary.map((item) => (
                 <div key={item.label} className="min-w-0 rounded-xl bg-slate-50 px-3 py-2">

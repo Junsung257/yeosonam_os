@@ -80,8 +80,12 @@ function validateArgs() {
     '--json',
     '--self-test',
     '--strict',
+    '--include-ux-smoke',
     '--skip-readiness-contracts',
     '--skip-ux-masterplan',
+    '--skip-event-taxonomy',
+    '--skip-design-system',
+    '--skip-ux-smoke',
     '--skip-local-release',
     '--skip-marketing-release',
     '--skip-build',
@@ -164,6 +168,12 @@ if (!Number.isFinite(commandTimeoutKillGraceMs) || commandTimeoutKillGraceMs <= 
 }
 const skipContracts = hasFlag('--skip-readiness-contracts');
 const skipUxMasterplan = hasFlag('--skip-ux-masterplan');
+const skipEventTaxonomy = hasFlag('--skip-event-taxonomy');
+const skipDesignSystem = hasFlag('--skip-design-system');
+const skipA11y = hasFlag('--skip-a11y');
+const skipTypeCheck = hasFlag('--skip-type-check');
+const includeUxSmoke = hasFlag('--include-ux-smoke');
+const skipUxSmoke = hasFlag('--skip-ux-smoke') || !includeUxSmoke;
 const skipLocalRelease = hasFlag('--skip-local-release');
 const skipMarketingRelease = hasFlag('--skip-marketing-release');
 const skipOperationalInputs = hasFlag('--skip-operational-inputs');
@@ -596,6 +606,41 @@ function buildStages() {
       args: ['scripts/verify-ux-masterplan-contract.mjs', '--json'],
     });
   }
+  if (!skipEventTaxonomy) {
+    stages.push({
+      id: 'event-taxonomy',
+      command: process.execPath,
+      args: ['scripts/audit-event-taxonomy.mjs', '--json'],
+    });
+  }
+  if (!skipDesignSystem) {
+    stages.push({
+      id: 'design-system',
+      command: process.execPath,
+      args: ['scripts/verify-admin-tokens.mjs', '--json'],
+    });
+  }
+  if (!skipA11y) {
+    stages.push({
+      id: 'a11y',
+      command: process.execPath,
+      args: ['scripts/verify-a11y.mjs', '--json'],
+    });
+  }
+  if (!skipTypeCheck) {
+    stages.push({
+      id: 'type-check',
+      command: process.execPath,
+      args: ['scripts/verify-type-check.mjs', '--json'],
+    });
+  }
+  if (!skipUxSmoke) {
+    stages.push({
+      id: 'ux-smoke',
+      command: process.execPath,
+      args: ['scripts/verify-ux-smoke.mjs', '--json'],
+    });
+  }
   if (!skipLocalRelease) {
     const localReport = argValue('--local-report', `.tmp/verify-all-local-release-${runId}.json`);
     stages.push({
@@ -675,6 +720,11 @@ if (stages.length === 0) {
     skipped: {
       readinessContracts: skipContracts,
       uxMasterplan: skipUxMasterplan,
+      eventTaxonomy: skipEventTaxonomy,
+      designSystem: skipDesignSystem,
+      a11y: skipA11y,
+      typeCheck: skipTypeCheck,
+      uxSmoke: skipUxSmoke,
       localRelease: skipLocalRelease,
       marketingRelease: skipMarketingRelease,
     },
@@ -734,6 +784,11 @@ const report = {
   skipped: {
     readinessContracts: skipContracts,
     uxMasterplan: skipUxMasterplan,
+    eventTaxonomy: skipEventTaxonomy,
+    designSystem: skipDesignSystem,
+    a11y: skipA11y,
+    typeCheck: skipTypeCheck,
+    uxSmoke: skipUxSmoke,
     localRelease: skipLocalRelease,
     marketingRelease: skipMarketingRelease,
   },

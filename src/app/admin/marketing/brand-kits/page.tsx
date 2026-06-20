@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 /* ── 타입 ── */
 interface BrandKit {
@@ -40,6 +40,20 @@ const DEFAULT_FONTS: Record<string, string> = {
   serif: 'Noto Serif KR',
   mono: 'D2Coding',
 };
+const FOCUSABLE_SELECTOR = [
+  'a[href]',
+  'button:not([disabled])',
+  'input:not([disabled])',
+  'select:not([disabled])',
+  'textarea:not([disabled])',
+  '[tabindex]:not([tabindex="-1"])',
+].join(',');
+
+function getFocusableElements(container: HTMLElement | null) {
+  if (!container) return [];
+  return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+    .filter(el => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true');
+}
 
 const emptyKit = (): BrandKit => ({
   id: '',
@@ -73,6 +87,19 @@ export default function BrandKitsPage() {
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const firstInputRef = useRef<HTMLInputElement | null>(null);
+  const newButtonRef = useRef<HTMLButtonElement | null>(null);
+  const panelReturnFocusRef = useRef<HTMLElement | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement | null>(null);
+  const deleteReturnFocusRef = useRef<HTMLElement | null>(null);
+  const panelTitleId = 'brand-kit-editor-title';
+  const panelDescriptionId = 'brand-kit-editor-description';
+  const panelStatusId = 'brand-kit-editor-status';
+  const deleteTitleId = 'brand-kit-delete-title';
+  const deleteDescriptionId = 'brand-kit-delete-description';
+  const editingOpen = editing !== null;
+  const deleteConfirmOpen = deleteConfirm !== null;
 
   const fetchKits = async () => {
     setLoading(true);
@@ -90,7 +117,20 @@ export default function BrandKitsPage() {
 
   useEffect(() => { fetchKits(); }, []);
 
-  const openEdit = async (kit: BrandKit) => {
+  const closePanel = () => {
+    setEditing(null);
+    setIsNew(false);
+    setSaveMsg('');
+    requestAnimationFrame(() => panelReturnFocusRef.current?.focus());
+  };
+
+  const closeDeleteConfirm = () => {
+    setDeleteConfirm(null);
+    requestAnimationFrame(() => deleteReturnFocusRef.current?.focus());
+  };
+
+  const openEdit = async (kit: BrandKit, trigger?: HTMLElement) => {
+    panelReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     try {
       const res = await fetch(`/api/brand-kits/${kit.id}`);
       const data = res.ok ? await res.json() : null;
@@ -102,11 +142,82 @@ export default function BrandKitsPage() {
     setSaveMsg('');
   };
 
-  const openNew = () => {
+  const openNew = (trigger?: HTMLElement) => {
+    panelReturnFocusRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setEditing(emptyKit());
     setIsNew(true);
     setSaveMsg('');
   };
+
+  useEffect(() => {
+    if (!editingOpen) return undefined;
+    const panel = panelRef.current;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    requestAnimationFrame(() => firstInputRef.current?.focus());
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape' && !deleteConfirmOpen) {
+        event.preventDefault();
+        closePanel();
+        return;
+      }
+      if (event.key !== 'Tab' || deleteConfirmOpen) return;
+
+      const focusable = getFocusableElements(panel);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [deleteConfirmOpen, editingOpen]);
+
+  useEffect(() => {
+    if (!deleteConfirmOpen) return undefined;
+    const dialog = deleteDialogRef.current;
+
+    requestAnimationFrame(() => {
+      const [firstFocusable] = getFocusableElements(dialog);
+      firstFocusable?.focus();
+    });
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeDeleteConfirm();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusable = getFocusableElements(dialog);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [deleteConfirmOpen]);
 
   const handleSave = async () => {
     if (!editing) return;
@@ -147,8 +258,8 @@ export default function BrandKitsPage() {
     const res = await fetch(`/api/brand-kits/${id}`, { method: 'DELETE' });
     const data = await res.json();
     if (res.ok) {
-      setDeleteConfirm(null);
-      if (editing?.id === id) setEditing(null);
+      closeDeleteConfirm();
+      if (editing?.id === id) closePanel();
       fetchKits();
     } else {
       alert(data.error ?? '삭제 실패');
@@ -188,6 +299,16 @@ export default function BrandKitsPage() {
     });
   };
 
+  const panelStatusText = saving ? '브랜드킷 저장 중입니다.'
+    : saveMsg ? `저장 상태: ${saveMsg}`
+    : editing ? `${isNew ? '새 브랜드킷 생성' : `${editing.name || editing.code} 편집`} 패널이 열렸습니다.`
+    : '';
+  const deleteTargetName = kits.find(kit => kit.id === deleteConfirm)?.name
+    || kits.find(kit => kit.id === deleteConfirm)?.code
+    || editing?.name
+    || editing?.code
+    || '선택한 브랜드킷';
+
   return (
     <div className="p-6 max-w-5xl mx-auto space-y-6">
       {/* 헤더 */}
@@ -197,7 +318,8 @@ export default function BrandKitsPage() {
           <p className="text-sm text-admin-muted">카드뉴스·블로그·소셜에 주입되는 브랜드 토큰과 보이스 가이드</p>
         </div>
         <button
-          onClick={openNew}
+          ref={newButtonRef}
+          onClick={event => openNew(event.currentTarget)}
           className="px-4 py-2 bg-amber-500 text-white text-sm font-medium rounded-lg hover:bg-amber-600 transition-colors"
         >
           + 새 브랜드킷
@@ -221,7 +343,7 @@ export default function BrandKitsPage() {
             <path strokeLinecap="round" strokeLinejoin="round" d="M4.098 19.902a3.75 3.75 0 005.304 0l6.401-6.402M6.75 21A3.75 3.75 0 013 17.25V4.125C3 3.504 3.504 3 4.125 3h5.25c.621 0 1.125.504 1.125 1.125v4.072M6.75 21a3.75 3.75 0 003.75-3.75V8.197M6.75 21h13.125c.621 0 1.125-.504 1.125-1.125v-5.25c0-.621-.504-1.125-1.125-1.125h-4.072M10.5 8.197l2.88-2.88c.438-.439 1.15-.439 1.59 0l3.712 3.713c.44.44.44 1.152 0 1.59l-2.879 2.88M6.75 17.25h.008v.008H6.75v-.008z" />
           </svg>
           <p className="text-sm font-medium text-gray-400">브랜드킷이 없습니다.</p>
-          <button onClick={openNew} className="text-xs text-amber-600 hover:text-amber-700 underline">
+          <button onClick={event => openNew(event.currentTarget)} className="text-xs text-amber-600 hover:text-amber-700 underline">
             첫 브랜드킷 만들기 →
           </button>
         </div>
@@ -267,7 +389,7 @@ export default function BrandKitsPage() {
               <div className="flex items-center justify-between pt-1">
                 <p className="text-[10px] text-gray-400">{kit.updated_at?.slice(0, 10)}</p>
                 <button
-                  onClick={() => openEdit(kit)}
+                  onClick={event => openEdit(kit, event.currentTarget)}
                   className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg hover:bg-blue-700 font-medium"
                 >
                   편집
@@ -284,32 +406,50 @@ export default function BrandKitsPage() {
           <button
             type="button"
             className="fixed inset-0 bg-black/30 backdrop-blur-sm z-50"
-            onClick={() => { setEditing(null); setIsNew(false); }}
+            onClick={closePanel}
             aria-label="브랜드킷 편집 패널 닫기"
           />
-          <div className="fixed right-0 top-0 h-full w-full max-w-xl bg-white z-50 flex flex-col border-l shadow-xl">
+          <div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={panelTitleId}
+            aria-describedby={`${panelDescriptionId} ${panelStatusId}`}
+            tabIndex={-1}
+            className="fixed inset-y-0 right-0 h-dvh max-h-dvh w-full max-w-xl bg-white z-50 flex flex-col border-l shadow-xl"
+          >
             {/* 패널 헤더 */}
-            <div className="px-6 py-4 border-b flex items-center justify-between">
+            <div className="px-6 py-[max(1rem,env(safe-area-inset-top))] border-b flex items-center justify-between">
               <div>
                 <span className="text-xs font-mono bg-gray-100 text-gray-500 px-2 py-0.5 rounded">
                   {isNew ? '신규' : editing.code}
                 </span>
-                <h2 className="text-lg font-bold text-gray-900 mt-1">
+                <h2 id={panelTitleId} className="text-lg font-bold text-gray-900 mt-1">
                   {isNew ? '새 브랜드킷 생성' : `${editing.name || editing.code} 편집`}
                 </h2>
+                <p id={panelDescriptionId} className="sr-only">
+                  카드뉴스, 블로그, 소셜 콘텐츠에 적용할 브랜드 토큰과 보이스 가이드를 편집합니다.
+                </p>
+                <p id={panelStatusId} role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                  {panelStatusText}
+                </p>
               </div>
               <div className="flex items-center gap-2">
                 {!isNew && (
                   <button
-                    onClick={() => setDeleteConfirm(editing.id)}
+                    onClick={event => {
+                      deleteReturnFocusRef.current = event.currentTarget;
+                      setDeleteConfirm(editing.id);
+                    }}
                     className="text-xs text-red-400 hover:text-red-600 px-2 py-1"
                   >
                     삭제
                   </button>
                 )}
                 <button
-                  onClick={() => { setEditing(null); setIsNew(false); }}
+                  onClick={closePanel}
                   className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                  aria-label="브랜드킷 편집 패널 닫기"
                 >
                   ×
                 </button>
@@ -320,7 +460,10 @@ export default function BrandKitsPage() {
               {/* 기본 정보 */}
               <Section title="기본 정보">
                 <Field label="Code (고유 식별자)">
-                  <input value={editing.code} onChange={e => setEditing({ ...editing, code: e.target.value })}
+                  <input
+                    ref={firstInputRef}
+                    value={editing.code}
+                    onChange={e => setEditing({ ...editing, code: e.target.value })}
                     placeholder="yeosonam"
                     className="w-full border rounded-lg px-3 py-2 text-sm font-mono" />
                 </Field>
@@ -494,18 +637,18 @@ export default function BrandKitsPage() {
             </div>
 
             {/* 하단 저장 버튼 */}
-            <div className="px-6 py-4 border-t flex items-center gap-3 bg-gray-50">
+            <div className="px-6 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] border-t flex items-center gap-3 bg-gray-50">
               {saveMsg && (
-                <span className={`text-xs ${saveMsg === '저장됨' ? 'text-green-600' : 'text-red-500'}`}>
+                <span role="status" aria-live="polite" className={`text-xs ${saveMsg === '저장됨' ? 'text-green-600' : 'text-red-500'}`}>
                   {saveMsg}
                 </span>
               )}
               <div className="ml-auto flex gap-3">
-                <button onClick={() => { setEditing(null); setIsNew(false); }}
+                <button type="button" onClick={closePanel}
                   className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
                   닫기
                 </button>
-                <button onClick={handleSave} disabled={saving}
+                <button type="button" onClick={handleSave} disabled={saving} aria-busy={saving}
                   className="px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50">
                   {saving ? '저장 중...' : isNew ? '생성' : '저장'}
                 </button>
@@ -521,19 +664,29 @@ export default function BrandKitsPage() {
           <button
             type="button"
             className="fixed inset-0 bg-black/30 z-50"
-            onClick={() => setDeleteConfirm(null)}
+            onClick={closeDeleteConfirm}
             aria-label="브랜드킷 삭제 확인 닫기"
           />
           <div className="fixed inset-0 flex items-center justify-center z-50 pointer-events-none">
-            <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 pointer-events-auto">
-              <h3 className="font-semibold text-gray-900 mb-2">브랜드킷 삭제</h3>
-              <p className="text-sm text-gray-500 mb-4">정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.</p>
+            <div
+              ref={deleteDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={deleteTitleId}
+              aria-describedby={deleteDescriptionId}
+              tabIndex={-1}
+              className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4 pointer-events-auto"
+            >
+              <h3 id={deleteTitleId} className="font-semibold text-gray-900 mb-2">브랜드킷 삭제</h3>
+              <p id={deleteDescriptionId} className="text-sm text-gray-500 mb-4">
+                {deleteTargetName}을 삭제합니다. 이 작업은 되돌릴 수 없습니다.
+              </p>
               <div className="flex gap-3 justify-end">
-                <button onClick={() => setDeleteConfirm(null)}
+                <button type="button" onClick={closeDeleteConfirm}
                   className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">
                   취소
                 </button>
-                <button onClick={() => handleDelete(deleteConfirm)}
+                <button type="button" onClick={() => handleDelete(deleteConfirm)}
                   className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700">
                   삭제
                 </button>

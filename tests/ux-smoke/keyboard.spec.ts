@@ -527,7 +527,7 @@ test.describe('keyboard access smoke', () => {
 
     const aiHandoff = page.locator('[data-testid="group-landing-ai-handoff"]:visible').first();
     await expectCanFocus(aiHandoff, 'group landing AI handoff');
-    await expect(aiHandoff).toHaveAttribute('aria-describedby', 'group-landing-ai-handoff-summary');
+    await expect(aiHandoff).toHaveAttribute('aria-describedby', /(^|\s)group-landing-ai-handoff-summary(\s|$)/);
     await expect(page.locator('[data-testid="group-landing-ai-handoff-summary"]:visible')).toContainText('AI에 전달될 조건');
     await expect(page.locator('[data-testid="group-landing-ai-handoff-summary"]:visible')).toContainText('/5 입력됨');
     await page.keyboard.press('Enter');
@@ -649,7 +649,7 @@ test.describe('keyboard access smoke', () => {
     await expectCanFocus(rfqSubmit.first(), 'group inquiry RFQ submit with valid contact');
     await page.keyboard.press('Enter');
     await expect(page.locator('#group-inquiry-submit-error')).toBeVisible();
-    await expect(rfqSubmit).toHaveAttribute('aria-describedby', 'group-inquiry-submit-error');
+    await expect(rfqSubmit).toHaveAttribute('aria-describedby', /(^|\s)group-inquiry-submit-error(\s|$)/);
     await expect(summaryKakao, 'group inquiry submit failure should focus Kakao fallback').toBeFocused();
   });
 
@@ -908,7 +908,8 @@ test.describe('keyboard access smoke', () => {
     await expect(matchDialog).toHaveAttribute('role', 'dialog');
     await expect(matchDialog).toHaveAttribute('aria-modal', 'true');
     await expect(matchDialog).toHaveAttribute('aria-labelledby', 'payment-manual-match-title');
-    await expect(matchDialog).toHaveAttribute('aria-describedby', 'payment-manual-match-description');
+    await expect(matchDialog).toHaveAttribute('aria-describedby', 'payment-manual-match-description payment-manual-match-status payment-manual-match-decision-summary');
+    await expect(matchDialog.locator('[data-testid="admin-payment-manual-match-decision-summary"]')).toBeVisible();
     await expectCanFocus(page.locator('[data-testid="admin-payment-match-close"]').first(), 'admin payment match dialog close');
     await page.keyboard.press('Enter');
     await expect(matchDialog).toBeHidden();

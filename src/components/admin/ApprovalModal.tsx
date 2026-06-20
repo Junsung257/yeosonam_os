@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { X, RefreshCw, Heart, ShieldCheck, Zap, CheckCircle2 } from 'lucide-react';
 import type { MarketingCopy } from '@/lib/ai';
 
@@ -68,6 +68,10 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
   const [editTitle, setEditTitle]       = useState('');
   const [editSummary, setEditSummary]   = useState('');
   const [regenerating, setRegenerating] = useState(false);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const approvalTitleId = 'approval-modal-title';
+  const approvalDescriptionId = 'approval-modal-description';
 
   // 모달 열릴 때 초기화
   useEffect(() => {
@@ -80,19 +84,55 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
     setRegenerating(false);
   }, [open, pkg]);
 
-  // ESC 닫기
+  // Dialog keyboard and page lock
   useEffect(() => {
     if (!open) return;
-    const h = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', h);
-    return () => document.removeEventListener('keydown', h);
-  }, [open, onClose]);
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTimer = window.setTimeout(() => closeButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      dialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
 
-  // Body scroll lock
-  useEffect(() => {
-    document.body.style.overflow = open ? 'hidden' : '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
+    const h = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        e.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', h);
+    return () => {
+      window.clearTimeout(focusTimer);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', h);
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [open, onClose]);
 
   // 카드 선택 → input 자동 채워짐
   const selectCopy = useCallback((copy: MarketingCopy) => {
@@ -141,20 +181,29 @@ export default function ApprovalModal({ pkg, open, onClose, onApprove, onReject,
 
       {/* Modal */}
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        <div className="bg-white rounded-admin-lg shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden">
+        <div
+          ref={dialogRef}
+          className="bg-white rounded-admin-lg shadow-2xl w-full max-w-2xl max-h-[92vh] flex flex-col overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={approvalTitleId}
+          aria-describedby={approvalDescriptionId}
+        >
 
           {/* ── 헤더 ──────────────────────────────────────────────────── */}
           <div className="flex items-start justify-between px-7 py-5 border-b border-admin-border shrink-0">
             <div>
-              <h2 className="text-xl font-bold text-admin-text">마케팅 카피 검수 및 배포</h2>
-              <p className="text-sm text-admin-muted mt-0.5">
+              <h2 id={approvalTitleId} className="text-xl font-bold text-admin-text">마케팅 카피 검수 및 배포</h2>
+              <p id={approvalDescriptionId} className="text-sm text-admin-muted mt-0.5">
                 {pkg.destination ?? ''}
                 {pkg.price ? ` · ${pkg.price.toLocaleString('ko-KR')}원~/인` : ''}
               </p>
             </div>
             <button
+              ref={closeButtonRef}
               onClick={onClose}
               className="p-2 rounded-lg text-admin-muted-2 hover:text-admin-text-2 hover:bg-admin-surface-2 transition"
+              aria-label="마케팅 카피 검수 모달 닫기"
             >
               <X size={20} />
             </button>

@@ -48,6 +48,13 @@ export interface BookingFull {
   lead_customer_id?: string;
 }
 
+interface BulkTrashConfirmationTarget {
+  ids: string[];
+  items: BankTransaction[];
+  summaryText: string;
+  nextActionText: string;
+}
+
 // ─── 유틸 ──────────────────────────────────────────────────────────────────────
 
 /** 고객명 + 출발일(YYMMDD) 앵커 — 업계 표준 (Cloudbeds/Xero 패턴) */
@@ -223,6 +230,9 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
           const bal = getBalance(b);
           const candidateMatchReason = getCandidateMatchReason(b);
           const candidateReasonId = `${comboboxBaseId}-candidate-reason-${b.id}`;
+          const candidateDecisionId = `${comboboxBaseId}-candidate-decision-${b.id}`;
+          const candidateCustomerLabel = b.customers?.name || '이름 없음';
+          const candidateDecisionText = `${candidateCustomerLabel} 예약에 ${fmt만(tx.amount)} 입금을 연결합니다. 미수금 ${fmt만(bal)}${rec ? ', 추천 후보' : ', 추가 확인 필요'}.`;
           const isFocused = i === focusedIdx;
           const isChecked = multiSelected.has(b.id);
           return (
@@ -231,8 +241,8 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
                 id={`${comboboxBaseId}-option-${b.id}`}
                 role="option"
                 aria-selected={multiMode ? isChecked : isFocused}
-                aria-label={`${b.customers?.name || '이름 없음'} 예약${b.booking_no ? ` ${b.booking_no}` : ''}${b.package_title ? `, ${b.package_title}` : ''}, 미수금 ${fmt만(bal)}${rec ? ', 추천 후보' : ''}${multiMode && isChecked ? ', 선택됨' : ''}`}
-                aria-describedby={candidateReasonId}
+                aria-label={`${candidateCustomerLabel} 예약${b.booking_no ? ` ${b.booking_no}` : ''}${b.package_title ? `, ${b.package_title}` : ''}, 미수금 ${fmt만(bal)}${rec ? ', 추천 후보' : ''}${multiMode && isChecked ? ', 선택됨' : ''}`}
+                aria-describedby={`${candidateReasonId} ${candidateDecisionId}`}
                 type="button"
                 onClick={() => multiMode ? onToggle(b.id) : onSelect(b.id)}
                 onMouseEnter={() => setFocusedIdx(i)}
@@ -265,6 +275,13 @@ function SmartCombobox({ tx, bookings, multiMode, multiSelected, onSelect, onTog
                         className="mt-1 text-[11px] font-semibold text-admin-muted-2"
                       >
                         근거: {candidateMatchReason}
+                      </div>
+                      <div
+                        id={candidateDecisionId}
+                        data-testid="admin-payment-match-candidate-decision-summary"
+                        className="mt-1 rounded-admin-sm border border-admin-border bg-white px-2 py-1 text-[11px] font-semibold text-admin-text-2"
+                      >
+                        결정: {candidateDecisionText}
                       </div>
                     </div>
                   </div>
@@ -455,15 +472,17 @@ function PaymentOpsQueue({
     key: PaymentQueueKey;
     label: string;
     helper: string;
+    reason: string;
+    operationRisk: string;
     count: number;
     target: string;
     tone: string;
   }[] = [
-    { key: 'review', label: '검토 필요', helper: '자동 후보 확인', count: counts.review, target: '자동 매칭 후보를 검토하고 확정할 거래만 보여줍니다.', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
-    { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', count: counts.unmatched, target: '예약과 아직 연결되지 않은 입금 거래만 보여줍니다.', tone: 'border-red-200 bg-red-50 text-red-700' },
-    { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', count: counts.stale, target: '하루 이상 처리되지 않은 결제 거래를 우선 보여줍니다.', tone: 'border-rose-200 bg-rose-50 text-rose-700' },
-    { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', count: counts.outflow, target: '랜드사 송금이나 고객 환불로 묶어야 할 출금 거래를 보여줍니다.', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
-    { key: 'trash', label: '제외 보관함', helper: '복구/영구삭제', count: counts.trash, target: '제외 처리된 거래를 복구하거나 영구 삭제할 수 있는 보관함을 엽니다.', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
+    { key: 'review', label: '검토 필요', helper: '자동 후보 확인', reason: '후보 확정 전', operationRisk: '오매칭 방지', count: counts.review, target: '자동 매칭 후보를 검토하고 확정할 거래만 보여줍니다.', tone: 'border-amber-200 bg-amber-50 text-amber-700' },
+    { key: 'unmatched', label: '미매칭 입금', helper: '예약 연결 필요', reason: '입금자 확인 전', operationRisk: '예약 상태 불일치', count: counts.unmatched, target: '예약과 아직 연결되지 않은 입금 거래만 보여줍니다.', tone: 'border-red-200 bg-red-50 text-red-700' },
+    { key: 'stale', label: '24시간 경과', helper: '오래 방치된 건', reason: '응대 지연 위험', operationRisk: '처리 지연', count: counts.stale, target: '하루 이상 처리되지 않은 결제 거래를 우선 보여줍니다.', tone: 'border-rose-200 bg-rose-50 text-rose-700' },
+    { key: 'outflow', label: '출금/환불 확인', helper: '랜드사/환불 매칭', reason: '정산 누락 방지', operationRisk: '정산 누락', count: counts.outflow, target: '랜드사 송금이나 고객 환불로 묶어야 할 출금 거래를 보여줍니다.', tone: 'border-orange-200 bg-orange-50 text-orange-700' },
+    { key: 'trash', label: '제외 보관함', helper: '복구/영구삭제', reason: '복구 가능성 확인', operationRisk: '영구삭제 전 확인', count: counts.trash, target: '제외 처리된 거래를 복구하거나 영구 삭제할 수 있는 보관함을 엽니다.', tone: 'border-slate-200 bg-slate-50 text-slate-700' },
   ];
   const total = items.reduce((sum, item) => sum + item.count, 0);
   const activeItems = items.filter(item => item.count > 0);
@@ -479,13 +498,13 @@ function PaymentOpsQueue({
   const paymentQueueSummaryId = 'admin-payment-queue-summary';
   const paymentQueueLeadId = 'admin-payment-queue-lead';
   const selectedQueueSummary = selectedQueueItem
-    ? `현재 선택: ${selectedQueueItem.label} ${selectedQueueItem.count}건.`
+    ? `현재 선택: ${selectedQueueItem.label} ${selectedQueueItem.count}건. 운영 리스크: ${selectedQueueItem.operationRisk}.`
     : '큐를 선택하면 해당 결제만 필터링됩니다.';
   const paymentQueueSummaryText = total > 0
-    ? `오늘 먼저 처리할 결제 작업이 ${total}건 있습니다. 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개입니다. ${activeItems.map(item => `${item.label} ${item.count}건`).join(', ')}을 우선 확인하세요.`
+    ? `오늘 먼저 처리할 결제 작업이 ${total}건 있습니다. 활성 큐 ${activeItems.length}/${items.length}, 긴급 큐 ${urgentItems.length}개입니다. ${activeItems.map(item => `${item.label} ${item.count}건, 운영 리스크 ${item.operationRisk}, 이유 ${item.reason}`).join(', ')}을 우선 확인하세요.`
     : '오늘 먼저 처리할 결제 작업이 없습니다. 큐 버튼으로 각 결제 상태를 확인할 수 있습니다.';
   const paymentQueueLeadText = priorityItem
-    ? `우선 처리: ${priorityItem.label} ${priorityItem.count}건. ${selectedQueueSummary}`
+    ? `우선 처리: ${priorityItem.label} ${priorityItem.count}건. 운영 리스크: ${priorityItem.operationRisk}. 이유: ${priorityItem.reason}. ${selectedQueueSummary}`
     : '대기 중인 결제 작업이 없습니다.';
 
   return (
@@ -557,11 +576,25 @@ function PaymentOpsQueue({
               } ${item.tone}`}
             >
               <span id={itemDescriptionId} className="sr-only">
-                {item.target} 현재 {item.count}건입니다.
+                {item.target} 현재 {item.count}건입니다. 운영 리스크는 {item.operationRisk}, 처리 이유는 {item.reason}입니다.
               </span>
               <span className="block text-[24px] font-bold leading-none tabular-nums">{item.count}</span>
               <span className="mt-2 block text-admin-sm font-bold text-admin-text-2">{item.label}</span>
               <span className="mt-0.5 block text-admin-xs text-admin-muted">{item.helper}</span>
+              <span className="mt-2 flex flex-wrap gap-1.5">
+                <span
+                  className="inline-flex max-w-full rounded-full bg-white/80 px-2 py-0.5 text-[10px] font-black text-admin-text ring-1 ring-black/5"
+                  data-testid="admin-payment-queue-risk"
+                >
+                  리스크: {item.operationRisk}
+                </span>
+                <span
+                  className="inline-flex max-w-full rounded-full bg-white/70 px-2 py-0.5 text-[10px] font-black text-admin-text-2 ring-1 ring-black/5"
+                  data-testid="admin-payment-queue-reason"
+                >
+                  {item.reason}
+                </span>
+              </span>
             </button>
           );
         })}
@@ -697,6 +730,30 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const trashToggleRef = useRef<HTMLButtonElement | null>(null);
   const firstTrashRestoreRef = useRef<HTMLButtonElement | null>(null);
   const trashWasOpenRef = useRef(false);
+  const [hardDeleteTarget, setHardDeleteTarget] = useState<BankTransaction | null>(null);
+  const [hardDeleting, setHardDeleting] = useState(false);
+  const [undoMatchTarget, setUndoMatchTarget] = useState<BankTransaction | null>(null);
+  const [undoMatchProcessing, setUndoMatchProcessing] = useState(false);
+  const [bulkTrashTarget, setBulkTrashTarget] = useState<BulkTrashConfirmationTarget | null>(null);
+  const hardDeleteModalRef = useRef<HTMLDivElement | null>(null);
+  const hardDeleteCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const hardDeleteTriggerRef = useRef<HTMLElement | null>(null);
+  const undoMatchModalRef = useRef<HTMLDivElement | null>(null);
+  const undoMatchCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const undoMatchTriggerRef = useRef<HTMLElement | null>(null);
+  const bulkTrashModalRef = useRef<HTMLDivElement | null>(null);
+  const bulkTrashCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bulkTrashTriggerRef = useRef<HTMLElement | null>(null);
+  const paymentActionResultRef = useRef<HTMLParagraphElement | null>(null);
+  const hardDeleteModalTitleId = 'admin-payment-hard-delete-title';
+  const hardDeleteModalDescriptionId = 'admin-payment-hard-delete-description';
+  const hardDeleteModalStatusId = 'admin-payment-hard-delete-status';
+  const undoMatchModalTitleId = 'admin-payment-undo-match-title';
+  const undoMatchModalDescriptionId = 'admin-payment-undo-match-description';
+  const undoMatchModalStatusId = 'admin-payment-undo-match-status';
+  const bulkTrashModalTitleId = 'admin-payment-bulk-trash-confirm-title';
+  const bulkTrashModalDescriptionId = 'admin-payment-bulk-trash-confirm-description';
+  const bulkTrashModalStatusId = 'admin-payment-bulk-trash-confirm-status';
   const [undoInfo, setUndoInfo] = useState<{ ids: string[]; items: BankTransaction[]; countdown: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isLoading, setIsLoading] = useState(!initialTransactions);
@@ -714,6 +771,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [processing, setProcessing] = useState(false);
   const matchPanelRef = useRef<HTMLDivElement | null>(null);
   const matchCloseButtonRef = useRef<HTMLButtonElement | null>(null);
+  const matchStartedAtRef = useRef<number | null>(null);
 
   // 신규 예약 생성 (입금→예약 원스톱)
   const [showQuickCreate, setShowQuickCreate] = useState(false);
@@ -911,8 +969,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const bulkTrashOutflowCount = selectedPaymentsForBulk.filter(isOutflowTx).length;
   const bulkTrashHiddenCount = Math.max(0, checkedTxIds.size - selectedPaymentsForBulk.length);
   const bulkTrashSummaryId = 'admin-payment-bulk-trash-summary';
+  const bulkTrashNextActionId = 'admin-payment-bulk-trash-next-action';
   const bulkTrashStatusId = 'admin-payment-bulk-trash-status';
-  const bulkTrashDescriptionIds = `${bulkTrashSummaryId} ${bulkTrashStatusId}`;
+  const bulkTrashDescriptionIds = `${bulkTrashSummaryId} ${bulkTrashNextActionId} ${bulkTrashStatusId}`;
+  const bulkTrashNextActionText = bulkTrashHiddenCount > 0
+    ? `이미 숨긴 거래 ${bulkTrashHiddenCount}건은 복원 또는 영구 삭제 여부를 먼저 결정하세요.`
+    : bulkTrashReviewCount > 0
+      ? `검토 필요 ${bulkTrashReviewCount}건은 숨김 전 매칭 후보를 먼저 확인하세요.`
+      : bulkTrashUnmatchedCount > 0
+        ? `미매칭 ${bulkTrashUnmatchedCount}건은 숨김 전 수기 매칭 가능성을 확인하세요.`
+        : bulkTrashOutflowCount > 0
+          ? `출금 ${bulkTrashOutflowCount}건은 환불 또는 수수료 처리 여부를 확인하세요.`
+          : '선택 거래를 휴지통으로 이동하기 전에 예약 연결 상태를 확인하세요.';
   const bulkTrashSummaryText = [
     `선택 ${checkedTxIds.size}건`,
     `현재 화면 ${selectedPaymentsForBulk.length}건`,
@@ -921,8 +989,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     `매칭완료 ${bulkTrashMatchedCount}건`,
     `출금/환불 ${bulkTrashOutflowCount}건`,
     bulkTrashHiddenCount > 0 ? `다른 필터 선택 ${bulkTrashHiddenCount}건 포함` : null,
+    bulkTrashNextActionText,
     '휴지통으로 이동됩니다.',
   ].filter(Boolean).join('. ');
+  const trashPanelDecisionSummaryId = 'admin-payment-trash-panel-decision-summary';
+  const trashPanelDecisionSummaryText = `제외 보관함 ${trashTxs.length}건입니다. 복원은 결제 목록으로 되돌리고, 영구삭제는 복원할 수 없습니다. 먼저 복원 가능성을 확인한 뒤 영구삭제를 진행하세요.`;
 
   const handlePaymentQueueSelect = useCallback((queue: PaymentQueueKey) => {
     const queueCounts: Record<PaymentQueueKey, number> = {
@@ -931,6 +1002,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       stale: staleCount,
       outflow: outflowUnmatchedCount,
       trash: trashTxs.length,
+    };
+    const queueDecisionContext: Record<PaymentQueueKey, { operationRisk: string; reason: string }> = {
+      review: { operationRisk: '오매칭 방지', reason: '후보 확정 전' },
+      unmatched: { operationRisk: '예약 상태 불일치', reason: '입금자 확인 전' },
+      stale: { operationRisk: '처리 지연', reason: '응대 지연 위험' },
+      outflow: { operationRisk: '정산 누락', reason: '정산 누락 방지' },
+      trash: { operationRisk: '영구삭제 전 확인', reason: '복구 가능성 확인' },
     };
     setActivePaymentQueue(queue);
     if (queue === 'review') {
@@ -954,6 +1032,8 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         action: 'select_queue',
         queue,
         count: queueCounts[queue],
+        operation_risk: queueDecisionContext[queue].operationRisk,
+        reason: queueDecisionContext[queue].reason,
         has_waiting_work: queueCounts[queue] > 0,
       },
     });
@@ -1003,18 +1083,21 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     setSingleBookingId('');
     setMultiSelected(new Set());
     setOverflowAction(null);
+    matchStartedAtRef.current = performance.now();
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
       page_url: '/admin/payments',
       metadata: {
         surface: 'payments_row_action',
         action: 'manual_match_opened',
-        transactionId: tx.id,
-        transactionType: tx.transaction_type,
-        matchStatus: tx.match_status,
-        isRefund: tx.is_refund,
+        ...buildPaymentActionDecisionMetadata(tx),
       },
     });
+  }
+
+  function closeMatchPanel() {
+    matchStartedAtRef.current = null;
+    setSelectedTx(null);
   }
 
   useEffect(() => {
@@ -1058,6 +1141,42 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     [multiSelected, bookings]
   );
 
+  const manualMatchDecisionSummaryId = 'payment-manual-match-decision-summary';
+  const manualMatchDescriptionIds = `payment-manual-match-description payment-manual-match-status ${manualMatchDecisionSummaryId}`;
+  const manualMatchTargetSummary = matchMode === 'multi'
+    ? multiSelected.size > 0
+      ? `선택 예약 ${multiSelected.size}건, 잔금 합계 ${multiTotal.toLocaleString()}원`
+      : '아직 선택된 예약이 없습니다'
+    : selectedBooking
+      ? `${fmtBookingAnchor(selectedBooking)} · ${selectedBooking.package_title || '미지정'} · 잔금 ${getBalance(selectedBooking).toLocaleString()}원`
+      : '아직 선택된 예약이 없습니다';
+  const manualMatchResultSummary = !selectedTx
+    ? '거래를 선택하면 확정 전 반영 결과를 확인할 수 있습니다.'
+    : matchMode === 'multi'
+      ? multiSelected.size > 0
+        ? `확정하면 ${selectedTx.amount.toLocaleString()}원 거래를 선택 예약 ${multiSelected.size}건에 나누어 반영합니다.`
+        : '예약을 선택하면 다중 매칭 반영 결과를 확인할 수 있습니다.'
+      : selectedBooking
+        ? overflow > 0
+          ? `확정하면 입금액 중 잔금 ${getBalance(selectedBooking).toLocaleString()}원을 연결하고, 초과 ${overflow.toLocaleString()}원은 ${overflowAction === 'refund' ? '환불 대기금' : overflowAction === 'mileage' ? '마일리지' : '초과 처리 선택 후'}로 정리합니다.`
+          : `확정하면 ${selectedTx.amount.toLocaleString()}원 거래를 이 예약에 연결하고 잔금을 갱신합니다.`
+        : '예약을 선택하면 단일 매칭 반영 결과를 확인할 수 있습니다.';
+  const manualMatchDecisionSummaryText = selectedTx
+    ? `확정 전 확인: ${selectedTx.counterparty_name || '거래'} ${selectedTx.amount.toLocaleString()}원 -> ${manualMatchTargetSummary}. ${manualMatchResultSummary}`
+    : manualMatchResultSummary;
+  const feeDecisionSummaryId = 'payment-manual-fee-decision-summary';
+  const feeDescriptionIds = `payment-manual-match-description payment-manual-match-status ${feeDecisionSummaryId}`;
+  const feeDecisionSummaryText = selectedTx
+    ? `수수료 처리 전 확인: ${selectedTx.counterparty_name || '거래'} ${selectedTx.amount.toLocaleString()}원 거래를 예약과 연결하지 않고 수수료로 표시합니다. 확정 후 결제 작업 큐에서 정리됩니다.`
+    : '거래를 선택하면 수수료 처리 전 반영 결과를 확인할 수 있습니다.';
+  const quickCreateDecisionSummaryId = 'payment-quick-create-decision-summary';
+  const quickCreatePackageLabel = quickForm.packageTitle.trim() || '미지정 상품';
+  const quickCreateDepartureLabel = quickForm.departureDate || '출발일 미정';
+  const quickCreatePhoneLabel = quickForm.phone.trim() || '연락처 미입력';
+  const quickCreateDecisionSummaryText = selectedTx
+    ? `생성 전 확인: ${extractPrimaryName(selectedTx.counterparty_name) || '미확인 고객'} 고객, ${quickCreatePackageLabel}, ${quickCreateDepartureLabel}, ${quickCreatePhoneLabel}. 생성 직후 ${selectedTx.amount.toLocaleString()}원 거래와 바로 매칭합니다.`
+    : '거래를 선택하면 신규 예약 생성 후 매칭 요약을 확인할 수 있습니다.';
+
   async function handleMatch() {
     if (!selectedTx) return;
     setProcessing(true);
@@ -1093,17 +1212,24 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           ? { ...t, match_status: 'manual', booking_id: singleBookingId || undefined }
           : t
       ));
+      const matchStartedAt = matchStartedAtRef.current;
+      const matchTimeToCompleteMs =
+        typeof matchStartedAt === 'number' ? Math.max(0, Math.round(performance.now() - matchStartedAt)) : null;
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        time_to_complete_ms: matchTimeToCompleteMs,
         metadata: {
           surface: 'payments_manual_match',
           action: matchMode === 'multi' ? 'multi_match' : 'match',
-          transactionId: selectedTx.id,
-          bookingId: singleBookingId || undefined,
+          selected_booking_id: singleBookingId || undefined,
           count: matchMode === 'multi' ? multiSelected.size : 1,
+          match_mode: matchMode,
+          selected_total: matchMode === 'multi' ? multiTotal : undefined,
+          manual_decision_summary: manualMatchDecisionSummaryText,
+          ...buildPaymentActionDecisionMetadata(selectedTx),
         },
       });
-      setSelectedTx(null);
+      closeMatchPanel();
       showToast('매칭 완료');
       loadErp();
     } catch { showToast('처리 중 오류', 'err'); }
@@ -1123,36 +1249,66 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       setTransactions(prev => prev.map(t =>
         t.id === selectedTx.id ? { ...t, match_status: 'manual', is_fee: true } : t
       ));
+      const feeStartedAt = matchStartedAtRef.current;
+      const feeTimeToCompleteMs =
+        typeof feeStartedAt === 'number' ? Math.max(0, Math.round(performance.now() - feeStartedAt)) : null;
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
-        metadata: { surface: 'payments_fee', action: 'fee', transactionId: selectedTx.id },
+        time_to_complete_ms: feeTimeToCompleteMs,
+        metadata: {
+          surface: 'payments_fee',
+          action: 'fee',
+          fee_decision_summary: feeDecisionSummaryText,
+          ...buildPaymentActionDecisionMetadata(selectedTx),
+        },
       });
-      setSelectedTx(null);
+      closeMatchPanel();
       showToast('수수료 처리 완료');
     } catch { showToast('처리 중 오류', 'err'); }
     finally { setProcessing(false); }
   }
 
-  async function handleUndo(txId: string) {
-    if (!confirm('매칭을 취소하고 원상복구 하시겠습니까?')) return;
+  function openUndoMatchModal(tx: BankTransaction, trigger?: HTMLElement | null) {
+    undoMatchTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setUndoMatchTarget(tx);
+  }
+
+  function closeUndoMatchModal() {
+    setUndoMatchTarget(null);
+    window.setTimeout(() => {
+      undoMatchTriggerRef.current?.focus();
+    }, 0);
+  }
+
+  async function handleConfirmUndoMatch() {
+    if (!undoMatchTarget) return;
+    const tx = undoMatchTarget;
+    setUndoMatchProcessing(true);
     try {
       const res = await fetch('/api/bank-transactions', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'undo', transactionId: txId }),
+        body: JSON.stringify({ action: 'undo', transactionId: tx.id }),
       });
       if (!res.ok) { showToast((await res.json()).error || '처리 실패', 'err'); return; }
       // Optimistic
       setTransactions(prev => prev.map(t =>
-        t.id === txId ? { ...t, match_status: 'unmatched', booking_id: undefined } : t
+        t.id === tx.id ? { ...t, match_status: 'unmatched', booking_id: undefined } : t
       ));
       trackEngagement({
         event_type: ANALYTICS_EVENTS.adminActionCompleted,
-        metadata: { surface: 'payments_undo_match', action: 'undo_match', transactionId: txId },
+        metadata: {
+          surface: 'payments_undo_match',
+          action: 'undo_match',
+          ...buildPaymentActionDecisionMetadata(tx),
+        },
       });
+      setUndoMatchTarget(null);
+      window.setTimeout(() => paymentActionResultRef.current?.focus(), 0);
       showToast('매칭 취소 완료');
       loadErp();
     } catch { showToast('처리 중 오류', 'err'); }
+    finally { setUndoMatchProcessing(false); }
   }
 
   // ── 일괄 가져오기 ──────────────────────────────────────────────────────────
@@ -1216,7 +1372,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     setUndoInfo({ ids: [tx.id], items: [tx], countdown });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'payments_trash', action: 'trash', transactionId: tx.id },
+      metadata: {
+        surface: 'payments_trash',
+        action: 'trash',
+        ...buildPaymentActionDecisionMetadata(tx),
+      },
     });
 
     undoTimerRef.current = setInterval(() => {
@@ -1245,9 +1405,64 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     setUndoInfo(null);
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'payments_trash', action: 'undo_trash', count: undoInfo.items.length },
+      metadata: {
+        surface: 'payments_trash',
+        action: 'undo_trash',
+        ...buildBulkPaymentActionDecisionMetadata(undoInfo.items),
+      },
     });
     showToast('휴지통 이동이 취소되었습니다.', 'ok');
+  }
+
+  function openBulkTrashModal(trigger?: HTMLElement | null) {
+    bulkTrashTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setBulkTrashTarget({
+      ids: [...checkedTxIds],
+      items: selectedPaymentsForBulk,
+      summaryText: bulkTrashSummaryText,
+      nextActionText: bulkTrashNextActionText,
+    });
+  }
+
+  function closeBulkTrashModal() {
+    setBulkTrashTarget(null);
+    window.setTimeout(() => {
+      bulkTrashTriggerRef.current?.focus();
+    }, 0);
+  }
+
+  async function handleConfirmBulkTrash() {
+    if (!bulkTrashTarget || bulkTrashTarget.ids.length === 0) return;
+    const target = bulkTrashTarget;
+    setBulkDeleting(true);
+    try {
+      const res = await fetch('/api/bank-transactions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'trash_bulk', ids: target.ids }),
+      });
+      if (!res.ok) throw new Error('삭제 실패');
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        page_url: '/admin/payments',
+        metadata: {
+          surface: 'payments_bulk_trash',
+          action: 'trash_bulk',
+          next_action: target.nextActionText,
+          bulk_summary: target.summaryText,
+          ...buildBulkPaymentActionDecisionMetadata(target.items),
+        },
+      });
+      setCheckedTxIds(new Set());
+      setBulkTrashTarget(null);
+      window.setTimeout(() => paymentActionResultRef.current?.focus(), 0);
+      showToast(target.ids.length + '건 휴지통 이동', 'ok');
+      load();
+    } catch {
+      showToast('삭제 실패', 'err');
+    } finally {
+      setBulkDeleting(false);
+    }
   }
 
   async function handleRestoreSingle(tx: BankTransaction) {
@@ -1264,30 +1479,189 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     });
     trackEngagement({
       event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'payments_trash', action: 'restore', transactionId: tx.id },
+      metadata: {
+        surface: 'payments_trash',
+        action: 'restore',
+        ...buildPaymentActionDecisionMetadata(tx),
+      },
     });
     showToast('복원 완료', 'ok');
   }
 
-  async function handleHardDeleteSingle(tx: BankTransaction) {
-    if (!confirm('영구 삭제합니다. 복원 불가능합니다.')) return;
-    setTrashTxs(prev => prev.filter(t => t.id !== tx.id));
-    await fetch('/api/bank-transactions', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'hard_delete', transactionId: tx.id }),
-    });
-    trackEngagement({
-      event_type: ANALYTICS_EVENTS.adminActionCompleted,
-      metadata: { surface: 'payments_trash', action: 'hard_delete', transactionId: tx.id },
-    });
-    showToast('영구 삭제됨', 'err');
+  function openHardDeleteModal(tx: BankTransaction, trigger?: HTMLElement | null) {
+    hardDeleteTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    setHardDeleteTarget(tx);
+  }
+
+  function closeHardDeleteModal() {
+    setHardDeleteTarget(null);
+    window.setTimeout(() => {
+      hardDeleteTriggerRef.current?.focus();
+    }, 0);
+  }
+
+  async function handleConfirmHardDelete() {
+    if (!hardDeleteTarget) return;
+    const tx = hardDeleteTarget;
+    setHardDeleting(true);
+    try {
+      setTrashTxs(prev => prev.filter(t => t.id !== tx.id));
+      await fetch('/api/bank-transactions', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'hard_delete', transactionId: tx.id }),
+      });
+      trackEngagement({
+        event_type: ANALYTICS_EVENTS.adminActionCompleted,
+        metadata: {
+          surface: 'payments_trash',
+          action: 'hard_delete',
+          ...buildPaymentActionDecisionMetadata(tx),
+        },
+      });
+      setHardDeleteTarget(null);
+      window.setTimeout(() => trashToggleRef.current?.focus(), 0);
+      showToast('영구 삭제됨', 'err');
+    } catch {
+      showToast('영구 삭제 실패', 'err');
+    } finally {
+      setHardDeleting(false);
+    }
   }
 
   function closeImport() {
     setShowImport(false); setImportStep('paste'); setPasteText('');
     setImportRows([]); setImportResult(null);
   }
+
+  useEffect(() => {
+    if (!bulkTrashTarget) return;
+
+    const focusTimer = window.setTimeout(() => bulkTrashCancelButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      bulkTrashModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!bulkDeleting) closeBulkTrashModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [bulkTrashTarget, bulkDeleting]);
+
+  useEffect(() => {
+    if (!hardDeleteTarget) return;
+
+    const focusTimer = window.setTimeout(() => hardDeleteCancelButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      hardDeleteModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!hardDeleting) closeHardDeleteModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [hardDeleteTarget, hardDeleting]);
+
+  useEffect(() => {
+    if (!undoMatchTarget) return;
+
+    const focusTimer = window.setTimeout(() => undoMatchCancelButtonRef.current?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      undoMatchModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        if (!undoMatchProcessing) closeUndoMatchModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [undoMatchTarget, undoMatchProcessing]);
 
   useEffect(() => {
     const activePanel = selectedTx ? matchPanelRef.current : showImport ? importPanelRef.current : null;
@@ -1382,6 +1756,67 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     return '업무 대상이 아니면 휴지통으로 제외합니다.';
   };
 
+  function buildPaymentActionDecisionMetadata(tx: BankTransaction) {
+    const ageHours = Math.round(hoursSince(tx.created_at));
+    const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
+    const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
+    const isOutflow = tx.transaction_type === '출금' || tx.is_refund;
+    const kind = getTransactionKindLabel(tx);
+    const nextAction = getTransactionNextActionLabel(tx);
+    const nextActionReason = getTransactionNextActionReason(tx);
+    const operationRisk = tx.match_status === 'error'
+      ? '파싱 오류'
+      : ageHours >= 24 && isOpen
+        ? '처리 지연'
+        : isOpen && isOutflow
+          ? '정산 누락'
+          : isOpen
+            ? '예약 상태 불일치'
+            : isMatched
+              ? '원복 필요 확인'
+              : '보관함 확인';
+
+    return {
+      transactionId: tx.id,
+      transaction_type: tx.transaction_type,
+      transaction_kind: kind,
+      match_status: tx.match_status,
+      match_confidence: tx.match_confidence,
+      amount: tx.amount,
+      age_hours: ageHours,
+      is_refund: tx.is_refund,
+      is_fee: tx.is_fee,
+      is_outflow: isOutflow,
+      has_booking: Boolean(tx.booking_id || tx.bookings?.id),
+      bookingId: tx.booking_id ?? tx.bookings?.id ?? null,
+      operation_risk: operationRisk,
+      next_action: nextAction,
+      next_action_reason: nextActionReason,
+      decision_summary: `결제 판단 요약: ${kind} ${tx.amount.toLocaleString('ko-KR')}원, 상태 ${MATCH_LABELS[tx.match_status] || tx.match_status}, 방치 ${ageHours}시간, 다음 액션 ${nextAction}. ${nextActionReason}`,
+    };
+  }
+
+  function buildBulkPaymentActionDecisionMetadata(items: BankTransaction[]) {
+    const statusCounts = items.reduce<Record<string, number>>((acc, tx) => {
+      acc[tx.match_status] = (acc[tx.match_status] || 0) + 1;
+      return acc;
+    }, {});
+    const totalAmount = items.reduce((sum, tx) => sum + tx.amount, 0);
+    const staleCountForItems = items.filter(tx => hoursSince(tx.created_at) >= 24).length;
+    const outflowCountForItems = items.filter(tx => tx.transaction_type === '출금' || tx.is_refund).length;
+    const unmatchedCountForItems = items.filter(tx => tx.match_status === 'unmatched' || tx.match_status === 'error').length;
+
+    return {
+      count: items.length,
+      status_counts: statusCounts,
+      total_amount: totalAmount,
+      stale_count: staleCountForItems,
+      outflow_count: outflowCountForItems,
+      unmatched_count: unmatchedCountForItems,
+      decision_summary: `선택 ${items.length}건, 총액 ${totalAmount.toLocaleString('ko-KR')}원, 미매칭 ${unmatchedCountForItems}건, 출금/환불 ${outflowCountForItems}건, 24시간 경과 ${staleCountForItems}건입니다.`,
+    };
+  }
+
   const renderTransactionActions = (tx: BankTransaction, layout: 'table' | 'card' = 'table', contextDescriptionId?: string) => {
     const isOpen = tx.match_status === 'review' || tx.match_status === 'unmatched' || tx.match_status === 'error';
     const isMatched = tx.match_status === 'auto' || tx.match_status === 'manual';
@@ -1402,8 +1837,20 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       ? 'px-3 py-2 rounded border border-admin-border-strong bg-white text-admin-muted text-admin-sm font-mono hover:bg-admin-bg transition-colors text-center'
       : 'px-2 py-1 rounded border border-admin-border-strong bg-white text-admin-muted text-[11px] font-mono hover:bg-admin-bg transition-colors whitespace-nowrap';
     const paymentActionDescriptionId = `admin-payment-row-actions-${layout}-${tx.id}`;
+    const paymentActionImpactId = `admin-payment-row-action-impact-${layout}-${tx.id}`;
+    const paymentActionImpactText =
+      isOpen && isPayout
+        ? '처리 영향: 출금 묶기 또는 수동 매칭 후 예약별 출금액과 랜드사 정산 상태가 갱신됩니다.'
+        : isOpen && tx.is_refund
+          ? '처리 영향: 환불 매칭 후 고객 입금액과 환불 대기 큐가 함께 조정됩니다.'
+          : isOpen
+            ? '처리 영향: 매칭 확정 후 예약 입금액, 잔금, 결제 큐 상태가 즉시 갱신됩니다.'
+            : isMatched
+              ? '처리 영향: 매칭 취소 시 예약 입출금 반영을 원복하고 거래를 다시 확인해야 합니다.'
+              : '처리 영향: 제외하면 결제 작업 큐에서 빠지며, 휴지통에서 복원 또는 영구 삭제를 판단합니다.';
     const paymentActionDescriptionIds = [
       paymentActionDescriptionId,
+      paymentActionImpactId,
       contextDescriptionId,
       'admin-payment-action-result-description',
     ].filter(Boolean).join(' ');
@@ -1411,36 +1858,56 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
     return (
       <div className={groupClass} aria-label={`${tx.counterparty_name || '거래'} 다음 액션`} role="group">
         <p id={paymentActionDescriptionId} className="sr-only">
-          {tx.counterparty_name || '거래'} {getTransactionKindLabel(tx)} {tx.amount.toLocaleString()}원 거래의 현재 매칭 상태는 {MATCH_LABELS[tx.match_status] || tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 근거는 {nextActionReason} 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
+          {tx.counterparty_name || '거래'} {getTransactionKindLabel(tx)} {tx.amount.toLocaleString()}원 거래의 현재 매칭 상태는 {MATCH_LABELS[tx.match_status] || tx.match_status}입니다. 다음 권장 액션은 {nextActionLabel}이며, 근거는 {nextActionReason} {paymentActionImpactText} 이 행에서 매칭, 명령 매칭, 매칭 취소, 제외 작업을 처리할 수 있습니다.
         </p>
         {compact ? (
-          <div
-            data-testid="admin-payment-mobile-next-action-summary"
-            aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
-            className="col-span-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
-          >
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
-              <span className="text-[12px] font-black text-admin-text-2">{nextActionLabel}</span>
+          <>
+            <div
+              data-testid="admin-payment-mobile-next-action-summary"
+              aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
+              className="col-span-2 rounded-admin-sm border border-admin-border bg-admin-bg px-3 py-2"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-[11px] font-bold text-admin-muted">다음 액션</span>
+                <span className="text-[12px] font-black text-admin-text-2">{nextActionLabel}</span>
+              </div>
+              <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
+                {nextActionReason}
+              </p>
             </div>
-            <p className="mt-1 line-clamp-1 text-[11px] font-semibold text-admin-muted">
-              {nextActionReason}
+            <p
+              id={paymentActionImpactId}
+              data-testid="admin-payment-mobile-action-impact-summary"
+              aria-label={paymentActionImpactText}
+              className="col-span-2 rounded-admin-sm border border-admin-border bg-white px-3 py-2 text-[11px] font-bold text-admin-text-2"
+            >
+              {paymentActionImpactText}
             </p>
-          </div>
+          </>
         ) : (
-          <div
-            data-testid="admin-payment-desktop-next-action-summary"
-            aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
-            className="max-w-[210px] rounded-admin-sm border border-admin-border bg-admin-bg px-2.5 py-1.5 text-left"
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-[10px] font-bold text-admin-muted">다음 액션</span>
-              <span className="text-[11px] font-black text-admin-text-2">{nextActionLabel}</span>
+          <>
+            <div
+              data-testid="admin-payment-desktop-next-action-summary"
+              aria-label={`다음 액션 ${nextActionLabel}. ${nextActionReason}`}
+              className="max-w-[210px] rounded-admin-sm border border-admin-border bg-admin-bg px-2.5 py-1.5 text-left"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-admin-muted">다음 액션</span>
+                <span className="text-[11px] font-black text-admin-text-2">{nextActionLabel}</span>
+              </div>
+              <p className="mt-0.5 truncate text-[10px] font-semibold text-admin-muted">
+                {nextActionReason}
+              </p>
             </div>
-            <p className="mt-0.5 truncate text-[10px] font-semibold text-admin-muted">
-              {nextActionReason}
+            <p
+              id={paymentActionImpactId}
+              data-testid="admin-payment-desktop-action-impact-summary"
+              aria-label={paymentActionImpactText}
+              className="max-w-[210px] truncate rounded-admin-sm border border-admin-border bg-white px-2.5 py-1.5 text-left text-[10px] font-bold text-admin-text-2"
+            >
+              {paymentActionImpactText}
             </p>
-          </div>
+          </>
         )}
         {isOpen && (
           <>
@@ -1450,7 +1917,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 trackEngagement({
                   event_type: ANALYTICS_EVENTS.adminActionCompleted,
                   page_url: '/admin/payments',
-                  metadata: { surface: 'payments_auto_suggest', action: 'confirm_suggestion', transactionId: tx.id },
+                  metadata: {
+                    surface: 'payments_auto_suggest',
+                    action: 'confirm_suggestion',
+                    ...buildPaymentActionDecisionMetadata(tx),
+                  },
                 });
                 load(); loadErp();
               }}
@@ -1467,8 +1938,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       metadata: {
                         surface: 'payments_row_action',
                         action: 'bundle_outflow_opened',
-                        transactionId: tx.id,
-                        transactionType: tx.transaction_type,
+                        ...buildPaymentActionDecisionMetadata(tx),
                       },
                     });
                     setBundleTx(tx);
@@ -1504,9 +1974,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       metadata: {
                         surface: 'payments_row_action',
                         action: 'command_match_opened',
-                        transactionId: tx.id,
-                        transactionType: '출금',
-                        isRefund: false,
+                        ...buildPaymentActionDecisionMetadata(tx),
                       },
                     });
                     paymentBarRef.current?.openWithTransaction(tx.id, { txType: '출금', isRefund: false });
@@ -1544,9 +2012,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       metadata: {
                         surface: 'payments_row_action',
                         action: 'command_match_opened',
-                        transactionId: tx.id,
-                        transactionType: tx.transaction_type,
-                        isRefund: tx.is_refund,
+                        ...buildPaymentActionDecisionMetadata(tx),
                       },
                     });
                     paymentBarRef.current?.openWithTransaction(tx.id, { txType: tx.transaction_type, isRefund: tx.is_refund });
@@ -1566,9 +2032,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           <button
             type="button"
             data-testid="admin-payment-undo-action"
-            onClick={() => handleUndo(tx.id)}
-            aria-busy={processing}
+            onClick={event => openUndoMatchModal(tx, event.currentTarget)}
+            aria-busy={undoMatchProcessing}
             aria-describedby={paymentActionDescriptionIds}
+            aria-haspopup="dialog"
+            aria-expanded={undoMatchTarget?.id === tx.id}
+            aria-controls="admin-payment-undo-match-dialog"
             aria-label={`${tx.counterparty_name || '거래'} 매칭 취소`}
             className={`${secondaryButton} text-red-500 hover:bg-red-50`}
           >
@@ -1612,7 +2081,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           {toast.msg}
         </div>
       )}
-      <p id="admin-payment-action-result-description" className="sr-only">
+      <p id="admin-payment-action-result-description" ref={paymentActionResultRef} tabIndex={-1} className="sr-only">
         결제 작업 결과는 화면 상단 알림으로 안내됩니다.
       </p>
 
@@ -1866,6 +2335,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               >
                 {bulkTrashSummaryText}
               </p>
+              <p
+                id={bulkTrashNextActionId}
+                data-testid="admin-payment-bulk-trash-next-action"
+                className="mt-1 text-[11px] font-medium text-white"
+              >
+                {bulkTrashNextActionText}
+              </p>
               <p id={bulkTrashStatusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
                 {bulkDeleting ? '선택한 결제 거래를 휴지통으로 이동하고 있습니다.' : bulkTrashSummaryText}
               </p>
@@ -1876,23 +2352,10 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               disabled={bulkDeleting}
               aria-busy={bulkDeleting}
               aria-describedby={bulkTrashDescriptionIds}
-              onClick={async () => {
-                if (!confirm(checkedTxIds.size + '건을 휴지통으로 이동하시겠습니까?')) return;
-                setBulkDeleting(true);
-                try {
-                  const res = await fetch('/api/bank-transactions', {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action: 'trash_bulk', ids: [...checkedTxIds] }),
-                  });
-                  if (!res.ok) throw new Error('삭제 실패');
-                  const cnt = checkedTxIds.size;
-                  setCheckedTxIds(new Set());
-                  showToast(cnt + '건 휴지통 이동', 'ok');
-                  load();
-                } catch { showToast('삭제 실패', 'err'); }
-                finally { setBulkDeleting(false); }
-              }}
+              aria-haspopup="dialog"
+              aria-expanded={Boolean(bulkTrashTarget)}
+              aria-controls="admin-payment-bulk-trash-confirm-dialog"
+              onClick={event => openBulkTrashModal(event.currentTarget)}
               className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-admin-xs rounded transition disabled:bg-red-300"
             >
               {bulkDeleting ? '처리 중...' : '일괄 삭제'}
@@ -1909,23 +2372,29 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           {filtered.map(tx => {
             const stale = (tx.match_status === 'unmatched' || tx.match_status === 'review' || tx.match_status === 'error') && hoursSince(tx.created_at) >= 24;
             const paymentMobileSummaryId = `admin-payment-mobile-summary-${tx.id}`;
+            const paymentMobileDecisionSummaryId = `admin-payment-mobile-decision-summary-${tx.id}`;
+            const paymentMobileDescriptionIds = `${paymentMobileSummaryId} ${paymentMobileDecisionSummaryId}`;
+            const paymentMobileKindLabel = getTransactionKindLabel(tx);
+            const paymentMobileMatchLabel = MATCH_LABELS[tx.match_status] || tx.match_status;
+            const paymentMobileNextActionLabel = getTransactionNextActionLabel(tx);
             const paymentMobileNextActionReason = getTransactionNextActionReason(tx);
+            const paymentMobileAmountText = `${tx.transaction_type === '입금' ? '+' : '-'}${tx.amount.toLocaleString()}원`;
             const paymentMobileSummaryText = [
-              `${getTransactionKindLabel(tx)} ${tx.amount.toLocaleString()}원`,
-              `상태 ${MATCH_LABELS[tx.match_status] || tx.match_status}`,
+              `${paymentMobileKindLabel} ${tx.amount.toLocaleString()}원`,
+              `상태 ${paymentMobileMatchLabel}`,
               `거래처 ${tx.counterparty_name || '없음'}`,
               `수신 ${fmtTs(tx.received_at)}`,
               tx.bookings
                 ? `예약 ${fmtBookingAnchor(tx.bookings)}${tx.bookings.package_title ? `, ${tx.bookings.package_title}` : ''}`
                 : '연결된 예약 없음',
-              `다음 액션 ${getTransactionNextActionLabel(tx)}`,
+              `다음 액션 ${paymentMobileNextActionLabel}`,
               `다음 액션 근거 ${paymentMobileNextActionReason}`,
               stale ? `${Math.round(hoursSince(tx.created_at))}시간 경과` : null,
             ].filter(Boolean).join('. ');
             return (
               <article
                 key={`mobile-${tx.id}`}
-                aria-describedby={paymentMobileSummaryId}
+                aria-describedby={paymentMobileDescriptionIds}
                 className={`rounded-admin-md border bg-white p-4 shadow-admin-xs ${tx.match_status === 'error' ? 'border-red-200 bg-red-50' : 'border-admin-border-mid'}`}
               >
                 <p id={paymentMobileSummaryId} className="sr-only">
@@ -1962,7 +2431,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     <input
                       type="checkbox"
                       checked={checkedTxIds.has(tx.id)}
-                      aria-describedby={paymentMobileSummaryId}
+                      aria-describedby={paymentMobileDescriptionIds}
                       onChange={e => {
                         const next = new Set(checkedTxIds);
                         e.target.checked ? next.add(tx.id) : next.delete(tx.id);
@@ -1982,12 +2451,29 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     tx.transaction_type === '입금'
                       ? tx.is_refund ? 'text-orange-600' : 'text-brand'
                       : tx.is_fee ? 'text-admin-muted' : 'text-red-500'
-                  }`}>
-                    {tx.transaction_type === '입금' ? '+' : '-'}{tx.amount.toLocaleString()}원
+                    }`}>
+                    {paymentMobileAmountText}
                   </p>
                 </div>
 
-                {renderTransactionActions(tx, 'card', paymentMobileSummaryId)}
+                <div
+                  id={paymentMobileDecisionSummaryId}
+                  data-testid="admin-payment-mobile-decision-summary"
+                  className="mt-3 grid grid-cols-3 gap-2 rounded-admin-sm border border-admin-border bg-admin-bg p-2"
+                >
+                  {[
+                    { label: '상태', value: paymentMobileMatchLabel },
+                    { label: '금액', value: paymentMobileAmountText },
+                    { label: '다음', value: paymentMobileNextActionLabel },
+                  ].map(item => (
+                    <div key={item.label} className="min-w-0 rounded bg-white px-2 py-1.5">
+                      <p className="text-[10px] font-bold text-admin-muted">{item.label}</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                {renderTransactionActions(tx, 'card', paymentMobileDescriptionIds)}
               </article>
             );
           })}
@@ -2180,9 +2666,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
               id="admin-payment-trash-panel"
               role="region"
               aria-labelledby="admin-payment-trash-title"
+              aria-describedby={trashPanelDecisionSummaryId}
               data-testid="admin-payment-trash-panel"
               className="mt-2 bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs overflow-hidden"
             >
+              <p
+                id={trashPanelDecisionSummaryId}
+                data-testid="admin-payment-trash-panel-decision-summary"
+                aria-label={trashPanelDecisionSummaryText}
+                className="border-b border-admin-border-mid bg-red-50 px-3 py-2 text-[12px] font-bold leading-5 text-red-700"
+              >
+                {trashPanelDecisionSummaryText}
+              </p>
               <table className="w-full text-admin-sm">
                 <thead className="bg-admin-bg border-b border-admin-border-mid">
                   <tr>
@@ -2217,10 +2712,13 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                               aria-label={`${tx.counterparty_name || '거래'} 복원`}
                               aria-describedby={trashActionDescriptionIds}
                               className="text-[11px] text-brand hover:underline">복원</button>
-                            <button type="button" onClick={() => handleHardDeleteSingle(tx)}
+                            <button type="button" onClick={event => openHardDeleteModal(tx, event.currentTarget)}
                               data-testid="admin-payment-hard-delete-action"
                               aria-label={`${tx.counterparty_name || '거래'} 영구 삭제`}
                               aria-describedby={trashActionDescriptionIds}
+                              aria-haspopup="dialog"
+                              aria-expanded={hardDeleteTarget?.id === tx.id}
+                              aria-controls="admin-payment-hard-delete-dialog"
                               className="text-[11px] text-red-400 hover:text-red-600 hover:underline">영구삭제</button>
                           </div>
                         </td>
@@ -2234,6 +2732,327 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         </div>
       )}
 
+      {/* ── 선택 휴지통 이동 확인 모달 ─────────────────────────────────────── */}
+      {bulkTrashTarget && (() => {
+        const bulkTrashDecisionSummaryId = 'admin-payment-bulk-trash-confirm-decision-summary';
+        const bulkTrashTargetReviewCount = bulkTrashTarget.items.filter(tx => tx.match_status === 'review').length;
+        const bulkTrashTargetUnmatchedCount = bulkTrashTarget.items.filter(tx => tx.match_status === 'unmatched' || tx.match_status === 'error').length;
+        const bulkTrashTargetMatchedCount = bulkTrashTarget.items.filter(tx => tx.match_status === 'auto' || tx.match_status === 'manual').length;
+        const bulkTrashTargetOutflowCount = bulkTrashTarget.items.filter(isOutflowTx).length;
+        const bulkTrashTargetHiddenCount = Math.max(0, bulkTrashTarget.ids.length - bulkTrashTarget.items.length);
+        const bulkTrashStatusText = bulkDeleting
+          ? '선택한 결제 거래를 휴지통으로 이동하고 있습니다.'
+          : '선택 휴지통 이동 확인창이 열렸습니다. 선택한 거래의 상태를 확인한 뒤 진행합니다.';
+        const bulkTrashDecisionSummaryText = `${bulkTrashTarget.ids.length}건을 휴지통으로 이동합니다. ${bulkTrashTarget.summaryText}`;
+
+        return (
+          <>
+            <button
+              type="button"
+              aria-label="선택 휴지통 이동 확인 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !bulkDeleting && closeBulkTrashModal()}
+              disabled={bulkDeleting}
+            />
+            <div className="fixed inset-0 z-[121] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+              <div
+                id="admin-payment-bulk-trash-confirm-dialog"
+                ref={bulkTrashModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={bulkTrashModalTitleId}
+                aria-describedby={`${bulkTrashModalDescriptionId} ${bulkTrashDecisionSummaryId} ${bulkTrashModalStatusId}`}
+                data-testid="admin-payment-bulk-trash-confirm-dialog"
+                tabIndex={-1}
+                className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+              >
+                <div className="space-y-1">
+                  <h2 id={bulkTrashModalTitleId} className="text-admin-lg font-bold text-admin-text">
+                    선택 거래 휴지통 이동
+                  </h2>
+                  <p id={bulkTrashModalDescriptionId} className="text-admin-sm text-admin-muted">
+                    선택한 거래는 결제 목록에서 제외되고, 휴지통에서 복원하거나 영구 삭제할 수 있습니다.
+                  </p>
+                  <p
+                    id={bulkTrashModalStatusId}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="sr-only"
+                  >
+                    {bulkTrashStatusText}
+                  </p>
+                </div>
+
+                <div
+                  id={bulkTrashDecisionSummaryId}
+                  data-testid="admin-payment-bulk-trash-confirm-decision-summary"
+                  aria-label={bulkTrashDecisionSummaryText}
+                  className="mt-4 rounded-admin-md border border-red-200 bg-red-50 px-3 py-3 text-admin-sm font-semibold text-red-800"
+                >
+                  {bulkTrashDecisionSummaryText}
+                </div>
+
+                <dl className="mt-4 grid grid-cols-2 gap-3 text-admin-sm">
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">선택 건수</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">{bulkTrashTarget.ids.length}건</dd>
+                  </div>
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">현재 화면</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">{bulkTrashTarget.items.length}건</dd>
+                  </div>
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">확인 필요</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">
+                      검토 {bulkTrashTargetReviewCount} · 미매칭 {bulkTrashTargetUnmatchedCount}
+                    </dd>
+                  </div>
+                  <div className="rounded-admin-md bg-admin-bg px-3 py-2">
+                    <dt className="text-admin-xs font-medium text-admin-muted">연결/출금</dt>
+                    <dd className="mt-1 font-mono font-semibold tabular-nums text-admin-text-2">
+                      매칭 {bulkTrashTargetMatchedCount} · 출금 {bulkTrashTargetOutflowCount}
+                    </dd>
+                  </div>
+                </dl>
+
+                {bulkTrashTargetHiddenCount > 0 && (
+                  <p className="mt-3 rounded-admin-md border border-amber-200 bg-amber-50 px-3 py-2 text-admin-xs font-semibold text-amber-800">
+                    현재 필터 밖에서 선택된 거래 {bulkTrashTargetHiddenCount}건도 함께 이동됩니다.
+                  </p>
+                )}
+                <p className="mt-3 text-admin-xs text-admin-muted">
+                  {bulkTrashTarget.nextActionText}
+                </p>
+
+                <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    ref={bulkTrashCancelButtonRef}
+                    onClick={closeBulkTrashModal}
+                    disabled={bulkDeleting}
+                    className="rounded-admin-md border border-admin-border-strong bg-white px-4 py-2 text-admin-sm font-semibold text-admin-text-2 hover:bg-admin-bg disabled:opacity-60"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="admin-payment-bulk-trash-confirm"
+                    onClick={handleConfirmBulkTrash}
+                    disabled={bulkDeleting}
+                    aria-busy={bulkDeleting}
+                    className="rounded-admin-md bg-red-600 px-4 py-2 text-admin-sm font-bold text-white hover:bg-red-700 disabled:bg-red-300"
+                  >
+                    {bulkDeleting ? '처리 중...' : '휴지통으로 이동'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ── 매칭 취소 확인 모달 ─────────────────────────────────────────────── */}
+      {undoMatchTarget && (() => {
+        const undoMatchDecisionSummaryId = 'admin-payment-undo-match-decision-summary';
+        const undoMatchStatusText = undoMatchProcessing
+          ? '매칭 취소를 처리하고 있습니다.'
+          : '매칭 취소 확인창이 열렸습니다. 연결된 예약 반영을 원복합니다.';
+        const undoBookingLabel = undoMatchTarget.bookings
+          ? `${fmtBookingAnchor(undoMatchTarget.bookings)}${undoMatchTarget.bookings.package_title ? ` · ${undoMatchTarget.bookings.package_title}` : ''}`
+          : undoMatchTarget.booking_id || '연결 예약 정보 없음';
+        const undoMatchDecisionSummaryText = `${undoMatchTarget.counterparty_name || '거래'} ${undoMatchTarget.amount.toLocaleString()}원 매칭을 취소합니다. 연결 예약은 ${undoBookingLabel}입니다.`;
+
+        return (
+          <>
+            <button
+              type="button"
+              aria-label="매칭 취소 확인 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !undoMatchProcessing && closeUndoMatchModal()}
+              disabled={undoMatchProcessing}
+            />
+            <div className="fixed inset-0 z-[121] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+              <div
+                id="admin-payment-undo-match-dialog"
+                ref={undoMatchModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={undoMatchModalTitleId}
+                aria-describedby={`${undoMatchModalDescriptionId} ${undoMatchDecisionSummaryId} ${undoMatchModalStatusId}`}
+                data-testid="admin-payment-undo-match-dialog"
+                tabIndex={-1}
+                className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+              >
+                <div className="space-y-1">
+                  <h2 id={undoMatchModalTitleId} className="text-admin-lg font-bold text-admin-text">
+                    결제 매칭 취소
+                  </h2>
+                  <p id={undoMatchModalDescriptionId} className="text-admin-sm text-admin-muted">
+                    이 거래와 예약의 연결을 해제하고 거래를 다시 확인해야 하는 상태로 되돌립니다.
+                  </p>
+                  <p
+                    id={undoMatchModalStatusId}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="sr-only"
+                  >
+                    {undoMatchStatusText}
+                  </p>
+                </div>
+
+                <div
+                  id={undoMatchDecisionSummaryId}
+                  data-testid="admin-payment-undo-match-decision-summary"
+                  aria-label={undoMatchDecisionSummaryText}
+                  className="mt-4 rounded-admin-md border border-amber-200 bg-amber-50 px-3 py-3 text-admin-sm font-semibold text-amber-900"
+                >
+                  <div className="flex justify-between gap-3">
+                    <span className="text-amber-700">거래처</span>
+                    <span className="truncate text-right text-admin-text-2">{undoMatchTarget.counterparty_name || '-'}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="text-amber-700">금액</span>
+                    <span className="font-mono tabular-nums text-admin-text-2">{undoMatchTarget.amount.toLocaleString()}원</span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="text-amber-700">연결 예약</span>
+                    <span className="min-w-0 truncate text-right text-admin-text-2">{undoBookingLabel}</span>
+                  </div>
+                </div>
+
+                <p className="mt-3 rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2 text-admin-xs font-bold text-admin-text-2">
+                  확정하면 예약 입출금 반영을 원복하고, 이 거래는 다시 수동 확인 대상이 됩니다.
+                </p>
+
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    ref={undoMatchCancelButtonRef}
+                    onClick={() => !undoMatchProcessing && closeUndoMatchModal()}
+                    disabled={undoMatchProcessing}
+                    className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="admin-payment-undo-match-confirm"
+                    onClick={handleConfirmUndoMatch}
+                    disabled={undoMatchProcessing}
+                    aria-busy={undoMatchProcessing}
+                    aria-describedby={`${undoMatchDecisionSummaryId} ${undoMatchModalStatusId}`}
+                    className="min-h-[40px] rounded-admin-md bg-amber-600 px-4 text-admin-sm font-bold text-white hover:bg-amber-700 disabled:opacity-50"
+                  >
+                    {undoMatchProcessing ? '원복 중...' : '매칭 취소 확정'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
+      {/* ── 영구 삭제 확인 모달 ─────────────────────────────────────────────── */}
+      {hardDeleteTarget && (() => {
+        const hardDeleteDecisionSummaryId = 'admin-payment-hard-delete-decision-summary';
+        const hardDeleteStatusText = hardDeleting
+          ? '영구 삭제를 처리하고 있습니다.'
+          : '영구 삭제 확인창이 열렸습니다. 이 작업은 복원할 수 없습니다.';
+        const hardDeleteDecisionSummaryText = `${hardDeleteTarget.counterparty_name || '거래'} ${hardDeleteTarget.amount.toLocaleString()}원 내역을 영구 삭제합니다. 삭제 후 복원할 수 없습니다.`;
+
+        return (
+          <>
+            <button
+              type="button"
+              aria-label="영구 삭제 확인 모달 닫기"
+              className="fixed inset-0 z-[120] bg-black/40 cursor-default"
+              onClick={() => !hardDeleting && closeHardDeleteModal()}
+              disabled={hardDeleting}
+            />
+            <div className="fixed inset-0 z-[121] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+              <div
+                id="admin-payment-hard-delete-dialog"
+                ref={hardDeleteModalRef}
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={hardDeleteModalTitleId}
+                aria-describedby={`${hardDeleteModalDescriptionId} ${hardDeleteDecisionSummaryId} ${hardDeleteModalStatusId}`}
+                data-testid="admin-payment-hard-delete-dialog"
+                tabIndex={-1}
+                className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+              >
+                <div className="space-y-1">
+                  <h2 id={hardDeleteModalTitleId} className="text-admin-lg font-bold text-admin-text">
+                    결제 내역 영구 삭제
+                  </h2>
+                  <p id={hardDeleteModalDescriptionId} className="text-admin-sm text-admin-muted">
+                    제외 보관함의 거래를 완전히 삭제합니다. 이 작업은 실행 취소나 복원이 불가능합니다.
+                  </p>
+                  <p
+                    id={hardDeleteModalStatusId}
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    className="sr-only"
+                  >
+                    {hardDeleteStatusText}
+                  </p>
+                </div>
+
+                <div
+                  id={hardDeleteDecisionSummaryId}
+                  data-testid="admin-payment-hard-delete-decision-summary"
+                  aria-label={hardDeleteDecisionSummaryText}
+                  className="mt-4 rounded-admin-md border border-red-200 bg-red-50 px-3 py-3 text-admin-sm font-semibold text-red-800"
+                >
+                  <div className="flex justify-between gap-3">
+                    <span className="text-red-700">거래처</span>
+                    <span className="truncate text-right text-admin-text-2">{hardDeleteTarget.counterparty_name || '-'}</span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="text-red-700">금액</span>
+                    <span className="font-mono tabular-nums text-admin-text-2">{hardDeleteTarget.amount.toLocaleString()}원</span>
+                  </div>
+                  <div className="mt-1 flex justify-between gap-3">
+                    <span className="text-red-700">수신일</span>
+                    <span className="font-mono tabular-nums text-admin-text-2">{fmtMonthDayTime(hardDeleteTarget.received_at)}</span>
+                  </div>
+                </div>
+
+                <p className="mt-3 rounded-admin-md border border-red-200 bg-white px-3 py-2 text-admin-xs font-bold text-red-700">
+                  영구 삭제 후에는 보관함 복원, 실행 취소, 매칭 재처리가 불가능합니다.
+                </p>
+
+                <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                  <button
+                    type="button"
+                    ref={hardDeleteCancelButtonRef}
+                    onClick={() => !hardDeleting && closeHardDeleteModal()}
+                    disabled={hardDeleting}
+                    className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                  >
+                    취소
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="admin-payment-hard-delete-confirm"
+                    onClick={handleConfirmHardDelete}
+                    disabled={hardDeleting}
+                    aria-busy={hardDeleting}
+                    aria-describedby={`${hardDeleteDecisionSummaryId} ${hardDeleteModalStatusId}`}
+                    className="min-h-[40px] rounded-admin-md bg-red-600 px-4 text-admin-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {hardDeleting ? '삭제 중...' : '영구 삭제 확정'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>
+        );
+      })()}
+
       {/* ── 수동 매칭 슬라이드 패널 ──────────────────────────────────────────── */}
       {selectedTx && (
         <>
@@ -2241,7 +3060,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             type="button"
             aria-label="수동 매칭 패널 닫기"
             className="fixed inset-0 bg-black/30 z-50 cursor-default"
-            onClick={() => setSelectedTx(null)}
+            onClick={closeMatchPanel}
           />
           <div
             id="admin-payment-match-dialog"
@@ -2249,7 +3068,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             role="dialog"
             aria-modal="true"
             aria-labelledby="payment-manual-match-title"
-            aria-describedby="payment-manual-match-description"
+            aria-describedby={manualMatchDescriptionIds}
             data-testid="admin-payment-match-dialog"
             className="fixed top-0 right-0 h-full w-full max-w-lg bg-white border-l border-admin-border-mid flex flex-col z-50"
           >
@@ -2270,7 +3089,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                   {processing ? '수동 매칭 작업을 처리하고 있습니다.' : '수동 매칭 작업 대기 중입니다.'}
                 </p>
               </div>
-              <button type="button" ref={matchCloseButtonRef} onClick={() => setSelectedTx(null)} data-testid="admin-payment-match-close" className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="수동 매칭 패널 닫기">✕</button>
+              <button type="button" ref={matchCloseButtonRef} onClick={closeMatchPanel} data-testid="admin-payment-match-close" className="text-admin-muted-2 hover:text-admin-muted text-xl leading-none" aria-label="수동 매칭 패널 닫기">✕</button>
             </div>
 
             <div className="p-5 flex-1 overflow-y-auto space-y-4">
@@ -2386,9 +3205,18 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                     </div>
                   </div>
 
+                  <p
+                    id={quickCreateDecisionSummaryId}
+                    data-testid="admin-payment-quick-create-decision-summary"
+                    className="rounded border border-admin-border-mid bg-white px-3 py-2 text-[11px] font-medium leading-5 text-admin-text-2"
+                  >
+                    {quickCreateDecisionSummaryText}
+                  </p>
+
                   <button
                     type="button"
                     disabled={quickCreating}
+                    aria-describedby={quickCreateDecisionSummaryId}
                     onClick={async () => {
                       if (!selectedTx) return;
                       setQuickCreating(true);
@@ -2552,24 +3380,40 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             </div>
 
             {/* 하단 버튼 */}
-            <div className="p-4 border-t border-admin-border-mid flex gap-2">
-              <button type="button" onClick={handleFee} disabled={processing}
-                aria-busy={processing}
-                aria-describedby="payment-manual-match-description payment-manual-match-status"
-                className="px-3 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg transition">
-                수수료 처리
-              </button>
-              <div className="flex-1" />
-              <button type="button" onClick={() => setSelectedTx(null)}
-                className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-admin-sm hover:bg-admin-bg transition">
-                취소
-              </button>
-              <button type="button" onClick={handleMatch} disabled={matchBtnDisabled}
-                aria-busy={processing}
-                aria-describedby="payment-manual-match-description payment-manual-match-status"
-                className="px-4 py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
-                {processing ? '처리 중...' : '매칭 확정'}
-              </button>
+            <div className="p-4 border-t border-admin-border-mid space-y-3">
+              <p
+                id={manualMatchDecisionSummaryId}
+                data-testid="admin-payment-manual-match-decision-summary"
+                className="rounded border border-admin-border-mid bg-admin-bg px-3 py-2 text-[11px] leading-5 text-admin-muted"
+              >
+                {manualMatchDecisionSummaryText}
+              </p>
+              <p
+                id={feeDecisionSummaryId}
+                data-testid="admin-payment-fee-decision-summary"
+                className="rounded border border-admin-border-mid bg-white px-3 py-2 text-[11px] leading-5 text-admin-muted"
+              >
+                {feeDecisionSummaryText}
+              </p>
+              <div className="flex gap-2">
+                <button type="button" onClick={handleFee} disabled={processing}
+                  aria-busy={processing}
+                  aria-describedby={feeDescriptionIds}
+                  className="px-3 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-[11px] hover:bg-admin-bg transition">
+                  수수료 처리
+                </button>
+                <div className="flex-1" />
+                <button type="button" onClick={closeMatchPanel}
+                  className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 rounded text-admin-sm hover:bg-admin-bg transition">
+                  취소
+                </button>
+                <button type="button" onClick={handleMatch} disabled={matchBtnDisabled}
+                  aria-busy={processing}
+                  aria-describedby={manualMatchDescriptionIds}
+                  className="px-4 py-2 bg-brand text-white rounded text-admin-sm font-medium hover:bg-[#1B64DA] disabled:bg-slate-300 transition">
+                  {processing ? '처리 중...' : '매칭 확정'}
+                </button>
+              </div>
             </div>
           </div>
         </>
@@ -2762,7 +3606,11 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
         onSettled={() => {
           trackEngagement({
             event_type: ANALYTICS_EVENTS.adminActionCompleted,
-            metadata: { surface: 'payments_settlement_bundle', action: 'settle_bundle', transactionId: bundleTx?.id },
+            metadata: {
+              surface: 'payments_settlement_bundle',
+              action: 'settle_bundle',
+              ...(bundleTx ? buildPaymentActionDecisionMetadata(bundleTx) : { transactionId: null }),
+            },
           });
           load(); loadErp();
         }}
