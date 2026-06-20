@@ -192,6 +192,11 @@ async function writeJson(path: string, value: unknown): Promise<void> {
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+async function readTextFile(path: string): Promise<string> {
+  const value = await readFile(path, { encoding: 'utf8' });
+  return String(value);
+}
+
 async function checkDbPreflight(register: boolean): Promise<BatchReport['dbPreflight']> {
   if (!register) return { status: 'skipped', reason: 'registration was not requested' };
   if (!isSupabaseConfigured || !isSupabaseAdminConfigured) {
@@ -232,6 +237,7 @@ function buildIntake(input: {
   const parserRawText = metadata.parserRawText ?? input.rawText;
   const buffer = Buffer.from(parserRawText, 'utf8');
   return {
+    ok: true,
     buffer,
     fileHash: createHash('sha256').update(buffer).digest('hex'),
     fileName: metadata.cleanSourceLabel || input.fileName,
@@ -355,7 +361,7 @@ async function main(): Promise<void> {
 
   if (options.register) {
     for (const row of report.rows.filter(candidate => candidate.status === 'extracted' && candidate.extractedTextPath)) {
-      const rawText = await readFile(row.extractedTextPath as string, 'utf8');
+      const rawText = await readTextFile(row.extractedTextPath as string);
       const deferredTasks: Array<() => Promise<void> | void> = [];
       const intake = buildIntake({ rawText, fileName: row.fileName, options });
       try {

@@ -75,12 +75,18 @@ function hashText(text: string): string {
 }
 
 async function readJson<T>(path: string): Promise<T> {
-  return JSON.parse(await readFile(path, 'utf8')) as T;
+  const value = await readFile(path, { encoding: 'utf8' });
+  return JSON.parse(String(value)) as T;
 }
 
 async function writeJson(path: string, value: unknown): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+async function readTextFile(path: string): Promise<string> {
+  const value = await readFile(path, { encoding: 'utf8' });
+  return String(value);
 }
 
 async function loadActiveAttractions(path: string | null): Promise<AttractionData[]> {
@@ -270,7 +276,7 @@ async function main(): Promise<void> {
 
   for (const row of rows) {
     const textPath = resolve(row.extractedTextPath as string);
-    const rawText = await readFile(textPath, 'utf8');
+    const rawText = await readTextFile(textPath);
     const sourceProducts = productsFromRawText(rawText);
     for (let index = 0; index < sourceProducts.length; index++) {
       const sourceProduct = sourceProducts[index];
