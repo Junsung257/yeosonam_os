@@ -1406,6 +1406,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
   const [bulkStatusMessage, setBulkStatusMessage] = useState('');
+  const [bulkArchiveOpen, setBulkArchiveOpen] = useState(false);
   const [imgGenerating, setImgGenerating] = useState(false);
   const [reextracting, setReextracting] = useState(false);
   const [sectionBackfilling, setSectionBackfilling] = useState(false);
@@ -1504,6 +1505,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const bulkEditPanelRef = useRef<HTMLDivElement | null>(null);
   const bulkEditCloseRef = useRef<HTMLButtonElement | null>(null);
   const bulkLandOperatorRef = useRef<HTMLSelectElement | null>(null);
+  const bulkArchiveModalRef = useRef<HTMLDivElement | null>(null);
+  const bulkArchiveCancelRef = useRef<HTMLButtonElement | null>(null);
 
   // ApprovalModal
   const [approvalTarget, setApprovalTarget] = useState<Package | null>(null);
@@ -1585,14 +1588,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   useEffect(() => {
     const activePanel =
-      bulkEditOpen ? bulkEditPanelRef.current :
+      bulkArchiveOpen ? bulkArchiveModalRef.current :
+        bulkEditOpen ? bulkEditPanelRef.current :
         editPkg ? editPanelRef.current :
           selected ? detailPanelRef.current : null;
     if (!activePanel) return;
 
     const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusTarget =
-      bulkEditOpen ? (bulkLandOperatorRef.current ?? bulkEditCloseRef.current) :
+      bulkArchiveOpen ? bulkArchiveCancelRef.current :
+        bulkEditOpen ? (bulkLandOperatorRef.current ?? bulkEditCloseRef.current) :
         editPkg ? (editTitleInputRef.current ?? editCloseRef.current) :
           detailCloseRef.current;
     const focusTimer = window.setTimeout(() => focusTarget?.focus(), 0);
@@ -1602,6 +1607,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       ),
     ).filter(element => !element.getAttribute('aria-hidden'));
     const closeActivePanel = () => {
+      if (bulkArchiveOpen) {
+        if (!bulkLoading) setBulkArchiveOpen(false);
+        return;
+      }
       if (bulkEditOpen) {
         if (!bulkLoading) setBulkEditOpen(false);
         return;
@@ -1645,7 +1654,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       window.removeEventListener('keydown', onKey);
       if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
-  }, [bulkEditOpen, bulkLoading, editPkg, editSaving, selected]);
+  }, [bulkArchiveOpen, bulkEditOpen, bulkLoading, editPkg, editSaving, selected]);
 
   useEffect(() => {
     if (!kakaoCopyTarget || !kakaoCopyModalRef.current) return;
@@ -2024,6 +2033,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const bulkArchivableCount = selectedPackagesForBulk.filter(pkg => pkg.status !== 'archived' && pkg.status !== 'INACTIVE').length;
   const bulkRestorableCount = selectedPackagesForBulk.filter(pkg => pkg.status === 'archived' || pkg.status === 'INACTIVE').length;
   const bulkActionSummaryId = 'admin-package-bulk-action-summary';
+  const bulkArchiveModalTitleId = 'admin-package-bulk-archive-title';
+  const bulkArchiveModalDescriptionId = 'admin-package-bulk-archive-description';
+  const bulkArchiveDecisionSummaryId = 'admin-package-bulk-archive-decision-summary';
+  const bulkArchiveStatusId = 'admin-package-bulk-archive-status';
   const bulkNextActionText = bulkRestorableCount > 0
     ? `복원 대상 ${bulkRestorableCount}건을 먼저 확인하세요.`
     : bulkApprovableCount > 0
@@ -2033,6 +2046,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         : '랜드사와 커미션만 일괄 수정할 수 있습니다.';
   const bulkActionSummaryText = `선택 ${checkedIds.size}건. 승인 가능 ${bulkApprovableCount}건, 아카이브 가능 ${bulkArchivableCount}건, 복원 가능 ${bulkRestorableCount}건. ${bulkNextActionText} 랜드사와 커미션은 선택 상품에 일괄 적용됩니다.`;
   const bulkActionDescriptionIds = `${bulkActionSummaryId} admin-package-bulk-status`;
+  const bulkArchiveSkippedCount = Math.max(checkedIds.size - bulkArchivableCount, 0);
+  const bulkArchivePreviewTitles = selectedPackagesForBulk.slice(0, 3).map(pkg => pkg.title);
+  const bulkArchiveDecisionSummaryText = bulkArchivableCount > 0
+    ? `아카이브 대상 ${bulkArchivableCount}건${bulkArchiveSkippedCount > 0 ? `, 이미 보관된 ${bulkArchiveSkippedCount}건 제외` : ''}. ${bulkArchivePreviewTitles.length > 0 ? `대표 상품: ${bulkArchivePreviewTitles.join(', ')}` : '선택 상품을 다시 확인하세요.'}`
+    : '현재 선택에는 아카이브할 수 있는 상품이 없습니다.';
+  const bulkArchiveModalDescriptionIds = `${bulkArchiveModalDescriptionId} ${bulkArchiveDecisionSummaryId} ${bulkArchiveStatusId}`;
 
   const handleHeaderSort = (field: string) => {
     setSortBy(prev => {
@@ -2090,7 +2109,6 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   const handleBulk = async (action: 'bulk_approve' | 'bulk_archive' | 'bulk_restore') => {
     if (checkedIds.size === 0) return;
-    if (action === 'bulk_archive' && !confirm(`${checkedIds.size}개 상품을 아카이브하시겠습니까?`)) return;
     const count = checkedIds.size;
     const selectedPackages = packages.filter(pkg => checkedIds.has(pkg.id));
     const actionLabel = action === 'bulk_approve' ? '승인' : action === 'bulk_archive' ? '아카이브' : '복원';
@@ -2115,6 +2133,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         });
       }
       setBulkStatusMessage(res.ok ? `${count}개 상품 ${actionLabel}을 완료했습니다.` : `${count}개 상품 ${actionLabel}에 실패했습니다.`);
+      if (action === 'bulk_archive') setBulkArchiveOpen(false);
       setCheckedIds(new Set());
       load();
     } catch (e) {
@@ -2451,10 +2470,13 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           >일괄 승인</button>
           <button
             type="button"
-            onClick={() => handleBulk('bulk_archive')}
-            disabled={bulkLoading}
+            onClick={() => setBulkArchiveOpen(true)}
+            disabled={bulkLoading || bulkArchivableCount === 0}
             aria-busy={bulkLoading}
             aria-describedby={bulkActionDescriptionIds}
+            aria-haspopup="dialog"
+            aria-expanded={bulkArchiveOpen}
+            aria-controls="admin-package-bulk-archive-dialog"
             className="px-2.5 py-1 bg-slate-500 text-white rounded-lg text-[11px] font-medium hover:bg-slate-600 disabled:opacity-50"
           >아카이브</button>
           {statusFilter === 'archived' && (
@@ -2934,6 +2956,113 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
           className="fixed inset-0 z-40 cursor-default"
           onClick={() => setCopyDropdownId(null)}
         />
+      )}
+
+      {/* Bulk Archive 확인 모달 */}
+      {bulkArchiveOpen && (
+        <>
+          <button
+            type="button"
+            aria-label="아카이브 확인 모달 닫기"
+            className="fixed inset-0 z-[60] cursor-default bg-black/40"
+            onClick={() => {
+              if (!bulkLoading) setBulkArchiveOpen(false);
+            }}
+            disabled={bulkLoading}
+          />
+          <div className="fixed inset-0 z-[61] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+            <div
+              id="admin-package-bulk-archive-dialog"
+              ref={bulkArchiveModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={bulkArchiveModalTitleId}
+              aria-describedby={bulkArchiveModalDescriptionIds}
+              data-testid="admin-package-bulk-archive-dialog"
+              tabIndex={-1}
+              className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+            >
+              <div>
+                <h3 id={bulkArchiveModalTitleId} className="text-admin-lg font-bold text-admin-text-2">
+                  선택 상품 아카이브
+                </h3>
+                <p id={bulkArchiveModalDescriptionId} className="mt-1 text-admin-sm text-admin-muted">
+                  공개/운영 목록에서 제외할 상품을 확인합니다. 이미 보관된 상품은 제외하고 처리됩니다.
+                </p>
+                <p
+                  id={bulkArchiveStatusId}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {bulkLoading ? '선택 상품 아카이브를 처리하고 있습니다.' : '선택 상품 아카이브 확인창이 열렸습니다.'}
+                </p>
+              </div>
+
+              <div
+                id={bulkArchiveDecisionSummaryId}
+                data-testid="admin-package-bulk-archive-decision-summary"
+                aria-label={bulkArchiveDecisionSummaryText}
+                className="mt-4 rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-3 text-admin-sm text-admin-text-2"
+              >
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="rounded-admin-md bg-white px-2 py-2">
+                    <p className="text-[11px] font-bold text-admin-muted">선택</p>
+                    <p className="mt-0.5 font-mono text-admin-lg font-black text-admin-text">{checkedIds.size}</p>
+                  </div>
+                  <div className="rounded-admin-md bg-white px-2 py-2">
+                    <p className="text-[11px] font-bold text-admin-muted">처리</p>
+                    <p className="mt-0.5 font-mono text-admin-lg font-black text-admin-text">{bulkArchivableCount}</p>
+                  </div>
+                  <div className="rounded-admin-md bg-white px-2 py-2">
+                    <p className="text-[11px] font-bold text-admin-muted">제외</p>
+                    <p className="mt-0.5 font-mono text-admin-lg font-black text-admin-text">{bulkArchiveSkippedCount}</p>
+                  </div>
+                </div>
+                <p className="mt-3 text-[12px] font-bold leading-5 text-admin-text-2">
+                  {bulkArchiveDecisionSummaryText}
+                </p>
+              </div>
+
+              {bulkArchivePreviewTitles.length > 0 && (
+                <ul className="mt-3 max-h-28 space-y-1 overflow-y-auto rounded-admin-md border border-admin-border-mid bg-white p-3 text-admin-xs text-admin-muted">
+                  {bulkArchivePreviewTitles.map((title, index) => (
+                    <li key={`${title}-${index}`} className="truncate">- {title}</li>
+                  ))}
+                  {selectedPackagesForBulk.length > bulkArchivePreviewTitles.length && (
+                    <li className="font-bold text-admin-text-2">
+                      외 {selectedPackagesForBulk.length - bulkArchivePreviewTitles.length}건
+                    </li>
+                  )}
+                </ul>
+              )}
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  ref={bulkArchiveCancelRef}
+                  onClick={() => setBulkArchiveOpen(false)}
+                  disabled={bulkLoading}
+                  className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  data-testid="admin-package-bulk-archive-confirm"
+                  onClick={() => handleBulk('bulk_archive')}
+                  disabled={bulkLoading || bulkArchivableCount === 0}
+                  aria-busy={bulkLoading}
+                  aria-describedby={bulkArchiveModalDescriptionIds}
+                  className="min-h-[40px] rounded-admin-md bg-slate-700 px-4 text-admin-sm font-bold text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {bulkLoading ? '처리 중...' : '아카이브 확정'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Bulk Edit 슬라이드 패널 */}
