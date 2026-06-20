@@ -91,12 +91,7 @@ async function loadLocalDetailFixturePackage(id: string): Promise<LocalDetailFix
     }
   }
 
-  try {
-    const payload = (await import('../../../../api_test.json')).default as unknown;
-    return findPackageInFixturePayload(payload, id);
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 function buildPackageSeoTitle(input: {

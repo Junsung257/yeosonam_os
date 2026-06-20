@@ -8,7 +8,7 @@
  *   미래: DB의 package_faqs 테이블에서 상품별 커스텀 FAQ 오버레이 (JARVIS 자동 생성)
  */
 
-import { useId, useState } from 'react';
+import { useState } from 'react';
 
 const PACKAGE_FAQ_KAKAO_DESCRIPTION_ID = 'package-faq-kakao-description';
 
@@ -134,9 +134,17 @@ function getDestinationFaqs(destination: string): FaqItem[] {
   return [];
 }
 
-function FaqRow({ item }: { item: FaqItem }) {
+function getFaqAnswerId(item: FaqItem, index: number): string {
+  let hash = 0;
+  const source = `${item.question}:${item.answer}`;
+  for (let i = 0; i < source.length; i += 1) {
+    hash = ((hash << 5) - hash + source.charCodeAt(i)) | 0;
+  }
+  return `package-faq-answer-${index}-${Math.abs(hash).toString(36)}`;
+}
+
+function FaqRow({ item, answerId }: { item: FaqItem; answerId: string }) {
   const [open, setOpen] = useState(false);
-  const answerId = useId();
   return (
     <div className="border-b border-gray-100 last:border-0">
       <button
@@ -187,7 +195,7 @@ export default function PackageFAQ({ destination, productType, kakaoChannel }: P
       <h2 className="text-lg font-extrabold text-gray-900 mb-4">💬 자주 묻는 질문</h2>
       <div className="bg-white border border-gray-100 rounded-2xl px-4 divide-y divide-gray-100">
         {allFaqs.map((item, i) => (
-          <FaqRow key={i} item={item} />
+          <FaqRow key={getFaqAnswerId(item, i)} item={item} answerId={getFaqAnswerId(item, i)} />
         ))}
       </div>
       {kakaoChannel && (
