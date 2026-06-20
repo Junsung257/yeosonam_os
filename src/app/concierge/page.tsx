@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -49,6 +50,7 @@ interface IntentPrompt {
   party_type: string;
   budget: string | null;
   destination: string | null;
+  selected_products?: string[] | null;
 }
 
 type SummaryItem = { label: string; value: string };
@@ -58,6 +60,52 @@ const SEARCH_TIMEOUT_MS = 15_000;
 const srStatusProps = (enabled: boolean) => (
   enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
 );
+
+type SearchParamReader = {
+  get(name: string): string | null;
+};
+
+function splitHandoffList(value: string | null): string[] {
+  const seen = new Set<string>();
+  return (value ?? '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    })
+    .slice(0, 8);
+}
+
+function buildConciergeHandoffPrompt(searchParams: SearchParamReader): IntentPrompt | null {
+  const source = searchParams.get('source')?.trim() ?? '';
+  const intent = searchParams.get('intent')?.trim() ?? '';
+  const partyType = searchParams.get('party_type')?.trim() ?? '';
+  const query = searchParams.get('query')?.trim() ?? '';
+  const destination = searchParams.get('destination')?.trim() || null;
+  const budget = searchParams.get('budget')?.trim() || null;
+  const selectedProducts = splitHandoffList(searchParams.get('selected_products'));
+  const hasHandoff = Boolean(source || intent || partyType || query || destination || budget || selectedProducts.length > 0);
+
+  if (!hasHandoff) return null;
+
+  const fallbackQuery = [
+    destination,
+    budget,
+    selectedProducts.length > 0 ? `\uc120\ud0dd \uc0c1\ud488 ${selectedProducts.length}\uac1c` : null,
+  ].filter(Boolean).join(' ');
+
+  return {
+    label: source === 'packages' ? '\ud328\ud0a4\uc9c0 \uc870\uac74 \uc0c1\ub2f4' : '\uc0c1\ub2f4 \uc870\uac74',
+    query: query || fallbackQuery || '\ud328\ud0a4\uc9c0 \uc870\uac74 AI \uc0c1\ub2f4',
+    intent: intent || 'package_search',
+    party_type: partyType || 'group',
+    budget,
+    destination,
+    selected_products: selectedProducts.length > 0 ? selectedProducts : null,
+  };
+}
 
 const INTENT_PROMPTS: IntentPrompt[] = [
   {
@@ -119,6 +167,9 @@ const INTENT_LABELS: Record<string, string> = {
   group_workshop: '단체 워크샵',
   golf_compare: '골프 비교',
   group_trip: '단체 여행',
+  budget_trip: '예산 맞춤',
+  package_consult: '상담 추천',
+  package_search: '패키지 조건',
 };
 
 const PARTY_TYPE_LABELS: Record<string, string> = {
@@ -126,6 +177,7 @@ const PARTY_TYPE_LABELS: Record<string, string> = {
   family: '가족',
   group_20: '20명 단체',
   golf: '골프팀',
+  group: '단체',
 };
 
 function getOrCreateSessionId(): string {
@@ -176,12 +228,17 @@ function getResultInsight(item: MockSearchResult) {
 
 function inferIntentSummary(prompt: IntentPrompt | null, query: string, cart: CartItem[]) {
   const selectedProducts = cart.map((item) => item.product_id);
+  const promptSelectedProducts = prompt?.selected_products?.filter(Boolean) ?? [];
   return {
     intent: prompt?.intent ?? (query.includes('골프') ? 'golf_compare' : query.includes('단체') ? 'group_trip' : null),
     budget: prompt?.budget ?? null,
     destination: prompt?.destination ?? null,
     party_type: prompt?.party_type ?? null,
-    selected_products: selectedProducts.length > 0 ? selectedProducts : null,
+    selected_products: selectedProducts.length > 0
+      ? selectedProducts
+      : promptSelectedProducts.length > 0
+        ? promptSelectedProducts
+        : null,
   };
 }
 
@@ -336,7 +393,9 @@ function ModalFrame({
 }
 
 export default function ConciergePage() {
-  const [query, setQuery] = useState('');
+  const searchParams = useSearchParams();
+  const urlPrompt = useMemo(() => buildConciergeHandoffPrompt(searchParams), [searchParams]);
+  const [query, setQuery] = useState(urlPrompt?.query ?? '');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<MockSearchResult[]>([]);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -349,7 +408,7 @@ export default function ConciergePage() {
   const [checkoutError, setCheckoutError] = useState('');
   const [sharing, setSharing] = useState(false);
   const [shareToast, setShareToast] = useState('');
-  const [activePrompt, setActivePrompt] = useState<IntentPrompt | null>(null);
+  const [activePrompt, setActivePrompt] = useState<IntentPrompt | null>(urlPrompt);
   const inputRef = useRef<HTMLInputElement>(null);
   const customerNameRef = useRef<HTMLInputElement>(null);
   const cartSheetReturnFocusRef = useRef<HTMLButtonElement | null>(null);

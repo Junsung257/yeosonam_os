@@ -14,7 +14,7 @@ import { getConsultTelHref } from '@/lib/consult-escalation';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { getSessionId, trackEngagement } from '@/lib/tracker';
-import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
+import { buildConciergeHandoffHref, buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
 import {
   type DepartureHubId,
   DEPARTURE_HUB_OPTIONS,
@@ -135,6 +135,12 @@ const INTENT_HANDOFF_LABELS: Record<IntentId, string> = {
 const INTENT_PARTY_TYPE: Partial<Record<IntentId, string>> = {
   family: 'family',
   no_shopping: 'family',
+};
+const CONCIERGE_INTENT_BY_PACKAGE_INTENT: Record<IntentId, string> = {
+  family: 'filial_trip',
+  budget: 'budget_trip',
+  no_shopping: 'no_shopping_family',
+  consult: 'package_consult',
 };
 
 function matchesFilter(pkg: Package, filter: string): boolean {
@@ -498,6 +504,28 @@ export default function PackagesClient() {
       selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
     });
   }, [handoffBudget, handoffDestination, handoffPartyType, handoffSummary, q, selectedIntent, selectedProductNames]);
+  const conciergeQuery = useMemo(() => {
+    const baseQuery = q || handoffSummary || '패키지 목록 AI 상담';
+    const parts = [baseQuery];
+    if (handoffDestination && !baseQuery.includes(handoffDestination)) {
+      parts.push(`목적지: ${handoffDestination}`);
+    }
+    if (handoffBudget && !baseQuery.includes(handoffBudget)) {
+      parts.push(`예산: ${handoffBudget}`);
+    }
+    return parts.join('\n');
+  }, [handoffBudget, handoffDestination, handoffSummary, q]);
+  const conciergeHref = useMemo(() => {
+    return buildConciergeHandoffHref({
+      source: 'packages',
+      intent: selectedIntent ? CONCIERGE_INTENT_BY_PACKAGE_INTENT[selectedIntent] : 'package_search',
+      partyType: handoffPartyType ?? undefined,
+      query: conciergeQuery,
+      destination: handoffDestination,
+      budget: handoffBudget,
+      selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
+    });
+  }, [conciergeQuery, handoffBudget, handoffDestination, handoffPartyType, selectedIntent, selectedProductNames]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
@@ -1527,7 +1555,7 @@ export default function PackagesClient() {
                   </button>
                 )}
                 <Link
-                  href="/concierge"
+                  href={conciergeHref}
                   data-testid="packages-empty-state-ai"
                   aria-describedby={emptyStateInquiryDescriptionIds}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#D7E3F3] bg-white px-4 text-[13px] font-extrabold text-text-primary transition hover:border-brand/60 hover:text-brand"

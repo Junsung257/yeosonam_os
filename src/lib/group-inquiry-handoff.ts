@@ -29,3 +29,33 @@ export function buildGroupInquiryHandoffHref({
   if (budget) params.set('budget', budget);
   return `/group-inquiry?${params.toString()}`;
 }
+
+export function buildConciergeHandoffHref({
+  source,
+  intent = 'package_search',
+  partyType,
+  query = '패키지 조건 AI 상담',
+  destination,
+  budget,
+  selectedProducts = [],
+}: {
+  source: string;
+  intent?: string;
+  partyType?: string | null;
+  query?: string;
+  destination?: string | null;
+  budget?: string | null;
+  selectedProducts?: string[];
+}) {
+  const params = new URLSearchParams({
+    source,
+    intent,
+    query,
+  });
+
+  if (partyType) params.set('party_type', partyType);
+  if (destination) params.set('destination', destination);
+  if (budget) params.set('budget', budget);
+  if (selectedProducts.length > 0) params.set('selected_products', selectedProducts.join(','));
+  return `/concierge?${params.toString()}`;
+}
