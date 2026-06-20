@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { fmtDateTime } from '@/lib/admin-utils';
 import Button from '@/components/ui/Button';
 import { Inbox } from 'lucide-react';
@@ -29,13 +29,35 @@ const STATUS_COLOR: Record<string, string> = {
   confirmed: 'bg-blue-100 text-blue-800',
 };
 
+function getDraftMeta(row: DraftRow) {
+  return (row.ir as { meta?: Record<string, unknown> })?.meta || {};
+}
+
+function getDraftArrayCount(row: DraftRow, key: 'days' | 'inclusions') {
+  const value = (row.ir as Record<string, unknown>)[key];
+  return Array.isArray(value) ? value.length : 0;
+}
+
 export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [approveTarget, setApproveTarget] = useState<DraftRow | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<DraftRow | null>(null);
+  const approveCancelRef = useRef<HTMLButtonElement | null>(null);
+  const rejectCancelRef = useRef<HTMLButtonElement | null>(null);
+
+  useEffect(() => {
+    if (!approveTarget) return;
+    requestAnimationFrame(() => approveCancelRef.current?.focus());
+  }, [approveTarget]);
+
+  useEffect(() => {
+    if (!rejectTarget) return;
+    requestAnimationFrame(() => rejectCancelRef.current?.focus());
+  }, [rejectTarget]);
 
   async function approveDraft(row: DraftRow) {
-    if (!confirm(`승인하여 travel_packages 에 등록하시겠습니까?\n\n${row.region} / ${row.land_operator}`)) return;
     setBusy(row.id);
     try {
       const rawRes = await fetch('/api/admin/ir-preview/raw', {
@@ -67,6 +89,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
         return;
       }
       setToast(`✅ 등록 완료: ${json.shortCode} (/packages/${json.packageId})`);
+      setApproveTarget(null);
       setTimeout(() => window.location.reload(), 1500);
     } catch (err) {
       setToast(`❌ 네트워크 오류: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -76,7 +99,6 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
   }
 
   async function rejectDraft(row: DraftRow) {
-    if (!confirm('거절하시겠습니까? (정보는 남아있고 재개 가능)')) return;
     setBusy(row.id);
     try {
       const res = await fetch(`/api/packages/${row.id}/approve`, {
@@ -89,6 +111,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
         setToast(`⚠️  거절 API 미연결 — 수동: UPDATE normalized_intakes SET status='rejected' WHERE id='${row.id}'`);
       } else {
         setToast('✅ 거절 완료');
+        setRejectTarget(null);
         setTimeout(() => window.location.reload(), 1200);
       }
     } catch (err) {
@@ -162,7 +185,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
                       variant="primary"
                       size="sm"
                       disabled={busy === row.id}
-                      onClick={(e) => { e.stopPropagation(); approveDraft(row); }}
+                      onClick={(e) => { e.stopPropagation(); setApproveTarget(row); }}
                     >
                       {busy === row.id ? '처리중…' : '승인 → 등록'}
                     </Button>
@@ -170,7 +193,7 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
                       variant="secondary"
                       size="sm"
                       disabled={busy === row.id}
-                      onClick={(e) => { e.stopPropagation(); rejectDraft(row); }}
+                      onClick={(e) => { e.stopPropagation(); setRejectTarget(row); }}
                     >
                       거절
                     </Button>
@@ -239,6 +262,154 @@ export default function IrPreviewClient({ drafts }: { drafts: DraftRow[] }) {
           </div>
         );
       })}
+
+      {approveTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="IR 승인 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setApproveTarget(null)}
+          />
+          <div
+            id="ir-approve-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ir-approve-confirm-title"
+            aria-describedby="ir-approve-confirm-description ir-approve-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-blue-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">IR approval</p>
+              <h2 id="ir-approve-confirm-title" className="text-lg font-bold text-admin-text">
+                travel_packages에 등록할까요?
+              </h2>
+              <p id="ir-approve-confirm-description" className="text-sm leading-6 text-admin-muted">
+                원문을 다시 불러와 IR 데이터와 함께 상품 등록 API로 전송합니다.
+              </p>
+            </div>
+
+            <dl
+              id="ir-approve-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-blue-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">지역</dt>
+                <dd className="font-semibold text-admin-text">
+                  {String(getDraftMeta(approveTarget).region || approveTarget.region || '-')}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">랜드사</dt>
+                <dd className="font-semibold text-admin-text">{approveTarget.land_operator ?? '-'}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">유형</dt>
+                <dd className="font-semibold text-admin-text">
+                  {String(getDraftMeta(approveTarget).productType || '-')} / {String(getDraftMeta(approveTarget).tripStyle || '-')}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">구성</dt>
+                <dd className="font-semibold text-admin-text">
+                  days {getDraftArrayCount(approveTarget, 'days')} · inclusions {getDraftArrayCount(approveTarget, 'inclusions')}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={approveCancelRef}
+                type="button"
+                onClick={() => setApproveTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={() => approveDraft(approveTarget)}
+                disabled={busy === approveTarget.id}
+                className="rounded-admin-sm bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {busy === approveTarget.id ? '처리 중...' : '승인 등록'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {rejectTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="IR 거절 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setRejectTarget(null)}
+          />
+          <div
+            id="ir-reject-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ir-reject-confirm-title"
+            aria-describedby="ir-reject-confirm-description ir-reject-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">IR rejection</p>
+              <h2 id="ir-reject-confirm-title" className="text-lg font-bold text-admin-text">
+                이 IR draft를 거절할까요?
+              </h2>
+              <p id="ir-reject-confirm-description" className="text-sm leading-6 text-admin-muted">
+                정보는 남아있고 재개할 수 있습니다. 등록 대상이 아닌지 다시 확인하세요.
+              </p>
+            </div>
+
+            <dl
+              id="ir-reject-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">지역</dt>
+                <dd className="font-semibold text-admin-text">
+                  {String(getDraftMeta(rejectTarget).region || rejectTarget.region || '-')}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">랜드사</dt>
+                <dd className="font-semibold text-admin-text">{rejectTarget.land_operator ?? '-'}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">상태</dt>
+                <dd className="font-semibold text-admin-text">{rejectTarget.status}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">Judge</dt>
+                <dd className="font-semibold text-admin-text">{rejectTarget.judge_verdict ?? '-'}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={rejectCancelRef}
+                type="button"
+                onClick={() => setRejectTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={() => rejectDraft(rejectTarget)}
+                disabled={busy === rejectTarget.id}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {busy === rejectTarget.id ? '처리 중...' : '거절'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
