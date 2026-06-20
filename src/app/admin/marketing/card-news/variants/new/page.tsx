@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -63,6 +63,11 @@ export default function CardNewsVariantsNewPage() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<VariantsResponse | null>(null);
+  const [generateConfirmOpen, setGenerateConfirmOpen] = useState(false);
+  const generateConfirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const generateConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
+  const generateConfirmTitleId = 'card-news-variants-generate-title';
+  const generateConfirmDescriptionId = 'card-news-variants-generate-description';
 
   useEffect(() => {
     fetch('/api/packages?limit=200')
@@ -99,7 +104,57 @@ export default function CardNewsVariantsNewPage() {
 
   const expectedCost = (selectedAngles.length * (skipCritic ? 0.28 : 0.32)).toFixed(2);
 
-  const handleGenerate = async () => {
+  useEffect(() => {
+    if (!generateConfirmOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    generateConfirmCancelRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      generateConfirmDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setGenerateConfirmOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [generateConfirmOpen]);
+
+  const openGenerateConfirm = () => {
     if (!rawText.trim()) {
       setError('원문이 비어있습니다');
       return;
@@ -108,14 +163,13 @@ export default function CardNewsVariantsNewPage() {
       setError('최소 1개 각도를 선택하세요');
       return;
     }
-    if (
-      !confirm(
-        `${selectedAngles.length}개 변형을 병렬 생성합니다.\n\n예상 비용: ~$${expectedCost} (≈ ${Math.round(Number(expectedCost) * 1400)}원)\n예상 시간: 3~5분\n\n진행할까요?`,
-      )
-    ) {
-      return;
-    }
+    setError(null);
+    setGenerateConfirmOpen(true);
+  };
 
+  const handleGenerate = async () => {
+    if (!rawText.trim() || selectedAngles.length === 0) return;
+    setGenerateConfirmOpen(false);
     setError(null);
     setGenerating(true);
     setResult(null);
@@ -315,9 +369,11 @@ export default function CardNewsVariantsNewPage() {
         )}
 
         <button
-          onClick={handleGenerate}
+          onClick={openGenerateConfirm}
           disabled={generating || !rawText.trim() || selectedAngles.length === 0}
           className="w-full rounded-lg bg-purple-600 py-3 font-semibold text-white hover:bg-purple-700 disabled:opacity-50"
+          aria-haspopup="dialog"
+          aria-controls={generateConfirmOpen ? 'card-news-variants-generate-dialog' : undefined}
         >
           {generating
             ? `생성 중... (${selectedAngles.length}개 병렬, ~3분)`
@@ -330,6 +386,87 @@ export default function CardNewsVariantsNewPage() {
           </div>
         )}
       </section>
+
+      {generateConfirmOpen && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setGenerateConfirmOpen(false);
+          }}
+        >
+          <div
+            id="card-news-variants-generate-dialog"
+            ref={generateConfirmDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={generateConfirmTitleId}
+            aria-describedby={generateConfirmDescriptionId}
+            className="w-full rounded-t-admin-lg border border-admin-border-mid bg-admin-surface shadow-admin-lg sm:max-w-lg sm:rounded-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-5 py-4">
+              <h2 id={generateConfirmTitleId} className="text-lg font-bold text-admin-text">
+                변형 생성을 시작할까요?
+              </h2>
+              <p id={generateConfirmDescriptionId} className="mt-2 text-sm leading-6 text-admin-muted">
+                선택한 각도별로 HTML 카드뉴스를 병렬 생성합니다. 작업은 약 3~5분 걸릴 수 있습니다.
+              </p>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase text-admin-muted-2">생성 수</div>
+                  <div className="mt-1 text-sm font-bold text-admin-text">{selectedAngles.length}장</div>
+                </div>
+                <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase text-admin-muted-2">예상 비용</div>
+                  <div className="mt-1 text-sm font-bold text-admin-text">
+                    ~${expectedCost} · 약 {Math.round(Number(expectedCost) * 1400)}원
+                  </div>
+                </div>
+                <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase text-admin-muted-2">예상 시간</div>
+                  <div className="mt-1 text-sm font-bold text-admin-text">3~5분</div>
+                </div>
+              </div>
+
+              <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase text-admin-muted-2">선택 각도</div>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {selectedAngles.map(angle => (
+                    <span key={angle} className="rounded-full bg-purple-50 px-2 py-1 text-xs font-semibold text-purple-700">
+                      {PRESET_ANGLES.find(item => item.value === angle)?.label ?? angle}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 text-xs text-admin-muted">
+                  Cover Critic: {skipCritic ? '건너뜀' : '점수 평가 포함'}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-admin-border-mid px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                ref={generateConfirmCancelRef}
+                type="button"
+                className="rounded-admin-md border border-admin-border-mid px-4 py-2 text-sm font-semibold text-admin-text hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                onClick={() => setGenerateConfirmOpen(false)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="rounded-admin-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                disabled={generating}
+                onClick={() => void handleGenerate()}
+              >
+                {generating ? '생성 중...' : '변형 생성 시작'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {result && (
         <section className="mt-6 rounded-admin-md border bg-emerald-50 p-6">

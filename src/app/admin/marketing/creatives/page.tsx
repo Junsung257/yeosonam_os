@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fmtDateISO } from '@/lib/admin-utils';
 
 // ── 타입 ───────────────────────────────────────────────────
@@ -82,6 +82,11 @@ export default function CreativesPage() {
   // 성과 확장
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [perfData, setPerfData] = useState<any>(null);
+  const [endTarget, setEndTarget] = useState<Creative | null>(null);
+  const endConfirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const endConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
+  const endConfirmTitleId = 'creative-end-confirm-title';
+  const endConfirmDescriptionId = 'creative-end-confirm-description';
 
   // 상품 목록 로드
   useEffect(() => {
@@ -147,6 +152,56 @@ export default function CreativesPage() {
 
   useEffect(() => { fetchCreatives(); }, [fetchCreatives]);
 
+  useEffect(() => {
+    if (!endTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    endConfirmCancelRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      endConfirmDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setEndTarget(null);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [endTarget]);
+
   // 소재 생성
   const handleGenerate = async () => {
     if (!selectedPkg) { setError('상품을 선택하세요'); return; }
@@ -179,8 +234,6 @@ export default function CreativesPage() {
 
   // 상태 변경
   const handleStatusChange = async (id: string, newStatus: string) => {
-    if (newStatus === 'ended' && !confirm('이 소재를 종료하시겠습니까?')) return;
-
     // 배포는 launch API 사용
     if (newStatus === 'launch') {
       try {
@@ -202,6 +255,7 @@ export default function CreativesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: newStatus }),
       });
+      if (newStatus === 'ended') setEndTarget(null);
       fetchCreatives();
     } catch { /* ignore */ }
   };
@@ -402,7 +456,11 @@ export default function CreativesPage() {
                         className="text-[10px] px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100">재개</button>
                     )}
                     {c.status !== 'ended' && (
-                      <button onClick={() => handleStatusChange(c.id, 'ended')}
+                      <button
+                        type="button"
+                        onClick={() => setEndTarget(c)}
+                        aria-haspopup="dialog"
+                        aria-controls={endTarget?.id === c.id ? 'creative-end-confirm-dialog' : undefined}
                         className="text-[10px] px-3 py-1.5 bg-red-50 text-red-500 border border-red-200 rounded-lg hover:bg-red-100">종료</button>
                     )}
                     <button onClick={() => loadPerformance(c.id)}
@@ -421,6 +479,65 @@ export default function CreativesPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {endTarget && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setEndTarget(null);
+          }}
+        >
+          <div
+            id="creative-end-confirm-dialog"
+            ref={endConfirmDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={endConfirmTitleId}
+            aria-describedby={endConfirmDescriptionId}
+            className="w-full rounded-t-admin-lg border border-admin-border-mid bg-admin-surface shadow-admin-lg sm:max-w-md sm:rounded-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-5 py-4">
+              <h2 id={endConfirmTitleId} className="text-lg font-bold text-admin-text">
+                소재를 종료할까요?
+              </h2>
+              <p id={endConfirmDescriptionId} className="mt-2 text-sm leading-6 text-admin-muted">
+                종료된 소재는 활성 캠페인 운영 대상에서 제외됩니다. 다시 쓰려면 새 검토 흐름으로 되돌려야 합니다.
+              </p>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase text-admin-muted-2">대상 소재</div>
+                <div className="mt-1 text-sm font-semibold text-admin-text">
+                  {endTarget.travel_packages?.title ?? '상품 정보 없음'}
+                </div>
+                <div className="mt-1 text-xs text-admin-muted">
+                  {CHANNEL_LABELS[endTarget.channel]} · {TYPE_LABELS[endTarget.creative_type]} · v{endTarget.variant_index}
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-admin-border-mid px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                ref={endConfirmCancelRef}
+                type="button"
+                className="rounded-admin-md border border-admin-border-mid px-4 py-2 text-sm font-semibold text-admin-text hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                onClick={() => setEndTarget(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="rounded-admin-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                onClick={() => void handleStatusChange(endTarget.id, 'ended')}
+              >
+                종료 처리
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
