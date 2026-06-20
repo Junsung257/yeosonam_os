@@ -37,6 +37,11 @@ interface LandOperator {
   name: string;
 }
 
+type InlineNotice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 const ALL_TYPES = ['RESERVATION', 'PAYMENT', 'PASSPORT', 'LIABILITY', 'COMPLAINT', 'NOSHOW', 'PANDEMIC', 'SURCHARGE', 'SHOPPING', 'GOLF_SPECIAL', 'CRITICAL', 'POLICY', 'INFO'];
 const ALL_SURFACES: NoticeSurface[] = ['a4', 'mobile', 'booking_guide'];
 const ALL_SEVERITIES: NoticeSeverity[] = ['critical', 'standard', 'info'];
@@ -50,6 +55,7 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [inlineNotice, setInlineNotice] = useState<InlineNotice | null>(null);
   const [operators, setOperators] = useState<LandOperator[]>([]);
   const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const [tpl, setTpl] = useState<TermsTemplate>({
@@ -141,9 +147,10 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
   };
 
   const save = async () => {
-    if (!tpl.name.trim()) { alert('이름은 필수입니다'); return; }
-    if (tpl.notices.length === 0) { alert('notice 블록이 최소 1개 필요합니다'); return; }
+    if (!tpl.name.trim()) { setInlineNotice({ tone: 'error', message: '이름은 필수입니다' }); return; }
+    if (tpl.notices.length === 0) { setInlineNotice({ tone: 'error', message: 'notice 블록이 최소 1개 필요합니다' }); return; }
     setSaving(true);
+    setInlineNotice(null);
     try {
       const url = isNew ? '/api/terms-templates' : `/api/terms-templates/${encodedId}`;
       const method = isNew ? 'POST' : 'PATCH';
@@ -154,12 +161,12 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? '저장 실패');
-      alert('저장 완료');
+      setInlineNotice({ tone: 'success', message: '저장 완료' });
       if (isNew && json.data?.id) {
-        router.push(`/admin/terms-templates/${encodeURIComponent(json.data.id)}`);
+        setTimeout(() => router.push(`/admin/terms-templates/${encodeURIComponent(json.data.id)}`), 700);
       }
     } catch (e) {
-      alert(e instanceof Error ? e.message : '저장 실패');
+      setInlineNotice({ tone: 'error', message: e instanceof Error ? e.message : '저장 실패' });
     } finally {
       setSaving(false);
     }
@@ -167,7 +174,12 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
 
   const softDelete = async () => {
     const res = await fetch(`/api/terms-templates/${encodedId}`, { method: 'DELETE' });
-    if (res.ok) { alert('비활성화 완료'); router.push('/admin/terms-templates'); }
+    if (res.ok) {
+      setInlineNotice({ tone: 'success', message: '비활성화 완료' });
+      setTimeout(() => router.push('/admin/terms-templates'), 700);
+    } else {
+      setInlineNotice({ tone: 'error', message: '비활성화 실패' });
+    }
   };
 
   if (loading) return (
@@ -215,6 +227,22 @@ export default function TermsTemplateEditPage(props: { params: Promise<Promise<{
           </button>
         </div>
       </div>
+
+      {inlineNotice && (
+        <div
+          role={inlineNotice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={inlineNotice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm ${
+            inlineNotice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          <p className="font-semibold">{inlineNotice.tone === 'error' ? '확인이 필요해요' : '처리 완료'}</p>
+          <p className="mt-1">{inlineNotice.message}</p>
+        </div>
+      )}
+
       {/* 기본 정보 */}
       <section className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 space-y-3">
         <h2 className="text-sm font-bold text-admin-text">기본 정보</h2>
