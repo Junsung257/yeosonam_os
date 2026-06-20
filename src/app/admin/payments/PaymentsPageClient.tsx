@@ -2487,9 +2487,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
             const paymentMobileNextActionLabel = getTransactionNextActionLabel(tx);
             const paymentMobileNextActionReason = getTransactionNextActionReason(tx);
             const paymentMobileAmountText = `${tx.transaction_type === '입금' ? '+' : '-'}${tx.amount.toLocaleString()}원`;
+            const paymentMobileAgeHours = Math.max(0, Math.round(hoursSince(tx.created_at)));
+            const paymentMobileAgeLabel = paymentMobileAgeHours < 1 ? '<1h' : `${paymentMobileAgeHours}h`;
             const paymentMobileSummaryText = [
               `${paymentMobileKindLabel} ${tx.amount.toLocaleString()}원`,
               `상태 ${paymentMobileMatchLabel}`,
+              `경과 ${paymentMobileAgeLabel}`,
               `거래처 ${tx.counterparty_name || '없음'}`,
               `수신 ${fmtTs(tx.received_at)}`,
               tx.bookings
@@ -2497,7 +2500,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 : '연결된 예약 없음',
               `다음 액션 ${paymentMobileNextActionLabel}`,
               `다음 액션 근거 ${paymentMobileNextActionReason}`,
-              stale ? `${Math.round(hoursSince(tx.created_at))}시간 경과` : null,
+              stale ? `${paymentMobileAgeHours}시간 경과` : null,
             ].filter(Boolean).join('. ');
             return (
               <article
@@ -2523,7 +2526,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                       </span>
                       {stale && (
                         <span className="text-[10px] font-semibold text-red-600">
-                          {Math.round(hoursSince(tx.created_at))}h 경과
+                          {paymentMobileAgeHours}h 경과
                         </span>
                       )}
                     </div>
@@ -2567,10 +2570,12 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
                 <div
                   id={paymentMobileDecisionSummaryId}
                   data-testid="admin-payment-mobile-decision-summary"
-                  className="mt-3 grid grid-cols-3 gap-2 rounded-admin-sm border border-admin-border bg-admin-bg p-2"
+                  aria-label={`결제 결정 요약: 상태 ${paymentMobileMatchLabel}, 경과 ${paymentMobileAgeLabel}, 금액 ${paymentMobileAmountText}, 다음 액션 ${paymentMobileNextActionLabel}`}
+                  className="mt-3 grid grid-cols-4 gap-2 rounded-admin-sm border border-admin-border bg-admin-bg p-2"
                 >
                   {[
                     { label: '상태', value: paymentMobileMatchLabel },
+                    { label: '경과', value: paymentMobileAgeLabel },
                     { label: '금액', value: paymentMobileAmountText },
                     { label: '다음', value: paymentMobileNextActionLabel },
                   ].map(item => (
