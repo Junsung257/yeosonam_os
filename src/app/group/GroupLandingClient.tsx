@@ -493,7 +493,11 @@ export default function GroupLandingClient() {
           접수 즉시 담당자가 확인하고 당일 내 회신드립니다
         </p>
 
-        <p id="group-landing-status" className="sr-only" aria-live="polite" aria-atomic="true">
+        <p
+          id="group-landing-status"
+          className="sr-only"
+          {...(submitting ? { 'aria-live': 'polite' as const, 'aria-atomic': true } : {})}
+        >
           {submitting ? '견적 요청을 전송하고 있습니다.' : ''}
         </p>
 
