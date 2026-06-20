@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { fmtDateTime } from '@/lib/admin-utils';
@@ -85,7 +85,9 @@ export default function TransactionDetailPage() {
   const [txn, setTxn]           = useState<Transaction | null>(null);
   const [loading, setLoading]   = useState(true);
   const [refunding, setRefunding] = useState(false);
+  const [refundConfirmOpen, setRefundConfirmOpen] = useState(false);
   const [error, setError]       = useState('');
+  const refundCancelRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -109,9 +111,13 @@ export default function TransactionDetailPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  useEffect(() => {
+    if (!refundConfirmOpen) return;
+    requestAnimationFrame(() => refundCancelRef.current?.focus());
+  }, [refundConfirmOpen]);
+
   async function handleRefund() {
     if (!id) return;
-    if (!confirm('이 트랜잭션을 환불 처리하시겠습니까?')) return;
     setRefunding(true);
     setError('');
     try {
@@ -122,6 +128,7 @@ export default function TransactionDetailPage() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      setRefundConfirmOpen(false);
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : '환불 처리 실패');
@@ -168,8 +175,12 @@ export default function TransactionDetailPage() {
         </div>
         {(txn.status === 'PARTIAL_FAIL' || txn.status === 'COMPLETED' || txn.status === 'CUSTOMER_PAID') && (
           <button
-            onClick={handleRefund}
+            type="button"
+            onClick={() => setRefundConfirmOpen(true)}
             disabled={refunding}
+            aria-haspopup="dialog"
+            aria-expanded={refundConfirmOpen}
+            aria-controls="concierge-refund-confirm-dialog"
             className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium hover:bg-red-700 disabled:opacity-50"
           >
             {refunding ? '처리 중...' : '수동 환불 처리'}
@@ -179,6 +190,72 @@ export default function TransactionDetailPage() {
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">{error}</div>
+      )}
+
+      {refundConfirmOpen && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="환불 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setRefundConfirmOpen(false)}
+          />
+          <div
+            id="concierge-refund-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="concierge-refund-confirm-title"
+            aria-describedby="concierge-refund-confirm-description concierge-refund-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Manual refund</p>
+              <h2 id="concierge-refund-confirm-title" className="text-lg font-bold text-admin-text">
+                트랜잭션 환불 처리
+              </h2>
+              <p id="concierge-refund-confirm-description" className="text-sm leading-6 text-admin-muted">
+                결제 상태와 외부 API 주문 상태를 확인한 뒤 수동 환불로 기록합니다.
+              </p>
+            </div>
+
+            <dl
+              id="concierge-refund-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">현재 상태</dt>
+                <dd className="font-semibold text-admin-text">{txn.status}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">판매가</dt>
+                <dd className="font-semibold text-admin-text">{txn.total_price.toLocaleString()}원</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">API 주문</dt>
+                <dd className="font-semibold text-admin-text">{txn.api_orders.length}건</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={refundCancelRef}
+                type="button"
+                onClick={() => setRefundConfirmOpen(false)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={handleRefund}
+                disabled={refunding}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {refunding ? '처리 중...' : '환불 처리'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 고객 · 결제 요약 */}
