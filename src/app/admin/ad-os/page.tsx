@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -148,6 +148,8 @@ export default function AdOsPage() {
     setStagingValidation,
     setAdminSurfaceQa,
   } = useAdOsResultState();
+  const [opsFailureTarget, setOpsFailureTarget] = useState<Record<string, unknown> | null>(null);
+  const opsFailureCancelRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -193,6 +195,11 @@ export default function AdOsPage() {
       alive = false;
     };
   }, [setAdminSurfaceQa, setError, setOperatingInventory, setStagingSmoke, setStagingValidation]);
+
+  useEffect(() => {
+    if (!opsFailureTarget) return;
+    requestAnimationFrame(() => opsFailureCancelRef.current?.focus());
+  }, [opsFailureTarget]);
 
   const refresh = async () => {
     const next = await fetchSummary();
@@ -1275,14 +1282,13 @@ export default function AdOsPage() {
   const runOpsQueueAction = async (
     row: Record<string, unknown>,
     action: 'executor_dry_run' | 'confirm_failed' | 'acknowledge_blocker',
+    options: { skipConfirm?: boolean } = {},
   ) => {
     const source = String(row.source || '');
     const id = String(row.id || '');
     if (!source || !id) return;
-    if (
-      action === 'confirm_failed' &&
-      !window.confirm('Mark this external operation as failed? Continue only after checking the external account result.')
-    ) {
+    if (action === 'confirm_failed' && !options.skipConfirm) {
+      setOpsFailureTarget(row);
       return;
     }
     const actionKey = `${source}:${id}:${action}`;
@@ -1308,6 +1314,12 @@ export default function AdOsPage() {
         return `Ops queue ${label} complete: ${source} ${id.slice(0, 8)}. External API write 0${blockedReason}.`;
       },
     });
+  };
+
+  const submitOpsFailureConfirmation = async () => {
+    if (!opsFailureTarget) return;
+    await runOpsQueueAction(opsFailureTarget, 'confirm_failed', { skipConfirm: true });
+    setOpsFailureTarget(null);
   };
 
   const standardizeExperimentTemplates = async () => {
@@ -2066,6 +2078,82 @@ export default function AdOsPage() {
 
           <OperatingModesPanel />
         </>
+      )}
+
+      {opsFailureTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="외부 작업 실패 확정 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setOpsFailureTarget(null)}
+          />
+          <div
+            id="ad-os-ops-failure-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ad-os-ops-failure-confirm-title"
+            aria-describedby="ad-os-ops-failure-confirm-description ad-os-ops-failure-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">External operation</p>
+              <h2 id="ad-os-ops-failure-confirm-title" className="text-lg font-bold text-admin-text">
+                외부 작업 실패로 확정할까요?
+              </h2>
+              <p id="ad-os-ops-failure-confirm-description" className="text-sm leading-6 text-admin-muted">
+                외부 광고 계정의 실제 처리 결과를 확인한 뒤에만 실패로 기록하세요. 이 작업은 큐 상태와 운영 판단에 반영됩니다.
+              </p>
+            </div>
+
+            <dl
+              id="ad-os-ops-failure-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">source</dt>
+                <dd className="font-semibold text-admin-text">{String(opsFailureTarget.source || '-')}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">id</dt>
+                <dd className="font-mono text-xs font-semibold text-admin-text">
+                  {String(opsFailureTarget.id || '-').slice(0, 12)}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">status</dt>
+                <dd className="font-semibold text-admin-text">{String(opsFailureTarget.status || '-')}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">blocked</dt>
+                <dd className="max-w-[13rem] truncate font-semibold text-admin-text">
+                  {String(opsFailureTarget.blocked_reason || opsFailureTarget.blocker || '-')}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={opsFailureCancelRef}
+                type="button"
+                onClick={() => setOpsFailureTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitOpsFailureConfirmation}
+                disabled={opsQueueActionId === `${String(opsFailureTarget.source || '')}:${String(opsFailureTarget.id || '')}:confirm_failed`}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {opsQueueActionId === `${String(opsFailureTarget.source || '')}:${String(opsFailureTarget.id || '')}:confirm_failed`
+                  ? '처리 중...'
+                  : '실패로 확정'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
