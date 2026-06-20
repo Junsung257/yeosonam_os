@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import PolicyWeightsCompare from '@/components/admin/PolicyWeightsCompare';
 import { fmt만 as fmtKRW, fmtDateTime } from '@/lib/admin-utils';
 
@@ -122,10 +122,20 @@ export default function ScoringAdminPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [recomputing, setRecomputing] = useState(false);
+  const [recomputeConfirmOpen, setRecomputeConfirmOpen] = useState(false);
   const [matching, setMatching] = useState(false);
   const [reliabilityFitting, setReliabilityFitting] = useState(false);
   const [unmapped, setUnmapped] = useState<Array<{ id: string; title: string }>>([]);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
+  const [deleteRateTarget, setDeleteRateTarget] = useState<MarketRate | null>(null);
+  const recomputeDialogRef = useRef<HTMLDivElement | null>(null);
+  const recomputeCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteRateDialogRef = useRef<HTMLDivElement | null>(null);
+  const deleteRateCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const recomputeTitleId = 'scoring-recompute-confirm-title';
+  const recomputeDescriptionId = 'scoring-recompute-confirm-description';
+  const deleteRateTitleId = 'scoring-rate-delete-title';
+  const deleteRateDescriptionId = 'scoring-rate-delete-description';
 
   // 그룹 미리보기
   const [previewDest, setPreviewDest] = useState('');
@@ -198,6 +208,104 @@ export default function ScoringAdminPage() {
 
   useEffect(() => { loadAudit(); }, [loadAudit]);
 
+  useEffect(() => {
+    if (!recomputeConfirmOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    recomputeCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      recomputeDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setRecomputeConfirmOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [recomputeConfirmOpen]);
+
+  useEffect(() => {
+    if (!deleteRateTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    deleteRateCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      deleteRateDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDeleteRateTarget(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [deleteRateTarget]);
+
   const weightSum = Object.values(weights).reduce((a, b) => a + b, 0);
 
   const handleSavePolicy = async () => {
@@ -226,8 +334,8 @@ export default function ScoringAdminPage() {
   };
 
   const handleRecompute = async () => {
-    if (!confirm('전체 패키지 점수를 지금 재계산할까요? 1~2분 소요')) return;
     setRecomputing(true);
+    setRecomputeConfirmOpen(false);
     try {
       const r = await fetch('/api/admin/scoring/recompute', { method: 'POST' });
       const j = await r.json();
@@ -326,9 +434,8 @@ export default function ScoringAdminPage() {
   };
 
   const handleDeleteRate = async (id: string) => {
-    if (!confirm('삭제할까요?')) return;
     const r = await fetch(`/api/admin/scoring/market-rates/${id}`, { method: 'DELETE' });
-    if (r.ok) { showToast('success', '삭제됨'); loadAll(); }
+    if (r.ok) { setDeleteRateTarget(null); showToast('success', '삭제됨'); loadAll(); }
     else showToast('error', '삭제 실패');
   };
 
@@ -708,7 +815,12 @@ export default function ScoringAdminPage() {
           className="px-4 py-2 bg-violet-600 text-white text-sm rounded-lg hover:bg-violet-700 disabled:opacity-50"
         >{saving ? '저장 중...' : '정책 저장'}</button>
         <button
-          onClick={handleRecompute} disabled={recomputing}
+          type="button"
+          onClick={() => setRecomputeConfirmOpen(true)}
+          disabled={recomputing}
+          aria-haspopup="dialog"
+          aria-expanded={recomputeConfirmOpen}
+          aria-controls="scoring-recompute-confirm-dialog"
           className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50"
         >{recomputing ? '재계산 중...' : '지금 전체 재계산'}</button>
         <button
@@ -908,7 +1020,12 @@ export default function ScoringAdminPage() {
                   <td className="px-3 py-2 text-right font-mono">{r.market_rate_krw.toLocaleString()}</td>
                   <td className="px-3 py-2 text-xs text-admin-muted">{r.source}</td>
                   <td className="px-3 py-2 text-right">
-                    <button onClick={() => handleDeleteRate(r.id)}
+                    <button
+                      type="button"
+                      onClick={() => setDeleteRateTarget(r)}
+                      aria-haspopup="dialog"
+                      aria-expanded={deleteRateTarget?.id === r.id}
+                      aria-controls="scoring-rate-delete-dialog"
                       className="text-xs text-red-600 hover:underline">삭제</button>
                   </td>
                 </tr>
@@ -917,6 +1034,113 @@ export default function ScoringAdminPage() {
           </table>
         </div>
       </section>
+
+      {recomputeConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={recomputeDialogRef}
+            id="scoring-recompute-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={recomputeTitleId}
+            aria-describedby={recomputeDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={recomputeTitleId} className="text-admin-sm font-semibold text-admin-text-2">전체 점수 재계산</p>
+              <p id={recomputeDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                현재 정책으로 모든 패키지 추천 점수를 다시 계산합니다. 보통 1~2분 정도 걸립니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="grid grid-cols-3 gap-2">
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">정책</p>
+                  <p className="truncate text-admin-sm font-semibold text-admin-text-2">{policy.version}</p>
+                </div>
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">상품</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">{audit?.totals?.packages?.toLocaleString() ?? '전체'}</p>
+                </div>
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">현재 점수</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">{audit?.totals?.scoreRows?.toLocaleString() ?? '-'}</p>
+                </div>
+              </div>
+              <div className="rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                재계산 후 추천 순위, 비교표, 상품 카드의 “추천 근거”가 새 점수 기준으로 바뀔 수 있습니다.
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={recomputeCancelButtonRef}
+                type="button"
+                onClick={() => setRecomputeConfirmOpen(false)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleRecompute}
+                disabled={recomputing}
+                className="rounded bg-emerald-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                재계산 시작
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteRateTarget && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={deleteRateDialogRef}
+            id="scoring-rate-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deleteRateTitleId}
+            aria-describedby={deleteRateDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={deleteRateTitleId} className="text-admin-sm font-semibold text-admin-text-2">옵션 시장가 삭제</p>
+              <p id={deleteRateDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                삭제하면 해당 옵션의 무료 포함 가치 계산에서 이 시장가를 더 이상 사용하지 않습니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="rounded border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <p className="text-admin-sm font-semibold text-admin-text-2">{deleteRateTarget.tour_name}</p>
+                <p className="mt-1 text-[11px] text-admin-muted">
+                  목적지 {deleteRateTarget.destination ?? '공통'} · 시장가 {fmtKRW(deleteRateTarget.market_rate_krw)} · 출처 {deleteRateTarget.source}
+                </p>
+                {deleteRateTarget.notes && (
+                  <p className="mt-1 text-[11px] text-admin-muted-2">{deleteRateTarget.notes}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={deleteRateCancelButtonRef}
+                type="button"
+                onClick={() => setDeleteRateTarget(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDeleteRate(deleteRateTarget.id)}
+                className="rounded bg-red-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-red-700"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
