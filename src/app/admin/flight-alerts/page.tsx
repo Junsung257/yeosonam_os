@@ -5,7 +5,7 @@
  * /admin/flight-alerts
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { fmtMonthDayTime } from '@/lib/admin-utils';
 
 interface FlightAlert {
@@ -52,8 +52,15 @@ export default function FlightAlertsAdminPage() {
   const [flights, setFlights] = useState<FlightAlert[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [updating, setUpdating] = useState<UpdatingMap>({});
   const [showAddForm, setShowAddForm] = useState(false);
+  const [delayDialog, setDelayDialog] = useState<FlightAlert | null>(null);
+  const [delayMinutesInput, setDelayMinutesInput] = useState('30');
+  const [delayDialogError, setDelayDialogError] = useState('');
+  const [cancelDialog, setCancelDialog] = useState<FlightAlert | null>(null);
+  const delayInputRef = useRef<HTMLInputElement | null>(null);
+  const cancelDialogCancelRef = useRef<HTMLButtonElement | null>(null);
   const [formData, setFormData] = useState({
     flightNumber: '',
     route: '',
@@ -62,6 +69,16 @@ export default function FlightAlertsAdminPage() {
     note: '',
   });
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!delayDialog) return;
+    requestAnimationFrame(() => delayInputRef.current?.focus());
+  }, [delayDialog]);
+
+  useEffect(() => {
+    if (!cancelDialog) return;
+    requestAnimationFrame(() => cancelDialogCancelRef.current?.focus());
+  }, [cancelDialog]);
 
   const fetchFlights = useCallback(async () => {
     setLoading(true);
@@ -84,6 +101,7 @@ export default function FlightAlertsAdminPage() {
 
   const updateStatus = async (id: string, status: string, delayMinutes?: number) => {
     setUpdating(prev => ({ ...prev, [id]: true }));
+    setActionError(null);
     try {
       const body: Record<string, unknown> = { status };
       if (delayMinutes !== undefined) body.delayMinutes = delayMinutes;
@@ -96,25 +114,42 @@ export default function FlightAlertsAdminPage() {
       const json = await res.json() as { ok?: boolean; error?: string };
       if (!json.ok) throw new Error(json.error ?? '업데이트 실패');
       await fetchFlights();
+      return true;
     } catch (e) {
-      alert(e instanceof Error ? e.message : '오류');
+      setActionError(e instanceof Error ? e.message : '오류');
+      return false;
     } finally {
       setUpdating(prev => ({ ...prev, [id]: false }));
     }
   };
 
-  const handleDelayClick = async (flight: FlightAlert) => {
-    const input = window.prompt(
-      `${flight.flight_number} 지연 시간(분) 입력:`,
-      '30',
-    );
-    if (input === null) return;
-    const minutes = parseInt(input, 10);
-    if (isNaN(minutes) || minutes <= 0) {
-      alert('올바른 숫자를 입력하세요.');
+  const openDelayDialog = (flight: FlightAlert) => {
+    setDelayDialog(flight);
+    setDelayMinutesInput(String(flight.delay_minutes && flight.delay_minutes > 0 ? flight.delay_minutes : 30));
+    setDelayDialogError('');
+    setActionError(null);
+  };
+
+  const confirmDelay = async () => {
+    if (!delayDialog) return;
+    const minutes = Number(delayMinutesInput);
+    if (!Number.isInteger(minutes) || minutes <= 0) {
+      setDelayDialogError('1분 이상의 숫자를 입력하세요.');
       return;
     }
-    await updateStatus(flight.id, 'delayed', minutes);
+    const ok = await updateStatus(delayDialog.id, 'delayed', minutes);
+    if (ok) setDelayDialog(null);
+  };
+
+  const openCancelDialog = (flight: FlightAlert) => {
+    setCancelDialog(flight);
+    setActionError(null);
+  };
+
+  const confirmCancel = async () => {
+    if (!cancelDialog) return;
+    const ok = await updateStatus(cancelDialog.id, 'cancelled');
+    if (ok) setCancelDialog(null);
   };
 
   const handleAddFlight = async (e: React.FormEvent) => {
@@ -140,7 +175,7 @@ export default function FlightAlertsAdminPage() {
       setShowAddForm(false);
       await fetchFlights();
     } catch (e) {
-      alert(e instanceof Error ? e.message : '등록 오류');
+      setActionError(e instanceof Error ? e.message : '등록 오류');
     } finally {
       setSubmitting(false);
     }
@@ -171,6 +206,8 @@ export default function FlightAlertsAdminPage() {
         </div>
         <div className="flex gap-2">
           <button
+            type="button"
+            aria-label="항공편 목록 새로고침"
             onClick={() => void fetchFlights()}
             disabled={loading}
             className="px-3 py-2 bg-white border border-admin-border-strong text-admin-muted text-admin-xs rounded-lg hover:bg-admin-bg transition disabled:opacity-50"
@@ -178,7 +215,11 @@ export default function FlightAlertsAdminPage() {
             새로고침
           </button>
           <button
+            type="button"
+            aria-label={showAddForm ? '항공편 등록 폼 닫기' : '항공편 등록 폼 열기'}
             onClick={() => setShowAddForm(v => !v)}
+            aria-expanded={showAddForm}
+            aria-controls="flight-alert-add-form"
             className="px-3 py-2 bg-blue-600 text-white text-admin-xs rounded-lg hover:bg-blue-700 transition"
           >
             + 항공편 등록
@@ -208,7 +249,7 @@ export default function FlightAlertsAdminPage() {
 
       {/* 항공편 등록 폼 */}
       {showAddForm && (
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
+        <div id="flight-alert-add-form" className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4">
           <h2 className="text-admin-base font-semibold text-admin-text-2 mb-3">새 항공편 등록</h2>
           <form onSubmit={(e) => void handleAddFlight(e)} className="grid grid-cols-2 gap-3">
             <div>
@@ -287,9 +328,9 @@ export default function FlightAlertsAdminPage() {
         </div>
       )}
 
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-admin-xs text-red-600">
-          {error}
+      {(error || actionError) && (
+        <div role="alert" className="bg-red-50 border border-red-200 rounded-lg p-3 text-admin-xs text-red-600">
+          {error ?? actionError}
         </div>
       )}
 
@@ -299,7 +340,8 @@ export default function FlightAlertsAdminPage() {
         flights={todayFlights}
         loading={loading}
         updating={updating}
-        onDelayClick={handleDelayClick}
+        onDelayClick={openDelayDialog}
+        onCancelClick={openCancelDialog}
         onStatusChange={updateStatus}
       />
 
@@ -309,9 +351,119 @@ export default function FlightAlertsAdminPage() {
         flights={tomorrowFlights}
         loading={loading}
         updating={updating}
-        onDelayClick={handleDelayClick}
+        onDelayClick={openDelayDialog}
+        onCancelClick={openCancelDialog}
         onStatusChange={updateStatus}
       />
+
+      {delayDialog && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50 cursor-default"
+            aria-label="지연 시간 입력 닫기"
+            onClick={() => setDelayDialog(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="flight-delay-dialog-title"
+            aria-describedby="flight-delay-dialog-description"
+            className="relative w-full max-w-sm rounded-admin-md border border-admin-border-mid bg-admin-surface p-5 shadow-admin-lg"
+          >
+            <h2 id="flight-delay-dialog-title" className="text-admin-lg font-bold text-admin-text-2">
+              지연 시간 입력
+            </h2>
+            <p id="flight-delay-dialog-description" className="mt-1 text-admin-sm leading-6 text-admin-muted">
+              {delayDialog.flight_number} 항공편을 지연 상태로 변경합니다.
+            </p>
+            <label htmlFor="flight-delay-minutes" className="mt-4 block text-admin-xs font-semibold text-admin-muted">
+              지연 시간(분)
+            </label>
+            <input
+              id="flight-delay-minutes"
+              ref={delayInputRef}
+              type="number"
+              min={1}
+              step={1}
+              value={delayMinutesInput}
+              onChange={event => {
+                setDelayMinutesInput(event.target.value);
+                setDelayDialogError('');
+              }}
+              className="mt-1 w-full rounded border border-admin-border-strong px-3 py-2 text-admin-sm focus:outline-none focus:ring-2 focus:ring-amber-300"
+            />
+            {delayDialogError && (
+              <p role="alert" className="mt-2 text-admin-xs font-semibold text-red-600">
+                {delayDialogError}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDelayDialog(null)}
+                className="rounded border border-admin-border-strong px-3 py-2 text-admin-xs font-semibold text-admin-muted hover:bg-admin-bg"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmDelay()}
+                disabled={updating[delayDialog.id] === true}
+                className="rounded bg-amber-500 px-4 py-2 text-admin-xs font-bold text-white hover:bg-amber-600 disabled:opacity-50"
+              >
+                {updating[delayDialog.id] ? '처리 중...' : '지연 처리'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {cancelDialog && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            className="absolute inset-0 bg-black/50 cursor-default"
+            aria-label="항공편 취소 확인 닫기"
+            onClick={() => setCancelDialog(null)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="flight-cancel-dialog-title"
+            aria-describedby="flight-cancel-dialog-description"
+            className="relative w-full max-w-sm rounded-admin-md border border-red-200 bg-admin-surface p-5 shadow-admin-lg"
+          >
+            <h2 id="flight-cancel-dialog-title" className="text-admin-lg font-bold text-admin-text-2">
+              항공편 취소 처리
+            </h2>
+            <p id="flight-cancel-dialog-description" className="mt-1 text-admin-sm leading-6 text-admin-muted">
+              {cancelDialog.flight_number} · {cancelDialog.route} 항공편을 취소 상태로 변경합니다. 고객 안내와 대체 일정 확인이 필요한 작업입니다.
+            </p>
+            <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-admin-xs font-semibold text-red-700">
+              취소 상태로 바꾸기 전, 알림 대상과 예약 연결 상태를 확인해 주세요.
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={cancelDialogCancelRef}
+                type="button"
+                onClick={() => setCancelDialog(null)}
+                className="rounded border border-admin-border-strong px-3 py-2 text-admin-xs font-semibold text-admin-muted hover:bg-admin-bg"
+              >
+                닫기
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmCancel()}
+                disabled={updating[cancelDialog.id] === true}
+                className="rounded bg-red-600 px-4 py-2 text-admin-xs font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {updating[cancelDialog.id] ? '처리 중...' : '취소 처리'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -322,6 +474,7 @@ function FlightSection({
   loading,
   updating,
   onDelayClick,
+  onCancelClick,
   onStatusChange,
 }: {
   title: string;
@@ -329,6 +482,7 @@ function FlightSection({
   loading: boolean;
   updating: UpdatingMap;
   onDelayClick: (f: FlightAlert) => void;
+  onCancelClick: (f: FlightAlert) => void;
   onStatusChange: (id: string, status: string) => void;
 }) {
   return (
@@ -404,11 +558,7 @@ function FlightSection({
                         )}
                         {f.status !== 'cancelled' && (
                           <button
-                            onClick={() => {
-                              if (window.confirm(`${f.flight_number} 취소 처리하시겠습니까?`)) {
-                                onStatusChange(f.id, 'cancelled');
-                              }
-                            }}
+                            onClick={() => onCancelClick(f)}
                             disabled={isUpdating}
                             className="px-2 py-1 bg-red-50 text-red-600 text-[11px] rounded hover:bg-red-100 disabled:opacity-40"
                           >
