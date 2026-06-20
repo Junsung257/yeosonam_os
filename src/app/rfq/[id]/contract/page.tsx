@@ -17,6 +17,7 @@ export default function ContractPage() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState('');
   const [printed, setPrinted] = useState(false);
+  const [paymentNotice, setPaymentNotice] = useState('');
 
   useEffect(() => {
     if (!rfqId) {
@@ -126,11 +127,17 @@ export default function ContractPage() {
             </Link>
             <button
               className="bg-green-600 hover:bg-green-700 text-white px-6 py-2.5 rounded-xl text-sm font-semibold transition-colors"
-              onClick={() => alert('에스크로 결제 시스템에 연결됩니다. (프로덕션 연동 필요)')}
+              onClick={() => setPaymentNotice('에스크로 결제는 현재 연동 준비 중입니다. 담당자가 결제 안내를 곧 도와드릴게요.')}
+              aria-describedby={paymentNotice ? 'rfq-contract-payment-notice' : undefined}
             >
               💳 에스크로 결제하기
             </button>
           </div>
+          {paymentNotice && (
+            <p id="rfq-contract-payment-notice" role="status" className="mt-3 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-sm text-green-700">
+              {paymentNotice}
+            </p>
+          )}
         </div>
       </div>
     </div>

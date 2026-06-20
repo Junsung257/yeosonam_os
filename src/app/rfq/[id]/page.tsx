@@ -167,6 +167,7 @@ export default function RfqDetailPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selecting, setSelecting] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   useEffect(() => {
     fetchAll();
@@ -228,8 +229,9 @@ export default function RfqDetailPage() {
       });
       if (!res.ok) throw new Error('선택 실패');
       await fetchAll();
+      setNotice({ tone: 'success', message: '제안이 선택되었습니다. 계약 안내를 확인해주세요.' });
     } catch {
-      alert('제안 선택 중 오류가 발생했습니다.');
+      setNotice({ tone: 'error', message: '제안 선택 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.' });
     } finally {
       setSelecting(null);
     }
@@ -269,6 +271,20 @@ export default function RfqDetailPage() {
         <div className="bg-white border shadow-sm rounded-xl p-5">
           <StatusTimeline status={rfq.status} />
         </div>
+
+        {notice && (
+          <div
+            role={notice.tone === 'error' ? 'alert' : 'status'}
+            aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+            className={`rounded-xl border px-4 py-3 text-sm ${
+              notice.tone === 'error'
+                ? 'border-red-200 bg-red-50 text-red-700'
+                : 'border-green-200 bg-green-50 text-green-700'
+            }`}
+          >
+            {notice.message}
+          </div>
+        )}
 
         {/* 기본 정보 */}
         <div className="bg-white border shadow-sm rounded-xl p-5">

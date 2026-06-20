@@ -32,6 +32,7 @@ export default function RfqChatPage() {
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sendError, setSendError] = useState('');
 
   // 최초 로드
   useEffect(() => {
@@ -74,6 +75,7 @@ export default function RfqChatPage() {
     const text = input.trim();
     if (!id || !text || sending) return;
     setSending(true);
+    setSendError('');
     setInput('');
 
     // 낙관적 업데이트
@@ -101,7 +103,8 @@ export default function RfqChatPage() {
       await fetchMessages();
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
-      alert('메시지 전송 중 오류가 발생했습니다.');
+      setInput(text);
+      setSendError('메시지 전송 중 오류가 발생했습니다. 다시 시도해주세요.');
     } finally {
       setSending(false);
     }
@@ -225,12 +228,23 @@ export default function RfqChatPage() {
 
       {/* 입력 영역 */}
       <div className="border-t bg-white px-4 py-3 sticky bottom-0">
-        <div className="max-w-2xl mx-auto flex gap-2 items-end">
+        <div className="max-w-2xl mx-auto">
+          {sendError && (
+            <p id="rfq-chat-send-error" role="alert" className="mb-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+              {sendError}
+            </p>
+          )}
+          <div className="flex gap-2 items-end">
           <textarea
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(e) => {
+              setInput(e.target.value);
+              if (sendError) setSendError('');
+            }}
             onKeyDown={handleKeyDown}
             disabled={sending}
+            aria-invalid={sendError ? 'true' : 'false'}
+            aria-describedby={sendError ? 'rfq-chat-send-error' : undefined}
             placeholder="메시지를 입력하세요... (Enter: 전송, Shift+Enter: 줄바꿈)"
             rows={2}
             className="flex-1 resize-none border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30 disabled:opacity-50"
@@ -242,6 +256,7 @@ export default function RfqChatPage() {
           >
             {sending ? '...' : '전송'}
           </button>
+          </div>
         </div>
       </div>
     </div>
