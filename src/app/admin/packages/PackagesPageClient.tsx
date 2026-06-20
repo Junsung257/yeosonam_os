@@ -693,6 +693,7 @@ const PackageRow = React.memo(function PackageRow({
   onStudioOpen,
   onKakaoCopy,
   onBulkContentGen,
+  onRequestClone,
   contentStatus,
 }: {
   pkg: Package;
@@ -723,6 +724,7 @@ const PackageRow = React.memo(function PackageRow({
   onStudioOpen: () => void;
   onKakaoCopy: (pkg: Package) => void;
   onBulkContentGen: (pkg: Package) => void;
+  onRequestClone: (pkg: Package) => void;
   contentStatus: Map<string, Set<string>>;
 }) {
   const { isActive: isPlatformActive, getAuditInfo, togglePlatform, togglingKey, getCoverage } = marketingTracker;
@@ -1362,21 +1364,9 @@ const PackageRow = React.memo(function PackageRow({
           {/* N5 박제 (2026-05-16 Lemax 표준 — 35% 수익↑): Template 재사용 1-click 복제 */}
           <button
             type="button"
-            onClick={async (e) => {
+            onClick={(e) => {
               e.stopPropagation();
-              const suffix = prompt('새 패키지 제목 접미사 (예: 4박6일 변형)', '(복제)');
-              if (suffix === null) return;
-              try {
-                const res = await fetch(`/api/admin/packages/${pkg.id}/clone`, {
-                  method: 'POST', headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ titleSuffix: suffix }),
-                });
-                const data = await res.json();
-                if (!res.ok) { alert(data.error || '복제 실패'); return; }
-                if (confirm(`복제 완료: "${data.title}". 검수 페이지로 이동할까요?`)) {
-                  window.open(data.edit_url, '_blank');
-                }
-              } catch (err) { alert(err instanceof Error ? err.message : '복제 실패'); }
+              onRequestClone(pkg);
             }}
             className="px-2 py-1 bg-purple-100 text-purple-700 border border-purple-300 rounded text-[11px] hover:bg-purple-200 font-medium"
             title="Lemax 표준 — 패키지 복제 (3x 빠른 등록)"
@@ -1442,10 +1432,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [kakaoCopyTarget, setKakaoCopyTarget] = useState<Package | null>(null);
   const [kakaoCopyText, setKakaoCopyText] = useState('');
   const [kakaoCopyLoading, setKakaoCopyLoading] = useState(false);
+  const [cloneTarget, setCloneTarget] = useState<Package | null>(null);
+  const [cloneSuffix, setCloneSuffix] = useState('(복제)');
+  const [cloneLoading, setCloneLoading] = useState(false);
+  const [cloneError, setCloneError] = useState('');
+  const [cloneResult, setCloneResult] = useState<{ title: string; editUrl: string } | null>(null);
   const kakaoCopyModalRef = useRef<HTMLDivElement | null>(null);
   const kakaoCopyCloseRef = useRef<HTMLButtonElement | null>(null);
   const kakaoCopyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const kakaoCopyGenerateRef = useRef<HTMLButtonElement | null>(null);
+  const cloneModalRef = useRef<HTMLDivElement | null>(null);
+  const cloneSuffixInputRef = useRef<HTMLInputElement | null>(null);
+  const cloneCancelRef = useRef<HTMLButtonElement | null>(null);
+  const cloneReviewButtonRef = useRef<HTMLButtonElement | null>(null);
   const [brainOpen, setBrainOpen] = useState(false);
   const [metaLiveOpen, setMetaLiveOpen] = useState(false);
 
@@ -1588,7 +1587,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   useEffect(() => {
     const activePanel =
-      bulkArchiveOpen ? bulkArchiveModalRef.current :
+      cloneTarget ? cloneModalRef.current :
+        bulkArchiveOpen ? bulkArchiveModalRef.current :
         bulkEditOpen ? bulkEditPanelRef.current :
         editPkg ? editPanelRef.current :
           selected ? detailPanelRef.current : null;
@@ -1596,7 +1596,8 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
     const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusTarget =
-      bulkArchiveOpen ? bulkArchiveCancelRef.current :
+      cloneTarget ? (cloneResult ? (cloneReviewButtonRef.current ?? cloneCancelRef.current) : (cloneSuffixInputRef.current ?? cloneCancelRef.current)) :
+        bulkArchiveOpen ? bulkArchiveCancelRef.current :
         bulkEditOpen ? (bulkLandOperatorRef.current ?? bulkEditCloseRef.current) :
         editPkg ? (editTitleInputRef.current ?? editCloseRef.current) :
           detailCloseRef.current;
@@ -1607,6 +1608,15 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       ),
     ).filter(element => !element.getAttribute('aria-hidden'));
     const closeActivePanel = () => {
+      if (cloneTarget) {
+        if (!cloneLoading) {
+          setCloneTarget(null);
+          setCloneSuffix('(복제)');
+          setCloneError('');
+          setCloneResult(null);
+        }
+        return;
+      }
       if (bulkArchiveOpen) {
         if (!bulkLoading) setBulkArchiveOpen(false);
         return;
@@ -1654,7 +1664,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       window.removeEventListener('keydown', onKey);
       if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
     };
-  }, [bulkArchiveOpen, bulkEditOpen, bulkLoading, editPkg, editSaving, selected]);
+  }, [bulkArchiveOpen, bulkEditOpen, bulkLoading, cloneLoading, cloneResult, cloneTarget, editPkg, editSaving, selected]);
 
   useEffect(() => {
     if (!kakaoCopyTarget || !kakaoCopyModalRef.current) return;
@@ -1849,6 +1859,54 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     if (_skipInitialLoad.current) { _skipInitialLoad.current = false; return; }
     mutateList();
   }, [mutateList]);
+
+  const closeCloneModal = useCallback(() => {
+    setCloneTarget(null);
+    setCloneSuffix('(복제)');
+    setCloneError('');
+    setCloneResult(null);
+  }, []);
+
+  const openCloneModal = useCallback((pkg: Package) => {
+    setCloneTarget(pkg);
+    setCloneSuffix('(복제)');
+    setCloneError('');
+    setCloneResult(null);
+    trackPackageActionCompleted('clone_modal_opened', pkg, { source: 'row_clone_button' });
+  }, [trackPackageActionCompleted]);
+
+  const handleClonePackage = useCallback(async () => {
+    if (!cloneTarget) return;
+    const titleSuffix = cloneSuffix.trim() || '(복제)';
+    setCloneLoading(true);
+    setCloneError('');
+    try {
+      const res = await fetch(`/api/admin/packages/${cloneTarget.id}/clone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ titleSuffix }),
+      });
+      const data = await res.json() as { title?: string; edit_url?: string; error?: string };
+      if (!res.ok) throw new Error(data.error || '복제 실패');
+      const clonedTitle = data.title || `${cloneTarget.title} ${titleSuffix}`;
+      const editUrl = data.edit_url || `/admin/products/review?packageId=${cloneTarget.id}`;
+      setCloneResult({ title: clonedTitle, editUrl });
+      setCloneSuffix(titleSuffix);
+      showToast('success', '패키지 복제가 완료됐습니다.');
+      trackPackageActionCompleted('clone_created', cloneTarget, {
+        title_suffix: titleSuffix,
+        cloned_title: clonedTitle,
+        edit_url: editUrl,
+      });
+      load();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '복제 실패';
+      setCloneError(message);
+      showToast('error', message);
+    } finally {
+      setCloneLoading(false);
+    }
+  }, [cloneSuffix, cloneTarget, load, showToast, trackPackageActionCompleted]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -2052,6 +2110,19 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     ? `아카이브 대상 ${bulkArchivableCount}건${bulkArchiveSkippedCount > 0 ? `, 이미 보관된 ${bulkArchiveSkippedCount}건 제외` : ''}. ${bulkArchivePreviewTitles.length > 0 ? `대표 상품: ${bulkArchivePreviewTitles.join(', ')}` : '선택 상품을 다시 확인하세요.'}`
     : '현재 선택에는 아카이브할 수 있는 상품이 없습니다.';
   const bulkArchiveModalDescriptionIds = `${bulkArchiveModalDescriptionId} ${bulkArchiveDecisionSummaryId} ${bulkArchiveStatusId}`;
+  const cloneModalTitleId = 'admin-package-clone-title';
+  const cloneModalDescriptionId = 'admin-package-clone-description';
+  const cloneDecisionSummaryId = 'admin-package-clone-decision-summary';
+  const cloneStatusId = 'admin-package-clone-status';
+  const cloneErrorId = 'admin-package-clone-error';
+  const cloneDescriptionIds = cloneError
+    ? `${cloneModalDescriptionId} ${cloneDecisionSummaryId} ${cloneStatusId} ${cloneErrorId}`
+    : `${cloneModalDescriptionId} ${cloneDecisionSummaryId} ${cloneStatusId}`;
+  const cloneDecisionSummaryText = cloneTarget
+    ? cloneResult
+      ? `복제 완료: ${cloneResult.title}. 검수 페이지를 새 창으로 열어 다음 검수를 진행할 수 있습니다.`
+      : `${cloneTarget.title} 상품을 접미사 "${cloneSuffix.trim() || '(복제)'}"로 복제합니다. 복제 후 원본은 변경되지 않습니다.`
+    : '복제할 상품을 선택하세요.';
 
   const handleHeaderSort = (field: string) => {
     setSortBy(prev => {
@@ -2927,6 +2998,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                     onStudioOpen={() => setStudioOpen(true)}
                     onKakaoCopy={(pkg) => setKakaoCopyTarget(pkg)}
                     onBulkContentGen={handleBulkContentGen}
+                    onRequestClone={openCloneModal}
                     contentStatus={contentStatusMap}
                   />
                 );
@@ -3059,6 +3131,137 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                 >
                   {bulkLoading ? '처리 중...' : '아카이브 확정'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Package Clone 모달 */}
+      {cloneTarget && (
+        <>
+          <button
+            type="button"
+            aria-label="패키지 복제 모달 닫기"
+            className="fixed inset-0 z-[62] cursor-default bg-black/40"
+            onClick={() => {
+              if (!cloneLoading) closeCloneModal();
+            }}
+            disabled={cloneLoading}
+          />
+          <div className="fixed inset-0 z-[63] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+            <div
+              id="admin-package-clone-dialog"
+              ref={cloneModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={cloneModalTitleId}
+              aria-describedby={cloneDescriptionIds}
+              data-testid="admin-package-clone-dialog"
+              tabIndex={-1}
+              className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+            >
+              <div>
+                <h3 id={cloneModalTitleId} className="text-admin-lg font-bold text-admin-text-2">
+                  패키지 복제
+                </h3>
+                <p id={cloneModalDescriptionId} className="mt-1 text-admin-sm text-admin-muted">
+                  기존 상품을 템플릿으로 복제합니다. 접미사는 새 상품명 뒤에 붙고 원본 상품은 변경되지 않습니다.
+                </p>
+                <p
+                  id={cloneStatusId}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {cloneLoading ? '패키지 복제를 처리하고 있습니다.' : cloneResult ? '패키지 복제가 완료됐습니다.' : '패키지 복제 입력창이 열렸습니다.'}
+                </p>
+              </div>
+
+              <div
+                id={cloneDecisionSummaryId}
+                data-testid="admin-package-clone-decision-summary"
+                aria-label={cloneDecisionSummaryText}
+                className="mt-4 rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-3 text-admin-sm text-admin-text-2"
+              >
+                <p className="text-[11px] font-bold text-admin-muted">원본 상품</p>
+                <p className="mt-1 line-clamp-2 font-bold text-admin-text">{cloneTarget.title}</p>
+                <p className="mt-2 text-[12px] font-semibold leading-5 text-admin-muted">{cloneDecisionSummaryText}</p>
+              </div>
+
+              {!cloneResult ? (
+                <div className="mt-4">
+                  <label htmlFor="admin-package-clone-suffix" className="block text-admin-sm font-bold text-admin-text-2">
+                    새 상품명 접미사
+                  </label>
+                  <input
+                    id="admin-package-clone-suffix"
+                    ref={cloneSuffixInputRef}
+                    type="text"
+                    value={cloneSuffix}
+                    onChange={event => setCloneSuffix(event.target.value)}
+                    disabled={cloneLoading}
+                    aria-describedby={cloneDescriptionIds}
+                    className="mt-1 w-full rounded-admin-md border border-admin-border-mid px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-60"
+                    placeholder="예: 4박6일 변형"
+                  />
+                </div>
+              ) : (
+                <div className="mt-4 rounded-admin-md border border-green-200 bg-green-50 px-3 py-3">
+                  <p className="text-admin-sm font-bold text-green-800">복제 완료</p>
+                  <p className="mt-1 line-clamp-2 text-admin-sm font-semibold text-green-900">{cloneResult.title}</p>
+                </div>
+              )}
+
+              {cloneError && (
+                <p
+                  id={cloneErrorId}
+                  role="alert"
+                  data-testid="admin-package-clone-error"
+                  className="mt-3 rounded-admin-md border border-red-200 bg-red-50 px-3 py-2 text-admin-xs font-bold text-red-700"
+                >
+                  {cloneError}
+                </p>
+              )}
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  ref={cloneCancelRef}
+                  onClick={closeCloneModal}
+                  disabled={cloneLoading}
+                  className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                >
+                  {cloneResult ? '닫기' : '취소'}
+                </button>
+                {cloneResult ? (
+                  <button
+                    type="button"
+                    ref={cloneReviewButtonRef}
+                    data-testid="admin-package-clone-open-review"
+                    onClick={() => {
+                      window.open(cloneResult.editUrl, '_blank', 'noopener,noreferrer');
+                      closeCloneModal();
+                    }}
+                    aria-describedby={cloneDescriptionIds}
+                    className="min-h-[40px] rounded-admin-md bg-purple-700 px-4 text-admin-sm font-bold text-white hover:bg-purple-800"
+                  >
+                    검수 페이지 열기
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    data-testid="admin-package-clone-confirm"
+                    onClick={handleClonePackage}
+                    disabled={cloneLoading}
+                    aria-busy={cloneLoading}
+                    aria-describedby={cloneDescriptionIds}
+                    className="min-h-[40px] rounded-admin-md bg-purple-700 px-4 text-admin-sm font-bold text-white hover:bg-purple-800 disabled:opacity-50"
+                  >
+                    {cloneLoading ? '복제 중...' : '복제 실행'}
+                  </button>
+                )}
               </div>
             </div>
           </div>
