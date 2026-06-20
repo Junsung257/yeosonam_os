@@ -132,8 +132,10 @@ export default function CustomersPage() {
 
   // ── 확인 모달 ──────────────────────────────────────────────────────────────
   const [confirmModal, setConfirmModal] = useState<{
-    type: 'mileage-reset' | 'bulk-delete' | 'bulk-grant-mileage';
+    type: 'mileage-reset' | 'bulk-delete' | 'bulk-grant-mileage' | 'single-delete';
     count: number;
+    customerId?: string;
+    customerName?: string;
     grantAmount?: number;
     grantReason?: string;
     grantGradeFilter?: string;
@@ -229,7 +231,7 @@ export default function CustomersPage() {
   }, []);
 
   const closeConfirmModal = useCallback(() => {
-    closeConfirmModal();
+    setConfirmModal(null);
     requestAnimationFrame(() => confirmModalReturnFocusRef.current?.focus());
   }, []);
 
@@ -452,10 +454,10 @@ export default function CustomersPage() {
   // ─── 단건 삭제 ───────────────────────────────────────────────────────────
 
   async function handleDelete(id: string) {
-    if (!confirm('이 고객을 삭제하시겠습니까?')) return;
     await fetch(`/api/customers?id=${id}`, { method: 'DELETE' });
     setCustomers(prev => prev.filter(c => c.id !== id));
     if (drawer?.id === id) setDrawer(null);
+    setConfirmModal(null);
     showToast('삭제 완료');
   }
 
@@ -640,9 +642,12 @@ export default function CustomersPage() {
 
   const confirmModalTitle = confirmModal?.type === 'mileage-reset' ? '마일리지 일괄 초기화'
     : confirmModal?.type === 'bulk-grant-mileage' ? '마일리지 조건부 지급'
+    : confirmModal?.type === 'single-delete' ? '고객 삭제'
     : '일괄 삭제';
   const confirmModalStatusText = confirmModal
-    ? `선택된 고객 ${confirmModal.count}명에게 ${confirmModalTitle} 작업을 실행하기 전 확인 중입니다.`
+    ? confirmModal.type === 'single-delete'
+      ? `${confirmModal.customerName ?? '선택 고객'} 삭제 작업을 실행하기 전 확인 중입니다.`
+      : `선택된 고객 ${confirmModal.count}명에게 ${confirmModalTitle} 작업을 실행하기 전 확인 중입니다.`
     : '';
   const customerFormStatusText = saving ? '신규 고객 정보를 저장하고 있습니다.'
     : checkingPhone ? '전화번호 중복 여부를 확인하고 있습니다.'
@@ -906,7 +911,11 @@ export default function CustomersPage() {
                               수정
                             </button>
                             <button
-                              onClick={e => { e.stopPropagation(); handleDelete(c.id); }}
+                              onClick={e => {
+                                e.stopPropagation();
+                                setOpenMenuId(null);
+                                openConfirmModal({ type: 'single-delete', count: 1, customerId: c.id, customerName: c.name }, e.currentTarget);
+                              }}
                               className="w-full px-3 py-2 text-left text-admin-sm text-red-600 hover:bg-red-50 flex items-center gap-2">
                               삭제
                             </button>
@@ -1065,6 +1074,15 @@ export default function CustomersPage() {
                   </div>
                 </div>
               </>
+            ) : confirmModal.type === 'single-delete' ? (
+              <>
+                <p className="text-admin-base text-admin-muted mb-1">
+                  <span className="font-bold text-admin-text-2">{confirmModal.customerName ?? '선택 고객'}</span> 고객을 삭제합니다.
+                </p>
+                <p className="text-admin-base text-admin-muted mb-6">
+                  삭제 후 활성 고객 목록에서 제외됩니다. 필요한 예약/상담 기록이 남아있는지 먼저 확인하세요.
+                </p>
+              </>
             ) : (
               <>
                 <p className="text-admin-base text-admin-muted mb-1">
@@ -1088,6 +1106,7 @@ export default function CustomersPage() {
                 type="button"
                 onClick={confirmModal.type === 'mileage-reset' ? handleBulkMileageReset
                   : confirmModal.type === 'bulk-grant-mileage' ? handleBulkMileageGrant
+                  : confirmModal.type === 'single-delete' && confirmModal.customerId ? () => handleDelete(confirmModal.customerId!)
                   : handleBulkDelete}
                 className={`flex-1 py-2.5 rounded text-admin-sm font-semibold transition ${
                   confirmModal.type === 'bulk-grant-mileage'
