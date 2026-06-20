@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Brain, AlertTriangle, AlertCircle, CheckCircle2, ArrowLeft } from 'lucide-react';
@@ -185,6 +185,11 @@ export default function CorrectionsPage() {
   const [editText, setEditText] = useState('');
   const [editSeverity, setEditSeverity] = useState<string>('medium');
   const [editCategory, setEditCategory] = useState<string>('');
+  const [deactivateTarget, setDeactivateTarget] = useState<Correction | null>(null);
+  const deactivateDialogRef = useRef<HTMLDivElement | null>(null);
+  const deactivateCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deactivateTitleId = 'correction-deactivate-title';
+  const deactivateDescriptionId = 'correction-deactivate-description';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -202,6 +207,55 @@ export default function CorrectionsPage() {
   }, [filterDestination, filterSeverity]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!deactivateTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    deactivateCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      deactivateDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDeactivateTarget(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [deactivateTarget]);
 
   const startEdit = (c: Correction) => {
     setEditingId(c.id);
@@ -226,12 +280,12 @@ export default function CorrectionsPage() {
   };
 
   const deactivate = async (id: string) => {
-    if (!confirm('이 정정을 비활성화 하시겠습니까? (잘못 기록된 경우)')) return;
     await fetch('/api/extractions/corrections', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, is_active: false }),
     });
+    setDeactivateTarget(null);
     setItems(prev => prev.filter(i => i.id !== id));
   };
 
@@ -396,7 +450,12 @@ export default function CorrectionsPage() {
                     className="px-2.5 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700">
                     {c.reflection ? '교훈 수정' : '교훈 입력'}
                   </button>
-                  <button onClick={() => deactivate(c.id)}
+                  <button
+                    type="button"
+                    onClick={() => setDeactivateTarget(c)}
+                    aria-haspopup="dialog"
+                    aria-expanded={deactivateTarget?.id === c.id}
+                    aria-controls="correction-deactivate-dialog"
                     className="px-2.5 py-1 bg-admin-surface-2 text-admin-muted text-[10px] rounded hover:bg-slate-200">
                     비활성화
                   </button>
@@ -404,6 +463,70 @@ export default function CorrectionsPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={deactivateDialogRef}
+            id="correction-deactivate-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deactivateTitleId}
+            aria-describedby={deactivateDescriptionId}
+            className="w-full max-w-lg overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={deactivateTitleId} className="text-admin-sm font-semibold text-admin-text-2">정정 메모리 비활성화</p>
+              <p id={deactivateDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                잘못 기록된 정정만 비활성화하세요. 비활성화하면 이후 prompt 주입 대상에서 빠집니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`px-2 py-0.5 text-[10px] font-mono rounded border ${SEVERITY_BG[deactivateTarget.severity]}`}>
+                  {deactivateTarget.severity.toUpperCase()}
+                </span>
+                {deactivateTarget.category && (
+                  <span className="px-2 py-0.5 text-[10px] font-mono rounded bg-admin-surface-2 text-admin-muted">{deactivateTarget.category}</span>
+                )}
+                {deactivateTarget.destination && <span className="text-[11px] text-admin-muted">📍 {deactivateTarget.destination}</span>}
+                <span className="text-[11px] text-admin-muted">prompt 주입 {deactivateTarget.applied_count || 0}회</span>
+              </div>
+              <div className="rounded border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <p className="text-[10px] font-semibold uppercase text-admin-muted-2">Field</p>
+                <p className="mt-1 break-all font-mono text-admin-xs text-admin-text-2">{deactivateTarget.field_path}</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="rounded border border-red-100 bg-red-50 p-2">
+                  <p className="mb-1 text-[10px] font-bold text-red-600">이전 값</p>
+                  <p className="whitespace-pre-wrap break-words font-mono text-[11px] text-admin-text-2">{renderValue(deactivateTarget.before_value)}</p>
+                </div>
+                <div className="rounded border border-emerald-100 bg-emerald-50 p-2">
+                  <p className="mb-1 text-[10px] font-bold text-emerald-600">정정 값</p>
+                  <p className="whitespace-pre-wrap break-words font-mono text-[11px] text-admin-text-2">{renderValue(deactivateTarget.after_value)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={deactivateCancelButtonRef}
+                type="button"
+                onClick={() => setDeactivateTarget(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => deactivate(deactivateTarget.id)}
+                className="rounded bg-red-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-red-700"
+              >
+                비활성화
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

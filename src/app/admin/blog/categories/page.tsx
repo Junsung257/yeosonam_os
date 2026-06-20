@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
@@ -35,6 +35,11 @@ export default function BlogCategoriesPage() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Category | null>(null);
   const [toast, setToast] = useState('');
+  const [deactivateTarget, setDeactivateTarget] = useState<Category | null>(null);
+  const deactivateDialogRef = useRef<HTMLDivElement | null>(null);
+  const deactivateCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deactivateTitleId = 'blog-category-deactivate-title';
+  const deactivateDescriptionId = 'blog-category-deactivate-description';
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(''), 3000); };
 
@@ -49,10 +54,58 @@ export default function BlogCategoriesPage() {
 
   useEffect(() => { loadCategories(); }, [loadCategories]);
 
+  useEffect(() => {
+    if (!deactivateTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    deactivateCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      deactivateDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDeactivateTarget(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [deactivateTarget]);
+
   const handleDelete = async (id: string) => {
-    if (!confirm('정말 비활성화하시겠습니까?')) return;
     const res = await fetch(`/api/blog-categories?id=${id}`, { method: 'DELETE' });
-    if (res.ok) { showToast('비활성화 완료'); loadCategories(); }
+    if (res.ok) { setDeactivateTarget(null); showToast('비활성화 완료'); loadCategories(); }
     else showToast('실패');
   };
 
@@ -137,7 +190,12 @@ export default function BlogCategoriesPage() {
                   <td className="text-right">
                     <button onClick={() => { setEditing(cat); setShowForm(true); }}
                       className="text-admin-xs text-brand hover:text-brand-dark hover:underline mr-2 font-medium">수정</button>
-                    <button onClick={() => handleDelete(cat.id)}
+                    <button
+                      type="button"
+                      onClick={() => setDeactivateTarget(cat)}
+                      aria-haspopup="dialog"
+                      aria-expanded={deactivateTarget?.id === cat.id}
+                      aria-controls="blog-category-deactivate-dialog"
                       className="text-admin-xs text-danger hover:underline font-medium">비활성화</button>
                   </td>
                 </tr>
@@ -150,6 +208,55 @@ export default function BlogCategoriesPage() {
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-admin-sm text-white text-admin-sm font-medium shadow-admin-md bg-admin-text">
           {toast}
+        </div>
+      )}
+
+      {deactivateTarget && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={deactivateDialogRef}
+            id="blog-category-deactivate-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deactivateTitleId}
+            aria-describedby={deactivateDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={deactivateTitleId} className="text-admin-sm font-semibold text-admin-text-2">카테고리 비활성화</p>
+              <p id={deactivateDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                비활성화하면 새 블로그 분류에서 이 카테고리를 사용하지 않게 됩니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="rounded border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <p className="text-admin-sm font-semibold text-admin-text-2">{deactivateTarget.label}</p>
+                <p className="mt-1 text-[11px] text-admin-muted">
+                  key {deactivateTarget.key} · 범위 {SCOPE_LABEL[deactivateTarget.scope]} · 순서 {deactivateTarget.display_order}
+                </p>
+                {deactivateTarget.description && (
+                  <p className="mt-1 text-[11px] text-admin-muted-2">{deactivateTarget.description}</p>
+                )}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={deactivateCancelButtonRef}
+                type="button"
+                onClick={() => setDeactivateTarget(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => handleDelete(deactivateTarget.id)}
+                className="rounded bg-red-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-red-700"
+              >
+                비활성화
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
