@@ -2897,6 +2897,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
               const mobileCardSummaryText = [
                 `${pkg.title} 상품`,
                 `현재 상태는 ${mobilePackageStatusLabel}`,
+                `운영 판단은 ${mobilePackageOperationRiskLabel}`,
                 `가격은 ${mobilePackagePriceLabel}`,
                 pkg.commission_rate != null ? `마진은 ${pkg.commission_rate}%` : null,
                 region ? `출발 지역은 ${region}` : null,
@@ -2967,12 +2968,16 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                   <div
                     id={mobileDecisionSummaryId}
                     data-testid="admin-package-mobile-decision-summary"
-                    aria-label={`상품 결정 요약: 상태 ${mobilePackageStatusLabel}, 가격 ${mobilePackagePriceLabel}, 다음 액션 ${nextOperationLabel}`}
-                    className="mt-3 grid grid-cols-3 gap-2 rounded-admin-sm border border-admin-border bg-white p-2"
+                    aria-label={`상품 결정 요약: 상태 ${mobilePackageStatusLabel}, 운영 판단 ${mobilePackageOperationRiskLabel}, 가격 ${mobilePackagePriceLabel}, 다음 액션 ${nextOperationLabel}`}
+                    className="mt-3 grid grid-cols-4 gap-2 rounded-admin-sm border border-admin-border bg-white p-2"
                   >
                     <div className="rounded-admin-sm bg-admin-bg px-2 py-1.5">
                       <p className="text-[10px] font-bold text-admin-muted-2">상태</p>
                       <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{mobilePackageStatusLabel}</p>
+                    </div>
+                    <div className="rounded-admin-sm bg-admin-bg px-2 py-1.5">
+                      <p className="text-[10px] font-bold text-admin-muted-2">운영</p>
+                      <p className="mt-0.5 truncate text-[11px] font-black text-admin-text-2">{mobilePackageOperationRiskLabel}</p>
                     </div>
                     <div className="rounded-admin-sm bg-admin-bg px-2 py-1.5">
                       <p className="text-[10px] font-bold text-admin-muted-2">가격</p>
