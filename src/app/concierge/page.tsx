@@ -55,6 +55,9 @@ type SummaryItem = { label: string; value: string };
 
 const SESSION_KEY = 'concierge_session_id';
 const SEARCH_TIMEOUT_MS = 15_000;
+const srStatusProps = (enabled: boolean) => (
+  enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
+);
 
 const INTENT_PROMPTS: IntentPrompt[] = [
   {
@@ -825,6 +828,9 @@ export default function ConciergePage() {
       : searchError
         ? searchError
         : '검색 조건을 입력하면 추천 결과와 비교표가 이 영역에 표시됩니다.';
+  const cartSummaryLive = cart.length > 0 || summaryItems.length > 0;
+  const kakaoIntentLive = summaryItems.length > 0;
+  const resultSummaryLive = loading || results.length > 0 || Boolean(searchError);
   const resultBriefItems = results.slice(0, 3).map((item, index) => {
     const insight = getResultInsight(item);
     return {
@@ -908,10 +914,10 @@ export default function ConciergePage() {
           </button>
         </div>
       </header>
-      <p id={checkoutSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={checkoutSummaryId} className="sr-only" {...srStatusProps(cartSummaryLive)}>
         {cartSummaryText}
       </p>
-      <p id={kakaoIntentSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={kakaoIntentSummaryId} className="sr-only" {...srStatusProps(kakaoIntentLive)}>
         {kakaoIntentSummaryText}
       </p>
       <p id={topbarKakaoDescriptionId} className="sr-only">
@@ -920,7 +926,7 @@ export default function ConciergePage() {
       <p id={summaryKakaoDescriptionId} className="sr-only">
         화면에 정리된 상담 조건을 카카오톡 상담 문구로 넘깁니다.
       </p>
-      <p id={resultSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={resultSummaryId} className="sr-only" {...srStatusProps(resultSummaryLive)}>
         {resultSummaryText}
       </p>
 
@@ -2092,6 +2098,7 @@ function CartActions({
   const cartKakaoDescriptionIds = `${cartKakaoDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
   const cartGroupInquiryDescriptionIds = `${cartGroupInquiryDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
   const cartCheckoutDescriptionIds = `${cartCheckoutDescriptionId} ${cartActionSummaryId} ${cartReadinessSummaryId}`;
+  const cartActionSummaryLive = cartCount > 0 || summaryItems.length > 0;
   const cartActionSummaryText = [
     cartCount > 0 ? `선택한 구성은 ${cartCount}개 상품입니다.` : '선택한 상품이 없습니다.',
     cartTotal > 0 ? `총 금액은 ${money(cartTotal)}입니다.` : null,
@@ -2101,7 +2108,7 @@ function CartActions({
 
   return (
     <div className="shrink-0 border-t border-[#EEF2F6] bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-      <p id={cartActionSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={cartActionSummaryId} className="sr-only" {...srStatusProps(cartActionSummaryLive)}>
         {cartActionSummaryText}
       </p>
       <p id={cartShareDescriptionId} className="sr-only">
