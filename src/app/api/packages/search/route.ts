@@ -7,10 +7,12 @@ import {
   type DepartureHubId,
 } from '@/lib/departure-hub';
 import { pickUnusedAttractionPhotoUrl } from '@/lib/image-url';
-import { logError } from '@/lib/sentry-logger';
+import { logError, logWarning } from '@/lib/sentry-logger';
 import { getPersonalizedOverride } from '@/lib/recommendation/personalized';
 import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
+import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
+import { withTimeout } from '@/lib/utils/timeout';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -28,6 +30,27 @@ const PACKAGE_FIELDS = `
   catalog_id,
   products(internal_code, display_name)
 `;
+
+const SEARCH_CACHE_HEADERS = { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' };
+const PACKAGE_QUERY_TIMEOUT_MS = 3500;
+const OPTIONAL_QUERY_TIMEOUT_MS = 1200;
+const PERSONALIZATION_TIMEOUT_MS = 900;
+
+function emptySearchPayload(hub: DepartureHubId = 'all', filterForClient = '', degradedReason?: string) {
+  return {
+    packages: [],
+    imageByPkgId: {},
+    recommendedIds: [],
+    recommendedReasonMap: {},
+    scoreByPkgId: {},
+    scoreReasonMap: {},
+    rankByPkgId: {},
+    comparisonGroupSizeMap: {},
+    hub,
+    filterForClient,
+    ...(degradedReason ? { degraded: true, degradedReason } : {}),
+  };
+}
 
 function packageHasDepartureMonth(pkg: any, month: string, today: string): boolean {
   if (!month) return true;
@@ -67,17 +90,8 @@ function packageMatchesBudget(pkg: any, priceMin: string, priceMax: string, mont
 
 export async function GET(request: NextRequest) {
   if (!isSupabaseConfigured) {
-    return NextResponse.json({
-      packages: [],
-      imageByPkgId: {},
-      recommendedIds: [],
-      recommendedReasonMap: {},
-      scoreByPkgId: {},
-      scoreReasonMap: {},
-      rankByPkgId: {},
-      comparisonGroupSizeMap: {},
-      hub: 'all' as DepartureHubId,
-      filterForClient: '',
+    return NextResponse.json(emptySearchPayload('all', '', 'supabase_unconfigured'), {
+      headers: SEARCH_CACHE_HEADERS,
     });
   }
 
@@ -134,7 +148,20 @@ export async function GET(request: NextRequest) {
       query = query.or(`destination.ilike.%${safe}%,title.ilike.%${safe}%,display_title.ilike.%${safe}%`);
     }
 
-    const { data: rawPackages, error: pkgErr } = await query;
+    const packageResult = await runSupabaseQueryWithTimeout(query, {
+      label: 'packages.search.package-list',
+      timeoutMs: PACKAGE_QUERY_TIMEOUT_MS,
+    }).catch((error) => {
+      logWarning('[api/packages/search] package list query degraded', error);
+      return null;
+    });
+    if (!packageResult) {
+      return NextResponse.json(emptySearchPayload(hub, filterForClient, 'package_query_timeout'), {
+        headers: SEARCH_CACHE_HEADERS,
+      });
+    }
+
+    const { data: rawPackages, error: pkgErr } = packageResult;
     if (pkgErr) throw pkgErr;
 
     const today = new Date().toISOString().slice(0, 10);
@@ -187,7 +214,11 @@ export async function GET(request: NextRequest) {
       attractionQuery = attractionQuery.or(ors);
     }
 
-    const { data: attractions } = await attractionQuery;
+    const { data: attractions } = await runOptionalSupabaseQuery(
+      attractionQuery,
+      { data: [], error: null },
+      { label: 'packages.search.attraction-photos', timeoutMs: OPTIONAL_QUERY_TIMEOUT_MS },
+    );
 
     // attractions를 region/country별 Map으로 인덱싱 (O(1) 조회)
     const countryIndex = new Map<string, any[]>();
@@ -244,8 +275,13 @@ export async function GET(request: NextRequest) {
 
     if (customerId && pkgIds.length > 0) {
       // 개인화: customer_unified_profile 기반 weight override
-      const policy = await getActivePolicy();
-      const personalized = await getPersonalizedOverride(customerId, policy);
+      const personalized = await withTimeout(async () => {
+        const policy = await getActivePolicy();
+        return getPersonalizedOverride(customerId, policy);
+      }, PERSONALIZATION_TIMEOUT_MS, 'packages.search.personalization').catch((error) => {
+        logWarning('[api/packages/search] personalization skipped', error);
+        return null;
+      });
       if (personalized) {
         // Find packages matching boosted destinations
         const boostedPkgs = packages.filter((p: any) =>
@@ -269,12 +305,16 @@ export async function GET(request: NextRequest) {
 
     // 그룹 점수 전체 전달: 리뷰가 없는 상품도 비교판정 UI를 띄울 수 있게 한다.
     if (pkgIds.length > 0) {
-      const { data: scores } = await sb
-        .from('package_scores')
-        .select('package_id, group_key, departure_date, list_price, effective_price, topsis_score, rank_in_group, group_size, breakdown, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, duration_days')
-        .in('package_id', pkgIds)
-        .order('group_size', { ascending: false })
-        .order('rank_in_group', { ascending: true });
+      const { data: scores } = await runOptionalSupabaseQuery(
+        sb
+          .from('package_scores')
+          .select('package_id, group_key, departure_date, list_price, effective_price, topsis_score, rank_in_group, group_size, breakdown, shopping_count, hotel_avg_grade, free_option_count, is_direct_flight, duration_days')
+          .in('package_id', pkgIds)
+          .order('group_size', { ascending: false })
+          .order('rank_in_group', { ascending: true }),
+        { data: [], error: null },
+        { label: 'packages.search.package-scores', timeoutMs: OPTIONAL_QUERY_TIMEOUT_MS },
+      );
       const bestRows = new Map<string, PackageScoreDisplayRow>();
       for (const raw of (scores ?? []) as PackageScoreDisplayRow[]) {
         if (!raw.package_id || bestRows.has(raw.package_id)) continue;
@@ -312,7 +352,7 @@ export async function GET(request: NextRequest) {
       {
         // Vercel Edge CDN: query string 별 cache key 누적 HIT.
         // API route 응답 헤더는 dynamic page 와 달리 그대로 적용됨.
-        headers: { 'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300' },
+        headers: SEARCH_CACHE_HEADERS,
       },
     );
   } catch (error) {
