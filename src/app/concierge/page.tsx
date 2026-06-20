@@ -455,6 +455,7 @@ function ConciergePageContent() {
   const intentSummary = useMemo(() => inferIntentSummary(activePrompt, query, cart), [activePrompt, cart, query]);
   const groupInquiryHref = useMemo(() => {
     const productNames = cart.map((item) => item.product_name).filter(Boolean);
+    const handoffProductNames = productNames.length > 0 ? productNames : intentSummary.selected_products ?? [];
     return buildGroupInquiryHandoffHref({
       source: 'concierge',
       intent: intentSummary.intent ?? undefined,
@@ -462,7 +463,7 @@ function ConciergePageContent() {
       query: query.trim() || activePrompt?.query || 'AI 상담 장바구니 단체 견적',
       destination: intentSummary.destination,
       budget: intentSummary.budget || (cartTotal > 0 ? `총 ${cartTotal.toLocaleString('ko-KR')}원` : null),
-      selectedProducts: productNames.length > 0 ? productNames : undefined,
+      selectedProducts: handoffProductNames.length > 0 ? handoffProductNames : undefined,
     });
   }, [activePrompt?.query, cart, cartTotal, intentSummary, query]);
 
@@ -795,19 +796,23 @@ function ConciergePageContent() {
   }
 
   function handleGroupInquiryClick(source: string) {
+    const selectedProductNames = mergeUniqueText([
+      ...cart.map((item) => item.product_name),
+      ...(intentSummary.selected_products ?? []),
+    ]);
     trackEngagement({
       event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
       source,
       page_url: '/concierge',
       ...intentSummary,
-      selected_products: cart.map((item) => item.product_name),
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : intentSummary.selected_products,
       ...currentConciergeDecisionMetadata,
       metadata: {
         ...currentConciergeDecisionMetadata,
         action: 'group_inquiry_handoff',
         source,
         cartCount: cart.length,
-        selectedProductNames: cart.map((item) => item.product_name),
+        selectedProductNames,
       },
     });
   }
@@ -948,6 +953,7 @@ function ConciergePageContent() {
     { label: '예산', value: intentSummary.budget },
     { label: '담은 상품', value: selectedProductCount > 0 ? `${selectedProductCount}개` : null },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
+  const canGroupInquiryFromCartActions = cart.length > 0 || summaryItems.length > 0;
   const checkoutSummaryId = 'concierge-checkout-summary';
   const checkoutHandoffSummaryId = 'concierge-checkout-handoff-summary';
   const handoffReadinessSummaryId = 'concierge-handoff-readiness-summary';
@@ -1567,6 +1573,7 @@ function ConciergePageContent() {
               handoffReadyCount={handoffReadyCount}
               handoffTotalCount={handoffChecklist.length}
               groupInquiryHref={groupInquiryHref}
+              canGroupInquiry={canGroupInquiryFromCartActions}
               sharing={sharing}
               checkoutOpen={checkoutOpen}
               onShare={handleShare}
@@ -1637,6 +1644,7 @@ function ConciergePageContent() {
             handoffReadyCount={handoffReadyCount}
             handoffTotalCount={handoffChecklist.length}
             groupInquiryHref={groupInquiryHref}
+            canGroupInquiry={canGroupInquiryFromCartActions}
             sharing={sharing}
             checkoutOpen={checkoutOpen}
             onShare={handleShare}
@@ -2257,6 +2265,7 @@ function CartActions({
   handoffReadyCount,
   handoffTotalCount,
   groupInquiryHref,
+  canGroupInquiry,
   sharing,
   checkoutOpen,
   onShare,
@@ -2272,6 +2281,7 @@ function CartActions({
   handoffReadyCount: number;
   handoffTotalCount: number;
   groupInquiryHref: string;
+  canGroupInquiry: boolean;
   sharing: boolean;
   checkoutOpen: boolean;
   onShare: () => void;
@@ -2375,7 +2385,7 @@ function CartActions({
           <Send size={17} />
           {sharing ? '생성 중' : '공유'}
         </button>
-        {cartCount === 0 ? (
+        {!canGroupInquiry ? (
           <button
             type="button"
             disabled
