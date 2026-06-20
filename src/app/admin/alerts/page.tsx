@@ -7,6 +7,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
 import { Bell, AlertTriangle, CheckCircle2, Trophy } from 'lucide-react';
 import { fmtDateTime } from '@/lib/admin-utils';
@@ -54,22 +55,34 @@ const SEVERITY_BADGE: Record<string, string> = {
 };
 
 export default function AdminAlertsPage() {
+  const searchParams = useSearchParams();
+  const initialCategoryFilter = searchParams?.get('category') ?? '';
+  const initialSeverityFilter = searchParams?.get('severity') ?? '';
+  const initialShowAcked = searchParams?.get('showAcked') === 'true';
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [showAcked, setShowAcked] = useState(false);
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [severityFilter, setSeverityFilter] = useState('');
+  const [showAcked, setShowAcked] = useState(initialShowAcked);
+  const [categoryFilter, setCategoryFilter] = useState(initialCategoryFilter);
+  const [severityFilter, setSeverityFilter] = useState(initialSeverityFilter);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/alerts?showAcked=${showAcked}`);
+      const params = new URLSearchParams({ showAcked: String(showAcked) });
+      if (categoryFilter) params.set('category', categoryFilter);
+      const res = await fetch(`/api/admin/alerts?${params.toString()}`);
       const d = await res.json();
       setAlerts(d.alerts ?? []);
       setStats(d.stats ?? null);
     } finally { setLoading(false); }
-  }, [showAcked]);
+  }, [categoryFilter, showAcked]);
+
+  useEffect(() => {
+    setCategoryFilter(searchParams?.get('category') ?? '');
+    setSeverityFilter(searchParams?.get('severity') ?? '');
+    setShowAcked(searchParams?.get('showAcked') === 'true');
+  }, [searchParams]);
 
   useEffect(() => { load(); }, [load]);
 
