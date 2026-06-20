@@ -18,6 +18,7 @@ This audit records the current evidence after hardening the supplier upload engi
 - Korean day-line OCR/PDF schedules now recover reversed or split day markers such as `일1`, `제2일차`, and `제 일3치앙마이`.
 - Catalog split recovery now drops title-only fragments when sibling sections contain customer schedule evidence, preventing false products with no itinerary.
 - Human-reader price recovery now handles broken supplier rows such as `월 일 55,12,19,26` followed by `인 849,000/`, and nearby Korean travel-day rows such as `3월 / 여행일 23일, 24일 / 상품가 299,000원/인`.
+- Golf weekday/month matrix rows now recover date-scoped prices from tables such as `3/1~3/18` with `월,화,수 1,349,- 1,409,-`, using the product title to choose the 정통/품격 column.
 
 ## Current Offline Audit Metrics
 
@@ -48,6 +49,18 @@ destination code unresolved: 12
 mobile/A4 live verification: not run in this offline audit
 ```
 
+After the golf weekday/month matrix hardening pass:
+
+```text
+products: 124
+publishableOffline: 57
+customerReadyOffline: 0
+product_prices missing: 9
+itinerary missing: 7
+destination code unresolved: 12
+mobile/A4 live verification: not run in this offline audit
+```
+
 ## Interpretation
 
 This is not a customer-ready completion proof. `customerReadyOffline=0` means the current batch still has mobile/A4 review blockers, especially missing itineraries and media/review warnings.
@@ -57,6 +70,6 @@ The important completed improvement is that price/date and flight evidence failu
 ## Remaining Work
 
 - Reduce the remaining `itinerary missing` 7 cases by adding source-backed OCR/PDF day-block reconstruction rules only where day boundaries can be proven.
-- Classify the remaining 19 price-missing products into true no-price sources, shared matrix mapping cases, and parser-rule candidates.
-- Add golf weekday/month matrix recovery for supplier tables that combine `1,349,-` price cells with month/weekday grids.
+- Classify the remaining 9 price-missing products into true no-price sources, shared matrix mapping cases, and parser-rule candidates.
+- Continue destination-code hardening for the remaining 12 destination unresolved blockers.
 - Run live mobile/A4 browser verification only after DB resource pressure is normal and the offline source audit has no customer-critical blockers.

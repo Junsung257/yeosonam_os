@@ -194,11 +194,11 @@ function parseLooseDateTokens(line: string, yearHint?: number): string[] {
 
 function parseKrwPrices(line: string): number[] {
   const prices: number[] = [];
-  const matches = line.matchAll(/\b(\d{1,3}(?:,\d{3})+|\d{3,4},-)\s*(?:KRW|krw)?/g);
+  const matches = line.matchAll(/\b(\d{1,3}(?:,\d{3})+,-|\d{1,3}(?:,\d{3})+|\d{3,4},-)\s*(?:KRW|krw)?/g);
   for (const match of matches) {
     const token = match[1];
     const value = token.endsWith(',-')
-      ? Number(token.replace(',-', '')) * 1000
+      ? Number(token.replace(',-', '').replace(/,/g, '')) * 1000
       : Number(token.replace(/,/g, ''));
     if (Number.isInteger(value) && value >= 250_000 && value <= 50_000_000) prices.push(value);
   }
@@ -431,6 +431,109 @@ function extractNearbyKoreanTravelDayPriceRows(input: HumanReaderInput): MatrixP
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
 }
 
+function weekdayNumbersFromPriceRow(line: string): { weekdays: number[]; prices: number[] } | null {
+  const match = line.match(/^([월화수목금토일](?:\s*[,/ㆍ·~\-]\s*[월화수목금토일])*)\s+(.+)$/);
+  if (!match?.[1]) return null;
+  const weekdays = [...match[1].matchAll(/[월화수목금토일]/g)]
+    .map(item => KOREAN_WEEKDAY_TO_DAY.get(item[0]))
+    .filter((value): value is number => typeof value === 'number');
+  const prices = parseKrwPrices(match[2] ?? '');
+  if (weekdays.length === 0 || prices.length === 0) return null;
+  return { weekdays: [...new Set(weekdays)], prices };
+}
+
+function parseMonthDayRange(line: string, yearHint?: number): { start: Date; end: Date; label: string } | null {
+  const match = line.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*~\s*(?:(\d{1,2})\s*\/\s*)?(\d{1,2})/);
+  if (!match) return null;
+  const startMonth = Number(match[1]);
+  const startDay = Number(match[2]);
+  const endMonth = Number(match[3] ?? match[1]);
+  const endDay = Number(match[4]);
+  const year = inferYearForMonth(startMonth, yearHint);
+  const start = new Date(year, startMonth - 1, startDay);
+  const endYear = endMonth < startMonth ? year + 1 : year;
+  const end = new Date(endYear, endMonth - 1, endDay);
+  if (
+    start.getFullYear() !== year
+    || start.getMonth() !== startMonth - 1
+    || start.getDate() !== startDay
+    || end.getFullYear() !== endYear
+    || end.getMonth() !== endMonth - 1
+    || end.getDate() !== endDay
+    || end < start
+  ) {
+    return null;
+  }
+  return { start, end, label: match[0] };
+}
+
+function golfVariantPriceColumn(input: HumanReaderInput): number | null {
+  const title = input.title ?? '';
+  if (/품격/.test(title)) return 1;
+  if (/정통|실속|초석/.test(title)) return 0;
+  const header = input.rawText.slice(0, 500);
+  if (/품격/.test(header) && !/정통/.test(header)) return 1;
+  if (/정통|실속|초석/.test(header) && !/품격/.test(header)) return 0;
+  return null;
+}
+
+function extractGolfWeekdayRangePriceRows(input: HumanReaderInput): MatrixPriceRow[] {
+  if (!/골프/.test(input.rawText) || !/\d{1,3},-/.test(input.rawText)) return [];
+  const lines = input.rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+  const preferredColumn = golfVariantPriceColumn(input);
+
+  for (let i = 0; i < lines.length; i++) {
+    const range = parseMonthDayRange(lines[i], input.year);
+    if (!range) continue;
+    const weekdayRows: Array<{ weekdays: number[]; prices: number[] }> = [];
+
+    for (let up = i - 1; up >= 0 && up >= i - 4; up--) {
+      if (parseMonthDayRange(lines[up], input.year)) break;
+      const parsed = weekdayNumbersFromPriceRow(lines[up]);
+      if (parsed) weekdayRows.unshift(parsed);
+    }
+    for (let down = i + 1; down < lines.length && down <= i + 5; down++) {
+      if (parseMonthDayRange(lines[down], input.year)) break;
+      const parsed = weekdayNumbersFromPriceRow(lines[down]);
+      if (parsed) weekdayRows.push(parsed);
+    }
+    if (weekdayRows.length === 0) continue;
+
+    const cursor = new Date(range.start.getTime());
+    while (cursor <= range.end) {
+      const weekday = cursor.getDay();
+      const date = isoDate(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
+      cursor.setDate(cursor.getDate() + 1);
+      if (!date) continue;
+      for (const row of weekdayRows) {
+        if (!row.weekdays.includes(weekday)) continue;
+        const candidatePrices = preferredColumn == null
+          ? row.prices
+          : row.prices[preferredColumn] != null ? [row.prices[preferredColumn]] : [];
+        for (const price of candidatePrices) {
+          const key = `${date}|${price}|golf_weekday_range`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push({
+            date,
+            adult_price: price,
+            child_price: null,
+            note: 'source_golf_weekday_range',
+            status: 'available',
+          });
+        }
+      }
+    }
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+}
+
 function extractAdjacentDatePriceRows(input: HumanReaderInput): MatrixPriceRow[] {
   const lines = input.rawText
     .split(/\r?\n/)
@@ -510,6 +613,7 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
     ...extractAdjacentDatePriceRows(input),
     ...extractBrokenKoreanMonthDayPriceRows(input),
     ...extractNearbyKoreanTravelDayPriceRows(input),
+    ...extractGolfWeekdayRangePriceRows(input),
     ...extractMonthlyWeekdayGridRows(input),
   ];
   for (const row of candidateRows) {

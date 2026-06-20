@@ -189,6 +189,42 @@ describe('readSupplierDocumentLikeHuman', () => {
     ]);
   });
 
+  it('recovers golf weekday range tables with variant-specific price columns', () => {
+    const rawText = [
+      '상품가 단위 원',
+      '정통 3색 품격 3색',
+      '출 발 일',
+      '월,화,수 1,349,- 1,409,-',
+      '목 1,449,- 1,509,-',
+      '3/1~3/18',
+      '금 1,599,- 1,659,-',
+      '토 1,569,- 1,629,-',
+      '일 1,429,- 1,489,-',
+      'PKG',
+      '나가사키 정통 골프 54H 초석 2박3일',
+    ].join('\n');
+
+    const standard = readSupplierDocumentLikeHuman({
+      rawText,
+      title: '나가사키 정통 골프 54H 초석 2박3일',
+      durationDays: 3,
+      year: 2026,
+    });
+    const premium = readSupplierDocumentLikeHuman({
+      rawText,
+      title: '나가사키 품격 골프 54H 초석 2박3일',
+      durationDays: 3,
+      year: 2026,
+    });
+
+    expect(standard.pricePairs.find(row => row.date === '2026-03-02')?.adult_price).toBe(1349000);
+    expect(standard.pricePairs.find(row => row.date === '2026-03-05')?.adult_price).toBe(1449000);
+    expect(standard.pricePairs.find(row => row.date === '2026-03-06')?.adult_price).toBe(1599000);
+    expect(premium.pricePairs.find(row => row.date === '2026-03-02')?.adult_price).toBe(1409000);
+    expect(premium.pricePairs.find(row => row.date === '2026-03-05')?.adult_price).toBe(1509000);
+    expect(premium.pricePairs.find(row => row.date === '2026-03-06')?.adult_price).toBe(1659000);
+  });
+
   it('ignores surcharge dates when building independent product-price evidence', () => {
     const result = readSupplierDocumentLikeHuman({
       rawText: [
