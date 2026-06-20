@@ -20,6 +20,7 @@ import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { openKakaoChannel } from '@/lib/kakaoChannel';
 import { trackEngagement } from '@/lib/tracker';
 import { buildGroupInquiryHandoffHref } from '@/lib/group-inquiry-handoff';
+import { hasHandoffContext, readHandoffContext } from '@/lib/handoff-query';
 
 interface MockSearchResult {
   product_id: string;
@@ -62,23 +63,6 @@ const srStatusProps = (enabled: boolean) => (
   enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
 );
 
-type SearchParamReader = {
-  get(name: string): string | null;
-};
-
-function splitHandoffList(value: string | null): string[] {
-  const seen = new Set<string>();
-  return (value ?? '')
-    .split(',')
-    .map((item) => item.trim())
-    .filter((item) => {
-      if (!item || seen.has(item)) return false;
-      seen.add(item);
-      return true;
-    })
-    .slice(0, 8);
-}
-
 function mergeUniqueText(items: Array<string | null | undefined>): string[] {
   const seen = new Set<string>();
   return items
@@ -90,15 +74,16 @@ function mergeUniqueText(items: Array<string | null | undefined>): string[] {
     });
 }
 
-function buildConciergeHandoffPrompt(searchParams: SearchParamReader): IntentPrompt | null {
-  const source = searchParams.get('source')?.trim() ?? '';
-  const intent = searchParams.get('intent')?.trim() ?? '';
-  const partyType = searchParams.get('party_type')?.trim() ?? '';
-  const query = searchParams.get('query')?.trim() ?? '';
-  const destination = searchParams.get('destination')?.trim() || null;
-  const budget = searchParams.get('budget')?.trim() || null;
-  const selectedProducts = splitHandoffList(searchParams.get('selected_products'));
-  const hasHandoff = Boolean(source || intent || partyType || query || destination || budget || selectedProducts.length > 0);
+function buildConciergeHandoffPrompt(searchParams: { get(name: string): string | null }): IntentPrompt | null {
+  const handoff = readHandoffContext(searchParams);
+  const source = handoff.source ?? '';
+  const intent = handoff.intent ?? '';
+  const partyType = handoff.partyType ?? '';
+  const query = handoff.query ?? '';
+  const destination = handoff.destination;
+  const budget = handoff.budget;
+  const selectedProducts = handoff.selectedProducts;
+  const hasHandoff = hasHandoffContext(handoff);
 
   if (!hasHandoff) return null;
 

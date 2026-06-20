@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { GROUP_INQUIRY_PRODUCT_LABEL } from '@/lib/group-inquiry-handoff';
+import { hasHandoffContext, readHandoffContext } from '@/lib/handoff-query';
 import { getKakaoChannelChatUrl, openKakaoChannel } from '@/lib/kakaoChannel';
 import { trackEngagement } from '@/lib/tracker';
 
@@ -202,14 +203,6 @@ function parsePartyCount(value: string | null): number | undefined {
   return Number.isFinite(count) && count > 0 ? count : undefined;
 }
 
-function decodeListParam(value: string | null): string[] {
-  if (!value) return [];
-  return value.split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-    .slice(0, 8);
-}
-
 function getSummaryValue(extracted: RfqExtracted, key: string): string {
   switch (key) {
     case 'destination':
@@ -315,14 +308,11 @@ export default function GroupInquiryPage() {
     if (!handoffKey || appliedHandoffRef.current === handoffKey) return;
     appliedHandoffRef.current = handoffKey;
 
-    const intent = searchParams.get('intent');
-    const partyType = searchParams.get('party_type');
-    const budget = searchParams.get('budget');
-    const destination = searchParams.get('destination');
-    const productNames = decodeListParam(searchParams.get('selected_products'));
-    const query = searchParams.get('query');
-    if (!intent && !partyType && !budget && !destination && productNames.length === 0 && !query) return;
+    const handoff = readHandoffContext(searchParams);
+    if (!hasHandoffContext(handoff)) return;
 
+    const { intent, partyType, budget, destination, query } = handoff;
+    const productNames = handoff.selectedProducts;
     const normalizedPartyType = resolveHandoffPartyType(intent, partyType);
     const matchedChip = intent ? INTENT_CHIPS.find((chip) => chip.intent === intent) : undefined;
     const nextIntent: IntentChip = matchedChip ?? {
@@ -335,7 +325,7 @@ export default function GroupInquiryPage() {
     };
     setSelectedIntent(nextIntent);
     setSelectedProducts(productNames);
-    setHandoffSource(searchParams.get('source') ?? 'concierge');
+    setHandoffSource(handoff.source ?? 'concierge');
 
     const parsedBudget = parseKoreanBudget(budget);
     const parsedPeople = parsePartyCount(normalizedPartyType) ?? parsePartyCount(query);
