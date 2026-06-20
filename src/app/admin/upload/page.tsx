@@ -299,6 +299,7 @@ export default function UploadPage() {
   const [forceReprocess, setForceReprocess] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [textInput, setTextInput] = useState('');
+  const [textInputError, setTextInputError] = useState('');
   const [textLandOperator, setTextLandOperator] = useState('');
   const [textCommissionRate, setTextCommissionRate] = useState('10');
 
@@ -529,7 +530,8 @@ export default function UploadPage() {
   const addTextToQueue = () => {
     if (!textInput.trim()) return;
     const chunks = textInput.split(/={3,}/).map(s => s.trim()).filter(s => s.length > 50);
-    if (chunks.length === 0) { alert('텍스트가 너무 짧습니다.'); return; }
+    if (chunks.length === 0) { setTextInputError('텍스트가 너무 짧습니다. 상품 원문을 50자 이상 입력해주세요.'); return; }
+    setTextInputError('');
 
     const now = Date.now();
     const landOperator = textLandOperator.trim() || undefined;
@@ -772,7 +774,12 @@ export default function UploadPage() {
             <textarea
               ref={textareaRef}
               value={textInput}
-              onChange={e => setTextInput(e.target.value)}
+              onChange={e => {
+                setTextInput(e.target.value);
+                if (textInputError) setTextInputError('');
+              }}
+              aria-invalid={textInputError ? 'true' : 'false'}
+              aria-describedby={textInputError ? 'upload-text-input-error' : undefined}
               onKeyDown={e => {
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
                   e.preventDefault();
@@ -784,6 +791,11 @@ export default function UploadPage() {
                 addedFlash ? 'border-green-300 bg-green-50/30' : 'border-admin-border-mid'
               }`}
             />
+            {textInputError && (
+              <p id="upload-text-input-error" role="alert" className="mt-2 text-[11px] font-medium text-status-dangerFg">
+                {textInputError}
+              </p>
+            )}
             <div className="flex items-center justify-between mt-2">
               <span className="text-[11px] text-admin-muted-2">
                 {textInput.length > 0
