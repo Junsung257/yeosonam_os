@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 // html-to-image, jszip: 내보내기 시점에만 동적 로드
 import type { CardNews, CardNewsSlide } from '@/lib/supabase';
@@ -39,6 +39,33 @@ const STATUS_LABELS: Record<string, string> = {
 
 interface PexelsSimple { id: number; src_medium: string; src_large2x: string; alt: string; }
 
+type ConfirmAction =
+  | {
+      kind: 'blog';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'primary';
+      details: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: 'launch';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'warning';
+      details: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: 'template';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'primary';
+      details: Array<{ label: string; value: string }>;
+      payload: { templateId: string };
+    };
+
 export default function CardNewsEditorPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -61,6 +88,11 @@ export default function CardNewsEditorPage() {
   const [showPexels, setShowPexels] = useState(false);
   const [budgetKrw, setBudgetKrw] = useState(50000);
   const [toast, setToast] = useState<string | null>(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmTitleId = 'card-news-confirm-title';
+  const confirmDescriptionId = 'card-news-confirm-description';
 
   const showToast = (msg: string) => { setToast(msg); setTimeout(() => setToast(null), 2500); };
 
@@ -74,6 +106,55 @@ export default function CardNewsEditorPage() {
   }, [id]);
 
   useEffect(() => { fetchCardNews(); }, [fetchCardNews]);
+
+  useEffect(() => {
+    if (!confirmAction) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    confirmCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      confirmDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setConfirmAction(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [confirmAction]);
 
   const activeSlide = slides[activeIdx];
 
@@ -272,8 +353,24 @@ export default function CardNewsEditorPage() {
     return uploadedUrls;
   };
 
-  const handleConfirmAndGenerateBlog = async () => {
-    if (!confirm('이 카드뉴스를 확정하고 블로그까지 자동 생성하시겠습니까?\n\n1. 슬라이드를 이미지로 캡처하여 저장\n2. 블로그 초안 자동 생성 (하이브리드 이미지)\n3. 블로그 편집 페이지로 이동')) return;
+  const handleConfirmAndGenerateBlog = async (confirmed = false) => {
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'blog',
+        title: '카드뉴스 확정 + 블로그 생성',
+        description: '현재 슬라이드를 이미지로 저장하고 블로그 초안을 자동 생성한 뒤 편집 화면으로 이동합니다.',
+        confirmLabel: '블로그 생성 시작',
+        tone: 'primary',
+        details: [
+          { label: '카드뉴스', value: cardNews?.title || id },
+          { label: '슬라이드', value: `${slides.length.toLocaleString()}장` },
+          { label: '상태', value: 'CONFIRMED 저장' },
+          { label: '다음 화면', value: '블로그 편집' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     setBlogGenerating(true);
     setLaunchResult(null);
     try {
@@ -308,8 +405,24 @@ export default function CardNewsEditorPage() {
     }
   };
 
-  const handleLaunch = async () => {
-    if (!confirm(`Meta Ads에 배포하시겠습니까?\n일일 예산: ${budgetKrw.toLocaleString()}원`)) return;
+  const handleLaunch = async (confirmed = false) => {
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'launch',
+        title: 'Meta Ads 배포',
+        description: '현재 카드뉴스를 저장하고 Meta Ads 배포 또는 CONFIRMED 상태 저장을 진행합니다.',
+        confirmLabel: '배포 진행',
+        tone: 'warning',
+        details: [
+          { label: '카드뉴스', value: cardNews?.title || id },
+          { label: '일일 예산', value: `${budgetKrw.toLocaleString()}원` },
+          { label: '슬라이드', value: `${slides.length.toLocaleString()}장` },
+          { label: '상태', value: 'CONFIRMED/런치' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     setLaunching(true);
     setLaunchResult(null);
     try {
@@ -333,6 +446,42 @@ export default function CardNewsEditorPage() {
       }
       await fetchCardNews();
     } finally { setLaunching(false); }
+  };
+
+  const applyTemplateToAllSlides = (templateId: string, confirmed = false) => {
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'template',
+        title: '템플릿 전체 적용',
+        description: '현재 선택한 템플릿을 모든 슬라이드에 적용합니다.',
+        confirmLabel: '전체 적용',
+        tone: 'primary',
+        payload: { templateId },
+        details: [
+          { label: '템플릿', value: templateId },
+          { label: '대상', value: `${slides.length.toLocaleString()}장` },
+          { label: '현재 슬라이드', value: `${activeIdx + 1}/${slides.length}` },
+          { label: '저장', value: '적용 후 별도 저장 필요' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
+    setSlides(prev => prev.map(s => ({ ...s, template_id: templateId })));
+    showToast('전체 슬라이드 적용 완료');
+  };
+
+  const executeConfirmAction = () => {
+    if (!confirmAction) return;
+    if (confirmAction.kind === 'blog') {
+      void handleConfirmAndGenerateBlog(true);
+      return;
+    }
+    if (confirmAction.kind === 'launch') {
+      void handleLaunch(true);
+      return;
+    }
+    applyTemplateToAllSlides(confirmAction.payload.templateId, true);
   };
 
   if (!cardNews) {
@@ -405,7 +554,7 @@ export default function CardNewsEditorPage() {
             className="px-3 py-1.5 bg-white border border-admin-border-strong text-admin-text-2 text-admin-xs rounded hover:bg-admin-bg disabled:opacity-50 transition">
             {exporting ? '생성 중...' : 'JPG 내보내기'}
           </button>
-          <button onClick={handleConfirmAndGenerateBlog} disabled={blogGenerating}
+          <button onClick={() => void handleConfirmAndGenerateBlog()} disabled={blogGenerating}
             className="px-3 py-1.5 bg-blue-600 text-white text-admin-xs rounded hover:bg-blue-700 disabled:opacity-50 transition font-medium"
             title="카드뉴스를 이미지로 저장하고 블로그를 자동 생성합니다">
             {blogGenerating ? '블로그 생성 중...' : '✨ 확정 + 블로그 생성'}
@@ -429,7 +578,7 @@ export default function CardNewsEditorPage() {
                   ? '🔴 인스타 재시도'
                   : '📷 인스타 발행'}
           </button>
-          <button onClick={handleLaunch} disabled={launching || cardNews.status === 'LAUNCHED'}
+          <button onClick={() => void handleLaunch()} disabled={launching || cardNews.status === 'LAUNCHED'}
             className="px-3 py-1.5 bg-slate-900 text-white text-admin-xs rounded hover:bg-slate-800 disabled:opacity-50 transition font-medium">
             {launching ? '배포 중...' : cardNews.status === 'LAUNCHED' ? '런치됨' : '컨펌 & 런치'}
           </button>
@@ -548,9 +697,7 @@ export default function CardNewsEditorPage() {
                   onClick={() => {
                     const tplId = activeSlide.template_id;
                     if (!tplId) { showToast('템플릿을 먼저 선택하세요'); return; }
-                    if (!confirm(`모든 슬라이드(${slides.length}장)에 "${tplId}" 템플릿을 적용하시겠습니까?`)) return;
-                    setSlides(prev => prev.map(s => ({ ...s, template_id: tplId })));
-                    showToast('전체 슬라이드 적용 완료');
+                    applyTemplateToAllSlides(tplId);
                   }}
                   className="w-full mt-1.5 px-2 py-1 bg-blue-600 text-white text-[10px] rounded hover:bg-blue-700"
                 >
@@ -730,6 +877,61 @@ export default function CardNewsEditorPage() {
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 bg-blue-600 text-white px-5 py-3 rounded-lg text-admin-sm shadow-admin-md">
           {toast}
+        </div>
+      )}
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={confirmDialogRef}
+            id="card-news-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmTitleId}
+            aria-describedby={confirmDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={confirmTitleId} className="text-admin-sm font-semibold text-admin-text-2">{confirmAction.title}</p>
+              <p id={confirmDescriptionId} className="mt-1 text-[11px] text-admin-muted">{confirmAction.description}</p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="grid grid-cols-2 gap-2">
+                {confirmAction.details.map(item => (
+                  <div key={item.label} className="rounded bg-admin-bg px-2.5 py-2">
+                    <p className="text-[10px] text-admin-muted-2">{item.label}</p>
+                    <p className="mt-0.5 break-words text-admin-sm font-semibold text-admin-text-2">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              {confirmAction.tone === 'warning' && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  외부 광고 배포 또는 예산 사용이 포함될 수 있습니다. 금액과 대상이 맞는지 확인해 주세요.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={confirmCancelButtonRef}
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={executeConfirmAction}
+                className={`rounded px-3 py-1.5 text-admin-sm font-medium text-white ${
+                  confirmAction.tone === 'warning'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : 'bg-blue-600 hover:bg-blue-700'
+                }`}
+              >
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
