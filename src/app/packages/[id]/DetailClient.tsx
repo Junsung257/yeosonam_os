@@ -45,6 +45,9 @@ const TimezoneCard = nextDynamic(() => import('@/components/customer/TimezoneCar
 const PackingTipsCard = nextDynamic(() => import('@/components/customer/PackingTipsCard'), { loading: () => null });
 const PackageFAQ = nextDynamic(() => import('@/components/customer/PackageFAQ'), { loading: () => null });
 const ReviewDigestStrip = nextDynamic(() => import('@/components/customer/ReviewDigestStrip'), { ssr: false, loading: () => null });
+const srStatusProps = (enabled: boolean) => (
+  enabled ? { role: 'status', 'aria-live': 'polite', 'aria-atomic': true } as const : {}
+);
 
 interface PriceTier {
   period_label: string;
@@ -974,6 +977,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const detailHandoffReadinessText = detailHandoffMissingLabels.length > 0
     ? `상담 전달 준비 ${detailHandoffReadyCount}/${detailHandoffChecklist.length}. 보완하면 좋은 조건: ${detailHandoffMissingLabels.join(', ')}.`
     : `상담 전달 준비 ${detailHandoffReadyCount}/${detailHandoffChecklist.length}. 상품, 지역, 출발, 가격 조건을 상담으로 바로 넘길 수 있습니다.`;
+  const detailSummaryLive = Boolean(selectedDate);
   const decisionGuide = createDecisionGuide({
     pkg,
     days,
@@ -1279,10 +1283,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
         <GlobalNav />
       </div>
     <main className="min-h-dvh bg-[#F8FAFC] pb-[calc(11rem+env(safe-area-inset-bottom))] md:pb-12 max-w-lg md:max-w-3xl mx-auto" data-testid="main-content">
-      <p id={detailCtaSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={detailCtaSummaryId} className="sr-only" {...srStatusProps(detailSummaryLive)}>
         {detailCtaSummaryText}
       </p>
-      <p id={detailHandoffReadinessSummaryId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      <p id={detailHandoffReadinessSummaryId} className="sr-only" {...srStatusProps(detailSummaryLive)}>
         {detailHandoffReadinessText}
       </p>
       <p id={detailKakaoDescriptionId} className="sr-only">
