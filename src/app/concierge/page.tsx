@@ -531,6 +531,64 @@ export default function ConciergePage() {
     });
   }
 
+  async function addResultBundleToCart() {
+    const bundleItems = results.slice(0, 3);
+    const addableItems = bundleItems.filter(
+      (item) => !cart.some((existing) => existing.product_id === item.product_id),
+    );
+    if (addableItems.length === 0) {
+      setShareToast('상위 추천 상품이 이미 선택 구성에 담겨 있습니다.');
+      setTimeout(() => setShareToast(''), 3000);
+      return;
+    }
+
+    const newItems: CartItem[] = addableItems.map((item) => ({ ...item, quantity: 1 }));
+    const updated = [...cart, ...newItems];
+    setCart(updated);
+    await Promise.all(newItems.map((item) => fetch('/api/concierge/cart', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId, item }),
+    }).catch(() => null)));
+
+    const nextIntentSummary = inferIntentSummary(activePrompt, query, updated);
+    const selectedProductNames = bundleItems.map((item) => item.product_name);
+    const decisionMetadata = buildConciergeDecisionMetadata({
+      intentSummary: nextIntentSummary,
+      query,
+      activePromptLabel: activePrompt?.label,
+      selectedProductCount: nextIntentSummary.selected_products?.length ?? 0,
+    });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+      source: 'concierge_result_bundle_add_to_cart',
+      page_url: '/concierge',
+      ...nextIntentSummary,
+      selected_products: selectedProductNames,
+      ...decisionMetadata,
+      metadata: {
+        ...decisionMetadata,
+        action: 'add_result_bundle_to_cart',
+        addedCount: newItems.length,
+        bundleCount: bundleItems.length,
+        selectedProductNames,
+      },
+    });
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.cartAdded,
+      page_url: '/concierge',
+      ...nextIntentSummary,
+      selected_products: selectedProductNames,
+      metadata: {
+        source: 'concierge_result_bundle_add_to_cart',
+        addedCount: newItems.length,
+        bundleCount: bundleItems.length,
+      },
+    });
+    setShareToast(`${newItems.length}개 추천 상품을 선택 구성에 담았습니다.`);
+    setTimeout(() => setShareToast(''), 3000);
+  }
+
   async function removeFromCart(productId: string) {
     const updated = cart.filter((item) => item.product_id !== productId);
     setCart(updated);
@@ -843,6 +901,13 @@ export default function ConciergePage() {
       action: insight.action,
     };
   });
+  const resultBundleItems = results.slice(0, 3);
+  const resultBundleAddableCount = resultBundleItems.filter(
+    (item) => !cart.some((existing) => existing.product_id === item.product_id),
+  ).length;
+  const resultBundleAddToCartText = resultBundleAddableCount > 0
+    ? `상위 추천 ${resultBundleAddableCount}개를 선택 구성에 담습니다. 담은 뒤 모바일 하단 상담바에서 카톡 상담, 구성 보기, 결제로 이어갈 수 있습니다.`
+    : '상위 추천 상품이 이미 선택 구성에 담겨 있습니다. 모바일 하단 상담바에서 카톡 상담, 구성 보기, 결제로 이어갈 수 있습니다.';
   const resultBriefSummaryId = 'concierge-result-brief-summary';
   const resultBriefSummaryText = resultBriefItems.length > 0
     ? `AI 추천 브리핑입니다. 상위 ${resultBriefItems.length}개 상품 기준으로 추천 이유, 주의할 점, 추가 비용 가능성, 다음 액션을 정리했습니다. ${resultBriefItems.map((item) => `${item.rank}순위 ${item.name}, ${item.price}, 다음 액션 ${item.action}`).join(' ')}`
@@ -862,6 +927,7 @@ export default function ConciergePage() {
   const resultBundleRiskNoteText = resultHandoffProductNames.length > 0
     ? `최종가 체크: ${resultHandoffProductNames.length}개 추천의 항공, 객실, 성수기, 옵션 비용은 상담에서 다시 확인해야 합니다.`
     : '최종가 체크: AI 추천은 예상 조건 기준이므로 항공, 객실, 옵션 비용은 상담에서 다시 확인해야 합니다.';
+  const resultBundleAddToCartId = 'concierge-result-bundle-add-to-cart-note';
   const resultBundleHandoffItems = [
     ...summaryItems,
     resultHandoffProductNames.length > 0 ? { label: '상품', value: `${resultHandoffProductNames.length}개` } : null,
@@ -882,7 +948,7 @@ export default function ConciergePage() {
     },
   ];
   const resultBundleConfirmText = `카톡 또는 견적 CTA를 누르면 ${resultBundleConfirmItems.map((item) => `${item.label} ${item.value}`).join(', ')} 조건이 함께 전달됩니다.`;
-  const resultBundleDescriptionIds = `${resultSummaryId} ${resultBundleSummaryId} ${resultBundleConfirmId} ${resultBundleNextActionId} ${resultBundleRiskNoteId}`;
+  const resultBundleDescriptionIds = `${resultSummaryId} ${resultBundleSummaryId} ${resultBundleConfirmId} ${resultBundleNextActionId} ${resultBundleRiskNoteId} ${resultBundleAddToCartId}`;
   const resultBundleGroupInquiryHref = buildGroupInquiryHandoffHref({
     source: 'concierge_results_bundle',
     intent: intentSummary.intent ?? undefined,
@@ -1161,8 +1227,22 @@ export default function ConciergePage() {
                     >
                       {resultBundleRiskNoteText}
                     </p>
+                    <p id={resultBundleAddToCartId} className="sr-only">
+                      {resultBundleAddToCartText}
+                    </p>
                   </div>
-                  <div className="grid grid-cols-2 gap-2 md:flex md:shrink-0">
+                  <div className="grid grid-cols-3 gap-2 md:flex md:shrink-0">
+                    <button
+                      type="button"
+                      data-testid="concierge-result-bundle-add-to-cart"
+                      onClick={addResultBundleToCart}
+                      disabled={resultBundleItems.length === 0 || resultBundleAddableCount === 0}
+                      aria-describedby={resultBundleDescriptionIds}
+                      className="inline-flex h-10 items-center justify-center gap-1.5 rounded-full bg-brand px-3 text-[13px] font-bold text-white transition hover:bg-brand-dark disabled:cursor-not-allowed disabled:bg-[#D1DCE8] disabled:text-text-secondary"
+                    >
+                      <Plus size={16} aria-hidden="true" />
+                      담기
+                    </button>
                     <button
                       type="button"
                       data-testid="concierge-result-bundle-kakao"
