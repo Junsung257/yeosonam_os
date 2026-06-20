@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 
@@ -25,6 +25,10 @@ interface Variant {
   html_usage: { costUsd?: number } | null;
   created_at: string;
 }
+
+type ConfirmAction =
+  | { type: 'archive-losers' }
+  | { type: 'archive-variant'; variant: Variant };
 
 const ANGLE_LABELS: Record<string, string> = {
   luxury: '럭셔리',
@@ -74,6 +78,11 @@ export default function VariantGroupComparePage() {
   const [renderingId, setRenderingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [decidingWinner, setDecidingWinner] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmTitleId = 'variant-group-action-confirm-title';
+  const confirmDescriptionId = 'variant-group-action-confirm-description';
   const [winnerReport, setWinnerReport] = useState<{
     decided: boolean;
     reason: string;
@@ -100,6 +109,56 @@ export default function VariantGroupComparePage() {
     fetchVariants();
   }, [fetchVariants]);
 
+  useEffect(() => {
+    if (!confirmAction) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    confirmCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      confirmDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setConfirmAction(null);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [confirmAction]);
+
   const handleRender = async (id: string) => {
     setRenderingId(id);
     try {
@@ -120,11 +179,6 @@ export default function VariantGroupComparePage() {
   };
 
   const handleDecideWinner = async (archiveLosers: boolean) => {
-    if (
-      archiveLosers &&
-      !confirm('Winner 외 변형을 모두 ARCHIVED 처리합니다. 계속할까요?')
-    )
-      return;
     setDecidingWinner(true);
     setWinnerReport(null);
     try {
@@ -153,7 +207,6 @@ export default function VariantGroupComparePage() {
   };
 
   const handleArchive = async (id: string) => {
-    if (!confirm('이 변형을 ARCHIVED 처리할까요?')) return;
     setArchivingId(id);
     try {
       const res = await fetch(`/api/card-news/${id}`, {
@@ -171,6 +224,19 @@ export default function VariantGroupComparePage() {
     } finally {
       setArchivingId(null);
     }
+  };
+
+  const handleConfirmAction = async () => {
+    const action = confirmAction;
+    if (!action) return;
+
+    setConfirmAction(null);
+    if (action.type === 'archive-losers') {
+      await handleDecideWinner(true);
+      return;
+    }
+
+    await handleArchive(action.variant.id);
   };
 
   if (loading) {
@@ -206,6 +272,14 @@ export default function VariantGroupComparePage() {
     0,
   );
   const top = sorted[0];
+  const activeVariantCount = variants.filter(v => v.status !== 'ARCHIVED').length;
+  const loserArchiveCount = Math.max(0, activeVariantCount - 1);
+  const confirmDialogTitle = confirmAction?.type === 'archive-losers'
+    ? 'winner를 결정하고 나머지를 보관할까요?'
+    : '이 변형을 보관할까요?';
+  const confirmDialogDescription = confirmAction?.type === 'archive-losers'
+    ? 'winner 판정 후 선택되지 않은 활성 변형을 ARCHIVED 상태로 정리합니다.'
+    : '선택한 변형을 ARCHIVED 상태로 바꾸고 비교 목록에서 비활성 항목으로 표시합니다.';
 
   return (
     <div className="mx-auto max-w-7xl p-6">
@@ -274,10 +348,12 @@ export default function VariantGroupComparePage() {
               {decidingWinner ? '판정 중…' : '🔍 winner 분석'}
             </button>
             <button
-              onClick={() => handleDecideWinner(true)}
+              onClick={() => setConfirmAction({ type: 'archive-losers' })}
               disabled={decidingWinner}
               className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
               title="winner 결정 + 나머지 ARCHIVED"
+              aria-haspopup="dialog"
+              aria-controls={confirmAction?.type === 'archive-losers' ? 'variant-group-action-confirm-dialog' : undefined}
             >
               ⚡ winner 결정 + 정리
             </button>
@@ -429,10 +505,13 @@ export default function VariantGroupComparePage() {
                   {renderingId === v.id ? '렌더 중…' : v.ig_slide_urls?.length ? '🔄 재렌더' : '🖼 PNG 렌더'}
                 </button>
                 <button
-                  onClick={() => handleArchive(v.id)}
+                  onClick={() => setConfirmAction({ type: 'archive-variant', variant: v })}
                   disabled={archivingId === v.id || archived}
                   className="rounded border border-admin-border-mid bg-white px-2 py-1.5 text-xs hover:bg-admin-surface-2 disabled:opacity-40"
                   title="이 변형 ARCHIVED 처리"
+                  aria-label={`${ANGLE_LABELS[v.variant_angle ?? ''] ?? v.variant_angle ?? 'auto'} 변형 보관`}
+                  aria-haspopup="dialog"
+                  aria-controls={confirmAction?.type === 'archive-variant' && confirmAction.variant.id === v.id ? 'variant-group-action-confirm-dialog' : undefined}
                 >
                   {archivingId === v.id ? '…' : '🗑'}
                 </button>
@@ -445,6 +524,83 @@ export default function VariantGroupComparePage() {
       {variants.length === 0 && (
         <div className="py-20 text-center text-sm text-admin-muted-2">
           변형이 없습니다.
+        </div>
+      )}
+
+      {confirmAction && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setConfirmAction(null);
+          }}
+        >
+          <div
+            id="variant-group-action-confirm-dialog"
+            ref={confirmDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmTitleId}
+            aria-describedby={confirmDescriptionId}
+            className="w-full rounded-t-admin-lg border border-admin-border-mid bg-admin-surface shadow-admin-lg sm:max-w-md sm:rounded-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-5 py-4">
+              <h2 id={confirmTitleId} className="text-lg font-bold text-admin-text">
+                {confirmDialogTitle}
+              </h2>
+              <p id={confirmDescriptionId} className="mt-2 text-sm leading-6 text-admin-muted">
+                {confirmDialogDescription}
+              </p>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase text-admin-muted-2">
+                  {confirmAction.type === 'archive-losers' ? '정리 범위' : '대상 변형'}
+                </div>
+                {confirmAction.type === 'archive-losers' ? (
+                  <>
+                    <div className="mt-1 text-sm font-semibold text-admin-text">
+                      활성 변형 {activeVariantCount}개 중 winner 외 {loserArchiveCount}개 보관
+                    </div>
+                    <div className="mt-1 text-xs text-admin-muted">
+                      현재 사전 TOP: {top ? (ANGLE_LABELS[top.variant_angle ?? ''] ?? top.variant_angle ?? 'auto') : '없음'}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-1 text-sm font-semibold text-admin-text">
+                      {ANGLE_LABELS[confirmAction.variant.variant_angle ?? ''] ?? confirmAction.variant.variant_angle ?? 'auto'} 변형
+                    </div>
+                    <div className="mt-1 text-xs text-admin-muted">
+                      점수 {confirmAction.variant.variant_score?.toFixed(0) ?? '없음'} / 상태 {confirmAction.variant.status}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-admin-border-mid px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                ref={confirmCancelButtonRef}
+                type="button"
+                className="rounded-admin-md border border-admin-border-mid px-4 py-2 text-sm font-semibold text-admin-text hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                onClick={() => setConfirmAction(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="rounded-admin-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                disabled={decidingWinner || (confirmAction.type === 'archive-variant' && archivingId === confirmAction.variant.id)}
+                onClick={() => void handleConfirmAction()}
+              >
+                {confirmAction.type === 'archive-losers'
+                  ? decidingWinner ? '정리 중...' : 'winner 결정 + 정리'
+                  : archivingId === confirmAction.variant.id ? '보관 중...' : '보관 처리'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
