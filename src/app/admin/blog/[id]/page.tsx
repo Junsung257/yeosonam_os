@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
 import { marked } from 'marked';
@@ -40,7 +40,12 @@ export default function BlogEditPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [reindexing, setReindexing] = useState(false);
+  const [reindexConfirmOpen, setReindexConfirmOpen] = useState(false);
   const [toast, setToast] = useState('');
+  const reindexDialogRef = useRef<HTMLDivElement | null>(null);
+  const reindexCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const reindexTitleId = 'blog-reindex-confirm-title';
+  const reindexDescriptionId = 'blog-reindex-confirm-description';
 
   // 카드뉴스 패널 상태
   const [cardNewsList, setCardNewsList] = useState<CardNewsRow[]>([]);
@@ -77,6 +82,55 @@ export default function BlogEditPage() {
       .catch(() => showToast('글을 불러오지 못했습니다'))
       .finally(() => setLoading(false));
   }, [id, encodedId]);
+
+  useEffect(() => {
+    if (!reindexConfirmOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    reindexCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      reindexDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setReindexConfirmOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [reindexConfirmOpen]);
 
   // 같은 상품의 기존 카드뉴스 목록 로드 (productId 확정된 후).
   // 이미지가 1장 이상 있는 카드뉴스만 표시 — 첨부 가능한 항목만 노출해 UX 혼란 방지.
@@ -181,8 +235,8 @@ export default function BlogEditPage() {
   const handleReindex = async () => {
     if (!id) { showToast('블로그 ID가 올바르지 않습니다.'); return; }
 
-    if (!confirm('이 글의 색인 요청을 검색엔진에 다시 보내시겠습니까?\n\n- 구글 서치콘솔 사이트맵 제출\n- 네이버 수집 알림 요청\n- 보조 사이트맵/피드 알림')) return;
     setReindexing(true);
+    setReindexConfirmOpen(false);
     try {
       const res = await fetch('/api/blog/reindex', {
         method: 'POST',
@@ -237,7 +291,13 @@ export default function BlogEditPage() {
           </button>
           {status === 'published' && slug && (
             <>
-              <button onClick={handleReindex} disabled={reindexing}
+              <button
+                type="button"
+                onClick={() => setReindexConfirmOpen(true)}
+                disabled={reindexing}
+                aria-haspopup="dialog"
+                aria-expanded={reindexConfirmOpen}
+                aria-controls="blog-reindex-confirm-dialog"
                 title="구글 서치콘솔 사이트맵 + 네이버 수집 알림 요청"
                 className="px-4 py-2 bg-white border border-emerald-300 text-emerald-700 text-admin-xs rounded-lg hover:bg-emerald-50 disabled:opacity-40 transition">
                 {reindexing ? '요청 중...' : '🔄 재색인 요청'}
@@ -415,6 +475,60 @@ export default function BlogEditPage() {
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 rounded-lg text-white text-admin-sm shadow-admin-md bg-slate-800">
           {toast}
+        </div>
+      )}
+
+      {reindexConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={reindexDialogRef}
+            id="blog-reindex-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={reindexTitleId}
+            aria-describedby={reindexDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={reindexTitleId} className="text-admin-sm font-semibold text-admin-text-2">검색엔진 재색인 요청</p>
+              <p id={reindexDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                발행된 글을 검색엔진에 다시 알립니다. 요청 결과는 토스트로 표시됩니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="rounded border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <p className="text-[10px] font-semibold uppercase text-admin-muted-2">대상 글</p>
+                <p className="mt-1 truncate text-admin-sm font-semibold text-admin-text-2">{seoTitle || slug}</p>
+                <p className="mt-0.5 text-[11px] text-admin-muted">/blog/{slug}</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2">
+                {['구글 서치콘솔 사이트맵 제출', '네이버 수집 알림 요청', '보조 사이트맵/피드 알림'].map(item => (
+                  <div key={item} className="flex items-center gap-2 rounded bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={reindexCancelButtonRef}
+                type="button"
+                onClick={() => setReindexConfirmOpen(false)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleReindex}
+                disabled={reindexing}
+                className="rounded bg-emerald-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                요청 보내기
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
