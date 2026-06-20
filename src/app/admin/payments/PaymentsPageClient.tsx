@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import { extractPrimaryName } from '@/lib/customer-name';
@@ -757,6 +758,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
   const [undoInfo, setUndoInfo] = useState<{ ids: string[]; items: BankTransaction[]; countdown: number } | null>(null);
   const undoTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isLoading, setIsLoading] = useState(!initialTransactions);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [bookings, setBookings] = useState<BookingFull[]>(initialBookings ?? []);
   const [erp, setErp] = useState<ErpStats | null>(initialErp ?? null);
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
@@ -822,12 +824,26 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   const load = useCallback(async () => {
     setIsLoading(true);
+    setLoadError(null);
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 10000);
     try {
       const [res, trashRes, unmatchedRes] = await Promise.all([
-        fetch('/api/bank-transactions?status=active'),
-        fetch('/api/bank-transactions?status=excluded'),
-        fetch('/api/bank-transactions?status=active&match_status=unmatched'),
+        fetch('/api/bank-transactions?status=active', { signal: controller.signal }),
+        fetch('/api/bank-transactions?status=excluded', { signal: controller.signal }),
+        fetch('/api/bank-transactions?status=active&match_status=unmatched', { signal: controller.signal }),
       ]);
+      const failedResponse = [res, trashRes, unmatchedRes].find(response => !response.ok);
+      if (failedResponse) {
+        throw new Error(`입금 내역을 불러오지 못했습니다. (${failedResponse.status})`);
+      }
+      const invalidJsonResponse = [res, trashRes, unmatchedRes].find(response => {
+        const contentType = response.headers.get('content-type') || '';
+        return !contentType.includes('application/json');
+      });
+      if (invalidJsonResponse) {
+        throw new Error(`입금 내역 API 연결을 확인해 주세요. (${invalidJsonResponse.status})`);
+      }
       const [data, trashData, unmatchedData] = await Promise.all([
         res.json(), trashRes.json(), unmatchedRes.json(),
       ]);
@@ -838,7 +854,17 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
       const merged = [...mainTxs, ...unmatchedTxs.filter((u: BankTransaction) => !mainIds.has(u.id))];
       setTransactions(merged);
       setTrashTxs(trashData.transactions || []);
-    } finally { setIsLoading(false); }
+    } catch (error) {
+      const message = error instanceof Error && error.name === 'AbortError'
+        ? '요청 시간이 초과되었습니다. 다시 불러와 주세요.'
+        : error instanceof Error
+          ? error.message
+          : '입금 내역을 불러오지 못했습니다.';
+      setLoadError(message);
+    } finally {
+      window.clearTimeout(timeoutId);
+      setIsLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -2302,7 +2328,33 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
       {/* 트랜잭션 테이블 */}
       {isLoading ? (
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-6 space-y-2">
+        <div
+          className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-4 sm:p-6 space-y-4"
+          data-testid="admin-payment-loading-state"
+        >
+          <div className="flex flex-col gap-3 border-b border-admin-border-light pb-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-admin-sm font-semibold text-admin-text">입금 내역을 불러오는 중입니다.</p>
+              <p className="mt-1 text-admin-xs text-admin-muted-2">
+                연결이 느려도 거래 가져오기와 예약 확인은 바로 열 수 있습니다.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="rounded-admin-sm bg-admin-primary px-3 py-2 text-admin-xs font-semibold text-white shadow-admin-xs transition hover:bg-admin-primary-hover"
+              >
+                거래 가져오기
+              </button>
+              <Link
+                href="/admin/bookings"
+                className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-xs font-semibold text-admin-text transition hover:bg-admin-surface-2"
+              >
+                예약 확인
+              </Link>
+            </div>
+          </div>
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="flex gap-4 py-2 border-b border-slate-50 last:border-0">
               {[80, 120, 160, 80, 60, 60].map((w, j) => (
@@ -2312,11 +2364,53 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs py-14 text-center">
-          <div className="flex flex-col items-center gap-3">
+        <div
+          className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs px-4 py-12 text-center sm:px-6"
+          data-testid="admin-payment-empty-state"
+        >
+          <div className="mx-auto flex max-w-xl flex-col items-center gap-3">
             <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
-            <p className="text-admin-sm font-medium text-admin-muted">해당 항목이 없습니다.</p>
-            {tab === 'unmatched' && <p className="text-admin-xs text-admin-muted-2">일괄 자동 매칭 버튼을 눌러보세요.</p>}
+            <p className="text-admin-sm font-semibold text-admin-text">
+              {loadError ? '입금 내역을 불러오지 못했습니다.' : '해당 조건의 거래가 없습니다.'}
+            </p>
+            <p className="text-admin-xs leading-5 text-admin-muted-2">
+              {loadError || (tab === 'unmatched'
+                ? '일괄 자동 매칭이나 거래 가져오기를 먼저 확인해 보세요.'
+                : '큐를 다시 열거나 새 거래를 가져와 다음 처리 대상을 만들 수 있습니다.')}
+            </p>
+            <div className="mt-2 flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center">
+              {loadError && (
+                <button
+                  type="button"
+                  onClick={load}
+                  className="rounded-admin-sm bg-admin-primary px-3 py-2 text-admin-xs font-semibold text-white shadow-admin-xs transition hover:bg-admin-primary-hover"
+                  data-testid="admin-payment-reload-action"
+                >
+                  다시 불러오기
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowImport(true)}
+                className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-xs font-semibold text-admin-text transition hover:bg-admin-surface-2"
+                data-testid="admin-payment-import-empty-action"
+              >
+                거래 가져오기
+              </button>
+              <Link
+                href="/admin/bookings"
+                className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-xs font-semibold text-admin-text transition hover:bg-admin-surface-2"
+              >
+                예약에서 확인
+              </Link>
+              <button
+                type="button"
+                onClick={() => handlePaymentQueueSelect('review')}
+                className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-xs font-semibold text-admin-text transition hover:bg-admin-surface-2"
+              >
+                검수 큐 보기
+              </button>
+            </div>
           </div>
         </div>
       ) : (
