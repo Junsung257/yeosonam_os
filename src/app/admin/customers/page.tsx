@@ -943,49 +943,48 @@ export default function CustomersPage() {
       </div>
 
       {/* Floating Action Bar */}
-      <div className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ease-out
-        ${selectedIds.size > 0
-          ? 'translate-y-0 opacity-100 pointer-events-auto'
-          : 'translate-y-16 opacity-0 pointer-events-none'
-        }`}
-        onPointerDown={e => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3
-          rounded border border-slate-700/50">
-          <span className="text-admin-sm font-bold whitespace-nowrap">
-            {selectedIds.size}명 선택됨
-          </span>
-          <div className="w-px h-5 bg-slate-500 flex-shrink-0" />
-          <button
-            type="button"
-            onClick={event => openConfirmModal({ type: 'mileage-reset', count: selectedIds.size }, event.currentTarget)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400
-              text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
-            마일리지 초기화
-          </button>
-          <button
-            type="button"
-            onClick={event => openConfirmModal({ type: 'bulk-grant-mileage', count: selectedIds.size, grantAmount: 1000, grantReason: '프로모션 지급' }, event.currentTarget)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
-              text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
-            마일리지 지급
-          </button>
-          <button
-            type="button"
-            onClick={event => openConfirmModal({ type: 'bulk-delete', count: selectedIds.size }, event.currentTarget)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-400
-              text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
-            일괄 삭제
-          </button>
-          <button
-            type="button"
-            aria-label="선택 해제"
-            onClick={() => setSelectedIds(new Set())}
-            className="text-admin-muted-2 hover:text-white ml-1 text-lg leading-none transition">
-            ✕
-          </button>
+      {selectedIds.size > 0 && (
+        <div
+          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 transition-all duration-300 ease-out"
+          onPointerDown={e => e.stopPropagation()}
+        >
+          <div className="flex items-center gap-3 bg-blue-600 text-white px-5 py-3
+            rounded border border-slate-700/50">
+            <span className="text-admin-sm font-bold whitespace-nowrap">
+              {selectedIds.size}명 선택됨
+            </span>
+            <div className="w-px h-5 bg-slate-500 flex-shrink-0" />
+            <button
+              type="button"
+              onClick={event => openConfirmModal({ type: 'mileage-reset', count: selectedIds.size }, event.currentTarget)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-400
+                text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
+              마일리지 초기화
+            </button>
+            <button
+              type="button"
+              onClick={event => openConfirmModal({ type: 'bulk-grant-mileage', count: selectedIds.size, grantAmount: 1000, grantReason: '프로모션 지급' }, event.currentTarget)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-400
+                text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
+              마일리지 지급
+            </button>
+            <button
+              type="button"
+              onClick={event => openConfirmModal({ type: 'bulk-delete', count: selectedIds.size }, event.currentTarget)}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-red-500 hover:bg-red-400
+                text-white text-[11px] font-semibold rounded transition whitespace-nowrap">
+              일괄 삭제
+            </button>
+            <button
+              type="button"
+              aria-label="선택 해제"
+              onClick={() => setSelectedIds(new Set())}
+              className="text-admin-muted-2 hover:text-white ml-1 text-lg leading-none transition">
+              ✕
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* 확인 모달 */}
       {confirmModal && (
