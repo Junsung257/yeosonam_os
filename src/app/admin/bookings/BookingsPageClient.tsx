@@ -1109,6 +1109,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   // 대시보드 KPI 카드에서 drilldown으로 진입 시 ?mode= / ?filter= 쿼리파라미터로 초기 상태 설정
   // - ?mode=recognized → lifecycleTab='done' (출발 완료, IFRS 15 매출 인식)
   // - ?mode=new        → lifecycleTab='active' + 생성일 desc 정렬 (신규예약, 영업)
+  // - ?lifecycle=active|done|cancelled|trash → 해당 예약 생명주기 탭
   // - ?filter=unpaid|outstanding → activeTab='unpaid_risk' (잔금 미납 D-7)
   // - ?status=pending,confirmed → lifecycleTab='active' (진행 예약)
   // - ?id=<uuid>       → 해당 예약 drawer 자동 오픈
@@ -1117,6 +1118,10 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
   const searchParams = useSearchParams();
   const highlightedTaskId = searchParams?.get('task') ?? null;
   const initialLifecycle: BookingLifecycleTab = (() => {
+    const lifecycle = searchParams?.get('lifecycle');
+    if (lifecycle === 'active' || lifecycle === 'done' || lifecycle === 'cancelled' || lifecycle === 'trash') {
+      return lifecycle;
+    }
     const mode = searchParams?.get('mode');
     if (mode === 'recognized') return 'done';
     if (searchParams?.get('dq')) return 'active'; // 데이터 품질은 진행 중 예약에서 주로 발견
