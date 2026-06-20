@@ -224,14 +224,79 @@ function getResultInsight(item: MockSearchResult) {
   };
 }
 
+const DESTINATION_HINTS = [
+  '동남아',
+  '다낭',
+  '나트랑',
+  '푸꾸옥',
+  '달랏',
+  '방콕',
+  '파타야',
+  '치앙마이',
+  '세부',
+  '보홀',
+  '마닐라',
+  '코타키나발루',
+  '싱가포르',
+  '대만',
+  '타이베이',
+  '일본',
+  '오사카',
+  '후쿠오카',
+  '삿포로',
+  '괌',
+  '사이판',
+  '하와이',
+  '유럽',
+  '호주',
+];
+
+function inferIntentFromQuery(query: string): string | null {
+  if (/골프|라운딩/.test(query)) return 'golf_compare';
+  if (/워크샵|워크숍/.test(query)) return 'group_workshop';
+  if (/노쇼핑|쇼핑\s*없/.test(query) && /가족|아이|부모/.test(query)) return 'no_shopping_family';
+  if (/효도|부모님|어머니|아버지|60대|70대|시니어/.test(query)) return 'filial_trip';
+  if (/단체|모임|동호회|회사|20명|30명|40명/.test(query)) return 'group_trip';
+  if (/예산|저렴|가성비|100만|150만|200만/.test(query)) return 'budget_trip';
+  return null;
+}
+
+function inferPartyTypeFromQuery(query: string): string | null {
+  if (/골프|라운딩/.test(query)) return 'golf';
+  if (/20명/.test(query)) return 'group_20';
+  if (/효도|부모님|어머니|아버지|60대|70대|시니어/.test(query)) return 'senior_family';
+  if (/가족|아이|초등|중등|자녀/.test(query)) return 'family';
+  if (/단체|워크샵|워크숍|모임|동호회|회사|30명|40명/.test(query)) return 'group';
+  return null;
+}
+
+function inferDestinationFromQuery(query: string): string | null {
+  return DESTINATION_HINTS.find((destination) => query.includes(destination)) ?? null;
+}
+
+function inferBudgetFromQuery(query: string): string | null {
+  const rangeMatch = query.match(/(\d{2,4})\s*(?:~|-|에서)\s*(\d{2,4})\s*(?:만원|만\s*원|만)/);
+  if (rangeMatch) return `${rangeMatch[1]}~${rangeMatch[2]}만원`;
+
+  const manwonMatch = query.match(/(\d{2,4})\s*(?:만원|만\s*원|만)/);
+  if (manwonMatch) return `${manwonMatch[1]}만원`;
+
+  const wonMatch = query.match(/(\d{6,9})\s*원/);
+  if (!wonMatch) return null;
+  const won = Number(wonMatch[1]);
+  if (!Number.isFinite(won) || won <= 0) return null;
+  return won >= 10_000 ? `${Math.round(won / 10_000).toLocaleString('ko-KR')}만원` : `${won.toLocaleString('ko-KR')}원`;
+}
+
 function inferIntentSummary(prompt: IntentPrompt | null, query: string, cart: CartItem[]) {
+  const queryText = query.trim();
   const selectedProducts = mergeUniqueText(cart.map((item) => item.product_name || item.product_id));
   const promptSelectedProducts = prompt?.selected_products?.filter(Boolean) ?? [];
   return {
-    intent: prompt?.intent ?? (query.includes('골프') ? 'golf_compare' : query.includes('단체') ? 'group_trip' : null),
-    budget: prompt?.budget ?? null,
-    destination: prompt?.destination ?? null,
-    party_type: prompt?.party_type ?? null,
+    intent: prompt?.intent ?? inferIntentFromQuery(queryText),
+    budget: prompt?.budget ?? inferBudgetFromQuery(queryText),
+    destination: prompt?.destination ?? inferDestinationFromQuery(queryText),
+    party_type: prompt?.party_type ?? inferPartyTypeFromQuery(queryText),
     selected_products: selectedProducts.length > 0
       ? selectedProducts
       : promptSelectedProducts.length > 0
