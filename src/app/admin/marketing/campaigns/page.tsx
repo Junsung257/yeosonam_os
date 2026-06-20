@@ -126,7 +126,7 @@ export default function CampaignsPage() {
       fetchCampaigns();
 
       if (!data.meta_created) {
-        alert(`캠페인이 DB에 저장됐습니다.\nMeta 연동: ${data.meta_error ?? '미설정'}`);
+        setWarning(`캠페인이 DB에 저장됐습니다. Meta 연동: ${data.meta_error ?? '미설정'}`);
       }
     } finally {
       setSubmitting(false);

@@ -104,6 +104,7 @@ export default function PriceSectionCard({
 }: PriceSectionProps) {
   const printRef = useRef<HTMLDivElement>(null);
   const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   // 빈 데이터 guard
   if (!priceList || priceList.length === 0) {
@@ -117,6 +118,7 @@ export default function PriceSectionCard({
   // html2canvas 내보내기 — 동적 임포트 (SSR 안전)
   const handleExport = async () => {
     if (!printRef.current || exporting) return;
+    setExportError('');
     setExporting(true);
     try {
       // html2canvas는 document를 참조하므로 반드시 동적 임포트
@@ -137,7 +139,7 @@ export default function PriceSectionCard({
       link.click();
     } catch (err) {
       console.error('[PriceSectionCard] 내보내기 실패:', err);
-      alert('이미지 내보내기에 실패했습니다. 다시 시도해주세요.');
+      setExportError('이미지 내보내기에 실패했습니다. 다시 시도해주세요.');
     } finally {
       setExporting(false);
     }
@@ -215,6 +217,15 @@ export default function PriceSectionCard({
           <Download className="w-6 h-6 text-white" />
         )}
       </button>
+
+      {exportError && (
+        <div
+          role="alert"
+          className="fixed bottom-24 right-6 z-50 max-w-xs rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700 shadow-lg"
+        >
+          {exportError}
+        </div>
+      )}
     </section>
   );
 }

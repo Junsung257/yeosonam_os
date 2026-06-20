@@ -46,6 +46,7 @@ export default function BlogExportPage() {
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState<Record<string, boolean>>({});
   const [marking, setMarking] = useState<Record<string, boolean>>({});
+  const [notice, setNotice] = useState<{ tone: 'error' | 'success'; message: string } | null>(null);
 
   const fetchDrafts = useCallback(async () => {
     setLoading(true);
@@ -75,7 +76,7 @@ export default function BlogExportPage() {
       setCopied((prev) => ({ ...prev, [draft.id]: true }));
       setTimeout(() => setCopied((prev) => ({ ...prev, [draft.id]: false })), 2500);
     } catch {
-      alert('클립보드 복사 실패. 브라우저 권한을 확인해주세요.');
+      setNotice({ tone: 'error', message: '클립보드 복사 실패. 브라우저 권한을 확인해주세요.' });
     }
   }
 
@@ -89,8 +90,9 @@ export default function BlogExportPage() {
       });
       if (!res.ok) throw new Error('API 오류');
       setDrafts((prev) => prev.filter((d) => d.id !== draft.id));
+      setNotice({ tone: 'success', message: '발행 완료 상태로 표시했습니다.' });
     } catch {
-      alert('상태 업데이트 실패');
+      setNotice({ tone: 'error', message: '상태 업데이트 실패' });
     } finally {
       setMarking((prev) => ({ ...prev, [draft.id]: false }));
     }
@@ -108,6 +110,20 @@ export default function BlogExportPage() {
           </Button>
         }
       />
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm font-medium ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       {loading ? (
         <div className="space-y-3">

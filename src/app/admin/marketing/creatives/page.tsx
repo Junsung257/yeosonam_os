@@ -31,6 +31,11 @@ interface Creative {
 
 interface Package { id: string; title: string; destination: string; }
 
+type Notice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 // ── 상수 ───────────────────────────────────────────────────
 
 const TYPE_LABELS: Record<string, string> = {
@@ -83,6 +88,8 @@ export default function CreativesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [perfData, setPerfData] = useState<any>(null);
   const [endTarget, setEndTarget] = useState<Creative | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const endConfirmDialogRef = useRef<HTMLDivElement | null>(null);
   const endConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
   const endConfirmTitleId = 'creative-end-confirm-title';
@@ -151,6 +158,16 @@ export default function CreativesPage() {
   }, [filterType, filterChannel, filterStatus, filterProduct]);
 
   useEffect(() => { fetchCreatives(); }, [fetchCreatives]);
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+  }, []);
+
+  const showNotice = useCallback((message: string, tone: Notice['tone'] = 'success') => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice({ message, tone });
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 4500);
+  }, []);
 
   useEffect(() => {
     if (!endTarget) return undefined;
@@ -243,9 +260,15 @@ export default function CreativesPage() {
           body: JSON.stringify({ creative_ids: [id], budgets: { meta_daily: 10000 } }),
         });
         const data = await res.json();
-        if (res.ok) fetchCreatives();
-        else alert(`배포 실패: ${data.error || '알 수 없는 오류'}`);
-      } catch { alert('배포 요청 실패'); }
+        if (res.ok) {
+          showNotice('소재 배포 요청을 보냈습니다.');
+          fetchCreatives();
+        } else {
+          showNotice(`배포 실패: ${data.error || '알 수 없는 오류'}`, 'error');
+        }
+      } catch {
+        showNotice('배포 요청 실패', 'error');
+      }
       return;
     }
 
@@ -255,9 +278,14 @@ export default function CreativesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: newStatus }),
       });
-      if (newStatus === 'ended') setEndTarget(null);
+      if (newStatus === 'ended') {
+        setEndTarget(null);
+        showNotice('소재를 종료 처리했습니다.');
+      }
       fetchCreatives();
-    } catch { /* ignore */ }
+    } catch {
+      showNotice('상태 변경에 실패했습니다.', 'error');
+    }
   };
 
   // 성과 로드
@@ -538,6 +566,20 @@ export default function CreativesPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`fixed bottom-6 right-6 z-[90] max-w-sm rounded-admin-md border px-4 py-3 text-sm font-semibold shadow-admin-md ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {notice.message}
         </div>
       )}
     </div>

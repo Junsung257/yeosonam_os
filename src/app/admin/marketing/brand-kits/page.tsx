@@ -262,7 +262,7 @@ export default function BrandKitsPage() {
       if (editing?.id === id) closePanel();
       fetchKits();
     } else {
-      alert(data.error ?? '삭제 실패');
+      setSaveMsg(data.error ?? '삭제 실패');
     }
   };
 

@@ -40,6 +40,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
   const [createMode, setCreateMode] = useState<'product' | 'info'>('product');
   const [createTopic, setCreateTopic] = useState('');
   const [createCategoryId, setCreateCategoryId] = useState('');
+  const [createError, setCreateError] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>(initialCategories ?? []);
   const [archiveTarget, setArchiveTarget] = useState<CardNews | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
@@ -168,6 +169,7 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
   const handleCreate = async () => {
     if (createMode === 'product' && !selectedPkg) return;
     if (createMode === 'info' && !createTopic.trim()) return;
+    setCreateError(null);
     setCreating(true);
     try {
       const body: Record<string, unknown> = {
@@ -192,8 +194,10 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
       if (res.ok && data.card_news?.id) {
         router.push(`/admin/marketing/content-hub/${data.card_news.id}?source=new`);
       } else {
-        alert(data.error ?? '생성 실패');
+        setCreateError(data.error ?? '생성 실패');
       }
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : '생성 실패');
     } finally {
       setCreating(false);
     }
@@ -542,6 +546,12 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                 placeholder="예: 5성급 호텔 강조, 마감임박 느낌으로, 20대 타겟..."
                 className="w-full border border-admin-border-mid rounded px-3 py-2 text-admin-xs h-20 resize-none focus:ring-1 focus:ring-[#005d90]" />
             </div>
+
+            {createError && (
+              <div role="alert" className="rounded-admin-md border border-red-200 bg-red-50 px-3 py-2 text-admin-xs font-medium text-red-700">
+                {createError}
+              </div>
+            )}
 
             </div>
 

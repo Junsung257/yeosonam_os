@@ -30,6 +30,11 @@ type ConfirmAction =
   | { type: 'archive-losers' }
   | { type: 'archive-variant'; variant: Variant };
 
+type Notice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 const ANGLE_LABELS: Record<string, string> = {
   luxury: '럭셔리',
   value: '가성비',
@@ -78,6 +83,8 @@ export default function VariantGroupComparePage() {
   const [renderingId, setRenderingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [decidingWinner, setDecidingWinner] = useState(false);
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
   const confirmDialogRef = useRef<HTMLDivElement | null>(null);
   const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
@@ -108,6 +115,16 @@ export default function VariantGroupComparePage() {
   useEffect(() => {
     fetchVariants();
   }, [fetchVariants]);
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+  }, []);
+
+  const showNotice = useCallback((message: string, tone: Notice['tone'] = 'success') => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice({ message, tone });
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 4500);
+  }, []);
 
   useEffect(() => {
     if (!confirmAction) return undefined;
@@ -170,9 +187,9 @@ export default function VariantGroupComparePage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `렌더 실패`);
       await fetchVariants();
-      alert(`PNG ${(data.renders ?? []).filter((r: { url?: string }) => r.url).length}/6 렌더 완료`);
+      showNotice(`PNG ${(data.renders ?? []).filter((r: { url?: string }) => r.url).length}/6 렌더 완료`);
     } catch (err) {
-      alert(err instanceof Error ? err.message : '렌더 실패');
+      showNotice(err instanceof Error ? err.message : '렌더 실패', 'error');
     } finally {
       setRenderingId(null);
     }
@@ -200,7 +217,7 @@ export default function VariantGroupComparePage() {
       });
       if (data.decided) await fetchVariants();
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'winner 결정 실패');
+      showNotice(err instanceof Error ? err.message : 'winner 결정 실패', 'error');
     } finally {
       setDecidingWinner(false);
     }
@@ -219,8 +236,9 @@ export default function VariantGroupComparePage() {
         throw new Error(d.error || 'archive 실패');
       }
       await fetchVariants();
+      showNotice('변형을 보관 처리했습니다.');
     } catch (err) {
-      alert(err instanceof Error ? err.message : 'archive 실패');
+      showNotice(err instanceof Error ? err.message : 'archive 실패', 'error');
     } finally {
       setArchivingId(null);
     }
@@ -601,6 +619,20 @@ export default function VariantGroupComparePage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`fixed bottom-6 right-6 z-[90] max-w-sm rounded-admin-md border px-4 py-3 text-sm font-semibold shadow-admin-md ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {notice.message}
         </div>
       )}
     </div>
