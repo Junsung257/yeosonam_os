@@ -85,3 +85,42 @@ The important completed improvement is that price/date and flight evidence failu
 - Classify the remaining 9 price-missing products into true no-price sources, shared matrix mapping cases, and parser-rule candidates.
 - Continue destination-code hardening for the remaining 8 destination unresolved blockers. Do not add broad `화산` global mapping until raw route evidence proves it is the Xian/Huashan product context, because that can collide with non-Xian phrases such as volcano/waterfall descriptions.
 - Run live mobile/A4 browser verification only after DB resource pressure is normal and the offline source audit has no customer-critical blockers.
+
+## 2026-06-20 Follow-up: Micro QA Final-State Accounting
+
+The offline source audit had a process bug: it was counting the initial micro Auto QA triggers as final blockers even after the three-phase micro repair loop had produced a repaired registration. This made fixed items look blocked and hid the real remaining work.
+
+The audit now uses:
+
+- `autoQA.repairedRegistration` for final product shape.
+- `autoQA.packagesAudit` and `autoQA.a4Audit` for final render payload checks.
+- `autoQA.remainingTriggers` instead of initial triggers for final blockers.
+
+Result on the same source batch:
+
+```text
+products: 124
+publishableOffline: 98
+customerReadyOffline: 0
+blocked: 26
+mobile/A4 live verification: not run in this offline audit
+```
+
+## 2026-06-20 Follow-up: Split Product Context Preservation
+
+Split catalog products were being audited with only their local section text. For fragments whose local heading was only a date/price/title snippet, destination context from the full document or filename was lost. The audit now passes the full document text and filename-derived destination evidence into each split product registration.
+
+Result on the same source batch:
+
+```text
+products: 124
+publishableOffline: 105
+customerReadyOffline: 0
+blocked: 19
+product_prices missing: 5
+itinerary missing: 7
+destination code unresolved: 2
+mobile/A4 live verification: not run in this offline audit
+```
+
+Remaining blockers must not be auto-opened unless source evidence exists. In particular, confirmation letters, fam-tour notices, standalone price tables, or itinerary-less golf/fee documents must stay blocked or review-needed until the original source contains customer-visible itinerary and sale-price evidence.

@@ -139,6 +139,7 @@ describe('runMicroAutoQA', () => {
 
     expect(result.status).toBe('AUTO_FIXED');
     expect(result.triggers).toContain('schedule_pollution_removed');
+    expect(result.remainingTriggers).toEqual([]);
     expect(result.attempts).toHaveLength(4);
     expect(result.attempts.map(event => event.attemptPhase)).toEqual([
       'normal_registration',
@@ -191,6 +192,7 @@ describe('runMicroAutoQA', () => {
     });
 
     expect(result.status).toBe('AUTO_FIXED');
+    expect(result.remainingTriggers).toEqual([]);
     expect(result.repairedRegistration.deliverability.ok).toBe(true);
     expect(result.repairedRegistration.pricing.productPrices[0]?.adult_selling_price).toBe(859000);
     expect(result.attempts[1]?.autoFixesApplied).toEqual(expect.arrayContaining([
@@ -258,6 +260,7 @@ describe('runMicroAutoQA', () => {
     });
 
     expect(result.status).toBe('AUTO_FIXED');
+    expect(result.remainingTriggers).toEqual([]);
     expect(result.repairedRegistration.pricing.priceDates).toEqual([
       { date: '2026-07-24', price: 859000, confirmed: false },
     ]);
@@ -326,6 +329,7 @@ describe('runMicroAutoQA', () => {
 
     expect(result.status).toBe('AUTO_FIXED');
     expect(result.triggers).toContain('price_storage_mismatch');
+    expect(result.remainingTriggers).toEqual([]);
     expect(result.repairedRegistration.pricing.priceDates).toEqual([
       { date: '2026-07-24', price: 859000, confirmed: false },
       { date: '2026-07-25', price: 879000, confirmed: false },

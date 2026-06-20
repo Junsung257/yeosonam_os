@@ -29,6 +29,7 @@ export type MicroAutoQATrigger =
 export type MicroAutoQAResult = {
   status: ImprovementFinalStatus;
   triggers: MicroAutoQATrigger[];
+  remainingTriggers: MicroAutoQATrigger[];
   attempts: ImprovementLedgerEvent[];
   recommendedFixes: AutoFixRecord[];
   packagesAudit: RenderAuditResult;
@@ -427,6 +428,7 @@ export function runMicroAutoQA(input: {
   return {
     status,
     triggers,
+    remainingTriggers,
     attempts,
     recommendedFixes,
     packagesAudit,
