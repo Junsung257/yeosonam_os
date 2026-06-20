@@ -127,6 +127,13 @@ const EVENT_ICON: Record<string, string> = {
 };
 
 const QUICK_TAGS = ['카드 직결제', '수수료 공제', '단가 네고'] as const;
+const formatSettlementWon = (amount: number) => `₩${amount.toLocaleString('ko-KR')}`;
+
+type SettlementRiskConfirm = {
+  paidAmount: number;
+  totalPrice: number;
+  unpaidDiff: number;
+};
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
@@ -1017,8 +1024,15 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
   // ── 정산 확정 / 되돌리기 ─────────────────────────────────────────────
   const isConfirmedSettlement = !!booking?.settlement_confirmed_at;
   const [confirmingSettlement, setConfirmingSettlement] = useState(false);
+  const [settlementRiskConfirm, setSettlementRiskConfirm] = useState<SettlementRiskConfirm | null>(null);
+  const settlementRiskCancelRef = useRef<HTMLButtonElement | null>(null);
 
-  const handleConfirmSettlement = async (confirm: boolean) => {
+  useEffect(() => {
+    if (!settlementRiskConfirm) return;
+    requestAnimationFrame(() => settlementRiskCancelRef.current?.focus());
+  }, [settlementRiskConfirm]);
+
+  const handleConfirmSettlement = async (confirm: boolean, options?: { skipRiskConfirm?: boolean }) => {
     if (!bookingId) return;
 
     // 정산확정 = 통장내역 기준 회계 마감 (사장님 모델)
@@ -1030,15 +1044,9 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
       const paidAmount = Number(booking?.paid_amount ?? 0);
       const unpaidDiff = totalPrice - paidAmount;
       // 미수 ≥ 1만원이면 명시적 확인
-      if (unpaidDiff >= 10000) {
-        const won = (n: number) => `₩${n.toLocaleString('ko-KR')}`;
-        const ok = window.confirm(
-          `통장 입금 ${won(paidAmount)} / 매출 명목가 ${won(totalPrice)}\n` +
-          `→ 미수 ${won(unpaidDiff)}이 있습니다.\n\n` +
-          `정산확정 시 미수액은 서비스 손비로 처리되고\n` +
-          `회계는 통장 기준으로 마감됩니다. 진행하시겠습니까?`
-        );
-        if (!ok) return;
+      if (unpaidDiff >= 10000 && options?.skipRiskConfirm !== true) {
+        setSettlementRiskConfirm({ paidAmount, totalPrice, unpaidDiff });
+        return;
       }
     }
 
@@ -1077,6 +1085,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
         onSave?.(bookingId, patchedPayload.booking);
       }
       if (confirm) {
+        setSettlementRiskConfirm(null);
         const totalPrice = Number(booking?.total_price ?? 0);
         const paidAmount = Number(booking?.paid_amount ?? 0);
         const unpaid = totalPrice - paidAmount;
@@ -1086,6 +1095,7 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
             : '✅ 정산 확정 — 완료 상태로 마감',
         );
       } else {
+        setSettlementRiskConfirm(null);
         showToast('♻️ 정산 확정 해제 — status/payment_status는 수동 복원 필요');
       }
     } catch {
@@ -1651,6 +1661,64 @@ export default function BookingDrawer({ bookingId, onClose, onStatusChange, onSa
           <div className={`fixed bottom-8 right-8 z-[60] px-4 py-2.5 rounded-xl shadow-2xl text-white text-[13px] font-semibold pointer-events-none flex items-center gap-2
             ${toast.type === 'err' ? 'bg-red-600' : 'bg-gray-900'}`}>
             {toast.type === 'err' ? '🚨' : '✅'} {toast.msg}
+          </div>
+        )}
+
+        {settlementRiskConfirm && (
+          <div className="fixed inset-0 z-[70] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+            <button
+              type="button"
+              aria-label="정산 확정 위험 확인 닫기"
+              className="absolute inset-0 bg-black/50 cursor-default"
+              onClick={() => setSettlementRiskConfirm(null)}
+            />
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="booking-settlement-risk-title"
+              aria-describedby="booking-settlement-risk-description booking-settlement-risk-summary"
+              className="relative w-full max-w-md rounded-2xl border border-amber-200 bg-white p-5 shadow-2xl"
+            >
+              <h2 id="booking-settlement-risk-title" className="text-[17px] font-extrabold text-slate-900">
+                미수 금액이 있는 정산입니다
+              </h2>
+              <p id="booking-settlement-risk-description" className="mt-1 text-[13px] leading-6 text-slate-600">
+                정산 확정 시 미수액은 서비스 손비로 처리되고, 회계는 통장 기준으로 마감됩니다.
+              </p>
+              <div
+                id="booking-settlement-risk-summary"
+                className="mt-4 space-y-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[13px]"
+              >
+                <AmountRow label="통장 입금" amount={settlementRiskConfirm.paidAmount} colorClass="text-blue-700" />
+                <AmountRow label="매출 명목가" amount={settlementRiskConfirm.totalPrice} colorClass="text-slate-800" />
+                <div className="border-t border-amber-200 pt-2">
+                  <AmountRow
+                    label="서비스 손비 처리"
+                    amount={settlementRiskConfirm.unpaidDiff}
+                    colorClass="text-amber-700"
+                    sub={`미수 ${formatSettlementWon(settlementRiskConfirm.unpaidDiff)}`}
+                  />
+                </div>
+              </div>
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  ref={settlementRiskCancelRef}
+                  type="button"
+                  onClick={() => setSettlementRiskConfirm(null)}
+                  className="rounded-lg border border-slate-200 px-4 py-2 text-[13px] font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  다시 확인
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmSettlement(true, { skipRiskConfirm: true })}
+                  disabled={confirmingSettlement}
+                  className="rounded-lg bg-emerald-600 px-4 py-2 text-[13px] font-extrabold text-white hover:bg-emerald-700 disabled:opacity-50"
+                >
+                  {confirmingSettlement ? '처리 중...' : '통장 기준으로 정산 확정'}
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
