@@ -23,6 +23,34 @@ interface Attraction {
   created_at: string;
 }
 
+type ConfirmAction =
+  | {
+      kind: 'delete';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'danger';
+      details: Array<{ label: string; value: string }>;
+      payload: { id: string };
+    }
+  | {
+      kind: 'bulk-register' | 'llm-desc' | 'wiki-desc' | 'auto-photo';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'primary' | 'warning';
+      details: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: 'feedback';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'primary' | 'danger';
+      details: Array<{ label: string; value: string }>;
+      payload: { id: string; verdict: 'accurate' | 'inaccurate' };
+    };
+
 const BADGE_OPTIONS = [
   { value: 'tour', label: '관광', color: 'bg-blue-100 text-blue-700', icon: '📍' },
   { value: 'special', label: '특전', color: 'bg-cyan-100 text-cyan-700', icon: '⭐' },
@@ -45,6 +73,11 @@ export default function AttractionsPage() {
   const [photoPanel, setPhotoPanel] = useState<{ id: string; results: PhotoItem[]; keyword: string; searching: boolean } | null>(null);
   const [autoPhotoProgress, setAutoPhotoProgress] = useState<{ current: number; total: number } | null>(null);
   const [displayCount, setDisplayCount] = useState(50); // 페이지네이션: 50개씩
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmTitleId = 'attractions-confirm-title';
+  const confirmDescriptionId = 'attractions-confirm-description';
 
   const listKey = useMemo(() => {
     const params = new URLSearchParams();
@@ -59,6 +92,55 @@ export default function AttractionsPage() {
   useEffect(() => {
     if (listData?.attractions) setAttractions(listData.attractions);
   }, [listData]);
+
+  useEffect(() => {
+    if (!confirmAction) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    confirmCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      confirmDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setConfirmAction(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [confirmAction]);
 
   const load = useCallback(() => mutateList(), [mutateList]);
 
@@ -98,8 +180,27 @@ export default function AttractionsPage() {
   };
 
   // 삭제
-  const deleteAttraction = async (id: string) => {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
+  const deleteAttraction = async (id: string, confirmed = false) => {
+    const target = attractions.find(a => a.id === id);
+    if (!confirmed) {
+      if (!target) return;
+      setConfirmAction({
+        kind: 'delete',
+        title: '관광지 삭제',
+        description: '삭제하면 관광지 목록과 자동 매칭 후보에서 제거됩니다.',
+        confirmLabel: '삭제',
+        tone: 'danger',
+        payload: { id },
+        details: [
+          { label: '이름', value: target.name },
+          { label: '지역', value: [target.country, target.region].filter(Boolean).join(' · ') || '-' },
+          { label: '멘션', value: `${target.mention_count.toLocaleString()}회` },
+          { label: '사진', value: `${target.photos?.length ?? 0}장` },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     await fetch(`/api/attractions?id=${id}`, { method: 'DELETE' });
     setAttractions(prev => prev.filter(a => a.id !== id));
   };
@@ -223,10 +324,26 @@ export default function AttractionsPage() {
     }
   };
 
-  const bulkRegisterSelectedCards = async () => {
+  const bulkRegisterSelectedCards = async (confirmed = false) => {
     const targets = parsedCards.filter((_, i) => selectedCardIdx.has(i));
     if (targets.length === 0) { alert('선택된 카드가 없습니다'); return; }
-    if (!confirm(`${targets.length}개 attraction 일괄 등록하시겠습니까?\n동일 name 발견 시 alias 추가됩니다 (덮어쓰기 안 함)`)) return;
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'bulk-register',
+        title: '카탈로그 카드 일괄 등록',
+        description: '선택한 AI 분해 카드를 관광지로 등록합니다. 동일 name은 덮어쓰지 않고 alias 후보로 처리합니다.',
+        confirmLabel: '일괄 등록',
+        tone: 'primary',
+        details: [
+          { label: '선택 카드', value: `${targets.length.toLocaleString()}개` },
+          { label: '지역', value: pasteRegion || '-' },
+          { label: '국가', value: pasteCountry || '-' },
+          { label: '중복 처리', value: '동일 name 발견 시 alias 추가' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     setBulkRegisterProgress({ current: 0, total: targets.length });
     let saved = 0;
     let aliased = 0;
@@ -275,10 +392,27 @@ export default function AttractionsPage() {
   // PR #93 — DeepSeek 으로 desc 일괄 채움 (Wikipedia 보다 ROI 높음).
   //   사장님 톤 prompt + Wikipedia 그라운딩 fallback. is_manual_override=true 차단됨.
   const [autoLlmProgress, setAutoLlmProgress] = useState<{ current: number; total: number } | null>(null);
-  const autoFillDescriptionsLLM = async () => {
+  const autoFillDescriptionsLLM = async (confirmed = false) => {
     const noDesc = attractions.filter(a => !a.short_desc?.trim() || !a.long_desc?.trim());
     if (noDesc.length === 0) { alert('설명 비어있는 attraction 0건'); return; }
-    if (!confirm(`설명 없는 ${noDesc.length}개 attraction 에 DeepSeek 자동 채움.\n사장님 톤 + Wikipedia 그라운딩 (있으면). 비용 ~$${(noDesc.length * 0.0001).toFixed(4)}.\n진행?`)) return;
+    const estimatedCost = (noDesc.length * 0.0001).toFixed(4);
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'llm-desc',
+        title: 'DeepSeek 설명 일괄 채움',
+        description: '설명이 비어 있는 관광지를 사장님 톤으로 자동 보강합니다. Wikipedia 그라운딩이 가능하면 함께 사용합니다.',
+        confirmLabel: '자동 채움 시작',
+        tone: 'warning',
+        details: [
+          { label: '대상', value: `${noDesc.length.toLocaleString()}개` },
+          { label: '예상 비용', value: `약 $${estimatedCost}` },
+          { label: '보존 규칙', value: '기존 입력값과 사장님 잠금은 유지' },
+          { label: '간격', value: '요청 사이 300ms' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     setAutoLlmProgress({ current: 0, total: noDesc.length });
     let filled = 0; let locked = 0; let failed = 0;
     for (let i = 0; i < noDesc.length; i++) {
@@ -316,10 +450,26 @@ export default function AttractionsPage() {
   //   short_desc 또는 long_desc 가 비어 있는 attraction 만 대상.
   //   라이선스: Wikipedia CC-BY-SA → external_url 자동 저장. STRICT SSOT: 기존 채움값 보존.
   const [autoDescProgress, setAutoDescProgress] = useState<{ current: number; total: number } | null>(null);
-  const autoFillDescriptions = async () => {
+  const autoFillDescriptions = async (confirmed = false) => {
     const noDesc = attractions.filter(a => !a.short_desc?.trim() || !a.long_desc?.trim());
     if (noDesc.length === 0) { alert('설명이 비어 있는 관광지가 없습니다.'); return; }
-    if (!confirm(`설명 없는 ${noDesc.length}개 관광지에 Wikipedia(ko→en→zh→ja fallback) 요약 자동 채움.\n(무료, 200 req/s)\n진행하시겠습니까?`)) return;
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'wiki-desc',
+        title: 'Wikipedia 설명 일괄 채움',
+        description: '설명이 비어 있는 관광지에 Wikipedia 요약을 채웁니다. 한국어가 없으면 en, zh, ja 순서로 fallback합니다.',
+        confirmLabel: 'Wiki 채움 시작',
+        tone: 'primary',
+        details: [
+          { label: '대상', value: `${noDesc.length.toLocaleString()}개` },
+          { label: '비용', value: '무료' },
+          { label: '라이선스', value: 'Wikipedia 출처 URL 자동 저장' },
+          { label: '간격', value: '요청 사이 200ms' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
 
     setAutoDescProgress({ current: 0, total: noDesc.length });
     let filled = 0;
@@ -357,10 +507,26 @@ export default function AttractionsPage() {
   };
 
   // ── 사진 일괄 자동 생성 ──
-  const autoGeneratePhotos = async () => {
+  const autoGeneratePhotos = async (confirmed = false) => {
     const noPhotos = attractions.filter(a => !a.photos || a.photos.length === 0);
     if (noPhotos.length === 0) { alert('사진 없는 관광지가 없습니다.'); return; }
-    if (!confirm(`사진 없는 ${noPhotos.length}개 관광지에 자동으로 Pexels 사진을 추가합니다.\n(Pexels 무료: 200건/시간)\n진행하시겠습니까?`)) return;
+    if (!confirmed) {
+      setConfirmAction({
+        kind: 'auto-photo',
+        title: '관광지 사진 일괄 생성',
+        description: '사진 없는 관광지에 Wikimedia Commons 우선, Pexels fallback으로 사진을 추가합니다.',
+        confirmLabel: '사진 추가 시작',
+        tone: 'warning',
+        details: [
+          { label: '대상', value: `${noPhotos.length.toLocaleString()}개` },
+          { label: '사진 수', value: '관광지당 최대 3장' },
+          { label: 'Pexels 제한', value: '무료 200건/시간' },
+          { label: '검색', value: '영어 alias 우선 사용' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
 
     setAutoPhotoProgress({ current: 0, total: noPhotos.length });
     for (let i = 0; i < noPhotos.length; i++) {
@@ -466,6 +632,34 @@ export default function AttractionsPage() {
     } finally { setSaving(false); e.target.value = ''; }
   };
 
+  const executeConfirmAction = () => {
+    if (!confirmAction) return;
+    if (confirmAction.kind === 'delete') {
+      void deleteAttraction(confirmAction.payload.id, true);
+      return;
+    }
+    if (confirmAction.kind === 'bulk-register') {
+      void bulkRegisterSelectedCards(true);
+      return;
+    }
+    if (confirmAction.kind === 'llm-desc') {
+      void autoFillDescriptionsLLM(true);
+      return;
+    }
+    if (confirmAction.kind === 'wiki-desc') {
+      void autoFillDescriptions(true);
+      return;
+    }
+    if (confirmAction.kind === 'auto-photo') {
+      void autoGeneratePhotos(true);
+      return;
+    }
+    if (confirmAction.kind === 'feedback') {
+      setConfirmAction(null);
+      void submitFeedback(confirmAction.payload.id, confirmAction.payload.verdict);
+    }
+  };
+
   const countries = [...new Set(attractions.map(a => a.country).filter(Boolean))] as string[];
   const regions = [...new Set(attractions.map(a => a.region).filter(Boolean))] as string[];
   const badgeStyle = (bt: string) => BADGE_OPTIONS.find(b => b.value === bt)?.color || 'bg-admin-surface-2 text-admin-text-2';
@@ -483,7 +677,7 @@ export default function AttractionsPage() {
         actions={
           <div className="flex flex-wrap gap-1.5">
             <button
-              onClick={autoGeneratePhotos}
+              onClick={() => void autoGeneratePhotos()}
               disabled={!!autoPhotoProgress}
               className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
             >
@@ -491,7 +685,7 @@ export default function AttractionsPage() {
               {autoPhotoProgress ? `${autoPhotoProgress.current}/${autoPhotoProgress.total}` : `사진 일괄생성 (${noPhotoCount})`}
             </button>
             <button
-              onClick={autoFillDescriptionsLLM}
+              onClick={() => void autoFillDescriptionsLLM()}
               disabled={!!autoLlmProgress}
               className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-amber-600 to-orange-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
               title="설명 비어있는 attraction에 DeepSeek 자동 채움 (Wikipedia 그라운딩 + 사장님 톤)"
@@ -499,7 +693,7 @@ export default function AttractionsPage() {
               🤖 {autoLlmProgress ? `${autoLlmProgress.current}/${autoLlmProgress.total}` : 'DeepSeek 일괄채움'}
             </button>
             <button
-              onClick={autoFillDescriptions}
+              onClick={() => void autoFillDescriptions()}
               disabled={!!autoDescProgress}
               className="h-8 px-3 inline-flex items-center gap-1.5 bg-gradient-to-r from-sky-600 to-cyan-600 text-white text-admin-sm font-semibold rounded-admin-sm hover:opacity-90 disabled:opacity-50 transition-opacity"
               title="(보조) Wikipedia 만 사용 — 한국어 hit rate 낮음. DeepSeek 권장"
@@ -705,7 +899,7 @@ export default function AttractionsPage() {
                   <span className="text-sm text-admin-muted">
                     선택: <b className="text-emerald-700">{selectedCardIdx.size}</b> / {parsedCards.length}
                   </span>
-                  <button onClick={bulkRegisterSelectedCards} disabled={!!bulkRegisterProgress || selectedCardIdx.size === 0}
+                  <button onClick={() => void bulkRegisterSelectedCards()} disabled={!!bulkRegisterProgress || selectedCardIdx.size === 0}
                     className="px-4 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg hover:bg-emerald-700 disabled:opacity-50">
                     {bulkRegisterProgress
                       ? `등록 중… ${bulkRegisterProgress.current}/${bulkRegisterProgress.total}`
@@ -855,11 +1049,41 @@ export default function AttractionsPage() {
                       </div>
                       <div className="flex gap-1.5">
                         <button
-                          onClick={(e) => { e.stopPropagation(); if (confirm(`"${a.name}" 정확? confidence +10%`)) submitFeedback(a.id, 'accurate'); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmAction({
+                              kind: 'feedback',
+                              title: '자동 시드 정확도 피드백',
+                              description: '이 관광지 매칭이 정확한지 학습 데이터에 반영합니다.',
+                              confirmLabel: '정확으로 기록',
+                              tone: 'primary',
+                              payload: { id: a.id, verdict: 'accurate' },
+                              details: [
+                                { label: '관광지', value: a.name },
+                                { label: '효과', value: 'confidence +10%' },
+                                { label: '현재 멘션', value: `${a.mention_count.toLocaleString()}회` },
+                              ],
+                            });
+                          }}
                           className="text-xs px-2.5 py-1 bg-green-100 text-green-700 hover:bg-green-200 rounded-lg font-medium"
                         >✅ 정확</button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); if (confirm(`"${a.name}" 부정확? confidence -20%, 30% 미만 자동 비활성`)) submitFeedback(a.id, 'inaccurate'); }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmAction({
+                              kind: 'feedback',
+                              title: '자동 시드 부정확 피드백',
+                              description: '부정확 판정은 자동 시드 학습과 비활성 기준에 반영됩니다.',
+                              confirmLabel: '부정확으로 기록',
+                              tone: 'danger',
+                              payload: { id: a.id, verdict: 'inaccurate' },
+                              details: [
+                                { label: '관광지', value: a.name },
+                                { label: '효과', value: 'confidence -20%' },
+                                { label: '자동 기준', value: '30% 미만 자동 비활성' },
+                              ],
+                            });
+                          }}
                           className="text-xs px-2.5 py-1 bg-red-100 text-red-700 hover:bg-red-200 rounded-lg font-medium"
                         >❌ 부정확</button>
                       </div>
@@ -958,6 +1182,68 @@ export default function AttractionsPage() {
               더보기 ({displayCount}/{filtered.length})
             </button>
           )}
+        </div>
+      )}
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={confirmDialogRef}
+            id="attractions-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmTitleId}
+            aria-describedby={confirmDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={confirmTitleId} className="text-admin-sm font-semibold text-admin-text-2">{confirmAction.title}</p>
+              <p id={confirmDescriptionId} className="mt-1 text-[11px] text-admin-muted">{confirmAction.description}</p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="grid grid-cols-2 gap-2">
+                {confirmAction.details.map(item => (
+                  <div key={item.label} className="rounded bg-admin-bg px-2.5 py-2">
+                    <p className="text-[10px] text-admin-muted-2">{item.label}</p>
+                    <p className="mt-0.5 break-words text-admin-sm font-semibold text-admin-text-2">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              {confirmAction.tone === 'warning' && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  외부 API 호출이나 대량 업데이트가 포함됩니다. 진행 중에는 화면을 닫지 않는 편이 안전합니다.
+                </div>
+              )}
+              {confirmAction.tone === 'danger' && (
+                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+                  실행 후 자동으로 되돌리는 기능은 없습니다. 대상이 맞는지 한 번 더 확인해 주세요.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={confirmCancelButtonRef}
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={executeConfirmAction}
+                className={`rounded px-3 py-1.5 text-admin-sm font-medium text-white ${
+                  confirmAction.tone === 'danger'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : confirmAction.tone === 'warning'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
