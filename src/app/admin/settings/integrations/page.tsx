@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IntegrationStatus } from '@/app/api/admin/integrations/route';
 import { fmtDate } from '@/lib/admin-utils';
 
@@ -36,6 +36,10 @@ export default function IntegrationsPage() {
   const [aiPolicies, setAiPolicies] = useState<AiPolicy[]>([]);
   const [policyLoading, setPolicyLoading] = useState(true);
   const [policySaving, setPolicySaving] = useState(false);
+  const [disconnectTarget, setDisconnectTarget] = useState<IntegrationStatus | null>(null);
+  const [deletePolicyTarget, setDeletePolicyTarget] = useState<AiPolicy | null>(null);
+  const disconnectCancelRef = useRef<HTMLButtonElement | null>(null);
+  const deletePolicyCancelRef = useRef<HTMLButtonElement | null>(null);
   const [policyForm, setPolicyForm] = useState<AiPolicy>({
     task: 'card-news',
     provider: 'deepseek',
@@ -82,6 +86,16 @@ export default function IntegrationsPage() {
 
   useEffect(() => { fetchPolicies(); }, [fetchPolicies]);
 
+  useEffect(() => {
+    if (!disconnectTarget) return;
+    requestAnimationFrame(() => disconnectCancelRef.current?.focus());
+  }, [disconnectTarget]);
+
+  useEffect(() => {
+    if (!deletePolicyTarget) return;
+    requestAnimationFrame(() => deletePolicyCancelRef.current?.focus());
+  }, [deletePolicyTarget]);
+
   const handleConnect = (platform: string) => {
     const startUrl = PLATFORM_OAUTH_START[platform];
     if (!startUrl) return;
@@ -97,8 +111,13 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleDisconnect = async (platform: string) => {
-    if (!confirm(`${platform} 연결을 해제하시겠습니까?`)) return;
+  const handleDisconnect = (item: IntegrationStatus) => {
+    setDisconnectTarget(item);
+  };
+
+  const submitDisconnect = async () => {
+    if (!disconnectTarget) return;
+    const platform = disconnectTarget.platform;
     setDisconnecting(platform);
     try {
       const res = await fetch('/api/admin/integrations/disconnect', {
@@ -106,7 +125,10 @@ export default function IntegrationsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tenant_id: resolvedTenantId, platform }),
       });
-      if (res.ok) await fetchIntegrations();
+      if (res.ok) {
+        setDisconnectTarget(null);
+        await fetchIntegrations();
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -138,13 +160,21 @@ export default function IntegrationsPage() {
     }
   };
 
-  const handleDeletePolicy = async (task: string) => {
-    if (!confirm(`정말 ${task} 정책을 삭제할까요?`)) return;
+  const handleDeletePolicy = (policy: AiPolicy) => {
+    setDeletePolicyTarget(policy);
+  };
+
+  const submitDeletePolicy = async () => {
+    if (!deletePolicyTarget) return;
+    const task = deletePolicyTarget.task;
     try {
       const res = await fetch(`/api/admin/ai-policies?task=${encodeURIComponent(task)}`, {
         method: 'DELETE',
       });
-      if (res.ok) await fetchPolicies();
+      if (res.ok) {
+        setDeletePolicyTarget(null);
+        await fetchPolicies();
+      }
     } catch (err) {
       console.error(err);
     }
@@ -204,8 +234,12 @@ export default function IntegrationsPage() {
               <div className="flex-shrink-0">
                 {item.connected ? (
                   <button
-                    onClick={() => handleDisconnect(item.platform)}
+                    type="button"
+                    onClick={() => handleDisconnect(item)}
                     disabled={disconnecting === item.platform}
+                    aria-haspopup="dialog"
+                    aria-expanded={disconnectTarget?.platform === item.platform}
+                    aria-controls="integration-disconnect-confirm-dialog"
                     className="px-4 py-2 text-admin-sm font-medium text-red-600 border border-red-200 rounded-lg hover:bg-red-50 disabled:opacity-50 transition"
                   >
                     {disconnecting === item.platform ? '해제 중...' : '연결 해제'}
@@ -360,7 +394,11 @@ export default function IntegrationsPage() {
                       </button>
                       <button
                         className="text-red-600 hover:underline"
-                        onClick={() => handleDeletePolicy(p.task)}
+                        type="button"
+                        onClick={() => handleDeletePolicy(p)}
+                        aria-haspopup="dialog"
+                        aria-expanded={deletePolicyTarget?.task === p.task}
+                        aria-controls="ai-policy-delete-confirm-dialog"
                       >
                         삭제
                       </button>
@@ -372,6 +410,151 @@ export default function IntegrationsPage() {
           </table>
         </div>
       </div>
+
+      {disconnectTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="외부 연동 해제 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setDisconnectTarget(null)}
+          />
+          <div
+            id="integration-disconnect-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="integration-disconnect-confirm-title"
+            aria-describedby="integration-disconnect-confirm-description integration-disconnect-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">External integration</p>
+              <h2 id="integration-disconnect-confirm-title" className="text-lg font-bold text-admin-text">
+                외부 연동을 해제할까요?
+              </h2>
+              <p id="integration-disconnect-confirm-description" className="text-sm leading-6 text-admin-muted">
+                광고, 분석, 자동화 데이터 수집이 중단될 수 있습니다. 연결 대상을 확인한 뒤 진행하세요.
+              </p>
+            </div>
+
+            <dl
+              id="integration-disconnect-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">플랫폼</dt>
+                <dd className="font-semibold text-admin-text">{disconnectTarget.label}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">연결일</dt>
+                <dd className="font-semibold text-admin-text">{fmtDate(disconnectTarget.connected_at ?? undefined)}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">스코프</dt>
+                <dd className="max-w-[13rem] truncate font-semibold text-admin-text">
+                  {disconnectTarget.scopes.length > 0 ? disconnectTarget.scopes.join(', ') : '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">만료일</dt>
+                <dd className="font-semibold text-admin-text">
+                  {disconnectTarget.expires_at ? fmtDate(disconnectTarget.expires_at) : '-'}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={disconnectCancelRef}
+                type="button"
+                onClick={() => setDisconnectTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitDisconnect}
+                disabled={disconnecting === disconnectTarget.platform}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {disconnecting === disconnectTarget.platform ? '해제 중...' : '연결 해제'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletePolicyTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="AI 정책 삭제 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setDeletePolicyTarget(null)}
+          />
+          <div
+            id="ai-policy-delete-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-policy-delete-confirm-title"
+            aria-describedby="ai-policy-delete-confirm-description ai-policy-delete-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">AI policy</p>
+              <h2 id="ai-policy-delete-confirm-title" className="text-lg font-bold text-admin-text">
+                AI 정책을 삭제할까요?
+              </h2>
+              <p id="ai-policy-delete-confirm-description" className="text-sm leading-6 text-admin-muted">
+                해당 task의 모델 전환 규칙이 사라집니다. 운영 중인 자동 생성 흐름에 영향이 없는지 확인하세요.
+              </p>
+            </div>
+
+            <dl
+              id="ai-policy-delete-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">task</dt>
+                <dd className="font-mono text-xs font-semibold text-admin-text">{deletePolicyTarget.task}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">provider</dt>
+                <dd className="font-semibold text-admin-text">{deletePolicyTarget.provider}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">fallback</dt>
+                <dd className="font-semibold text-admin-text">
+                  {deletePolicyTarget.fallback_provider ?? '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">enabled</dt>
+                <dd className="font-semibold text-admin-text">{deletePolicyTarget.enabled ? 'Y' : 'N'}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={deletePolicyCancelRef}
+                type="button"
+                onClick={() => setDeletePolicyTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitDeletePolicy}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
