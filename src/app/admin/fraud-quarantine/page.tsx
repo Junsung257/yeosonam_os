@@ -8,7 +8,7 @@
  * fraud-detect 가 자동 격리한 booking 을 사장님이 한 화면에서 즉시 결정.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 
 interface FraudItem {
   id: number;
@@ -50,6 +50,8 @@ export default function FraudQuarantinePage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'unresolved' | 'resolved' | 'all'>('unresolved');
   const [busy, setBusy] = useState<number | null>(null);
+  const [blockTarget, setBlockTarget] = useState<FraudItem | null>(null);
+  const blockCancelRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,6 +66,11 @@ export default function FraudQuarantinePage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    if (!blockTarget) return;
+    requestAnimationFrame(() => blockCancelRef.current?.focus());
+  }, [blockTarget]);
+
   const doAction = async (id: number, action: 'resolve' | 'unresolve' | 'block', notes?: string) => {
     setBusy(id);
     try {
@@ -73,6 +80,7 @@ export default function FraudQuarantinePage() {
         body: JSON.stringify({ id, action, resolved_by: 'admin', notes }),
       });
       await load();
+      if (action === 'block') setBlockTarget(null);
     } finally {
       setBusy(null);
     }
@@ -149,11 +157,11 @@ export default function FraudQuarantinePage() {
                     </button>
                     <button
                       disabled={busy === item.id}
-                      onClick={() => {
-                        if (confirm('이 예약을 차단(cancelled)하시겠습니까?')) {
-                          void doAction(item.id, 'block', '사장님 차단 결정');
-                        }
-                      }}
+                      type="button"
+                      onClick={() => setBlockTarget(item)}
+                      aria-haspopup="dialog"
+                      aria-expanded={blockTarget?.id === item.id}
+                      aria-controls="fraud-block-confirm-dialog"
                       className="text-sm px-3 py-1.5 bg-red-600 text-white rounded disabled:opacity-50"
                     >
                       🚫 차단 (사기 확정)
@@ -175,6 +183,80 @@ export default function FraudQuarantinePage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {blockTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="예약 차단 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setBlockTarget(null)}
+          />
+          <div
+            id="fraud-block-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="fraud-block-confirm-title"
+            aria-describedby="fraud-block-confirm-description fraud-block-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Fraud quarantine</p>
+              <h2 id="fraud-block-confirm-title" className="text-lg font-bold text-admin-text">
+                예약을 차단 처리할까요?
+              </h2>
+              <p id="fraud-block-confirm-description" className="text-sm leading-6 text-admin-muted">
+                이 작업은 예약 상태를 cancelled로 처리합니다. 고객과 결제 정보를 확인한 뒤 진행하세요.
+              </p>
+            </div>
+
+            <dl
+              id="fraud-block-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">위험도</dt>
+                <dd className="font-semibold text-admin-text">{blockTarget.severity.toUpperCase()}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">예약</dt>
+                <dd className="font-semibold text-admin-text">
+                  {blockTarget.bookings?.booking_no ?? blockTarget.bookings?.id.slice(0, 8) ?? '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">고객</dt>
+                <dd className="font-semibold text-admin-text">{blockTarget.bookings?.customers?.name ?? '-'}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">금액</dt>
+                <dd className="font-semibold text-admin-text">
+                  {blockTarget.bookings?.total_price ? `${blockTarget.bookings.total_price.toLocaleString()}원` : '-'}
+                </dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={blockCancelRef}
+                type="button"
+                onClick={() => setBlockTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={() => void doAction(blockTarget.id, 'block', '사장님 차단 결정')}
+                disabled={busy === blockTarget.id}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {busy === blockTarget.id ? '처리 중...' : '차단 처리'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>
