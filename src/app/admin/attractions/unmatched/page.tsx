@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 interface SuggestedCard {
   name: string;
@@ -113,6 +113,35 @@ interface BootstrapCandidate {
   } | null;
 }
 
+interface WikidataCandidate {
+  qid: string;
+  description: string | null;
+  labels: { ko: string | null; en: string | null; zh: string | null; ja: string | null };
+  aliases: { ko: string[]; en: string[]; zh: string[]; ja: string[] };
+  image_filename: string | null;
+  image_thumb_url: string | null;
+  sitelinks: { kowiki: string | null; enwiki: string | null; zhwiki: string | null };
+}
+
+type MainConfirmAction =
+  | {
+      kind: 'bulk-ignore' | 'retry';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'danger' | 'warning';
+      details: Array<{ label: string; value: string }>;
+    }
+  | {
+      kind: 'wikidata';
+      title: string;
+      description: string;
+      confirmLabel: string;
+      tone: 'primary';
+      details: Array<{ label: string; value: string }>;
+      payload: { unmatchedId: string; wikidata: WikidataCandidate };
+    };
+
 function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem[]; onAfterRegister: () => void }) {
   const candidates = useMemo(
     () => items.filter(i => i.status === 'pending' && i.suggested_card && typeof i.suggested_card === 'object'),
@@ -120,10 +149,64 @@ function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem
   );
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkProgress, setBulkProgress] = useState<{ current: number; total: number } | null>(null);
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const bulkDialogRef = useRef<HTMLDivElement | null>(null);
+  const bulkCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const bulkTitleId = 'suggested-cards-bulk-title';
+  const bulkDescriptionId = 'suggested-cards-bulk-description';
 
   useEffect(() => {
     setSelectedIds(new Set(candidates.map(c => c.id)));
   }, [candidates]);
+
+  useEffect(() => {
+    if (!bulkConfirmOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    bulkCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      bulkDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setBulkConfirmOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [bulkConfirmOpen]);
 
   if (candidates.length === 0) return null;
 
@@ -135,10 +218,14 @@ function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem
     });
   };
 
-  const bulkRegister = async () => {
+  const bulkRegister = async (confirmed = false) => {
     const ids = [...selectedIds];
     if (ids.length === 0) { alert('선택된 카드 없음'); return; }
-    if (!confirm(`${ids.length}건 AI 추천 카드를 attractions 에 일괄 등록하시겠습니까?\n(동일 name 시 alias 추가, 모바일 즉시 반영)`)) return;
+    if (!confirmed) {
+      setBulkConfirmOpen(true);
+      return;
+    }
+    setBulkConfirmOpen(false);
     setBulkProgress({ current: 0, total: ids.length });
     let saved = 0, aliased = 0, failed = 0;
     for (let i = 0; i < ids.length; i++) {
@@ -169,7 +256,7 @@ function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem
           🤖 AI 자동 추천 카드 ({candidates.length}건) — 신규 지역 자동 부트스트랩
         </h3>
         <button
-          onClick={bulkRegister}
+          onClick={() => void bulkRegister()}
           disabled={!!bulkProgress || selectedIds.size === 0}
           className="px-4 py-1.5 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold"
         >
@@ -198,6 +285,57 @@ function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem
           );
         })}
       </div>
+      {bulkConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={bulkDialogRef}
+            id="suggested-cards-bulk-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={bulkTitleId}
+            aria-describedby={bulkDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={bulkTitleId} className="text-admin-sm font-semibold text-admin-text-2">AI 추천 카드 일괄 등록</p>
+              <p id={bulkDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                선택한 AI 추천 카드를 attractions에 등록합니다. 동일 name은 alias로 처리됩니다.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 px-4 py-3">
+              <div className="rounded bg-admin-bg px-2.5 py-2">
+                <p className="text-[10px] text-admin-muted-2">선택</p>
+                <p className="text-admin-sm font-semibold text-admin-text-2">{selectedIds.size.toLocaleString()}건</p>
+              </div>
+              <div className="rounded bg-admin-bg px-2.5 py-2">
+                <p className="text-[10px] text-admin-muted-2">반영</p>
+                <p className="text-admin-sm font-semibold text-admin-text-2">모바일 즉시</p>
+              </div>
+              <div className="col-span-2 rounded border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-800">
+                신규 등록과 alias 추가가 함께 발생할 수 있습니다. 원본 추천 카드를 한 번 더 확인해 주세요.
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={bulkCancelButtonRef}
+                type="button"
+                onClick={() => setBulkConfirmOpen(false)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void bulkRegister(true)}
+                className="rounded bg-emerald-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-emerald-700"
+              >
+                일괄 등록
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -242,8 +380,26 @@ export default function UnmatchedPage() {
   };
 
   // 일괄 삭제 (ignored 처리)
-  const bulkIgnore = async () => {
-    if (!selectedIds.size || !confirm(`${selectedIds.size}건을 일괄 무시 처리하시겠습니까?`)) return;
+  const bulkIgnore = async (confirmed = false) => {
+    if (!selectedIds.size) return;
+    if (!confirmed) {
+      const selectedItems = displayedItems.filter(i => selectedIds.has(i.id));
+      setConfirmAction({
+        kind: 'bulk-ignore',
+        title: '미매칭 항목 일괄 무시',
+        description: '선택한 항목을 ignored 상태로 변경합니다. 랜딩페이지 매칭 후보에서 제외됩니다.',
+        confirmLabel: '일괄 무시',
+        tone: 'danger',
+        details: [
+          { label: '선택', value: `${selectedIds.size.toLocaleString()}건` },
+          { label: '고빈도', value: `${selectedItems.filter(i => (i.occurrence_count ?? 0) >= occThreshold).length.toLocaleString()}건` },
+          { label: '상태', value: statusFilter },
+          { label: '필터', value: highFreqOnly ? '고빈도만' : '현재 목록' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     const ids = Array.from(selectedIds);
     setItems(prev => prev.filter(i => !selectedIds.has(i.id)));
     setSelectedIds(new Set());
@@ -301,17 +457,62 @@ export default function UnmatchedPage() {
   const [suggestLoading, setSuggestLoading] = useState(false);
 
   // PR #87 Phase 1 — Wikidata 정규화 후보 (1-click 신규 등록).
-  interface WikidataCandidate {
-    qid: string;
-    description: string | null;
-    labels: { ko: string | null; en: string | null; zh: string | null; ja: string | null };
-    aliases: { ko: string[]; en: string[]; zh: string[]; ja: string[] };
-    image_filename: string | null;
-    image_thumb_url: string | null;
-    sitelinks: { kowiki: string | null; enwiki: string | null; zhwiki: string | null };
-  }
   const [wikidata, setWikidata] = useState<WikidataCandidate | null>(null);
   const [registeringWd, setRegisteringWd] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<MainConfirmAction | null>(null);
+  const confirmDialogRef = useRef<HTMLDivElement | null>(null);
+  const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const confirmTitleId = 'unmatched-confirm-title';
+  const confirmDescriptionId = 'unmatched-confirm-description';
+
+  useEffect(() => {
+    if (!confirmAction) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    confirmCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      confirmDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setConfirmAction(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [confirmAction]);
 
   const loadSuggestions = async (unmatchedId: string) => {
     if (suggestingId === unmatchedId) {
@@ -340,8 +541,26 @@ export default function UnmatchedPage() {
     }
   };
 
-  const registerFromWikidata = async (unmatchedId: string, wd: WikidataCandidate) => {
-    if (!confirm(`Wikidata ${wd.qid} "${wd.labels.ko ?? wd.labels.en}" 로 신규 등록하시겠습니까?\n다국어 alias ${[...wd.aliases.ko, ...wd.aliases.en, ...wd.aliases.zh, ...wd.aliases.ja].length}개 + Wikimedia 사진 자동 import`)) return;
+  const registerFromWikidata = async (unmatchedId: string, wd: WikidataCandidate, confirmed = false) => {
+    if (!confirmed) {
+      const aliasCount = [...wd.aliases.ko, ...wd.aliases.en, ...wd.aliases.zh, ...wd.aliases.ja].length;
+      setConfirmAction({
+        kind: 'wikidata',
+        title: 'Wikidata 기준 신규 등록',
+        description: 'Wikidata 정보를 기준으로 신규 attraction을 만들고 다국어 alias와 Wikimedia 사진을 함께 가져옵니다.',
+        confirmLabel: 'Wikidata로 등록',
+        tone: 'primary',
+        payload: { unmatchedId, wikidata: wd },
+        details: [
+          { label: 'QID', value: wd.qid },
+          { label: '이름', value: wd.labels.ko ?? wd.labels.en ?? '-' },
+          { label: 'alias', value: `${aliasCount.toLocaleString()}개` },
+          { label: '사진', value: wd.image_filename ? 'Wikimedia import' : '없음' },
+        ],
+      });
+      return;
+    }
+    setConfirmAction(null);
     setRegisteringWd(true);
     try {
       const res = await fetch('/api/unmatched', {
@@ -464,6 +683,34 @@ export default function UnmatchedPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const retryUnmatched = async () => {
+    setConfirmAction(null);
+    try {
+      const res = await fetch('/api/admin/attractions/retry-unmatched?limit=600', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? '실패');
+      alert(`✓ retry 완료\n처리 ${data.unmatched_processed}건 / 해소 ${data.resolved}건 / 남은 pending ${data.remaining_pending}건\n샘플: ${(data.sample_matches ?? []).slice(0, 5).map((s: { activity: string; canonical: string }) => `${s.activity}→${s.canonical}`).join(', ')}`);
+      window.location.reload();
+    } catch (err) {
+      alert(`retry 실패: ${err instanceof Error ? err.message : err}`);
+    }
+  };
+
+  const executeConfirmAction = () => {
+    if (!confirmAction) return;
+    if (confirmAction.kind === 'bulk-ignore') {
+      void bulkIgnore(true);
+      return;
+    }
+    if (confirmAction.kind === 'retry') {
+      void retryUnmatched();
+      return;
+    }
+    if (confirmAction.kind === 'wikidata') {
+      void registerFromWikidata(confirmAction.payload.unmatchedId, confirmAction.payload.wikidata, true);
+    }
+  };
+
   const changeStatus = async (id: string, status: string) => {
     setItems(prev => prev.filter(i => i.id !== id));
     await fetch('/api/unmatched', {
@@ -547,17 +794,20 @@ export default function UnmatchedPage() {
         <div className="flex gap-2 flex-wrap justify-end">
           <button
             type="button"
-            onClick={async () => {
-              if (!confirm('새 한글 fuzzy 매칭으로 대기 항목을 한 번에 retry 합니다 (최대 600건).\n시간이 약 1~2분 걸릴 수 있습니다.')) return;
-              try {
-                const res = await fetch('/api/admin/attractions/retry-unmatched?limit=600', { method: 'POST' });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error ?? '실패');
-                alert(`✓ retry 완료\n처리 ${data.unmatched_processed}건 / 해소 ${data.resolved}건 / 남은 pending ${data.remaining_pending}건\n샘플: ${(data.sample_matches ?? []).slice(0, 5).map((s: { activity: string; canonical: string }) => `${s.activity}→${s.canonical}`).join(', ')}`);
-                window.location.reload();
-              } catch (err) {
-                alert(`retry 실패: ${err instanceof Error ? err.message : err}`);
-              }
+            onClick={() => {
+              setConfirmAction({
+                kind: 'retry',
+                title: '새 매칭으로 retry',
+                description: '새 한글 fuzzy + MRT canonical 매칭기로 대기 항목을 다시 매칭합니다.',
+                confirmLabel: 'retry 시작',
+                tone: 'warning',
+                details: [
+                  { label: '대상', value: 'pending 최대 600건' },
+                  { label: '예상 시간', value: '약 1~2분' },
+                  { label: '매칭기', value: 'Hangul fuzzy + MRT canonical' },
+                  { label: '결과', value: '해소 항목은 즉시 반영' },
+                ],
+              });
             }}
             className="px-3 py-1.5 bg-indigo-600 text-white text-sm rounded-lg hover:bg-indigo-700"
             title="새 Hangul fuzzy + MRT canonical 매칭기로 대기 항목 자동 retry"
@@ -577,7 +827,7 @@ export default function UnmatchedPage() {
             CSV↓ {selectedIds.size > 0 ? `(${selectedIds.size}건)` : `(${displayedItems.length}건)`}
           </button>
           {selectedIds.size > 0 && (
-            <button onClick={bulkIgnore}
+            <button onClick={() => void bulkIgnore()}
               className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-lg hover:bg-red-600">
               일괄 무시 ({selectedIds.size}건)
             </button>
@@ -1015,6 +1265,68 @@ export default function UnmatchedPage() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {confirmAction && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={confirmDialogRef}
+            id="unmatched-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={confirmTitleId}
+            aria-describedby={confirmDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={confirmTitleId} className="text-admin-sm font-semibold text-admin-text-2">{confirmAction.title}</p>
+              <p id={confirmDescriptionId} className="mt-1 text-[11px] text-admin-muted">{confirmAction.description}</p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="grid grid-cols-2 gap-2">
+                {confirmAction.details.map(item => (
+                  <div key={item.label} className="rounded bg-admin-bg px-2.5 py-2">
+                    <p className="text-[10px] text-admin-muted-2">{item.label}</p>
+                    <p className="mt-0.5 break-words text-admin-sm font-semibold text-admin-text-2">{item.value}</p>
+                  </div>
+                ))}
+              </div>
+              {confirmAction.tone === 'warning' && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-800">
+                  대량 매칭 작업입니다. 완료될 때까지 화면을 닫지 않는 편이 안전합니다.
+                </div>
+              )}
+              {confirmAction.tone === 'danger' && (
+                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+                  선택 항목이 매칭 후보에서 제외됩니다. 대상이 맞는지 확인해 주세요.
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={confirmCancelButtonRef}
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={executeConfirmAction}
+                className={`rounded px-3 py-1.5 text-admin-sm font-medium text-white ${
+                  confirmAction.tone === 'danger'
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : confirmAction.tone === 'warning'
+                      ? 'bg-amber-600 hover:bg-amber-700'
+                      : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {confirmAction.confirmLabel}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
