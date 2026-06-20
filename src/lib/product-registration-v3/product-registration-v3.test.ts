@@ -179,12 +179,11 @@ describe('product-registration-v3 draft ledger pipeline', () => {
 
     expect(plan.document_type).toBe('catalog');
     expect(plan.expected_products).toBe(4);
-    expect(plan.product_boundaries.map(boundary => boundary.title_hint)).toEqual([
-      'PKG',
-      'PKG',
-      'PKG',
-      'PKG',
-    ]);
+    const titleHints = plan.product_boundaries.map(boundary => boundary.title_hint);
+    expect(titleHints).toHaveLength(4);
+    expect(titleHints.every(title => title.includes('BX'))).toBe(true);
+    expect(titleHints.some(title => /\b3/.test(title))).toBe(true);
+    expect(titleHints.some(title => /\b4/.test(title))).toBe(true);
   });
 
   it('keeps airport meeting time as meeting, not flight departure', async () => {

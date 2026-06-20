@@ -97,6 +97,15 @@ function matchBridgeableOcrDayHeader(line: string): { day: number; tail: string 
   return { day: Number(match[1]), tail: '' };
 }
 
+function shouldKeepHeaderTail(tail: string): boolean {
+  const compact = tail.replace(/\s+/g, '');
+  if (!compact) return false;
+  const hasScheduleVerb = /(?:출발|도착|관광|이동|미팅|체크|호텔|식사|탑승|체험|산책|공항|자유|휴식|\d{1,2}:\d{2})/.test(tail);
+  const locationLabel = /^[\p{Script=Hangul}A-Za-z/ㆍ·\-\s]{2,50}$/u.test(tail)
+    && (tail.includes('/') || !hasScheduleVerb);
+  return !(locationLabel && !hasScheduleVerb);
+}
+
 function lineLooksLikeDayOneScheduleStart(line: string): boolean {
   const compact = line.replace(/\s+/g, '');
   return (FLIGHT_CODE_RE.test(line) && /(출발|도착|공항|국제)/.test(line))
@@ -154,7 +163,7 @@ function splitByKoreanDayLines(rawText: string): DayBlock[] {
   return effectiveHeaders.map((header, index) => {
     const next = effectiveHeaders[index + 1]?.index ?? lines.length;
     const bodyLines = [
-      ...(header.tail ? [header.tail] : []),
+      ...(shouldKeepHeaderTail(header.tail) ? [header.tail] : []),
       ...lines.slice(header.index + 1, next),
     ];
     return {
@@ -181,6 +190,23 @@ function parseMealLine(line: string): { key: 'breakfast' | 'lunch' | 'dinner'; n
   return { key, note: note && !/^(없음|불포함|-)$/.test(note) ? note : null };
 }
 
+function parseMealSummaryLine(line: string): Partial<Record<'breakfast' | 'lunch' | 'dinner', string | null>> | null {
+  if (!/^식사\s/.test(line)) return null;
+  const result: Partial<Record<'breakfast' | 'lunch' | 'dinner', string | null>> = {};
+  const slots = [
+    ['조', 'breakfast'],
+    ['중', 'lunch'],
+    ['석', 'dinner'],
+  ] as const;
+  for (const [label, key] of slots) {
+    const match = line.match(new RegExp(`${label}\\s*[:：]?\\s*([^\\s]+)`));
+    if (!match?.[1]) continue;
+    const note = match[1].trim();
+    result[key] = /^(X|없음|불포함|-)$/.test(note) ? null : note;
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function parseHotelLine(line: string): { name: string; grade: string | null; note: string | null } | null {
   const match = line.match(/^(?:HOTEL|호텔)\s*[:：]\s*(.+)$/i);
   if (!match?.[1]) return null;
@@ -189,6 +215,7 @@ function parseHotelLine(line: string): { name: string; grade: string | null; not
 }
 
 function scheduleType(activity: string): ScheduleItem['type'] {
+  if (FLIGHT_CODE_RE.test(activity) && /(출발|도착|공항|국제|탑승)/.test(activity)) return 'flight';
   if (/공항/.test(activity) && /(출발|도착)/.test(activity)) return 'flight';
   if (/(면세|쇼핑|쇼핑센터|라라포트|lala\s*port)/i.test(activity)) return 'shopping';
   if (/(선택관광|옵션|별도\s*요금)/.test(activity)) return 'optional';
@@ -223,6 +250,14 @@ function collectRegions(blockBody: string, schedule: ScheduleItem[]): string[] {
   return [...regions];
 }
 
+function stripNonScheduleRows(schedule: ScheduleItem[]): ScheduleItem[] {
+  const withoutMealRows = schedule.filter(item => !/^식사(?:\s|$)/.test(item.activity.trim()));
+  const noticeIndex = withoutMealRows.findIndex(item =>
+    /^(공지|안내|안내사항|주의사항|포함사항|불포함사항|취소|예약|약관|여권|현지\s*사정|취소료)(?:\s|$)/.test(item.activity.trim()),
+  );
+  return noticeIndex >= 0 ? withoutMealRows.slice(0, noticeIndex) : withoutMealRows;
+}
+
 function parseDayBlock(block: DayBlock, fallbackFlightCode: string | null): DaySchedule {
   const rawLines = block.body.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
   const meals: DaySchedule['meals'] = {
@@ -239,11 +274,20 @@ function parseDayBlock(block: DayBlock, fallbackFlightCode: string | null): DayS
   let flightTimeIndex = 0;
 
   for (const rawLine of rawLines) {
+    if (/^(공지|안내|안내사항|주의사항|포함사항|불포함사항|취소|예약|약관)(?:\s|$)/.test(rawLine.trim())) break;
     const line = cleanActivity(rawLine);
     const meal = parseMealLine(line);
     if (meal) {
       meals[meal.key] = meal.note != null;
       meals[`${meal.key}_note` as 'breakfast_note' | 'lunch_note' | 'dinner_note'] = meal.note;
+      continue;
+    }
+    const mealSummary = parseMealSummaryLine(line);
+    if (mealSummary) {
+      for (const [key, note] of Object.entries(mealSummary) as Array<['breakfast' | 'lunch' | 'dinner', string | null]>) {
+        meals[key] = note != null;
+        meals[`${key}_note` as 'breakfast_note' | 'lunch_note' | 'dinner_note'] = note;
+      }
       continue;
     }
 
@@ -255,7 +299,8 @@ function parseDayBlock(block: DayBlock, fallbackFlightCode: string | null): DayS
 
     if (shouldSkipLine(line)) continue;
 
-    const type = scheduleType(line);
+    const fallbackFlightActivity = Boolean(fallbackFlightCode && /(출발|도착)/.test(line));
+    const type = fallbackFlightActivity ? 'flight' : scheduleType(line);
     const flightCode = line.match(FLIGHT_CODE_RE)?.[1] ?? (type === 'flight' ? fallbackFlightCode : null);
     schedule.push({
       time: type === 'flight' ? times[flightTimeIndex++] ?? null : null,
@@ -266,11 +311,12 @@ function parseDayBlock(block: DayBlock, fallbackFlightCode: string | null): DayS
     });
   }
 
+  const cleanedSchedule = stripNonScheduleRows(schedule);
   return {
     day: block.day,
-    regions: collectRegions(block.body, schedule),
+    regions: collectRegions(block.body, cleanedSchedule),
     meals,
-    schedule,
+    schedule: cleanedSchedule,
     hotel,
   };
 }

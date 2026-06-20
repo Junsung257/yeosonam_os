@@ -329,16 +329,17 @@ export function collectPkgBlockStarts(raw: string): number[] {
     const pkgMatch = /\bPKG\b/i.exec(lines[i]);
     if (!pkgMatch) continue;
     if (looksLikeDurationTitle(lines[i])) {
-      starts.push(offsets[i] + pkgMatch.index);
+      starts.push(offsets[i] + lines[i].search(/\S/));
       continue;
     }
-    const nextMeaningful = lines
-      .slice(i + 1, Math.min(lines.length, i + 5))
-      .map(line => line.trim())
-      .filter(line => !/^---+$/.test(line))
-      .find(Boolean);
+    const nextMeaningfulIndex = lines.findIndex((line, lineIndex) => {
+      if (lineIndex <= i || lineIndex >= Math.min(lines.length, i + 5)) return false;
+      const trimmed = line.trim();
+      return Boolean(trimmed) && !/^---+$/.test(trimmed);
+    });
+    const nextMeaningful = nextMeaningfulIndex >= 0 ? lines[nextMeaningfulIndex].trim() : '';
     if (!nextMeaningful || !looksLikeDurationTitle(nextMeaningful)) continue;
-    starts.push(offsets[i] + pkgMatch.index);
+    starts.push(offsets[nextMeaningfulIndex] + lines[nextMeaningfulIndex].search(/\S/));
   }
 
   const patterns = [
@@ -365,7 +366,7 @@ export function collectPkgBlockStarts(raw: string): number[] {
   for (const start of sorted) {
     const last = deduped[deduped.length - 1];
     if (last != null && start - last <= 24) {
-      deduped[deduped.length - 1] = start;
+      deduped[deduped.length - 1] = Math.min(last, start);
     } else {
       deduped.push(start);
     }

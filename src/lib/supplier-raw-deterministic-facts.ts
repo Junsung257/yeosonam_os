@@ -1151,6 +1151,24 @@ function parseCatalogMeal(line: string): { slot: 'breakfast' | 'lunch' | 'dinner
   return { slot, enabled, note: note || null };
 }
 
+function parseCatalogMealSummary(line: string): Partial<Record<'breakfast' | 'lunch' | 'dinner', { enabled: boolean; note: string | null }>> | null {
+  if (!/^식사\s/.test(line)) return null;
+  const result: Partial<Record<'breakfast' | 'lunch' | 'dinner', { enabled: boolean; note: string | null }>> = {};
+  const slots = [
+    ['조', 'breakfast'],
+    ['중', 'lunch'],
+    ['석', 'dinner'],
+  ] as const;
+  for (const [label, slot] of slots) {
+    const match = line.match(new RegExp(`${label}\\s*[:：]?\\s*([^\\s]+)`));
+    if (!match?.[1]) continue;
+    const note = match[1].trim();
+    const enabled = !/^(X|없음|불포함|-)$/.test(note);
+    result[slot] = { enabled, note: enabled ? note : null };
+  }
+  return Object.keys(result).length > 0 ? result : null;
+}
+
 function isStandaloneCatalogColumnValue(line: string): boolean {
   const compact = line.replace(/\s+/g, '');
   if (!compact) return true;
@@ -1396,6 +1414,14 @@ function collectCatalogDayHeaderMatches(rawText: string): CatalogDayHeaderMatch[
   return matches.sort((a, b) => a.index - b.index);
 }
 
+function stripCatalogNonScheduleRows(schedule: ScheduleItem[]): ScheduleItem[] {
+  const withoutMealRows = schedule.filter(item => !/^식사(?:\s|$)/.test(item.activity.trim()));
+  const noticeIndex = withoutMealRows.findIndex(item =>
+    /^(공지|안내|안내사항|주의사항|포함사항|불포함사항|취소|예약|약관|여권|현지\s*사정|취소료)(?:\s|$)/.test(item.activity.trim()),
+  );
+  return noticeIndex >= 0 ? withoutMealRows.slice(0, noticeIndex) : withoutMealRows;
+}
+
 function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { flight_segments?: ReturnType<typeof makeFlightSegmentsFromCatalog> }) | null {
   if (!isCatalogTable(rawText) && !isKoreanCatalogTable(rawText)) return null;
 
@@ -1445,12 +1471,22 @@ function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { fligh
       : times;
 
     for (const line of body) {
+      if (/^(공지|안내|안내사항|주의사항|포함사항|불포함사항|취소|예약|약관)(?:\s|$)/.test(line.trim())) break;
       const meal = parseCatalogMeal(line);
       if (meal) {
         meals[meal.slot] = meal.enabled;
         meals[`${meal.slot}_note` as 'breakfast_note' | 'lunch_note' | 'dinner_note'] = meal.note;
         continue;
       }
+      const mealSummary = parseCatalogMealSummary(line);
+      if (mealSummary) {
+        for (const [slot, value] of Object.entries(mealSummary) as Array<['breakfast' | 'lunch' | 'dinner', { enabled: boolean; note: string | null }]>) {
+          meals[slot] = value.enabled;
+          meals[`${slot}_note` as 'breakfast_note' | 'lunch_note' | 'dinner_note'] = value.note;
+        }
+        continue;
+      }
+      if (/^식사(?:\s|$)/.test(line.trim())) continue;
       const hotel = line.match(/^HOTEL\s*:\s*(.+)$/i);
       if (hotel) {
         hotelName = hotel[1].trim();
@@ -1483,11 +1519,12 @@ function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { fligh
       });
     }
 
+    const cleanedSchedule = stripCatalogNonScheduleRows(smoothCatalogSchedule(schedule));
     return {
       day: dayNumber,
       regions,
       meals,
-      schedule: smoothCatalogSchedule(schedule),
+      schedule: cleanedSchedule,
       hotel: hotelName ? { name: hotelName, grade: null, note: hotelNote } : null,
     };
   });
@@ -1816,6 +1853,7 @@ export function buildSupplierRawDeterministicItinerary(rawText: string): (Travel
     const schedule: ScheduleItem[] = [];
 
     for (const line of body.split(/\r?\n/).map(v => v.trim()).filter(Boolean)) {
+      if (/^(공지|안내|안내사항|주의사항|포함사항|불포함사항|취소|예약|약관)(?:\s|$)/.test(line)) break;
       if (/^(호텔|숙박|식사)\s*[:：]?/.test(line)) continue;
       if (/^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/.test(line)) continue;
       const time = line.match(/^(\d{1,2}:\d{2})\s*(.+)$/);
