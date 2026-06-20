@@ -782,6 +782,7 @@ function DayDetailPanel({
   const [editScheduledId, setEditScheduledId] = useState<string | null>(null);
   const [editTime, setEditTime] = useState('');
   const [editing, setEditing] = useState(false);
+  const [rescheduleNotice, setRescheduleNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   const handleReschedule = async (entry: ScheduledEntry) => {
     if (!editTime) return;
@@ -803,9 +804,10 @@ function DayDetailPanel({
       });
       if (!res.ok) throw new Error('리스케줄 실패');
       setEditScheduledId(null);
+      setRescheduleNotice({ tone: 'success', message: '예약 시간이 변경되었습니다.' });
       onRefresh();
     } catch (err) {
-      alert(err instanceof Error ? err.message : '리스케줄 실패');
+      setRescheduleNotice({ tone: 'error', message: err instanceof Error ? err.message : '리스케줄 실패' });
     } finally {
       setEditing(false);
     }
@@ -832,6 +834,20 @@ function DayDetailPanel({
         </div>
         <span className="text-xs text-admin-muted-2">드래그하여 일정 변경</span>
       </div>
+
+      {rescheduleNotice && (
+        <div
+          role={rescheduleNotice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={rescheduleNotice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`mx-6 mt-4 rounded-admin-sm border px-3 py-2 text-xs ${
+            rescheduleNotice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          {rescheduleNotice.message}
+        </div>
+      )}
 
       {/* 예약된 발행 */}
       {scheduledItems.length > 0 && (
