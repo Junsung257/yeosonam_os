@@ -726,7 +726,7 @@ export async function middleware(request: NextRequest) {
   const isMobile = pathname.startsWith('/m/admin');
   const loginPath = isMobile ? '/m/admin/login' : '/login';
   const loginUrl = new URL(loginPath, request.url);
-  loginUrl.searchParams.set('redirect', pathname);
+  loginUrl.searchParams.set('redirect', `${pathname}${request.nextUrl.search}`);
   return NextResponse.redirect(loginUrl);
 }
 

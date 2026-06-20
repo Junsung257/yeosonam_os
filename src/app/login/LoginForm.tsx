@@ -21,11 +21,12 @@ function LoginFormInner() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const redirectTarget = getSafeRedirect(searchParams?.get('redirect') ?? null);
 
   useEffect(() => {
     const token = document.cookie.split('; ').find(r => r.startsWith('sb-access-token='));
-    if (token) router.replace('/admin');
-  }, [router]);
+    if (token) router.replace(redirectTarget);
+  }, [redirectTarget, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -64,8 +65,7 @@ function LoginFormInner() {
         return;
       }
 
-      const redirect = getSafeRedirect(searchParams?.get('redirect') ?? null);
-      window.location.href = redirect;
+      window.location.href = redirectTarget;
     } catch (err) {
       if (err instanceof PromiseTimeoutError) {
         setError('로그인 서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
