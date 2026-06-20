@@ -9,7 +9,7 @@
  * 최종 승인 시: status→ACTIVE + thumbnail + ai_training_logs 플라이휠
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ─── 타입 ──────────────────────────────────────────────────────────────────────
 
@@ -216,6 +216,11 @@ export default function ProductReviewPage() {
   const [approving, setApproving] = useState(false);
   const [rejecting, setRejecting] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null);
+  const [reviewAction, setReviewAction] = useState<'approve' | 'reject' | null>(null);
+  const [reviewRejectReason, setReviewRejectReason] = useState('검수 반려');
+  const reviewActionModalRef = useRef<HTMLDivElement | null>(null);
+  const reviewActionCancelRef = useRef<HTMLButtonElement | null>(null);
+  const reviewRejectReasonRef = useRef<HTMLTextAreaElement | null>(null);
 
   // 랜드사 목록 + 수동 지정
   const [landOperators, setLandOperators] = useState<LandOperator[]>([]);
@@ -228,11 +233,129 @@ export default function ProductReviewPage() {
   // P10-2 박제 (2026-05-13): bulk action 다중 선택
   const [bulkSelected, setBulkSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkConfirmAction, setBulkConfirmAction] = useState<'approve' | 'reject' | null>(null);
+  const [bulkRejectReason, setBulkRejectReason] = useState('검수 반려');
+  const [bulkConfirmError, setBulkConfirmError] = useState('');
+  const bulkConfirmModalRef = useRef<HTMLDivElement | null>(null);
+  const bulkConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
+  const bulkRejectReasonRef = useRef<HTMLTextAreaElement | null>(null);
 
   const showToast = useCallback((msg: string, type: 'ok' | 'err' = 'ok') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 3500);
   }, []);
+
+  useEffect(() => {
+    if (!bulkConfirmAction || !bulkConfirmModalRef.current) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTarget = bulkConfirmAction === 'reject'
+      ? (bulkRejectReasonRef.current ?? bulkConfirmCancelRef.current)
+      : bulkConfirmCancelRef.current;
+    const focusTimer = window.setTimeout(() => focusTarget?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      bulkConfirmModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const closeModal = () => {
+      if (bulkBusy) return;
+      setBulkConfirmAction(null);
+      setBulkConfirmError('');
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [bulkBusy, bulkConfirmAction]);
+
+  useEffect(() => {
+    if (!reviewAction || !reviewActionModalRef.current) return;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const focusTarget = reviewAction === 'reject'
+      ? (reviewRejectReasonRef.current ?? reviewActionCancelRef.current)
+      : reviewActionCancelRef.current;
+    const focusTimer = window.setTimeout(() => focusTarget?.focus(), 0);
+    const getFocusableElements = () => Array.from(
+      reviewActionModalRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.getAttribute('aria-hidden'));
+    const closeModal = () => {
+      if (approving || rejecting) return;
+      setReviewAction(null);
+      setReviewRejectReason('검수 반려');
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        closeModal();
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (focusableElements.length === 1) {
+        event.preventDefault();
+        firstElement.focus();
+        return;
+      }
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      }
+      if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(focusTimer);
+      window.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      if (previousActiveElement && document.contains(previousActiveElement)) previousActiveElement.focus();
+    };
+  }, [approving, rejecting, reviewAction]);
 
   // P10-1 키보드 단축키는 selectProduct / toggleBulk / approve / reject 정의 후 박힘 (아래)
 
@@ -288,15 +411,27 @@ export default function ProductReviewPage() {
 
   const clearBulk = useCallback(() => setBulkSelected(new Set()), []);
 
+  const openBulkConfirm = useCallback((action: 'approve' | 'reject') => {
+    if (bulkSelected.size === 0 || bulkBusy) return;
+    setBulkConfirmAction(action);
+    setBulkRejectReason('검수 반려');
+    setBulkConfirmError('');
+  }, [bulkBusy, bulkSelected.size]);
+
+  const closeBulkConfirm = useCallback(() => {
+    if (bulkBusy) return;
+    setBulkConfirmAction(null);
+    setBulkConfirmError('');
+  }, [bulkBusy]);
+
   // P10-2 박제: bulk 승인/거절
-  const bulkAction = useCallback(async (action: 'approve' | 'reject') => {
+  const bulkAction = useCallback(async (action: 'approve' | 'reject', rejectReason?: string) => {
     if (bulkSelected.size === 0 || bulkBusy) return;
     const codes = Array.from(bulkSelected);
-    const reason = action === 'reject' ? (window.prompt(`${codes.length}건 일괄 거절 사유 (공통):`, '검수 반려') ?? '검수 반려') : null;
-    if (action === 'reject' && reason === null) return;
-    if (!window.confirm(`${codes.length}건 ${action === 'approve' ? '일괄 승인' : '일괄 거절'} 진행?`)) return;
+    const reason = action === 'reject' ? (rejectReason?.trim() || '검수 반려') : null;
 
     setBulkBusy(true);
+    setBulkConfirmError('');
     let success = 0, fail = 0;
     for (const code of codes) {
       try {
@@ -319,6 +454,7 @@ export default function ProductReviewPage() {
     setProducts(ps => ps.filter(p => !codes.includes(p.internal_code)));
     setBulkSelected(new Set());
     setBulkBusy(false);
+    setBulkConfirmAction(null);
     showToast(`${action === 'approve' ? '승인' : '거절'} 완료: ${success}건 성공 / ${fail}건 실패`, fail > 0 ? 'err' : 'ok');
   }, [bulkSelected, bulkBusy, showToast]);
 
@@ -430,10 +566,9 @@ export default function ProductReviewPage() {
 
   // ── 반려 ────────────────────────────────────────────────────────────────────
 
-  const reject = async () => {
+  const reject = async (reasonInput = '검수 반려') => {
     if (!selected) return;
-    const reason = window.prompt('반려 사유를 입력하세요 (선택)', '');
-    if (reason === null) return; // 취소
+    const reason = reasonInput.trim() || '검수 반려';
 
     setRejecting(true);
     const removed = selected;
@@ -444,7 +579,7 @@ export default function ProductReviewPage() {
       const res = await fetch('/api/products/review?action=reject', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ product_id: removed.internal_code, reason: reason || '검수 반려' }),
+        body: JSON.stringify({ product_id: removed.internal_code, reason }),
       });
       const d = await res.json();
       if (!res.ok) throw new Error(d.error);
@@ -489,13 +624,14 @@ export default function ProductReviewPage() {
             showToast(`신뢰도 ${score}% — 90% 미만은 단축키 승인 불가 (수동 승인 필요)`, 'err');
             return;
           }
-          if (window.confirm(`승인: ${selected.display_name}?`)) void approve();
+          setReviewAction('approve');
           break;
         }
         case 'x': {
           if (!selected) return;
           e.preventDefault();
-          void reject();
+          setReviewRejectReason('검수 반려');
+          setReviewAction('reject');
           break;
         }
         case 'b': {
@@ -527,6 +663,36 @@ export default function ProductReviewPage() {
   const removeTag = (tag: string) => setTags(ts => ts.filter(t => t !== tag));
 
   // ─────────────────────────────────────────────────────────────────────────────
+  const bulkReviewTargets = products.filter(p => bulkSelected.has(p.internal_code));
+  const bulkConfirmTitleId = 'product-review-bulk-confirm-title';
+  const bulkConfirmDescriptionId = 'product-review-bulk-confirm-description';
+  const bulkConfirmSummaryId = 'product-review-bulk-confirm-summary';
+  const bulkConfirmStatusId = 'product-review-bulk-confirm-status';
+  const bulkConfirmErrorId = 'product-review-bulk-confirm-error';
+  const bulkConfirmDescriptionIds = bulkConfirmError
+    ? `${bulkConfirmDescriptionId} ${bulkConfirmSummaryId} ${bulkConfirmStatusId} ${bulkConfirmErrorId}`
+    : `${bulkConfirmDescriptionId} ${bulkConfirmSummaryId} ${bulkConfirmStatusId}`;
+  const bulkConfirmLabel = bulkConfirmAction === 'approve' ? '일괄 승인' : '일괄 거절';
+  const bulkConfirmSummaryText = bulkConfirmAction
+    ? `${bulkReviewTargets.length}건 ${bulkConfirmLabel}. 대표 상품: ${bulkReviewTargets.slice(0, 3).map(p => p.display_name).join(', ') || '선택 없음'}.`
+    : '일괄 처리할 상품을 선택하세요.';
+  const reviewActionTitleId = 'product-review-action-title';
+  const reviewActionDescriptionId = 'product-review-action-description';
+  const reviewActionSummaryId = 'product-review-action-summary';
+  const reviewActionStatusId = 'product-review-action-status';
+  const reviewActionDescriptionIds = `${reviewActionDescriptionId} ${reviewActionSummaryId} ${reviewActionStatusId}`;
+  const reviewActionLabel = reviewAction === 'approve' ? '최종 승인' : '반려';
+  const reviewActionSummaryText = selected && reviewAction
+    ? `${selected.display_name} 상품을 ${reviewActionLabel}합니다. 신뢰도 ${selected.ai_confidence_score ?? 0}%, 상품 코드 ${selected.internal_code}.`
+    : '검수할 상품을 선택하세요.';
+  const confirmReviewAction = async () => {
+    if (!selected || !reviewAction) return;
+    const action = reviewAction;
+    if (action === 'approve') await approve();
+    else await reject(reviewRejectReason);
+    setReviewAction(null);
+    setReviewRejectReason('검수 반려');
+  };
 
   return (
     <>
@@ -560,16 +726,25 @@ export default function ProductReviewPage() {
                   <span className="font-semibold text-blue-700">{bulkSelected.size}개 선택됨</span>
                   <div className="flex gap-2">
                     <button
+                      type="button"
                       disabled={bulkBusy}
-                      onClick={() => void bulkAction('approve')}
+                      onClick={() => openBulkConfirm('approve')}
+                      aria-haspopup="dialog"
+                      aria-expanded={bulkConfirmAction === 'approve'}
+                      aria-controls="product-review-bulk-confirm-dialog"
                       className="px-3 py-1 bg-emerald-600 text-white rounded text-xs disabled:opacity-50"
                     >✅ 일괄 승인</button>
                     <button
+                      type="button"
                       disabled={bulkBusy}
-                      onClick={() => void bulkAction('reject')}
+                      onClick={() => openBulkConfirm('reject')}
+                      aria-haspopup="dialog"
+                      aria-expanded={bulkConfirmAction === 'reject'}
+                      aria-controls="product-review-bulk-confirm-dialog"
                       className="px-3 py-1 bg-red-600 text-white rounded text-xs disabled:opacity-50"
                     >🚫 일괄 거절</button>
                     <button
+                      type="button"
                       onClick={() => clearBulk()}
                       className="px-2 py-1 text-admin-muted text-xs"
                     >해제 (Esc)</button>
@@ -662,15 +837,26 @@ export default function ProductReviewPage() {
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
                   <button
-                    onClick={reject}
+                    type="button"
+                    onClick={() => {
+                      setReviewRejectReason('검수 반려');
+                      setReviewAction('reject');
+                    }}
                     disabled={approving || rejecting}
+                    aria-haspopup="dialog"
+                    aria-expanded={reviewAction === 'reject'}
+                    aria-controls="product-review-action-dialog"
                     className="px-4 py-2 text-admin-sm font-semibold rounded-lg border border-red-200 text-red-600 hover:bg-red-50 disabled:opacity-40 transition-colors bg-white"
                   >
                     반려
                   </button>
                   <button
-                    onClick={approve}
+                    type="button"
+                    onClick={() => setReviewAction('approve')}
                     disabled={approving || rejecting}
+                    aria-haspopup="dialog"
+                    aria-expanded={reviewAction === 'approve'}
+                    aria-controls="product-review-action-dialog"
                     className="px-5 py-2 text-admin-sm font-bold rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 transition-colors"
                   >
                     {approving ? '처리 중...' : '최종 승인'}
@@ -999,6 +1185,237 @@ export default function ProductReviewPage() {
           )}
         </main>
       </div>
+
+      {reviewAction && selected && (
+        <>
+          <button
+            type="button"
+            aria-label="상품 검수 액션 모달 닫기"
+            className="fixed inset-0 z-50 cursor-default bg-black/40"
+            onClick={() => {
+              if (!approving && !rejecting) setReviewAction(null);
+            }}
+            disabled={approving || rejecting}
+          />
+          <div className="fixed inset-0 z-[51] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+            <div
+              id="product-review-action-dialog"
+              ref={reviewActionModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={reviewActionTitleId}
+              aria-describedby={reviewActionDescriptionIds}
+              data-testid="product-review-action-dialog"
+              tabIndex={-1}
+              className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+            >
+              <div>
+                <h2 id={reviewActionTitleId} className="text-admin-lg font-bold text-admin-text-2">
+                  {reviewActionLabel}
+                </h2>
+                <p id={reviewActionDescriptionId} className="mt-1 text-admin-sm leading-6 text-admin-muted">
+                  선택한 상품의 검수 결과를 확정합니다. 처리 후 성공한 상품은 검수 대기 목록에서 제거됩니다.
+                </p>
+                <p
+                  id={reviewActionStatusId}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {approving || rejecting ? `${reviewActionLabel} 처리 중입니다.` : `${reviewActionLabel} 확인창이 열렸습니다.`}
+                </p>
+              </div>
+
+              <div
+                id={reviewActionSummaryId}
+                data-testid="product-review-action-summary"
+                aria-label={reviewActionSummaryText}
+                className={`mt-4 rounded-admin-md border px-3 py-3 text-admin-sm ${
+                  reviewAction === 'approve'
+                    ? 'border-blue-100 bg-blue-50 text-blue-900'
+                    : 'border-red-100 bg-red-50 text-red-900'
+                }`}
+              >
+                <p className="font-bold leading-5">{selected.display_name}</p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] font-semibold">
+                  <span>코드 {selected.internal_code}</span>
+                  <span>신뢰도 {selected.ai_confidence_score ?? 0}%</span>
+                </div>
+              </div>
+
+              {reviewAction === 'reject' && (
+                <div className="mt-4">
+                  <label htmlFor="product-review-reject-reason" className="block text-admin-sm font-bold text-admin-text-2">
+                    반려 사유
+                  </label>
+                  <textarea
+                    id="product-review-reject-reason"
+                    ref={reviewRejectReasonRef}
+                    value={reviewRejectReason}
+                    onChange={event => setReviewRejectReason(event.target.value)}
+                    disabled={rejecting}
+                    rows={3}
+                    aria-describedby={reviewActionDescriptionIds}
+                    className="mt-1 w-full rounded-admin-md border border-admin-border-mid px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                  />
+                </div>
+              )}
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  ref={reviewActionCancelRef}
+                  onClick={() => {
+                    setReviewAction(null);
+                    setReviewRejectReason('검수 반려');
+                  }}
+                  disabled={approving || rejecting}
+                  className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  data-testid="product-review-action-confirm"
+                  onClick={() => void confirmReviewAction()}
+                  disabled={approving || rejecting}
+                  aria-busy={approving || rejecting}
+                  aria-describedby={reviewActionDescriptionIds}
+                  className={`min-h-[40px] rounded-admin-md px-4 text-admin-sm font-bold text-white disabled:opacity-50 ${
+                    reviewAction === 'approve'
+                      ? 'bg-blue-600 hover:bg-blue-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {approving || rejecting ? '처리 중...' : `${reviewActionLabel} 확정`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {bulkConfirmAction && (
+        <>
+          <button
+            type="button"
+            aria-label="상품 일괄 처리 확인 모달 닫기"
+            className="fixed inset-0 z-50 cursor-default bg-black/40"
+            onClick={closeBulkConfirm}
+            disabled={bulkBusy}
+          />
+          <div className="fixed inset-0 z-[51] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] pointer-events-none">
+            <div
+              id="product-review-bulk-confirm-dialog"
+              ref={bulkConfirmModalRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={bulkConfirmTitleId}
+              aria-describedby={bulkConfirmDescriptionIds}
+              data-testid="product-review-bulk-confirm-dialog"
+              tabIndex={-1}
+              className="pointer-events-auto w-full max-w-lg rounded-admin-lg bg-white p-6 shadow-2xl"
+            >
+              <div>
+                <h2 id={bulkConfirmTitleId} className="text-admin-lg font-bold text-admin-text-2">
+                  {bulkConfirmLabel}
+                </h2>
+                <p id={bulkConfirmDescriptionId} className="mt-1 text-admin-sm leading-6 text-admin-muted">
+                  선택한 상품을 한 번에 처리합니다. 실행 후 성공한 상품은 검수 대기 목록에서 제거됩니다.
+                </p>
+                <p
+                  id={bulkConfirmStatusId}
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  className="sr-only"
+                >
+                  {bulkBusy ? `${bulkConfirmLabel} 처리 중입니다.` : `${bulkConfirmLabel} 확인창이 열렸습니다.`}
+                </p>
+              </div>
+
+              <div
+                id={bulkConfirmSummaryId}
+                data-testid="product-review-bulk-confirm-summary"
+                aria-label={bulkConfirmSummaryText}
+                className={`mt-4 rounded-admin-md border px-3 py-3 text-admin-sm ${
+                  bulkConfirmAction === 'approve'
+                    ? 'border-emerald-100 bg-emerald-50 text-emerald-900'
+                    : 'border-red-100 bg-red-50 text-red-900'
+                }`}
+              >
+                <div className="flex justify-between gap-3">
+                  <span className="font-semibold">대상</span>
+                  <span className="font-mono font-black">{bulkReviewTargets.length}건</span>
+                </div>
+                <p className="mt-2 line-clamp-3 font-bold leading-5">
+                  {bulkReviewTargets.slice(0, 3).map(p => p.display_name).join(', ') || '선택 상품 없음'}
+                </p>
+                {bulkReviewTargets.length > 3 && (
+                  <p className="mt-1 text-[11px] font-semibold opacity-80">외 {bulkReviewTargets.length - 3}건</p>
+                )}
+              </div>
+
+              {bulkConfirmAction === 'reject' && (
+                <div className="mt-4">
+                  <label htmlFor="product-review-bulk-reject-reason" className="block text-admin-sm font-bold text-admin-text-2">
+                    공통 거절 사유
+                  </label>
+                  <textarea
+                    id="product-review-bulk-reject-reason"
+                    ref={bulkRejectReasonRef}
+                    value={bulkRejectReason}
+                    onChange={event => setBulkRejectReason(event.target.value)}
+                    disabled={bulkBusy}
+                    rows={3}
+                    aria-describedby={bulkConfirmDescriptionIds}
+                    className="mt-1 w-full rounded-admin-md border border-admin-border-mid px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-2 focus:ring-red-200 disabled:opacity-60"
+                  />
+                </div>
+              )}
+
+              {bulkConfirmError && (
+                <p
+                  id={bulkConfirmErrorId}
+                  role="alert"
+                  data-testid="product-review-bulk-confirm-error"
+                  className="mt-3 rounded-admin-md border border-red-200 bg-white px-3 py-2 text-admin-xs font-bold text-red-700"
+                >
+                  {bulkConfirmError}
+                </p>
+              )}
+
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  ref={bulkConfirmCancelRef}
+                  onClick={closeBulkConfirm}
+                  disabled={bulkBusy}
+                  className="min-h-[40px] rounded-admin-md border border-admin-border-strong bg-white px-4 text-admin-sm font-bold text-admin-text-2 hover:bg-admin-bg disabled:opacity-50"
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  data-testid="product-review-bulk-confirm-action"
+                  onClick={() => void bulkAction(bulkConfirmAction, bulkRejectReason)}
+                  disabled={bulkBusy || bulkReviewTargets.length === 0}
+                  aria-busy={bulkBusy}
+                  aria-describedby={bulkConfirmDescriptionIds}
+                  className={`min-h-[40px] rounded-admin-md px-4 text-admin-sm font-bold text-white disabled:opacity-50 ${
+                    bulkConfirmAction === 'approve'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-red-600 hover:bg-red-700'
+                  }`}
+                >
+                  {bulkBusy ? '처리 중...' : `${bulkConfirmLabel} 확정`}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* ── 토스트 ────────────────────────────────────────────────────────────── */}
       {toast && (
