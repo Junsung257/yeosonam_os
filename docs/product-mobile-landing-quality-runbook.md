@@ -133,13 +133,18 @@ HWP/HWPX handling is intentionally explicit:
 
 - `.hwpx` is extracted directly from the document XML and can be used for unattended inbox runs.
 - HWPX paragraph, table-row, and table-cell text boundaries must be preserved as line breaks or tabs. If a real supplier HWPX extracts to a near-single-line text blob, the result is not registration-safe because catalog splitting, price matrices, flight rows, meals, and itinerary days can all be misread.
+- `.pdf` is a first-class unattended inbox input. The extractor must compare available free text extractors and keep the higher-quality result. `pdf-parse` is always available from the app dependency tree; `pdfplumber` may be used when `PDFPLUMBER_PYTHON` points to a Python environment with `pdfplumber`, or when the local bundled Codex Python runtime exists.
+- PDF extraction quality must be scored before registration. Prefer text with itinerary/price/travel signals and reject or down-rank glyph-heavy output. A structurally present PDF is not enough if the title, price table, flight rows, or itinerary text is mojibake.
 - `.hwp` binary extraction is allowed only when a non-GUI extractor such as `hwp5txt`/pyhwp is available on the machine. If no extractor is available, the inbox run must record `HWP binary extractor is not available` and stop before registration for that file.
+- HWP extraction output must also pass a quality threshold. Placeholder-only output such as repeated table/image markers is not registration-safe even if `hwp5txt` exits successfully.
+- If a `.hwp` file has a same-stem `.pdf`, `.hwpx`, `.txt`, or `.md` companion, the unattended inbox should prefer the companion and skip that HWP path. This avoids Hancom permission popups and avoids counting known-unreadable HWP copies as product failures.
+- Duplicate extracted raw-text hashes must be skipped before DB registration. They should remain visible in the extraction report as `duplicate_skipped`, but they must not trigger another parser/DB/mobile run.
 - Do not drive the Hancom desktop app through permission popups as a hidden automation path. If the operator normally copies all text from HWP into `/upload`, the equivalent unattended input is a `.txt` file containing that copied supplier text.
 
 After an extraction-only report exists, run the offline source audit before retrying registration:
 
 ```bash
-npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --limit=2000 --no-parser
+npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-batch-reports/{run}/report.json --limit=2000 --no-parser
 ```
 
 This audit checks the extracted source queue against deterministic catalog splitting, source-backed price/date recovery, itinerary normalization, and the standard registration deliverability gate. It is still not mobile proof. The summary must keep `mobileLandingVerified=false` until the products are saved and the actual `/packages/{id}` mobile page plus A4 contract are checked.
@@ -156,7 +161,7 @@ When Supabase is healthy, export a reusable active-attraction cache for outage-s
 
 ```bash
 npx tsx scripts/export-active-attractions-cache.ts --output=scratch/attractions/active-attractions-latest.json
-npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --limit=2000 --no-parser --active-attractions-json=scratch/attractions/active-attractions-latest.json
+npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-batch-reports/{run}/report.json --limit=2000 --no-parser --active-attractions-json=scratch/attractions/active-attractions-latest.json
 ```
 
 This cache is not a substitute for live DB/mobile proof. It only makes offline attraction matching, customer description checks, and media-readiness warnings more precise while REST is unavailable.
@@ -165,7 +170,7 @@ When REST is unavailable but archived attraction exports exist, build an outage-
 
 ```bash
 npx tsx scripts/build-active-attractions-cache-from-archive.ts --out=scratch/active-attractions-cache/from-archive.json
-npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --limit=2000 --no-parser --active-attractions-json=scratch/active-attractions-cache/from-archive.json
+npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-inbox-batch-reports/{run}/report.json --limit=2000 --no-parser --active-attractions-json=scratch/active-attractions-cache/from-archive.json
 ```
 
 The archive cache must merge description-bearing archive CSV rows and filter out hotel, meal, restaurant, and wellness rows so they cannot become attraction cards. It may reduce offline unmatched/media warnings, but it still cannot mark `mobileLandingVerified=true`; only saved package ids plus live `/packages/{id}` and A4 proof can do that.
@@ -179,7 +184,7 @@ Every offline master candidate must include `photoSearchPlan` and `descriptionSe
 When REST recovers, resume from the extracted text queue instead of reopening HWP/HWPX files:
 
 ```bash
-npx tsx scripts/register-upload-inbox-from-extract-report.ts --report=scratch/upload-inbox-extract-reports/{run}/report.json --register --fill-attraction-photos --audit-mobile --limit=2000
+npx tsx scripts/register-upload-inbox-from-extract-report.ts --report=scratch/upload-inbox-batch-reports/{run}/report.json --register --fill-attraction-photos --audit-mobile --limit=2000
 ```
 
 This resume command must run DB preflight first. If the preflight returns `DB_HEALTHCHECK_TIMEOUT`, no product registration or mobile proof has started. If it saves products successfully, `--fill-attraction-photos` should backfill media for referenced attractions first, and the `--audit-mobile` step must pass for the saved package ids before anything is marked customer-ready.

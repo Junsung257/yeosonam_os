@@ -4,7 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { basename, extname, isAbsolute, join, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
 
 import { analyzeUploadInputText } from '@/lib/product-registration-input-guard';
@@ -34,7 +34,13 @@ type CliOptions = {
 type ExtractedRow = {
   filePath: string;
   fileName: string;
-  status: 'extracted' | 'extraction_failed' | 'input_blocked' | 'registered' | 'registration_failed';
+  status:
+    | 'extracted'
+    | 'extraction_failed'
+    | 'input_blocked'
+    | 'duplicate_skipped'
+    | 'registered'
+    | 'registration_failed';
   rawTextHash: string | null;
   extractedTextPath: string | null;
   charCount: number;
@@ -72,6 +78,7 @@ type BatchReport = {
     totalFiles: number;
     extracted: number;
     extractionFailed: number;
+    duplicateSkipped: number;
     registered: number;
     registrationFailed: number;
     savedPackageIds: number;
@@ -144,11 +151,11 @@ function resolveInboxDir(input: string | null): string {
 }
 
 async function listInputFiles(dir: string, limit: number): Promise<string[]> {
-  const files: string[] = [];
+  const candidates: string[] = [];
   const queue = [dir];
-  const supported = new Set(['.txt', '.md', '.hwpx', '.hwp']);
+  const supported = new Set(['.txt', '.md', '.hwpx', '.hwp', '.pdf']);
 
-  while (queue.length > 0 && files.length < limit) {
+  while (queue.length > 0) {
     const current = queue.shift() as string;
     const entries = await import('node:fs/promises').then(fs => fs.readdir(current, { withFileTypes: true }));
     for (const entry of entries) {
@@ -157,22 +164,144 @@ async function listInputFiles(dir: string, limit: number): Promise<string[]> {
         if (!['node_modules', '.git', '.next', '.vercel'].includes(entry.name)) queue.push(fullPath);
         continue;
       }
-      if (supported.has(extname(entry.name).toLowerCase())) files.push(fullPath);
-      if (files.length >= limit) break;
+      if (supported.has(extname(entry.name).toLowerCase())) candidates.push(fullPath);
     }
   }
 
-  return files.sort((left, right) => left.localeCompare(right));
+  const companionStems = new Set(
+    candidates
+      .filter(filePath => ['.txt', '.md', '.hwpx', '.pdf'].includes(extname(filePath).toLowerCase()))
+      .map(filePath => join(dirname(filePath), basename(filePath, extname(filePath))).toLowerCase()),
+  );
+
+  return candidates
+    .filter(filePath => {
+      if (extname(filePath).toLowerCase() !== '.hwp') return true;
+      const stem = join(dirname(filePath), basename(filePath, extname(filePath))).toLowerCase();
+      return !companionStems.has(stem);
+    })
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, limit);
 }
 
 function extractHwpWithExternalTool(filePath: string): string | null {
-  const hwp5 = spawnSync('hwp5txt', [filePath], { encoding: 'utf8', timeout: 30_000 });
-  if (hwp5.status === 0 && hwp5.stdout.trim().length > 0) return hwp5.stdout;
+  const hwp5Candidates = [
+    { command: 'hwp5txt', args: [filePath] },
+    process.env.APPDATA
+      ? { command: join(process.env.APPDATA, 'Python', 'Python314', 'Scripts', 'hwp5txt.exe'), args: [filePath] }
+      : null,
+    { command: 'python', args: ['-m', 'hwp5.hwp5txt', filePath] },
+  ].filter((candidate): candidate is { command: string; args: string[] } => {
+    if (!candidate) return false;
+    return !candidate.command.endsWith('.exe') || existsSync(candidate.command);
+  });
 
-  const python = spawnSync('python', ['-m', 'hwp5.hwp5txt', filePath], { encoding: 'utf8', timeout: 30_000 });
-  if (python.status === 0 && python.stdout.trim().length > 0) return python.stdout;
+  for (const candidate of hwp5Candidates) {
+    const result = spawnSync(candidate.command, candidate.args, { encoding: 'utf8', timeout: 30_000 });
+    const text = normalizeExtractedText(result.stdout);
+    if (result.status === 0 && isUsableHwpText(text)) return text;
+  }
 
   return null;
+}
+
+function normalizeExtractedText(text: string): string {
+  return text
+    .replace(/\r/g, '')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{4,}/g, '\n\n\n')
+    .trim();
+}
+
+function isUsableHwpText(text: string): boolean {
+  const meaningfulText = text
+    .replace(/<[^>]{1,12}>/g, '')
+    .replace(/\s+/g, '');
+  const meaningfulLines = text
+    .split('\n')
+    .map(line => line.replace(/<[^>]{1,12}>/g, '').trim())
+    .filter(line => line.length >= 8);
+
+  return meaningfulText.length >= 1200 && meaningfulLines.length >= 8;
+}
+
+function candidatePdfplumberPythonCommands(): string[] {
+  const bundledPython = process.env.USERPROFILE
+    ? join(process.env.USERPROFILE, '.cache', 'codex-runtimes', 'codex-primary-runtime', 'dependencies', 'python', 'python.exe')
+    : null;
+  return [
+    process.env.PDFPLUMBER_PYTHON,
+    process.env.PYTHON,
+    bundledPython && existsSync(bundledPython) ? bundledPython : null,
+    'python',
+  ].filter((command): command is string => Boolean(command));
+}
+
+function extractPdfWithPdfplumber(filePath: string): string | null {
+  const script = [
+    'import sys, pdfplumber',
+    "sys.stdout.reconfigure(encoding='utf-8')",
+    'path = sys.argv[1]',
+    'parts = []',
+    'with pdfplumber.open(path) as pdf:',
+    '    for page in pdf.pages:',
+    "        text = page.extract_text(x_tolerance=1, y_tolerance=3) or ''",
+    '        parts.append(text)',
+    "print('\\n\\n'.join(parts))",
+  ].join('\n');
+
+  for (const pythonCommand of candidatePdfplumberPythonCommands()) {
+    const result = spawnSync(pythonCommand, ['-c', script, filePath], {
+      encoding: 'utf8',
+      timeout: 60_000,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    });
+    const text = normalizeExtractedText(result.stdout);
+    if (result.status === 0 && text.length >= 10) return text;
+  }
+
+  return null;
+}
+
+function scoreExtractedSourceText(text: string): number {
+  const compact = text.replace(/\s+/g, '');
+  const readable = (text.match(/[\p{Script=Hangul}A-Za-z0-9]/gu) ?? []).length;
+  const suspiciousGlyphs = (text.match(/[\uA000-\uABFF\uD7B0-\uF8FF]/gu) ?? []).length;
+  const lines = text.split('\n').filter(line => line.trim().length >= 8).length;
+  const travelSignals = [
+    '\uCD9C\uBC1C',
+    '\uB3C4\uCC29',
+    '\uC0C1\uD488',
+    '\uC694\uAE08',
+    '\uC77C\uC815',
+    '\uC2DD\uC0AC',
+    '\uD638\uD154',
+    '\uD3EC\uD568',
+    '\uBD88\uD3EC\uD568',
+    '\uC1FC\uD551',
+    '\uC120\uD0DD\uAD00\uAD11',
+    '\uD56D\uACF5',
+    '\uAC00\uC774\uB4DC',
+  ].filter(token => compact.includes(token)).length;
+  const priceSignals = (text.match(/(?:[$\\]|USD|KRW)?\s*\d{1,3}(?:,\d{3})+/g) ?? []).length;
+
+  return readable + lines * 20 + travelSignals * 350 + priceSignals * 30 - suspiciousGlyphs * 30;
+}
+
+async function extractPdfText(buffer: Buffer, filename: string, filePath: string): Promise<string> {
+  const pdfParse = (await import('pdf-parse')).default;
+  const parsed = await pdfParse(buffer);
+  const pdfParseText = normalizeExtractedText(parsed.text);
+  const pdfplumberText = extractPdfWithPdfplumber(filePath);
+  const text = pdfplumberText && scoreExtractedSourceText(pdfplumberText) > scoreExtractedSourceText(pdfParseText)
+    ? pdfplumberText
+    : pdfParseText;
+
+  if (text.length < 10) {
+    throw new Error(`PDF text is empty or too short. (${filename})`);
+  }
+
+  return text;
 }
 
 async function extractTextFromFile(filePath: string): Promise<string> {
@@ -180,6 +309,7 @@ async function extractTextFromFile(filePath: string): Promise<string> {
   const buffer = await readFile(filePath);
   if (ext === '.txt' || ext === '.md') return buffer.toString('utf8');
   if (ext === '.hwpx') return extractHwpxText(buffer, basename(filePath));
+  if (ext === '.pdf') return extractPdfText(buffer, basename(filePath), filePath);
   if (ext === '.hwp') {
     const text = extractHwpWithExternalTool(filePath);
     if (text) return text;
@@ -306,6 +436,7 @@ async function main(): Promise<void> {
       totalFiles: files.length,
       extracted: 0,
       extractionFailed: 0,
+      duplicateSkipped: 0,
       registered: 0,
       registrationFailed: 0,
       savedPackageIds: 0,
@@ -313,6 +444,8 @@ async function main(): Promise<void> {
       mobileLandingVerificationReason: 'registration not completed',
     },
   };
+
+  const seenRawText = new Map<string, string>();
 
   for (const filePath of files) {
     const fileName = basename(filePath);
@@ -331,6 +464,16 @@ async function main(): Promise<void> {
       const rawText = await extractTextFromFile(filePath);
       row.charCount = rawText.length;
       row.rawTextHash = hashText(rawText);
+      const firstFileName = seenRawText.get(row.rawTextHash);
+      if (firstFileName) {
+        row.status = 'duplicate_skipped';
+        row.error = `duplicate raw text; first file: ${firstFileName}`;
+        report.summary.duplicateSkipped++;
+        report.rows.push(row);
+        continue;
+      }
+      seenRawText.set(row.rawTextHash, row.fileName);
+
       row.extractedTextPath = join(extractedDir, `${row.rawTextHash.slice(0, 12)}-${fileName.replace(/[^\w.-]+/g, '_')}.txt`);
       await writeFile(row.extractedTextPath, rawText, 'utf8');
       row.status = 'extracted';
@@ -340,6 +483,7 @@ async function main(): Promise<void> {
       if (inputQuality.blocked) {
         row.status = 'input_blocked';
         row.error = inputQuality.issues.map(issue => `${issue.code}:${issue.message}`).join(' | ');
+        report.rows.push(row);
         continue;
       }
     } catch (error) {
@@ -440,7 +584,7 @@ async function main(): Promise<void> {
   await writeJson(join(outputDir, 'summary.json'), report.summary);
 
   console.log(`[upload-inbox] report: ${join(outputDir, 'report.json')}`);
-  console.log(`[upload-inbox] extracted=${report.summary.extracted}/${report.summary.totalFiles} registered=${report.summary.registered} savedIds=${packageIds.length}`);
+  console.log(`[upload-inbox] extracted=${report.summary.extracted}/${report.summary.totalFiles} duplicateSkipped=${report.summary.duplicateSkipped} registered=${report.summary.registered} savedIds=${packageIds.length}`);
   console.log(`[upload-inbox] mobileLandingVerified=${report.summary.mobileLandingVerified} (${report.summary.mobileLandingVerificationReason})`);
 
   if (options.auditMobile && !report.summary.mobileLandingVerified) process.exit(1);
