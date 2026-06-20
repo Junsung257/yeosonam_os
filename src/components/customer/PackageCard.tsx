@@ -46,6 +46,7 @@ interface Props {
   isReasonOpen?: boolean;
   onToggleReason?: (id: string) => void;
   onClick?: (id: string) => void;
+  detailHref?: string;
   rankBadge?: string;
   isYeosonamPick?: boolean;
   primaryReason?: string;
@@ -187,6 +188,7 @@ export default function PackageCard({
   isReasonOpen = false,
   onToggleReason,
   onClick,
+  detailHref,
   rankBadge,
   isYeosonamPick = false,
   primaryReason,
@@ -208,7 +210,7 @@ export default function PackageCard({
   const duration = formatDuration(pkg);
   const nextDate = findNextDeparture(pkg);
   const hasComparisonSignal = Boolean(comparisonLabel || comparisonSummary);
-  const packageHref = `/packages/${encodeURIComponent(pkg.id)}`;
+  const packageHref = detailHref ?? `/packages/${encodeURIComponent(pkg.id)}`;
   const reasonPanelId = `package-card-reasons-${pkg.id}`;
   const decisionSummaryId = `package-card-decision-summary-${pkg.id}`;
 

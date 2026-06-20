@@ -530,6 +530,33 @@ export default function PackagesClient() {
       selectedProducts: selectedProductNames.length > 0 ? selectedProductNames : undefined,
     });
   }, [conciergeQuery, handoffBudget, handoffDestination, handoffPartyType, selectedIntent, selectedProductNames]);
+  const buildPackageDetailHref = useCallback((pkg: Package) => {
+    const params = new URLSearchParams();
+    const productName = pkg.display_title || pkg.products?.display_name || pkg.title;
+    const detailIntent = selectedIntent ?? (category || null);
+    const detailPartyType = selectedIntent
+      ? INTENT_PARTY_TYPE[selectedIntent] ?? null
+      : category === 'golf'
+        ? 'golf_group'
+        : category === 'honeymoon'
+          ? 'couple'
+          : null;
+    const detailDestination = destination || pkg.destination || (activeFilter !== FILTER_OPTIONS[0] ? activeFilter : null);
+
+    params.set('source', 'packages');
+    if (detailIntent) params.set('intent', detailIntent);
+    if (detailPartyType) params.set('party_type', detailPartyType);
+    if (handoffBudget) params.set('budget', handoffBudget);
+    if (detailDestination) params.set('destination', detailDestination);
+    if (productName) params.set('selected_products', productName);
+    ['ref', 'utm_source', 'utm_medium', 'utm_campaign'].forEach((key) => {
+      const value = searchParams.get(key);
+      if (value) params.set(key, value);
+    });
+
+    const qs = params.toString();
+    return `/packages/${encodeURIComponent(pkg.id)}${qs ? `?${qs}` : ''}`;
+  }, [activeFilter, category, destination, handoffBudget, searchParams, selectedIntent]);
 
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
@@ -1657,6 +1684,7 @@ export default function PackagesClient() {
                 isReasonOpen={activeReasonId === pkg.id}
                 onToggleReason={(id) => setActiveReasonId(activeReasonId === id ? null : id)}
                 onClick={trackClick}
+                detailHref={buildPackageDetailHref(pkg)}
                 rankBadge={rankBadge}
                 primaryReason={score?.hasComparison && score.rankInGroup === 1 ? score.label : undefined}
                 comparisonLabel={score?.label}
@@ -1886,6 +1914,7 @@ export default function PackagesClient() {
           groupInquiryHref={groupInquiryHref}
           handoffSummaryText={compareHandoffSummaryText}
           nextActionText={compareNextActionText}
+          buildPackageDetailHref={buildPackageDetailHref}
           onGroupInquiryClick={() => trackCompareGroupInquiry('packages_compare_dialog_group_inquiry')}
           onClose={() => { setCompareOpen(false); }}
         />
@@ -1901,6 +1930,7 @@ function SimpleCompareModal({
   groupInquiryHref,
   handoffSummaryText,
   nextActionText,
+  buildPackageDetailHref,
   onGroupInquiryClick,
   onClose,
 }: {
@@ -1909,6 +1939,7 @@ function SimpleCompareModal({
   groupInquiryHref: string;
   handoffSummaryText: string;
   nextActionText: string;
+  buildPackageDetailHref: (pkg: Package) => string;
   onGroupInquiryClick: () => void;
   onClose: () => void;
 }) {
@@ -2017,10 +2048,10 @@ function SimpleCompareModal({
             {nextActionText}
           </p>
           <div className="grid grid-cols-2 gap-3 mb-2">
-            <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
+            <Link href={buildPackageDetailHref(a)} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {a.display_title || a.title}
             </Link>
-            <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
+            <Link href={buildPackageDetailHref(b)} className="text-center text-[13px] font-semibold text-brand hover:underline truncate">
               {b.display_title || b.title}
             </Link>
           </div>
@@ -2036,10 +2067,10 @@ function SimpleCompareModal({
           })}
         </div>
         <div className="grid grid-cols-2 gap-2 px-4 py-3 border-t border-gray-100 shrink-0">
-          <Link href={`/packages/${encodeURIComponent(a.id)}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
+          <Link href={buildPackageDetailHref(a)} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
             상세보기
           </Link>
-          <Link href={`/packages/${encodeURIComponent(b.id)}`} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
+          <Link href={buildPackageDetailHref(b)} className="text-center py-2.5 rounded-xl bg-brand-light text-brand text-[13px] font-bold hover:bg-brand hover:text-white transition">
             상세보기
           </Link>
           <Link

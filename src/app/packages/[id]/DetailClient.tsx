@@ -174,6 +174,20 @@ function inferPartyTypeForHandoff(intent: string | null | undefined, productType
   return null;
 }
 
+function getHandoffSearchParam(params: { get(name: string): string | null }, key: string): string | null {
+  const value = params.get(key)?.trim();
+  return value ? value : null;
+}
+
+function parseHandoffSelectedProducts(value: string | null | undefined, fallbackProductName: string): string[] {
+  const products = (value ?? '')
+    .split(',')
+    .map(item => item.trim())
+    .filter(Boolean);
+  if (fallbackProductName) products.push(fallbackProductName);
+  return Array.from(new Set(products)).slice(0, 4);
+}
+
 interface RelatedBlogPost {
   slug: string;
   seo_title: string | null;
@@ -577,20 +591,23 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
   const openInquiryForm = useCallback((source: string, trigger?: HTMLButtonElement | null) => {
     reservationTriggerRef.current = trigger ?? (document.activeElement instanceof HTMLButtonElement ? document.activeElement : null);
-    const handoffIntent = formatProductTypeLabel(pkg?.product_type) ?? pkg?.product_type ?? null;
-    const handoffPartyType = inferPartyTypeForHandoff(handoffIntent, pkg?.product_type);
     const inquiryProductName = pkg?.products?.display_name || pkg?.title || id;
+    const handoffIntent = getHandoffSearchParam(searchParams, 'intent') ?? formatProductTypeLabel(pkg?.product_type) ?? pkg?.product_type ?? null;
+    const handoffPartyType = getHandoffSearchParam(searchParams, 'party_type') ?? inferPartyTypeForHandoff(handoffIntent, pkg?.product_type);
+    const inquiryDestination = getHandoffSearchParam(searchParams, 'destination') ?? pkg?.destination ?? null;
+    const inquirySelectedProducts = parseHandoffSelectedProducts(getHandoffSearchParam(searchParams, 'selected_products'), inquiryProductName);
     const inquiryBudget = selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null;
+    const inquiryBudgetForHandoff = selectedTier?.adult_price ? inquiryBudget : getHandoffSearchParam(searchParams, 'budget') ?? inquiryBudget;
     const inquiryDeparture = selectedDate || selectedTier?.period_label || null;
     const inquiryChecklist = [
       { label: '상품', complete: Boolean(inquiryProductName) },
-      { label: '지역', complete: Boolean(pkg?.destination) },
+      { label: '지역', complete: Boolean(inquiryDestination) },
       { label: '출발', complete: Boolean(inquiryDeparture) },
-      { label: '가격', complete: Boolean(inquiryBudget) },
+      { label: '가격', complete: Boolean(inquiryBudgetForHandoff) },
     ];
     const inquiryReadyCount = inquiryChecklist.filter((item) => item.complete).length;
     const inquiryMissingLabels = inquiryChecklist.filter((item) => !item.complete).map((item) => item.label);
-    const inquiryHandoffPreviewText = `예약 문의 열기 전달 조건: 상품 ${inquiryProductName}${inquiryDeparture ? `, 출발 ${inquiryDeparture}` : ''}${inquiryBudget ? `, 예산 ${inquiryBudget}` : ''}.`;
+    const inquiryHandoffPreviewText = `예약 문의 열기 전달 조건: 상품 ${inquiryProductName}${inquiryDestination ? `, 지역 ${inquiryDestination}` : ''}${inquiryDeparture ? `, 출발 ${inquiryDeparture}` : ''}${inquiryBudgetForHandoff ? `, 예산 ${inquiryBudgetForHandoff}` : ''}.`;
     const inquiryDecisionSummaryText = inquiryMissingLabels.length > 0
       ? `예약 문의 열기 판단 요약: ${source}에서 ${inquiryMissingLabels.join(', ')} 조건 보완 후 상담 전달 정확도가 높아집니다. ${inquiryHandoffPreviewText}`
       : `예약 문의 열기 판단 요약: ${source}에서 상품, 지역, 출발, 가격 조건을 예약 문의로 바로 넘길 수 있습니다. ${inquiryHandoffPreviewText}`;
@@ -604,10 +621,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
       cta_type: source,
       page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
       intent: handoffIntent,
-      budget: selectedTier?.adult_price ? `1인 ${selectedTier.adult_price.toLocaleString()}원` : null,
-      destination: pkg?.destination ?? null,
+      budget: inquiryBudgetForHandoff,
+      destination: inquiryDestination,
       party_type: handoffPartyType,
-      selected_products: [pkg?.products?.display_name || pkg?.title || id],
+      selected_products: inquirySelectedProducts,
       next_action: inquiryNextActionText,
       metadata: {
         source,
@@ -644,7 +661,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     setReservationSubmitError('');
     setReservationConsent(false);
     setShowForm(true);
-  }, [id, pkg?.destination, pkg?.product_type, pkg?.products?.display_name, pkg?.title, selectedDate, selectedTier?.adult_price, selectedTier?.period_label]);
+  }, [id, pkg?.destination, pkg?.product_type, pkg?.products?.display_name, pkg?.title, searchParams, selectedDate, selectedTier?.adult_price, selectedTier?.period_label]);
 
   useEffect(() => {
     const ref = searchParams.get('ref');
@@ -904,20 +921,28 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
 
   if (isLoading) return <div className="min-h-screen flex items-center justify-center text-gray-500">불러오는 중...</div>;
   if (!pkg || !view) return <div className="min-h-screen flex flex-col items-center justify-center text-gray-500"><p className="text-lg mb-4">상품을 찾을 수 없습니다.</p><Link href="/packages" className="text-blue-600 underline">목록으로</Link></div>;
+  const handoffIntentFromQuery = getHandoffSearchParam(searchParams, 'intent');
+  const handoffBudgetFromQuery = getHandoffSearchParam(searchParams, 'budget');
+  const handoffDestinationFromQuery = getHandoffSearchParam(searchParams, 'destination');
+  const handoffPartyTypeFromQuery = getHandoffSearchParam(searchParams, 'party_type');
+  const handoffProductsFromQuery = getHandoffSearchParam(searchParams, 'selected_products');
   const productTypeLabel = formatProductTypeLabel(pkg.product_type);
-  const handoffIntent = productTypeLabel ?? pkg.product_type ?? 'consult';
-  const handoffPartyType = inferPartyTypeForHandoff(handoffIntent, pkg.product_type);
   const selectedDateInfo = selectedDate ? allPriceDates.find(d => d.date === selectedDate) : null;
   const selectedProductPriceOptions = getCustomerPriceOptionsForDate(pkg.product_prices, selectedDate);
   // 카드 상단 "판매가": 사용자가 명시 선택한 경우(selectedTier/selectedDate)에만 그 가격, 아니면 항상 최저가
   // ERR-LB-DAD-displayprice@2026-04-20: 디폴트 selectedDate가 자동 설정되어 최저가 대신 4/22 가격(1,309,000)이 표시되는 사고 방지
   const displayPrice = selectedTier?.adult_price ?? (selectedDate ? selectedDateInfo?.price : null) ?? minPrice;
   const selectedProductName = pkg.products?.display_name || pkg.title;
+  const selectedHandoffProducts = parseHandoffSelectedProducts(handoffProductsFromQuery, selectedProductName);
+  const handoffIntent = handoffIntentFromQuery ?? productTypeLabel ?? pkg.product_type ?? 'consult';
+  const handoffPartyType = handoffPartyTypeFromQuery ?? inferPartyTypeForHandoff(handoffIntent, pkg.product_type);
   const handoffBudget = selectedTier?.adult_price
     ? `1인 ${selectedTier.adult_price.toLocaleString()}원`
     : Number.isFinite(displayPrice) && (displayPrice ?? 0) > 0
       ? `1인 ${(displayPrice as number).toLocaleString()}원부터`
       : null;
+  const handoffBudgetForCta = selectedTier?.adult_price ? handoffBudget : handoffBudgetFromQuery ?? handoffBudget;
+  const handoffDestination = handoffDestinationFromQuery ?? pkg.destination ?? null;
   const departureHandoffLabel = selectedDate || selectedTier?.departure_dates?.[0] || selectedTier?.period_label || formData.date;
   const groupInquiryHref = buildGroupInquiryHandoffHref({
     source: 'package_detail',
@@ -926,9 +951,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     query: departureHandoffLabel
       ? `${selectedProductName} ${departureHandoffLabel} 출발 예약 문의`
       : `${selectedProductName} 예약 문의`,
-    destination: pkg.destination,
-    budget: handoffBudget,
-    selectedProducts: [selectedProductName],
+    destination: handoffDestination,
+    budget: handoffBudgetForCta,
+    selectedProducts: selectedHandoffProducts,
   });
   const conciergeHandoffHref = buildConciergeHandoffHref({
     source: 'package_detail',
@@ -937,9 +962,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     query: departureHandoffLabel
       ? `${selectedProductName} ${departureHandoffLabel} 출발 조건 AI 상담`
       : `${selectedProductName} 조건 AI 상담`,
-    destination: pkg.destination,
-    budget: handoffBudget,
-    selectedProducts: [selectedProductName],
+    destination: handoffDestination,
+    budget: handoffBudgetForCta,
+    selectedProducts: selectedHandoffProducts,
   });
   const airlineName = view.airlineHeader.airlineName ?? pkg.airline ?? null;
   const durationLabel = formatPackageDuration(pkg);
@@ -957,9 +982,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
     .filter((item): item is string => Boolean(item))
     .slice(0, 3);
   const stickyHandoffItems = [
-    { label: '지역', value: pkg.destination },
+    { label: '지역', value: handoffDestination },
     { label: '출발', value: selectedDate ?? nextConfirmedDate ?? nextAvailableDepartureLabel },
-    { label: '예산', value: handoffBudget },
+    { label: '예산', value: handoffBudgetForCta },
   ].filter((item): item is { label: string; value: string } => Boolean(item.value));
   const detailCtaSummaryId = 'package-detail-cta-summary';
   const detailHandoffReadinessSummaryId = 'package-detail-handoff-readiness-summary';
@@ -979,9 +1004,9 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const detailReservationDescriptionIds = `${detailReservationDescriptionId} ${detailStickyCtaDescriptionIds}`;
   const detailHandoffChecklist = [
     { label: '상품', complete: Boolean(selectedProductName) },
-    { label: '지역', complete: Boolean(pkg.destination) },
+    { label: '지역', complete: Boolean(handoffDestination) },
     { label: '출발', complete: Boolean(selectedDate ?? nextConfirmedDate ?? nextAvailableDepartureLabel) },
-    { label: '가격', complete: Boolean(handoffBudget) },
+    { label: '가격', complete: Boolean(handoffBudgetForCta) },
   ];
   const detailHandoffReadyCount = detailHandoffChecklist.filter((item) => item.complete).length;
   const detailHandoffMissingLabels = detailHandoffChecklist
@@ -1158,10 +1183,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             utmMedium: new URLSearchParams(window.location.search).get('utm_medium') || null,
             utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign') || null,
             intent: handoffIntent,
-            budget: handoffBudget,
-            destination: pkg.destination ?? null,
+            budget: handoffBudgetForCta,
+            destination: handoffDestination,
             party_type: handoffPartyType,
-            selected_products: [selectedProductName],
+            selected_products: selectedHandoffProducts,
             ready_count: reservationSubmitReadyCount,
             missing_fields: reservationSubmitMissingLabels,
             decision_summary: reservationSubmitDecisionSummaryText,
@@ -2561,17 +2586,17 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             cta_type: 'detail_faq_kakao',
             page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
             intent: handoffIntent,
-            budget: handoffBudget,
-            destination: pkg.destination ?? null,
+            budget: handoffBudgetForCta,
+            destination: handoffDestination,
             party_type: handoffPartyType,
-            selected_products: [selectedProductName],
+            selected_products: selectedHandoffProducts,
             next_action: stickyNextActionText,
             metadata: {
               source: 'detail_faq_kakao',
               selectedDate,
               productType: pkg.product_type ?? null,
               selectedTier: selectedTier?.period_label ?? null,
-              destination: pkg.destination ?? null,
+              destination: handoffDestination,
               next_action: stickyNextActionText,
             },
           });
@@ -2579,10 +2604,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
             productTitle: selectedProductName,
             intent: handoffIntent,
-            budget: handoffBudget,
-            destination: pkg.destination ?? null,
+            budget: handoffBudgetForCta,
+            destination: handoffDestination,
             party_type: handoffPartyType,
-            selected_products: [selectedProductName],
+            selected_products: selectedHandoffProducts,
             departureDate: selectedDate || selectedTier?.departure_dates?.[0],
           });
         }}
@@ -2854,10 +2879,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 cta_type: 'mobile_kakao_consult',
                 page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
                 intent: handoffIntent,
-                budget: handoffBudget,
-                destination: pkg.destination ?? null,
+                budget: handoffBudgetForCta,
+                destination: handoffDestination,
                 party_type: handoffPartyType,
-                selected_products: [selectedProductName],
+                selected_products: selectedHandoffProducts,
                 next_action: stickyNextActionText,
                 metadata: {
                   source: 'detail_mobile_sticky_kakao',
@@ -2895,10 +2920,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                     utmMedium: new URLSearchParams(window.location.search).get('utm_medium'),
                     utmCampaign: new URLSearchParams(window.location.search).get('utm_campaign'),
                     intent: handoffIntent,
-                    budget: handoffBudget,
-                    destination: pkg.destination ?? null,
+                    budget: handoffBudgetForCta,
+                    destination: handoffDestination,
                     party_type: handoffPartyType,
-                    selected_products: [selectedProductName],
+                    selected_products: selectedHandoffProducts,
                     ready_count: detailHandoffReadyCount,
                     missing_fields: detailHandoffMissingLabels,
                     decision_summary: stickyKakaoDecisionSummaryText,
@@ -2912,10 +2937,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 internalCode: pkg.products?.internal_code || (pkg as unknown as Record<string, unknown>).internal_code as string,
                 productTitle: selectedProductName,
                 intent: handoffIntent,
-                budget: handoffBudget,
-                destination: pkg.destination ?? null,
+                budget: handoffBudgetForCta,
+                destination: handoffDestination,
                 party_type: handoffPartyType,
-                selected_products: [selectedProductName],
+                selected_products: selectedHandoffProducts,
                 departureDate: selectedDate || selectedTier?.departure_dates?.[0],
               });
               if (copied) {
@@ -2939,10 +2964,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 cta_type: 'detail_sticky_ai_consult',
                 page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
                 intent: handoffIntent,
-                budget: handoffBudget,
-                destination: pkg.destination ?? null,
+                budget: handoffBudgetForCta,
+                destination: handoffDestination,
                 party_type: handoffPartyType,
-                selected_products: [selectedProductName],
+                selected_products: selectedHandoffProducts,
                 next_action: stickyNextActionText,
                 metadata: {
                   source: 'detail_sticky_ai_consult',
@@ -2978,10 +3003,10 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
                 cta_type: 'detail_sticky_group_inquiry',
                 page_url: typeof window !== 'undefined' ? window.location.pathname : `/packages/${id}`,
                 intent: handoffIntent,
-                budget: handoffBudget,
-                destination: pkg.destination ?? null,
+                budget: handoffBudgetForCta,
+                destination: handoffDestination,
                 party_type: handoffPartyType,
-                selected_products: [selectedProductName],
+                selected_products: selectedHandoffProducts,
                 next_action: stickyNextActionText,
                 metadata: {
                   source: 'detail_sticky_group_inquiry',
