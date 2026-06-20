@@ -1810,8 +1810,9 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         mode,
         imageCount: Array.isArray(data.jpgs) ? data.jpgs.length : 0,
       });
+      showToast('success', `이미지 ${Array.isArray(data.jpgs) ? data.jpgs.length : 0}장이 생성되었습니다.`);
     } catch (err) {
-      alert('이미지 생성 실패: ' + (err instanceof Error ? err.message : '오류'));
+      showToast('error', '이미지 생성 실패: ' + (err instanceof Error ? err.message : '오류'));
     } finally {
       setImgGenerating(false);
     }
@@ -3655,12 +3656,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
                       });
                       const data = await res.json();
                       if (!res.ok) throw new Error(data.error);
-                      alert(`일정표 재추출 완료! (${data.days}일차)`);
+                      showToast('success', `일정표 재추출 완료 (${data.days}일차)`);
                       trackPackageActionCompleted('itinerary_reextracted', selected, { days: data.days ?? null });
                       load();
                       setSelected(null);
                     } catch (err) {
-                      alert('재추출 실패: ' + (err instanceof Error ? err.message : '오류'));
+                      showToast('error', '재추출 실패: ' + (err instanceof Error ? err.message : '오류'));
                     } finally {
                       setReextracting(false);
                     }
