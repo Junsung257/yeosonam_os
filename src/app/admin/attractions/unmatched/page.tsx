@@ -142,7 +142,30 @@ type MainConfirmAction =
       payload: { unmatchedId: string; wikidata: WikidataCandidate };
     };
 
-function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem[]; onAfterRegister: () => void }) {
+type NoticeTone = 'success' | 'error';
+
+interface Notice {
+  tone: NoticeTone;
+  message: string;
+}
+
+type Notify = (message: unknown, tone?: NoticeTone) => void;
+
+const inferNoticeTone = (message: string): NoticeTone => (
+  /실패|오류|없습니다|없음|짧습니다|유효한|failed|error|invalid/i.test(message)
+    ? 'error'
+    : 'success'
+);
+
+function SuggestedCardsBanner({
+  items,
+  onAfterRegister,
+  showNotice,
+}: {
+  items: UnmatchedItem[];
+  onAfterRegister: () => void;
+  showNotice: Notify;
+}) {
   const candidates = useMemo(
     () => items.filter(i => i.status === 'pending' && i.suggested_card && typeof i.suggested_card === 'object'),
     [items],
@@ -220,7 +243,7 @@ function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem
 
   const bulkRegister = async (confirmed = false) => {
     const ids = [...selectedIds];
-    if (ids.length === 0) { alert('선택된 카드 없음'); return; }
+    if (ids.length === 0) { showNotice('선택된 카드 없음'); return; }
     if (!confirmed) {
       setBulkConfirmOpen(true);
       return;
@@ -244,7 +267,7 @@ function SuggestedCardsBanner({ items, onAfterRegister }: { items: UnmatchedItem
       } catch { failed++; }
     }
     setBulkProgress(null);
-    alert(`등록 완료\n신규: ${saved} / alias 추가: ${aliased} / 실패: ${failed}`);
+    showNotice(`등록 완료\n신규: ${saved} / alias 추가: ${aliased} / 실패: ${failed}`, failed > 0 ? 'error' : 'success');
     setSelectedIds(new Set());
     onAfterRegister();
   };
@@ -460,8 +483,10 @@ export default function UnmatchedPage() {
   const [wikidata, setWikidata] = useState<WikidataCandidate | null>(null);
   const [registeringWd, setRegisteringWd] = useState(false);
   const [confirmAction, setConfirmAction] = useState<MainConfirmAction | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const confirmDialogRef = useRef<HTMLDivElement | null>(null);
   const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmTitleId = 'unmatched-confirm-title';
   const confirmDescriptionId = 'unmatched-confirm-description';
 
@@ -513,6 +538,19 @@ export default function UnmatchedPage() {
       previousActiveElement?.focus();
     };
   }, [confirmAction]);
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+  }, []);
+
+  const showNotice = useCallback((message: unknown, tone?: NoticeTone) => {
+    const text = String(message ?? '').trim();
+    if (!text) return;
+
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice({ message: text, tone: tone ?? inferNoticeTone(text) });
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 6500);
+  }, []);
 
   const loadSuggestions = async (unmatchedId: string) => {
     if (suggestingId === unmatchedId) {
@@ -570,16 +608,16 @@ export default function UnmatchedPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error ?? '등록 실패');
+        showNotice(data.error ?? '등록 실패');
         return;
       }
-      alert(data.message);
+      showNotice(data.message);
       setSuggestingId(null);
       setSuggestions([]);
       setWikidata(null);
       load();
     } catch (err) {
-      alert('등록 실패: ' + (err instanceof Error ? err.message : String(err)));
+      showNotice('등록 실패: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setRegisteringWd(false);
     }
@@ -609,17 +647,17 @@ export default function UnmatchedPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        alert(data.error);
+        showNotice(data.error);
         return false;
       }
-      alert(data.message);
+      showNotice(data.message);
       setLinkingId(null);
       setLinkSearch('');
       setLinkResults([]);
       load();
       return true;
     } catch (err) {
-      alert('연결 실패');
+      showNotice('연결 실패');
       return false;
     }
   };
@@ -689,10 +727,10 @@ export default function UnmatchedPage() {
       const res = await fetch('/api/admin/attractions/retry-unmatched?limit=600', { method: 'POST' });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? '실패');
-      alert(`✓ retry 완료\n처리 ${data.unmatched_processed}건 / 해소 ${data.resolved}건 / 남은 pending ${data.remaining_pending}건\n샘플: ${(data.sample_matches ?? []).slice(0, 5).map((s: { activity: string; canonical: string }) => `${s.activity}→${s.canonical}`).join(', ')}`);
-      window.location.reload();
+      showNotice(`✓ retry 완료\n처리 ${data.unmatched_processed}건 / 해소 ${data.resolved}건 / 남은 pending ${data.remaining_pending}건\n샘플: ${(data.sample_matches ?? []).slice(0, 5).map((s: { activity: string; canonical: string }) => `${s.activity}→${s.canonical}`).join(', ')}`);
+      void load();
     } catch (err) {
-      alert(`retry 실패: ${err instanceof Error ? err.message : err}`);
+      showNotice(`retry 실패: ${err instanceof Error ? err.message : err}`);
     }
   };
 
@@ -836,6 +874,33 @@ export default function UnmatchedPage() {
         </div>
       </div>
 
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`mb-4 flex items-start justify-between gap-3 rounded-admin-md border px-4 py-3 shadow-admin-sm ${
+            notice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          <div className="min-w-0">
+            <p className="text-admin-sm font-semibold">
+              {notice.tone === 'error' ? '확인이 필요해요' : '처리 완료'}
+            </p>
+            <p className="mt-1 whitespace-pre-line break-words text-admin-sm">{notice.message}</p>
+          </div>
+          <button
+            type="button"
+            aria-label="알림 닫기"
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded-admin-sm px-2 py-1 text-admin-xs font-medium opacity-80 hover:bg-white/50 hover:opacity-100"
+          >
+            닫기
+          </button>
+        </div>
+      )}
+
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
           <div className="bg-admin-surface rounded-admin-md border border-admin-border-mid shadow-admin-xs p-3 text-center">
@@ -954,7 +1019,7 @@ export default function UnmatchedPage() {
       )}
 
       {/* PR #94 — AI 자동 추천 카드 일괄 등록 */}
-      <SuggestedCardsBanner items={items} onAfterRegister={() => { load(); loadSummary(); }} />
+      <SuggestedCardsBanner items={items} onAfterRegister={() => { load(); loadSummary(); }} showNotice={showNotice} />
 
       {/* 필터 */}
       <div className="flex gap-3 mb-4 items-center flex-wrap">
@@ -1071,10 +1136,10 @@ export default function UnmatchedPage() {
                       });
                       const data = await res.json();
                       if (res.ok) {
-                        alert(data.message || '처리 완료');
+                        showNotice(data.message || '처리 완료');
                         load();
                       } else {
-                        alert(data.error || 'reconcile 실패');
+                        showNotice(data.error || 'reconcile 실패');
                       }
                     }}
                       className="px-3 py-1.5 bg-sky-500 text-white text-xs rounded-lg hover:bg-sky-600 font-medium">
