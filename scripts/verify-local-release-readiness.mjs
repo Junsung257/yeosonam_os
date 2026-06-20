@@ -349,11 +349,11 @@ function summaryCount(summary, key) {
   return Number.isFinite(count) ? count : 0;
 }
 
-function runNpmScript(id, script, args = []) {
+function runNpmScript(id, script, args = [], options = {}) {
   const startedAt = process.hrtime.bigint();
   if (!jsonOutput) console.error(`[local-release] ${id} running`);
   const invocation = npmRunInvocation(script, args);
-  const env = { ...process.env, FORCE_COLOR: '0' };
+  const env = { ...process.env, FORCE_COLOR: '0', ...(options.env || {}) };
   if (script === 'build' && !env.NEXT_BUILD_RECOVERY_WAIT_MS) {
     env.NEXT_BUILD_RECOVERY_WAIT_MS = '60000';
   }
@@ -627,14 +627,23 @@ if (!skipOpenReadiness) {
 }
 
 if (!skipBuild) {
-  checks.push({ id: 'production-build', script: 'build' });
-  checks.push({ id: 'bundle-budget', script: 'check:bundle' });
+  const isolatedOpenReadinessBuildEnv = skipOpenReadiness
+    ? {}
+    : {
+        // The local open-readiness probe uses NEXT_DIST_DIR=.next-dev-${port},
+        // so a briefly lingering probe cannot rewrite the production .next
+        // directory that these checks inspect.
+        NEXT_BUILD_ALLOW_ACTIVE_DEV_SERVER: '1',
+        BUNDLE_BUDGET_ALLOW_ACTIVE_DEV_SERVER: '1',
+      };
+  checks.push({ id: 'production-build', script: 'build', env: isolatedOpenReadinessBuildEnv });
+  checks.push({ id: 'bundle-budget', script: 'check:bundle', env: isolatedOpenReadinessBuildEnv });
 }
 
 const summaries = [];
 
 for (const check of checks) {
-  const result = runNpmScript(check.id, check.script, check.args || []);
+  const result = runNpmScript(check.id, check.script, check.args || [], { env: check.env || {} });
   const summary = check.interpret ? check.interpret(result) : summarizeSimple(result);
   summaries.push(summary);
 
