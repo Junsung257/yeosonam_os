@@ -35,6 +35,42 @@ function phuQuocInput(): {
 }
 
 describe('registerProductFromRaw', () => {
+  it('repairs a bad one-day duration from a clean sequential itinerary', async () => {
+    const rawText = [
+      '청도 3일 일정표',
+      '3/8 399,000원',
+      '제1일 신호산 관광',
+      '제2일 청양 야시장 관광',
+      '제3일 부산 도착',
+    ].join('\n');
+
+    const result = await registerProductFromRaw({
+      rawText,
+      documentRawText: rawText,
+      extractedData: {
+        title: '청도 특가',
+        destination: '청도',
+        duration: 1,
+        rawText,
+        price_tiers: [],
+      },
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'activity', activity: '신호산 관광' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '청양 야시장 관광' }] },
+          { day: 3, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+      title: '청도 특가',
+      activeAttractions: [],
+      enableGeminiFallback: false,
+      priceYear: 2026,
+    });
+
+    expect(result.identity.durationDays).toBe(3);
+    expect(result.extractedData.duration).toBe(3);
+  });
+
   it('registers the Phu Quoc golden upload as customer deliverable', async () => {
     const { rawText, expected, extractedData } = phuQuocInput();
 

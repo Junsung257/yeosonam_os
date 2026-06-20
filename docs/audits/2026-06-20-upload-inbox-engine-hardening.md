@@ -124,3 +124,34 @@ mobile/A4 live verification: not run in this offline audit
 ```
 
 Remaining blockers must not be auto-opened unless source evidence exists. In particular, confirmation letters, fam-tour notices, standalone price tables, or itinerary-less golf/fee documents must stay blocked or review-needed until the original source contains customer-visible itinerary and sale-price evidence.
+
+## 2026-06-21 Follow-up: Itinerary Table Pollution And Duration Repair
+
+Additional source-batch replay showed that some OCR/PDF tables still leaked non-schedule rows into itinerary days:
+
+- Month/date price rows such as `5월 23, 30일 1,099,000`.
+- Admin rows such as `3월 30일(월)까지 항공권 발권하는 조건입니다.`
+- Sparse numeric rows such as `314M` that were misread as day `10`.
+- Bad one-day duration inference on otherwise clean 3-day itineraries.
+
+The itinerary normalizer now:
+
+- Prunes late outlier days when a strong contiguous day sequence already exists and the outlier is price/admin/noise-shaped.
+- Does not prune near-gap days such as `1,2,4`, because that may represent a real missing day that must remain blocked.
+- Does not trust `durationDays=1` enough to prune multi-day schedules.
+- Repairs a bad one-day duration from a clean, duplicate-free 2-8 day itinerary.
+
+Result on the same source batch:
+
+```text
+products: 124
+publishableOffline: 109
+customerReadyOffline: 0
+blocked: 15
+product_prices missing: 5
+itinerary missing: 7
+destination code unresolved: 1
+mobile/A4 live verification: not run in this offline audit
+```
+
+The remaining blocked products still need source-backed price, itinerary, destination, or catalog-section separation. They must not be auto-opened by inventing missing sale prices or missing customer itinerary days.
