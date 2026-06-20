@@ -225,7 +225,7 @@ function getResultInsight(item: MockSearchResult) {
 }
 
 function inferIntentSummary(prompt: IntentPrompt | null, query: string, cart: CartItem[]) {
-  const selectedProducts = cart.map((item) => item.product_id);
+  const selectedProducts = mergeUniqueText(cart.map((item) => item.product_name || item.product_id));
   const promptSelectedProducts = prompt?.selected_products?.filter(Boolean) ?? [];
   return {
     intent: prompt?.intent ?? (query.includes('골프') ? 'golf_compare' : query.includes('단체') ? 'group_trip' : null),
