@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
@@ -394,7 +394,28 @@ function ModalFrame({
   );
 }
 
+function ConciergePageFallback() {
+  return (
+    <div className="min-h-dvh bg-[#F8FAFC] px-4 py-5 md:px-6 lg:py-7">
+      <div className="mx-auto max-w-7xl rounded-[24px] bg-white p-5 shadow-card md:p-7">
+        <div className="h-6 w-28 rounded-full bg-brand-light" />
+        <div className="mt-4 h-9 w-full max-w-xl rounded-[12px] bg-[#E5ECF3]" />
+        <div className="mt-3 h-5 w-full max-w-2xl rounded-[10px] bg-[#EEF2F6]" />
+        <div className="mt-6 h-13 w-full rounded-[16px] bg-[#F2F4F6]" />
+      </div>
+    </div>
+  );
+}
+
 export default function ConciergePage() {
+  return (
+    <Suspense fallback={<ConciergePageFallback />}>
+      <ConciergePageContent />
+    </Suspense>
+  );
+}
+
+function ConciergePageContent() {
   const searchParams = useSearchParams();
   const urlPrompt = useMemo(() => buildConciergeHandoffPrompt(searchParams), [searchParams]);
   const [query, setQuery] = useState(urlPrompt?.query ?? '');
