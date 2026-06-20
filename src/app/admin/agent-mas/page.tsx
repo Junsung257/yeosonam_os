@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { fmtDateTime } from '@/lib/admin-utils';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
@@ -77,6 +77,16 @@ export default function AgentMasPage() {
   const [incidents, setIncidents] = useState<AgentIncidentRow[]>([]);
   const [incidentsTotal, setIncidentsTotal] = useState(0);
   const [incidentSeverity, setIncidentSeverity] = useState('');
+  const [approvalActionTarget, setApprovalActionTarget] = useState<{
+    approval: AgentApprovalRow;
+    action: 'approve' | 'reject';
+  } | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const approvalDialogRef = useRef<HTMLDivElement | null>(null);
+  const approvalCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const rejectReasonRef = useRef<HTMLTextAreaElement | null>(null);
+  const approvalActionTitleId = 'agent-approval-action-title';
+  const approvalActionDescriptionId = 'agent-approval-action-description';
 
   const loadTasks = useCallback(async () => {
     const q = new URLSearchParams({ limit: '40', offset: '0' });
@@ -126,11 +136,66 @@ export default function AgentMasPage() {
     void refresh();
   }, [refresh]);
 
-  const actOnApproval = async (id: string, action: 'approve' | 'reject') => {
-    const reason =
-      action === 'reject'
-        ? window.prompt('반려 사유(선택, 비우면 기본 문구)') || undefined
-        : undefined;
+  useEffect(() => {
+    if (!approvalActionTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    if (approvalActionTarget.action === 'reject') {
+      rejectReasonRef.current?.focus();
+    } else {
+      approvalCancelButtonRef.current?.focus();
+    }
+
+    const getFocusableElements = () => Array.from(
+      approvalDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setApprovalActionTarget(null);
+        setRejectReason('');
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [approvalActionTarget]);
+
+  const openApprovalAction = (approval: AgentApprovalRow, action: 'approve' | 'reject') => {
+    setRejectReason('');
+    setApprovalActionTarget({ approval, action });
+  };
+
+  const actOnApproval = async (id: string, action: 'approve' | 'reject', reason?: string) => {
     const res = await fetch(`/api/agent/approvals/${id}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -138,9 +203,12 @@ export default function AgentMasPage() {
     });
     const json = await res.json();
     if (!res.ok) {
-      window.alert(json.error || '처리 실패');
+      setError(json.error || '처리 실패');
       return;
     }
+    setApprovalActionTarget(null);
+    setRejectReason('');
+    setError(null);
     await refresh();
   };
 
@@ -214,14 +282,20 @@ export default function AgentMasPage() {
                     <button
                       type="button"
                       className="text-xs rounded-lg px-3 py-1.5 bg-emerald-600 text-white hover:bg-emerald-700"
-                      onClick={() => void actOnApproval(a.id, 'approve')}
+                      onClick={() => openApprovalAction(a, 'approve')}
+                      aria-haspopup="dialog"
+                      aria-expanded={approvalActionTarget?.approval.id === a.id && approvalActionTarget.action === 'approve'}
+                      aria-controls="agent-approval-action-dialog"
                     >
                       승인
                     </button>
                     <button
                       type="button"
                       className="text-xs rounded-lg px-3 py-1.5 bg-white border border-red-200 text-red-700 hover:bg-red-50"
-                      onClick={() => void actOnApproval(a.id, 'reject')}
+                      onClick={() => openApprovalAction(a, 'reject')}
+                      aria-haspopup="dialog"
+                      aria-expanded={approvalActionTarget?.approval.id === a.id && approvalActionTarget.action === 'reject'}
+                      aria-controls="agent-approval-action-dialog"
                     >
                       반려
                     </button>
@@ -315,6 +389,91 @@ export default function AgentMasPage() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {approvalActionTarget && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={approvalDialogRef}
+            id="agent-approval-action-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={approvalActionTitleId}
+            aria-describedby={approvalActionDescriptionId}
+            className="w-full max-w-lg overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={approvalActionTitleId} className="text-admin-sm font-semibold text-admin-text-2">
+                {approvalActionTarget.action === 'approve' ? '에이전트 요청 승인' : '에이전트 요청 반려'}
+              </p>
+              <p id={approvalActionDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                고위험 요청의 freeze 상태를 검토합니다. 처리 후 승인 큐가 새로고침됩니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">상태</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">{approvalActionTarget.approval.status}</p>
+                </div>
+                <div className="rounded bg-admin-bg px-2.5 py-2">
+                  <p className="text-[10px] text-admin-muted-2">요청</p>
+                  <p className="text-admin-sm font-semibold text-admin-text-2">{fmtDateTime(approvalActionTarget.approval.requested_at)}</p>
+                </div>
+              </div>
+              <div className="rounded border border-admin-border-mid bg-admin-bg p-2">
+                <p className="mb-1 text-[10px] font-semibold uppercase text-admin-muted-2">Metadata</p>
+                <pre className="max-h-48 overflow-auto text-[11px] text-admin-text-2">
+                  {JSON.stringify(approvalActionTarget.approval.metadata, null, 2)}
+                </pre>
+              </div>
+              {approvalActionTarget.action === 'reject' && (
+                <div>
+                  <label htmlFor="agent-approval-reject-reason" className="mb-1 block text-[11px] font-semibold text-admin-muted">
+                    반려 사유
+                  </label>
+                  <textarea
+                    ref={rejectReasonRef}
+                    id="agent-approval-reject-reason"
+                    value={rejectReason}
+                    onChange={(event) => setRejectReason(event.target.value)}
+                    placeholder="비워두면 기본 반려 문구로 기록됩니다."
+                    rows={3}
+                    className="w-full resize-none rounded-lg border border-admin-border-mid px-3 py-2 text-admin-sm text-admin-text-2 focus:outline-none focus:ring-1 focus:ring-brand"
+                  />
+                </div>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={approvalCancelButtonRef}
+                type="button"
+                onClick={() => {
+                  setApprovalActionTarget(null);
+                  setRejectReason('');
+                }}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => void actOnApproval(
+                  approvalActionTarget.approval.id,
+                  approvalActionTarget.action,
+                  approvalActionTarget.action === 'reject' ? rejectReason.trim() || undefined : undefined,
+                )}
+                className={`rounded px-3 py-1.5 text-admin-sm font-medium text-white ${
+                  approvalActionTarget.action === 'approve'
+                    ? 'bg-emerald-600 hover:bg-emerald-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}
+              >
+                {approvalActionTarget.action === 'approve' ? '승인' : '반려'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
