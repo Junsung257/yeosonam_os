@@ -9,7 +9,7 @@
  *   - 편집 UI는 간결. 슬라이드 텍스트 수정은 V1 에디터에 두고, V2는 출력물 생성 주도.
  */
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import type { TemplateFamily } from '@/lib/validators/content-brief';
 import type { FormatKey } from '@/lib/card-news/v2/types';
@@ -86,6 +86,13 @@ export default function CardNewsV2Studio() {
   const [htmlSaving, setHtmlSaving] = useState(false);
   const [htmlRendering, setHtmlRendering] = useState(false);
   const [htmlRegenerating, setHtmlRegenerating] = useState(false);
+  const [htmlRegenerateOpen, setHtmlRegenerateOpen] = useState(false);
+  const [htmlRegenerateText, setHtmlRegenerateText] = useState('');
+  const htmlRegenerateDialogRef = useRef<HTMLDivElement | null>(null);
+  const htmlRegenerateCancelRef = useRef<HTMLButtonElement | null>(null);
+  const htmlRegenerateTextRef = useRef<HTMLTextAreaElement | null>(null);
+  const htmlRegenerateTitleId = 'card-news-html-regenerate-title';
+  const htmlRegenerateDescriptionId = 'card-news-html-regenerate-description';
   const [htmlRenderResults, setHtmlRenderResults] = useState<Array<{
     slide_index: number;
     url: string | null;
@@ -122,6 +129,55 @@ export default function CardNewsV2Studio() {
       }
     })();
   }, [id]);
+
+  useEffect(() => {
+    if (!htmlRegenerateOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    htmlRegenerateTextRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      htmlRegenerateDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setHtmlRegenerateOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [htmlRegenerateOpen]);
 
   const handleHtmlSave = useCallback(async () => {
     if (!htmlDirty || htmlSaving) return;
@@ -171,18 +227,14 @@ export default function CardNewsV2Studio() {
   }, [htmlDirty, id, showToast]);
 
   const handleHtmlRegenerate = useCallback(async () => {
-    const editedRaw = window.prompt(
-      'Claude 로 전체 HTML 재생성합니다.\n\n원문 텍스트를 수정하거나 그대로 사용:',
-      htmlRawText,
-    );
-    if (editedRaw === null) return; // 취소
+    const editedRaw = htmlRegenerateText;
     if (!editedRaw.trim()) {
       showToast('원문이 비어있습니다');
       return;
     }
-    if (!confirm(`Claude 호출 (~3분, 약 $0.28). 진행할까요?`)) return;
 
     setHtmlRegenerating(true);
+    setHtmlRegenerateOpen(false);
     try {
       const res = await fetch('/api/card-news/generate-html', {
         method: 'POST',
@@ -203,7 +255,12 @@ export default function CardNewsV2Studio() {
     } finally {
       setHtmlRegenerating(false);
     }
-  }, [htmlRawText, id, showToast]);
+  }, [htmlRegenerateText, id, showToast]);
+
+  const openHtmlRegenerateDialog = useCallback(() => {
+    setHtmlRegenerateText(htmlRawText);
+    setHtmlRegenerateOpen(true);
+  }, [htmlRawText]);
 
   const toggleFormat = (f: FormatKey) => {
     setFormats((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
@@ -540,7 +597,7 @@ export default function CardNewsV2Studio() {
           </button>
           <button
             type="button"
-            onClick={handleHtmlRegenerate}
+            onClick={openHtmlRegenerateDialog}
             disabled={htmlRegenerating}
             className="ml-auto px-5 py-2.5 bg-purple-600 text-white rounded font-semibold disabled:opacity-40"
             title="Claude 로 전체 HTML 재생성 (~3분, 약 $0.28). 원문 텍스트 수정 가능."
@@ -599,6 +656,93 @@ export default function CardNewsV2Studio() {
               {htmlRawText}
             </pre>
           </details>
+        )}
+
+        {htmlRegenerateOpen && (
+          <div
+            className="fixed inset-0 z-[80] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-6"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setHtmlRegenerateOpen(false);
+            }}
+          >
+            <div
+              ref={htmlRegenerateDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={htmlRegenerateTitleId}
+              aria-describedby={htmlRegenerateDescriptionId}
+              className="max-h-[92dvh] w-full overflow-hidden rounded-t-admin-lg border border-admin-border-mid bg-admin-surface shadow-admin-lg sm:max-w-3xl sm:rounded-admin-lg"
+            >
+              <div className="border-b border-admin-border-mid px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 id={htmlRegenerateTitleId} className="text-lg font-bold text-admin-text">
+                      Claude HTML 재생성
+                    </h2>
+                    <p id={htmlRegenerateDescriptionId} className="mt-1 text-sm text-admin-muted">
+                      원문 텍스트를 확인하거나 수정한 뒤 Claude로 전체 HTML을 다시 생성합니다.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="rounded-admin-sm px-2 py-1 text-sm font-semibold text-admin-muted hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                    aria-label="닫기"
+                    onClick={() => setHtmlRegenerateOpen(false)}
+                  >
+                    X
+                  </button>
+                </div>
+              </div>
+
+              <div className="max-h-[calc(92dvh-150px)] overflow-y-auto px-5 py-4">
+                <div className="mb-4 grid gap-2 sm:grid-cols-4">
+                  {[
+                    ['예상 시간', '약 3분'],
+                    ['예상 비용', '약 $0.28'],
+                    ['대상', 'HTML 전체'],
+                    ['저장', '재생성 후 자동 반영'],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                      <div className="text-[11px] font-semibold uppercase text-admin-muted-2">{label}</div>
+                      <div className="mt-1 text-sm font-bold text-admin-text">{value}</div>
+                    </div>
+                  ))}
+                </div>
+
+                <label htmlFor="card-news-html-regenerate-raw" className="mb-2 block text-sm font-semibold text-admin-text">
+                  원문 텍스트
+                </label>
+                <textarea
+                  ref={htmlRegenerateTextRef}
+                  id="card-news-html-regenerate-raw"
+                  value={htmlRegenerateText}
+                  onChange={(event) => setHtmlRegenerateText(event.target.value)}
+                  className="min-h-[260px] w-full resize-y rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2 font-mono text-sm text-admin-text outline-none focus:border-admin-primary focus:ring-2 focus:ring-admin-primary/20"
+                  aria-describedby={htmlRegenerateDescriptionId}
+                />
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-admin-border-mid px-5 py-4 sm:flex-row sm:justify-end">
+                <button
+                  ref={htmlRegenerateCancelRef}
+                  type="button"
+                  className="rounded-admin-md border border-admin-border-mid px-4 py-2 text-sm font-semibold text-admin-text hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                  onClick={() => setHtmlRegenerateOpen(false)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="rounded-admin-md bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+                  disabled={htmlRegenerating || !htmlRegenerateText.trim()}
+                  onClick={() => void handleHtmlRegenerate()}
+                >
+                  {htmlRegenerating ? '재생성 중...' : 'Claude로 재생성'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
 
         {toast && (
