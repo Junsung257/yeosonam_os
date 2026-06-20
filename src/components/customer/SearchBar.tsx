@@ -106,8 +106,15 @@ export default function SearchBar({
     e.preventDefault();
     const params = new URLSearchParams();
     const trimmedQ = q.trim();
+    const trimmedInitialDestination = initialDestination.trim();
     const effectiveHub = variant === 'packages' ? hubValue : hub;
-    if (trimmedQ) params.set('q', trimmedQ);
+    if (trimmedQ) {
+      if (variant === 'packages' && trimmedInitialDestination && trimmedQ === trimmedInitialDestination) {
+        params.set('destination', trimmedQ);
+      } else {
+        params.set('q', trimmedQ);
+      }
+    }
     if (month) params.set('month', month);
     if (priceMin) params.set('priceMin', priceMin);
     if (priceMax) params.set('priceMax', priceMax);
