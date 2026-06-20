@@ -1,4 +1,5 @@
 import type { PriceIROptions, PriceIRResult } from './types';
+import { extractCompactGradePeriodRows } from './compact-grade-period-table';
 import { extractHotelColumnMatrixRows } from './hotel-column-matrix';
 import { extractLabeledDateListPriceRows } from './labeled-date-list-price';
 import { extractMonthDowPriceIR } from './month-dow-table';
@@ -19,6 +20,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
       source: 'spot_weekday_table',
       rows: spotWeekdayRows,
       tiers: rowsToTiers(spotWeekdayRows),
+    };
+  }
+
+  const compactGradePeriodRows = extractCompactGradePeriodRows(rawText, options);
+  if (compactGradePeriodRows.length > 0) {
+    return {
+      source: 'compact_grade_period_table',
+      rows: compactGradePeriodRows,
+      tiers: rowsToTiers(compactGradePeriodRows),
     };
   }
 

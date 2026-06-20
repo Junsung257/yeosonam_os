@@ -1,6 +1,6 @@
 # Product Mobile Landing Quality Runbook
 
-Last updated: 2026-06-15
+Last updated: 2026-06-20
 
 This runbook is mandatory for any product-registration, attraction-matching, itinerary-normalization, price-recovery, or publish-gate change that can affect customer pages.
 
@@ -132,6 +132,7 @@ During a DB outage, extraction-only reports may be produced with `scripts/regist
 HWP/HWPX handling is intentionally explicit:
 
 - `.hwpx` is extracted directly from the document XML and can be used for unattended inbox runs.
+- HWPX paragraph, table-row, and table-cell text boundaries must be preserved as line breaks or tabs. If a real supplier HWPX extracts to a near-single-line text blob, the result is not registration-safe because catalog splitting, price matrices, flight rows, meals, and itinerary days can all be misread.
 - `.hwp` binary extraction is allowed only when a non-GUI extractor such as `hwp5txt`/pyhwp is available on the machine. If no extractor is available, the inbox run must record `HWP binary extractor is not available` and stop before registration for that file.
 - Do not drive the Hancom desktop app through permission popups as a hidden automation path. If the operator normally copies all text from HWP into `/upload`, the equivalent unattended input is a `.txt` file containing that copied supplier text.
 
@@ -142,6 +143,8 @@ npx tsx scripts/audit-upload-inbox-extracted-sources.ts --report=scratch/upload-
 ```
 
 This audit checks the extracted source queue against deterministic catalog splitting, source-backed price/date recovery, itinerary normalization, and the standard registration deliverability gate. It is still not mobile proof. The summary must keep `mobileLandingVerified=false` until the products are saved and the actual `/packages/{id}` mobile page plus A4 contract are checked.
+
+For catalog-style supplier sheets with a shared price table before multiple `PKG` sections, the audit must verify that each product variant keeps the shared price table and selects the correct grade column by product title. A table such as `실속패키지 / 베이토우+미식 / 노팁노옵션` must not be treated as a hotel-column matrix; otherwise one variant can pass structurally while showing another variant's price.
 
 The offline source audit must also write `learning-events.json`, `offline-master-candidates.json`, and `macro-learning-report.json`. These files feed the same micro/macro learning loop with source hashes, blocker signatures, compared fields, offline master-candidate decisions, and offline audit status while REST persistence is unavailable. They are read-only learning artifacts: they must not store raw supplier text, must not mutate production parser rules, and must not be treated as customer mobile proof.
 
