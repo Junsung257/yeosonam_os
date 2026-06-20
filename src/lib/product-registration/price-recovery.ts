@@ -130,13 +130,79 @@ function normalizeTiers(raw: unknown): PriceTier[] {
     .filter((tier): tier is PriceTier => tier != null);
 }
 
-const OPTIONAL_AMOUNT_CONTEXT_RE = /(?:\$|USD|마사지|맛사지|선택관광|옵션|쇼핑|팁|써차지|싱글\s*차지|불포함|현지지불)/i;
+const OPTIONAL_AMOUNT_CONTEXT_RE = /(?:\$|USD|마사지|맛사지|선택\s*관광|선택관광|옵션|쇼핑|팁|써차지|싱글\s*차지|기사\s*\/?\s*가이드|불포함|현지지불|유류\s*할증료|유류할증료|변동분|기준|입장권)/i;
 
 function removeOptionalAmountPollution(tiers: PriceTier[], rawText: string): PriceTier[] {
   if (!OPTIONAL_AMOUNT_CONTEXT_RE.test(rawText)) return tiers;
-  const hasPackageScalePrice = tiers.some(tier => Number(tier.adult_price) >= 100_000);
-  if (!hasPackageScalePrice) return tiers;
   return tiers.filter(tier => Number(tier.adult_price) >= 100_000);
+}
+
+function parseCompactKrw(value: string): number | null {
+  const digits = value.replace(/[^\d]/g, '');
+  if (!digits) return null;
+  const amount = Number(digits);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount < 10_000 ? amount * 1000 : amount;
+}
+
+function compactPeriodRanges(rawText: string, year: number): Array<{ label: string; start: string; end: string }> {
+  const line = rawText.split(/\r?\n/).find(row => /\d{1,2}\/\d{1,2}\s*~\s*\d{1,2}\/\d{1,2}/.test(row));
+  if (!line) return [];
+  return [...line.matchAll(/(\d{1,2})\/(\d{1,2})\s*~\s*(\d{1,2})\/(\d{1,2})/g)].map(match => {
+    const start = `${year}-${match[1].padStart(2, '0')}-${match[2].padStart(2, '0')}`;
+    const end = `${year}-${match[3].padStart(2, '0')}-${match[4].padStart(2, '0')}`;
+    return { label: `${match[1]}/${match[2]}~${match[3]}/${match[4]}`, start, end };
+  });
+}
+
+function priceGroupLines(rawText: string): number[][] {
+  return rawText
+    .split(/\r?\n/)
+    .map(line => [...line.matchAll(/(\d{1,3}(?:,\d{3})?|\d{3}),-/g)]
+      .map(match => parseCompactKrw(match[1]))
+      .filter((value): value is number => value != null && value >= 100_000))
+    .filter(group => group.length >= 3)
+    .map(group => group.slice(0, 3));
+}
+
+function compactMacauHongKongCatalogTiers(ed: ExtractedData, rawText: string, year?: number): PriceTier[] {
+  const title = ed.title ?? '';
+  if (!/마카오/.test(title) || !/홍콩|자유|심천/.test(title)) return [];
+  const prefix = rawText.split(/\nPKG\b/i)[0] ?? '';
+  if (!/상\s*품\s*가/.test(prefix) || !/4\/1\s*~\s*4\/30/.test(prefix)) return [];
+
+  const periods = compactPeriodRanges(prefix, year ?? new Date().getFullYear());
+  const groups = priceGroupLines(prefix);
+  if (periods.length < 3 || groups.length < 7) return [];
+
+  const titleKey = title.replace(/\s+/g, '');
+  let groupIndexes: number[] = [];
+  if (/1일자유/.test(titleKey) && /2박4일/.test(titleKey)) groupIndexes = [0, 1];
+  else if (/마카오\/홍콩/.test(titleKey) && /2박4일/.test(titleKey)) groupIndexes = [2, 3];
+  else if (/2일자유/.test(titleKey) && /3박5일/.test(titleKey)) groupIndexes = [4];
+  else if (/마카오\/홍콩\+심천/.test(titleKey) && /3박5일/.test(titleKey)) groupIndexes = [6];
+  else if (/마카오\/홍콩/.test(titleKey) && /3박5일/.test(titleKey)) groupIndexes = [5];
+  if (groupIndexes.length === 0) return [];
+
+  const weekdayByGroup = ['금', '일', '금', '일', '화', '화', '화'];
+  const tiers: PriceTier[] = [];
+  for (const groupIndex of groupIndexes) {
+    const prices = groups[groupIndex];
+    if (!prices) continue;
+    prices.forEach((price, index) => {
+      const period = periods[index];
+      if (!period) return;
+      tiers.push({
+        period_label: `macau_hongkong_catalog_${period.label}_${weekdayByGroup[groupIndex] ?? ''}`,
+        date_range: { start: period.start, end: period.end },
+        departure_day_of_week: weekdayByGroup[groupIndex],
+        adult_price: price,
+        status: 'available',
+        note: 'source_compact_macau_hongkong_price_table',
+      });
+    });
+  }
+  return tiers;
 }
 
 function isDateString(value: unknown): value is string {
@@ -380,6 +446,16 @@ export async function recoverUploadPriceData(
   const recoveredDepartureDays = options.departureDays ?? ed.departure_days ?? inferDepartureDaysFromRawText(rawText);
   const ctx = { packageDepartureDays: recoveredDepartureDays, year: options.year };
   let deterministicCandidate: (Pick<UploadPriceRecoveryResult, 'tiers' | 'priceRows' | 'priceDates' | 'minPrice'> & { source: string }) | null = null;
+
+  const compactCatalogCandidate = evaluateCandidate(ed, compactMacauHongKongCatalogTiers(ed, rawText, options.year), ctx);
+  if (compactCatalogCandidate.priceRows.length > 0 && compactCatalogCandidate.priceDates.length > 0) {
+    return {
+      ok: true,
+      source: 'supplier_compact_macau_hongkong_price_table',
+      failures,
+      ...compactCatalogCandidate,
+    };
+  }
 
   if (rawText.length >= 100) {
     const det = extractPriceIR(rawText, {

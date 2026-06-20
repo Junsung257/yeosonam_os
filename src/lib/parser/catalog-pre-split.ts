@@ -4,13 +4,14 @@ const VARIANT_COMPACT_LABEL_RE =
   /^(?:\uD504\uB9AC\uBBF8\uC5C4\uB178\uB178\uB178|\uD06C\uB77C\uC6B4\uB178\uB178\uB178\+?|\uC138\uC774\uBE0C\uC2E4\uC18D|\uC2E4\uC18D|\uD488\uACA9\uB178\uB178|\uC2A4\uD0E0\uB2E4\uB4DC)$/;
 const VARIANT_TITLE_RE = /\d+\s*\uBC15\s*\d+\s*\uC77C/;
 const VARIANT_TITLE_GLOBAL_RE = /\d+\s*\uBC15\s*\d+\s*\uC77C/g;
+const KOREAN_DURATION_TITLE_RE = /\d+\s*박\s*\d+\s*일/u;
 const VARIANT_ITINERARY_RE = /(?:^|\n)\s*(?:\uC77C\s*\uC790|\uC81C\s*1\s*\uC77C)\s*(?:\n|$)/;
 const READABLE_DURATION_RE = /\d+\s*박\s*\d+\s*일/u;
 const READABLE_DAY_DURATION_RE = /(?:^|[^\d])\d{1,2}\s*일(?:\s*\/\s*\d{1,2}\s*일)?(?:$|[^\d])/u;
 const MONEY_RE = /\d{1,3}(?:,\d{3})+\s*(?:원)?/;
 
 function hasReadableDurationSignal(line: string): boolean {
-  return READABLE_DURATION_RE.test(line);
+  return READABLE_DURATION_RE.test(line) || KOREAN_DURATION_TITLE_RE.test(line);
 }
 
 function hasReadableTitleText(line: string): boolean {
@@ -327,6 +328,10 @@ export function collectPkgBlockStarts(raw: string): number[] {
   for (let i = 0; i < lines.length; i++) {
     const pkgMatch = /\bPKG\b/i.exec(lines[i]);
     if (!pkgMatch) continue;
+    if (looksLikeDurationTitle(lines[i])) {
+      starts.push(offsets[i] + pkgMatch.index);
+      continue;
+    }
     const nextMeaningful = lines
       .slice(i + 1, Math.min(lines.length, i + 5))
       .map(line => line.trim())

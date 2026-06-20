@@ -140,6 +140,9 @@ export const UPLOAD_DEST_CODE_MAP: Record<string, string> = {
 
 const DEST_KEYWORDS = Object.keys(UPLOAD_DEST_CODE_MAP);
 const DEST_FALLBACK_SKIP = new Set(['부산', '인천', '김해', '서울', '제주', '청주', '대구']);
+const DESTINATION_FLIGHT_HINTS: Array<{ pattern: RegExp; destination: string }> = [
+  { pattern: /\bBX(?:7395|7305)\b/g, destination: '하노이' },
+];
 
 export type UploadDestinationResolution = {
   destination: string | null;
@@ -167,6 +170,10 @@ export function inferUploadDestinationFromText(rawText: string | undefined | nul
   if (mojibakeProfile === 'joshi-golf' || mojibakeProfile === 'narita-nomori-golf') return '나리타';
   if (mojibakeProfile?.startsWith('xian-')) return '서안';
   const head = rawText.slice(0, 3000);
+  for (const hint of DESTINATION_FLIGHT_HINTS) {
+    hint.pattern.lastIndex = 0;
+    if (hint.pattern.test(head)) return hint.destination;
+  }
   const counts: Record<string, number> = {};
   for (const name of DEST_KEYWORDS) {
     if (DEST_FALLBACK_SKIP.has(name) || name.length < 2) continue;

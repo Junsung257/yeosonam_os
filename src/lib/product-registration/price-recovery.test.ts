@@ -94,6 +94,66 @@ describe('recoverUploadPriceData', () => {
     expect(result.failures.some(failure => failure.startsWith('llm:price_dates'))).toBe(true);
   });
 
+  it('maps compact Macau/Hong Kong catalog price rows to the matching split product', async () => {
+    const sharedPriceTable = [
+      '선발특가 3/27까지 3.12 배포',
+      '상 품 가',
+      '출 발 일',
+      '4/1~4/30 5/1~5/31 6/1~6/30',
+      '비 고',
+      '729,- 699,- 649,- 8명부터',
+      '금',
+      '마카오',
+      '출발확정',
+      '+1일자유',
+      '2박4일 579,- 529,- 499,- 8명부터',
+      '일',
+      '출발확정',
+      '799,- 779,- 739,- 8명부터',
+      '금',
+      '출발확정',
+      '마카오/홍콩',
+      '2박4일',
+      '669,- 629,- 599,- 8명부터',
+      '일',
+      '출발확정',
+      '마카오',
+      '819,- 779,- 729,- 8명부터',
+      '+2일자유 화',
+      '출발확정',
+      '3박5일',
+      '마카오/홍콩',
+      '949,- 899,- 859,- 8명부터',
+      '화',
+      '3박5일 출발확정',
+      '마카오',
+      '1,049,- 999,- 949,- 8명부터',
+      '+홍콩+심천 화',
+      '출발확정',
+      '3박5일',
+    ].join('\n');
+    const cases = [
+      ['PKG BX 마카오/1일자유 2박4일', 499000],
+      ['PKG BX 마카오/홍콩 2박4일', 599000],
+      ['PKG BX 마카오/2일자유 3박5일', 729000],
+      ['PKG BX 마카오/홍콩 3박5일', 859000],
+      ['PKG BX 마카오/홍콩+심천 3박5일', 949000],
+    ] as const;
+
+    for (const [title, minPrice] of cases) {
+      const rawText = `${sharedPriceTable}\nPKG ${title}\n불포함사항 유류할증료변동분(3월-88,000기준)\n제1일 마카오 도착`;
+      const result = await recoverUploadPriceData(
+        { title, destination: '마카오', duration: title.includes('3박5일') ? 5 : 4, rawText } as ExtractedData,
+        { rawText, year: 2026, enableGeminiFallback: false },
+      );
+
+      expect(result.ok).toBe(true);
+      expect(result.source).toBe('supplier_compact_macau_hongkong_price_table');
+      expect(result.minPrice).toBe(minPrice);
+      expect(result.priceRows.some(row => row.net_price === 88000)).toBe(false);
+    }
+  });
+
   it('uses source-backed reader prices only when the date is tied to departure context', async () => {
     const rawText = [
       'PKG BX 청도 3색골프 3박4일',

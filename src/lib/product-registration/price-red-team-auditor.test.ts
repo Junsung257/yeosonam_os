@@ -130,6 +130,43 @@ describe('auditPriceExtractionAgainstSource', () => {
     expect(audit.blockers.join('\n')).toContain('price amount disagreement 2026-06-01');
   });
 
+  it('trusts source-backed compact Macau/Hong Kong matrix recovery over generic reader noise', () => {
+    const audit = auditPriceExtractionAgainstSource({
+      humanReader: {
+        source: 'deterministic_evidence_reader',
+        rawTextHash: 'macau'.padEnd(64, '0'),
+        priceSource: 'human_reader',
+        priceTiers: [],
+        pricePairs: [
+          {
+            date: '2026-03-01',
+            adult_price: 88000,
+            child_price: null,
+            note: 'fuel surcharge baseline, not product price',
+            status: 'available',
+            evidence: { field: 'price.amount', rawTextHash: 'macau'.padEnd(64, '0'), quote: '유류할증료변동분(3월-88,000기준)', start: 0, end: 20, confidence: 0.2 },
+          },
+        ],
+        itineraryEvents: [],
+        entityMentions: [],
+        uncertainties: [],
+        evidenceSpans: [],
+      },
+      priceRecovery: {
+        ...recovery(499000),
+        source: 'supplier_compact_macau_hongkong_price_table',
+        priceRows: [{
+          ...recovery(499000).priceRows[0],
+          target_date: '2026-04-05',
+        }],
+        priceDates: [{ date: '2026-04-05', price: 499000, confirmed: false }],
+      },
+    });
+
+    expect(audit.status).toBe('pass');
+    expect(audit.blockers).toHaveLength(0);
+  });
+
   it('blocks model-derived prices when no independent source-backed price evidence exists', () => {
     const reader = readSupplierDocumentLikeHuman({
       rawText: '포함 내역\n항공권\n호텔\n',
