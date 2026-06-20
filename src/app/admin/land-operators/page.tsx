@@ -1,13 +1,16 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useVendors, type Vendor } from '@/hooks/useVendors';
 import { PageHeader } from '@/components/admin/patterns';
 import Button from '@/components/ui/Button';
 import { Plus, Building2 } from 'lucide-react';
 
 export default function LandOperatorsPage() {
+  const searchParams = useSearchParams();
   const { all, loading, softDelete, restore, addVendor, updateVendor } = useVendors(true);
+  const openedOperatorParamRef = useRef<string | null>(null);
   const [newName, setNewName] = useState('');
   const [newContact, setNewContact] = useState('');
   const [saving, setSaving] = useState(false);
@@ -38,11 +41,23 @@ export default function LandOperatorsPage() {
     }
   };
 
-  const startEdit = (v: Vendor) => {
+  const startEdit = useCallback((v: Vendor) => {
     setEditingId(v.id);
     setEditName(v.name);
     setEditContact(v.contact ?? '');
-  };
+  }, []);
+
+  useEffect(() => {
+    const operatorId = searchParams?.get('id');
+    if (!operatorId || loading || openedOperatorParamRef.current === operatorId) return;
+    const target = all.find(v => v.id === operatorId);
+    if (!target) return;
+    openedOperatorParamRef.current = operatorId;
+    startEdit(target);
+    window.setTimeout(() => {
+      document.getElementById(`land-operator-${operatorId}`)?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 0);
+  }, [all, loading, searchParams, startEdit]);
 
   const handleUpdate = async () => {
     if (!editingId || !editName.trim()) return;
@@ -144,7 +159,12 @@ export default function LandOperatorsPage() {
             </thead>
             <tbody>
               {all.map(v => (
-                <tr key={v.id} className={v.is_active ? '' : 'opacity-60'}>
+                <tr
+                  key={v.id}
+                  id={`land-operator-${v.id}`}
+                  aria-current={editingId === v.id ? 'true' : undefined}
+                  className={`${v.is_active ? '' : 'opacity-60'} ${editingId === v.id ? 'bg-blue-50 ring-2 ring-inset ring-blue-300' : ''}`}
+                >
                   {/* 이름 셀 */}
                   <td className="font-medium text-admin-text">
                     {editingId === v.id ? (
