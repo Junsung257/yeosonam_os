@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import type { ContentBrief } from '@/lib/validators/content-brief';
@@ -53,6 +53,11 @@ export default function CardNewsNewWizardPage() {
   // ── Step 3 카드뉴스 생성 ────────────────────────────
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [packageChangeConfirmOpen, setPackageChangeConfirmOpen] = useState(false);
+  const packageChangeDialogRef = useRef<HTMLDivElement | null>(null);
+  const packageChangeCancelRef = useRef<HTMLButtonElement | null>(null);
+  const packageChangeTitleId = 'card-news-package-change-title';
+  const packageChangeDescriptionId = 'card-news-package-change-description';
 
   useEffect(() => {
     fetch('/api/packages?limit=200')
@@ -81,6 +86,56 @@ export default function CardNewsNewWizardPage() {
   }, [packages, pkgFilter]);
 
   const step1Valid = mode === 'product' ? !!packageId : !!topic.trim();
+
+  useEffect(() => {
+    if (!packageChangeConfirmOpen) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    packageChangeCancelRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      packageChangeDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setPackageChangeConfirmOpen(false);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [packageChangeConfirmOpen]);
 
   // ── Step 1 → Brief 생성 ─────────────────────────────
   const handleGenerateBrief = async () => {
@@ -259,12 +314,10 @@ export default function CardNewsNewWizardPage() {
                       </span>
                       <button
                         type="button"
-                        onClick={() => {
-                          if (confirm('블로그에서 지정한 상품에서 변경하시겠습니까?\n다른 상품의 카드뉴스가 만들어집니다.')) {
-                            router.replace('/admin/marketing/card-news/new');
-                          }
-                        }}
+                        onClick={() => setPackageChangeConfirmOpen(true)}
                         className="text-xs text-admin-muted hover:text-admin-text-2 underline"
+                        aria-haspopup="dialog"
+                        aria-controls={packageChangeConfirmOpen ? 'card-news-package-change-dialog' : undefined}
                       >
                         변경
                       </button>
@@ -543,6 +596,65 @@ export default function CardNewsNewWizardPage() {
             <div className="inline-block w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4" />
             <p className="text-admin-text-2 font-medium">카드뉴스 생성 중...</p>
             <p className="text-xs text-admin-muted mt-1">AI가 각 슬라이드 카피 + Pexels 이미지를 준비하고 있습니다.</p>
+          </div>
+        )}
+
+        {packageChangeConfirmOpen && (
+          <div
+            className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-6"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setPackageChangeConfirmOpen(false);
+            }}
+          >
+            <div
+              id="card-news-package-change-dialog"
+              ref={packageChangeDialogRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={packageChangeTitleId}
+              aria-describedby={packageChangeDescriptionId}
+              className="w-full rounded-t-admin-lg border border-admin-border-mid bg-admin-surface shadow-admin-lg sm:max-w-md sm:rounded-admin-lg"
+            >
+              <div className="border-b border-admin-border-mid px-5 py-4">
+                <h2 id={packageChangeTitleId} className="text-lg font-bold text-admin-text">
+                  지정 상품을 변경할까요?
+                </h2>
+                <p id={packageChangeDescriptionId} className="mt-2 text-sm leading-6 text-admin-muted">
+                  블로그에서 지정한 상품 연결을 해제하고 새 카드뉴스 생성 화면으로 다시 시작합니다.
+                </p>
+              </div>
+
+              <div className="px-5 py-4">
+                <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                  <div className="text-[11px] font-semibold uppercase text-admin-muted-2">현재 연결 상품</div>
+                  <div className="mt-1 text-sm font-semibold text-admin-text">
+                    {packages.find(p => p.id === packageId)?.title || '(상품 정보 로딩 중)'}
+                  </div>
+                  <div className="mt-1 text-xs text-admin-muted">
+                    {packages.find(p => p.id === packageId)?.destination || '지역 정보 없음'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 border-t border-admin-border-mid px-5 py-4 sm:flex-row sm:justify-end">
+                <button
+                  ref={packageChangeCancelRef}
+                  type="button"
+                  className="rounded-admin-md border border-admin-border-mid px-4 py-2 text-sm font-semibold text-admin-text hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                  onClick={() => setPackageChangeConfirmOpen(false)}
+                >
+                  취소
+                </button>
+                <button
+                  type="button"
+                  className="rounded-admin-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                  onClick={() => router.replace('/admin/marketing/card-news/new')}
+                >
+                  새 상품으로 시작
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
