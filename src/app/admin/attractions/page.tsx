@@ -51,6 +51,19 @@ type ConfirmAction =
       payload: { id: string; verdict: 'accurate' | 'inaccurate' };
     };
 
+type NoticeTone = 'success' | 'error';
+
+interface Notice {
+  tone: NoticeTone;
+  message: string;
+}
+
+const inferNoticeTone = (message: string): NoticeTone => (
+  /실패|오류|없습니다|없음|짧습니다|유효한|failed|error|invalid/i.test(message)
+    ? 'error'
+    : 'success'
+);
+
 const BADGE_OPTIONS = [
   { value: 'tour', label: '관광', color: 'bg-blue-100 text-blue-700', icon: '📍' },
   { value: 'special', label: '특전', color: 'bg-cyan-100 text-cyan-700', icon: '⭐' },
@@ -74,8 +87,10 @@ export default function AttractionsPage() {
   const [autoPhotoProgress, setAutoPhotoProgress] = useState<{ current: number; total: number } | null>(null);
   const [displayCount, setDisplayCount] = useState(50); // 페이지네이션: 50개씩
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+  const [notice, setNotice] = useState<Notice | null>(null);
   const confirmDialogRef = useRef<HTMLDivElement | null>(null);
   const confirmCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const confirmTitleId = 'attractions-confirm-title';
   const confirmDescriptionId = 'attractions-confirm-description';
 
@@ -141,6 +156,19 @@ export default function AttractionsPage() {
       previousActiveElement?.focus();
     };
   }, [confirmAction]);
+
+  useEffect(() => () => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+  }, []);
+
+  const showNotice = useCallback((message: unknown, tone?: NoticeTone) => {
+    const text = String(message ?? '').trim();
+    if (!text) return;
+
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
+    setNotice({ message: text, tone: tone ?? inferNoticeTone(text) });
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 6500);
+  }, []);
 
   const load = useCallback(() => mutateList(), [mutateList]);
 
@@ -213,10 +241,10 @@ export default function AttractionsPage() {
         body: JSON.stringify({ verdict }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || '피드백 실패'); return; }
-      alert(data.message || '피드백 완료');
+      if (!res.ok) { showNotice(data.error || '피드백 실패'); return; }
+      showNotice(data.message || '피드백 완료');
       load();
-    } catch (e) { alert(e instanceof Error ? e.message : '피드백 실패'); }
+    } catch (e) { showNotice(e instanceof Error ? e.message : '피드백 실패'); }
   };
 
   // ── B 박제 (2026-05-15): alias 수동 추가/삭제 (사장님 도메인 전문성 보완) ──
@@ -230,10 +258,10 @@ export default function AttractionsPage() {
         body: JSON.stringify({ alias }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || 'alias 추가 실패'); return; }
+      if (!res.ok) { showNotice(data.error || 'alias 추가 실패'); return; }
       setAttractions(prev => prev.map(a => a.id === id ? { ...a, aliases: data.aliases } : a));
       setAliasInput(p => ({ ...p, [id]: '' }));
-    } catch (e) { alert(e instanceof Error ? e.message : 'alias 추가 실패'); }
+    } catch (e) { showNotice(e instanceof Error ? e.message : 'alias 추가 실패'); }
   };
   const removeAlias = async (id: string, alias: string) => {
     try {
@@ -242,9 +270,9 @@ export default function AttractionsPage() {
         body: JSON.stringify({ alias }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || 'alias 삭제 실패'); return; }
+      if (!res.ok) { showNotice(data.error || 'alias 삭제 실패'); return; }
       setAttractions(prev => prev.map(a => a.id === id ? { ...a, aliases: data.aliases } : a));
-    } catch (e) { alert(e instanceof Error ? e.message : 'alias 삭제 실패'); }
+    } catch (e) { showNotice(e instanceof Error ? e.message : 'alias 삭제 실패'); }
   };
 
   // ── 사진 관리 ──
@@ -303,7 +331,7 @@ export default function AttractionsPage() {
   const [bulkRegisterProgress, setBulkRegisterProgress] = useState<{ current: number; total: number } | null>(null);
 
   const parsePastedText = async () => {
-    if (pasteText.trim().length < 50) { alert('paste 텍스트가 너무 짧습니다 (50자+)'); return; }
+    if (pasteText.trim().length < 50) { showNotice('paste 텍스트가 너무 짧습니다 (50자+)'); return; }
     setParseLoading(true);
     setParsedCards([]);
     setSelectedCardIdx(new Set());
@@ -313,12 +341,12 @@ export default function AttractionsPage() {
         body: JSON.stringify({ text: pasteText, region: pasteRegion, country: pasteCountry }),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error ?? 'AI 분해 실패'); return; }
+      if (!res.ok) { showNotice(data.error ?? 'AI 분해 실패'); return; }
       setParsedCards(data.cards ?? []);
       // 디폴트 전체 선택
       setSelectedCardIdx(new Set(Array.from({ length: data.cards?.length ?? 0 }, (_, i) => i)));
     } catch (e) {
-      alert(e instanceof Error ? e.message : '분해 실패');
+      showNotice(e instanceof Error ? e.message : '분해 실패');
     } finally {
       setParseLoading(false);
     }
@@ -326,7 +354,7 @@ export default function AttractionsPage() {
 
   const bulkRegisterSelectedCards = async (confirmed = false) => {
     const targets = parsedCards.filter((_, i) => selectedCardIdx.has(i));
-    if (targets.length === 0) { alert('선택된 카드가 없습니다'); return; }
+    if (targets.length === 0) { showNotice('선택된 카드가 없습니다'); return; }
     if (!confirmed) {
       setConfirmAction({
         kind: 'bulk-register',
@@ -381,7 +409,7 @@ export default function AttractionsPage() {
       } catch { skipped++; }
     }
     setBulkRegisterProgress(null);
-    alert(`등록 완료\n신규: ${saved}건 / alias 추가: ${aliased}건 / skip: ${skipped}건`);
+    showNotice(`등록 완료\n신규: ${saved}건 / alias 추가: ${aliased}건 / skip: ${skipped}건`);
     setShowPasteImport(false);
     setPasteText('');
     setParsedCards([]);
@@ -394,7 +422,7 @@ export default function AttractionsPage() {
   const [autoLlmProgress, setAutoLlmProgress] = useState<{ current: number; total: number } | null>(null);
   const autoFillDescriptionsLLM = async (confirmed = false) => {
     const noDesc = attractions.filter(a => !a.short_desc?.trim() || !a.long_desc?.trim());
-    if (noDesc.length === 0) { alert('설명 비어있는 attraction 0건'); return; }
+    if (noDesc.length === 0) { showNotice('설명 비어있는 attraction 0건'); return; }
     const estimatedCost = (noDesc.length * 0.0001).toFixed(4);
     if (!confirmed) {
       setConfirmAction({
@@ -442,7 +470,7 @@ export default function AttractionsPage() {
       } catch { failed++; }
     }
     setAutoLlmProgress(null);
-    alert(`DeepSeek 채움 완료\n채움: ${filled}건 / 사장님 잠금: ${locked}건 / 실패: ${failed}건`);
+    showNotice(`DeepSeek 채움 완료\n채움: ${filled}건 / 사장님 잠금: ${locked}건 / 실패: ${failed}건`, failed > 0 ? 'error' : 'success');
     load();
   };
 
@@ -452,7 +480,7 @@ export default function AttractionsPage() {
   const [autoDescProgress, setAutoDescProgress] = useState<{ current: number; total: number } | null>(null);
   const autoFillDescriptions = async (confirmed = false) => {
     const noDesc = attractions.filter(a => !a.short_desc?.trim() || !a.long_desc?.trim());
-    if (noDesc.length === 0) { alert('설명이 비어 있는 관광지가 없습니다.'); return; }
+    if (noDesc.length === 0) { showNotice('설명이 비어 있는 관광지가 없습니다.'); return; }
     if (!confirmed) {
       setConfirmAction({
         kind: 'wiki-desc',
@@ -502,14 +530,14 @@ export default function AttractionsPage() {
       }
     }
     setAutoDescProgress(null);
-    alert(`Wikipedia 자동 채움 완료\n채움: ${filled}건 / 미확인: ${missed}건`);
+    showNotice(`Wikipedia 자동 채움 완료\n채움: ${filled}건 / 미확인: ${missed}건`, missed > 0 ? 'error' : 'success');
     load();
   };
 
   // ── 사진 일괄 자동 생성 ──
   const autoGeneratePhotos = async (confirmed = false) => {
     const noPhotos = attractions.filter(a => !a.photos || a.photos.length === 0);
-    if (noPhotos.length === 0) { alert('사진 없는 관광지가 없습니다.'); return; }
+    if (noPhotos.length === 0) { showNotice('사진 없는 관광지가 없습니다.'); return; }
     if (!confirmed) {
       setConfirmAction({
         kind: 'auto-photo',
@@ -613,7 +641,7 @@ export default function AttractionsPage() {
         emoji: (cols[6] || '').trim(),
       };
     }).filter(i => i.name);
-    if (items.length === 0) { alert('유효한 행이 없습니다. CSV 형식을 확인해주세요.\n헤더: name,short_desc,long_desc,country,region,badge_type,emoji'); return; }
+    if (items.length === 0) { showNotice('유효한 행이 없습니다. CSV 형식을 확인해주세요.\n헤더: name,short_desc,long_desc,country,region,badge_type,emoji'); return; }
     setSaving(true);
     try {
       const res = await fetch('/api/attractions', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
@@ -622,13 +650,13 @@ export default function AttractionsPage() {
       const dup = json.skippedDuplicates > 0 ? `\n(중복 name ${json.skippedDuplicates}건 자동 제거)` : '';
       if (json.totalErrors > 0) {
         const top = (json.errors || []).slice(0, 5).map((e: { name: string; error: string }) => `  • ${e.name.slice(0, 40)}: ${e.error.slice(0, 60)}`).join('\n');
-        alert(`CSV 업로드: ${json.upserted}/${items.length}건 반영\n실패 ${json.totalErrors}건:\n${top}${json.totalErrors > 5 ? `\n  ... 외 ${json.totalErrors - 5}건` : ''}${dup}`);
+        showNotice(`CSV 업로드: ${json.upserted}/${items.length}건 반영\n실패 ${json.totalErrors}건:\n${top}${json.totalErrors > 5 ? `\n  ... 외 ${json.totalErrors - 5}건` : ''}${dup}`, 'error');
       } else {
-        alert(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (총 ${items.length}건)${dup}`);
+        showNotice(`CSV 업로드 완료: ${json.upserted ?? 0}건 반영 (총 ${items.length}건)${dup}`);
       }
       load();
     } catch (err) {
-      alert(`CSV 업로드 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
+      showNotice(`CSV 업로드 실패: ${err instanceof Error ? err.message : '알 수 없는 오류'}`);
     } finally { setSaving(false); e.target.value = ''; }
   };
 
@@ -733,6 +761,33 @@ export default function AttractionsPage() {
           </div>
         }
       />
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`mb-4 flex items-start justify-between gap-3 rounded-admin-md border px-4 py-3 shadow-admin-sm ${
+            notice.tone === 'error'
+              ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+              : 'border-status-successBorder bg-status-successBg text-status-successFg'
+          }`}
+        >
+          <div className="min-w-0">
+            <p className="text-admin-sm font-semibold">
+              {notice.tone === 'error' ? '확인이 필요해요' : '처리 완료'}
+            </p>
+            <p className="mt-1 whitespace-pre-line break-words text-admin-sm">{notice.message}</p>
+          </div>
+          <button
+            type="button"
+            aria-label="알림 닫기"
+            onClick={() => setNotice(null)}
+            className="shrink-0 rounded-admin-sm px-2 py-1 text-admin-xs font-medium opacity-80 hover:bg-white/50 hover:opacity-100"
+          >
+            닫기
+          </button>
+        </div>
+      )}
 
       {/* 자동생성 프로그레스 */}
       {autoPhotoProgress && (
