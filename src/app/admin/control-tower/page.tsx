@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useToast } from '@/components/ui/Toast';
 
 // ── 타입 ─────────────────────────────────────────────────
@@ -74,6 +74,12 @@ export default function ControlTowerPage() {
   const [editTarget, setEditTarget] = useState<Partial<Policy> | null>(null);
   const [editReason, setEditReason] = useState('');
   const [saving, setSaving] = useState(false);
+  const [toggleTarget, setToggleTarget] = useState<Policy | null>(null);
+  const [toggleReason, setToggleReason] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<Policy | null>(null);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
+  const toggleReasonRef = useRef<HTMLTextAreaElement | null>(null);
+  const deleteCancelRef = useRef<HTMLButtonElement | null>(null);
   const { toast: _t } = useToast();
   const showToast = useCallback(
     (msg: string) => _t(msg, /실패|오류/.test(msg) ? 'error' : /완료|활성화|비활성화|생성|수정|삭제/.test(msg) ? 'success' : /입력해주세요|취소됨/.test(msg) ? 'warning' : 'info'),
@@ -117,6 +123,16 @@ export default function ControlTowerPage() {
 
   useEffect(() => { fetchPolicies(); }, [fetchPolicies]);
 
+  useEffect(() => {
+    if (!toggleTarget) return;
+    requestAnimationFrame(() => toggleReasonRef.current?.focus());
+  }, [toggleTarget]);
+
+  useEffect(() => {
+    if (!deleteTarget) return;
+    requestAnimationFrame(() => deleteCancelRef.current?.focus());
+  }, [deleteTarget]);
+
   // ── 필터링 ─────────────────────────────────────────────
   const filtered = useMemo(() => {
     let result = policies;
@@ -140,16 +156,22 @@ export default function ControlTowerPage() {
   }, [policies]);
 
   // ── 토글 ───────────────────────────────────────────────
-  const toggleActive = useCallback(async (policy: Policy) => {
+  const openToggleDialog = useCallback((policy: Policy) => {
+    setToggleTarget(policy);
+    setToggleReason('');
+  }, []);
+
+  const submitToggleActive = useCallback(async () => {
+    if (!toggleTarget) return;
+    const reason = toggleReason.trim();
+    if (!reason) {
+      showToast('변경 사유를 입력해주세요 (감사 로그)');
+      return;
+    }
+    const policy = toggleTarget;
     const prev = policy.is_active;
     const nowActive = !prev;
-    // 어필리에이트 정책 토글은 사유 필수 (커미션 영향 큼)
-    let reason = '관제탑 토글';
-    if (policy.category === 'commission') {
-      const r = window.prompt(`'${policy.name}' ${nowActive ? '활성화' : '비활성화'} 사유를 입력하세요 (감사 로그)`);
-      if (!r || !r.trim()) { showToast('변경 취소됨'); return; }
-      reason = r.trim();
-    }
+    setActionBusy(`toggle:${policy.id}`);
     setPolicies(ps => ps.map(p => p.id === policy.id ? { ...p, is_active: nowActive } : p));
     try {
       const res = await fetch('/api/policies', {
@@ -158,11 +180,15 @@ export default function ControlTowerPage() {
       });
       if (!res.ok) throw new Error();
       showToast(`${policy.name} ${nowActive ? '활성화' : '비활성화'}`);
+      setToggleTarget(null);
+      setToggleReason('');
     } catch {
       setPolicies(ps => ps.map(p => p.id === policy.id ? { ...p, is_active: prev } : p));
       showToast('변경 실패');
+    } finally {
+      setActionBusy(null);
     }
-  }, [showToast]);
+  }, [showToast, toggleReason, toggleTarget]);
 
   // ── 저장 (생성/수정) ───────────────────────────────────
   const handleSave = useCallback(async () => {
@@ -189,15 +215,23 @@ export default function ControlTowerPage() {
   }, [editTarget, editReason, fetchPolicies, showToast]);
 
   // ── 삭제 ───────────────────────────────────────────────
-  const handleDelete = useCallback(async (id: string) => {
-    if (!confirm('정책을 삭제하시겠습니까?')) return;
+  const handleDelete = useCallback((policy: Policy) => {
+    setDeleteTarget(policy);
+  }, []);
+
+  const submitDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    const id = deleteTarget.id;
+    setActionBusy(`delete:${id}`);
     try {
       const res = await fetch(`/api/policies?id=${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error();
       setPolicies(ps => ps.filter(p => p.id !== id));
+      setDeleteTarget(null);
       showToast('삭제 완료');
     } catch { showToast('삭제 실패'); }
-  }, [showToast]);
+    finally { setActionBusy(null); }
+  }, [deleteTarget, showToast]);
 
   // ── 복제 ───────────────────────────────────────────────
   const handleDuplicate = useCallback((policy: Policy) => {
@@ -494,9 +528,12 @@ export default function ControlTowerPage() {
                 </div>
 
                 {/* 토글 */}
-                <button type="button" onClick={() => toggleActive(policy)}
+                <button type="button" onClick={() => openToggleDialog(policy)}
                   aria-label={`${policy.name} 정책 ${policy.is_active ? '비활성화' : '활성화'}`}
                   aria-pressed={policy.is_active}
+                  aria-haspopup="dialog"
+                  aria-expanded={toggleTarget?.id === policy.id}
+                  aria-controls="policy-toggle-confirm-dialog"
                   className={`w-10 h-5 rounded-full flex-shrink-0 transition relative ${policy.is_active ? 'bg-emerald-500' : 'bg-slate-200'}`}>
                   <div aria-hidden="true" className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow transition-all ${policy.is_active ? 'left-5' : 'left-0.5'}`} />
                 </button>
@@ -507,7 +544,10 @@ export default function ControlTowerPage() {
                     className="px-2 py-1 text-[10px] bg-admin-bg text-admin-muted rounded hover:bg-admin-surface-2">편집</button>
                   <button onClick={() => handleDuplicate(policy)}
                     className="px-2 py-1 text-[10px] bg-admin-bg text-admin-muted rounded hover:bg-admin-surface-2">복제</button>
-                  <button onClick={() => handleDelete(policy.id)}
+                  <button type="button" onClick={() => handleDelete(policy)}
+                    aria-haspopup="dialog"
+                    aria-expanded={deleteTarget?.id === policy.id}
+                    aria-controls="policy-delete-confirm-dialog"
                     className="px-2 py-1 text-[10px] bg-red-50 text-red-600 rounded hover:bg-red-100">삭제</button>
                 </div>
               </div>
@@ -801,6 +841,146 @@ export default function ControlTowerPage() {
               <button onClick={() => setEditOpen(false)}
                 className="px-4 py-2 bg-white border border-admin-border-strong text-admin-text-2 text-admin-sm rounded hover:bg-admin-bg transition">
                 취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {toggleTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="정책 상태 변경 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setToggleTarget(null)}
+          />
+          <div
+            id="policy-toggle-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="policy-toggle-confirm-title"
+            aria-describedby="policy-toggle-confirm-description"
+            className="relative w-full max-w-md rounded-admin-md border border-admin-border-mid bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Policy audit</p>
+              <h2 id="policy-toggle-confirm-title" className="text-lg font-bold text-admin-text">
+                정책을 {toggleTarget.is_active ? '비활성화' : '활성화'}할까요?
+              </h2>
+              <p id="policy-toggle-confirm-description" className="text-sm leading-6 text-admin-muted">
+                정책 변경은 가격, 커미션, 고객 안내에 영향을 줄 수 있어 감사 로그 사유를 남깁니다.
+              </p>
+            </div>
+
+            <dl className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-admin-bg p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">정책</dt>
+                <dd className="font-semibold text-admin-text">{toggleTarget.name}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">카테고리</dt>
+                <dd className="font-semibold text-admin-text">{getCategoryInfo(toggleTarget.category).label}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">변경</dt>
+                <dd className="font-semibold text-admin-text">
+                  {toggleTarget.is_active ? '활성 -> 비활성' : '비활성 -> 활성'}
+                </dd>
+              </div>
+            </dl>
+
+            <label htmlFor="policy-toggle-reason" className="mt-4 block text-[11px] font-semibold uppercase text-rose-600">
+              변경 사유 *
+            </label>
+            <textarea
+              ref={toggleReasonRef}
+              id="policy-toggle-reason"
+              value={toggleReason}
+              onChange={e => setToggleReason(e.target.value)}
+              rows={3}
+              placeholder="예: 성수기 프로모션 종료로 비활성화"
+              className="mt-1 w-full resize-none rounded-admin-sm border border-admin-border-mid px-3 py-2 text-admin-sm focus:ring-1 focus:ring-blue-500"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setToggleTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={submitToggleActive}
+                disabled={actionBusy === `toggle:${toggleTarget.id}`}
+                className="rounded-admin-sm bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {actionBusy === `toggle:${toggleTarget.id}` ? '처리 중...' : '변경 적용'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="정책 삭제 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setDeleteTarget(null)}
+          />
+          <div
+            id="policy-delete-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="policy-delete-confirm-title"
+            aria-describedby="policy-delete-confirm-description"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Delete policy</p>
+              <h2 id="policy-delete-confirm-title" className="text-lg font-bold text-admin-text">
+                정책을 삭제할까요?
+              </h2>
+              <p id="policy-delete-confirm-description" className="text-sm leading-6 text-admin-muted">
+                삭제 후에는 목록에서 즉시 제거됩니다. 현재 적용 범위와 상태를 확인한 뒤 진행하세요.
+              </p>
+            </div>
+
+            <dl className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">정책</dt>
+                <dd className="font-semibold text-admin-text">{deleteTarget.name}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">카테고리</dt>
+                <dd className="font-semibold text-admin-text">{getCategoryInfo(deleteTarget.category).label}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">상태</dt>
+                <dd className="font-semibold text-admin-text">{deleteTarget.is_active ? '활성' : '비활성'}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={deleteCancelRef}
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitDelete}
+                disabled={actionBusy === `delete:${deleteTarget.id}`}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {actionBusy === `delete:${deleteTarget.id}` ? '처리 중...' : '삭제'}
               </button>
             </div>
           </div>
