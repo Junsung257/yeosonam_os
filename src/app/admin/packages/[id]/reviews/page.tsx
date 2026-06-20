@@ -12,7 +12,7 @@
  * 현재는 admin_seeded 만 수동 입력.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import { fmtDateISO } from '@/lib/admin-utils';
 
@@ -103,6 +103,11 @@ export default function PackageReviewsAdminPage() {
   const [form, setForm] = useState(DEFAULT_FORM);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<ReviewRow | null>(null);
+  const deleteDialogRef = useRef<HTMLDivElement | null>(null);
+  const deleteCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const deleteTitleId = 'package-review-delete-title';
+  const deleteDescriptionId = 'package-review-delete-description';
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -126,6 +131,55 @@ export default function PackageReviewsAdminPage() {
   }, [packageId, packagePathId]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (!deleteTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    deleteCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      deleteDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && !element.getAttribute('aria-hidden'));
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setDeleteTarget(null);
+        return;
+      }
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [deleteTarget]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,8 +233,8 @@ export default function PackageReviewsAdminPage() {
 
   const deleteReview = async (reviewId: string) => {
     if (!packageId) return;
-    if (!confirm('이 후기를 삭제하시겠습니까?')) return;
     await fetch(`/api/packages/${packagePathId}/reviews?reviewId=${encodeURIComponent(reviewId)}`, { method: 'DELETE' });
+    setDeleteTarget(null);
     showToast('🗑️ 삭제됨');
     load();
   };
@@ -368,7 +422,11 @@ export default function PackageReviewsAdminPage() {
                       {r.status === 'approved' ? '숨김' : '노출'}
                     </button>
                     <button
-                      onClick={() => deleteReview(r.id)}
+                      type="button"
+                      onClick={() => setDeleteTarget(r)}
+                      aria-haspopup="dialog"
+                      aria-expanded={deleteTarget?.id === r.id}
+                      aria-controls="package-review-delete-dialog"
                       className="text-xs px-2.5 py-1 rounded-lg font-medium bg-red-50 text-red-500 hover:bg-red-100"
                     >
                       삭제
@@ -378,6 +436,62 @@ export default function PackageReviewsAdminPage() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex h-dvh max-h-dvh items-end justify-center bg-black/30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] sm:items-center">
+          <div
+            ref={deleteDialogRef}
+            id="package-review-delete-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={deleteTitleId}
+            aria-describedby={deleteDescriptionId}
+            className="w-full max-w-md overflow-hidden rounded-admin-md border border-admin-border-mid bg-white shadow-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-4 py-3">
+              <p id={deleteTitleId} className="text-admin-sm font-semibold text-admin-text-2">후기 삭제</p>
+              <p id={deleteDescriptionId} className="mt-1 text-[11px] text-admin-muted">
+                삭제한 후기는 목록과 고객 페이지 노출 후보에서 제거됩니다. 복구가 필요한 경우 다시 등록해야 합니다.
+              </p>
+            </div>
+            <div className="space-y-3 px-4 py-3">
+              <div className="rounded border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  <span className="text-admin-xs font-semibold text-admin-text-2">
+                    {(deleteTarget.customers?.name ?? '익명').charAt(0) || '고'}**
+                  </span>
+                  <StatusBadge status={deleteTarget.status} />
+                  <span className="text-[11px] text-admin-muted">별점 {deleteTarget.overall_rating}/5</span>
+                  <span className="text-[11px] text-admin-muted">{fmtDateISO(deleteTarget.created_at)}</span>
+                </div>
+                {deleteTarget.title && (
+                  <p className="text-admin-sm font-semibold text-admin-text-2">{deleteTarget.title}</p>
+                )}
+                <p className="mt-1 line-clamp-3 text-admin-xs leading-relaxed text-admin-muted">
+                  {deleteTarget.review_text || '본문이 없는 후기입니다.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 border-t border-admin-border-mid px-4 py-3">
+              <button
+                ref={deleteCancelButtonRef}
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                className="rounded border border-admin-border-strong bg-white px-3 py-1.5 text-admin-sm text-admin-text-2 hover:bg-admin-bg"
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteReview(deleteTarget.id)}
+                className="rounded bg-red-600 px-3 py-1.5 text-admin-sm font-medium text-white hover:bg-red-700"
+              >
+                삭제
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
