@@ -141,4 +141,22 @@ describe('readSupplierDocumentLikeHuman', () => {
 
     expect(prices).toEqual([849000, 1069000, 1259000, 1299000]);
   });
+
+  it('ignores surcharge dates when building independent product-price evidence', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '[노옵션노팁] 다낭/호이안/바나힐 5일 [진에어]',
+        '발 신 일2026. 01. 05.',
+        '출 발 일 자2026년 2월 24일 (화요일) 출발',
+        '인 원4명부터 출발',
+        '판 매 가 격',
+        '\\619,000/인',
+        '호텔 써차지: 1/1, 2/16~21, 4/26~28, 4/30~5/3예정 (투숙일 기준) \\30,000/룸당/박당',
+      ].join('\n'),
+      title: '[노옵션노팁] 다낭/호이안/바나힐 5일 [진에어]',
+      durationDays: 5,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual(['2026-02-24:619000']);
+  });
 });

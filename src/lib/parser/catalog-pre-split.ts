@@ -5,6 +5,22 @@ const VARIANT_COMPACT_LABEL_RE =
 const VARIANT_TITLE_RE = /\d+\s*\uBC15\s*\d+\s*\uC77C/;
 const VARIANT_TITLE_GLOBAL_RE = /\d+\s*\uBC15\s*\d+\s*\uC77C/g;
 const VARIANT_ITINERARY_RE = /(?:^|\n)\s*(?:\uC77C\s*\uC790|\uC81C\s*1\s*\uC77C)\s*(?:\n|$)/;
+const READABLE_DURATION_RE = /\d+\s*박\s*\d+\s*일/u;
+const READABLE_DAY_DURATION_RE = /(?:^|[^\d])\d{1,2}\s*일(?:\s*\/\s*\d{1,2}\s*일)?(?:$|[^\d])/u;
+const MONEY_RE = /\d{1,3}(?:,\d{3})+\s*(?:원)?/;
+
+function hasReadableDurationSignal(line: string): boolean {
+  return READABLE_DURATION_RE.test(line);
+}
+
+function hasReadableTitleText(line: string): boolean {
+  const withoutDuration = line
+    .replace(READABLE_DURATION_RE, ' ')
+    .replace(READABLE_DAY_DURATION_RE, ' ')
+    .replace(/\b(?:PKG|PACKAGE)\b/gi, ' ')
+    .trim();
+  return (withoutDuration.match(/[\p{Script=Hangul}A-Za-z]/gu) ?? []).length >= 2;
+}
 
 function hasVariantProductTitleLine(lines: string[]): boolean {
   return lines.some(line => {
@@ -172,6 +188,7 @@ export function collectItineraryHeaderStarts(raw: string): number[] {
   run(HEADER_BRACKET_NIGHTS_RE);
   run(HEADER_PLAIN_NIGHTS_DOW_RE);
   run(HEADER_NOBAK_RE);
+  collectReadableDurationHeaderStarts(text).forEach(start => starts.add(start));
 
   const sorted = [...starts].sort((a, b) => a - b);
   if (sorted.length <= 1) return sorted;
@@ -185,6 +202,36 @@ export function collectItineraryHeaderStarts(raw: string): number[] {
     if (sorted[i] - deduped[deduped.length - 1] >= MIN_GAP) deduped.push(sorted[i]);
   }
   return deduped;
+}
+
+function collectReadableDurationHeaderStarts(raw: string): number[] {
+  const lines = raw.replace(/\r\n/g, '\n').split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const starts: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line || line.length > 140) continue;
+    if (!hasReadableDurationSignal(line)) continue;
+    if (!hasReadableTitleText(line)) continue;
+    if (MONEY_RE.test(line)) continue;
+    if (/^(?:출발|출발일|출발날짜|상품가|요금|요금표|행사일자|패턴|비고)\b/u.test(line)) continue;
+
+    const context = lines.slice(i + 1, Math.min(lines.length, i + 80)).join('\n');
+    const hasItineraryEvidence = /\b[A-Z]{2}\d{2,4}\b/.test(context)
+      || /^\s*(?:제\s*)?1\s*(?:일|일차)\b/mu.test(context)
+      || /^\s*DAY\s*1\b/im.test(context)
+      || /^\s*1\s+\d{1,2}:\d{2}\b/m.test(context);
+    if (!hasItineraryEvidence) continue;
+    starts.push(offsets[i] + lines[i].indexOf(line));
+  }
+
+  return starts;
 }
 
 export function countCatalogItineraryHeaders(raw: string): number {

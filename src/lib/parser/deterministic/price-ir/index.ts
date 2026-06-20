@@ -5,6 +5,8 @@ import { extractLabeledDateListPriceRows } from './labeled-date-list-price';
 import { extractMonthDowPriceIR } from './month-dow-table';
 import { extractMonthDurationPriceRows } from './month-duration-price-table';
 import { extractPeriodDowMatrixRows } from './period-dow-matrix';
+import { extractPdfDatePriceRows } from './pdf-date-price-table';
+import { extractCruiseCabinPriceRows } from './cruise-cabin-price-table';
 import { extractProductPriceVerticalDateRows } from './product-price-vertical-date-table';
 import { extractSinglePeriodProductPriceRows } from './single-period-product-price';
 import { extractSpotWeekdayRows } from './spot-weekday-table';
@@ -47,6 +49,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
       source: 'single_period_product_price',
       rows: singlePeriodRows,
       tiers: rowsToTiers(singlePeriodRows),
+    };
+  }
+
+  const cruiseCabinRows = extractCruiseCabinPriceRows(rawText, options);
+  if (cruiseCabinRows.length > 0) {
+    return {
+      source: 'cruise_cabin_price_table',
+      rows: cruiseCabinRows,
+      tiers: rowsToTiers(cruiseCabinRows),
     };
   }
 
@@ -109,6 +120,15 @@ export function extractPriceIR(rawText: string, options: PriceIROptions = {}): P
 
   const verticalGrade = extractVerticalGradePriceIR(rawText, options);
   if (verticalGrade.rows.length > 0) return verticalGrade;
+
+  const pdfDatePriceRows = extractPdfDatePriceRows(rawText, options);
+  if (pdfDatePriceRows.length > 0) {
+    return {
+      source: 'pdf_date_price_table',
+      rows: pdfDatePriceRows,
+      tiers: rowsToTiers(pdfDatePriceRows),
+    };
+  }
 
   return { source: 'none', tiers: [], rows: [] };
 }

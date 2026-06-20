@@ -5,6 +5,126 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const WON = '\uC6D0';
+const MONTH_KO = '\uC6D4';
+const MONTH_CJK = '\u6708';
+
+describe('extractPriceIR PDF date price tables', () => {
+  it('recovers departure ranges and prices from compact PDF text', () => {
+    const rawText = `
+5/6~5/17 , 409,000 5/24~5/28 , 429,000
+5/6~5/17 , 399,000 5/24~5/28 , 419,000
+PKG Bohol direct slim package 5 days / 6 days
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-06', adult_price: 409000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-17', adult_price: 409000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-24', adult_price: 429000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-28', adult_price: 419000 }));
+  });
+
+  it('recovers concatenated day and price tails from month sections', () => {
+    const rawText = `
+5${MONTH_CJK}
+5/12, 19769,000${WON}
+5/10, 17, 26829,000${WON}
+5/5, 31869,000${WON}
+5/241,049,000${WON}
+5/31,149,000${WON}
+6${MONTH_CJK}
+6/2, 9, 16859,000${WON}
+6/21, 28, 29989,000${WON}
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-19', adult_price: 769000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-26', adult_price: 829000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-31', adult_price: 869000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-24', adult_price: 1049000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-31', adult_price: 1149000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-16', adult_price: 859000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-29', adult_price: 989000 }));
+  });
+
+  it('recovers split price fragments and date-line price-line pairs', () => {
+    const rawText = `
+4/2, 4/16 969, ${WON}
+000
+5${MONTH_KO}
+5/7, 5/28 999, ${WON}
+000
+${MONTH_KO}7
+7/1, 6, 12, 14
+1,249,${WON}000
+7/16, 17, 18, 24, 25
+1,649,${WON}000
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-04-02', adult_price: 969000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-28', adult_price: 999000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-07-14', adult_price: 1249000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-07-25', adult_price: 1649000 }));
+  });
+
+  it('recovers spaced month day price rows without slash separators', () => {
+    const rawText = [
+      '\uAD6C\uCC44\uAD6C \uC2E0\uC120\uC9C0 \uD669\uB8E1',
+      '4 22 1,349,000',
+      '4 29 1,379,000',
+      '5 6, 13, 20, 27 1,179,000',
+      '6 10, 17, 24 1,149,000',
+      '\uC11C\uC548 \uC18C\uB9BC\uC0AC',
+      '4\uC6D4 8, 15, 29\uC77C 1,029,000',
+      '5\uC6D4 6, 13, 20, 27\uC77C 879,000',
+      '6\uC6D4 10, 17, 24\uC77C 829,000',
+    ].join('\n');
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+
+    expect(result.source).toBe('pdf_date_price_table');
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-04-22', adult_price: 1349000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-27', adult_price: 1179000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-24', adult_price: 1149000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-04-08', adult_price: 1029000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-05-20', adult_price: 879000 }));
+    expect(result.rows).toContainEqual(expect.objectContaining({ date: '2026-06-17', adult_price: 829000 }));
+  });
+});
+
+describe('extractPriceIR cruise cabin price tables', () => {
+  it('recovers one departure date with cabin grade prices', () => {
+    const rawText = `
+인천 출발 일본/중국 크루즈 12일
+2026년 6월 01일(월) ~ 6월 12일(금)
+요 금
+등 급
+1인 요금
+만18세 이상 만 4세~17세 6개월~4세 미만
+인사이드 2,890,000 1,990,000 1.450,000 350,000
+오션뷰 3,480,000 1,990,000 1.450,000 350,000
+발코니 4,180,000 1,990,000 1.450,000 350,000
+`;
+
+    const result = extractPriceIR(rawText, { year: 2026 });
+
+    expect(result.source).toBe('cruise_cabin_price_table');
+    expect(result.rows).toHaveLength(3);
+    expect(result.rows.map(row => [row.date, row.option_label, row.adult_price])).toEqual([
+      ['2026-06-01', '인사이드', 2_890_000],
+      ['2026-06-01', '오션뷰', 3_480_000],
+      ['2026-06-01', '발코니', 4_180_000],
+    ]);
+  });
+});
+
 describe('extractPriceIR Korean vertical supplier price tables', () => {
   it('recovers departure-date blocks followed by multiple package prices', () => {
     const rawText = `

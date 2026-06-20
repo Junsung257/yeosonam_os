@@ -106,6 +106,40 @@ describe('normalizeUploadItinerary', () => {
     expect(result.warnings).toContain('duplicate itinerary days collapsed: day 1, 2, 3, 4, 5, 6');
   });
 
+  it('prunes out-of-range price-table days before duplicate day repair', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '서안',
+      durationDays: 6,
+      activeAttractions: [],
+      productRawText: '서안 구채구 4박6일',
+      itineraryData: {
+        days: [
+          {
+            day: 25,
+            schedule: [
+              { type: 'normal', activity: '4박 6일' },
+              { type: 'normal', activity: '4 18 - 1,369,000' },
+              { type: 'normal', activity: '5 2 1,369,000 1,399,000' },
+              { type: 'normal', activity: 'OR' },
+            ],
+          },
+          { day: 1, schedule: [{ type: 'flight', activity: 'BX341 21:55 부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '구채구 관광' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '구채구 관광' }, { type: 'meal', activity: '중식' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '황룡 관광' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '신선지 관광' }] },
+          { day: 5, schedule: [{ type: 'activity', activity: '서안 이동' }] },
+          { day: 6, schedule: [{ type: 'flight', activity: 'BX342 06:30 부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    const days = result.itineraryDataToSave?.days ?? [];
+    expect(days.map(day => day.day)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.warnings).toContain('out-of-range polluted itinerary days pruned: day 25');
+    expect(result.warnings).toContain('duplicate itinerary days collapsed: day 2');
+  });
+
   it('preserves source-backed top-level flight segments after itinerary normalization', async () => {
     const flightSegments = [
       {

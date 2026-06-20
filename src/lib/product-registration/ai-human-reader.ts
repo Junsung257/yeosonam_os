@@ -156,6 +156,20 @@ function parseLooseDateTokens(line: string, yearHint?: number): string[] {
     .replace(/\([^)]*\)/g, ' ')
     .replace(/\d+\s*(?:nights?|night|박)\b/gi, ' ')
     .replace(/[&+]/g, ',');
+  const explicitKoreanDates = [...withoutParentheses.matchAll(/(20\d{2})\D{0,5}(\d{1,2})\D{0,5}(\d{1,2})/g)]
+    .map(match => isoDate(Number(match[1]), Number(match[2]), Number(match[3])))
+    .filter((date): date is string => Boolean(date));
+  if (explicitKoreanDates.length > 0) return [...new Set(explicitKoreanDates)];
+
+  const twoDigitYearDates = [...withoutParentheses.matchAll(/(?:^|[^\d])(\d{2})\s*년\s*(\d{1,2})\s*(?:[./월]\s*)?(\d{1,2})/g)]
+    .map((match) => {
+      const yy = Number(match[1]);
+      const year = yy >= 80 ? 1900 + yy : 2000 + yy;
+      return isoDate(year, Number(match[2]), Number(match[3]));
+    })
+    .filter((date): date is string => Boolean(date));
+  if (twoDigitYearDates.length > 0) return [...new Set(twoDigitYearDates)];
+
   const tokens = withoutParentheses.match(/\d{1,2}[./-]\d{1,2}|\b\d{1,2}\b/g) ?? [];
   const dates: string[] = [];
   let currentMonth: number | null = null;
@@ -186,9 +200,17 @@ function parseKrwPrices(line: string): number[] {
     const value = token.endsWith(',-')
       ? Number(token.replace(',-', '')) * 1000
       : Number(token.replace(/,/g, ''));
-    if (Number.isInteger(value) && value >= 10_000 && value <= 50_000_000) prices.push(value);
+    if (Number.isInteger(value) && value >= 250_000 && value <= 50_000_000) prices.push(value);
   }
   return [...new Set(prices)];
+}
+
+const ADMIN_DATE_CONTEXT_RE = /(?:발\s*신\s*일|수\s*신|담당자|드림|작성일|배포일|발송일|문서|기안|기준일)/;
+const NON_PACKAGE_PRICE_CONTEXT_RE = /(?:호텔\s*써차지|써차지|투숙일|싱글차지|불\s*포함|불포함|선택관광|선택\s*관광|옵션|매너팁|가이드경비|개인경비|패널티|취소|환불|유류|텍스|쇼\s*핑|쇼핑)/;
+const PACKAGE_DATE_PRICE_CONTEXT_RE = /(?:출\s*발|출발|판매가|판\s*매\s*가|상품가|요금|가격|성인|최저가|특가)/;
+
+function isNonPackagePriceContext(line: string): boolean {
+  return ADMIN_DATE_CONTEXT_RE.test(line) || NON_PACKAGE_PRICE_CONTEXT_RE.test(line);
 }
 
 const KOREAN_WEEKDAY_TO_DAY = new Map<string, number>([
@@ -315,12 +337,24 @@ function extractAdjacentDatePriceRows(input: HumanReaderInput): MatrixPriceRow[]
   const seen = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
+    if (isNonPackagePriceContext(lines[i])) continue;
     const dates = parseLooseDateTokens(lines[i], input.year);
     if (dates.length === 0 || dates.length > 80) continue;
+    const hasPackageContext = PACKAGE_DATE_PRICE_CONTEXT_RE.test(lines[i]);
+    const bareFullDateLine = /^\s*20\d{2}[./-]\d{1,2}[./-]\d{1,2}\s*$/.test(lines[i]);
+    if (bareFullDateLine && !hasPackageContext) continue;
 
     const prices = [
       ...parseKrwPrices(lines[i]),
+      ...(hasPackageContext
+        ? lines.slice(Math.max(0, i - 2), i).flatMap(line => {
+          if (isNonPackagePriceContext(line)) return [];
+          if (parseLooseDateTokens(line, input.year).length > 0) return [];
+          return parseKrwPrices(line);
+        })
+        : []),
       ...lines.slice(i + 1, Math.min(lines.length, i + 6)).flatMap(line => {
+        if (isNonPackagePriceContext(line)) return [];
         if (parseLooseDateTokens(line, input.year).length > 0) return [];
         return parseKrwPrices(line);
       }),
@@ -375,7 +409,7 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
   ];
   for (const row of candidateRows) {
     if (!row.date || !row.adult_price || row.adult_price <= 0) continue;
-    const key = `${row.date}|${row.adult_price}|${row.note ?? ''}`;
+    const key = `${row.date}|${row.adult_price}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const evidence = makeEvidence({

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { NormalizedIntake } from './intake-normalizer';
@@ -9,7 +9,7 @@ import {
   canUseSupplierRawDeterministicPreflight,
   extractSupplierRawDeterministicFacts,
 } from './supplier-raw-deterministic-facts';
-import { SUPPLIER_RAW_GOLDEN_FIXTURES } from './product-registration-golden-fixtures';
+import { SUPPLIER_RAW_GOLDEN_FIXTURES, TABLE_PRICE_DANANG_RAW } from './product-registration-golden-fixtures';
 
 const baseIr: NormalizedIntake = {
   meta: {
@@ -41,7 +41,29 @@ const baseIr: NormalizedIntake = {
   extractedAt: '2026-05-31T00:00:00.000Z',
 };
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('applySupplierRawDeterministicFacts', () => {
+  it('preserves source-backed per-date prices instead of copying the first price across all dates', () => {
+    const facts = extractSupplierRawDeterministicFacts(TABLE_PRICE_DANANG_RAW.rawText);
+    const enriched = applySupplierRawDeterministicFacts({ ...baseIr, priceGroups: [] }, TABLE_PRICE_DANANG_RAW.rawText);
+
+    expect(facts.datePrices).toEqual([
+      { date: '2027-04-01', adult: 779000, child: 729000 },
+      { date: '2027-04-08', adult: 799000, child: 749000 },
+    ]);
+    expect(enriched.priceGroups.map(group => ({
+      dates: group.dates,
+      adultPrice: group.adultPrice,
+      childPrice: group.childPrice,
+    }))).toEqual([
+      { dates: ['2027-04-01'], adultPrice: 779000, childPrice: 729000 },
+      { dates: ['2027-04-08'], adultPrice: 799000, childPrice: 749000 },
+    ]);
+  });
+
   it('recovers Korean day-line supplier itineraries for customer landing schedules', () => {
     const rawText = `
 [크라운] 큐슈 BX조석 스기노이 2박 3일
@@ -685,6 +707,55 @@ BX782
 });
 
 describe('Korean catalog table flight recovery', () => {
+  it('recovers flight segments from adjacent schedule rows without using meeting times', () => {
+    const raw = [
+      '북해도 품격BA팩 3박4일',
+      '부산 BX182 06:30 부산 김해국제공항 국제선 집결',
+      '08:50 BX 182편으로 치토세 향발',
+      '치토세 전용 11:30 치토세 국제공항 도착 및 입국 수속',
+      '제4일 치토세 치토세공항으로 이동',
+      'BX181 12:30 치토세 국제 공항 출발',
+      '부 산 15:55 김해 국제 공항 도착',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX182',
+      departure: { airport: '부산', time: '08:50' },
+      arrival: { airport: '치토세', time: '11:30' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX181',
+      departure: { airport: '치토세', time: '12:30' },
+      arrival: { airport: '부산', time: '15:55' },
+    });
+  });
+
+  it('recovers inbound flight when the code appears on the arrival row', () => {
+    const raw = [
+      '도쿄 BEST 4일 PKG',
+      'BX112 06:20 부산 김해국제공항 2층 집결',
+      '전용차 08:20 출국 수속 후 부산 출발',
+      '량 10:25 나리타 국제공항 도착 및 입국 수속',
+      '4일 11:25 나리타 국제 공항 출발',
+      '부산 BX111 13:55 김해 국제 공항 도착 후 해산',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX112',
+      departure: { airport: '부산', time: '08:20' },
+      arrival: { airport: '나리타', time: '10:25' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX111',
+      departure: { airport: '나리타', time: '11:25' },
+      arrival: { airport: '부산', time: '13:55' },
+    });
+  });
+
   it('recovers vertically stacked outbound and inbound flight segments from Phu Quoc style day tables', () => {
     const raw = [
       '일 자',
@@ -779,5 +850,135 @@ describe('Korean catalog table flight recovery', () => {
       { leg: 'outbound', flight_no: 'BX781', dep_time: '19:20', arr_time: '22:20' },
       { leg: 'inbound', flight_no: 'BX782', dep_time: '23:20', arr_time: '06:20' },
     ]);
+  });
+
+  it('skips airport gathering times in OCR-style PDF flight rows', () => {
+    const raw = [
+      '북해도 알짜 BA팩 2박3일',
+      '부산 치토세 삿포로',
+      'BX182',
+      '전용차량',
+      '06:50',
+      '08:50',
+      '11:30',
+      '부산 김해국제공항 국제선 집결',
+      '김해 국제공항 출발',
+      '신치토세 국제공항 도착 및 입국 수속',
+      '삿포로 치토세 부산 전용차량',
+      'BX181 12:30',
+      '15:25',
+      '호텔 조식 후',
+      '신치토세공항으로 이동',
+      '신치토세 국제 공항 출발',
+      '김해 국제 공항 도착',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX182',
+      departure: { time: '08:50' },
+      arrival: { time: '11:30' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX181',
+      departure: { time: '12:30' },
+      arrival: { time: '15:25' },
+    });
+  });
+
+  it('keeps the departure city when an OCR return row says destination departure and Busan arrival', () => {
+    const raw = [
+      '[LJ]다낭 호이안 노팁노옵션 3박5일',
+      'LJ111',
+      '전용차량',
+      '18:00',
+      '21:05',
+      '00:05',
+      '김해 국제공항 집결 후 출국 수속',
+      '김해 국제공항 출발',
+      '다낭 국제공항 도착',
+      'LJ112 01:05',
+      '07:30',
+      '다낭출발 부산 향발 /',
+      '부산 도착',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'LJ111',
+      departure: { airport: '부산', time: '21:05' },
+      arrival: { airport: '다낭', time: '00:05' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'LJ112',
+      departure: { airport: '다낭', time: '01:05' },
+      arrival: { airport: '부산', time: '07:30' },
+    });
+  });
+
+  it('recovers flight times from compact code plus stacked time rows', () => {
+    const raw = [
+      '서안 구채구 신선지 4박6일',
+      'BX341 21:55',
+      '1',
+      '00:35',
+      'D1983 13:11',
+      '15:12',
+      'BX342 02:10',
+      '6',
+      '06:30',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.outbound).toMatchObject({
+      code: 'BX341',
+      departure: { time: '21:55' },
+      arrival: { time: '00:35' },
+    });
+    expect(facts.inbound).toMatchObject({
+      code: 'BX342',
+      departure: { time: '02:10' },
+      arrival: { time: '06:30' },
+    });
+  });
+});
+
+describe('supplier raw departure price guards', () => {
+  it('uses labeled departure dates without polluting product dates with hotel surcharge dates', () => {
+    const raw = [
+      '[노옵션노팁] 다낭/호이안/바나힐 5일 [진에어]',
+      '발 신 일2026. 01. 05.',
+      '출 발 일 자2026년 2월 24일 (화요일) 출발',
+      '인 원4명부터 출발',
+      '판 매 가 격',
+      '\\619,000/인',
+      '호텔 써차지: 1/1, 2/16~21, 4/26~28, 4/30~5/3예정 (투숙일 기준) \\30,000/룸당/박당',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.dates).toEqual(['2026-02-24']);
+    expect(facts.prices.adult).toBe(619000);
+  });
+
+  it('infers no-year departure dates from the upload point instead of document issue year', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-20T00:00:00+09:00'));
+
+    const raw = [
+      '[LJ] 푸꾸옥 3박5일 노옵션 스페셜팩',
+      '출 발 일',
+      '5/7, 5/15',
+      '판 매 가',
+      '특가 1인 799,000원',
+    ].join('\n');
+
+    const facts = extractSupplierRawDeterministicFacts(raw);
+
+    expect(facts.dates).toEqual(['2027-05-07', '2027-05-15']);
+    expect(facts.prices.adult).toBe(799000);
   });
 });

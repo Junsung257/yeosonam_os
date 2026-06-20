@@ -94,6 +94,39 @@ describe('recoverUploadPriceData', () => {
     expect(result.failures.some(failure => failure.startsWith('llm:price_dates'))).toBe(true);
   });
 
+  it('uses source-backed reader prices only when the date is tied to departure context', async () => {
+    const rawText = [
+      'PKG BX 청도 3색골프 3박4일',
+      '2026.3.1',
+      '549,000원',
+      '출 발 일 26년 4/29(수) 판 매 가',
+      '포함사항 왕복항공료 숙박료 식사 차량 여행자보험',
+      '불포함사항 캐디피 카트피 선택관광 개인경비',
+      '일정표 김해 국제공항 출발 청도 도착 골프 라운딩 호텔 휴식',
+    ].join('\n');
+
+    const result = await recoverUploadPriceData({
+      rawText,
+      title: 'PKG BX 청도 3색골프 3박4일',
+      duration: 4,
+      price_tiers: [],
+    }, {
+      rawText,
+      title: 'PKG BX 청도 3색골프 3박4일',
+      durationDays: 4,
+      year: 2026,
+      enableGeminiFallback: false,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.source).toBe('human_reader_source_backed');
+    expect(result.priceDates).toContainEqual(expect.objectContaining({
+      date: '2026-04-29',
+      price: 549000,
+    }));
+    expect(result.priceDates.some(row => row.date === '2026-03-01')).toBe(false);
+  });
+
   it('drops option-sized amounts from weekday catalog price tables when package prices are present', async () => {
     const rawText = [
       '베트남 다낭/호이안 3박5일',

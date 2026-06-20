@@ -39,6 +39,7 @@ These audits contain recent evidence for the current product-registration engine
 | Date | File | Use |
 |---|---|---|
 | 2026-06-08 | `2026-06-08-product-registration-learning-engine-audit.md` | Self-improving registration engine verification and live readiness evidence. |
+| 2026-06-20 | `2026-06-20-upload-inbox-engine-hardening.md` | Offline upload-inbox hardening evidence for price/date, flight, and remaining itinerary blockers. |
 | 2026-06-05 | `2026-06-05-upload-registration-goal-completion-audit.md` | Completion evidence for centralized upload registration. |
 | 2026-06-05 | `2026-06-05-upload-registration-pipeline-centralization.md` | Evidence that route logic moved behind the centralized registration pipeline. |
 | 2026-06-05 | `2026-06-05-registration-object-verification.md` | Standard registration object verification. |

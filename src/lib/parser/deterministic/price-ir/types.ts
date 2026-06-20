@@ -7,6 +7,8 @@ export type PriceIRSource =
   | 'hotel_column_matrix'
   | 'spot_weekday_table'
   | 'labeled_date_list_price'
+  | 'pdf_date_price_table'
+  | 'cruise_cabin_price_table'
   | 'single_period_product_price'
   | 'product_price_vertical_date_table'
   | 'grade_pattern_date_matrix'
