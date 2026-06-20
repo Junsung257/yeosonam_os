@@ -4,7 +4,11 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useChatStore } from '@/lib/chat-store';
 import type { DepartureHubId } from '@/lib/departure-hub';
-import { appendDepartureHubToSearchParams } from '@/lib/departure-hub';
+import {
+  appendDepartureHubToSearchParams,
+  DEFAULT_DEPARTURE_HUB,
+  DEPARTURE_HUB_OPTIONS,
+} from '@/lib/departure-hub';
 import { trackSearch } from '@/lib/tracker';
 
 interface Props {
@@ -19,6 +23,7 @@ interface Props {
   variant?: 'default' | 'home' | 'packages';
   /** 패키지 목록: 출발 허브·마감특가 등 쿼리 유지 */
   hub?: DepartureHubId;
+  initialIntent?: string;
   urgency?: string;
   category?: string;
 }
@@ -43,6 +48,14 @@ const PRICE_OPTIONS = [
   { value: '3000000', label: '300만원 이하' },
 ];
 
+const PACKAGE_INTENT_OPTIONS = [
+  { value: '', label: '목적 전체' },
+  { value: 'family', label: '부모님/가족' },
+  { value: 'no_shopping', label: '쇼핑 적은 상품' },
+  { value: 'budget', label: '최저가 우선' },
+  { value: 'consult', label: '상담 추천' },
+] as const;
+
 export default function SearchBar({
   initialQ = '',
   initialMonth = '',
@@ -52,6 +65,7 @@ export default function SearchBar({
   homeAiLead = false,
   variant = 'default',
   hub,
+  initialIntent = '',
   urgency = '',
   category = '',
 }: Props) {
@@ -61,25 +75,53 @@ export default function SearchBar({
   const [month, setMonth] = useState(initialMonth);
   const [priceMin, setPriceMin] = useState(initialPriceMin);
   const [priceMax, setPriceMax] = useState(initialPriceMax);
+  const [hubValue, setHubValue] = useState<DepartureHubId>(hub ?? DEFAULT_DEPARTURE_HUB);
+  const [intent, setIntent] = useState(initialIntent);
+
+  useEffect(() => {
+    setQ(initialQ || initialDestination);
+  }, [initialDestination, initialQ]);
+
+  useEffect(() => {
+    setMonth(initialMonth);
+  }, [initialMonth]);
 
   useEffect(() => {
     setPriceMin(initialPriceMin);
   }, [initialPriceMin]);
 
+  useEffect(() => {
+    setPriceMax(initialPriceMax);
+  }, [initialPriceMax]);
+
+  useEffect(() => {
+    setHubValue(hub ?? DEFAULT_DEPARTURE_HUB);
+  }, [hub]);
+
+  useEffect(() => {
+    setIntent(initialIntent);
+  }, [initialIntent]);
+
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const params = new URLSearchParams();
     const trimmedQ = q.trim();
+    const effectiveHub = variant === 'packages' ? hubValue : hub;
     if (trimmedQ) params.set('q', trimmedQ);
     if (month) params.set('month', month);
     if (priceMin) params.set('priceMin', priceMin);
     if (priceMax) params.set('priceMax', priceMax);
-    if (hub) appendDepartureHubToSearchParams(params, hub);
+    if (variant === 'packages') {
+      appendDepartureHubToSearchParams(params, hubValue);
+      if (intent) params.set('intent', intent);
+    } else if (hub) {
+      appendDepartureHubToSearchParams(params, hub);
+    }
     if (urgency === '1') params.set('urgency', '1');
     if (category) params.set('category', category);
 
     // 검색 이벤트 트래킹 (fire-and-forget). 빈 쿼리도 필터 검색이면 기록.
-    if (trimmedQ || month || priceMax || hub || category) {
+    if (trimmedQ || month || priceMax || effectiveHub || intent || category) {
       // lead_time_days: 출발월(YYYY-MM)이 있으면 그 달 1일까지 일수
       let leadTimeDays: number | undefined;
       if (month) {
@@ -91,8 +133,8 @@ export default function SearchBar({
       }
       try {
         trackSearch({
-          search_query: trimmedQ || `[filter:${category || hub || 'price'}]`,
-          search_category: category || hub || undefined,
+          search_query: trimmedQ || `[filter:${category || intent || effectiveHub || 'price'}]`,
+          search_category: category || intent || effectiveHub || undefined,
           lead_time_days: leadTimeDays,
         });
       } catch {
@@ -206,18 +248,68 @@ export default function SearchBar({
     </select>
   );
 
+  const hubSelect = (
+    <select
+      name="hub"
+      aria-label="출발지"
+      value={hubValue}
+      onChange={e => setHubValue(e.target.value as DepartureHubId)}
+      className="w-full min-w-0 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-body text-text-primary appearance-none cursor-pointer shadow-sm bg-[length:12px] bg-[right_12px_center] bg-no-repeat pr-9"
+      style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B95A1' d='M2 4l4 4 4-4'/%3E%3C/svg%3E")`,
+      }}
+    >
+      {DEPARTURE_HUB_OPTIONS.map(option => (
+        <option key={option.id} value={option.id}>{option.label} 출발</option>
+      ))}
+    </select>
+  );
+
+  const intentSelect = (
+    <select
+      name="intent"
+      aria-label="여행 목적"
+      value={intent}
+      onChange={e => setIntent(e.target.value)}
+      className="w-full min-w-0 rounded-xl border border-[#E5E7EB] bg-white px-3 py-2.5 text-body text-text-primary appearance-none cursor-pointer shadow-sm bg-[length:12px] bg-[right_12px_center] bg-no-repeat pr-9"
+      style={{
+        backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238B95A1' d='M2 4l4 4 4-4'/%3E%3C/svg%3E")`,
+      }}
+    >
+      {PACKAGE_INTENT_OPTIONS.map(option => (
+        <option key={option.value || 'all'} value={option.value}>{option.label}</option>
+      ))}
+    </select>
+  );
+
   if ((variant === 'home' || variant === 'packages') && !homeAiLead) {
+    const filterGridClass = variant === 'packages'
+      ? 'grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3'
+      : 'grid grid-cols-1 sm:grid-cols-2 gap-3';
+
     return (
       <form
         onSubmit={submit}
         className="w-full max-w-full min-w-0 rounded-2xl border border-[#E5E7EB]/90 bg-white p-4 md:p-5 shadow-[0_12px_40px_rgba(49,130,246,0.08)] space-y-4"
       >
         {searchField}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div className={filterGridClass}>
           <div className="space-y-1.5 min-w-0">
             <span className="block text-[11px] font-semibold text-text-secondary uppercase tracking-[0.06em]">출발월</span>
             {monthSelect}
           </div>
+          {variant === 'packages' && (
+            <div className="space-y-1.5 min-w-0">
+              <span className="block text-[11px] font-semibold text-text-secondary uppercase tracking-[0.06em]">출발지</span>
+              {hubSelect}
+            </div>
+          )}
+          {variant === 'packages' && (
+            <div className="space-y-1.5 min-w-0">
+              <span className="block text-[11px] font-semibold text-text-secondary uppercase tracking-[0.06em]">여행 목적</span>
+              {intentSelect}
+            </div>
+          )}
           <div className="space-y-1.5 min-w-0">
             <span className="block text-[11px] font-semibold text-text-secondary uppercase tracking-[0.06em]">{variant === 'packages' ? '가격' : '예산'}</span>
             {priceSelect}

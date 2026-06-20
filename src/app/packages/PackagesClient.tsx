@@ -1068,6 +1068,7 @@ export default function PackagesClient() {
             initialPriceMax={priceMax}
             initialDestination={destination}
             hub={hub}
+            initialIntent={selectedIntent ?? ''}
             urgency={urgency}
             category={category}
           />
