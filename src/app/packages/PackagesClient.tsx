@@ -260,8 +260,10 @@ export default function PackagesClient() {
   const urgency = searchParams.get('urgency') || '';
   const category = searchParams.get('category') || '';
 
-  let hubFromParam = normalizeDepartureHub(searchParams.get('hub'));
-  if (rawFilter === '인천출발' && !searchParams.get('hub')) hubFromParam = 'incheon';
+  const rawHubParam = searchParams.get('hub');
+  const rawDepartureParam = searchParams.get('departure');
+  let hubFromParam = normalizeDepartureHub(rawHubParam ?? rawDepartureParam);
+  if (rawFilter === '인천출발' && !rawHubParam && !rawDepartureParam) hubFromParam = 'incheon';
   const filterForClientInitial = rawFilter === '인천출발' ? '' : rawFilter;
 
   const apiQuery = searchParams.toString();
@@ -334,6 +336,7 @@ export default function PackagesClient() {
     (nextHub: DepartureHubId) => {
       const p = new URLSearchParams(searchParams.toString());
       appendDepartureHubToSearchParams(p, nextHub);
+      p.delete('departure');
       p.delete('filter');
       const qs = p.toString();
       router.push(qs ? `/packages?${qs}` : '/packages');

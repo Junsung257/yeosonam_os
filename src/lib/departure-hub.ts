@@ -17,15 +17,22 @@ export const DEPARTURE_HUB_OPTIONS: { id: DepartureHubId; label: string; short: 
 ];
 
 const HUB_ALIASES: Record<string, DepartureHubId> = {
+  '부산': 'busan',
+  '김해': 'busan',
   busan: 'busan',
   pus: 'busan',
   gimhae: 'busan',
+  '인천': 'incheon',
   incheon: 'incheon',
   icn: 'incheon',
+  '대구': 'daegu',
   daegu: 'daegu',
   tae: 'daegu',
+  '청주': 'cheongju',
   cheongju: 'cheongju',
   cjj: 'cheongju',
+  '전국': 'all',
+  '전체': 'all',
   all: 'all',
   nationwide: 'all',
   any: 'all',

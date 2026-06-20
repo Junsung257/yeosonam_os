@@ -100,8 +100,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = request.nextUrl;
     const destination = searchParams.get('destination') || '';
     const rawFilter = searchParams.get('filter') || '';
-    let hub = normalizeDepartureHub(searchParams.get('hub'));
-    if (rawFilter === '인천출발' && !searchParams.get('hub')) hub = 'incheon';
+    const rawHub = searchParams.get('hub');
+    const rawDeparture = searchParams.get('departure');
+    let hub = normalizeDepartureHub(rawHub ?? rawDeparture);
+    if (rawFilter === '인천출발' && !rawHub && !rawDeparture) hub = 'incheon';
     const filterForClient = rawFilter === '인천출발' ? '' : rawFilter;
 
     const q = (searchParams.get('q') || '').trim();

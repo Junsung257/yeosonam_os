@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import SectionHeader from '@/components/customer/SectionHeader';
 import PackageCard from '@/components/customer/PackageCard';
+import { appendDepartureHubToSearchParams, normalizeDepartureHub } from '@/lib/departure-hub';
 
 interface PackageRow {
   id: string;
@@ -42,6 +43,12 @@ export default function DestinationPackagesSection({ destination, packages, depa
       : packages.filter(p => extractDepartureCity(p.departure_airport) === selectedCity);
 
   const visible = filtered.slice(0, 6);
+  const packagesHref = (() => {
+    const params = new URLSearchParams({ destination });
+    if (selectedCity) appendDepartureHubToSearchParams(params, normalizeDepartureHub(selectedCity));
+    const qs = params.toString();
+    return `/packages?${qs}`;
+  })();
 
   return (
     <section id="packages" className="scroll-mt-28">
@@ -114,7 +121,7 @@ export default function DestinationPackagesSection({ destination, packages, depa
       {filtered.length > 6 && (
         <div className="mt-6 text-center">
           <Link
-            href={`/packages?destination=${encodeURIComponent(destination)}${selectedCity ? `&departure=${encodeURIComponent(selectedCity)}` : ''}`}
+            href={packagesHref}
             className="inline-flex items-center gap-1.5 px-6 py-3 bg-white border border-slate-200 text-slate-700 font-semibold text-sm rounded-full hover:border-slate-400 hover:shadow-sm transition"
           >
             {filtered.length - 6}개 더 보기 →
