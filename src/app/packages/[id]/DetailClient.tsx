@@ -1006,9 +1006,16 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
   const stickyPriceCaveatText = selectedTier
     ? '선택한 출발일 기준 가격입니다. 항공 좌석, 객실 등급, 유류할증료와 옵션 비용은 상담에서 최종 확인합니다.'
     : '표시 가격은 최저가 기준입니다. 출발일, 항공 좌석, 객실 등급에 따라 최종가가 달라질 수 있습니다.';
+  const stickyActionConditionLabel = selectedDate
+    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 출발`
+    : firstScreenDepartureLabel;
   const stickyReservationLabel = selectedDate
-    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 문의`
+    ? `${parseInt(selectedDate.split('-')[1])}/${parseInt(selectedDate.split('-')[2])} 예약`
     : '예약 문의';
+  const detailInlineReservationLabel = `${selectedProductName} ${firstScreenDepartureLabel} 기준 ${firstScreenPriceLabel} 예약 문의 폼 열기`;
+  const stickyKakaoActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 기준 카카오톡 상담 열기`;
+  const stickyGroupInquiryActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 기준 맞춤 견적 문의하기`;
+  const stickyReservationActionLabel = `${selectedProductName} ${stickyActionConditionLabel} 기준 예약 문의 폼 열기`;
   const stickyNextActionText = detailHandoffMissingLabels.length > 0
     ? `${detailHandoffMissingLabels[0]} 조건을 확인하면 상담 전달이 더 정확해집니다.`
     : selectedDate
@@ -1629,6 +1636,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           aria-haspopup="dialog"
           aria-expanded={showForm}
           aria-controls="package-detail-reservation-dialog"
+          aria-label={detailInlineReservationLabel}
           aria-describedby={detailCtaSummaryId}
           className="w-full h-12 rounded-2xl bg-slate-950 text-white font-bold text-sm shadow-[0_10px_24px_rgba(15,23,42,0.18)] active:scale-[0.98] transition-all flex items-center justify-center gap-2"
         >
@@ -2813,7 +2821,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
           {/* 카톡 — secondary, 빠른 채팅 (리드 저장 + 카카오 채널 오픈) */}
           <button
             type="button"
-            aria-label={`${selectedProductName} 카카오톡 상담 열기`}
+            aria-label={stickyKakaoActionLabel}
             aria-describedby={detailKakaoDescriptionIds}
             data-analytics-id="mobile_kakao_consult"
             data-testid="package-detail-sticky-kakao"
@@ -2930,7 +2938,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
               });
             }}
             className="flex h-11 w-full shrink-0 items-center justify-center rounded-full border border-slate-300 bg-white px-3 text-xs font-extrabold text-slate-800 shadow-sm transition-all active:scale-[0.98] md:w-auto"
-            aria-label={`${selectedProductName} 조건으로 맞춤 견적 문의하기`}
+            aria-label={stickyGroupInquiryActionLabel}
             aria-describedby={detailGroupInquiryDescriptionIds}
             data-testid="package-detail-sticky-group-inquiry"
             data-analytics-id="mobile_sticky_group_inquiry"
@@ -2943,7 +2951,7 @@ export default function DetailClient({ initialPackage, initialAttractions, packa
             type="button"
             onClick={(event) => openInquiryForm('detail_sticky_cta', event.currentTarget)}
             className="h-11 w-full shrink-0 rounded-full bg-slate-950 px-3 text-sm font-bold text-white shadow-lg transition-all active:scale-[0.98] md:w-auto md:px-5 lg:px-6"
-            aria-label={selectedDate ? `${selectedDate} 출발 예약 문의 폼 열기` : '예약 문의 폼 열기'}
+            aria-label={stickyReservationActionLabel}
             aria-haspopup="dialog"
             aria-expanded={showForm}
             aria-controls="package-detail-reservation-dialog"

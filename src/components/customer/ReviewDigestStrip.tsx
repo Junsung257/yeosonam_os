@@ -37,6 +37,7 @@ interface ReviewDigestStripProps {
 export default function ReviewDigestStrip({ packageId, productTitle, internalCode }: ReviewDigestStripProps) {
   const [data, setData] = useState<DigestPayload | null>(null);
   const [fetched, setFetched] = useState(false);
+  const productLabel = productTitle?.trim() || '선택한 상품';
 
   useEffect(() => {
     let alive = true;
@@ -73,12 +74,13 @@ export default function ReviewDigestStrip({ packageId, productTitle, internalCod
     return (
       <section className="px-4 py-3 relative z-10">
         <p id={REVIEW_DIGEST_KAKAO_DESCRIPTION_ID} className="sr-only">
-          후기가 아직 없는 상품의 포함 비용, 불포함 비용, 출발 가능 여부를 카카오톡 상담에서 확인합니다.
+          {productLabel}의 포함 비용, 불포함 비용, 출발 가능 여부를 카카오톡 상담에서 확인합니다.
         </p>
         <button
           type="button"
           onClick={handleKakaoClick}
           data-testid="review-digest-kakao"
+          aria-label={`${productLabel} 후기와 비용 조건 카카오톡 상담 열기`}
           aria-describedby={REVIEW_DIGEST_KAKAO_DESCRIPTION_ID}
           className="w-full bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm text-left active:scale-[0.99] transition-transform"
         >
