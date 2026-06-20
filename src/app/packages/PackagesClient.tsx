@@ -618,6 +618,40 @@ export default function PackagesClient() {
     visiblePackages.length,
   ]);
 
+  const trackEmptyStateRecoveryCta = useCallback((ctaType: string) => {
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.stickyCtaClicked,
+      cta_type: ctaType,
+      page_url: '/packages',
+      intent: selectedIntent,
+      budget: handoffBudget,
+      destination: handoffDestination,
+      party_type: handoffPartyType,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : null,
+      ready_count: packageCtaDecisionMetadata.ready_count,
+      missing_fields: packageCtaDecisionMetadata.missing_fields,
+      decision_summary: packageCtaDecisionMetadata.decision_summary,
+      handoff_preview: packageCtaDecisionMetadata.handoff_preview,
+      next_action: packageCtaDecisionMetadata.next_action,
+      result_summary: packageCtaDecisionMetadata.result_summary,
+      applied_filters: packageCtaDecisionMetadata.applied_filters,
+      metadata: {
+        source: ctaType,
+        zero_result: true,
+        recovery_actions: emptyStateRecoveryActions.map((item) => item.key),
+        ...packageCtaDecisionMetadata,
+      },
+    });
+  }, [
+    emptyStateRecoveryActions,
+    handoffBudget,
+    handoffDestination,
+    handoffPartyType,
+    packageCtaDecisionMetadata,
+    selectedIntent,
+    selectedProductNames,
+  ]);
+
   const trackCompareGroupInquiry = useCallback((source: string) => {
     trackEngagement({
       event_type: ANALYTICS_EVENTS.stickyCtaClicked,
@@ -1556,7 +1590,9 @@ export default function PackagesClient() {
                 )}
                 <Link
                   href={conciergeHref}
+                  onClick={() => trackEmptyStateRecoveryCta('packages_empty_state_ai')}
                   data-testid="packages-empty-state-ai"
+                  data-analytics-id="packages_empty_state_ai"
                   aria-describedby={emptyStateInquiryDescriptionIds}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full border border-[#D7E3F3] bg-white px-4 text-[13px] font-extrabold text-text-primary transition hover:border-brand/60 hover:text-brand"
                 >
@@ -1565,7 +1601,9 @@ export default function PackagesClient() {
                 </Link>
                 <Link
                   href={groupInquiryHref}
+                  onClick={() => trackEmptyStateRecoveryCta('packages_empty_state_group_inquiry')}
                   data-testid="packages-empty-state-group-inquiry"
+                  data-analytics-id="packages_empty_state_group_inquiry"
                   aria-describedby={emptyStateInquiryDescriptionIds}
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-full bg-brand px-4 text-[13px] font-extrabold text-white transition hover:bg-brand-dark"
                 >
