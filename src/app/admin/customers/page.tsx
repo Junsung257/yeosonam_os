@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import useSWR from 'swr';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import { GRADE_STYLE, LIFECYCLE_STAGES, getNextAction, type CustomerStatus } from '@/lib/mileage';
 import { BOOKING_STATUS_COLOR, BOOKING_STATUS_LABEL } from '@/lib/status-colors';
 import { maskPhone } from '@/lib/pii-mask';
@@ -60,6 +61,7 @@ interface MileageHistory {
 // ─── 상수 ─────────────────────────────────────────────────────────────────────
 
 const BOOKING_STATUS: Record<string, string> = BOOKING_STATUS_LABEL;
+const PASSPORT_EXPIRY_WINDOW_DAYS = 180;
 const CHANNEL_LABEL: Record<string, string> = {
   phone: '전화', kakao: '카카오', email: '이메일', visit: '방문', cafe: '카페', sms: 'SMS',
 };
@@ -112,6 +114,8 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
 // ─── 메인 컴포넌트 ─────────────────────────────────────────────────────────────
 
 export default function CustomersPage() {
+  const searchParams = useSearchParams();
+  const initialPassportExpiryOnly = searchParams?.get('filter') === 'passport_expiry';
   // ── 목록 상태 ──────────────────────────────────────────────────────────────
   // (감사 2026-05-11) main load 를 SWR 로 마이그 — 필터 dedup + 페이지간 캐시.
   // customers 상태는 optimistic mutation 을 위해 별도 유지.
@@ -121,10 +125,11 @@ export default function CustomersPage() {
   const [totalCount, setTotalCount]     = useState(0);
   const [tab, setTab]                   = useState<'active' | 'trash'>('active');
   const [search, setSearch]             = useState('');
-  const [sortBy, setSortBy]             = useState('created_at');
-  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>('desc');
+  const [sortBy, setSortBy]             = useState(initialPassportExpiryOnly ? 'passport_expiry' : 'created_at');
+  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>(initialPassportExpiryOnly ? 'asc' : 'desc');
   const [gradeFilter, setGradeFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [passportExpiryOnly, setPassportExpiryOnly] = useState(initialPassportExpiryOnly);
 
   // ── 다중 선택 ──────────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
@@ -326,8 +331,9 @@ export default function CustomersPage() {
     if (search)       params.set('search', search);
     if (gradeFilter)  params.set('grade', gradeFilter);
     if (statusFilter) params.set('status', statusFilter);
+    if (passportExpiryOnly) params.set('filter', 'passport_expiry');
     return `/api/customers?${params}`;
-  }, [page, sortBy, sortDir, tab, search, gradeFilter, statusFilter]);
+  }, [page, sortBy, sortDir, tab, search, gradeFilter, statusFilter, passportExpiryOnly]);
 
   const { data: listData, isLoading, mutate: mutateList } = useSWR<{
     customers: Customer[]; count: number; totalPages: number;
@@ -706,6 +712,30 @@ export default function CustomersPage() {
             <option value="">전체 상태</option>
             {LIFECYCLE_STAGES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+
+          <button
+            type="button"
+            aria-pressed={passportExpiryOnly}
+            onClick={() => {
+              const next = !passportExpiryOnly;
+              setPassportExpiryOnly(next);
+              setPage(1);
+              if (next) {
+                setSortBy('passport_expiry');
+                setSortDir('asc');
+              } else if (sortBy === 'passport_expiry') {
+                setSortBy('created_at');
+                setSortDir('desc');
+              }
+            }}
+            className={`rounded px-3 py-2 text-admin-sm font-semibold transition ${
+              passportExpiryOnly
+                ? 'border border-amber-300 bg-amber-50 text-amber-700'
+                : 'border border-admin-border-mid bg-white text-admin-muted hover:bg-admin-bg'
+            }`}
+          >
+            여권 만료 D-{PASSPORT_EXPIRY_WINDOW_DAYS}
+          </button>
         </div>
 
         {/* 테이블 */}
@@ -832,6 +862,11 @@ export default function CustomersPage() {
                             <span className="bg-red-50 text-red-600 px-1.5 py-0.5 rounded text-[10px] font-medium">
                               연락처 미상
                             </span>
+                          )}
+                          {passportExpiryOnly && (
+                            <p className="mt-0.5 text-[11px] font-semibold text-amber-700">
+                              여권 만료 {fmtDate(c.passport_expiry)}
+                            </p>
                           )}
                         </div>
                       </div>

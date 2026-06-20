@@ -13,16 +13,17 @@ const CUSTOMER_LIST_COLUMNS = 'id, name, phone, email, passport_no, passport_exp
 
 export async function getCustomers(opts: {
   search?: string; page?: number; limit?: number;
-  sortBy?: 'name' | 'mileage' | 'created_at' | 'bookingCount' | 'totalSales';
+  sortBy?: 'name' | 'mileage' | 'created_at' | 'passport_expiry' | 'bookingCount' | 'totalSales';
   sortDir?: 'asc' | 'desc';
   trashed?: boolean;
   minSales?: number; maxSales?: number;
   minBookings?: number; maxBookings?: number;
   grade?: string;
   status?: string;
+  passportExpiryWithinDays?: number;
 } = {}) {
   try {
-    const { search, page = 1, limit = 30, sortBy = 'created_at', sortDir = 'desc', trashed = false, minSales, maxSales, minBookings, maxBookings, grade, status } = opts;
+    const { search, page = 1, limit = 30, sortBy = 'created_at', sortDir = 'desc', trashed = false, minSales, maxSales, minBookings, maxBookings, grade, status, passportExpiryWithinDays } = opts;
     const from = (page - 1) * limit;
     const to = from + limit - 1;
 
@@ -38,6 +39,10 @@ export async function getCustomers(opts: {
     if (search) query = query.or(`name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`);
     if (grade)  query = query.eq('grade', grade);
     if (status) query = query.eq('status', status);
+    if (passportExpiryWithinDays !== undefined) {
+      const cutoff = new Date(Date.now() + passportExpiryWithinDays * 86400000).toISOString().split('T')[0];
+      query = query.not('passport_expiry', 'is', null).lte('passport_expiry', cutoff);
+    }
 
     if (!isJsSort) {
       query = query.order(sortBy, { ascending: sortDir === 'asc' });

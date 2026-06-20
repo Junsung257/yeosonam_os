@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
     const page        = parseInt(searchParams.get('page') || '1');
     const limit       = parseInt(searchParams.get('limit') || '30');
     const search      = searchParams.get('search') || undefined;
-    const sortBy      = (searchParams.get('sortBy') || 'created_at') as 'name' | 'mileage' | 'created_at' | 'bookingCount' | 'totalSales';
+    const sortBy      = (searchParams.get('sortBy') || 'created_at') as 'name' | 'mileage' | 'created_at' | 'passport_expiry' | 'bookingCount' | 'totalSales';
     const sortDir     = (searchParams.get('sortDir') || 'desc') as 'asc' | 'desc';
     const trashed     = searchParams.get('trashed') === 'true';
     const minSales    = searchParams.get('minSales')    ? parseInt(searchParams.get('minSales')!)    : undefined;
@@ -54,8 +54,9 @@ export async function GET(request: NextRequest) {
     const maxBookings = searchParams.get('maxBookings') ? parseInt(searchParams.get('maxBookings')!) : undefined;
     const grade       = searchParams.get('grade') || undefined;
     const status      = searchParams.get('status') || undefined;
+    const passportExpiryWithinDays = searchParams.get('filter') === 'passport_expiry' ? 180 : undefined;
 
-    const result = await getCustomers({ search, page, limit, sortBy, sortDir, trashed, minSales, maxSales, minBookings, maxBookings, grade, status });
+    const result = await getCustomers({ search, page, limit, sortBy, sortDir, trashed, minSales, maxSales, minBookings, maxBookings, grade, status, passportExpiryWithinDays });
     return successResponse({ customers: result.data, count: result.count, totalPages: result.totalPages, page }, 200, 60);
   } catch (err) {
     console.error('[GET /api/customers] 오류:', err);
