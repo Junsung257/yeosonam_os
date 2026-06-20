@@ -158,6 +158,36 @@ const CATEGORY_LABELS: Record<string, string> = {
   theme: '🎯 테마여행',
 };
 
+const CATEGORY_MATCH_ALIASES: Record<string, string[]> = {
+  honeymoon: ['honeymoon', '허니문', '신혼', '신혼여행'],
+  golf: ['golf', '골프', '해외골프', '골프여행'],
+  cruise: ['cruise', '크루즈'],
+  theme: ['theme', '테마', '테마여행', '기획전'],
+};
+
+function normalizeCategoryText(value: string): string {
+  return value.toLocaleLowerCase('ko-KR').replace(/[\s_-]+/g, '');
+}
+
+function packageMatchesCategory(pkg: Package, category: string): boolean {
+  const aliases = CATEGORY_MATCH_ALIASES[category] ?? [category];
+  const normalizedAliases = aliases.map(normalizeCategoryText);
+  const packageText = [
+    pkg.title,
+    pkg.display_title,
+    pkg.hero_tagline,
+    pkg.destination,
+    pkg.country,
+    pkg.product_type,
+    ...(pkg.product_tags ?? []),
+    ...(pkg.product_highlights ?? []),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizeCategoryText);
+
+  return normalizedAliases.some(alias => packageText.some(value => value.includes(alias)));
+}
+
 interface SearchResponse {
   packages: Package[];
   imageByPkgId: Record<string, string | null>;
@@ -394,7 +424,7 @@ export default function PackagesClient() {
       const pd = (p.price_dates || []) as Array<{ date?: string }>;
       return pd.some(d => d?.date && d.date >= today);
     });
-    if (category) list = list.filter(p => p.product_type?.includes(category) || p.product_tags?.includes(category));
+    if (category) list = list.filter(p => packageMatchesCategory(p, category));
     const sortFn = sortBy === 'price_asc' ? (a: Package, b: Package) => packageMinPrice(a) - packageMinPrice(b)
       : sortBy === 'price_desc' ? (a: Package, b: Package) => packageMinPrice(b) - packageMinPrice(a)
       : (a: Package, b: Package) => {
