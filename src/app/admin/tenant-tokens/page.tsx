@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { fmtDate, fmtMonthDayTime } from '@/lib/admin-utils';
 
 interface Tenant { id: string; name: string; }
@@ -33,6 +33,9 @@ export default function TenantTokensPage() {
   const [form, setForm] = useState({ provider: 'meta', access_token: '', refresh_token: '', expires_at: '', scopes: '' });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+  const [revokeTarget, setRevokeTarget] = useState<TokenMeta | null>(null);
+  const [revoking, setRevoking] = useState(false);
+  const revokeCancelRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
     fetch('/api/tenants')
@@ -53,6 +56,11 @@ export default function TenantTokensPage() {
   }, [selectedTenant]);
 
   useEffect(() => { void loadTokens(); }, [loadTokens]);
+
+  useEffect(() => {
+    if (!revokeTarget) return;
+    requestAnimationFrame(() => revokeCancelRef.current?.focus());
+  }, [revokeTarget]);
 
   function isExpired(expiresAt: string | null): boolean {
     if (!expiresAt) return false;
@@ -90,15 +98,27 @@ export default function TenantTokensPage() {
     }
   }
 
-  async function handleRevoke(id: string) {
-    if (!confirm('이 토큰을 비활성화하시겠습니까?')) return;
-    const res = await fetch(`/api/tenant-tokens?id=${id}`, { method: 'DELETE' });
-    if (!res.ok) {
-      const json = await res.json() as { error?: string };
-      setMessage({ type: 'err', text: json.error ?? '비활성화 실패' });
-      return;
+  function handleRevoke(token: TokenMeta) {
+    setMessage(null);
+    setRevokeTarget(token);
+  }
+
+  async function submitRevoke() {
+    if (!revokeTarget) return;
+    setRevoking(true);
+    try {
+      const res = await fetch(`/api/tenant-tokens?id=${revokeTarget.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const json = await res.json() as { error?: string };
+        setMessage({ type: 'err', text: json.error ?? '비활성화 실패' });
+        return;
+      }
+      setRevokeTarget(null);
+      setMessage({ type: 'ok', text: '토큰 비활성화 완료' });
+      void loadTokens();
+    } finally {
+      setRevoking(false);
     }
-    void loadTokens();
   }
 
   return (
@@ -261,7 +281,11 @@ export default function TenantTokensPage() {
                     </td>
                     <td className="py-3 px-4">
                       <button
-                        onClick={() => handleRevoke(token.id)}
+                        type="button"
+                        onClick={() => handleRevoke(token)}
+                        aria-haspopup="dialog"
+                        aria-expanded={revokeTarget?.id === token.id}
+                        aria-controls="tenant-token-revoke-confirm-dialog"
                         className="text-xs text-red-500 hover:underline"
                       >
                         비활성화
@@ -274,6 +298,82 @@ export default function TenantTokensPage() {
           </table>
         )}
       </div>
+
+      {revokeTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="토큰 비활성화 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setRevokeTarget(null)}
+          />
+          <div
+            id="tenant-token-revoke-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tenant-token-revoke-confirm-title"
+            aria-describedby="tenant-token-revoke-confirm-description tenant-token-revoke-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Token access</p>
+              <h2 id="tenant-token-revoke-confirm-title" className="text-lg font-bold text-admin-text">
+                API 토큰을 비활성화할까요?
+              </h2>
+              <p id="tenant-token-revoke-confirm-description" className="text-sm leading-6 text-admin-muted">
+                이 토큰을 사용하는 광고, 분석, 메시지 연동이 즉시 실패할 수 있습니다.
+              </p>
+            </div>
+
+            <dl
+              id="tenant-token-revoke-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">플랫폼</dt>
+                <dd className="font-semibold text-admin-text">
+                  {PROVIDER_LABELS[revokeTarget.provider]?.label ?? revokeTarget.provider}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">스코프</dt>
+                <dd className="max-w-[13rem] truncate font-semibold text-admin-text">
+                  {revokeTarget.scopes.length > 0 ? revokeTarget.scopes.join(', ') : '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">만료일</dt>
+                <dd className="font-semibold text-admin-text">
+                  {revokeTarget.expires_at ? fmtDate(revokeTarget.expires_at) : '-'}
+                </dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">현재 상태</dt>
+                <dd className="font-semibold text-admin-text">{revokeTarget.is_active ? '활성' : '비활성'}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={revokeCancelRef}
+                type="button"
+                onClick={() => setRevokeTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitRevoke}
+                disabled={revoking}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {revoking ? '처리 중...' : '비활성화'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
