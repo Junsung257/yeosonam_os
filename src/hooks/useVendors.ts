@@ -19,7 +19,11 @@ async function fetchVendors(): Promise<Vendor[]> {
   const now = Date.now();
   if (_cache && now - _cacheTs < CACHE_TTL) return _cache;
   const res = await fetch('/api/land-operators');
-  const json = await res.json();
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok || !contentType.includes('application/json')) {
+    return _cache ?? [];
+  }
+  const json = await res.json().catch(() => ({ operators: [] }));
   _cache = json.operators ?? [];
   _cacheTs = now;
   _listeners.forEach(fn => fn(_cache!));
@@ -41,7 +45,7 @@ export function useVendors(includeInactive = false) {
 
   useEffect(() => {
     _listeners.add(setAll);
-    fetchVendors().then(setAll).finally(() => setLoading(false));
+    fetchVendors().then(setAll).catch(() => setAll(_cache ?? [])).finally(() => setLoading(false));
     return () => { _listeners.delete(setAll); };
   }, []);
 

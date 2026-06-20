@@ -16,6 +16,7 @@ import {
 import { getAttractionPreviewNamesFromItinerary } from '@/lib/itinerary-attraction-summary';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { trackEngagement } from '@/lib/tracker';
+import { AdminHttpError } from '@/lib/admin-http';
 
 // 무거운 컴포넌트 lazy load (recharts, html-to-image 등 포함)
 const ApprovalModal = nextDynamic(() => import('@/components/admin/ApprovalModal'), { ssr: false });
@@ -235,6 +236,9 @@ const STATUS_OPTIONS = [
   { value: 'archived',       label: '아카이브' },
 ];
 
+type PackageQueueKey = 'review' | 'copy' | 'publish' | 'deadline';
+type PackageQueueSelectKey = PackageQueueKey | 'gaps';
+
 const SORT_OPTIONS = [
   { value: 'created_desc', label: '등록일 최신순' },
   { value: 'created_asc', label: '등록일 오래된순' },
@@ -372,6 +376,26 @@ function getPackageMissingCoreFields(pkg: Package): string[] {
   ].filter(Boolean) as string[];
 }
 
+function packageMatchesQueue(pkg: Package, queue: PackageQueueKey): boolean {
+  const expired = isExpired(pkg);
+  const missingCoreFields = getPackageMissingCoreFields(pkg);
+
+  if (queue === 'review') return (pkg.status === 'pending' || pkg.status === 'pending_review') && !expired;
+  if (queue === 'copy') return (pkg.status === 'pending_review' || missingCoreFields.length > 0) && !expired;
+  if (queue === 'publish') return pkg.status === 'approved' && !expired;
+  return isDeadlineSoon(pkg);
+}
+
+function getPackageListErrorMessage(error: unknown): string {
+  if (!error) return '';
+  if (error instanceof AdminHttpError) {
+    if (error.status === 401) return '로그인 세션이 만료되었거나 상품 API 접근 권한을 확인해야 합니다.';
+    if (error.status >= 500) return '상품 서버 응답이 불안정합니다. 잠시 후 다시 불러와 주세요.';
+    return `상품 목록을 불러오지 못했습니다. (${error.status})`;
+  }
+  return error instanceof Error ? error.message : '상품 목록을 불러오지 못했습니다.';
+}
+
 function getPackageNextOperationReason(pkg: Package, expired: boolean): string {
   const missingCoreFields = getPackageMissingCoreFields(pkg);
 
@@ -489,16 +513,16 @@ function PackageOpsQueue({
   gapCount,
   onQueueSelect,
 }: {
-  activeQueue?: 'review' | 'copy' | 'publish' | 'deadline' | null;
+  activeQueue?: PackageQueueKey | null;
   pendingCount: number;
   reviewCount: number;
   readyCount: number;
   deadlineCount: number;
   gapCount: number;
-  onQueueSelect: (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => void;
+  onQueueSelect: (queue: PackageQueueSelectKey) => void;
 }) {
   type QueueTone = 'amber' | 'blue' | 'emerald' | 'red';
-  const cards: Array<{ id: 'review' | 'copy' | 'publish' | 'deadline'; label: string; count: number; detail: string; target: string; reason: string; operationRisk: string; tone: QueueTone }> = [
+  const cards: Array<{ id: PackageQueueKey; label: string; count: number; detail: string; target: string; reason: string; operationRisk: string; tone: QueueTone }> = [
     { id: 'review' as const, label: '검수', count: pendingCount, detail: '신규 등록 확인', target: '신규 등록 또는 검수 대기 상품만 보여줍니다.', reason: '신규 상품은 고객 노출 전 핵심 정보 확인이 먼저입니다.', operationRisk: '고객 노출 전 검수', tone: 'amber' },
     { id: 'copy' as const, label: '수정', count: reviewCount + gapCount, detail: '카피/필드 보완', target: '카피나 필드 보완이 필요한 상품만 보여줍니다.', reason: '누락 필드와 카피 품질이 상세 전환에 직접 영향을 줍니다.', operationRisk: '상세 전환 저하', tone: 'blue' },
     { id: 'publish' as const, label: '발행', count: readyCount, detail: '승인 상품 점검', target: '승인 후 고객 노출 전 점검이 필요한 상품만 보여줍니다.', reason: '승인된 상품은 미리보기와 판매 채널 정리가 다음 단계입니다.', operationRisk: '채널 정리 누락', tone: 'emerald' },
@@ -1382,6 +1406,7 @@ const PackageRow = React.memo(function PackageRow({
 export default function PackagesPage({ initialPackages }: { initialPackages?: Package[] } = {}) {
   const [packages, setPackages] = useState<Package[]>(initialPackages ?? []);
   const [loading, setLoading] = useState(!initialPackages?.length);
+  const [packageListLoadError, setPackageListLoadError] = useState('');
   const _skipInitialLoad = useRef(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
@@ -1389,7 +1414,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [statusFilter, setStatusFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState('created_desc');
-  const [activePackageQueue, setActivePackageQueue] = useState<'review' | 'copy' | 'publish' | 'deadline' | null>(null);
+  const [activePackageQueue, setActivePackageQueue] = useState<PackageQueueKey | null>(null);
   const [showExpired, setShowExpired] = useState(false);
   const [selected, setSelected] = useState<Package | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
@@ -1835,6 +1860,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const {
     data: listData,
     isLoading: swrLoading,
+    error: listError,
     mutate: mutateList,
   } = useSWR<{ data: Package[]; count: number; totalPages: number }>(
     // initialPackages 가 있으면 첫 마운트에서는 SWR fetch 안 함 (RSC 데이터로 대체).
@@ -1844,20 +1870,43 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
 
   useEffect(() => {
     if (!listData) return;
-    const nextTotalPages = Math.max(1, listData.totalPages || 1);
+    const rawListData = listData as unknown;
+    if (
+      !rawListData ||
+      typeof rawListData !== 'object' ||
+      !Array.isArray((rawListData as { data?: unknown }).data)
+    ) {
+      setPackages([]);
+      setTotalPages(1);
+      setTotalCount(0);
+      setPackageListLoadError('상품 API 연결을 확인해 주세요.');
+      setLoading(false);
+      return;
+    }
+    const validListData = rawListData as { data: Package[]; count?: number; totalPages?: number };
+    setPackageListLoadError('');
+    const nextTotalPages = Math.max(1, validListData.totalPages || 1);
     if (currentPage > nextTotalPages) {
       setCurrentPage(nextTotalPages);
       return;
     }
-    setPackages(listData.data || []);
+    setPackages(validListData.data || []);
     setTotalPages(nextTotalPages);
-    setTotalCount(listData.count || 0);
+    setTotalCount(validListData.count || 0);
     setLoading(false);
   }, [listData, currentPage]);
+
+  useEffect(() => {
+    if (!listError) return;
+    setPackageListLoadError(getPackageListErrorMessage(listError));
+    setLoading(false);
+  }, [listError]);
 
   // 외부 호출용 (mutation 후 강제 재fetch).
   const load = useCallback(() => {
     if (_skipInitialLoad.current) { _skipInitialLoad.current = false; return; }
+    setPackageListLoadError('');
+    setLoading(true);
     mutateList();
   }, [mutateList]);
 
@@ -2071,6 +2120,10 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       );
     }
 
+    if (activePackageQueue) {
+      list = list.filter(pkg => packageMatchesQueue(pkg, activePackageQueue));
+    }
+
     // 서버 정렬이 기본. 가격 정렬만 로컬 보조(최저가 계산 필요)
     if (sortBy === 'price_asc' || sortBy === 'price_desc') {
       list.sort((a, b) => {
@@ -2081,7 +2134,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     }
 
     return list;
-  }, [packages, statusFilter, searchQuery, sortBy, showExpired]);
+  }, [packages, statusFilter, searchQuery, sortBy, showExpired, activePackageQueue]);
 
   // Shift+Click 지원 체크박스 토글
   const selectedPackagesForBulk = useMemo(
@@ -2348,7 +2401,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     const hasPrice = Boolean(p.price) || Boolean(p.price_tiers?.length);
     return !p.airline || !Array.isArray(days) || days.length === 0 || !hasPrice;
   }).length;
-  const handleQueueSelect = (queue: 'review' | 'copy' | 'publish' | 'deadline' | 'gaps') => {
+  const handleQueueSelect = (queue: PackageQueueSelectKey) => {
     const queueCounts = {
       review: pendingCount,
       copy: reviewCount + gapCount,
@@ -2378,8 +2431,12 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
     });
     setActivePackageQueue(queue === 'gaps' ? 'copy' : queue);
     setSearchQuery('');
-    if (queue === 'review' || queue === 'copy') {
+    setCurrentPage(1);
+    if (queue === 'review') {
       setStatusFilter('pending');
+      setSortBy('created_desc');
+    } else if (queue === 'copy') {
+      setStatusFilter('all');
       setSortBy('created_desc');
     } else if (queue === 'publish') {
       setStatusFilter('selling');
@@ -2393,6 +2450,39 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       setSortBy('created_desc');
     }
   };
+
+  const resetPackageFilters = () => {
+    setActivePackageQueue(null);
+    setSearchQuery('');
+    setLandOperatorFilter('');
+    setStatusFilter('all');
+    setSortBy('created_desc');
+    setShowExpired(false);
+    setCurrentPage(1);
+  };
+
+  const activeQueueLabel = activePackageQueue
+    ? { review: '검수', copy: '수정', publish: '발행', deadline: '마감 대응' }[activePackageQueue]
+    : '';
+  const hasPackageFilters =
+    Boolean(searchQuery.trim()) ||
+    Boolean(landOperatorFilter) ||
+    statusFilter !== 'all' ||
+    Boolean(activePackageQueue) ||
+    showExpired;
+  const packageListErrorMessage = packageListLoadError || getPackageListErrorMessage(listError);
+  const emptyPackageTitle = packageListErrorMessage
+    ? '상품 목록을 불러오지 못했습니다.'
+    : activePackageQueue
+      ? `${activeQueueLabel} 큐에 표시할 상품이 없습니다.`
+      : hasPackageFilters
+        ? '현재 조건에 맞는 상품이 없습니다.'
+        : '상품이 없습니다.';
+  const emptyPackageDescription = packageListErrorMessage || (activePackageQueue
+    ? '큐 조건이 비어 있으면 전체 상품으로 돌아가거나 새 상품을 등록해 다음 작업을 만들 수 있습니다.'
+    : hasPackageFilters
+      ? '검색어, 상태, 랜드사, 만료 포함 조건을 초기화하면 전체 상품을 다시 볼 수 있습니다.'
+      : '문서 업로드 후 AI가 자동으로 상품을 등록하고 검수 큐에 올립니다.');
 
   return (
     <div>
@@ -2443,14 +2533,14 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <input
           type="text"
           value={searchQuery}
-          onChange={e => setSearchQuery(e.target.value)}
+          onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
           aria-label="상품 검색"
           placeholder="상품명, 목적지, 랜드사 검색..."
           className="flex-1 px-3 py-2 border-2 border-admin-border rounded-lg text-admin-sm text-admin-text focus:outline-none focus:border-admin-accent focus:ring-2 focus:ring-blue-200 bg-admin-surface transition-colors"
         />
         <select
           value={landOperatorFilter}
-          onChange={e => setLandOperatorFilter(e.target.value)}
+          onChange={e => { setLandOperatorFilter(e.target.value); setCurrentPage(1); }}
           aria-label="랜드사 필터"
           className="px-3 py-2 border border-admin-border-mid rounded-lg text-admin-sm focus:outline-none bg-white text-admin-muted min-w-[110px]"
         >
@@ -2459,7 +2549,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         </select>
         <select
           value={sortBy}
-          onChange={e => setSortBy(e.target.value)}
+          onChange={e => { setSortBy(e.target.value); setCurrentPage(1); }}
           aria-label="상품 정렬"
           className="px-3 py-2 border border-admin-border-mid rounded-lg text-admin-sm focus:outline-none bg-white text-admin-muted"
         >
@@ -2470,7 +2560,7 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
         <button
           type="button"
           aria-pressed={showExpired}
-          onClick={() => setShowExpired(v => !v)}
+          onClick={() => { setShowExpired(v => !v); setCurrentPage(1); }}
           className={`px-3 py-2 rounded-lg text-admin-sm font-medium border transition ${
             showExpired
               ? 'bg-blue-600 text-white border-blue-600'
@@ -2576,7 +2666,11 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             key={opt.value}
             type="button"
             aria-pressed={statusFilter === opt.value}
-            onClick={() => setStatusFilter(opt.value)}
+            onClick={() => {
+              setActivePackageQueue(null);
+              setStatusFilter(opt.value);
+              setCurrentPage(1);
+            }}
             className={`px-3 py-1.5 rounded-lg text-admin-sm font-medium transition ${
               statusFilter === opt.value
                 ? 'bg-blue-600 text-white'
@@ -2610,7 +2704,22 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
       {/* 목록 */}
       <div className="bg-white rounded-admin-md border border-admin-border-mid overflow-hidden">
         {loading ? (
-          <div className="divide-y divide-slate-50">
+          <div className="divide-y divide-slate-50" data-testid="admin-package-loading-state">
+            <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="text-admin-sm font-semibold text-admin-text-2">상품 목록을 불러오는 중입니다.</p>
+                <p className="mt-1 text-admin-xs text-admin-muted-2">
+                  목록이 느려도 문서 업로드와 필터 정리는 바로 시작할 수 있습니다.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/admin/upload'; }}
+                className="rounded-admin-sm bg-blue-600 px-3 py-2 text-admin-xs font-semibold text-white shadow-admin-xs transition hover:bg-blue-700"
+              >
+                상품 등록
+              </button>
+            </div>
             {Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="flex items-center gap-4 px-4 py-3">
                 <div className="w-4 h-4 bg-admin-surface-2 rounded animate-pulse shrink-0" />
@@ -2625,10 +2734,40 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <div className="py-14 flex flex-col items-center gap-3">
+          <div className="px-4 py-14 flex flex-col items-center gap-3 text-center" data-testid="admin-package-empty-state">
             <svg className="w-10 h-10 text-admin-border-mid" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z" /></svg>
-            <p className="text-admin-sm font-medium text-admin-muted">상품이 없습니다.</p>
-            <p className="text-admin-xs text-admin-muted-2">{searchQuery ? '검색 조건을 바꿔보세요.' : '문서 업로드 후 AI가 자동으로 등록합니다.'}</p>
+            <p className="text-admin-sm font-semibold text-admin-text-2">{emptyPackageTitle}</p>
+            <p className="max-w-xl text-admin-xs leading-5 text-admin-muted-2">{emptyPackageDescription}</p>
+            <div className="mt-2 flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:justify-center">
+              {packageListErrorMessage && (
+                <button
+                  type="button"
+                  onClick={load}
+                  className="rounded-admin-sm bg-blue-600 px-3 py-2 text-admin-xs font-semibold text-white shadow-admin-xs transition hover:bg-blue-700"
+                  data-testid="admin-package-reload-action"
+                >
+                  다시 불러오기
+                </button>
+              )}
+              {hasPackageFilters && (
+                <button
+                  type="button"
+                  onClick={resetPackageFilters}
+                  className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-xs font-semibold text-admin-text-2 transition hover:bg-admin-bg"
+                  data-testid="admin-package-reset-filters-action"
+                >
+                  전체 상품 보기
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => { window.location.href = '/admin/upload'; }}
+                className="rounded-admin-sm border border-admin-border-mid bg-admin-surface px-3 py-2 text-admin-xs font-semibold text-admin-text-2 transition hover:bg-admin-bg"
+                data-testid="admin-package-upload-empty-action"
+              >
+                상품 등록
+              </button>
+            </div>
           </div>
         ) : (
           <>
