@@ -101,6 +101,10 @@ function hasCustomerScheduleEvidence(sectionRawText: string): boolean {
   return FLIGHT_CUSTOMER_TEXT_RE.test(sectionRawText);
 }
 
+function hasCustomerDayMarkerEvidence(sectionRawText: string): boolean {
+  return sectionRawText.length >= 350 && CUSTOMER_SCHEDULE_DAY_MARKER_RE.test(sectionRawText);
+}
+
 export function recoverCatalogSplitFromRawText(rawText: string | null | undefined): MultiProductResult[] {
   if (!rawText?.trim()) return [];
 
@@ -131,6 +135,12 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
       sectionRawText,
     };
   });
+  const productsWithCustomerDayEvidence = products.filter((product, index) => {
+    const ownSection = standardizeKnownMojibakeSupplierText(sections[index] ?? '');
+    return hasCustomerDayMarkerEvidence(ownSection || (product.sectionRawText ?? ''));
+  });
+  if (productsWithCustomerDayEvidence.length >= 2) return productsWithCustomerDayEvidence;
+
   const productsWithCustomerScheduleEvidence = products.filter((product, index) => {
     const ownSection = standardizeKnownMojibakeSupplierText(sections[index] ?? '');
     return hasCustomerScheduleEvidence(ownSection || (product.sectionRawText ?? ''));

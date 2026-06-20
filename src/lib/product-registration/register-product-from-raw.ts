@@ -34,6 +34,32 @@ import type { SourceEvidenceSpan, StandardProductRegistrationObject } from './ty
 const NOTICE_TYPES = new Set<NoticeItem['type']>(['CRITICAL', 'PAYMENT', 'POLICY', 'INFO']);
 type SupplierFlightFacts = ReturnType<typeof extractSupplierRawDeterministicFacts>;
 
+function scoreFlightFacts(facts: SupplierFlightFacts): number {
+  const scoreSegment = (segment: SupplierFlightFacts['outbound']) => (
+    (segment?.code ? 1 : 0)
+    + (segment?.departure.time ? 1 : 0)
+    + (segment?.arrival.time ? 1 : 0)
+    + (segment?.departure.airport ? 1 : 0)
+    + (segment?.arrival.airport ? 1 : 0)
+  );
+  return scoreSegment(facts.outbound) + scoreSegment(facts.inbound);
+}
+
+function selectSourceBackedFlightFacts(
+  rawText: string,
+  documentRawText?: string | null,
+  precomputedSectionFacts?: SupplierFlightFacts,
+): { facts: SupplierFlightFacts; rawText: string } {
+  const sectionFacts = precomputedSectionFacts ?? extractSupplierRawDeterministicFacts(rawText);
+  const documentText = documentRawText?.trim() ?? '';
+  if (!documentText || documentText === rawText.trim()) return { facts: sectionFacts, rawText };
+
+  const documentFacts = extractSupplierRawDeterministicFacts(documentText);
+  return scoreFlightFacts(documentFacts) > scoreFlightFacts(sectionFacts)
+    ? { facts: documentFacts, rawText: documentText }
+    : { facts: sectionFacts, rawText };
+}
+
 function hashRawText(rawText: string): string {
   return createHash('sha256').update(rawText).digest('hex');
 }
@@ -244,13 +270,15 @@ function shouldPreferSupplierItinerary(
     || (supplierHasMeals && !inputHasMeals);
 }
 
-function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDataLike | null {
+function applySupplierRawFacts(ed: ExtractedData, rawText: string, documentRawText?: string | null): ItineraryDataLike | null {
   if (rawText.trim().length < 50) return null;
   const rawFacts = extractSupplierRawDeterministicFacts(rawText);
+  const flightSource = selectSourceBackedFlightFacts(rawText, documentRawText, rawFacts);
+  const flightFacts = flightSource.facts;
   const missingText = (value: unknown) => !value || value === 'UNK' || value === '?';
-  const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
-  const fallbackFlightOut = rawFacts.outbound?.code ?? rawFlightCodes[0] ?? null;
-  const fallbackFlightIn = rawFacts.inbound?.code ?? (rawFlightCodes.length > 1 ? rawFlightCodes[rawFlightCodes.length - 1] : null);
+  const rawFlightCodes = [...flightSource.rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
+  const fallbackFlightOut = flightFacts.outbound?.code ?? rawFlightCodes[0] ?? null;
+  const fallbackFlightIn = flightFacts.inbound?.code ?? (rawFlightCodes.length > 1 ? rawFlightCodes[rawFlightCodes.length - 1] : null);
 
   ed.title = normalizeUploadTitle(ed.title, rawFacts.title) ?? ed.title;
   if ((!ed.destination || ed.destination === 'UNK') && rawFacts.region) ed.destination = rawFacts.region;
@@ -283,17 +311,17 @@ function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDat
   if ((!ed.flight_info?.flight_no) && fallbackFlightOut) {
     ed.flight_info = {
       ...(ed.flight_info ?? {}),
-      airline: ed.airline ?? rawFacts.airline,
+      airline: ed.airline ?? flightFacts.airline ?? rawFacts.airline,
       flight_no: fallbackFlightOut,
-      depart: rawFacts.outbound?.departure.time,
-      arrive: rawFacts.outbound?.arrival.time,
-      return_depart: rawFacts.inbound?.departure.time,
-      return_arrive: rawFacts.inbound?.arrival.time,
+      depart: flightFacts.outbound?.departure.time,
+      arrive: flightFacts.outbound?.arrival.time,
+      return_depart: flightFacts.inbound?.departure.time,
+      return_arrive: flightFacts.inbound?.arrival.time,
     };
   }
 
   const fallbackItinerary = buildSupplierRawDeterministicItinerary(rawText) as unknown as ItineraryDataLike | null;
-  if (!fallbackItinerary && !rawFacts.outbound?.code && !rawFacts.inbound?.code && !ed.airline && !ed.departure_airport) {
+  if (!fallbackItinerary && !flightFacts.outbound?.code && !flightFacts.inbound?.code && !ed.airline && !ed.departure_airport) {
     return null;
   }
 
@@ -303,16 +331,16 @@ function applySupplierRawFacts(ed: ExtractedData, rawText: string): ItineraryDat
   };
   itinerary.meta = {
     ...(itinerary.meta ?? {}),
-    airline: itinerary.meta?.airline ?? ed.airline ?? rawFacts.airline,
+    airline: itinerary.meta?.airline ?? ed.airline ?? flightFacts.airline ?? rawFacts.airline,
     flight_out: itinerary.meta?.flight_out ?? fallbackFlightOut,
     flight_in: itinerary.meta?.flight_in ?? fallbackFlightIn,
-    flight_out_time: itinerary.meta?.flight_out_time ?? rawFacts.outbound?.departure.time ?? ed.flight_info?.depart,
-    flight_out_arrive_time: itinerary.meta?.flight_out_arrive_time ?? rawFacts.outbound?.arrival.time ?? ed.flight_info?.arrive,
-    flight_in_time: itinerary.meta?.flight_in_time ?? rawFacts.inbound?.departure.time ?? ed.flight_info?.return_depart,
-    flight_in_arrive_time: itinerary.meta?.flight_in_arrive_time ?? rawFacts.inbound?.arrival.time ?? ed.flight_info?.return_arrive,
+    flight_out_time: itinerary.meta?.flight_out_time ?? flightFacts.outbound?.departure.time ?? ed.flight_info?.depart,
+    flight_out_arrive_time: itinerary.meta?.flight_out_arrive_time ?? flightFacts.outbound?.arrival.time ?? ed.flight_info?.arrive,
+    flight_in_time: itinerary.meta?.flight_in_time ?? flightFacts.inbound?.departure.time ?? ed.flight_info?.return_depart,
+    flight_in_arrive_time: itinerary.meta?.flight_in_arrive_time ?? flightFacts.inbound?.arrival.time ?? ed.flight_info?.return_arrive,
     departure_airport: itinerary.meta?.departure_airport ?? ed.departure_airport ?? rawFacts.departureAirport,
   };
-  attachRawFactFlightSegments(itinerary, rawFacts, ed, rawText);
+  attachRawFactFlightSegments(itinerary, flightFacts, ed, flightSource.rawText);
   return itinerary;
 }
 
@@ -550,7 +578,7 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
   const rawTextHash = hashRawText(rawText);
   ed.rawText = rawText;
   const normalizationWarnings = await normalizeExtractedDataForRegistration(input, ed);
-  const supplierItinerary = applySupplierRawFacts(ed, rawText);
+  const supplierItinerary = applySupplierRawFacts(ed, rawText, input.documentRawText);
   applyDeterministicProductFieldRecovery(ed, rawText);
   const fieldRecoveryWarnings = applyCrossFieldAndSummaryRecovery(ed, rawText);
 
@@ -640,11 +668,12 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     ? supplierItinerary
     : input.itineraryData ?? supplierItinerary ?? (hasValidSequentialDays(v3ItineraryInput) ? v3ItineraryInput : null);
   if (selectedItinerary) {
+    const flightSource = selectSourceBackedFlightFacts(rawText, input.documentRawText);
     attachRawFactFlightSegments(
       selectedItinerary as ItineraryDataLike & { meta?: Record<string, string | null | undefined>; flight_segments?: unknown },
-      extractSupplierRawDeterministicFacts(rawText),
+      flightSource.facts,
       ed,
-      rawText,
+      flightSource.rawText,
     );
   }
   const itinerary = await normalizeUploadItinerary({

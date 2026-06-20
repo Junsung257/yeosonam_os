@@ -184,3 +184,44 @@ Remaining blocked products are intentionally blocked:
 - Domestic/free-rent documents where the extracted source does not yet contain enough package structure.
 
 Do not mark these customer-publishable unless a future source-backed rule proves the missing price, date, destination, and itinerary fields. The next live registration pass must still run mobile landing and A4 browser verification after Supabase resource pressure is stable.
+
+## 2026-06-21 Follow-up: HWP Table Text Extraction Fallback
+
+The upload inbox still had a practical automation gap for supplier `.hwp` files. `hwp5txt` can return only placeholder table markers such as `<표>` for table-heavy Hancom documents, which made those files look unreadable even when a free non-GUI pyhwp installation was present.
+
+The inbox extractor now:
+
+- Discovers installed `hwp5txt.exe` versions under the user's Python script folders instead of assuming one hard-coded Python version.
+- Tries the bundled Codex Python runtime through `PYHWP_PYTHON`/`python -m hwp5.hwp5txt` when available.
+- Falls back from `hwp5txt` to `hwp5html`, then extracts paragraph and table text from `index.xhtml`.
+- Keeps the same HWP quality threshold, so placeholder-only output is still blocked before registration.
+- Continues to avoid Hancom desktop automation and permission popups.
+
+Smoke replay against `C:\Users\admin\Downloads\여행일정표` with `--limit=20` improved from `extracted=8`, `extractionFailed=5`, `duplicateSkipped=7` to:
+
+```text
+totalFiles: 20
+extracted: 13
+extractionFailed: 0
+duplicateSkipped: 7
+registered: 0
+mobileLandingVerified: false
+```
+
+The same replay then exposed two parser-level issues and promoted them into deterministic rules:
+
+- HWP catalog header rows such as `부산 → 방콕 ( PUS → BKK) BX725 1800-2145` now recover source-backed flight times even when the source omits colons.
+- Split catalog registration now uses full-document flight evidence when a product section inherits a shared top-of-document flight schedule.
+- Catalog preambles that contain only fare/flight tables are not counted as customer products when later sections contain real `DAY/제N일` itinerary evidence.
+
+After those fixes, the extracted-source audit for the same 20-file smoke replay is:
+
+```text
+files: 13
+products: 23
+publishableOffline: 22
+blocked: 1
+customerReadyOffline: 0
+```
+
+The remaining blocked row is a Nha Trang fam-tour notice with no sale price, departure date, or customer itinerary. This is an intentional safe block. This is still extraction/offline evidence: registration and customer mobile/A4 proof require a DB preflight pass and `--register --audit-mobile` for saved package ids.

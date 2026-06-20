@@ -2,8 +2,9 @@
 
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { basename, dirname, extname, isAbsolute, join, resolve } from 'node:path';
 import { config as loadEnv } from 'dotenv';
 
@@ -185,11 +186,26 @@ async function listInputFiles(dir: string, limit: number): Promise<string[]> {
 }
 
 function extractHwpWithExternalTool(filePath: string): string | null {
+  const userPythonScripts = process.env.APPDATA ? join(process.env.APPDATA, 'Python') : null;
+  const hwp5ExecutableCandidates = [
+    userPythonScripts && existsSync(userPythonScripts)
+      ? readdirSync(userPythonScripts, { withFileTypes: true })
+        .filter(entry => entry.isDirectory() && /^Python\d+$/i.test(entry.name))
+        .map(entry => join(userPythonScripts, entry.name, 'Scripts', 'hwp5txt.exe'))
+      : [],
+  ].flat();
+
   const hwp5Candidates = [
     { command: 'hwp5txt', args: [filePath] },
-    process.env.APPDATA
-      ? { command: join(process.env.APPDATA, 'Python', 'Python314', 'Scripts', 'hwp5txt.exe'), args: [filePath] }
+    ...hwp5ExecutableCandidates.map(command => ({ command, args: [filePath] })),
+    process.env.PYHWP_PYTHON ? { command: process.env.PYHWP_PYTHON, args: ['-m', 'hwp5.hwp5txt', filePath] } : null,
+    process.env.USERPROFILE
+      ? {
+          command: join(process.env.USERPROFILE, '.cache', 'codex-runtimes', 'codex-primary-runtime', 'dependencies', 'python', 'python.exe'),
+          args: ['-m', 'hwp5.hwp5txt', filePath],
+        }
       : null,
+    { command: 'py', args: ['-m', 'hwp5.hwp5txt', filePath] },
     { command: 'python', args: ['-m', 'hwp5.hwp5txt', filePath] },
   ].filter((candidate): candidate is { command: string; args: string[] } => {
     if (!candidate) return false;
@@ -202,7 +218,62 @@ function extractHwpWithExternalTool(filePath: string): string | null {
     if (result.status === 0 && isUsableHwpText(text)) return text;
   }
 
+  const htmlText = extractHwpViaHtmlFallback(filePath, hwp5ExecutableCandidates);
+  if (htmlText) return htmlText;
+
   return null;
+}
+
+function extractHwpViaHtmlFallback(filePath: string, hwp5TxtExecutables: string[]): string | null {
+  const htmlCommands = [
+    ...hwp5TxtExecutables.map(command => ({
+      command: command.replace(/hwp5txt\.exe$/i, 'hwp5html.exe'),
+    })),
+  ].filter(candidate => existsSync(candidate.command));
+
+  for (const candidate of htmlCommands) {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'upload-hwp-html-'));
+    const outputDir = join(tempRoot, 'html');
+    try {
+      const result = spawnSync(candidate.command, ['--output', outputDir, filePath], {
+        encoding: 'utf8',
+        timeout: 60_000,
+      });
+      if (result.status !== 0) continue;
+      const indexPath = join(outputDir, 'index.xhtml');
+      if (!existsSync(indexPath)) continue;
+      const text = extractTextFromHwpHtml(readFileSync(indexPath, 'utf8'));
+      if (isUsableHwpText(text)) return text;
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+
+  return null;
+}
+
+function extractTextFromHwpHtml(html: string): string {
+  return normalizeExtractedText(decodeHtmlEntities(
+    html
+      .replace(/<style[\s\S]*?<\/style>/gi, '\n')
+      .replace(/<script[\s\S]*?<\/script>/gi, '\n')
+      .replace(/<\/(?:td|th|p|tr|div|li|h[1-6])>/gi, '\n')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/[ \t]{2,}/g, ' '),
+  ));
+}
+
+function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'");
 }
 
 function normalizeExtractedText(text: unknown): string {
