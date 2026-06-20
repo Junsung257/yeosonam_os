@@ -7,7 +7,7 @@
  * 외부 AI 연결을 위한 엔드포인트 정보 제공
  */
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 
 interface McpToken {
   id: string
@@ -27,6 +27,9 @@ export default function McpSettingsPage() {
   const [newToken, setNewToken] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [copySuccess, setCopySuccess] = useState(false)
+  const [revokeTarget, setRevokeTarget] = useState<McpToken | null>(null)
+  const [revoking, setRevoking] = useState(false)
+  const revokeCancelRef = useRef<HTMLButtonElement | null>(null)
 
   const fetchTokens = useCallback(async () => {
     try {
@@ -42,6 +45,11 @@ export default function McpSettingsPage() {
   }, [])
 
   useEffect(() => { fetchTokens() }, [fetchTokens])
+
+  useEffect(() => {
+    if (!revokeTarget) return
+    requestAnimationFrame(() => revokeCancelRef.current?.focus())
+  }, [revokeTarget])
 
   const handleCreate = async () => {
     if (!newLabel.trim()) return
@@ -63,14 +71,23 @@ export default function McpSettingsPage() {
     }
   }
 
-  const handleRevoke = async (id: string) => {
-    if (!confirm('이 MCP 키를 비활성화할까요?')) return
+  const handleRevoke = (token: McpToken) => {
+    setError('')
+    setRevokeTarget(token)
+  }
+
+  const submitRevoke = async () => {
+    if (!revokeTarget) return
+    setRevoking(true)
     try {
-      const res = await fetch(`/api/admin/mcp/tokens?id=${id}`, { method: 'DELETE' })
+      const res = await fetch(`/api/admin/mcp/tokens?id=${revokeTarget.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error('비활성화 실패')
+      setRevokeTarget(null)
       await fetchTokens()
     } catch (e: any) {
       setError(e.message)
+    } finally {
+      setRevoking(false)
     }
   }
 
@@ -210,7 +227,11 @@ export default function McpSettingsPage() {
                   <td className="py-2">
                     {t.is_active && (
                       <button
-                        onClick={() => handleRevoke(t.id)}
+                        type="button"
+                        onClick={() => handleRevoke(t)}
+                        aria-haspopup="dialog"
+                        aria-expanded={revokeTarget?.id === t.id}
+                        aria-controls="mcp-token-revoke-confirm-dialog"
                         className="text-xs text-red-500 hover:text-red-700"
                       >
                         비활성화
@@ -227,6 +248,76 @@ export default function McpSettingsPage() {
           <p className="mt-3 text-sm text-red-500">{error}</p>
         )}
       </div>
+
+      {revokeTarget && (
+        <div className="fixed inset-0 z-[60] flex h-dvh items-center justify-center overflow-y-auto px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            aria-label="MCP 키 비활성화 확인 닫기"
+            className="absolute inset-0 bg-slate-900/45"
+            onClick={() => setRevokeTarget(null)}
+          />
+          <div
+            id="mcp-token-revoke-confirm-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="mcp-token-revoke-confirm-title"
+            aria-describedby="mcp-token-revoke-confirm-description mcp-token-revoke-confirm-summary"
+            className="relative w-full max-w-md rounded-admin-md border border-red-100 bg-white p-5 shadow-admin-lg"
+          >
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-600">MCP access</p>
+              <h2 id="mcp-token-revoke-confirm-title" className="text-lg font-bold text-admin-text">
+                MCP 키를 비활성화할까요?
+              </h2>
+              <p id="mcp-token-revoke-confirm-description" className="text-sm leading-6 text-admin-muted">
+                이 키를 사용하는 Claude Desktop, Cursor, 외부 AI 연결이 즉시 실패할 수 있습니다.
+              </p>
+            </div>
+
+            <dl
+              id="mcp-token-revoke-confirm-summary"
+              className="mt-4 grid grid-cols-1 gap-2 rounded-admin-sm bg-red-50 p-3 text-sm"
+            >
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">설명</dt>
+                <dd className="font-semibold text-admin-text">{revokeTarget.label}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">키 prefix</dt>
+                <dd className="font-mono text-xs font-semibold text-admin-text">{revokeTarget.token_prefix}...</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">권한</dt>
+                <dd className="font-semibold text-admin-text">{revokeTarget.role}</dd>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <dt className="text-admin-muted">마지막 사용</dt>
+                <dd className="font-semibold text-admin-text">{revokeTarget.last_used_at ?? '-'}</dd>
+              </div>
+            </dl>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                ref={revokeCancelRef}
+                type="button"
+                onClick={() => setRevokeTarget(null)}
+                className="rounded-admin-sm border border-admin-border bg-white px-4 py-2 text-sm font-medium text-admin-text hover:bg-admin-surface-2"
+              >
+                다시 확인
+              </button>
+              <button
+                type="button"
+                onClick={submitRevoke}
+                disabled={revoking}
+                className="rounded-admin-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {revoking ? '처리 중...' : '비활성화'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
