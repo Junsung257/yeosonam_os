@@ -2,6 +2,7 @@ import type { PriceTier } from '../price-table';
 import type { MatrixPriceExtractOptions, MatrixPriceRow } from '../price-matrix';
 
 export type PriceIRSource =
+  | 'compact_grade_period_table'
   | 'period_dow_matrix'
   | 'hotel_column_matrix'
   | 'spot_weekday_table'

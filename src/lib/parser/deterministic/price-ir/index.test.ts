@@ -534,6 +534,132 @@ describe('extractPriceIR product price vertical date table', () => {
   });
 });
 
+const TAIPEI_COMPACT_GRADE_PERIOD_TABLE = `
+BX타이페이/ 3색 패키지
+
+선발특가 3/27일까지 3.3 배포 4/1~4/30
+목
+실속패키지
+베이토우♨+미식
+노팁노옵션
+
+849,-
+989,-
+1,059,-
+
+금
+809,-
+939,-
+1,019,-
+
+화,수,토
+769,-
+899,-
+969,-
+
+일,월
+719,-
+849,-
+929,-
+
+5/1~6/30
+9/1~9/25
+목
+789,-
+919,-
+989,-
+
+금
+749,-
+879,-
+949,-
+
+화,수,토
+699,-
+829,-
+899,-
+
+일,월
+659,-
+789,-
+859,-
+
+7/1~8/7
+목
+829,-
+959,-
+1,039,-
+
+금
+789,-
+919,-
+989,-
+
+화,수,토
+749,-
+879,-
+949,-
+
+일,월
+699,-
+829,-
+899,-
+
+8/8~8/31
+목
+809,-
+939,-
+1,019,-
+
+금
+769,-
+899,-
+969,-
+
+화,수,토
+719,-
+849,-
+929,-
+
+일,월
+679,-
+809,-
+879,-
+
+⚫제외일 4/30, 5/1~3,22~24, 6/3, 7/16,17, 8/14,15, 9/22~25 10/2,3,4,7,8,9
+
+PKG
+BX타이페이/예스지+단수이 실속 3박4일
+`;
+
+describe('extractPriceIR compact grade period table', () => {
+  it('selects the matching product grade column instead of treating it as a hotel matrix', () => {
+    const economy = extractPriceIR(TAIPEI_COMPACT_GRADE_PERIOD_TABLE, {
+      year: 2026,
+      title: 'BX타이페이/예스지+단수이 실속 3박4일',
+      durationDays: 4,
+    });
+    const beitou = extractPriceIR(TAIPEI_COMPACT_GRADE_PERIOD_TABLE, {
+      year: 2026,
+      title: 'BX타이페이/야류+베이토우♨ +미식투어 3박4일',
+      durationDays: 4,
+    });
+    const noTipNoOption = extractPriceIR(TAIPEI_COMPACT_GRADE_PERIOD_TABLE, {
+      year: 2026,
+      title: 'BX타이페이/예스지+단수이 노팁/노옵션 3박4일',
+      durationDays: 4,
+    });
+
+    expect(economy.source).toBe('compact_grade_period_table');
+    expect(economy.rows.find(row => row.date === '2026-07-02')?.adult_price).toBe(829000);
+    expect(beitou.rows.find(row => row.date === '2026-07-02')?.adult_price).toBe(959000);
+    expect(noTipNoOption.rows.find(row => row.date === '2026-07-02')?.adult_price).toBe(1039000);
+    expect(economy.rows.find(row => row.date === '2026-07-16')).toBeUndefined();
+    expect(economy.rows.find(row => row.date === '2026-05-22')).toBeUndefined();
+    expect(economy.rows.some(row => row.adult_price < 100000)).toBe(false);
+  });
+});
+
 describe('extractPriceIR single travel-period product price', () => {
   it('recovers a source-backed package price from travel period plus product price labels', () => {
     const rawText = `

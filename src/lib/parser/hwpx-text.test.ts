@@ -26,6 +26,28 @@ describe('extractHwpxText', () => {
     expect(text).toContain('DAY 1 연길 도착 후 가이드 미팅');
   });
 
+  it('preserves paragraph boundaries for downstream table and itinerary parsers', async () => {
+    const buffer = await buildHwpxBuffer([
+      '<hp:sec>',
+      '<hp:p><hp:run><hp:t>PKG</hp:t></hp:run></hp:p>',
+      '<hp:p><hp:run><hp:t>Product A 3박4일</hp:t></hp:run></hp:p>',
+      '<hp:p><hp:run><hp:t>4/1~4/30</hp:t></hp:run></hp:p>',
+      '<hp:p><hp:run><hp:t>목</hp:t></hp:run></hp:p>',
+      '<hp:p><hp:run><hp:t>849,-</hp:t></hp:run></hp:p>',
+      '</hp:sec>',
+    ].join(''));
+
+    const text = await extractHwpxText(buffer, 'paragraphs.hwpx');
+
+    expect(text.split('\n')).toEqual([
+      'PKG',
+      'Product A 3박4일',
+      '4/1~4/30',
+      '목',
+      '849,-',
+    ]);
+  });
+
   it('fails loudly when the HWPX package has no body sections', async () => {
     const zip = new JSZip();
     zip.file('version.xml', '<version />');

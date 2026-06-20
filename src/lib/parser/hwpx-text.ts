@@ -19,19 +19,24 @@ function normalizeExtractedText(value: string): string {
 }
 
 function extractTextFromSectionXml(xml: string): string {
-  const paragraphChunks = xml
-    .replace(/<\/(?:hp:)?p>/g, '\n')
-    .replace(/<(?:hp:)?br\s*\/?>/g, '\n');
+  const tokens = [...xml.matchAll(
+    /<(?:hp:)?t(?:\s[^>]*)?>([\s\S]*?)<\/(?:hp:)?t>|<(?:hp:)?tab\s*\/?>|<(?:hp:)?br\s*\/?>|<\/(?:hp:)?p>|<\/(?:hp:)?tr>/g,
+  )];
 
-  const textNodes = [...paragraphChunks.matchAll(/<(?:hp:)?t(?:\s[^>]*)?>([\s\S]*?)<\/(?:hp:)?t>/g)]
-    .map(match => decodeXmlEntities(match[1] ?? ''));
+  const textNodes = tokens.map((match) => {
+    if (match[1] != null) return decodeXmlEntities(match[1]);
+    if (/tab/i.test(match[0])) return '\t';
+    return '\n';
+  });
 
   if (textNodes.length > 0) {
-    return normalizeExtractedText(textNodes.join(' '));
+    return normalizeExtractedText(textNodes.join(''));
   }
 
   return normalizeExtractedText(decodeXmlEntities(
-    paragraphChunks
+    xml
+      .replace(/<\/(?:hp:)?p>|<\/(?:hp:)?tr>/g, '\n')
+      .replace(/<(?:hp:)?br\s*\/?>/g, '\n')
       .replace(/<[^>]+>/g, ' ')
       .replace(/[ \t]{2,}/g, ' '),
   ));
