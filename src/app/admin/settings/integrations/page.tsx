@@ -28,6 +28,11 @@ interface AiPolicy {
   note: string | null;
 }
 
+type PolicyNotice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<IntegrationStatus[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,6 +41,7 @@ export default function IntegrationsPage() {
   const [aiPolicies, setAiPolicies] = useState<AiPolicy[]>([]);
   const [policyLoading, setPolicyLoading] = useState(true);
   const [policySaving, setPolicySaving] = useState(false);
+  const [policyNotice, setPolicyNotice] = useState<PolicyNotice | null>(null);
   const [disconnectTarget, setDisconnectTarget] = useState<IntegrationStatus | null>(null);
   const [deletePolicyTarget, setDeletePolicyTarget] = useState<AiPolicy | null>(null);
   const disconnectCancelRef = useRef<HTMLButtonElement | null>(null);
@@ -137,8 +143,12 @@ export default function IntegrationsPage() {
   };
 
   const handleSavePolicy = async () => {
-    if (!policyForm.task.trim()) return alert('task를 입력하세요. (예: card-news, blog-generate, *)');
+    if (!policyForm.task.trim()) {
+      setPolicyNotice({ tone: 'error', message: 'task를 입력하세요. (예: card-news, blog-generate, *)' });
+      return;
+    }
     setPolicySaving(true);
+    setPolicyNotice(null);
     try {
       const res = await fetch('/api/admin/ai-policies', {
         method: 'POST',
@@ -147,14 +157,14 @@ export default function IntegrationsPage() {
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({ error: '정책 저장 실패' }));
-        alert(e.error || '정책 저장 실패');
+        setPolicyNotice({ tone: 'error', message: e.error || '정책 저장 실패' });
         return;
       }
       await fetchPolicies();
-      alert('AI 정책 저장 완료');
+      setPolicyNotice({ tone: 'success', message: 'AI 정책 저장 완료' });
     } catch (err) {
       console.error(err);
-      alert('정책 저장 실패');
+      setPolicyNotice({ tone: 'error', message: '정책 저장 실패' });
     } finally {
       setPolicySaving(false);
     }
@@ -279,6 +289,20 @@ export default function IntegrationsPage() {
             `system_ai_policies`를 수정해 재배포 없이 태스크별 모델을 즉시 전환합니다.
           </p>
         </div>
+
+        {policyNotice && (
+          <div
+            role={policyNotice.tone === 'error' ? 'alert' : 'status'}
+            aria-live={policyNotice.tone === 'error' ? 'assertive' : 'polite'}
+            className={`rounded-admin-md border px-3 py-2 text-admin-xs ${
+              policyNotice.tone === 'error'
+                ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+                : 'border-status-successBorder bg-status-successBg text-status-successFg'
+            }`}
+          >
+            {policyNotice.message}
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
