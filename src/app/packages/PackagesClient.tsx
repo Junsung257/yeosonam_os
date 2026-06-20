@@ -4,7 +4,7 @@ import { useState, useMemo, useCallback, useEffect, useRef, type KeyboardEvent a
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
-import { Phone, Search } from 'lucide-react';
+import { Phone, Search, X } from 'lucide-react';
 import { getMinPriceFromDates } from '@/lib/price-dates';
 import SearchBar from '@/components/customer/SearchBar';
 import GlobalNav from '@/components/customer/GlobalNav';
@@ -84,6 +84,12 @@ const INTENT_OPTIONS = [
 ] as const;
 
 type IntentId = typeof INTENT_OPTIONS[number]['id'];
+type MobileAppliedFilterItem = {
+  key: string;
+  label: string;
+  value: string;
+  clearLabel: string;
+};
 
 function normalizeIntentId(value: string | null): IntentId | null {
   return INTENT_OPTIONS.some(opt => opt.id === value) ? (value as IntentId) : null;
@@ -496,16 +502,24 @@ export default function PackagesClient() {
   const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_COUNT);
   useEffect(() => { setVisibleCount(INITIAL_VISIBLE_COUNT); }, [apiQuery]);
   const visiblePackages = useMemo(() => filteredPackages.slice(0, visibleCount), [filteredPackages, visibleCount]);
-  const mobileAppliedFilterItems = useMemo(
-    () => filterSummaryItems
-      .filter((item) => item.label !== '결과')
-      .slice(0, 4),
-    [filterSummaryItems],
-  );
+  const mobileAppliedFilterItems = useMemo<MobileAppliedFilterItem[]>(() => {
+    const items: MobileAppliedFilterItem[] = [];
+    if (month) items.push({ key: 'month', label: '출발월', value: formatMonthSummary(month), clearLabel: '출발월 조건 해제' });
+    if (hub !== DEFAULT_DEPARTURE_HUB) items.push({ key: 'hub', label: '출발지', value: HUB_SUMMARY_LABELS[hub], clearLabel: '출발지를 기본값으로 되돌리기' });
+    if (selectedIntentInfo) items.push({ key: 'intent', label: '목적', value: selectedIntentInfo.label, clearLabel: '여행 목적 조건 해제' });
+    const budget = formatBudgetSummary(priceMin, priceMax);
+    if (budget) items.push({ key: 'budget', label: '예산', value: budget, clearLabel: '예산 조건 해제' });
+    if (destination) items.push({ key: 'destination', label: '도착지', value: destination, clearLabel: '도착지 조건 해제' });
+    if (activeFilter !== FILTER_OPTIONS[0]) items.push({ key: 'region', label: '지역', value: activeFilter, clearLabel: '지역 조건 해제' });
+    if (category) items.push({ key: 'category', label: '테마', value: CATEGORY_SUMMARY_LABELS[category] ?? category, clearLabel: '테마 조건 해제' });
+    if (urgency === '1') items.push({ key: 'urgency', label: '상태', value: '마감임박', clearLabel: '마감임박 조건 해제' });
+    if (q) items.push({ key: 'q', label: '검색어', value: q, clearLabel: '검색어 조건 해제' });
+    return items.slice(0, 6);
+  }, [activeFilter, category, destination, hub, month, priceMax, priceMin, q, selectedIntentInfo, urgency]);
   const packageAppliedFilterSummaryText = filterSummaryItems.map((item) => `${item.label} ${item.value}`).join(', ');
   const packageMobileAppliedFilterSummaryText = mobileAppliedFilterItems.length > 0
     ? `모바일 적용 조건 ${mobileAppliedFilterItems.length}개: ${mobileAppliedFilterItems.map((item) => `${item.label} ${item.value}`).join(', ')}. 결과 ${filteredPackages.length}개.`
-    : `모바일 적용 조건 없음. 결과 ${filteredPackages.length}개.`;
+    : `${HUB_SUMMARY_LABELS[hub]} 기준, 모바일 적용 조건 없음. 결과 ${filteredPackages.length}개.`;
   const packageResultSummaryText = `현재 조건에 맞는 상품 ${filteredPackages.length}개 중 ${visiblePackages.length}개를 보여주고 있습니다. 적용 조건은 ${packageAppliedFilterSummaryText}입니다. ${primaryFilterReadinessText}`;
   const packageResultSummaryLive = hasActivePackageFilter || compareIds.length > 0;
   const packageFilterGroupDescriptionText = `주요 필터는 출발월, 출발지, 여행 목적, 예산입니다. 더 많은 필터에서 정렬과 지역을 바꿀 수 있습니다. ${packageResultSummaryText}`;
@@ -923,6 +937,55 @@ export default function PackagesClient() {
     trackPackageFilter('region', value);
   }, [trackPackageFilter, updatePackageQuery]);
 
+  const handleMobileFilterClear = useCallback((key: string) => {
+    if (key === 'hub') {
+      navigateWithHub(DEFAULT_DEPARTURE_HUB);
+      trackPackageFilter('clear_departure_hub', DEFAULT_DEPARTURE_HUB);
+      return;
+    }
+    if (key === 'intent') {
+      setSelectedIntent(null);
+      updatePackageQuery({ intent: null });
+      trackPackageFilter('clear_intent', 'all');
+      return;
+    }
+    if (key === 'budget') {
+      updatePackageQuery({ priceMin: null, priceMax: null });
+      trackPackageFilter('clear_budget', 'all');
+      return;
+    }
+    if (key === 'region') {
+      setActiveFilter(FILTER_OPTIONS[0]);
+      updatePackageQuery({ filter: null });
+      trackPackageFilter('clear_region', 'all');
+      return;
+    }
+    if (key === 'month') {
+      updatePackageQuery({ month: null });
+      trackPackageFilter('clear_departure_month', 'all');
+      return;
+    }
+    if (key === 'destination') {
+      updatePackageQuery({ destination: null });
+      trackPackageFilter('clear_destination', 'all');
+      return;
+    }
+    if (key === 'category') {
+      updatePackageQuery({ category: null });
+      trackPackageFilter('clear_category', 'all');
+      return;
+    }
+    if (key === 'urgency') {
+      updatePackageQuery({ urgency: null });
+      trackPackageFilter('clear_urgency', 'all');
+      return;
+    }
+    if (key === 'q') {
+      updatePackageQuery({ q: null });
+      trackPackageFilter('clear_query', 'all');
+    }
+  }, [navigateWithHub, trackPackageFilter, updatePackageQuery]);
+
   const hasActivePackageFilters = Boolean(
     destination ||
       q ||
@@ -1178,23 +1241,32 @@ export default function PackagesClient() {
             className="mt-2 flex items-center gap-2 overflow-x-auto pb-1 md:hidden [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
             <span className="shrink-0 rounded-full bg-brand-light px-2.5 py-1 text-[11px] font-extrabold text-brand">
-              적용 조건 {mobileAppliedFilterItems.length}
+              기준 {HUB_SUMMARY_LABELS[hub]}
             </span>
             <span className="shrink-0 rounded-full border border-[#DCE5F0] bg-white px-2.5 py-1 text-[11px] font-bold text-text-primary">
               결과 {filteredPackages.length}개
             </span>
+            <span className="shrink-0 rounded-full border border-[#DCE5F0] bg-white px-2.5 py-1 text-[11px] font-bold text-text-primary">
+              적용 {mobileAppliedFilterItems.length}
+            </span>
             {mobileAppliedFilterItems.map((item) => (
-              <span
+              <button
+                type="button"
                 key={`mobile:${item.label}:${item.value}`}
-                className="shrink-0 rounded-full border border-[#E5E7EB] bg-white px-2.5 py-1 text-[11px] font-semibold text-text-secondary"
+                onClick={() => handleMobileFilterClear(item.key)}
+                aria-label={`${item.clearLabel}: ${item.label} ${item.value}`}
+                aria-describedby={packageFilterDescriptionIds}
+                className="inline-flex h-7 shrink-0 items-center gap-1 rounded-full border border-[#E5E7EB] bg-white pl-2.5 pr-2 text-[11px] font-semibold text-text-secondary transition hover:border-brand/60 hover:bg-brand-light hover:text-brand"
               >
-                {item.label} {item.value}
-              </span>
+                <span>{item.label} {item.value}</span>
+                <X className="h-3 w-3" aria-hidden="true" strokeWidth={2.4} />
+              </button>
             ))}
             {hasActivePackageFilters && (
               <button
                 type="button"
                 onClick={resetPackageFilters}
+                aria-label="패키지 필터 조건 모두 초기화"
                 aria-describedby={packageFilterDescriptionIds}
                 className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-2.5 py-1 text-[11px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
               >
@@ -1226,6 +1298,7 @@ export default function PackagesClient() {
               <button
                 type="button"
                 onClick={resetPackageFilters}
+                aria-label="패키지 필터 조건 모두 초기화"
                 aria-describedby={packageFilterDescriptionIds}
                 className="shrink-0 rounded-full border border-[#D1DCE8] bg-white px-3 py-1.5 text-[12px] font-bold text-brand transition hover:border-brand/60 hover:bg-brand-light"
               >
@@ -1425,6 +1498,7 @@ export default function PackagesClient() {
                   <button
                     type="button"
                     onClick={resetPackageFilters}
+                    aria-label="패키지 필터 조건 모두 초기화"
                     aria-describedby={packageFilterDescriptionIds}
                     className="px-4 py-2 text-[13px] font-medium text-brand bg-brand-light rounded-full hover:bg-blue-100 transition"
                   >
