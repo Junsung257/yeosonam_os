@@ -2775,6 +2775,14 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
             const mobileBalanceValue = b.status === 'cancelled' ? netCashflow : Math.max(0, balance);
             const mobileStatusLabel = STATUS_LABELS[b.status] || b.status;
             const mobileBalanceText = fmtK(mobileBalanceValue);
+            const mobileDepartureDays = getDepartureDays(b.departure_date);
+            const mobileDepartureLabel = mobileDepartureDays === null
+              ? '미정'
+              : mobileDepartureDays === 0
+                ? '오늘'
+                : mobileDepartureDays > 0
+                  ? `D-${mobileDepartureDays}`
+                  : `D+${Math.abs(mobileDepartureDays)}`;
             const mobileOperationRiskLabel = isTrash
               ? '휴지통 확인'
               : b.status === 'cancelled' && netCashflow > 5000
@@ -2790,6 +2798,7 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
               `${b.customers?.name ?? b.booking_no ?? '고객명 미입력'} 예약`,
               `현재 상태는 ${mobileStatusLabel}`,
               `출발일은 ${fmtDateKo(b.departure_date)}`,
+              `출발 기준은 ${mobileDepartureLabel}`,
               `${mobileBalanceLabel}은 ${mobileBalanceText}`,
               `운영 사유는 ${mobileOperationRiskLabel}`,
               `다음 액션은 ${nextAction.label}`,
@@ -2837,11 +2846,12 @@ export default function BookingsPage({ initialBookings }: { initialBookings?: Bo
                 <div
                   id={mobileDecisionSummaryId}
                   data-testid="admin-booking-mobile-decision-summary"
-                  className="mt-3 grid grid-cols-3 gap-2 rounded-admin-sm border border-admin-border bg-white p-2"
-                  aria-label={`예약 결정 요약: 상태 ${mobileStatusLabel}, ${mobileBalanceLabel} ${mobileBalanceText}, 다음 액션 ${nextAction.label}`}
+                  className="mt-3 grid grid-cols-4 gap-2 rounded-admin-sm border border-admin-border bg-white p-2"
+                  aria-label={`예약 결정 요약: 상태 ${mobileStatusLabel}, 출발 ${mobileDepartureLabel}, ${mobileBalanceLabel} ${mobileBalanceText}, 다음 액션 ${nextAction.label}`}
                 >
                   {[
                     { label: '상태', value: mobileStatusLabel },
+                    { label: '출발', value: mobileDepartureLabel },
                     { label: mobileBalanceLabel, value: mobileBalanceText },
                     { label: '다음', value: nextAction.label },
                   ].map((item) => (
