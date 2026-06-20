@@ -31,6 +31,14 @@ interface Customer {
   totalSales?: number;
 }
 
+type CustomerSortKey = 'name' | 'mileage' | 'created_at' | 'passport_expiry' | 'bookingCount' | 'totalSales';
+
+const CUSTOMER_SORT_KEYS = new Set<CustomerSortKey>(['name', 'mileage', 'created_at', 'passport_expiry', 'bookingCount', 'totalSales']);
+
+function isCustomerSortKey(value: string | null | undefined): value is CustomerSortKey {
+  return Boolean(value && CUSTOMER_SORT_KEYS.has(value as CustomerSortKey));
+}
+
 interface Booking {
   id: string;
   booking_no?: string;
@@ -116,6 +124,18 @@ function debounce<T extends (...args: never[]) => void>(fn: T, ms: number): T {
 export default function CustomersPage() {
   const searchParams = useSearchParams();
   const initialPassportExpiryOnly = searchParams?.get('filter') === 'passport_expiry';
+  const initialSortParam = searchParams?.get('sort') ?? searchParams?.get('sortBy');
+  const initialSortDirParam = searchParams?.get('dir') ?? searchParams?.get('sortDir');
+  const initialSortBy: CustomerSortKey = initialPassportExpiryOnly
+    ? 'passport_expiry'
+    : isCustomerSortKey(initialSortParam)
+      ? initialSortParam
+      : 'created_at';
+  const initialSortDir: 'asc' | 'desc' = initialPassportExpiryOnly
+    ? 'asc'
+    : initialSortDirParam === 'asc'
+      ? 'asc'
+      : 'desc';
   // ── 목록 상태 ──────────────────────────────────────────────────────────────
   // (감사 2026-05-11) main load 를 SWR 로 마이그 — 필터 dedup + 페이지간 캐시.
   // customers 상태는 optimistic mutation 을 위해 별도 유지.
@@ -125,11 +145,12 @@ export default function CustomersPage() {
   const [totalCount, setTotalCount]     = useState(0);
   const [tab, setTab]                   = useState<'active' | 'trash'>('active');
   const [search, setSearch]             = useState('');
-  const [sortBy, setSortBy]             = useState(initialPassportExpiryOnly ? 'passport_expiry' : 'created_at');
-  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>(initialPassportExpiryOnly ? 'asc' : 'desc');
+  const [sortBy, setSortBy]             = useState<CustomerSortKey>(initialSortBy);
+  const [sortDir, setSortDir]           = useState<'asc' | 'desc'>(initialSortDir);
   const [gradeFilter, setGradeFilter]   = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [passportExpiryOnly, setPassportExpiryOnly] = useState(initialPassportExpiryOnly);
+  const openedCustomerParamRef = useRef<string | null>(null);
 
   // ── 다중 선택 ──────────────────────────────────────────────────────────────
   const [selectedIds, setSelectedIds]   = useState<Set<string>>(new Set());
@@ -355,7 +376,7 @@ export default function CustomersPage() {
   // 감사(2026-05-11): bookings/notes/mileage fetch 는 SWR 가 자동 처리 (drawerCustomerId 변경 시).
   // openDrawer 는 state set 만, mileage 는 탭 활성화 시 lazy fetch.
 
-  function openDrawer(c: Customer) {
+  const openDrawer = useCallback((c: Customer) => {
     setOpenMenuId(null);
     setDrawer(c);
     setDrawerTab('info');
@@ -365,7 +386,46 @@ export default function CustomersPage() {
       birth_date: c.birth_date ?? '', memo: c.memo ?? '',
       status: c.status ?? '잠재고객',
     });
-  }
+  }, []);
+
+  useEffect(() => {
+    const customerId = searchParams?.get('id');
+    if (!customerId || openedCustomerParamRef.current === customerId) return;
+
+    const scrollToCustomerRow = () => {
+      document
+        .getElementById(`admin-customer-row-${customerId}`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    };
+
+    const localCustomer = customers.find(c => c.id === customerId);
+    if (localCustomer) {
+      openedCustomerParamRef.current = customerId;
+      openDrawer(localCustomer);
+      window.setTimeout(scrollToCustomerRow, 0);
+      return;
+    }
+
+    let cancelled = false;
+    openedCustomerParamRef.current = customerId;
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/customers?id=${encodeURIComponent(customerId)}`);
+        const json = await res.json();
+        if (!cancelled && res.ok && json.customer) {
+          const customer = json.customer as Customer;
+          setCustomers(prev => prev.some(c => c.id === customer.id) ? prev : [customer, ...prev]);
+          openDrawer(customer);
+          window.setTimeout(scrollToCustomerRow, 0);
+        }
+      } catch {
+        if (!cancelled) openedCustomerParamRef.current = null;
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [customers, openDrawer, searchParams]);
 
   function handleDrawerTabChange(t: typeof drawerTab) {
     setDrawerTab(t);
@@ -572,12 +632,12 @@ export default function CustomersPage() {
 
   // ─── 정렬 ─────────────────────────────────────────────────────────────────
 
-  function handleSort(field: string) {
+  function handleSort(field: CustomerSortKey) {
     const newDir = sortBy === field && sortDir === 'desc' ? 'asc' : 'desc';
     setSortBy(field); setSortDir(newDir);
     setPage(1);
   }
-  const sortIcon = (field: string) =>
+  const sortIcon = (field: CustomerSortKey) =>
     sortBy !== field ? <span className="text-admin-muted-2 ml-1">↕</span>
     : <span className="text-blue-600 ml-1">{sortDir === 'asc' ? '↑' : '↓'}</span>;
 
@@ -817,6 +877,7 @@ export default function CustomersPage() {
 
                 return (
                   <tr key={c.id}
+                    id={`admin-customer-row-${c.id}`}
                     onClick={() => { openDrawer(c); setOpenMenuId(null); }}
                     onKeyDown={e => {
                       if (e.key === 'Enter' || e.key === ' ') {
