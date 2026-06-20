@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'next/navigation';
 import useSWR from 'swr';
 import { useToast } from '@/components/ui/Toast';
 import nextDynamic from 'next/dynamic';
@@ -238,6 +239,40 @@ const STATUS_OPTIONS = [
 
 type PackageQueueKey = 'review' | 'copy' | 'publish' | 'deadline';
 type PackageQueueSelectKey = PackageQueueKey | 'gaps';
+
+function getInitialPackageStatusFilter(status: string | null, queue: string | null): string {
+  const normalizedStatus = (status || '').toLowerCase();
+  const normalizedQueue = (queue || '').toLowerCase();
+  if (
+    normalizedQueue === 'review' ||
+    normalizedStatus === 'pending' ||
+    normalizedStatus === 'pending_review' ||
+    normalizedStatus === 'review_needed' ||
+    normalizedStatus === 'draft'
+  ) {
+    return 'pending';
+  }
+  if (
+    normalizedQueue === 'publish' ||
+    normalizedStatus === 'selling' ||
+    normalizedStatus === 'approved' ||
+    normalizedStatus === 'active'
+  ) {
+    return 'selling';
+  }
+  if (normalizedStatus === 'archived' || normalizedStatus === 'inactive') return 'archived';
+  return 'all';
+}
+
+function getInitialPackageQueue(status: string | null, queue: string | null, filter: string | null): PackageQueueKey | null {
+  const normalizedStatus = (status || '').toLowerCase();
+  const normalizedQueue = (queue || filter || '').toLowerCase();
+  if (normalizedQueue === 'review' || normalizedStatus === 'pending' || normalizedStatus === 'pending_review' || normalizedStatus === 'review_needed') return 'review';
+  if (normalizedQueue === 'copy' || normalizedQueue === 'gaps') return 'copy';
+  if (normalizedQueue === 'publish') return 'publish';
+  if (normalizedQueue === 'deadline') return 'deadline';
+  return null;
+}
 
 const SORT_OPTIONS = [
   { value: 'created_desc', label: '등록일 최신순' },
@@ -1404,6 +1439,16 @@ const PackageRow = React.memo(function PackageRow({
 });
 
 export default function PackagesPage({ initialPackages }: { initialPackages?: Package[] } = {}) {
+  const searchParams = useSearchParams();
+  const initialPackageQueue = getInitialPackageQueue(
+    searchParams?.get('status') ?? null,
+    searchParams?.get('queue') ?? null,
+    searchParams?.get('filter') ?? null,
+  );
+  const initialStatusFilter = getInitialPackageStatusFilter(
+    searchParams?.get('status') ?? null,
+    searchParams?.get('queue') ?? null,
+  );
   const [packages, setPackages] = useState<Package[]>(initialPackages ?? []);
   const [loading, setLoading] = useState(!initialPackages?.length);
   const [packageListLoadError, setPackageListLoadError] = useState('');
@@ -1411,11 +1456,11 @@ export default function PackagesPage({ initialPackages }: { initialPackages?: Pa
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalCount, setTotalCount] = useState(initialPackages?.length ?? 0);
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState(initialStatusFilter);
   const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('created_desc');
-  const [activePackageQueue, setActivePackageQueue] = useState<PackageQueueKey | null>(null);
-  const [showExpired, setShowExpired] = useState(false);
+  const [sortBy, setSortBy] = useState(initialPackageQueue === 'deadline' ? 'deadline_asc' : 'created_desc');
+  const [activePackageQueue, setActivePackageQueue] = useState<PackageQueueKey | null>(initialPackageQueue);
+  const [showExpired, setShowExpired] = useState(initialPackageQueue === 'deadline');
   const [selected, setSelected] = useState<Package | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
