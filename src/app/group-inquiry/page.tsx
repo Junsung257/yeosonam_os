@@ -10,6 +10,7 @@ import {
   MessageCircle,
   Send,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { ANALYTICS_EVENTS } from '@/lib/analytics-events';
 import { GROUP_INQUIRY_PRODUCT_LABEL } from '@/lib/group-inquiry-handoff';
@@ -99,6 +100,13 @@ const INTENT_CHIPS: IntentChip[] = [
     intent: 'golf_comparison',
     partyType: 'club',
   },
+];
+
+const PARTY_SIZE_OPTIONS = [
+  { label: '2명', adults: 2 },
+  { label: '4명', adults: 4 },
+  { label: '10명', adults: 10 },
+  { label: '20명', adults: 20 },
 ];
 
 const INITIAL_AI_MESSAGE =
@@ -592,6 +600,53 @@ export default function GroupInquiryPage() {
     }
   }
 
+  function applyPartySize(adults: number) {
+    const nextExtracted: RfqExtracted = {
+      ...extractedSummary,
+      adult_count: adults,
+    };
+    setExtractedSummary(nextExtracted);
+    setInterviewState((current) => ({
+      ...current,
+      extracted: { ...current.extracted, adult_count: adults },
+      stepsDone: Array.from(new Set([...current.stepsDone, 'party_size_quick_select'])),
+    }));
+    setContactErrors((current) => {
+      if (!current.summary && !current.submit) return current;
+      const next = { ...current };
+      delete next.summary;
+      delete next.submit;
+      return next;
+    });
+    setInputError('');
+    setStatusMessage(`${adults}명 기준으로 견적 조건을 보완했습니다.`);
+    setMessages((current) => {
+      if (current.some((message) => message.role === 'user' && message.content === `인원 ${adults}명`)) return current;
+      return [...current, { role: 'user', content: `인원 ${adults}명` }];
+    });
+    if (
+      hasValue(nextExtracted.destination) &&
+      hasValue(nextExtracted.adult_count) &&
+      (hasValue(nextExtracted.budget_per_person) || hasValue(nextExtracted.total_budget) || hasValue(nextExtracted.budget_label))
+    ) {
+      setRfqReady(true);
+    }
+    trackEngagement({
+      event_type: ANALYTICS_EVENTS.aiRecommendationClicked,
+      source: 'group_inquiry_party_size_quick_select',
+      page_url: window.location.pathname,
+      intent: selectedIntent?.intent ?? null,
+      budget: getSummaryValue(nextExtracted, 'budget'),
+      destination: nextExtracted.destination ?? null,
+      party_type: selectedIntent?.partyType ?? null,
+      selected_products: selectedProducts.length > 0 ? selectedProducts : null,
+      metadata: {
+        selected_adult_count: adults,
+        handoff_source: handoffSource,
+      },
+    });
+  }
+
   function validateContact(): boolean {
     const nextErrors: Record<string, string> = {};
 
@@ -931,6 +986,30 @@ export default function GroupInquiryPage() {
                     {rfqReadinessMissingLabels.length > 0 ? `보완 필요: ${rfqReadinessMissingLabels.join(', ')}` : '바로 등록 가능'}
                   </span>
                 </div>
+                {handoffSource && !hasValue(extractedSummary.adult_count) && (
+                  <div
+                    data-testid="group-inquiry-party-size-quick-select"
+                    className="mt-3 rounded-lg border border-[#E5E7EB] bg-[#F8FAFC] px-3 py-3"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users className="h-4 w-4 text-brand" aria-hidden="true" />
+                      <p className="text-xs font-extrabold text-gray-700">인원만 선택하면 견적 준비가 빨라집니다</p>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="빠른 인원 선택">
+                      {PARTY_SIZE_OPTIONS.map((option) => (
+                        <button
+                          key={option.adults}
+                          type="button"
+                          data-testid="group-inquiry-party-size-chip"
+                          onClick={() => applyPartySize(option.adults)}
+                          className="inline-flex min-h-8 items-center rounded-full border border-[#D7E3F3] bg-white px-3 text-[12px] font-extrabold text-gray-800 transition hover:border-brand/60 hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </section>
