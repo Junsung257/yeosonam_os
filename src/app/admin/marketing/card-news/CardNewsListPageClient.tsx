@@ -41,6 +41,12 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
   const [createTopic, setCreateTopic] = useState('');
   const [createCategoryId, setCreateCategoryId] = useState('');
   const [categories, setCategories] = useState<Category[]>(initialCategories ?? []);
+  const [archiveTarget, setArchiveTarget] = useState<CardNews | null>(null);
+  const [archivingId, setArchivingId] = useState<string | null>(null);
+  const archiveDialogRef = useRef<HTMLDivElement | null>(null);
+  const archiveCancelButtonRef = useRef<HTMLButtonElement | null>(null);
+  const archiveDialogTitleId = 'card-news-archive-confirm-title';
+  const archiveDialogDescriptionId = 'card-news-archive-confirm-description';
 
   const _skipInitialFetch = useRef(!!initialList);
 
@@ -109,6 +115,56 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchList]);
 
+  useEffect(() => {
+    if (!archiveTarget) return undefined;
+
+    const previousActiveElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    archiveCancelButtonRef.current?.focus();
+
+    const getFocusableElements = () => Array.from(
+      archiveDialogRef.current?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      ) ?? [],
+    ).filter(element => !element.hasAttribute('disabled') && element.getAttribute('aria-hidden') !== 'true');
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setArchiveTarget(null);
+        return;
+      }
+
+      if (event.key !== 'Tab') return;
+
+      const focusableElements = getFocusableElements();
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+      previousActiveElement?.focus();
+    };
+  }, [archiveTarget]);
+
   const handleCreate = async () => {
     if (createMode === 'product' && !selectedPkg) return;
     if (createMode === 'info' && !createTopic.trim()) return;
@@ -143,12 +199,19 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
     }
   };
 
-  const handleArchive = async (id: string) => {
-    if (!confirm('이 카드뉴스를 보관 처리하시겠습니까?')) return;
-    await fetch(`/api/card-news/${id}`, {
-      method: 'DELETE',
-    });
-    fetchList();
+  const handleArchive = async () => {
+    if (!archiveTarget) return;
+
+    setArchivingId(archiveTarget.id);
+    try {
+      await fetch(`/api/card-news/${archiveTarget.id}`, {
+        method: 'DELETE',
+      });
+      setArchiveTarget(null);
+      await fetchList();
+    } finally {
+      setArchivingId(null);
+    }
   };
 
   return (
@@ -275,10 +338,14 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
                     </Link>
                     {cn.status !== 'ARCHIVED' && (
                       <button
-                        onClick={() => handleArchive(cn.id)}
+                        type="button"
+                        onClick={() => setArchiveTarget(cn)}
+                        disabled={archivingId === cn.id}
                         className="text-xs px-3 py-1.5 bg-admin-bg text-admin-muted rounded-lg hover:bg-admin-surface-2"
+                        aria-haspopup="dialog"
+                        aria-controls={archiveTarget?.id === cn.id ? 'card-news-archive-confirm-dialog' : undefined}
                       >
-                        보관
+                        {archivingId === cn.id ? '처리 중...' : '보관'}
                       </button>
                     )}
                   </div>
@@ -286,6 +353,64 @@ export default function CardNewsListPage({ initialList, initialPackages, initial
               </div>
             );
           })}
+        </div>
+      )}
+
+      {archiveTarget && (
+        <div
+          className="fixed inset-0 z-[70] flex items-end justify-center bg-slate-950/45 p-0 sm:items-center sm:p-6"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setArchiveTarget(null);
+          }}
+        >
+          <div
+            id="card-news-archive-confirm-dialog"
+            ref={archiveDialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={archiveDialogTitleId}
+            aria-describedby={archiveDialogDescriptionId}
+            className="w-full rounded-t-admin-lg border border-admin-border-mid bg-admin-surface shadow-admin-lg sm:max-w-md sm:rounded-admin-lg"
+          >
+            <div className="border-b border-admin-border-mid px-5 py-4">
+              <h2 id={archiveDialogTitleId} className="text-lg font-bold text-admin-text">
+                카드뉴스를 보관할까요?
+              </h2>
+              <p id={archiveDialogDescriptionId} className="mt-2 text-sm leading-6 text-admin-muted">
+                보관 처리하면 목록에서 활성 작업으로 다루지 않습니다. 필요한 경우 데이터는 다시 조회할 수 있습니다.
+              </p>
+            </div>
+
+            <div className="px-5 py-4">
+              <div className="rounded-admin-md border border-admin-border-mid bg-admin-bg px-3 py-2">
+                <div className="text-[11px] font-semibold uppercase text-admin-muted-2">대상</div>
+                <div className="mt-1 text-sm font-semibold text-admin-text">{archiveTarget.title}</div>
+                <div className="mt-1 text-xs text-admin-muted">
+                  {archiveTarget.package_destination ?? '목적지 미지정'} · {archiveTarget.slides?.length ?? 0}장
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col-reverse gap-2 border-t border-admin-border-mid px-5 py-4 sm:flex-row sm:justify-end">
+              <button
+                ref={archiveCancelButtonRef}
+                type="button"
+                className="rounded-admin-md border border-admin-border-mid px-4 py-2 text-sm font-semibold text-admin-text hover:bg-admin-surface-2 focus:outline-none focus:ring-2 focus:ring-admin-primary"
+                onClick={() => setArchiveTarget(null)}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="rounded-admin-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+                disabled={archivingId === archiveTarget.id}
+                onClick={() => void handleArchive()}
+              >
+                {archivingId === archiveTarget.id ? '보관 처리 중...' : '보관 처리'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
