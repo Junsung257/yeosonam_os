@@ -79,6 +79,17 @@ function splitHandoffList(value: string | null): string[] {
     .slice(0, 8);
 }
 
+function mergeUniqueText(items: Array<string | null | undefined>): string[] {
+  const seen = new Set<string>();
+  return items
+    .map((item) => item?.trim())
+    .filter((item): item is string => {
+      if (!item || seen.has(item)) return false;
+      seen.add(item);
+      return true;
+    });
+}
+
 function buildConciergeHandoffPrompt(searchParams: SearchParamReader): IntentPrompt | null {
   const source = searchParams.get('source')?.trim() ?? '';
   const intent = searchParams.get('intent')?.trim() ?? '';
@@ -802,14 +813,21 @@ function ConciergePageContent() {
   }
 
   async function openKakaoConsult(source: string, focusedProduct?: MockSearchResult, handoffProducts: string[] = []) {
-    const selectedProductNames = [
-      ...(focusedProduct ? [focusedProduct.product_name] : []),
+    const selectedProductNames = mergeUniqueText([
+      focusedProduct?.product_name,
       ...handoffProducts,
       ...cart.map((item) => item.product_name),
-    ].filter((name, index, all) => all.indexOf(name) === index);
+      ...(intentSummary.selected_products ?? []),
+    ]);
+    const trimmedQuery = query.trim();
+    const queryHasDestination = Boolean(intentSummary.destination && trimmedQuery.includes(intentSummary.destination));
+    const queryHasBudget = Boolean(intentSummary.budget && trimmedQuery.includes(intentSummary.budget));
     const escalationSummary = [
-      query.trim() ? `검색어: ${query.trim()}` : null,
+      trimmedQuery ? `검색어: ${trimmedQuery}` : null,
       activePrompt?.label ? `빠른 시작: ${activePrompt.label}` : null,
+      intentSummary.destination && !queryHasDestination ? `목적지: ${intentSummary.destination}` : null,
+      intentSummary.budget && !queryHasBudget ? `예산: ${intentSummary.budget}` : null,
+      intentSummary.party_type ? `동행 유형: ${intentSummary.party_type}` : null,
       focusedProduct ? `현재 추천: ${focusedProduct.product_name}` : null,
       selectedProductNames.length > 0 ? `선택 구성: ${selectedProductNames.join(' / ')}` : null,
     ].filter(Boolean).join('\n');
@@ -839,7 +857,7 @@ function ConciergePageContent() {
       budget: intentSummary.budget,
       destination: intentSummary.destination,
       party_type: intentSummary.party_type,
-      selected_products: selectedProductNames,
+      selected_products: selectedProductNames.length > 0 ? selectedProductNames : intentSummary.selected_products,
       escalationSummary,
     });
     if (copied) {
