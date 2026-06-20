@@ -197,6 +197,12 @@ function hasValidSequentialDays(input: ItineraryDataLike | null): boolean {
   return Array.from(seen).sort((a, b) => a - b).every((day, index) => day === index + 1);
 }
 
+function inferSafeDurationFromItinerary(input: ItineraryDataLike | null): number | null {
+  const days = input?.days ?? [];
+  if (days.length < 2 || days.length > 8) return null;
+  return hasValidSequentialDays(input) ? days.length : null;
+}
+
 function shouldPreferSupplierItinerary(
   inputItinerary: ItineraryDataLike | null | undefined,
   supplierItinerary: ItineraryDataLike | null | undefined,
@@ -648,6 +654,10 @@ export async function registerProductFromRaw(input: RegisterProductFromRawInput)
     durationDays: ed.duration,
     activeAttractions: input.activeAttractions,
   });
+  const itineraryBackedDuration = inferSafeDurationFromItinerary(itinerary.itineraryDataToSave);
+  if (itineraryBackedDuration && (!ed.duration || ed.duration < 2)) {
+    ed.duration = itineraryBackedDuration;
+  }
   if (!ed.airline && itinerary.fallbackAirline) ed.airline = itinerary.fallbackAirline;
   const attractionMedia = evaluateAttractionMediaReadiness({
     itineraryData: itinerary.itineraryDataToSave,

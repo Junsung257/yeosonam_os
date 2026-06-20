@@ -140,6 +140,106 @@ describe('normalizeUploadItinerary', () => {
     expect(result.warnings).toContain('duplicate itinerary days collapsed: day 2');
   });
 
+  it('prunes Korean price/admin and sparse numeric rows misread as late itinerary days', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '서안',
+      durationDays: 5,
+      activeAttractions: [],
+      productRawText: '서안 상품가 및 일정표',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: 'BX341 부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '소림사 관광' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '용문석굴 관광' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '운대산 관광' }] },
+          { day: 5, schedule: [{ type: 'flight', activity: 'BX342 부산 도착' }] },
+          {
+            day: 25,
+            schedule: [
+              { type: 'normal', activity: '5월 9, 16일 1,029,000' },
+              { type: 'normal', activity: '3월 30일(월)까지 항공권 발권하는 조건입니다.' },
+            ],
+          },
+          {
+            day: 10,
+            schedule: [
+              { type: 'normal', activity: '314M' },
+              { type: 'normal', activity: ':' },
+            ],
+          },
+        ],
+      } as never,
+    });
+
+    const days = result.itineraryDataToSave?.days ?? [];
+    expect(days.map(day => day.day)).toEqual([1, 2, 3, 4, 5]);
+    expect(result.warnings).toContain('out-of-range polluted itinerary days pruned: day 10, 25');
+  });
+
+  it('prunes late outlier table rows even when product duration is unavailable', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '서안',
+      activeAttractions: [],
+      productRawText: '서안 티벳 일정표',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'flight', activity: '부산 출발' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '서안 관광' }] },
+          { day: 3, schedule: [{ type: 'activity', activity: '티벳 이동' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '라싸 관광' }] },
+          { day: 5, schedule: [{ type: 'activity', activity: '고궁 관광' }] },
+          { day: 6, schedule: [{ type: 'activity', activity: '공항 이동' }] },
+          {
+            day: 30,
+            schedule: [
+              { type: 'normal', activity: '3월 30일(월)까지 발권 조건' },
+              { type: 'normal', activity: '5월 23, 30일 1,099,000' },
+            ],
+          },
+        ],
+      } as never,
+    });
+
+    const days = result.itineraryDataToSave?.days ?? [];
+    expect(days.map(day => day.day)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(result.warnings).toContain('outlier polluted itinerary days pruned: day 30');
+  });
+
+  it('does not prune a near-gap day when the schedule might be real', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '하노이',
+      activeAttractions: [],
+      productRawText: '하노이 사파 3박5일',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'activity', activity: '하노이 도착' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '사파 관광' }] },
+          { day: 4, schedule: [{ type: 'activity', activity: '롯데센터 하노이 전망대 관광' }] },
+        ],
+      } as never,
+    });
+
+    expect((result.itineraryDataToSave?.days ?? []).map(day => day.day)).toEqual([1, 2, 4]);
+  });
+
+  it('does not trust a one-day duration enough to prune real multi-day schedules', async () => {
+    const result = await normalizeUploadItinerary({
+      destination: '청도',
+      durationDays: 1,
+      activeAttractions: [],
+      productRawText: '청도 3일 일정표',
+      itineraryData: {
+        days: [
+          { day: 1, schedule: [{ type: 'activity', activity: '신호산 관광' }] },
+          { day: 2, schedule: [{ type: 'activity', activity: '청양 야시장 관광' }] },
+          { day: 3, schedule: [{ type: 'flight', activity: '부산 도착' }] },
+        ],
+      } as never,
+    });
+
+    expect((result.itineraryDataToSave?.days ?? []).map(day => day.day)).toEqual([1, 2, 3]);
+  });
+
   it('preserves source-backed top-level flight segments after itinerary normalization', async () => {
     const flightSegments = [
       {

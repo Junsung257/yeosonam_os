@@ -155,27 +155,38 @@ function looksLikePriceTableDay(day: ItineraryDayLike): boolean {
     .filter(Boolean)
     .join(' ');
   if (!text) return true;
+  const priceLikeCount = (text.match(/\d{1,2}\s*(?:월)?\s*\d{1,2}|[1-9]\d{0,2},\d{3}/g) ?? []).length;
+  const koreanPriceOrAdminCount = (text.match(/(?:\d{1,2}\s*월|\d{1,2}\s*일|[1-9]\d{0,2},\d{3}|발권|요금|상품가|PKG|포함사항|불포함|선택\s*관광|\$\s*\d+)/gu) ?? []).length;
+  if (priceLikeCount >= 3 || koreanPriceOrAdminCount >= 4) return true;
+
   const hasFlightOrHotel = schedule.some(item => {
     const row = item as { type?: unknown; transport?: unknown; activity?: unknown };
+    const activity = String(row.activity ?? '');
     return row.type === 'flight'
       || row.type === 'hotel'
       || (typeof row.transport === 'string' && /^[A-Z]{2}\d{2,4}$/.test(row.transport))
-      || /HOTEL|호텔|공항|출발|도착/.test(String(row.activity ?? ''));
+      || /HOTEL|호텔|공항|도착/.test(activity)
+      || (/\b[A-Z]{2}\d{2,4}\b/.test(activity) && /출발/.test(activity));
   });
   if (hasFlightOrHotel) return false;
-  const priceLikeCount = (text.match(/\d{1,2}\s*(?:월)?\s*\d{1,2}|[1-9]\d{0,2},\d{3}/g) ?? []).length;
   const lowSignalCount = schedule.filter(item => {
     const activity = activityKey((item as { activity?: unknown }).activity);
     return !activity || activity === ':' || activity === 'OR' || /^\(?\s*\d+\s*\)?\.?$/.test(activity);
   }).length;
-  return priceLikeCount >= 2 || lowSignalCount >= Math.max(2, Math.floor(schedule.length / 2));
+  const sparseNumericOrPunctuationOnly = schedule.length <= 2
+    && text.length <= 32
+    && /^[\s\d:.,()A-Za-zM/-]+$/.test(text);
+  return priceLikeCount >= 2
+    || koreanPriceOrAdminCount >= 2
+    || lowSignalCount >= Math.max(2, Math.floor(schedule.length / 2))
+    || sparseNumericOrPunctuationOnly;
 }
 
 function pruneOutOfRangePollutedDays<T extends ItineraryDataLike | null>(itineraryData: T, durationDays?: number | null): {
   itineraryData: T;
   warnings: string[];
 } {
-  if (!itineraryData?.days?.length || typeof durationDays !== 'number' || durationDays <= 0) {
+  if (!itineraryData?.days?.length || typeof durationDays !== 'number' || durationDays < 2) {
     return { itineraryData, warnings: [] };
   }
   const removed: number[] = [];
@@ -190,6 +201,38 @@ function pruneOutOfRangePollutedDays<T extends ItineraryDataLike | null>(itinera
   return {
     itineraryData: { ...itineraryData, days } as T,
     warnings: [`out-of-range polluted itinerary days pruned: day ${[...new Set(removed)].sort((a, b) => a - b).join(', ')}`],
+  };
+}
+
+function pruneOutlierPollutedDays<T extends ItineraryDataLike | null>(itineraryData: T): {
+  itineraryData: T;
+  warnings: string[];
+} {
+  if (!itineraryData?.days?.length) return { itineraryData, warnings: [] };
+  const dayNumbers = new Set(
+    itineraryData.days
+      .map(day => dayNumber(day.day))
+      .filter((value): value is number => value !== null),
+  );
+  if (!dayNumbers.has(1)) return { itineraryData, warnings: [] };
+
+  let contiguousEnd = 1;
+  while (dayNumbers.has(contiguousEnd + 1)) contiguousEnd += 1;
+  if (contiguousEnd < 3) return { itineraryData, warnings: [] };
+
+  const removed: number[] = [];
+  const days = itineraryData.days.filter(day => {
+    const number = dayNumber(day.day);
+    if (number === null || number <= contiguousEnd + 2) return true;
+    if (!looksLikePriceTableDay(day)) return true;
+    removed.push(number);
+    return false;
+  });
+  if (removed.length === 0) return { itineraryData, warnings: [] };
+
+  return {
+    itineraryData: { ...itineraryData, days } as T,
+    warnings: [`outlier polluted itinerary days pruned: day ${[...new Set(removed)].sort((a, b) => a - b).join(', ')}`],
   };
 }
 
@@ -264,7 +307,9 @@ export async function normalizeUploadItinerary(input: {
   const initialPrune = prunePollutedScheduleItems(itineraryInput);
   const initialRangeRepair = pruneOutOfRangePollutedDays(initialPrune.itineraryData, input.durationDays);
   warnings.push(...initialRangeRepair.warnings);
-  const initialDuplicateRepair = collapseDuplicateDayEntries(initialRangeRepair.itineraryData, input.durationDays);
+  const initialOutlierRepair = pruneOutlierPollutedDays(initialRangeRepair.itineraryData);
+  warnings.push(...initialOutlierRepair.warnings);
+  const initialDuplicateRepair = collapseDuplicateDayEntries(initialOutlierRepair.itineraryData, input.durationDays);
   warnings.push(...initialDuplicateRepair.warnings);
   itineraryInput = compileItineraryForLanding(initialDuplicateRepair.itineraryData);
 
@@ -299,7 +344,9 @@ export async function normalizeUploadItinerary(input: {
   );
   const postRangeRepair = pruneOutOfRangePollutedDays(postMergePrune.itineraryData, input.durationDays);
   warnings.push(...postRangeRepair.warnings);
-  const duplicateDayRepair = collapseDuplicateDayEntries(postRangeRepair.itineraryData, input.durationDays);
+  const postOutlierRepair = pruneOutlierPollutedDays(postRangeRepair.itineraryData);
+  warnings.push(...postOutlierRepair.warnings);
+  const duplicateDayRepair = collapseDuplicateDayEntries(postOutlierRepair.itineraryData, input.durationDays);
   warnings.push(...duplicateDayRepair.warnings);
   const itineraryDataToSave = preserveTopLevelFlightSegments(duplicateDayRepair.itineraryData, itineraryInput);
 
