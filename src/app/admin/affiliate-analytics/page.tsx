@@ -96,6 +96,7 @@ export default function AffiliateAnalyticsPage() {
   const [basis, setBasis] = useState<KPIBasis>(DEFAULT_KPI_BASIS);
   const basisMeta = getBasisMeta(basis);
   const [savingModel, setSavingModel] = useState(false);
+  const [modelNotice, setModelNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
 
   // SWR — basis 변경 시 자동 재fetch, keepPreviousData 로 토글 깜빡임 제거
   const { data, isLoading, isValidating } = useSWR<AnalyticsResponse>(
@@ -118,6 +119,7 @@ export default function AffiliateAnalyticsPage() {
 
   const saveAttributionModel = async (model: AttributionModel) => {
     setSavingModel(true);
+    setModelNotice(null);
     try {
       const res = await fetch('/api/admin/affiliate-settings', {
         method: 'PATCH',
@@ -126,8 +128,9 @@ export default function AffiliateAnalyticsPage() {
       });
       if (!res.ok) throw new Error();
       mutateSettings({ attribution_model: model }, { revalidate: false });
+      setModelNotice({ tone: 'success', message: '귀속 모델이 저장되었습니다.' });
     } catch {
-      alert('모델 저장 실패');
+      setModelNotice({ tone: 'error', message: '모델 저장 실패' });
     } finally {
       setSavingModel(false);
     }
@@ -164,6 +167,20 @@ export default function AffiliateAnalyticsPage() {
             <KPIBasisToggle value={basis} onChange={setBasis} />
           </div>
         </div>
+
+        {modelNotice && (
+          <div
+            role={modelNotice.tone === 'error' ? 'alert' : 'status'}
+            aria-live={modelNotice.tone === 'error' ? 'assertive' : 'polite'}
+            className={`rounded-admin-sm border px-3 py-2 text-xs ${
+              modelNotice.tone === 'error'
+                ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+                : 'border-status-successBorder bg-status-successBg text-status-successFg'
+            }`}
+          >
+            {modelNotice.message}
+          </div>
+        )}
 
         {modelCompare && (
           <div className="bg-white rounded-admin-md border border-admin-border-mid p-4">

@@ -83,6 +83,7 @@ export default function AffiliateDetailPage() {
   const [pkgQuery, setPkgQuery] = useState('');
   const [pkgResults, setPkgResults] = useState<Array<{ id: string; title?: string; display_title?: string; destination?: string; status?: string }>>([]);
   const [savingLanding, setSavingLanding] = useState(false);
+  const [landingNotice, setLandingNotice] = useState<{ tone: 'success' | 'error'; message: string } | null>(null);
   const [promoRows, setPromoRows] = useState<PromoPerformance[]>([]);
 
   const [siteOrigin, setSiteOrigin] = useState('');
@@ -210,6 +211,7 @@ export default function AffiliateDetailPage() {
   const handleSaveLanding = async () => {
     if (!affiliateId) return;
     setSavingLanding(true);
+    setLandingNotice(null);
     try {
       const res = await fetch('/api/affiliates', {
         method: 'PATCH',
@@ -223,10 +225,11 @@ export default function AffiliateDetailPage() {
       });
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
-        alert((j as { error?: string }).error || '저장 실패');
+        setLandingNotice({ tone: 'error', message: (j as { error?: string }).error || '저장 실패' });
         return;
       }
       await load();
+      setLandingNotice({ tone: 'success', message: '랜딩 설정이 저장되었습니다.' });
     } finally {
       setSavingLanding(false);
     }
@@ -528,6 +531,19 @@ export default function AffiliateDetailPage() {
             </ul>
           )}
         </div>
+        {landingNotice && (
+          <div
+            role={landingNotice.tone === 'error' ? 'alert' : 'status'}
+            aria-live={landingNotice.tone === 'error' ? 'assertive' : 'polite'}
+            className={`rounded-admin-sm border px-3 py-2 text-xs ${
+              landingNotice.tone === 'error'
+                ? 'border-status-dangerBorder bg-status-dangerBg text-status-dangerFg'
+                : 'border-status-successBorder bg-status-successBg text-status-successFg'
+            }`}
+          >
+            {landingNotice.message}
+          </div>
+        )}
         <button
           type="button"
           onClick={handleSaveLanding}
