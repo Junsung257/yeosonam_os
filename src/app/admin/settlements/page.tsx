@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { AlertCircle, CheckCircle, Clock, Coins, Copy, ExternalLink, PauseCircle, Receipt, Wallet, X, XCircle } from 'lucide-react';
 import { PageHeader, KpiCard } from '@/components/admin/patterns';
@@ -49,6 +49,11 @@ interface PayoutEvidenceForm {
   withholding_amount: string;
   receipt_url: string;
 }
+
+type StatusConfirmTarget = {
+  settlement: Settlement;
+  status: Exclude<SettlementStatus, 'COMPLETED' | 'HOLD'>;
+};
 
 const STATUS_BADGES: Record<string, string> = {
   PENDING: 'bg-status-neutralBg text-status-neutralFg',
@@ -159,9 +164,11 @@ export default function SettlementsPage() {
   const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
   const [completionTarget, setCompletionTarget] = useState<Settlement | null>(null);
   const [holdTarget, setHoldTarget] = useState<Settlement | null>(null);
+  const [statusConfirmTarget, setStatusConfirmTarget] = useState<StatusConfirmTarget | null>(null);
   const [holdReason, setHoldReason] = useState('');
   const [search, setSearch] = useState('');
   const [copiedEvidence, setCopiedEvidence] = useState('');
+  const statusConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
   const [evidence, setEvidence] = useState<PayoutEvidenceForm>({
     payout_reference: '',
     paid_by: '',
@@ -194,6 +201,11 @@ export default function SettlementsPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!statusConfirmTarget) return;
+    requestAnimationFrame(() => statusConfirmCancelRef.current?.focus());
+  }, [statusConfirmTarget]);
+
   const closeSettlement = async (affiliateId: string) => {
     setClosing(affiliateId);
     try {
@@ -214,7 +226,6 @@ export default function SettlementsPage() {
   };
 
   const updateStatus = async (id: string, status: SettlementStatus, payload: Record<string, unknown> = {}) => {
-    if (!['COMPLETED', 'HOLD'].includes(status) && !confirm(`정산 상태를 "${STATUS_LABELS[status]}"로 변경할까요?`)) return;
     setStatusUpdating(id);
     try {
       const res = await fetch('/api/settlements', {
@@ -229,6 +240,7 @@ export default function SettlementsPage() {
       }
       setCompletionTarget(null);
       setHoldTarget(null);
+      setStatusConfirmTarget(null);
       setHoldReason('');
       load();
     } finally {
@@ -261,6 +273,18 @@ export default function SettlementsPage() {
   const openHoldModal = (settlement: Settlement) => {
     setHoldTarget(settlement);
     setHoldReason(settlement.hold_reason || '');
+  };
+
+  const openStatusConfirm = (
+    settlement: Settlement,
+    status: Exclude<SettlementStatus, 'COMPLETED' | 'HOLD'>,
+  ) => {
+    setStatusConfirmTarget({ settlement, status });
+  };
+
+  const submitStatusConfirm = () => {
+    if (!statusConfirmTarget) return;
+    updateStatus(statusConfirmTarget.settlement.id, statusConfirmTarget.status);
   };
 
   const submitHold = () => {
@@ -445,7 +469,7 @@ export default function SettlementsPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => updateStatus(s.id, 'READY')}
+                        onClick={() => openStatusConfirm(s, 'READY')}
                         disabled={statusUpdating === s.id || Number(s.final_payout || 0) <= 0}
                       >
                         지급 대기
@@ -475,7 +499,7 @@ export default function SettlementsPage() {
                       <Button
                         variant="primary"
                         size="sm"
-                        onClick={() => updateStatus(s.id, 'READY')}
+                        onClick={() => openStatusConfirm(s, 'READY')}
                         disabled={statusUpdating === s.id}
                       >
                         보류 해제
@@ -485,7 +509,7 @@ export default function SettlementsPage() {
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => updateStatus(s.id, 'VOID')}
+                        onClick={() => openStatusConfirm(s, 'VOID')}
                         disabled={statusUpdating === s.id}
                       >
                         취소
@@ -569,6 +593,15 @@ export default function SettlementsPage() {
             setHoldReason('');
           }}
           onSubmit={submitHold}
+        />
+      )}
+      {statusConfirmTarget && (
+        <SettlementStatusConfirmModal
+          target={statusConfirmTarget}
+          submitting={statusUpdating === statusConfirmTarget.settlement.id}
+          cancelRef={statusConfirmCancelRef}
+          onClose={() => setStatusConfirmTarget(null)}
+          onSubmit={submitStatusConfirm}
         />
       )}
     </div>
@@ -786,6 +819,96 @@ function HoldReasonModal({
           </Button>
           <Button variant="primary" size="sm" onClick={onSubmit} disabled={disabled} loading={submitting}>
             보류 저장
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettlementStatusConfirmModal({
+  target,
+  submitting,
+  cancelRef,
+  onClose,
+  onSubmit,
+}: {
+  target: StatusConfirmTarget;
+  submitting: boolean;
+  cancelRef: { current: HTMLButtonElement | null };
+  onClose: () => void;
+  onSubmit: () => void;
+}) {
+  const { settlement, status } = target;
+  const isVoid = status === 'VOID';
+
+  return (
+    <div className="fixed inset-0 z-50 flex h-dvh items-center justify-center overflow-y-auto bg-black/35 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settlement-status-confirm-title"
+        aria-describedby="settlement-status-confirm-description settlement-status-confirm-summary"
+        className="w-full max-w-md rounded-admin-md border border-admin-border-mid bg-admin-surface shadow-admin-lg"
+      >
+        <div className="flex items-start justify-between border-b border-admin-border px-5 py-4">
+          <div>
+            <h2 id="settlement-status-confirm-title" className="text-admin-h2 text-admin-text">
+              정산 상태 변경
+            </h2>
+            <p id="settlement-status-confirm-description" className="mt-1 text-admin-xs leading-5 text-admin-muted">
+              {settlement.affiliates?.name} 정산을 {STATUS_LABELS[status]} 상태로 변경합니다.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex h-8 w-8 items-center justify-center rounded-admin-sm text-admin-muted hover:bg-admin-surface-2 hover:text-admin-text"
+            aria-label="정산 상태 변경 확인 닫기"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <div className="px-5 py-4">
+          <div
+            id="settlement-status-confirm-summary"
+            className={`rounded-admin-sm border px-3 py-3 text-admin-sm ${
+              isVoid
+                ? 'border-status-dangerFg/20 bg-status-dangerBg text-status-dangerFg'
+                : 'border-status-infoFg/20 bg-status-infoBg text-status-infoFg'
+            }`}
+          >
+            <div className="flex justify-between gap-3">
+              <span>현재 상태</span>
+              <span className="font-bold">{STATUS_LABELS[settlement.status] || settlement.status}</span>
+            </div>
+            <div className="mt-1 flex justify-between gap-3">
+              <span>변경 상태</span>
+              <span className="font-bold">{STATUS_LABELS[status]}</span>
+            </div>
+            <div className="mt-1 flex justify-between gap-3">
+              <span>실지급액</span>
+              <span className="admin-num font-bold">{krw(settlement.final_payout)}</span>
+            </div>
+          </div>
+          {isVoid ? (
+            <p className="mt-3 rounded-admin-sm bg-status-warningBg px-3 py-2 text-admin-xs font-medium text-status-warningFg">
+              취소 상태로 바꾸면 지급 흐름에서 제외됩니다. 증빙과 파트너 안내 상태를 확인해 주세요.
+            </p>
+          ) : null}
+        </div>
+        <div className="flex justify-end gap-2 border-t border-admin-border px-5 py-4">
+          <button
+            ref={cancelRef}
+            type="button"
+            onClick={onClose}
+            disabled={submitting}
+            className="h-8 rounded-admin-sm border border-admin-border-mid px-3 text-admin-sm font-medium text-admin-text-2 hover:bg-admin-surface-2 disabled:opacity-50"
+          >
+            다시 확인
+          </button>
+          <Button variant={isVoid ? 'danger' : 'primary'} size="sm" onClick={onSubmit} disabled={submitting} loading={submitting}>
+            {STATUS_LABELS[status]}로 변경
           </Button>
         </div>
       </div>
