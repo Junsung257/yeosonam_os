@@ -1,6 +1,7 @@
 import type { DaySchedule, ScheduleItem, TravelItinerary } from '@/types/itinerary';
 
 type DayBlock = { day: number; body: string };
+type DayHeader = { day: number; index: number; tail: string };
 type HeaderFlightSegment = {
   leg: 'outbound' | 'inbound';
   flight_no: string;
@@ -12,7 +13,15 @@ type HeaderFlightSegment = {
   day_pair: [number, number];
 };
 
-const DAY_LINE_RE = /^\s*(?:DAY\s*)?(\d+)\s*(?:일|일차|day)?\s*$/i;
+const DAY_LINE_RE = /^\s*(?:제\s*)?(?:DAY\s*)?(\d+)\s*(?:일차|일|day)?\s*$/i;
+const JE_DAY_LINE_RE = /^\s*제\s*(\d{1,2})\s*(?:일차|일)\s*$/;
+const REVERSED_DAY_LINE_RE = /^\s*일\s*(\d{1,2})\s*$/;
+const SPACED_JE_DAY_LINE_RE = /^\s*제\s*일\s*(\d{1,2})(?:\s*차)?\s*$/;
+const JE_INLINE_DAY_LINE_RE = /^\s*제\s*(\d{1,2})\s*(?:일차|일)\s+(.+)$/;
+const INLINE_DAY_LINE_RE = /^\s*(?:제\s*)?(?:DAY\s*)?(\d{1,2})\s*(?:일차|일|day)?\s+(.+)$/i;
+const REVERSED_INLINE_DAY_LINE_RE = /^\s*일\s*(\d{1,2})\s+(.+)$/;
+const SPACED_JE_INLINE_DAY_LINE_RE = /^\s*제\s*일\s*(\d{1,2})(?:\s*차)?\s*(.+)$/;
+const EXPLICIT_DAY_PREFIX_RE = /^\s*제\s*(\d{1,2})\s*(?:일차|일)\s*(.*)$/;
 const FLIGHT_CODE_RE = /\b([A-Z]{2}\d{2,4})\b/;
 const FLIGHT_CODE_GLOBAL_RE = /\b([A-Z]{2}\d{2,4})\b/g;
 const TIME_ONLY_RE = /^\d{1,2}:\d{2}(?:\(\+\d+\)|\+\d+)?$/;
@@ -20,24 +29,81 @@ const STRUCTURAL_LINE_RE = /^(?:지역|교통편|교통|시간|일정|식사|비
 const STOP_LINE_RE = /^(?:포함\s*(?:내역|사항)|불포함|취소|예약|안내|주의\s*사항|특약|약관|상품가)$/;
 const REGION_HINT_RE = /^(?:부산|김해|인천|후쿠오카|큐슈|규슈|벳부|벳푸|유후인|쿠로가와|아소|오사카|도쿄|삿포로|나고야|나라|교토)$/;
 
+function inferDurationBound(rawText: string): number | null {
+  const values = [...rawText.matchAll(/(\d{1,2})\s*박\s*(\d{1,2})\s*일/g)]
+    .map(match => Number(match[2]))
+    .filter(value => Number.isFinite(value) && value > 0 && value <= 30);
+  for (const match of rawText.matchAll(/(?:^|[^\d])(\d{1,2})\s*일\s*\/\s*(\d{1,2})\s*일/g)) {
+    const left = Number(match[1]);
+    const right = Number(match[2]);
+    if (Number.isFinite(left) && left > 0 && left <= 30) values.push(left);
+    if (Number.isFinite(right) && right > 0 && right <= 30) values.push(right);
+  }
+  return values.length > 0 ? Math.max(...values) : null;
+}
+
+function matchDayHeader(line: string): { day: number; tail: string } | null {
+  const trimmed = line.trim();
+  const explicitPrefix = trimmed.match(EXPLICIT_DAY_PREFIX_RE);
+  if (explicitPrefix) {
+    const tail = (explicitPrefix[2] ?? '').trim();
+    if (/\d{1,3}(?:,\d{3})+/.test(tail)) return null;
+    return { day: Number(explicitPrefix[1]), tail };
+  }
+  const exact = trimmed.match(DAY_LINE_RE);
+  if (exact) return { day: Number(exact[1]), tail: '' };
+  const jeExact = trimmed.match(JE_DAY_LINE_RE);
+  if (jeExact) return { day: Number(jeExact[1]), tail: '' };
+  const reversedExact = trimmed.match(REVERSED_DAY_LINE_RE);
+  if (reversedExact) return { day: Number(reversedExact[1]), tail: '' };
+  const spacedJeExact = trimmed.match(SPACED_JE_DAY_LINE_RE);
+  if (spacedJeExact) return { day: Number(spacedJeExact[1]), tail: '' };
+
+  const inline = trimmed.match(JE_INLINE_DAY_LINE_RE)
+    ?? trimmed.match(INLINE_DAY_LINE_RE)
+    ?? trimmed.match(REVERSED_INLINE_DAY_LINE_RE)
+    ?? trimmed.match(SPACED_JE_INLINE_DAY_LINE_RE);
+  if (!inline) return null;
+  const tail = inline[2].trim();
+  if (/\d{1,3}(?:,\d{3})+/.test(tail)) return null;
+  if (/^\s*(?:제\s*)?\d{1,2}\s*(?:일차|일)\b/u.test(trimmed) && /[\p{Script=Hangul}A-Za-z]/u.test(tail)) {
+    return { day: Number(inline[1]), tail };
+  }
+  if (/^\s*제\s*일\s*\d{1,2}/u.test(trimmed) && /[\p{Script=Hangul}A-Za-z]/u.test(tail)) {
+    return { day: Number(inline[1]), tail };
+  }
+  if (!/(?:\d{1,2}:\d{2}|[A-Z]{2}\d{2,4}|[:：]|공항|출발|도착|호텔|조\s*[:：]|중\s*[:：]|석\s*[:：]|▶)/.test(tail)) {
+    return null;
+  }
+  return { day: Number(inline[1]), tail };
+}
+
 function splitByKoreanDayLines(rawText: string): DayBlock[] {
   const lines = rawText.replace(/\r\n/g, '\n').split('\n');
-  const headers: Array<{ day: number; index: number }> = [];
+  const headers: DayHeader[] = [];
+  const durationBound = inferDurationBound(rawText);
 
   lines.forEach((line, index) => {
-    const match = line.trim().match(DAY_LINE_RE);
+    const match = matchDayHeader(line);
     if (!match) return;
-    const day = Number(match[1]);
-    if (day >= 1 && day <= 30) headers.push({ day, index });
+    const day = match.day;
+    if (day >= 1 && day <= 30) headers.push({ day, index, tail: match.tail });
   });
+  const boundedHeaders = durationBound
+    ? headers.filter(header => header.day <= durationBound)
+    : headers;
 
-  if (headers.length === 0) return [];
+  if (boundedHeaders.length === 0) return [];
 
-  return headers.map((header, index) => {
-    const next = headers[index + 1]?.index ?? lines.length;
+  return boundedHeaders.map((header, index) => {
+    const next = boundedHeaders[index + 1]?.index ?? lines.length;
+    const bodyLines = [
+      ...(header.tail ? [header.tail] : []),
+      ...lines.slice(header.index + 1, next),
+    ];
     return {
       day: header.day,
-      body: lines.slice(header.index + 1, next).join('\n'),
+      body: bodyLines.join('\n'),
     };
   });
 }

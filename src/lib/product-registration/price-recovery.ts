@@ -5,6 +5,7 @@ import { hydratePriceTiers } from '@/lib/period-label-dates';
 import { extractSupplierRawDeterministicFacts } from '@/lib/supplier-raw-deterministic-facts';
 import type { ProductPriceRowInput } from '@/lib/upload-validator';
 import { inferDepartureDaysFromRawText } from './departure-days';
+import { readSupplierDocumentLikeHuman } from './ai-human-reader';
 
 export type UploadPriceRecoveryResult = {
   ok: boolean;
@@ -171,6 +172,17 @@ export function normalizeStrictFallbackPriceTiers(raw: unknown): PriceTier[] {
 
 function supplierRawFactsToTiers(rawText: string): PriceTier[] {
   const facts = extractSupplierRawDeterministicFacts(rawText);
+  if (facts.datePrices?.length) {
+    return facts.datePrices.map(row => ({
+      period_label: 'supplier_raw_date_price',
+      departure_dates: [row.date],
+      adult_price: row.adult,
+      child_price: row.child ?? undefined,
+      status: 'available',
+      note: 'supplier_raw_facts',
+    }));
+  }
+
   const adultPrice = facts.prices.adult;
   if (!adultPrice || facts.dates.length === 0) return [];
 
@@ -182,6 +194,34 @@ function supplierRawFactsToTiers(rawText: string): PriceTier[] {
     status: 'available',
     note: 'supplier_raw_facts',
   }];
+}
+
+function humanReaderPricePairsToTiers(rawText: string, options: UploadPriceRecoveryOptions): PriceTier[] {
+  const reader = readSupplierDocumentLikeHuman({
+    rawText,
+    title: options.title,
+    accommodations: options.accommodations,
+    durationDays: options.durationDays,
+    departureDays: options.departureDays,
+    year: options.year,
+  });
+  const seen = new Set<string>();
+  return reader.pricePairs
+    .map((pair): PriceTier | null => {
+      if (!pair.date || !Number.isFinite(pair.adult_price) || pair.adult_price < 250_000) return null;
+      const key = `${pair.date}|${pair.adult_price}|${pair.child_price ?? ''}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      return {
+        period_label: pair.note ?? 'source_backed_price_pair',
+        departure_dates: [pair.date],
+        adult_price: pair.adult_price,
+        child_price: pair.child_price ?? undefined,
+        status: normalizeStatus(pair.status),
+        note: 'human_reader_source_backed',
+      };
+    })
+    .filter((tier): tier is PriceTier => tier != null);
 }
 
 function groupedDeparturePriceTiers(rawText: string, year?: number): PriceTier[] {
@@ -418,6 +458,17 @@ export async function recoverUploadPriceData(
       };
     }
     failures.push(...explainCandidate('supplier_raw_facts', supplierRawCandidate));
+
+    const humanReaderCandidate = evaluateCandidate(ed, humanReaderPricePairsToTiers(rawText, options), ctx);
+    if (humanReaderCandidate.priceRows.length > 0 && humanReaderCandidate.priceDates.length > 0) {
+      return {
+        ok: true,
+        source: 'human_reader_source_backed',
+        failures,
+        ...humanReaderCandidate,
+      };
+    }
+    failures.push(...explainCandidate('human_reader_source_backed', humanReaderCandidate));
   } else {
     failures.push('deterministic:원문 길이 부족');
   }

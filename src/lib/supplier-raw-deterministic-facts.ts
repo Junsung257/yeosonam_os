@@ -23,11 +23,33 @@ export type SupplierRawDeterministicFacts = {
   notices: ReturnType<typeof extractInfoNotices>;
   dates: string[];
   prices: { adult: number | null; child: number | null };
+  datePrices?: Array<{ date: string; adult: number; child: number | null }>;
 };
 
 function parseMoney(text: string | undefined): number | null {
   const digits = text?.replace(/[^\d]/g, '');
   return digits ? Number(digits) : null;
+}
+
+function extractSourceDatePrices(rawText: string): Array<{ date: string; adult: number; child: number | null }> {
+  const rows: Array<{ date: string; adult: number; child: number | null }> = [];
+  const seen = new Set<string>();
+  const text = rawText.replace(/\r\n/g, '\n');
+
+  for (const match of text.matchAll(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b([\s\S]{0,120}?)(?=\b20\d{2}-\d{1,2}-\d{1,2}\b|\n|$)/g)) {
+    const date = toIsoDate(Number(match[1]), Number(match[2]), Number(match[3]));
+    if (!date || seen.has(date)) continue;
+
+    const amounts = [...(match[4] ?? '').matchAll(/([1-9]\d{0,2}(?:,\d{3})+|[1-9]\d{5,})(?!\s*(?:분|시간|명))/g)]
+      .map(amountMatch => Number(amountMatch[1].replace(/[^\d]/g, '')))
+      .filter(price => Number.isFinite(price) && price >= 250_000 && price <= 50_000_000);
+    if (amounts.length === 0) continue;
+
+    seen.add(date);
+    rows.push({ date, adult: amounts[0], child: amounts[1] ?? null });
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function inferYearFromRawText(rawText: string): number {
@@ -85,6 +107,71 @@ function parseCompactDepartureDateList(source: string, fallbackYear: number): st
   return dates;
 }
 
+function inferUploadYearForMonth(month: number): number {
+  const now = new Date();
+  const currentMonth = now.getMonth() + 1;
+  return month < currentMonth ? now.getFullYear() + 1 : now.getFullYear();
+}
+
+function parseKoreanDepartureDateList(source: string): string[] {
+  const dates: string[] = [];
+  const seen = new Set<string>();
+  let currentYear = 0;
+  let currentMonth: number | null = null;
+
+  const push = (year: number, month: number, day: number) => {
+    const iso = toIsoDate(year, month, day);
+    if (!iso || seen.has(iso)) return;
+    seen.add(iso);
+    dates.push(iso);
+  };
+
+  const text = source
+    .replace(/\([^)]*\)/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  for (const match of text.matchAll(/(20\d{2})\D{0,5}(\d{1,2})\D{0,5}(\d{1,2})/g)) {
+    currentYear = Number(match[1]);
+    currentMonth = Number(match[2]);
+    push(currentYear, currentMonth, Number(match[3]));
+  }
+  if (dates.length > 0) return dates.sort();
+
+  for (const match of text.matchAll(/(?:^|[^\d])(\d{1,2})\s*[./]\s*(\d{1,2})(?=$|[^\d])/g)) {
+    currentMonth = Number(match[1]);
+    const year = currentYear || inferUploadYearForMonth(currentMonth);
+    push(year, currentMonth, Number(match[2]));
+  }
+
+  if (currentMonth != null) {
+    for (const match of text.matchAll(/(?:^|[^\d/])(\d{1,2})(?=$|[^\d/])/g)) {
+      const day = Number(match[1]);
+      if (day < 1 || day > 31) continue;
+      const year = currentYear || inferUploadYearForMonth(currentMonth);
+      push(year, currentMonth, day);
+    }
+  }
+
+  return dates.sort();
+}
+
+function extractKoreanDepartureDateBlock(rawText: string): string {
+  const lines = rawText.replace(/\r\n/g, '\n').split('\n');
+  const labelRe = /(?:출\s*발\s*일\s*자|출\s*발\s*일|출발일자|출발일|출발날짜|출발일정)/;
+  const stopRe = /(?:룸\s*타\s*입|인\s*원|판\s*매|판매|요금|상품가|포\s*함|불\s*포\s*함|쇼\s*핑|R\s*M\s*K|날\s*짜|일\s*자|상세\s*일정)/;
+  for (let i = 0; i < lines.length; i++) {
+    if (!labelRe.test(lines[i])) continue;
+    const collected = [lines[i]];
+    for (const line of lines.slice(i + 1, i + 4)) {
+      if (stopRe.test(line)) break;
+      collected.push(line);
+    }
+    return collected.join(' ');
+  }
+  return '';
+}
+
 function extractHeadingBlock(rawText: string, heading: RegExp, stop: RegExp, maxLines = 8): string {
   const lines = rawText.replace(/\r\n/g, '\n').split('\n');
   const collected: string[] = [];
@@ -104,6 +191,9 @@ function extractHeadingBlock(rawText: string, heading: RegExp, stop: RegExp, max
 
 function extractDepartureDates(rawText: string): string[] {
   const fallbackYear = inferYearFromRawText(rawText);
+  const koreanLabeled = parseKoreanDepartureDateList(extractKoreanDepartureDateBlock(rawText));
+  if (koreanLabeled.length > 0) return koreanLabeled;
+
   const labeled = extractHeadingBlock(
     rawText,
     /^\s*(?:출\s*발\s*일(?:자|정)?|출\s*발\s*날\s*짜)\s*[:：-]?\s*(.*)$/i,
@@ -114,7 +204,7 @@ function extractDepartureDates(rawText: string): string[] {
   if (labeledDates.length > 0) return labeledDates;
 
   const line = rawText.match(/(?:출발일|출발일자|출발날짜|출발일정)\s*[:：]?\s*([^\n]+)/)?.[1] ?? '';
-  const source = /(20\d{2})[./-](\d{1,2})[./-](\d{1,2})/.test(line) ? line : rawText;
+  const source = /(20\d{2})[./-](\d{1,2})[./-](\d{1,2})/.test(line) ? line : '';
   return [...source.matchAll(/(20\d{2})[./-](\d{1,2})[./-](\d{1,2})/g)]
     .map(m => `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`);
 }
@@ -217,10 +307,30 @@ function cleanTitleCandidate(line: string): string {
     .trim();
 }
 
+function looksLikePriceTableTitleNoise(line: string): boolean {
+  const cleaned = line.replace(/\s+/g, ' ').trim();
+  if (!cleaned) return true;
+  if (/^\d{1,3}(?:,\d{3})+\s*(?:원)?$/.test(cleaned)) return true;
+  if (/^(?:출발일|출발날짜|상품가|요금|요금표|패턴|비고|요일)\b/u.test(cleaned)) return true;
+  if (/(?:\d{1,2}[./]\d{1,2}|\d{1,2}\s+\d{1,2}).*\d{1,3}(?:,\d{3})+/.test(cleaned)) return true;
+  if (/^\d{1,2}\s*월\b.*\d{1,3}(?:,\d{3})+/.test(cleaned)) return true;
+  return false;
+}
+
+function hasReadableTitleSignal(line: string): boolean {
+  const withoutDuration = line
+    .replace(/\d+\s*박\s*\d+\s*일/g, ' ')
+    .replace(/(?:^|[^\d])\d{1,2}\s*일(?:\s*\/\s*\d{1,2}\s*일)?(?:$|[^\d])/gu, ' ')
+    .replace(/\b(?:PKG|PACKAGE)\b/gi, ' ')
+    .trim();
+  return (withoutDuration.match(/[\p{Script=Hangul}A-Za-z]/gu) ?? []).length >= 2;
+}
+
 function titleCandidateScore(line: string): number {
   const cleaned = cleanTitleCandidate(line);
   if (isSupplierHeaderLine(cleaned)) return -1000;
   if (cleaned.length < 6 || cleaned.length > 90) return -100;
+  if (looksLikePriceTableTitleNoise(cleaned)) return -1000;
   if (/^(여\s*행\s*경\s*비|적용기간|요일|COM|포함\s*사\s*항|불포함\s*사항|옵\s*션|쇼\s*핑|REMARK)$/i.test(cleaned)) return -1000;
   if (/^\d{1,3}(?:,\d{3})+$/.test(cleaned)) return -1000;
 
@@ -273,13 +383,21 @@ function extractRegion(rawText: string): string | null {
 
 function extractTitle(rawText: string): string | null {
   const title = rawText.match(/(?:상품명|상품명칭|행사명)\s*[:：]\s*([^\n]+)/)?.[1]?.trim();
-  if (title && !isSupplierHeaderLine(title)) return cleanTitleCandidate(title);
+  if (title && !isSupplierHeaderLine(title) && !looksLikePriceTableTitleNoise(title)) return cleanTitleCandidate(title);
   const lines = rawText.split(/\r?\n/).map(line => line.trim()).filter(Boolean);
+  const inlinePkgTitle = lines.find(line => (
+    /\bPKG\b/i.test(line)
+    && /(?:\d+\s*박\s*\d+\s*일|\d{1,2}\s*일(?:\s*\/\s*\d{1,2}\s*일)?)/u.test(line)
+    && hasReadableTitleSignal(line)
+    && !looksLikePriceTableTitleNoise(line)
+  ));
+  if (inlinePkgTitle && !isSupplierHeaderLine(inlinePkgTitle)) return cleanTitleCandidate(inlinePkgTitle);
   const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
   const pkgTitle = pkgIndex >= 0
     ? lines.slice(pkgIndex + 1).find(line => (
         line.length >= 8
         && !/^\d{2,4}[./-]\d{1,2}/.test(line)
+        && !looksLikePriceTableTitleNoise(line)
         && !/^(출\s*발\s*일|판\s*매\s*가|포함사항|불포함사항|비고|주의사항)$/i.test(line)
       ))
     : null;
@@ -295,6 +413,7 @@ function extractTitle(rawText: string): string | null {
   const first = lines.find(line => (
     line.length >= 4
     && !/^\d{2,4}[./-]\d{1,2}/.test(line)
+    && !looksLikePriceTableTitleNoise(line)
     && !/^(PKG|현금영수증|취소규정|일본골프상품)/.test(line)
     && !isSupplierHeaderLine(line)
   ));
@@ -355,15 +474,114 @@ function extractFlightSegment(rawText: string, labels: string[]) {
   };
 }
 
+type SourceFlightSegment = NonNullable<ReturnType<typeof extractFlightSegment>>;
+
+function mergeFlightRows(rawText: string, ...groups: SourceFlightSegment[][]): SourceFlightSegment[] {
+  const merged: SourceFlightSegment[] = [];
+  const informativeAirport = (value: string | null | undefined) => Boolean(value && value !== '미정' && !/^[A-Z]{2}$/.test(value));
+  const score = (row: SourceFlightSegment) =>
+    (informativeAirport(row.departure.airport) ? 1 : 0)
+    + (informativeAirport(row.arrival.airport) ? 1 : 0)
+    + (row.departure.time ? 1 : 0)
+    + (row.arrival.time ? 1 : 0)
+    - (row.departure.airport === row.arrival.airport && informativeAirport(row.departure.airport) ? 1 : 0);
+
+  for (const group of groups) {
+    for (const row of group) {
+      const existingIndex = merged.findIndex(existing => existing.code === row.code);
+      if (existingIndex < 0) {
+        merged.push(row);
+        continue;
+      }
+      if (score(row) > score(merged[existingIndex])) merged[existingIndex] = row;
+    }
+  }
+
+  return merged.sort((a, b) => rawText.indexOf(a.code) - rawText.indexOf(b.code));
+}
+
+function extractLooseFlightRows(rawText: string): SourceFlightSegment[] {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const rows: SourceFlightSegment[] = [];
+  const codeRe = /\b([A-Z]{2}\d{2,4})\b/;
+  const cityFromLine = (line: string): string => {
+    if (/다낭\s*출발|다낭출발|다낭.*향발/.test(line)) return '다낭';
+    if (/간사이\s*(?:국제)?공항?\s*출발|간사이.*출발/.test(line)) return '간사이';
+    if (/신치토세\s*(?:국제)?\s*공항?\s*출발|신치토세.*출발/.test(line)) return '신치토세';
+    if (/부산|김해/.test(line)) return '부산';
+    if (/신치토세|치토세/.test(line)) return '신치토세';
+    if (/간사이/.test(line)) return '간사이';
+    if (/다낭/.test(line)) return '다낭';
+    const tokens = line.match(/[가-힣]{2,}/g) ?? [];
+    const cleaned = tokens
+      .map(token => token.replace(/국제공항|공항|출발|향발|도착|입국|수속|이동/g, '').trim())
+      .filter(token => token.length >= 2);
+    return cleaned[0] ?? '미정';
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const code = lines[i].match(codeRe)?.[1];
+    if (!code) continue;
+
+    const window: string[] = [];
+    for (let j = i; j < Math.min(lines.length, i + 12); j++) {
+      if (j > i && codeRe.test(lines[j])) break;
+      window.push(lines[j]);
+    }
+    const rawTimes = window.flatMap(line => [...line.matchAll(/\b(\d{1,2}:\d{2})\b/g)].map(match => match[1]));
+    if (rawTimes.length < 2) continue;
+
+    const hasPreFlightGathering = window.some(line => /미팅|집결|수속|전용\s*차량|전용차량|호텔\s*조식/.test(line));
+    const hasAirportDepartureArrival = window.some(line => /(?:공항|airport).{0,30}(?:출발|향발|depart)/i.test(line) || /[가-힣]{2,}\s*출발/.test(line))
+      && window.some(line => /(?:공항|airport).{0,30}(?:도착|arrival)/i.test(line) || /[가-힣]{2,}\s*도착/.test(line));
+    const times = rawTimes.length >= 3 && hasPreFlightGathering && hasAirportDepartureArrival
+      ? rawTimes.slice(-2)
+      : rawTimes.slice(0, 2);
+    if (times.length < 2) continue;
+
+    const depLine = window.find(line => /(?:공항|airport).{0,30}(?:출발|향발|depart)/i.test(line) || /[가-힣]{2,}\s*출발/.test(line)) ?? '';
+    const arrLine = window.find(line => /(?:공항|airport).{0,30}(?:도착|arrival)/i.test(line) || /[가-힣]{2,}\s*도착/.test(line)) ?? '';
+    rows.push({
+      code,
+      departure: { time: times[0], airport: cityFromLine(depLine || lines[i]) },
+      arrival: { time: times[1], airport: cityFromLine(arrLine) },
+    });
+  }
+
+  return rows.filter((row, index, arr) => (
+    arr.findIndex(other => other.code === row.code && other.departure.time === row.departure.time) === index
+  ));
+}
+
 function extractRouteFlightSegments(rawText: string): {
   outbound: ReturnType<typeof extractFlightSegment>;
   inbound: ReturnType<typeof extractFlightSegment>;
 } {
+  const looseRows = extractLooseFlightRows(rawText);
   const inlineRows = extractInlineRouteFlightRows(rawText);
   if (inlineRows.length > 0) {
+    const candidates = mergeFlightRows(rawText, inlineRows, looseRows);
     return {
-      outbound: inlineRows[0] ?? null,
-      inbound: inlineRows.length > 1 ? inlineRows[inlineRows.length - 1] : null,
+      outbound: candidates[0] ?? null,
+      inbound: candidates.length > 1 ? candidates[candidates.length - 1] : null,
+    };
+  }
+
+  const adjacentRows = extractAdjacentScheduleFlightRows(rawText);
+  if (adjacentRows.length > 0) {
+    const stackedRows = extractStackedFlightRows(rawText);
+    const informativeAirport = (value: string | null | undefined) => Boolean(value && value !== '미정' && !/^[A-Z]{2}$/.test(value));
+    const adjacentHasAirportEvidence = adjacentRows.some(row => (
+      informativeAirport(row.departure.airport) || informativeAirport(row.arrival.airport)
+    ));
+    const baseCandidates = adjacentHasAirportEvidence || stackedRows.length === 0 ? adjacentRows : stackedRows;
+    const candidates = mergeFlightRows(rawText, baseCandidates, stackedRows, looseRows);
+    return {
+      outbound: candidates[0] ?? null,
+      inbound: candidates.length > 1 ? candidates[candidates.length - 1] : null,
     };
   }
 
@@ -382,7 +600,7 @@ function extractRouteFlightSegments(rawText: string): {
     .filter((row): row is NonNullable<typeof row> => row != null);
 
   const stackedRows = rows.length > 0 ? [] : extractStackedFlightRows(rawText);
-  const candidates = rows.length > 0 ? rows : stackedRows;
+  const candidates = mergeFlightRows(rawText, rows.length > 0 ? rows : stackedRows, looseRows);
   if (candidates.length === 0) return { outbound: null, inbound: null };
   return {
     outbound: candidates[0] ?? null,
@@ -416,12 +634,154 @@ function extractInlineRouteFlightRows(rawText: string): Array<NonNullable<Return
   ));
 }
 
+function extractAdjacentScheduleFlightRows(rawText: string): Array<NonNullable<ReturnType<typeof extractFlightSegment>>> {
+  const lines = rawText
+    .split(/\r?\n/)
+    .map(line => line.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  const rows: Array<NonNullable<ReturnType<typeof extractFlightSegment>>> = [];
+  const codeRe = /\b([A-Z]{2})\s?(\d{2,4})\b/;
+  const meetingTimes = new Set(lines
+    .filter(line => /미팅|집결/.test(line))
+    .map(line => line.match(/\b(\d{1,2}:\d{2})\b/)?.[1])
+    .filter((time): time is string => Boolean(time)));
+
+  const codeAndInlineTime = (line: string): { code: string; time: string } | null => {
+    const compactThreeDigit = line.match(/\b([A-Z]{2})(\d{3})(\d{1,2}:\d{2})\b/);
+    if (compactThreeDigit) return { code: `${compactThreeDigit[1]}${compactThreeDigit[2]}`, time: compactThreeDigit[3] };
+    const compactFourDigit = line.match(/\b([A-Z]{2})(\d{4})(\d{1,2}:\d{2})\b/);
+    if (compactFourDigit) return { code: `${compactFourDigit[1]}${compactFourDigit[2]}`, time: compactFourDigit[3] };
+    const spaced = line.match(/\b([A-Z]{2})\s?(\d{2,4})\b.*?\b(\d{1,2}:\d{2})\b/);
+    if (spaced) return { code: `${spaced[1]}${spaced[2]}`, time: spaced[3] };
+    return null;
+  };
+
+  const codeFromLine = (line: string): string | null => {
+    const inline = codeAndInlineTime(line);
+    if (inline) return inline.code;
+    const match = line.match(codeRe);
+    return match ? `${match[1]}${match[2]}` : null;
+  };
+
+  const cityFromLine = (line: string): string => {
+    if (/부산|김해/.test(line)) return '부산';
+    if (/치토세|신치토세/.test(line)) return '치토세';
+    if (/나리타/.test(line)) return '나리타';
+    if (/하네다/.test(line)) return '하네다';
+    if (/푸꾸옥/.test(line)) return '푸꾸옥';
+    if (/다낭/.test(line)) return '다낭';
+    if (/나트랑|깜란/.test(line)) return '나트랑';
+    if (/타이베이|타이페이|도원/.test(line)) return '타이베이';
+    const tokens = line.match(/[\p{Script=Hangul}A-Za-z]{2,}/gu) ?? [];
+    const cleaned = tokens
+      .map(token => token.replace(/국제공항|공항|출발|향발|도착|입국|수속|집결|전용차|차량|편으로/g, '').trim())
+      .filter(token => token.length >= 2 && !/^[A-Z]{2}$/.test(token));
+    return cleaned[0] ?? '';
+  };
+
+  const timeFromLine = (line: string): string | null => codeAndInlineTime(line)?.time
+    ?? line.match(/\b(\d{1,2}:\d{2})\b/)?.[1]
+    ?? null;
+
+  for (let i = 0; i < lines.length; i++) {
+    const code = codeFromLine(lines[i]);
+    if (!code) continue;
+    const originHint = cityFromLine(lines[i]);
+    if (/(도착|입국)/.test(lines[i]) && !/(출발|향발)/.test(lines[i])) {
+      const arrivalTime = timeFromLine(lines[i]);
+      const departureLine = lines
+        .slice(Math.max(0, i - 6), i)
+        .reverse()
+        .find(line => Boolean(timeFromLine(line)) && /(출발|향발)/.test(line) && !/(집결|미팅)/.test(line));
+      const departureTime = departureLine ? timeFromLine(departureLine) : null;
+      if (arrivalTime && departureLine && departureTime) {
+        rows.push({
+          code,
+          departure: { time: departureTime, airport: cityFromLine(departureLine) },
+          arrival: { time: arrivalTime, airport: cityFromLine(lines[i]) },
+        });
+        continue;
+      }
+    }
+
+    const window = lines.slice(i, i + 12);
+    let departure: { time: string; airport: string } | null = null;
+    let arrival: { time: string; airport: string } | null = null;
+
+    for (const line of window) {
+      const time = timeFromLine(line);
+      if (!time) continue;
+      if (!departure && /(출발|향발)/.test(line) && !/(집결|미팅)/.test(line)) {
+        const airport = /향발/.test(line) && !/출발/.test(line)
+          ? originHint || cityFromLine(line)
+          : cityFromLine(line);
+        departure = { time, airport };
+        continue;
+      }
+      if (departure && /(도착|입국)/.test(line)) {
+        arrival = { time, airport: cityFromLine(line) };
+        break;
+      }
+    }
+
+    if (!departure || !arrival) {
+      const previousTimes = lines
+        .slice(Math.max(0, i - 4), i)
+        .map(line => timeFromLine(line))
+        .filter((time): time is string => typeof time === 'string' && !meetingTimes.has(time));
+      const nextWindow: string[] = [];
+      for (let j = i; j < Math.min(lines.length, i + 12); j++) {
+        if (j > i && codeFromLine(lines[j])) break;
+        nextWindow.push(lines[j]);
+      }
+      let nextTimes = nextWindow
+        .map(line => timeFromLine(line))
+        .filter((time): time is string => typeof time === 'string');
+      const hasPreFlightGathering = nextWindow.some(line => /미팅|집결|수속|전용\s*차량|전용차량/.test(line));
+      const hasAirportDepartureArrival = nextWindow.some(line => /(?:공항|airport).{0,30}(?:출발|향발|depart)/i.test(line))
+        && nextWindow.some(line => /(?:공항|airport).{0,30}(?:도착|arrival)/i.test(line));
+      if (nextTimes.length >= 3 && (meetingTimes.has(nextTimes[0]) || (hasPreFlightGathering && hasAirportDepartureArrival))) {
+        nextTimes = nextTimes.slice(-2);
+      }
+
+      const times = nextTimes.length >= 2
+        ? nextTimes.slice(0, 2)
+        : previousTimes.length >= 2
+          ? previousTimes.slice(-2)
+          : previousTimes.length >= 1 && nextTimes.length >= 1
+            ? [previousTimes[previousTimes.length - 1], nextTimes[0]]
+            : nextTimes;
+
+      if (times.length >= 2) {
+        rows.push({
+          code,
+          departure: { time: times[0], airport: cityFromLine(lines[i]) || '미정' },
+          arrival: { time: times[1], airport: '미정' },
+        });
+        continue;
+      }
+    }
+
+    if (!departure || !arrival) continue;
+    rows.push({
+      code,
+      departure,
+      arrival,
+    });
+  }
+
+  return rows.filter((row, index, arr) => (
+    arr.findIndex(other => other.code === row.code && other.departure.time === row.departure.time) === index
+  ));
+}
+
 function extractStackedFlightRows(rawText: string): Array<NonNullable<ReturnType<typeof extractFlightSegment>>> {
   const lines = rawText
     .split(/\r?\n/)
     .map(line => line.trim())
     .filter(Boolean);
   const rows: Array<NonNullable<ReturnType<typeof extractFlightSegment>>> = [];
+  const codeRe = /\b[A-Z]{2}\d{2,4}\b/;
 
   const cityFromLine = (line: string): string | null => {
     if (/장가계/.test(line)) return '장가계';
@@ -438,15 +798,26 @@ function extractStackedFlightRows(rawText: string): Array<NonNullable<ReturnType
     const code = lines[i].match(/\b([A-Z]{2}\d{2,4})\b/)?.[1];
     if (!code) continue;
 
-    const next = lines.slice(i + 1, i + 10);
-    const times = next
-      .map(line => line.match(/^(\d{1,2}:\d{2})$/)?.[1] ?? null)
+    const next: string[] = [];
+    for (let j = i + 1; j < Math.min(lines.length, i + 10); j++) {
+      if (codeRe.test(lines[j])) break;
+      next.push(lines[j]);
+    }
+    const inlineTime = lines[i].match(/\b[A-Z]{2}\d{2,4}\b.*?\b(\d{1,2}:\d{2})\b/)?.[1] ?? null;
+    const rawTimes = [inlineTime, ...next
+      .map(line => line.match(/^(\d{1,2}:\d{2})$/)?.[1] ?? null)]
       .filter((time): time is string => Boolean(time));
+    const nearbyAfterTimes = next.filter(line => !/^\d{1,2}:\d{2}$/.test(line));
+    const hasPreFlightGathering = nearbyAfterTimes.some(line => /미팅|집결|수속|전용\s*차량|전용차량/.test(line));
+    const hasAirportDepartureArrival = nearbyAfterTimes.some(line => /(?:공항|airport).{0,30}(?:출발|향발|depart)/i.test(line))
+      && nearbyAfterTimes.some(line => /(?:공항|airport).{0,30}(?:도착|arrival)/i.test(line));
+    const times = rawTimes.length >= 3 && hasPreFlightGathering && hasAirportDepartureArrival
+      ? rawTimes.slice(-2)
+      : rawTimes;
     if (times.length < 2) continue;
 
     const routePrefix = lines[i].replace(code, ' ');
     const routeCities = routePrefix.match(/[가-힣]{2,}/g) ?? [];
-    const nearbyAfterTimes = next.filter(line => !/^\d{1,2}:\d{2}$/.test(line));
     const depLine = nearbyAfterTimes.find(line => /출발/.test(line)) ?? '';
     const arrLine = nearbyAfterTimes.find(line => /도착/.test(line)) ?? '';
 
@@ -653,6 +1024,7 @@ export function extractSupplierRawDeterministicFacts(rawText: string): SupplierR
 
   const flights = extractFlights(rawText);
   const routeFlights = extractRouteFlightSegments(rawText);
+  const datePrices = extractSourceDatePrices(rawText);
   return {
     title: extractTitle(rawText),
     region: resolveRegionWithTitleSlash(rawText, extractRegion(rawText)),
@@ -673,6 +1045,7 @@ export function extractSupplierRawDeterministicFacts(rawText: string): SupplierR
     notices: extractInfoNotices(rawText),
     dates: extractDepartureDates(rawText),
     prices: extractPrices(rawText),
+    datePrices,
   };
 }
 
@@ -680,6 +1053,21 @@ export function applySupplierRawDeterministicFacts(ir: NormalizedIntake, rawText
   const facts = extractSupplierRawDeterministicFacts(rawText);
 
   const priceGroups = [...(ir.priceGroups ?? [])];
+  if (facts.datePrices?.length && (priceGroups.length === 0 || !priceGroups.some(pg => pg.adultPrice > 0))) {
+    for (const row of facts.datePrices) {
+      priceGroups.push({
+        label: 'source_date_price',
+        dates: [row.date],
+        dateRange: null,
+        dayOfWeek: null,
+        adultPrice: row.adult,
+        childPrice: row.child,
+        confirmed: false,
+        surchargeIncluded: false,
+        surchargeNote: null,
+      });
+    }
+  }
   if (facts.dates.length > 0 && facts.prices.adult && (priceGroups.length === 0 || !priceGroups.some(pg => pg.adultPrice > 0))) {
     priceGroups.unshift({
       label: '원문 출발일',
@@ -974,6 +1362,40 @@ function findCatalogAppendixStart(rawText: string, start: number, end: number): 
   return offsets.length > 0 ? start + Math.min(...offsets) : end;
 }
 
+type CatalogDayHeaderMatch = {
+  day: number;
+  index: number;
+  text: string;
+};
+
+function collectCatalogDayHeaderMatches(rawText: string): CatalogDayHeaderMatch[] {
+  const lines = rawText.replace(/\r\n/g, '\n').split('\n');
+  const offsets: number[] = [];
+  let cursor = 0;
+  for (const line of lines) {
+    offsets.push(cursor);
+    cursor += line.length + 1;
+  }
+
+  const matches: CatalogDayHeaderMatch[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const rawLine = lines[i];
+    const line = rawLine.trim();
+    if (!line) continue;
+    if (/\d{1,3}(?:,\d{3})+/.test(line)) continue;
+
+    const header = line.match(/^제\s*(\d{1,2})\s*일(?:차)?(?:\s+.*)?$/u)
+      ?? line.match(/^(\d{1,2})\s*일(?:차)?(?:\s+.*)$/u);
+    if (!header) continue;
+
+    const day = Number(header[1]);
+    if (!Number.isInteger(day) || day < 1 || day > 30) continue;
+    matches.push({ day, index: offsets[i] + rawLine.indexOf(line), text: line });
+  }
+
+  return matches.sort((a, b) => a.index - b.index);
+}
+
 function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { flight_segments?: ReturnType<typeof makeFlightSegmentsFromCatalog> }) | null {
   if (!isCatalogTable(rawText) && !isKoreanCatalogTable(rawText)) return null;
 
@@ -981,25 +1403,22 @@ function buildCatalogTableItinerary(rawText: string): (TravelItinerary & { fligh
   const rawFlightCodes = [...rawText.matchAll(/\b([A-Z]{2}\d{2,4})\b/g)].map(match => match[1]);
   const flightOut = facts.outbound?.code ?? rawFlightCodes[0] ?? null;
   const flightIn = facts.inbound?.code ?? (rawFlightCodes.length > 1 ? rawFlightCodes[rawFlightCodes.length - 1] : null);
-  const dayMatches = [...rawText.matchAll(/^제\s*(\d+)\s*일\s*$/gm)];
-  const koreanDayMatches = [...rawText.matchAll(/^제\s*(\d+)\s*일\s*$/gm)];
-  const effectiveDayMatches = (dayMatches.length > 0 ? dayMatches : koreanDayMatches)
-    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+  const effectiveDayMatches = collectCatalogDayHeaderMatches(rawText);
   if (effectiveDayMatches.length === 0) return null;
 
   const nextPkgMatch = /\nPKG\s*\n/g;
   const days: DaySchedule[] = effectiveDayMatches.map((match, index) => {
-    const start = (match.index ?? 0) + match[0].length;
+    const start = match.index + match.text.length;
     const nextDay = effectiveDayMatches[index + 1]?.index;
     nextPkgMatch.lastIndex = start;
     const nextPkg = nextPkgMatch.exec(rawText)?.index;
     const structuralEnd = Math.min(nextDay ?? rawText.length, nextPkg ?? rawText.length);
     const end = findCatalogAppendixStart(rawText, start, structuralEnd);
     const body = rawText.slice(start, end).split(/\r?\n/).map(compactKoreanToken).filter(Boolean);
-    const dayNumber = Number(match[1]);
+    const dayNumber = match.day;
     const times = body.filter(line => /^\d{1,2}:\d{2}$/.test(line));
     const flightCodes = body.filter(line => /^[A-Z]{2}\d{2,4}$/.test(line.replace(/\s+/g, '')));
-    const primaryFlight = flightCodes[0] ?? (index === dayMatches.length - 1 ? flightIn : flightOut);
+    const primaryFlight = flightCodes[0] ?? (index === effectiveDayMatches.length - 1 ? flightIn : flightOut);
     const regions = body
       .map(line => line.replace(/\s+/g, ''))
       .filter(line => /^(부산|김해|나리타|나라타|치바|동경|도쿄|서안|화산)$/.test(line))
@@ -1288,9 +1707,91 @@ function knownMojibakeItinerary(rawText: string): (TravelItinerary & { flight_se
   };
 }
 
+function buildCruiseDayTableItinerary(rawText: string): TravelItinerary | null {
+  if (!/크루즈/.test(rawText) || !/일차\s+날짜\s+항\s*구\s+입항\s+출항/.test(rawText)) return null;
+
+  const facts = extractSupplierRawDeterministicFacts(rawText);
+  const byDay = new Map<number, DaySchedule>();
+  const rowPattern = /(\d{1,2})일차\s+(20\d{2}-\d{2}-\d{2})\s+\S+\s+(.+?)(?=(?:\s+\d{1,2}일차\s+20\d{2}-\d{2}-\d{2})|$)/g;
+
+  for (const line of rawText.split(/\r?\n/)) {
+    const rowRe = new RegExp(rowPattern.source, 'g');
+    let match: RegExpExecArray | null;
+    while ((match = rowRe.exec(line)) !== null) {
+      const day = Number(match[1]);
+      if (!Number.isInteger(day) || day < 1 || day > 60 || byDay.has(day)) continue;
+      const date = match[2];
+      const detail = match[3].replace(/\s+/g, ' ').trim();
+      const times = [...detail.matchAll(/\b\d{1,2}:\d{2}\b/g)].map(time => time[0]);
+      const port = detail
+        .replace(/\b\d{1,2}:\d{2}\b/g, ' ')
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const activity = /\(전일\s*항해\)/.test(detail)
+        ? '전일 항해'
+        : `${port || '항해'}${times.length ? ` (${times.join(' / ')})` : ''}`.trim();
+      byDay.set(day, {
+        day,
+        regions: port ? [port] : [],
+        meals: {
+          breakfast: false,
+          lunch: false,
+          dinner: false,
+          breakfast_note: null,
+          lunch_note: null,
+          dinner_note: null,
+        },
+        schedule: [{
+          time: times[0] ?? null,
+          activity: `${date} ${activity}`,
+          transport: null,
+          note: null,
+          type: 'normal',
+        }],
+        hotel: null,
+      });
+    }
+  }
+
+  const days = [...byDay.values()].sort((a, b) => a.day - b.day);
+  if (days.length < 2) return null;
+
+  return {
+    meta: {
+      title: facts.title ?? extractTitle(rawText) ?? '크루즈 상품',
+      product_type: 'cruise',
+      destination: facts.region ?? '크루즈',
+      nights: Math.max(0, days.length - 1),
+      days: facts.durationDays ?? days.length,
+      departure_airport: facts.departureAirport,
+      airline: facts.airline,
+      flight_out: null,
+      flight_in: null,
+      departure_days: null,
+      min_participants: facts.minParticipants ?? 1,
+      room_type: null,
+      ticketing_deadline: null,
+      hashtags: [],
+      brand: '여소남',
+    },
+    highlights: {
+      inclusions: facts.inclusions,
+      excludes: facts.excludes,
+      shopping: null,
+      remarks: facts.notices.map(n => n.text),
+    },
+    days,
+    optional_tours: [],
+  };
+}
+
 export function buildSupplierRawDeterministicItinerary(rawText: string): (TravelItinerary & { flight_segments?: CatalogFlightSegment[] }) | null {
   const known = knownMojibakeItinerary(rawText);
   if (known) return known;
+
+  const cruiseItinerary = buildCruiseDayTableItinerary(rawText);
+  if (cruiseItinerary) return cruiseItinerary;
 
   const catalogTableItinerary = buildCatalogTableItinerary(rawText);
   if (catalogTableItinerary) return catalogTableItinerary;

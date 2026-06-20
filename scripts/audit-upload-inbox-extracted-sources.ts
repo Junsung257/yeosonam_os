@@ -9,6 +9,7 @@ import { config as loadEnv } from 'dotenv';
 import type { AttractionData } from '@/lib/attraction-matcher';
 import { recoverCatalogSplitFromRawText } from '@/lib/product-registration/catalog-split-recovery';
 import { auditA4Payload, auditPackagesPayload, runMicroAutoQA } from '@/lib/product-registration/auto-qa';
+import { extractUploadDestinationFromFilename } from '@/lib/product-registration/destination-resolution';
 import { registerProductFromRaw } from '@/lib/product-registration/register-product-from-raw';
 import type { StandardProductRegistrationObject } from '@/lib/product-registration/types';
 import type { ExtractedData } from '@/lib/parser';
@@ -101,11 +102,17 @@ async function loadActiveAttractions(path: string | null): Promise<AttractionDat
   throw new Error(`active attractions cache has unsupported shape: ${fullPath}`);
 }
 
-function productsFromRawText(rawText: string): Array<{ rawText: string; extractedData: ExtractedData; title: string | null }> {
+function productsFromRawText(rawText: string): Array<{
+  rawText: string;
+  documentRawText: string;
+  extractedData: ExtractedData;
+  title: string | null;
+}> {
   const recovered = recoverCatalogSplitFromRawText(rawText);
   if (recovered.length > 0) {
     return recovered.map(product => ({
       rawText: product.sectionRawText ?? rawText,
+      documentRawText: rawText,
       extractedData: {
         ...product.extractedData,
         rawText: product.sectionRawText ?? rawText,
@@ -115,6 +122,7 @@ function productsFromRawText(rawText: string): Array<{ rawText: string; extracte
   }
   return [{
     rawText,
+    documentRawText: rawText,
     extractedData: { rawText },
     title: null,
   }];
@@ -135,52 +143,56 @@ async function auditProduct(input: {
   sourceFile: string;
   productIndex: number;
   rawText: string;
+  documentRawText: string;
+  sourceFileName: string;
   extractedData: ExtractedData;
   title: string | null;
   activeAttractions: AttractionData[];
 }): Promise<OfflineProductAudit> {
   const registration = await registerProductFromRaw({
     rawText: input.rawText,
-    documentRawText: input.rawText,
+    documentRawText: input.documentRawText,
     extractedData: input.extractedData,
     title: input.title,
     activeAttractions: input.activeAttractions,
+    tempDestination: extractUploadDestinationFromFilename(input.sourceFileName),
     enableGeminiFallback: false,
   });
-  const packagesAudit = auditPackagesPayload(registration);
-  const a4Audit = auditA4Payload(registration);
   const autoQA = runMicroAutoQA({
     rawText: input.rawText,
     sectionRawText: input.rawText,
     registration,
   });
+  const finalRegistration = autoQA.repairedRegistration;
+  const packagesAudit = autoQA.packagesAudit;
+  const a4Audit = autoQA.a4Audit;
   const blockers = [
-    ...registration.failures,
+    ...finalRegistration.failures,
     ...packagesAudit.failures.map(failure => `packages:${failure}`),
     ...a4Audit.failures.map(failure => `a4:${failure}`),
-    ...autoQA.triggers.map(trigger => `micro:${trigger}`),
+    ...autoQA.remainingTriggers.map(trigger => `micro:${trigger}`),
   ];
   const warnings = [
-    ...registration.warnings,
+    ...finalRegistration.warnings,
     ...packagesAudit.warnings.map(warning => `packages:${warning}`),
     ...a4Audit.warnings.map(warning => `a4:${warning}`),
   ];
-  const itineraryDays = registration.itinerary.itineraryDataToSave?.days?.length
-    ?? registration.itinerary.itineraryInput?.days?.length
+  const itineraryDays = finalRegistration.itinerary.itineraryDataToSave?.days?.length
+    ?? finalRegistration.itinerary.itineraryInput?.days?.length
     ?? 0;
 
   return {
     sourceFile: input.sourceFile,
     productIndex: input.productIndex,
     rawTextHash: hashText(input.rawText),
-    title: registration.identity.title,
-    destination: registration.identity.destination,
-    destinationCode: registration.identity.destinationCode,
-    priceRows: registration.pricing.productPrices.length,
-    priceDates: registration.pricing.priceDates.length,
+    title: finalRegistration.identity.title,
+    destination: finalRegistration.identity.destination,
+    destinationCode: finalRegistration.identity.destinationCode,
+    priceRows: finalRegistration.pricing.productPrices.length,
+    priceDates: finalRegistration.pricing.priceDates.length,
     itineraryDays,
-    publishableOffline: registration.publishable && blockers.length === 0,
-    customerReadyOffline: customerReadyOffline(registration, blockers, warnings),
+    publishableOffline: finalRegistration.publishable && blockers.length === 0,
+    customerReadyOffline: customerReadyOffline(finalRegistration, blockers, warnings),
     blockers: [...new Set(blockers)].slice(0, 40),
     warnings: [...new Set(warnings)].slice(0, 40),
   };
@@ -282,8 +294,10 @@ async function main(): Promise<void> {
       const sourceProduct = sourceProducts[index];
       products.push(await auditProduct({
         sourceFile: row.fileName ?? row.filePath ?? textPath,
+        sourceFileName: row.fileName ?? row.filePath ?? textPath,
         productIndex: index,
         rawText: sourceProduct.rawText,
+        documentRawText: sourceProduct.documentRawText,
         extractedData: sourceProduct.extractedData,
         title: sourceProduct.title,
         activeAttractions,

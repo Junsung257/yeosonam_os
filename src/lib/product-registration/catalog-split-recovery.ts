@@ -7,9 +7,32 @@ import {
 
 const KOREAN_DURATION_RE = /(\d+)\s*박\s*(\d+)\s*일/;
 const MOJIBAKE_NIGHT_RE = /(\d+)\s*諛/;
+const DAY_ONLY_DURATION_RE = /(?:^|[^\d])(\d{1,2})\s*일(?:\s*\/\s*(\d{1,2})\s*일)?(?:$|[^\d])/u;
+const PRICE_TABLE_LINE_RE = /(?:\d{1,2}[./]\d{1,2}|\d{1,2}\s+\d{1,2}).*\d{1,3}(?:,\d{3})+/;
+const CUSTOMER_SCHEDULE_DAY_MARKER_RE =
+  /(?:^|\n)\s*(?:DAY\s*\d{1,2}|제\s*\d{1,2}\s*(?:일차|일)|제\s*일\s*\d{1,2}|일\s*\d{1,2}|\d{1,2}\s*일(?:차)?)(?:\b|[\s가-힣])/i;
+const FLIGHT_CUSTOMER_TEXT_RE = /\b[A-Z]{2}\d{2,4}\b[\s\S]{0,120}(?:공항|출발|도착)|(?:공항|출발|도착)[\s\S]{0,120}\b[A-Z]{2}\d{2,4}\b/;
 
 function hasDurationSignal(line: string): boolean {
-  return KOREAN_DURATION_RE.test(line) || MOJIBAKE_NIGHT_RE.test(line);
+  return KOREAN_DURATION_RE.test(line) || DAY_ONLY_DURATION_RE.test(line) || MOJIBAKE_NIGHT_RE.test(line);
+}
+
+function hasReadableTitleText(line: string): boolean {
+  const withoutDuration = line
+    .replace(KOREAN_DURATION_RE, ' ')
+    .replace(DAY_ONLY_DURATION_RE, ' ')
+    .replace(/\b(?:PKG|PACKAGE)\b/gi, ' ')
+    .trim();
+  return (withoutDuration.match(/[\p{Script=Hangul}A-Za-z]/gu) ?? []).length >= 2;
+}
+
+function usableDurationTitle(line: string): boolean {
+  if (!hasDurationSignal(line)) return false;
+  if (PRICE_TABLE_LINE_RE.test(line)) return false;
+  if (KOREAN_DURATION_RE.test(line) || DAY_ONLY_DURATION_RE.test(line)) {
+    return hasReadableTitleText(line);
+  }
+  return true;
 }
 
 function inferTitle(section: string, index: number): string {
@@ -24,13 +47,16 @@ function inferTitle(section: string, index: number): string {
       .find(line => !/^\d{1,2}[./]\d{1,2}\b/.test(line) && /[가-힣]/.test(line));
     if (titleAfterSpecialPrice) return titleAfterSpecialPrice;
   }
+  const inlinePkgTitle = lines.find(line => /\bPKG\b/i.test(line) && usableDurationTitle(line));
+  if (inlinePkgTitle) return inlinePkgTitle;
+
   const pkgIndex = lines.findIndex(line => /^PKG$/i.test(line));
   const pkgTitle = pkgIndex >= 0
-    ? lines.slice(pkgIndex + 1).find(hasDurationSignal)
+    ? lines.slice(pkgIndex + 1).find(usableDurationTitle)
     : undefined;
 
   return pkgTitle
-    ?? lines.find(hasDurationSignal)
+    ?? lines.find(usableDurationTitle)
     ?? `카탈로그 상품 ${index + 1}`;
 }
 
@@ -42,6 +68,13 @@ function inferTripStyle(title: string, section?: string): { nights?: number; dur
       duration: Number(match[2]),
       tripStyle: match[0].replace(/\s+/g, ''),
     };
+  }
+  const dayOnly = title.match(DAY_ONLY_DURATION_RE) ?? section?.match(DAY_ONLY_DURATION_RE);
+  if (dayOnly) {
+    const days = Number(dayOnly[2] ?? dayOnly[1]);
+    return Number.isFinite(days) && days > 1
+      ? { nights: Math.max(0, days - 1), duration: days, tripStyle: `${days - 1}박${days}일` }
+      : {};
   }
   const mojibakeNight = title.match(MOJIBAKE_NIGHT_RE);
   if (!mojibakeNight) return {};
@@ -62,13 +95,19 @@ function inferDestination(title: string): string | undefined {
   return known.find(name => normalizedTitle.includes(name) || title.includes(name));
 }
 
+function hasCustomerScheduleEvidence(sectionRawText: string): boolean {
+  if (sectionRawText.length < 350) return false;
+  if (CUSTOMER_SCHEDULE_DAY_MARKER_RE.test(sectionRawText)) return true;
+  return FLIGHT_CUSTOMER_TEXT_RE.test(sectionRawText);
+}
+
 export function recoverCatalogSplitFromRawText(rawText: string | null | undefined): MultiProductResult[] {
   if (!rawText?.trim()) return [];
 
   const { sharedPrefix, sections } = splitCatalogByItineraryHeaders(rawText);
   if (sections.length < 2) return [];
 
-  return sections.map((section, index) => {
+  const products = sections.map((section, index) => {
     const sectionRawText = standardizeKnownMojibakeSupplierText(((sharedPrefix ? `${sharedPrefix}\n\n---\n\n` : '') + section).trim());
     const title = standardizeKnownMojibakeTitle(inferTitle(section, index));
     const trip = inferTripStyle(title, sectionRawText);
@@ -92,4 +131,9 @@ export function recoverCatalogSplitFromRawText(rawText: string | null | undefine
       sectionRawText,
     };
   });
+  const productsWithCustomerScheduleEvidence = products.filter((product, index) => {
+    const ownSection = standardizeKnownMojibakeSupplierText(sections[index] ?? '');
+    return hasCustomerScheduleEvidence(ownSection || (product.sectionRawText ?? ''));
+  });
+  return productsWithCustomerScheduleEvidence.length >= 2 ? productsWithCustomerScheduleEvidence : products;
 }

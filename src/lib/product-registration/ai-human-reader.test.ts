@@ -141,4 +141,105 @@ describe('readSupplierDocumentLikeHuman', () => {
 
     expect(prices).toEqual([849000, 1069000, 1259000, 1299000]);
   });
+
+  it('recovers broken Korean month/day rows followed by one package price', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '노옵션 노팁 황산 서체 4일 PKG',
+        '출 발 일 자',
+        '년 월 일 월 일 화26410~529',
+        '여 행 경 비',
+        '월     일414,21,28',
+        '월 일 55,12,19,26',
+        '인 849,000/',
+      ].join('\n'),
+      durationDays: 4,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual(
+      expect.arrayContaining([
+        '2026-04-14:849000',
+        '2026-04-21:849000',
+        '2026-04-28:849000',
+        '2026-05-05:849000',
+        '2026-05-12:849000',
+        '2026-05-19:849000',
+        '2026-05-26:849000',
+      ]),
+    );
+  });
+
+  it('recovers nearby Korean travel days with one product price', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '[청주공항-청도 3일]',
+        '여행일 23일, 24일',
+        '3월',
+        '2026년',
+        '상품가 [특가] 299,000원/인',
+      ].join('\n'),
+      durationDays: 3,
+      year: 2026,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual([
+      '2026-03-23:299000',
+      '2026-03-24:299000',
+    ]);
+  });
+
+  it('recovers golf weekday range tables with variant-specific price columns', () => {
+    const rawText = [
+      '상품가 단위 원',
+      '정통 3색 품격 3색',
+      '출 발 일',
+      '월,화,수 1,349,- 1,409,-',
+      '목 1,449,- 1,509,-',
+      '3/1~3/18',
+      '금 1,599,- 1,659,-',
+      '토 1,569,- 1,629,-',
+      '일 1,429,- 1,489,-',
+      'PKG',
+      '나가사키 정통 골프 54H 초석 2박3일',
+    ].join('\n');
+
+    const standard = readSupplierDocumentLikeHuman({
+      rawText,
+      title: '나가사키 정통 골프 54H 초석 2박3일',
+      durationDays: 3,
+      year: 2026,
+    });
+    const premium = readSupplierDocumentLikeHuman({
+      rawText,
+      title: '나가사키 품격 골프 54H 초석 2박3일',
+      durationDays: 3,
+      year: 2026,
+    });
+
+    expect(standard.pricePairs.find(row => row.date === '2026-03-02')?.adult_price).toBe(1349000);
+    expect(standard.pricePairs.find(row => row.date === '2026-03-05')?.adult_price).toBe(1449000);
+    expect(standard.pricePairs.find(row => row.date === '2026-03-06')?.adult_price).toBe(1599000);
+    expect(premium.pricePairs.find(row => row.date === '2026-03-02')?.adult_price).toBe(1409000);
+    expect(premium.pricePairs.find(row => row.date === '2026-03-05')?.adult_price).toBe(1509000);
+    expect(premium.pricePairs.find(row => row.date === '2026-03-06')?.adult_price).toBe(1659000);
+  });
+
+  it('ignores surcharge dates when building independent product-price evidence', () => {
+    const result = readSupplierDocumentLikeHuman({
+      rawText: [
+        '[노옵션노팁] 다낭/호이안/바나힐 5일 [진에어]',
+        '발 신 일2026. 01. 05.',
+        '출 발 일 자2026년 2월 24일 (화요일) 출발',
+        '인 원4명부터 출발',
+        '판 매 가 격',
+        '\\619,000/인',
+        '호텔 써차지: 1/1, 2/16~21, 4/26~28, 4/30~5/3예정 (투숙일 기준) \\30,000/룸당/박당',
+      ].join('\n'),
+      title: '[노옵션노팁] 다낭/호이안/바나힐 5일 [진에어]',
+      durationDays: 5,
+    });
+
+    expect(result.pricePairs.map(row => `${row.date}:${row.adult_price}`)).toEqual(['2026-02-24:619000']);
+  });
 });

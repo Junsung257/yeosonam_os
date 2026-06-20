@@ -156,6 +156,20 @@ function parseLooseDateTokens(line: string, yearHint?: number): string[] {
     .replace(/\([^)]*\)/g, ' ')
     .replace(/\d+\s*(?:nights?|night|박)\b/gi, ' ')
     .replace(/[&+]/g, ',');
+  const explicitKoreanDates = [...withoutParentheses.matchAll(/(20\d{2})\D{0,5}(\d{1,2})\D{0,5}(\d{1,2})/g)]
+    .map(match => isoDate(Number(match[1]), Number(match[2]), Number(match[3])))
+    .filter((date): date is string => Boolean(date));
+  if (explicitKoreanDates.length > 0) return [...new Set(explicitKoreanDates)];
+
+  const twoDigitYearDates = [...withoutParentheses.matchAll(/(?:^|[^\d])(\d{2})\s*년\s*(\d{1,2})\s*(?:[./월]\s*)?(\d{1,2})/g)]
+    .map((match) => {
+      const yy = Number(match[1]);
+      const year = yy >= 80 ? 1900 + yy : 2000 + yy;
+      return isoDate(year, Number(match[2]), Number(match[3]));
+    })
+    .filter((date): date is string => Boolean(date));
+  if (twoDigitYearDates.length > 0) return [...new Set(twoDigitYearDates)];
+
   const tokens = withoutParentheses.match(/\d{1,2}[./-]\d{1,2}|\b\d{1,2}\b/g) ?? [];
   const dates: string[] = [];
   let currentMonth: number | null = null;
@@ -180,15 +194,23 @@ function parseLooseDateTokens(line: string, yearHint?: number): string[] {
 
 function parseKrwPrices(line: string): number[] {
   const prices: number[] = [];
-  const matches = line.matchAll(/\b(\d{1,3}(?:,\d{3})+|\d{3,4},-)\s*(?:KRW|krw)?/g);
+  const matches = line.matchAll(/\b(\d{1,3}(?:,\d{3})+,-|\d{1,3}(?:,\d{3})+|\d{3,4},-)\s*(?:KRW|krw)?/g);
   for (const match of matches) {
     const token = match[1];
     const value = token.endsWith(',-')
-      ? Number(token.replace(',-', '')) * 1000
+      ? Number(token.replace(',-', '').replace(/,/g, '')) * 1000
       : Number(token.replace(/,/g, ''));
-    if (Number.isInteger(value) && value >= 10_000 && value <= 50_000_000) prices.push(value);
+    if (Number.isInteger(value) && value >= 250_000 && value <= 50_000_000) prices.push(value);
   }
   return [...new Set(prices)];
+}
+
+const ADMIN_DATE_CONTEXT_RE = /(?:발\s*신\s*일|수\s*신|담당자|드림|작성일|배포일|발송일|문서|기안|기준일)/;
+const NON_PACKAGE_PRICE_CONTEXT_RE = /(?:호텔\s*써차지|써차지|투숙일|싱글차지|불\s*포함|불포함|선택관광|선택\s*관광|옵션|매너팁|가이드경비|개인경비|패널티|취소|환불|유류|텍스|쇼\s*핑|쇼핑)/;
+const PACKAGE_DATE_PRICE_CONTEXT_RE = /(?:출\s*발|출발|판매가|판\s*매\s*가|상품가|요금|가격|성인|최저가|특가)/;
+
+function isNonPackagePriceContext(line: string): boolean {
+  return ADMIN_DATE_CONTEXT_RE.test(line) || NON_PACKAGE_PRICE_CONTEXT_RE.test(line);
 }
 
 const KOREAN_WEEKDAY_TO_DAY = new Map<string, number>([
@@ -306,6 +328,212 @@ function extractMonthlyWeekdayGridRows(input: HumanReaderInput): MatrixPriceRow[
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
 }
 
+function parseBrokenKoreanMonthDayLine(line: string): { month: number; days: number[] } | null {
+  const compact = line.replace(/\s+/g, '');
+  const match = compact.match(/월일(\d{2,4}(?:,\d{1,2})*)/);
+  if (!match?.[1]) return null;
+  const [first, ...rest] = match[1].split(',');
+  const monthDigits = /^(10|11|12)/.test(first) ? 2 : 1;
+  const month = Number(first.slice(0, monthDigits));
+  const firstDay = Number(first.slice(monthDigits));
+  const days = [firstDay, ...rest.map(value => Number(value))]
+    .filter(day => Number.isInteger(day) && day >= 1 && day <= 31);
+  if (!Number.isInteger(month) || month < 1 || month > 12 || days.length === 0) return null;
+  return { month, days: [...new Set(days)] };
+}
+
+function extractBrokenKoreanMonthDayPriceRows(input: HumanReaderInput): MatrixPriceRow[] {
+  const lines = input.rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < lines.length; i++) {
+    const parsed = parseBrokenKoreanMonthDayLine(lines[i]);
+    if (!parsed) continue;
+    const prices = lines
+      .slice(i + 1, Math.min(lines.length, i + 4))
+      .flatMap(line => (isNonPackagePriceContext(line) ? [] : parseKrwPrices(line)));
+    if (prices.length === 0 || prices.length > 4) continue;
+    const year = inferYearForMonth(parsed.month, input.year);
+    for (const day of parsed.days) {
+      const date = isoDate(year, parsed.month, day);
+      if (!date) continue;
+      for (const price of prices) {
+        const key = `${date}|${price}|broken_month_day_price`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push({
+          date,
+          adult_price: price,
+          child_price: null,
+          note: 'source_broken_month_day_price',
+          status: 'available',
+        });
+      }
+    }
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+}
+
+function extractNearbyKoreanTravelDayPriceRows(input: HumanReaderInput): MatrixPriceRow[] {
+  const lines = input.rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+
+  for (let i = 0; i < lines.length; i++) {
+    if (!/(?:여행일|출발일|출\s*발\s*일)/.test(lines[i])) continue;
+    const days = [...lines[i].matchAll(/(\d{1,2})\s*일/g)]
+      .map(match => Number(match[1]))
+      .filter(day => Number.isInteger(day) && day >= 1 && day <= 31);
+    if (days.length === 0 || days.length > 31) continue;
+    const context = lines.slice(Math.max(0, i - 3), Math.min(lines.length, i + 6));
+    const month = context
+      .map(line => line.match(/(\d{1,2})\s*월/)?.[1])
+      .filter(Boolean)
+      .map(value => Number(value))
+      .find(value => Number.isInteger(value) && value >= 1 && value <= 12);
+    if (!month) continue;
+    const explicitYear = context
+      .map(line => line.match(/(20\d{2})\s*년/)?.[1])
+      .filter(Boolean)
+      .map(value => Number(value))
+      .find(value => Number.isInteger(value));
+    const prices = lines
+      .slice(i + 1, Math.min(lines.length, i + 8))
+      .flatMap(line => (/상품가|판매가|여행경비|판매\s*가격/.test(line) ? parseKrwPrices(line) : []));
+    if (prices.length === 0 || prices.length > 4) continue;
+    const year = explicitYear ?? inferYearForMonth(month, input.year);
+    for (const day of days) {
+      const date = isoDate(year, month, day);
+      if (!date) continue;
+      for (const price of prices) {
+        const key = `${date}|${price}|nearby_travel_day_price`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        rows.push({
+          date,
+          adult_price: price,
+          child_price: null,
+          note: 'source_nearby_travel_day_price',
+          status: 'available',
+        });
+      }
+    }
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+}
+
+function weekdayNumbersFromPriceRow(line: string): { weekdays: number[]; prices: number[] } | null {
+  const match = line.match(/^([월화수목금토일](?:\s*[,/ㆍ·~\-]\s*[월화수목금토일])*)\s+(.+)$/);
+  if (!match?.[1]) return null;
+  const weekdays = [...match[1].matchAll(/[월화수목금토일]/g)]
+    .map(item => KOREAN_WEEKDAY_TO_DAY.get(item[0]))
+    .filter((value): value is number => typeof value === 'number');
+  const prices = parseKrwPrices(match[2] ?? '');
+  if (weekdays.length === 0 || prices.length === 0) return null;
+  return { weekdays: [...new Set(weekdays)], prices };
+}
+
+function parseMonthDayRange(line: string, yearHint?: number): { start: Date; end: Date; label: string } | null {
+  const match = line.match(/(\d{1,2})\s*\/\s*(\d{1,2})\s*~\s*(?:(\d{1,2})\s*\/\s*)?(\d{1,2})/);
+  if (!match) return null;
+  const startMonth = Number(match[1]);
+  const startDay = Number(match[2]);
+  const endMonth = Number(match[3] ?? match[1]);
+  const endDay = Number(match[4]);
+  const year = inferYearForMonth(startMonth, yearHint);
+  const start = new Date(year, startMonth - 1, startDay);
+  const endYear = endMonth < startMonth ? year + 1 : year;
+  const end = new Date(endYear, endMonth - 1, endDay);
+  if (
+    start.getFullYear() !== year
+    || start.getMonth() !== startMonth - 1
+    || start.getDate() !== startDay
+    || end.getFullYear() !== endYear
+    || end.getMonth() !== endMonth - 1
+    || end.getDate() !== endDay
+    || end < start
+  ) {
+    return null;
+  }
+  return { start, end, label: match[0] };
+}
+
+function golfVariantPriceColumn(input: HumanReaderInput): number | null {
+  const title = input.title ?? '';
+  if (/품격/.test(title)) return 1;
+  if (/정통|실속|초석/.test(title)) return 0;
+  const header = input.rawText.slice(0, 500);
+  if (/품격/.test(header) && !/정통/.test(header)) return 1;
+  if (/정통|실속|초석/.test(header) && !/품격/.test(header)) return 0;
+  return null;
+}
+
+function extractGolfWeekdayRangePriceRows(input: HumanReaderInput): MatrixPriceRow[] {
+  if (!/골프/.test(input.rawText) || !/\d{1,3},-/.test(input.rawText)) return [];
+  const lines = input.rawText
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(Boolean);
+  const rows: MatrixPriceRow[] = [];
+  const seen = new Set<string>();
+  const preferredColumn = golfVariantPriceColumn(input);
+
+  for (let i = 0; i < lines.length; i++) {
+    const range = parseMonthDayRange(lines[i], input.year);
+    if (!range) continue;
+    const weekdayRows: Array<{ weekdays: number[]; prices: number[] }> = [];
+
+    for (let up = i - 1; up >= 0 && up >= i - 4; up--) {
+      if (parseMonthDayRange(lines[up], input.year)) break;
+      const parsed = weekdayNumbersFromPriceRow(lines[up]);
+      if (parsed) weekdayRows.unshift(parsed);
+    }
+    for (let down = i + 1; down < lines.length && down <= i + 5; down++) {
+      if (parseMonthDayRange(lines[down], input.year)) break;
+      const parsed = weekdayNumbersFromPriceRow(lines[down]);
+      if (parsed) weekdayRows.push(parsed);
+    }
+    if (weekdayRows.length === 0) continue;
+
+    const cursor = new Date(range.start.getTime());
+    while (cursor <= range.end) {
+      const weekday = cursor.getDay();
+      const date = isoDate(cursor.getFullYear(), cursor.getMonth() + 1, cursor.getDate());
+      cursor.setDate(cursor.getDate() + 1);
+      if (!date) continue;
+      for (const row of weekdayRows) {
+        if (!row.weekdays.includes(weekday)) continue;
+        const candidatePrices = preferredColumn == null
+          ? row.prices
+          : row.prices[preferredColumn] != null ? [row.prices[preferredColumn]] : [];
+        for (const price of candidatePrices) {
+          const key = `${date}|${price}|golf_weekday_range`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          rows.push({
+            date,
+            adult_price: price,
+            child_price: null,
+            note: 'source_golf_weekday_range',
+            status: 'available',
+          });
+        }
+      }
+    }
+  }
+
+  return rows.sort((a, b) => a.date.localeCompare(b.date) || a.adult_price - b.adult_price);
+}
+
 function extractAdjacentDatePriceRows(input: HumanReaderInput): MatrixPriceRow[] {
   const lines = input.rawText
     .split(/\r?\n/)
@@ -315,12 +543,24 @@ function extractAdjacentDatePriceRows(input: HumanReaderInput): MatrixPriceRow[]
   const seen = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
+    if (isNonPackagePriceContext(lines[i])) continue;
     const dates = parseLooseDateTokens(lines[i], input.year);
     if (dates.length === 0 || dates.length > 80) continue;
+    const hasPackageContext = PACKAGE_DATE_PRICE_CONTEXT_RE.test(lines[i]);
+    const bareFullDateLine = /^\s*20\d{2}[./-]\d{1,2}[./-]\d{1,2}\s*$/.test(lines[i]);
+    if (bareFullDateLine && !hasPackageContext) continue;
 
     const prices = [
       ...parseKrwPrices(lines[i]),
+      ...(hasPackageContext
+        ? lines.slice(Math.max(0, i - 2), i).flatMap(line => {
+          if (isNonPackagePriceContext(line)) return [];
+          if (parseLooseDateTokens(line, input.year).length > 0) return [];
+          return parseKrwPrices(line);
+        })
+        : []),
       ...lines.slice(i + 1, Math.min(lines.length, i + 6)).flatMap(line => {
+        if (isNonPackagePriceContext(line)) return [];
         if (parseLooseDateTokens(line, input.year).length > 0) return [];
         return parseKrwPrices(line);
       }),
@@ -371,11 +611,14 @@ function buildPricePairs(input: HumanReaderInput, rawTextHash: string): {
   const candidateRows = [
     ...ir.rows,
     ...extractAdjacentDatePriceRows(input),
+    ...extractBrokenKoreanMonthDayPriceRows(input),
+    ...extractNearbyKoreanTravelDayPriceRows(input),
+    ...extractGolfWeekdayRangePriceRows(input),
     ...extractMonthlyWeekdayGridRows(input),
   ];
   for (const row of candidateRows) {
     if (!row.date || !row.adult_price || row.adult_price <= 0) continue;
-    const key = `${row.date}|${row.adult_price}|${row.note ?? ''}`;
+    const key = `${row.date}|${row.adult_price}`;
     if (seen.has(key)) continue;
     seen.add(key);
     const evidence = makeEvidence({
