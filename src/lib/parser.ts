@@ -17,6 +17,7 @@ import { extractItineraryData } from '@/lib/parser/extract-itinerary';
 import { lookupSemanticCache, storeSemanticCache } from '@/lib/semantic-cache';
 import { buildFewShotPromptFragment, retrieveSimilarExamples, type SimilarExample } from '@/lib/few-shot-retriever';
 import { buildProfilePromptFragment, type LandOperatorProfile } from '@/lib/land-operator-profile';
+import { extractHwpxText } from '@/lib/parser/hwpx-text';
 
 // ── Phase 2 Gemini 재시도용 Itinerary 스키마 (P1-3 2026-05-24: 함수 외부 상수화) ──
 const itinSchema: ResponseSchema = {
@@ -988,8 +989,7 @@ export async function parseHWP(_buffer: Buffer, filename: string): Promise<strin
 }
 
 export async function parseHWPX(_buffer: Buffer, filename: string): Promise<string> {
-  const name = filename.replace(/\.hwpx$/i, '').trim();
-  throw new Error(`HWPX 파일(.hwpx)은 더 이상 지원되지 않습니다. PDF로 변환 후 업로드해 주세요. (파일명: ${name})`);
+  return extractHwpxText(_buffer, filename);
 }
 // ─── Regex fallback 파싱 (PDF/HWP AI 실패 시) ───────────────
 

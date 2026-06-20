@@ -129,6 +129,12 @@ Required mitigation before claiming recovery:
 
 During a DB outage, extraction-only reports may be produced with `scripts/register-upload-inbox.ts` without `--register`. These reports are useful source queues only when they include per-file hashes and extracted text paths. They do not prove saved products, customer pages, A4 readiness, attraction cards, or media quality.
 
+HWP/HWPX handling is intentionally explicit:
+
+- `.hwpx` is extracted directly from the document XML and can be used for unattended inbox runs.
+- `.hwp` binary extraction is allowed only when a non-GUI extractor such as `hwp5txt`/pyhwp is available on the machine. If no extractor is available, the inbox run must record `HWP binary extractor is not available` and stop before registration for that file.
+- Do not drive the Hancom desktop app through permission popups as a hidden automation path. If the operator normally copies all text from HWP into `/upload`, the equivalent unattended input is a `.txt` file containing that copied supplier text.
+
 After an extraction-only report exists, run the offline source audit before retrying registration:
 
 ```bash
