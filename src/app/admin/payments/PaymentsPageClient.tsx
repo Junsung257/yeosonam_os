@@ -1315,7 +1315,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   async function handlePreview() {
     const rows = parseTSV(pasteText);
-    if (rows.length === 0) { alert('파싱된 행이 없습니다.'); return; }
+    if (rows.length === 0) { showToast('파싱된 행이 없습니다.', 'err'); return; }
     setImporting(true);
     try {
       const res = await fetch('/api/bank-transactions', {
@@ -1338,7 +1338,7 @@ export default function PaymentsPageClient({ initialTransactions, initialTrashTx
 
   async function handleImport() {
     const selected = importRows.filter(r => r.include);
-    if (selected.length === 0) { alert('등록할 행을 선택하세요.'); return; }
+    if (selected.length === 0) { showToast('등록할 행을 선택하세요.', 'err'); return; }
     setImporting(true);
     try {
       const res = await fetch('/api/bank-transactions', {

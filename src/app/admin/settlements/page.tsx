@@ -55,6 +55,11 @@ type StatusConfirmTarget = {
   status: Exclude<SettlementStatus, 'COMPLETED' | 'HOLD'>;
 };
 
+type Notice = {
+  tone: 'success' | 'error';
+  message: string;
+};
+
 const STATUS_BADGES: Record<string, string> = {
   PENDING: 'bg-status-neutralBg text-status-neutralFg',
   READY: 'bg-status-infoBg text-status-infoFg',
@@ -168,6 +173,7 @@ export default function SettlementsPage() {
   const [holdReason, setHoldReason] = useState('');
   const [search, setSearch] = useState('');
   const [copiedEvidence, setCopiedEvidence] = useState('');
+  const [notice, setNotice] = useState<Notice | null>(null);
   const statusConfirmCancelRef = useRef<HTMLButtonElement | null>(null);
   const [evidence, setEvidence] = useState<PayoutEvidenceForm>({
     payout_reference: '',
@@ -191,7 +197,10 @@ export default function SettlementsPage() {
       setSettlements(unwrapSettlements(sJson));
       setAffiliates(unwrapAffiliates(aJson));
     } catch (err) {
-      alert(err instanceof Error ? err.message : '정산 데이터를 불러오지 못했습니다.');
+      setNotice({
+        tone: 'error',
+        message: err instanceof Error ? err.message : '정산 데이터를 불러오지 못했습니다.',
+      });
     } finally {
       setLoading(false);
     }
@@ -216,10 +225,11 @@ export default function SettlementsPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(apiError(json, '정산 마감에 실패했습니다.'));
+        setNotice({ tone: 'error', message: apiError(json, '정산 마감에 실패했습니다.') });
         return;
       }
-      load();
+      setNotice({ tone: 'success', message: '정산 마감을 실행했습니다.' });
+      await load();
     } finally {
       setClosing(null);
     }
@@ -235,14 +245,15 @@ export default function SettlementsPage() {
       });
       const json = await res.json();
       if (!res.ok) {
-        alert(apiError(json, '상태 변경에 실패했습니다.'));
+        setNotice({ tone: 'error', message: apiError(json, '상태 변경에 실패했습니다.') });
         return;
       }
       setCompletionTarget(null);
       setHoldTarget(null);
       setStatusConfirmTarget(null);
       setHoldReason('');
-      load();
+      setNotice({ tone: 'success', message: `정산 상태를 ${STATUS_LABELS[status] || status}(으)로 변경했습니다.` });
+      await load();
     } finally {
       setStatusUpdating(null);
     }
@@ -312,9 +323,11 @@ export default function SettlementsPage() {
         }
       }
       if (failed.length > 0) {
-        alert(`일부 정산 생성에 실패했습니다.\n\n${failed.join('\n')}`);
+        setNotice({ tone: 'error', message: `일부 정산 생성에 실패했습니다.\n\n${failed.join('\n')}` });
+      } else {
+        setNotice({ tone: 'success', message: `${unsettledAffiliates.length}명 정산을 생성했습니다.` });
       }
-      load();
+      await load();
     } finally {
       setClosing(null);
       setBulkClosing(false);
@@ -373,6 +386,20 @@ export default function SettlementsPage() {
           </div>
         }
       />
+
+      {notice && (
+        <div
+          role={notice.tone === 'error' ? 'alert' : 'status'}
+          aria-live={notice.tone === 'error' ? 'assertive' : 'polite'}
+          className={`rounded-admin-md border px-4 py-3 text-admin-sm font-medium whitespace-pre-line ${
+            notice.tone === 'error'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+          }`}
+        >
+          {notice.message}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
         <KpiCard label="총 지급 예정액" value={krw(totalPayout)} icon={Wallet} tone="positive" />

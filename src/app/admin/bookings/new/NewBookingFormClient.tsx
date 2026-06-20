@@ -84,6 +84,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
   const [newCustomerForm, setNewCustomerForm] = useState({ name: '', phone: '', passport_no: '', passport_expiry: '', birth_date: '' });
   const [savingNewCustomer, setSavingNewCustomer] = useState(false);
+  const [newCustomerError, setNewCustomerError] = useState('');
 
   useEffect(() => {
     if (initialPackages && initialCustomers && initialAffiliates) return;
@@ -121,7 +122,8 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
   };
 
   const saveNewCustomer = async () => {
-    if (!newCustomerForm.name.trim()) { alert('이름을 입력해주세요.'); return; }
+    if (!newCustomerForm.name.trim()) { setNewCustomerError('이름을 입력해주세요.'); return; }
+    setNewCustomerError('');
     setSavingNewCustomer(true);
     try {
       const res = await fetch('/api/customers', {
@@ -130,13 +132,13 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
         body: JSON.stringify(newCustomerForm),
       });
       const data = await res.json();
-      if (!res.ok) { alert(data.error || '저장 실패'); return; }
+      if (!res.ok) { setNewCustomerError(data.error || '저장 실패'); return; }
       const newC = data.customer as Customer;
       setCustomers(prev => [newC, ...prev]);
       setSelectedPassengers(prev => [...prev, newC]);
       setShowNewCustomerForm(false);
       setNewCustomerForm({ name: '', phone: '', passport_no: '', passport_expiry: '', birth_date: '' });
-    } catch { alert('고객 등록 중 오류가 발생했습니다.'); }
+    } catch { setNewCustomerError('고객 등록 중 오류가 발생했습니다.'); }
     finally { setSavingNewCustomer(false); }
   };
 
@@ -345,7 +347,7 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
               <div className="bg-white rounded-admin-md shadow-admin-lg max-w-sm w-full">
                 <div className="p-4 border-b flex items-center justify-between">
                   <h3 className="font-semibold text-admin-text">새 고객 빠른 등록</h3>
-                  <button type="button" onClick={() => setShowNewCustomerForm(false)} className="text-admin-muted-2 hover:text-admin-muted">✕</button>
+                  <button type="button" onClick={() => { setShowNewCustomerForm(false); setNewCustomerError(''); }} className="text-admin-muted-2 hover:text-admin-muted">✕</button>
                 </div>
                 <div className="p-4 space-y-3">
                   <div>
@@ -376,12 +378,17 @@ export function NewBookingFormClient({ initialPackages, initialCustomers, initia
                     <input id="new-customer-birth-date" type="date" value={newCustomerForm.birth_date} onChange={e => setNewCustomerForm(f => ({...f, birth_date: e.target.value}))}
                       className="w-full border border-admin-border-strong rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
                   </div>
+                  {newCustomerError && (
+                    <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                      {newCustomerError}
+                    </div>
+                  )}
                   <div className="flex gap-2 pt-1">
                     <button type="button" onClick={saveNewCustomer} disabled={savingNewCustomer} aria-busy={savingNewCustomer}
                       className="flex-1 bg-blue-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:bg-slate-300 transition">
                       {savingNewCustomer ? '저장 중...' : '등록 후 동행자 추가'}
                     </button>
-                    <button type="button" onClick={() => setShowNewCustomerForm(false)}
+                    <button type="button" onClick={() => { setShowNewCustomerForm(false); setNewCustomerError(''); }}
                       className="flex-1 bg-admin-surface-2 text-admin-text-2 py-2 rounded-lg text-sm hover:bg-slate-200 transition">
                       취소
                     </button>
