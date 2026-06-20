@@ -297,6 +297,7 @@ export default function FreeTravelPageClient({
   const handleBookManual = async () => {
     if (!bookingModal || !mrtRef.trim()) return;
     setSaving(true);
+    setError(null);
     try {
       const res = await fetch('/api/free-travel/book-manual', {
         method: 'PATCH',
@@ -310,7 +311,7 @@ export default function FreeTravelPageClient({
       closeBookingModal();
       loadSessions();
     } catch (e) {
-      alert(e instanceof Error ? e.message : '오류');
+      setError(e instanceof Error ? e.message : '오류');
     } finally { setSaving(false); }
   };
 

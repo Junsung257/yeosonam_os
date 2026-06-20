@@ -88,6 +88,7 @@ export default function ControlTowerPage() {
 
   // ── 커미션 정책 미리보기 (저장 전 영향 시뮬레이션) ────
   const [previewing, setPreviewing] = useState(false);
+  const [previewResult, setPreviewResult] = useState<string[] | null>(null);
   const handlePreview = useCallback(async () => {
     setPreviewing(true);
     try {
@@ -103,7 +104,7 @@ export default function ControlTowerPage() {
         `📈 평균 커미션율: ${data.avg_final_pct}`,
         data.capped_count > 0 ? `⚠️ 캡 적용: ${data.capped_count}건/${data.sample_size}` : '✅ 캡 적용 없음',
       ];
-      window.alert(['[정책 활성화 시뮬레이션]', '', ...lines, '', '저장 전 사장님 확인용. 활성화는 별도 토글에서.'].join('\n'));
+      setPreviewResult(lines);
     } catch {
       showToast('미리보기 서버 오류');
     } finally {
@@ -438,6 +439,27 @@ export default function ControlTowerPage() {
           </button>
         </div>
       </div>
+
+      {previewResult && (
+        <div role="status" className="rounded-admin-md border border-rose-200 bg-rose-50 px-4 py-3 text-admin-sm text-rose-800">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">정책 활성화 시뮬레이션</p>
+              <p className="mt-1 text-admin-xs text-rose-700">저장 전 확인용입니다. 활성화는 별도 토글에서 진행됩니다.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPreviewResult(null)}
+              className="rounded-admin-sm px-2 py-1 text-admin-xs font-medium hover:bg-white/70"
+            >
+              닫기
+            </button>
+          </div>
+          <ul className="mt-3 space-y-1 text-admin-xs">
+            {previewResult.map(line => <li key={line}>{line}</li>)}
+          </ul>
+        </div>
+      )}
 
       {/* ── KPI ────────────────────────────────────────── */}
       <div className="grid grid-cols-4 gap-2">
