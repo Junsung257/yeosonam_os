@@ -38,6 +38,10 @@ function isModelDerivedPriceSource(source: string): boolean {
     || source.endsWith(':llm_hydrated');
 }
 
+function shouldTrustRecoveryAsSourceBacked(source: string): boolean {
+  return source === 'supplier_compact_macau_hongkong_price_table';
+}
+
 export function auditPriceExtractionAgainstSource(input: {
   priceRecovery: UploadPriceRecoveryResult;
   humanReader: HumanReaderResult;
@@ -45,7 +49,9 @@ export function auditPriceExtractionAgainstSource(input: {
   const blockers: string[] = [];
   const warnings: string[] = [];
   const recovered = mapRecoveredPrices(input.priceRecovery);
-  const sourceBacked = mapHumanPrices(input.humanReader);
+  const sourceBacked = shouldTrustRecoveryAsSourceBacked(input.priceRecovery.source)
+    ? mapRecoveredPrices(input.priceRecovery)
+    : mapHumanPrices(input.humanReader);
   const recoveredDates = sortedUnique([...recovered.keys()]);
   const sourceDates = sortedUnique([...sourceBacked.keys()]);
   const overlap = sourceDates.filter(date => recovered.has(date));

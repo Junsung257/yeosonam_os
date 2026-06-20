@@ -171,4 +171,27 @@ describe('upload destination resolution Korean aliases', () => {
     expect(result.destinationCode).toBe('TSJ');
     expect(result.failures).toEqual([]);
   });
+
+  it('recovers Hanoi from source-backed Air Busan charter flight hints when OCR drops the city name', () => {
+    const rawText = `
+02/25 - 819,000 / 02/26 - 899,000
+[BX] / / 3 5
+BX7395 20:30 23:30
+Lotte Center Hanoi 65
+BX7305 00:40 07:05
+`;
+
+    const result = resolveUploadDestinationAndCodes({
+      destination: '',
+      departureAirport: '부산',
+      durationDays: 5,
+      productRawText: rawText,
+      documentRawText: rawText,
+    });
+
+    expect(result.destination).toBe('하노이');
+    expect(result.source).toBe('product_raw');
+    expect(result.destinationCode).toBe('HAN');
+    expect(result.failures).toEqual([]);
+  });
 });

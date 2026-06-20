@@ -155,3 +155,32 @@ mobile/A4 live verification: not run in this offline audit
 ```
 
 The remaining blocked products still need source-backed price, itinerary, destination, or catalog-section separation. They must not be auto-opened by inventing missing sale prices or missing customer itinerary days.
+
+## 2026-06-21 Follow-up: Source Evidence Recovery Pass
+
+The next source-batch replay found three recurring, source-backed failure classes and promoted them into deterministic engine rules:
+
+- PDF/OCR day headers split at the first day, including `제1`/`일` fragments and inline `1일 ...` rows.
+- Same-line catalog package starts such as `PKG [실속] CA 북경/만리장성 3박4일`.
+- Compact Macau/Hong Kong catalog price matrices where a shared period table appears before the individual `PKG` sections.
+- Bridgeable OCR day markers such as `3 * , , .` only when explicit neighboring days already prove the missing day sequence.
+- Air Busan charter flight hints such as `BX7395/BX7305` for Hanoi when OCR drops the city name but source flight evidence remains.
+
+Result on the same source batch:
+
+```text
+products: 128
+publishableOffline: 119
+customerReadyOffline: 0
+blocked: 9
+mobile/A4 live verification: not run in this offline audit
+```
+
+Remaining blocked products are intentionally blocked:
+
+- Documents with itinerary but no sale-price/date evidence, such as confirmation letters or cruise schedules.
+- Documents with price tables but no customer itinerary, such as standalone fare sheets.
+- Fam-tour or notice documents without both price and itinerary.
+- Domestic/free-rent documents where the extracted source does not yet contain enough package structure.
+
+Do not mark these customer-publishable unless a future source-backed rule proves the missing price, date, destination, and itinerary fields. The next live registration pass must still run mobile landing and A4 browser verification after Supabase resource pressure is stable.
