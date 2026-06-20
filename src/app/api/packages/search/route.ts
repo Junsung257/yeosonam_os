@@ -13,6 +13,7 @@ import { getActivePolicy } from '@/lib/scoring/policy';
 import { buildRecommendationDisplay, type PackageScoreDisplayRow } from '@/lib/scoring/recommendation-display';
 import { runOptionalSupabaseQuery, runSupabaseQueryWithTimeout } from '@/lib/supabase-query-guard';
 import { withTimeout } from '@/lib/utils/timeout';
+import { packageMatchesCategory } from '@/lib/package-category';
 
 // 옵션 4a 패턴 — Page 정적 prerender 를 위해 server-side fetch 를 API 로 이관.
 // 응답에 Cache-Control 헤더 적용 → Vercel Edge CDN 이 query string 별 cache.
@@ -35,12 +36,6 @@ const SEARCH_CACHE_HEADERS = { 'Cache-Control': 'public, s-maxage=60, stale-whil
 const PACKAGE_QUERY_TIMEOUT_MS = 3500;
 const OPTIONAL_QUERY_TIMEOUT_MS = 1200;
 const PERSONALIZATION_TIMEOUT_MS = 900;
-const CATEGORY_MATCH_ALIASES: Record<string, string[]> = {
-  honeymoon: ['honeymoon', '허니문', '신혼', '신혼여행'],
-  golf: ['golf', '골프', '해외골프', '골프여행'],
-  cruise: ['cruise', '크루즈'],
-  theme: ['theme', '테마', '테마여행', '기획전'],
-};
 
 function emptySearchPayload(hub: DepartureHubId = 'all', filterForClient = '', degradedReason?: string) {
   return {
@@ -92,32 +87,6 @@ function packageMatchesBudget(pkg: any, priceMin: string, priceMax: string, mont
   if (min > 0 && price < min) return false;
   if (max > 0 && price > max) return false;
   return true;
-}
-
-function normalizeCategoryText(value: string): string {
-  return value.toLocaleLowerCase('ko-KR').replace(/[\s_-]+/g, '');
-}
-
-function packageMatchesCategory(pkg: any, category: string): boolean {
-  if (!category) return true;
-  const aliases = CATEGORY_MATCH_ALIASES[category] ?? [category];
-  const normalizedAliases = aliases.map(normalizeCategoryText);
-  const packageText = [
-    pkg.title,
-    pkg.display_title,
-    pkg.hero_tagline,
-    pkg.destination,
-    pkg.country,
-    pkg.category,
-    pkg.product_type,
-    pkg.trip_style,
-    ...(pkg.product_tags ?? []),
-    ...(pkg.product_highlights ?? []),
-  ]
-    .filter((value): value is string => Boolean(value))
-    .map(normalizeCategoryText);
-
-  return normalizedAliases.some(alias => packageText.some(value => value.includes(alias)));
 }
 
 export async function GET(request: NextRequest) {
